@@ -1,4 +1,59 @@
 ---
+Task ID: 4-a
+Agent: Epreuves Page Agent
+Task: Create comprehensive exam management page for teachers
+
+Work Log:
+- Created `/src/components/epreuves/epreuves-page.tsx` — full-featured exam management component (~850 lines)
+- Implemented header with "Mes Épreuves" title + subtitle + "Nouvelle épreuve" button (emerald)
+- Implemented exam card list (responsive: 1-2 columns) with each card showing:
+  - Title, description (truncated, line-clamp-2)
+  - Status badge: BROUILLON (gray), PLANIFIEE (amber "Planifiée"), EN_COURS (emerald "En cours"), TERMINEE (sky "Terminée"), CLOTUREE (muted "Clôturée")
+  - Duration icon + minutes, Date range (début — fin)
+  - Question count + total points + participants count / completion rate
+  - Options badges (Questions mélangées, Propositions mélangées, Retour bloqué)
+  - Status-based action buttons:
+    - BROUILLON: "Modifier", "Publier" (PATCH action:publier), "Supprimer"
+    - PLANIFIEE: "Voir", "Lancer" (PATCH action:lancer), "Modifier dates"
+    - EN_COURS: "Suivi temps réel", "Terminer" (PATCH action:terminer)
+    - TERMINEE: "Résultats", "Clôturer" (PATCH action:cloturer)
+    - CLOTUREE: "Résultats", "Exporter"
+- Implemented Create Exam Dialog (multi-step wizard) with StepIndicator:
+  - Step 1 - Infos: Titre (input), Description (textarea), Durée (number), Date début/fin (datetime-local)
+  - Step 2 - Questions: Search/filter bar (text, type, difficulty)
+    - Fetches validated questions: GET `/api/questions?userId=xxx&validee=true`
+    - Click to add/remove questions with visual selection state
+    - Set bareme (points) per question with inline number input
+    - Selected count + total points summary bar (emerald)
+    - Options checkboxes: Mélanger questions, Mélanger propositions, Bloquer retour arrière
+  - Step 3 - Groupes cibles: Textarea for comma-separated groups with live badge preview
+  - Step 4 - Review: Summary of all selections (infos, questions with type badges, options, groupes)
+  - On submit: POST `/api/epreuves` with all data
+- Implemented Real-time Monitoring Dialog (for EN_COURS / TERMINEE / CLOTUREE exams):
+  - Stats bar: Participants, En cours, Soumis, Moyenne (4 mini cards)
+  - Student list with: name, session status badge, progress bar per student
+  - Alert count per student (from session.alertes)
+  - "Forcer la soumission" button per student (if session is EN_COURS)
+  - Refresh button, Export results button
+- Implemented Date Edit Dialog for PLANIFIEE exams
+- Implemented Delete Confirmation (AlertDialog) with exam title
+- Implemented Empty State with ClipboardList icon + CTA
+- Implemented Loading skeleton state
+- Wired EpreuvesPage into AppLayout page router (epreuves route)
+- All API integration:
+  - GET `/api/epreuves?enseignantId=xxx` — List teacher's exams
+  - POST `/api/epreuves` — Create exam
+  - PATCH `/api/epreuves/[id]` with `{ action: 'publier'|'lancer'|'terminer'|'cloturer' }` — Status changes
+  - PATCH `/api/epreuves/[id]` with `{ dateDebut, dateFin }` — Update dates
+  - DELETE `/api/epreuves/[id]` — Delete draft exam
+  - GET `/api/questions?userId=xxx&validee=true` — Get validated questions for selection
+  - GET `/api/epreuves/[id]` — Get exam detail with sessions for monitoring
+  - PATCH `/api/sessions/[id]` with `{ action: 'soumettre' }` — Force submission
+- All text in French, emerald/teal color scheme (no indigo/blue)
+- Toast notifications for all actions (create, publish, launch, terminate, close, delete, errors)
+- ESLint passes clean, dev server compiles successfully
+
+---
 Task ID: 0
 Agent: Main Orchestrator
 Task: Phase 0 — Cadrage : Setup DB schema, architecture projet, layout principal
@@ -222,3 +277,124 @@ Stage Summary:
 - Questions IA page with parameter config, generation, and inline review/validation
 - Banque de questions page with search, filters, manual creation, and pagination
 - Regeneration of individual questions via AI
+
+---
+Task ID: 4-c
+Agent: Mes Épreuves Page Agent
+Task: Create student exam list page (Mes Épreuves) for the passation module
+
+Work Log:
+- Created `/src/components/passation/mes-epreuves-page.tsx` — full-featured student exam list component
+- Implemented header with "Mes Épreuves" title + subtitle "Consultez vos épreuves à venir et vos résultats"
+- Implemented two-tab layout using shadcn Tabs: "À venir" and "Résultats"
+  - Tab badges show counts of items in each tab
+- À venir tab features:
+  - Fetches exams from GET `/api/epreuves?etudiantId=xxx`
+  - Filters to only show exams where session doesn't exist or is EN_COURS
+  - Each exam card shows: title, teacher name, date/time (formatted in French), duration, question count, total points
+  - Status indicator with colored dots: "Disponible" (green), "Pas encore disponible" (gray), "En cours" (amber), "Terminée" (gray)
+  - "Commencer" button (emerald, enabled if exam is available and not yet started/submitted)
+  - "Reprendre" button (amber, if session is EN_COURS)
+  - Disabled button for unavailable/terminated exams
+  - Empty state: "Aucune épreuve à venir" with FileCheck icon
+  - Loading skeleton state
+- Résultats tab features:
+  - Lists completed exams (sessions with statut SOUMISE or CORRIGEE)
+  - Each result card shows: exam title, teacher name, date taken, score (X.X/20) with colored badge
+  - Score color coding: green ≥ 10, amber ≥ 8, red < 8
+  - Percentage progress bar with matching colors
+  - Session status: "Corrigé" (green) or "En attente de correction" (amber with spinner)
+  - "Voir le détail" button (emerald outline) opens detail dialog
+  - Empty state: "Aucun résultat disponible" with Trophy icon
+- Result detail Dialog:
+  - Shows exam title, date taken, total score with large display
+  - Score overview card with trophy icon, percentage badge, and progress bar
+  - Correction status badge
+  - Question-by-question breakdown (parsed from resultat.detailParQuestion JSON):
+    - Question number with status icon (checkmark, X, minus, spinner)
+    - Type badge (QCU/QCM/QRC/TRS with color coding)
+    - Question text and max points
+    - Score display per question with correct/incorrect badge
+    - "En attente de correction par l'enseignant" notice for QRC/TRS ungraded questions
+    - Student answer and expected answer display for QCU/QCM
+    - Amber info box for pending corrections
+  - Empty state when no detail available yet
+  - ScrollArea for overflow handling
+- Navigation integration:
+  - "Commencer" → `setCurrentPage('passation', { epreuveId: exam.id })`
+  - "Reprendre" → `setCurrentPage('passation', { epreuveId: exam.id })`
+- Utility functions: formatDateFR, formatDateTimeFR, formatTime, parseJsonSafe, getExamAvailability, getStatusIndicator, getScoreBadgeClasses, getProgressColor, getProgressBg, getQuestionTypeLabel, getQuestionTypeBadgeClasses
+- Wired MesEpreuvesPage into AppLayout page router (mes-epreuves route)
+- All text in French, emerald/teal color scheme (no indigo/blue)
+- Responsive design with mobile-first approach
+- ESLint passes clean, dev server compiles successfully
+
+---
+Task ID: 4-b
+Agent: Passation Page Agent
+Task: Create the critical student exam-taking interface (passation-page.tsx)
+
+Work Log:
+- Created `/src/components/passation/passation-page.tsx` — comprehensive student exam-taking interface (~1200 lines)
+- Implemented 3-state architecture:
+  1. Pre-exam consent screen
+  2. In-exam interface (full-screen)
+  3. Post-exam submission confirmation
+
+State 1 — Pre-exam Consent Screen:
+- Shows exam title, description, duration, question count, total points
+- Rules list with icons: fullscreen required, tab switches logged, paste disabled, auto-save every 30s, auto-submit on time expiry
+- "J'accepte les règles" checkbox (emerald-styled)
+- "Commencer l'épreuve" button (disabled until checkbox checked, emerald)
+- On start: POST `/api/sessions` with { etudiantId, epreuveId }
+
+State 2 — In-exam Interface:
+- Top bar: exam title | timer (HH:MM:SS, red + pulsing when <10min) | question progress | save indicator | submit button
+- Collapsible left sidebar: question navigation grid
+  - Numbered boxes with color coding: answered (emerald), current (ring), unanswered (muted), flagged (amber)
+  - Click to navigate to any question
+  - Progress bar + legend + quick stats (answered/unanswered/flagged counts)
+  - Mobile: overlay sidebar with backdrop
+- Main content area: current question display by type
+  - QCU: Radio group with A/B/C/D letter labels + proposition text
+  - QCM: Checkbox group with letter labels + multi-select
+  - QRC: Textarea with paste prevention + warning
+  - TRS: Large textarea with paste prevention + warning
+- Navigation: Previous/Next buttons (Previous disabled if blocageRetour)
+- "Marquer pour révision" flag toggle per question
+- Timer: calculated from session.dateDebut + epreuve.duree
+  - formatTime: HH:MM:SS display
+  - < 10min: red text, < 1min: red + pulsing animation
+  - On expiry: auto-submit with autoSubmit=true
+- Auto-save: every 30 seconds via setInterval
+  - PUT `/api/sessions/[id]` with { reponses: { questionId: contenu, ... } }
+  - Shows "Sauvegardé" indicator after each save
+  - Also saves on question navigation
+- Anti-cheat mechanisms:
+  1. Fullscreen: requestFullscreen on start, fullscreenchange event listener, warning dialog on exit, alert logging
+  2. Tab switch: visibilitychange event listener, warning overlay on return, alert logging with timestamp
+  3. Paste prevention: onPaste handler on QRC/TRS textareas, prevents default, logs PASTE_ATTEMPT alert
+  4. Right-click prevention: onContextMenu handler
+  5. Keyboard shortcut prevention: Ctrl+C/V/U, F12
+- Session resume: on mount, checks for existing EN_COURS session, loads answers, resumes timer
+
+State 3 — Post-exam:
+- "Épreuve soumise !" title with success icon
+- Shows: answered questions count vs total questions
+- Auto-submitted notice with amber warning box if applicable
+- "Retour au tableau de bord" button
+
+Answer storage:
+- Single `reponses` state: Record<string, string>
+- QCU: stores selected letter as string
+- QCM: stores array of selected letters as JSON string
+- QRC: stores text content as string
+- TRS: stores text content as string
+
+Cleanup: all intervals and event listeners cleaned up on unmount
+
+- Wired PassationPage into AppLayout page router (passation route)
+- All text in French, emerald/teal color scheme (no indigo/blue)
+- Full-screen overlay for exam phase (fixed inset-0 z-50)
+- Responsive design with mobile sidebar overlay
+- ESLint passes clean, dev server compiles successfully

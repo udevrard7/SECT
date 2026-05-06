@@ -17,6 +17,9 @@ import { EtudiantDashboard } from '@/components/dashboard/etudiant-dashboard'
 import { DocumentsPage } from '@/components/documents/documents-page'
 import { BanqueQuestionsPage } from '@/components/questions/banque-questions-page'
 import { QuestionsIAPage } from '@/components/questions/questions-ia-page'
+import { EpreuvesPage } from '@/components/epreuves/epreuves-page'
+import { MesEpreuvesPage } from '@/components/passation/mes-epreuves-page'
+import { PassationPage } from '@/components/passation/passation-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -115,6 +118,21 @@ function PageContent() {
   // Banque de questions page
   if (currentPage === 'banque-questions') {
     return <BanqueQuestionsPage />
+  }
+
+  // Épreuves page (teacher)
+  if (currentPage === 'epreuves') {
+    return <EpreuvesPage />
+  }
+
+  // Mes épreuves page (student)
+  if (currentPage === 'mes-epreuves') {
+    return <MesEpreuvesPage />
+  }
+
+  // Passation page (full-screen exam)
+  if (currentPage === 'passation') {
+    return <PassationPage />
   }
 
   // All other pages: placeholder
