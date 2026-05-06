@@ -1,0 +1,39 @@
+Test document pour l'analyse IA
+
+Chapitre 1 : Introduction à l'Algorithmique
+
+L'algorithmique est la science de la conception et de l'analyse d'algorithmes. Un algorithme est une séquence finie d'opérations permettant de résoudre un problème. Dans ce chapitre, nous aborderons les concepts fondamentaux de l'algorithmique, incluant la complexité temporelle et spatiale, les structures de données de base, et les paradigmes de conception d'algorithmes.
+
+1.1 Complexité temporelle
+La complexité temporelle d'un algorithme mesure le nombre d'opérations élémentaires nécessaires pour son exécution en fonction de la taille des données d'entrée. La notation grand O est utilisée pour exprimer cette complexité. Par exemple, un algorithme de tri par sélection a une complexité O(n²), tandis que le tri rapide a une complexité moyenne O(n log n).
+
+1.2 Structures de données fondamentales
+Les structures de données sont des moyens d'organiser et de stocker les données pour faciliter leur traitement. Les structures de base incluent :
+- Les tableaux : accès direct en O(1), insertion/suppression en O(n)
+- Les listes chaînées : insertion/suppression en O(1), accès en O(n)
+- Les piles (LIFO) et les files (FIFO)
+- Les arbres binaires de recherche
+
+Chapitre 2 : Paradigmes algorithmiques
+
+2.1 Diviser pour régner
+Le paradigme diviser pour régner consiste à décomposer un problème en sous-problèmes plus petits, les résoudre récursivement, puis combiner leurs solutions. Exemples classiques : tri fusion, recherche binaire, multiplication de Karatsuba.
+
+2.2 Programmation dynamique
+La programmation dynamique est utilisée pour résoudre des problèmes d'optimisation en décomposant le problème en sous-problèmes qui se chevauchent. Les solutions des sous-problèmes sont mémorisées pour éviter les recalculs. Exemples : suite de Fibonacci, problème du sac à dos, plus longue sous-séquence commune.
+
+2.3 Algorithmes gloutons
+Les algorithmes gloutons font un choix localement optimal à chaque étape dans l'espoir de trouver un optimum global. Ils ne garantissent pas toujours la solution optimale mais sont souvent efficaces. Exemples : problème du rendu de monnaie, algorithme de Kruskal, algorithme de Dijkstra.
+
+Chapitre 3 : Graphes et algorithmes
+
+3.1 Représentation des graphes
+Un graphe est une structure composée de sommets et d'arêtes. Les principales représentations sont : matrice d'adjacence (O(n²)), liste d'adjacence (O(n+m)), et liste d'arêtes.
+
+3.2 Parcours de graphes
+- Parcours en largeur (BFS) : exploration niveau par niveau, complexité O(n+m)
+- Parcours en profondeur (DFS) : exploration branche par branche, complexité O(n+m)
+- Applications : détection de cycles, composantes connexes, tri topologique
+
+3.3 Plus courts chemins
+L'algorithme de Dijkstra résout le problème du plus court chemin depuis une source unique dans un graphe pondéré positif. L'algorithme de Bellman-Ford gère les poids négatifs. Floyd-Warshall calcule tous les plus courts chemins entre toutes les paires de sommets.

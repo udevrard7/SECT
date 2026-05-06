@@ -7,11 +7,14 @@ import { AppHeader } from '@/components/layout/header'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { useNavigationStore, type PageId } from '@/stores/navigation-store'
 
-// ─── Dashboard imports (will be created separately) ───
+// ─── Dashboard imports ───
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard'
 import { ResponsableDashboard } from '@/components/dashboard/responsable-dashboard'
 import { EnseignantDashboard } from '@/components/dashboard/enseignant-dashboard'
 import { EtudiantDashboard } from '@/components/dashboard/etudiant-dashboard'
+
+// ─── Page component imports ───
+import { DocumentsPage } from '@/components/documents/documents-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -95,6 +98,11 @@ function PageContent() {
   if (currentPage === 'dashboard') {
     const DashboardComponent = DASHBOARD_COMPONENTS[user.role]
     return <DashboardComponent />
+  }
+
+  // Documents page
+  if (currentPage === 'documents') {
+    return <DocumentsPage />
   }
 
   // All other pages: placeholder
