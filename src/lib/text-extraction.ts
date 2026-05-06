@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
 
 export interface ExtractionResult {
@@ -39,6 +38,7 @@ export async function extractTextFromFile(
 }
 
 async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
+  const pdfParse = (await import('pdf-parse')).default
   const data = await pdfParse(buffer)
   const text = cleanText(data.text)
   return {
