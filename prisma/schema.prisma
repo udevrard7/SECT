@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,195 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── Rôles ───
+enum Role {
+  ADMIN
+  RESPONSABLE
+  ENSEIGNANT
+  ETUDIANT
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum TypeQuestion {
+  QCU
+  QCM
+  QRC
+  TRS
+}
+
+enum Difficulte {
+  FACILE
+  MOYEN
+  DIFFICILE
+  EXPERT
+}
+
+enum StatutAnalyse {
+  EN_ATTENTE
+  EN_COURS
+  ANALYSE
+  ERREUR
+}
+
+enum StatutEpreuve {
+  BROUILLON
+  PLANIFIEE
+  EN_COURS
+  TERMINEE
+  CLOTUREE
+}
+
+enum StatutSession {
+  NON_COMMENCEE
+  EN_COURS
+  SOUMISE
+  CORRIGEE
+}
+
+// ─── Utilisateur ───
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  password       String
+  role           Role     @default(ETUDIANT)
+  etablissement  String?
+  filiere        String?
+  image          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  documents      Document[]
+  epreuves       Epreuve[]
+  sessions       SessionPassation[]
+}
+
+// ─── Document source ───
+model Document {
+  id              String         @id @default(cuid())
+  ownerId         String
+  owner           User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  nomFichier      String
+  cheminStockage  String
+  tailleFichier   Int?
+  typeMime        String?
+  statutAnalyse   StatutAnalyse  @default(EN_ATTENTE)
+  themesDetectes  String?        // JSON array of detected themes
+  conceptsCles    String?        // JSON array of key concepts
+  volumeEstime    String?        // JSON: estimated question counts per type
+  dateUpload      DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  questions       Question[]
+}
+
+// ─── Question ───
+model Question {
+  id               String      @id @default(cuid())
+  documentId       String?
+  document         Document?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  auteurId         String?     // if manually created by teacher
+  type             TypeQuestion
+  enonce           String
+  propositions     String?     // JSON array for QCU/QCM options
+  reponseCorrecte  String?     // JSON: correct answer(s)
+  explication      String?     // IA explanation
+  difficulte       Difficulte  @default(MOYEN)
+  themes           String?     // JSON array of themes
+  tags             String?     // JSON array of tags
+  scoreQualite     Float?      // IA quality score 0-100
+  validee          Boolean     @default(false)
+  langue           String      @default("fr")
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  epreuveQuestions EpreuveQuestion[]
+  reponses         Reponse[]
+}
+
+// ─── Épreuve ───
+model Epreuve {
+  id                   String          @id @default(cuid())
+  enseignantId         String
+  enseignant           User            @relation(fields: [enseignantId], references: [id])
+  titre                String
+  description          String?
+  duree                Int             // minutes
+  dateDebut            DateTime
+  dateFin              DateTime
+  melangeQuestions     Boolean         @default(true)
+  melangePropositions  Boolean         @default(true)
+  blocageRetour        Boolean         @default(false)
+  statut               StatutEpreuve   @default(BROUILLON)
+  groupesCibles        String?         // JSON array of target group IDs
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  questions            EpreuveQuestion[]
+  sessions             SessionPassation[]
+}
+
+// ─── Épreuve-Question (many-to-many) ───
+model EpreuveQuestion {
+  id          String    @id @default(cuid())
+  epreuveId   String
+  questionId  String
+  epreuve     Epreuve   @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+  question    Question  @relation(fields: [questionId], references: [id])
+  bareme      Float     @default(1.0)
+  ordre       Int       @default(0)
+
+  @@unique([epreuveId, questionId])
+}
+
+// ─── Session de passation ───
+model SessionPassation {
+  id          String          @id @default(cuid())
+  etudiantId  String
+  etudiant    User            @relation(fields: [etudiantId], references: [id])
+  epreuveId   String
+  epreuve     Epreuve         @relation(fields: [epreuveId], references: [id])
+  statut      StatutSession   @default(NON_COMMENCEE)
+  dateDebut   DateTime?
+  dateFin     DateTime?
+  score       Float?
+  logEvents   String?         // JSON array of events
+  alertes     Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  reponses    Reponse[]
+  resultat    Resultat?
+}
+
+// ─── Réponse étudiant ───
+model Reponse {
+  id            String          @id @default(cuid())
+  sessionId     String
+  session       SessionPassation @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question        @relation(fields: [questionId], references: [id])
+  contenu       String?
+  score         Float?
+  commentaire   String?
+  noteIA        Float?
+  justificationIA String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([sessionId, questionId])
+}
+
+// ─── Résultat ───
+model Resultat {
+  id                String          @id @default(cuid())
+  sessionId         String          @unique
+  session           SessionPassation @relation(fields: [sessionId], references: [id])
+  scoreFinal        Float
+  detailParQuestion String?         // JSON
+  dateCorrection    DateTime?
+  commentaires      String?         // JSON
+  exporte           Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
