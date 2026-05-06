@@ -20,6 +20,9 @@ import { QuestionsIAPage } from '@/components/questions/questions-ia-page'
 import { EpreuvesPage } from '@/components/epreuves/epreuves-page'
 import { MesEpreuvesPage } from '@/components/passation/mes-epreuves-page'
 import { PassationPage } from '@/components/passation/passation-page'
+import { ResultatsPage } from '@/components/epreuves/resultats-page'
+import { MesResultatsPage } from '@/components/passation/mes-resultats-page'
+import { CorrectionPage } from '@/components/correction/correction-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -133,6 +136,21 @@ function PageContent() {
   // Passation page (full-screen exam)
   if (currentPage === 'passation') {
     return <PassationPage />
+  }
+
+  // Correction page (teacher)
+  if (currentPage === 'correction') {
+    return <CorrectionPage />
+  }
+
+  // Résultats & Analyses page (teacher)
+  if (currentPage === 'resultats') {
+    return <ResultatsPage />
+  }
+
+  // Mes résultats page (student)
+  if (currentPage === 'mes-resultats') {
+    return <MesResultatsPage />
   }
 
   // All other pages: placeholder

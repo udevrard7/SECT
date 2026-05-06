@@ -1,4 +1,139 @@
 ---
+Task ID: 5-b
+Agent: Resultats Pages Agent
+Task: Create teacher results/analytics page and student results page
+
+Work Log:
+- Created `/src/components/epreuves/resultats-page.tsx` — teacher results & analytics page (~1000 lines)
+- Implemented header "Résultats & Analyses" with TrendingUp icon + subtitle
+- Implemented exam selector:
+  - Fetches TERMINEE + CLOTUREE exams from GET `/api/epreuves?enseignantId=xxx&statut=TERMINEE` and CLOTUREE
+  - shadcn Select component with exam title + date
+- Implemented statistics dashboard (4 stat cards with border-l accents):
+  - Moyenne (emerald), Médiane (teal), Taux de réussite (emerald), Nombre de copies (teal)
+  - Each card has colored icon background + large score display
+  - Color-coded scores: green >= 10, amber >= 8, red < 8
+- Implemented score distribution histogram (recharts BarChart):
+  - Bins: 0-4, 4-8, 8-10, 10-12, 12-14, 14-16, 16-20
+  - Color-coded bars per bin (red/amber/green)
+  - Custom tooltip showing count of students per bin
+- Implemented per-question success rate bar chart (recharts BarChart):
+  - Computed from all sessions' detailParQuestion data
+  - Color-coded: green >= 70%, amber >= 40%, red < 40%
+  - Custom tooltip showing percentage
+- Implemented student results table (shadcn Table):
+  - Columns: Rang, Étudiant (name + email + filiere), Score (badge), Pourcentage (mini bar + text), Statut (Corrigé/En attente), Alertes, Actions
+  - Sortable by score (asc/desc toggle)
+  - Click row to open detail dialog
+  - Color-coded score badges
+- Implemented student detail Dialog:
+  - Score overview with trophy icon + percentage badge + progress bar
+  - Correction status badge + alert count badge
+  - Per-question breakdown with status icons, type badges, scores, student answers, teacher comments
+- Implemented export buttons bar:
+  - "Exporter CSV" → GET `/api/epreuves/[id]/export?format=csv` → Blob download
+  - "Exporter JSON" → GET `/api/epreuves/[id]/export?format=json` → Blob download
+  - Loading state during export, success/error toasts
+- Implemented empty state: "Sélectionnez une épreuve pour voir les résultats"
+- Implemented loading skeleton for stat cards
+
+- Created `/src/components/passation/mes-resultats-page.tsx` — student results page (~720 lines)
+- Implemented header "Mes Résultats" with Trophy icon + subtitle "Consultez vos notes et résultats"
+- Implemented statistics card row (3 cards):
+  - Moyenne générale (emerald), Nombre d'épreuves (teal), Meilleure note (emerald)
+  - Computed from all student results
+- Implemented results list (card-based):
+  - Fetches from GET `/api/resultats?etudiantId=xxx`
+  - Each card shows: exam title, teacher name, date taken (French format)
+  - Large score display: "14.5/20" + percentage badge + progress bar
+  - Color-coded: green >= 10, amber >= 8, red < 8
+  - Correction status badge: "Corrigé" (emerald) or "En attente" (amber with spinner)
+  - "Voir détail" button opens detail dialog
+- Implemented result detail Dialog:
+  - Score overview with large trophy icon + percentage badge + progress bar
+  - Correction status badge
+  - Per-question breakdown:
+    - Question number with status icon (checkmark, X, minus, spinner)
+    - Type badge (QCU/QCM/QRC/TRS with color coding)
+    - Question text (line-clamp-2)
+    - Score / bareme display
+    - Student answer display for QCU/QCM (in muted box)
+    - Student answer for QRC/TRS (whitespace-pre-wrap)
+    - Teacher comment (emerald-bordered box with label)
+    - "En attente de correction par l'enseignant" notice for QRC/TRS ungraded
+  - Fallback: builds details from reponses + epreuve.questions if detailParQuestion not available
+- Implemented empty state: "Aucun résultat disponible" with Trophy icon
+- Implemented loading skeleton
+
+- Wired both pages into AppLayout page router:
+  - `resultats` → ResultatsPage (teacher route)
+  - `mes-resultats` → MesResultatsPage (student route)
+- All text in French, emerald/teal color scheme (no indigo/blue)
+- Toast notifications for errors and export actions
+- ESLint passes clean (0 errors), dev server compiles successfully
+
+---
+Task ID: 5-a
+Agent: Correction Page Agent
+Task: Create comprehensive correction page for teachers to review and grade QRC/TRS answers with AI assistance
+
+Work Log:
+- Created `/src/components/correction/correction-page.tsx` — full-featured correction component (~680 lines)
+- Implemented two-panel layout: Left (35%) Session/student list, Right (65%) Correction interface
+- Left Panel — Epreuve selector:
+  - Fetches from GET `/api/epreuves?enseignantId=xxx`
+  - Filters to only show TERMINEE/CLOTUREE exams in Select dropdown
+- Left Panel — Student session list:
+  - Fetches from GET `/api/correction?enseignantId=xxx&epreuveId=xxx`
+  - Each session card shows: student name + email, score, badge (À corriger/Corrigé), alert count
+  - Search filter for students by name or email
+  - Loading skeleton state
+  - Empty states: "Sélectionnez une épreuve", "Aucune copie à corriger"
+- Right Panel — Student info bar:
+  - Name, email, session status badge (Corrigée/En correction), current score, alert count
+- Right Panel — Progress bar:
+  - Shows corrected count / total questions
+  - Count of questions needing manual correction (QRC/TRS)
+- Right Panel — Question navigation dots:
+  - Color-coded: emerald (current), amber (needs correction), emerald light (corrected), muted (auto-graded)
+  - Click to navigate to any question
+- Right Panel — Question display:
+  - Question number / total, type badge (QCU/QCM/QRC/TRS), difficulty badge, bareme badge
+  - Énoncé in a Card component
+- Right Panel — QRC Correction card:
+  - Réponse attendue (emerald box) with expected answer
+  - Réponse de l'étudiant (white box)
+  - Proposition IA (amber box): note proposée + justification IA
+  - Note finale number input (defaults to AI score if available)
+  - Commentaire textarea
+  - "Évaluer avec l'IA" button → POST `/api/correction/[sessionId]/ai-grade`
+  - "Sauvegarder" button → PATCH `/api/correction/[sessionId]`
+- Right Panel — TRS Correction card:
+  - Same as QRC but with "Grille de correction" label instead of "Réponse attendue"
+  - Larger textarea for commentaire (5 rows)
+- Right Panel — QCU/QCM review:
+  - Read-only propositions with color coding (correct=emerald, incorrect=red)
+  - Score adjustment input (teacher can still override)
+  - Comment textarea
+  - Save button
+- Right Panel — Navigation: Previous/Next question buttons + progress indicator
+- Right Panel — Finalize button:
+  - "Finaliser la correction" → PATCH `/api/correction/[sessionId]` with { finalizeAll: true }
+  - Calculates final score, updates session status
+- Comment display: Shows existing teacher comment in teal-bordered box
+- Empty states: "Sélectionnez une copie", "Toutes les questions sont corrigées"
+- Mobile responsive: full-screen overlay for correction when session selected on mobile
+- All API integration:
+  - GET `/api/epreuves?enseignantId=xxx` — List teacher's exams
+  - GET `/api/correction?enseignantId=xxx&epreuveId=xxx` — List sessions for correction
+  - POST `/api/correction/[sessionId]/ai-grade` — AI evaluate a question
+  - PATCH `/api/correction/[sessionId]` — Save score/comment or finalize
+- All text in French, emerald/teal color scheme (no indigo/blue)
+- Toast notifications for all actions (save, AI grade, finalize, errors)
+- Wired CorrectionPage into AppLayout page router (correction route)
+- ESLint passes clean, dev server compiles successfully
+
+---
 Task ID: 4-a
 Agent: Epreuves Page Agent
 Task: Create comprehensive exam management page for teachers
