@@ -15,6 +15,8 @@ import { EtudiantDashboard } from '@/components/dashboard/etudiant-dashboard'
 
 // ─── Page component imports ───
 import { DocumentsPage } from '@/components/documents/documents-page'
+import { BanqueQuestionsPage } from '@/components/questions/banque-questions-page'
+import { QuestionsIAPage } from '@/components/questions/questions-ia-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -103,6 +105,16 @@ function PageContent() {
   // Documents page
   if (currentPage === 'documents') {
     return <DocumentsPage />
+  }
+
+  // Questions IA page
+  if (currentPage === 'questions-ia') {
+    return <QuestionsIAPage />
+  }
+
+  // Banque de questions page
+  if (currentPage === 'banque-questions') {
+    return <BanqueQuestionsPage />
   }
 
   // All other pages: placeholder
