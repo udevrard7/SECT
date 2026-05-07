@@ -533,3 +533,34 @@ Cleanup: all intervals and event listeners cleaned up on unmount
 - Full-screen overlay for exam phase (fixed inset-0 z-50)
 - Responsive design with mobile sidebar overlay
 - ESLint passes clean, dev server compiles successfully
+
+---
+Task ID: 2-6
+Agent: Main Orchestrator
+Task: Implement all 4 missing Responsable modules - Filières, Évaluations, Alertes, Rapports
+
+Work Log:
+- Added Alerte model to Prisma schema with SeverityAlerte (CRITICAL/WARNING/INFO) and TypeAlerte (PERFORMANCE/FRAUDE/SYSTEME/RAPPEL/CUSTOM) enums
+- Added Alerte relations to User, Filiere, and Epreuve models
+- Generated Prisma client with new schema
+- Created `/src/app/api/alertes/route.ts` — GET (list with filters) + POST (create with validation)
+- Created `/src/app/api/alertes/[id]/route.ts` — GET (detail with auto-read), PATCH (action-based updates), DELETE (with confirmation)
+- Updated `/src/app/api/filieres/route.ts` — Added responsableId, niveau, actif query filters
+- Updated `/src/app/api/filieres/[id]/route.ts` — Added etudiants include to GET detail
+- Updated `/src/app/api/epreuves/route.ts` — Added filiereId parameter for responsable view
+- Created `/src/components/filieres/filieres-page.tsx` — Full Filières management page (~932 lines)
+- Created `/src/components/evaluations/evaluations-page.tsx` — Evaluations monitoring page (~966 lines)
+- Created `/src/components/alertes/alertes-page.tsx` — Alertes & Notifications page (~480 lines)
+- Created `/src/components/rapports/rapports-page.tsx` — Reports & Statistics page (~470 lines)
+- Updated `/src/components/layout/app-layout.tsx` — Wired all 4 new pages into router
+- ESLint passes clean, dev server compiles successfully
+- Committed and pushed to GitHub for auto-deploy to Vercel
+
+Stage Summary:
+- All 4 Responsable sidebar pages now fully implemented (no more placeholders)
+- Filières page: CRUD operations, search/filter, detail view with student list
+- Évaluations page: Monitoring dashboard with status badges, session details, score distribution
+- Alertes page: Severity/type filtering, bulk actions, dynamic alerts from stats API, create custom alerts
+- Rapports page: Charts (Area/Bar/Pie), student rankings, top enseignants, CSV export
+- Complete Alerte system with database model, API routes, and UI
+- 4618 lines of new code across 17 modified files
