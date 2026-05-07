@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
     const etudiantId = searchParams.get('etudiantId')
+    const filiereId = searchParams.get('filiereId')
     const statut = searchParams.get('statut')
 
     if (enseignantId) {
@@ -94,6 +95,59 @@ export async function GET(request: NextRequest) {
       const parsedEpreuves = epreuves.map((e) => ({
         ...e,
         groupesCibles: e.groupesCibles ? JSON.parse(e.groupesCibles) : null,
+      }))
+
+      return NextResponse.json({ epreuves: parsedEpreuves })
+    }
+
+    if (filiereId) {
+      // Get exams for a filiere (responsable view)
+      // Include epreuves that have sessions from students in this filiere
+      // OR epreuves created by enseignants in the same etablissement
+      const filiere = await db.filiere.findUnique({
+        where: { id: filiereId },
+        select: { etablissementId: true },
+      })
+
+      const whereFiliere: Record<string, unknown> = {}
+      if (statut) whereFiliere.statut = statut
+
+      if (filiere) {
+        whereFiliere.OR = [
+          // Epreuves with sessions from students in the filiere
+          { sessions: { some: { etudiant: { filiereId } } } },
+          // Epreuves by enseignants in the same etablissement
+          { enseignant: { etablissementId: filiere.etablissementId } },
+        ]
+      }
+
+      const epreuves = await db.epreuve.findMany({
+        where: whereFiliere,
+        orderBy: { dateDebut: 'desc' },
+        include: {
+          enseignant: { select: { id: true, name: true, email: true } },
+          questions: { select: { id: true, bareme: true, question: { select: { id: true, type: true, enonce: true, difficulte: true } } } },
+          sessions: {
+            include: {
+              etudiant: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+      })
+
+      // Deduplicate (an epreuve can match both OR conditions)
+      const seen = new Set<string>()
+      const dedupedEpreuves = epreuves.filter((e) => {
+        if (seen.has(e.id)) return false
+        seen.add(e.id)
+        return true
+      })
+
+      const parsedEpreuves = dedupedEpreuves.map((e) => ({
+        ...e,
+        groupesCibles: e.groupesCibles ? JSON.parse(e.groupesCibles) : null,
+        questionCount: e.questions.length,
+        totalPoints: e.questions.reduce((sum, q) => sum + q.bareme, 0),
       }))
 
       return NextResponse.json({ epreuves: parsedEpreuves })
@@ -147,7 +201,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ epreuves: allEpreuves })
     }
 
-    return NextResponse.json({ error: 'enseignantId ou etudiantId requis' }, { status: 400 })
+    return NextResponse.json({ error: 'enseignantId, etudiantId ou filiereId requis' }, { status: 400 })
   } catch (error) {
     console.error('List epreuves error:', error)
     return NextResponse.json(

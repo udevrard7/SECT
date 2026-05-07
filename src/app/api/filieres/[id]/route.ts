@@ -17,6 +17,16 @@ export async function GET(
         responsable: {
           select: { id: true, name: true, email: true },
         },
+        etudiants: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            actif: true,
+            createdAt: true,
+          },
+          orderBy: { name: 'asc' },
+        },
         _count: {
           select: { etudiants: true },
         },

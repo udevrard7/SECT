@@ -7,10 +7,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const etablissementId = searchParams.get('etablissementId') || ''
     const search = searchParams.get('search') || ''
+    const responsableId = searchParams.get('responsableId') || ''
+    const niveau = searchParams.get('niveau') || ''
+    const actif = searchParams.get('actif') || ''
 
     const where: Record<string, unknown> = {}
 
     if (etablissementId) where.etablissementId = etablissementId
+    if (responsableId) where.responsableId = responsableId
+    if (niveau) where.niveau = niveau
+    if (actif !== '') where.actif = actif === 'true'
     if (search) {
       where.OR = [
         { nom: { contains: search, mode: 'insensitive' } },

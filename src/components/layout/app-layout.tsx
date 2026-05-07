@@ -27,6 +27,10 @@ import { UtilisateursPage } from '@/components/utilisateurs/utilisateurs-page'
 import { EtablissementsPage } from '@/components/etablissements/etablissements-page'
 import { ConfigurationPage } from '@/components/configuration/configuration-page'
 import { LogsPage } from '@/components/logs/logs-page'
+import { AlertesPage } from '@/components/alertes/alertes-page'
+import { RapportsPage } from '@/components/rapports/rapports-page'
+import { EvaluationsPage } from '@/components/evaluations/evaluations-page'
+import { FilieresPage } from '@/components/filieres/filieres-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -175,6 +179,26 @@ function PageContent() {
   // Admin: Logs page
   if (currentPage === 'logs') {
     return <LogsPage />
+  }
+
+  // Responsable: Alertes page
+  if (currentPage === 'alertes') {
+    return <AlertesPage />
+  }
+
+  // Responsable: Rapports page
+  if (currentPage === 'rapports') {
+    return <RapportsPage />
+  }
+
+  // Responsable: Evaluations page
+  if (currentPage === 'evaluations') {
+    return <EvaluationsPage />
+  }
+
+  // Responsable: Filieres page
+  if (currentPage === 'filieres') {
+    return <FilieresPage />
   }
 
   // All other pages: placeholder

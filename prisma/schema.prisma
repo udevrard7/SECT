@@ -73,6 +73,7 @@ model User {
   epreuves           Epreuve[]
   sessions           SessionPassation[]
   filieresResponsable Filiere[]     @relation("FiliereResponsable")
+  alertes            Alerte[]
 }
 
 // ─── Établissement ───
@@ -111,6 +112,7 @@ model Filiere {
   updatedAt        DateTime       @updatedAt
 
   etudiants        User[]         @relation("UserFiliere")
+  alertes          Alerte[]
 
   @@unique([nom, etablissementId])
 }
@@ -193,6 +195,7 @@ model Epreuve {
 
   questions            EpreuveQuestion[]
   sessions             SessionPassation[]
+  alertes              Alerte[]
 }
 
 // ─── Épreuve-Question (many-to-many) ───
@@ -244,6 +247,39 @@ model Reponse {
   updatedAt     DateTime        @updatedAt
 
   @@unique([sessionId, questionId])
+}
+
+// ─── Alerte ───
+enum SeverityAlerte {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum TypeAlerte {
+  PERFORMANCE
+  FRAUDE
+  SYSTEME
+  RAPPEL
+  CUSTOM
+}
+
+model Alerte {
+  id           String          @id @default(cuid())
+  titre        String
+  description  String
+  severity     SeverityAlerte  @default(INFO)
+  type         TypeAlerte      @default(CUSTOM)
+  lue          Boolean         @default(false)
+  resolu       Boolean         @default(false)
+  filiereId    String?
+  filiere      Filiere?        @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  epreuveId    String?
+  epreuve      Epreuve?        @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+  userId       String?         // Target user (optional)
+  user         User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 }
 
 // ─── Résultat ───
