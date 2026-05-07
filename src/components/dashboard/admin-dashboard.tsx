@@ -1,23 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
-  Users,
   Building2,
-  ClipboardCheck,
-  Library,
-  FileText,
-  Activity,
-  UserPlus,
-  TrendingUp,
   CreditCard,
-  Shield,
-  ShieldCheck,
-  Eye,
+  TrendingUp,
   BarChart3,
-  HeartPulse,
-  CheckCircle2,
   Lock,
+  HeartPulse,
+  Eye,
+  Shield,
+  CheckCircle2,
+  Users,
+  BookOpen,
+  KeyRound,
+  AlertCircle,
+  Loader2,
+  ExternalLink,
+  X,
 } from 'lucide-react'
 import {
   Card,
@@ -27,9 +27,28 @@ import {
   CardContent,
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import {
@@ -40,8 +59,6 @@ import {
   Legend,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -50,29 +67,37 @@ import {
 
 // ─── Types ───
 
+interface EtablissementOverview {
+  id: string
+  nom: string
+  ville: string | null
+  type: string | null
+  actif: boolean
+  abonnementStatut: string | null
+  planNom: string | null
+  nbUsers: number
+  nbFilieres: number
+  proctoringActif: boolean
+  adminHasAccess: boolean
+}
+
+interface AccessRecord {
+  id: string
+  adminId: string
+  etablissementId: string
+  motif: string
+  statut: string
+  dateDebut: string | null
+  dateFin: string | null
+  approuvePar: string | null
+  commentaire: string | null
+  createdAt: string
+  admin: { id: string; name: string; email: string }
+  etablissement: { id: string; nom: string; ville: string | null; actif: boolean }
+}
+
 interface AdminStats {
-  nbUtilisateurs: number
   nbEtablissements: number
-  nbEvaluations: number
-  nbQuestions: number
-  nbDocuments: number
-  utilisateursParRole: Array<{ role: string; count: number }>
-  epreuvesParStatut: Array<{ statut: string; count: number }>
-  creationTrend: Array<{
-    mois: string
-    utilisateurs: number
-    questions: number
-    epreuves: number
-  }>
-  recentActivities: Array<{
-    id: string
-    type: string
-    description: string
-    time: string
-  }>
-  questionsParType: Array<{ type: string; count: number }>
-  tauxReussiteGlobal: number
-  // New SaaS metrics
   nbAbonnementsActifs: number
   nbAbonnementsEssai: number
   nbAbonnementsExpires: number
@@ -82,6 +107,9 @@ interface AdminStats {
   etablissementsParStatut: Array<{ statut: string; count: number }>
   nbEtablissementsProteges: number
   nbVerificationIdentite: number
+  nbAutorisationsActives: number
+  nbAutorisationsEnAttente: number
+  etablissementsOverview: EtablissementOverview[]
 }
 
 interface StatCardProps {
@@ -94,24 +122,11 @@ interface StatCardProps {
 
 // ─── Constants ───
 
-const monthNames = [
-  'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
-  'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
-]
-
 const PLAN_COLORS: Record<string, string> = {
   GRATUIT: '#6b7280',
   ESSENTIEL: '#10b981',
   PROFESSIONNEL: '#14b8a6',
   ENTREPRISE: '#f59e0b',
-}
-
-const STATUT_COLORS: Record<string, string> = {
-  ESSAI: '#f59e0b',
-  ACTIF: '#10b981',
-  SUSPENDU: '#ef4444',
-  EXPIRE: '#6b7280',
-  RESILIE: '#dc2626',
 }
 
 const STATUT_LABELS: Record<string, string> = {
@@ -128,6 +143,20 @@ const STATUT_BG: Record<string, string> = {
   SUSPENDU: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   EXPIRE: 'bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400',
   RESILIE: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-300',
+}
+
+const ACCESS_STATUT_BG: Record<string, string> = {
+  EN_ATTENTE: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  APPROUVE: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+  REFUSE: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  EXPIRE: 'bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400',
+}
+
+const ACCESS_STATUT_LABELS: Record<string, string> = {
+  EN_ATTENTE: 'En attente',
+  APPROUVE: 'Approuvé',
+  REFUSE: 'Refusé',
+  EXPIRE: 'Expiré',
 }
 
 // ─── StatCard ───
@@ -164,7 +193,6 @@ function renderPieLabel({
   cx,
   cy,
   midAngle,
-  innerRadius,
   outerRadius,
   percent,
   name,
@@ -199,50 +227,6 @@ function renderPieLabel({
   )
 }
 
-// ─── Activity Icon ───
-
-function getActivityIcon(type: string) {
-  switch (type) {
-    case 'inscription':
-      return { icon: UserPlus, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/30' }
-    case 'soumission':
-      return { icon: ClipboardCheck, color: 'text-teal-600', bg: 'bg-teal-50 dark:bg-teal-900/30' }
-    case 'epreuve':
-      return { icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/30' }
-    default:
-      return { icon: Activity, color: 'text-muted-foreground', bg: 'bg-muted' }
-  }
-}
-
-// ─── Format French month ───
-
-function formatFrenchMonth(yyyyMm: string): string {
-  const [year, mm] = yyyyMm.split('-')
-  const monthIdx = parseInt(mm, 10) - 1
-  return `${monthNames[monthIdx]} ${year}`
-}
-
-// ─── Custom Tooltip for Area Chart ───
-
-function AreaChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
-  if (!active || !payload) return null
-  return (
-    <div className="rounded-lg border bg-background p-3 shadow-lg">
-      <p className="mb-1 text-sm font-medium text-foreground">{label}</p>
-      {payload.map((entry, idx) => (
-        <p key={idx} className="text-xs" style={{ color: entry.color }}>
-          {entry.name === 'utilisateurs'
-            ? 'Utilisateurs'
-            : entry.name === 'questions'
-              ? 'Questions'
-              : 'Épreuves'}
-          : {entry.value}
-        </p>
-      ))}
-    </div>
-  )
-}
-
 // ─── Revenue Tooltip ───
 
 function RevenueTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
@@ -265,11 +249,24 @@ export function AdminDashboard() {
   const user = useAuthStore((s) => s.user)
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accessRecords, setAccessRecords] = useState<AccessRecord[]>([])
+  const [accessLoading, setAccessLoading] = useState(true)
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false)
+  const [selectedEtablissement, setSelectedEtablissement] = useState<EtablissementOverview | null>(null)
+  const [requestMotif, setRequestMotif] = useState('')
+  const [requestDateDebut, setRequestDateDebut] = useState('')
+  const [requestDateFin, setRequestDateFin] = useState('')
+  const [requestCommentaire, setRequestCommentaire] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
+  // Fetch admin stats
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch('/api/stats/admin')
+        const url = user?.id
+          ? `/api/stats/admin?adminId=${user.id}`
+          : '/api/stats/admin'
+        const res = await fetch(url)
         if (!res.ok) throw new Error('Erreur réseau')
         const data: AdminStats = await res.json()
         setStats(data)
@@ -280,7 +277,67 @@ export function AdminDashboard() {
       }
     }
     fetchStats()
-  }, [])
+  }, [user?.id])
+
+  // Fetch access records
+  const fetchAccessRecords = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      setAccessLoading(true)
+      const res = await fetch(`/api/etablissement-access?adminId=${user.id}`)
+      if (!res.ok) throw new Error('Erreur réseau')
+      const data = await res.json()
+      setAccessRecords(data.accessRecords || [])
+    } catch {
+      toast.error('Impossible de charger les autorisations')
+    } finally {
+      setAccessLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchAccessRecords()
+  }, [fetchAccessRecords])
+
+  // Request access handler
+  const handleRequestAccess = async () => {
+    if (!selectedEtablissement || !user?.id) return
+    if (!requestMotif.trim()) {
+      toast.error('Le motif est obligatoire')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/etablissement-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminId: user.id,
+          etablissementId: selectedEtablissement.id,
+          motif: requestMotif,
+          dateDebut: requestDateDebut || null,
+          dateFin: requestDateFin || null,
+          commentaire: requestCommentaire || null,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Erreur lors de la demande')
+      }
+      toast.success(`Demande d'accès envoyée pour ${selectedEtablissement.nom}`)
+      setAccessDialogOpen(false)
+      setRequestMotif('')
+      setRequestDateDebut('')
+      setRequestDateFin('')
+      setRequestCommentaire('')
+      setSelectedEtablissement(null)
+      fetchAccessRecords()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur lors de la demande')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   // ─── Prepare chart data ───
   const planData = (stats?.repartitionPlans ?? []).map((p) => ({
@@ -291,56 +348,52 @@ export function AdminDashboard() {
 
   const totalPlan = planData.reduce((acc, p) => acc + p.value, 0)
 
-  const trendData = (stats?.creationTrend ?? []).map((t) => ({
-    ...t,
-    moisLabel: formatFrenchMonth(t.mois),
-  }))
+  // Revenue trend data — simulate based on monthly revenue
+  const revenueTrendData = (() => {
+    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin']
+    const base = stats?.revenuMensuel ?? 0
+    if (base === 0) return []
+    return months.map((m, i) => ({
+      mois: m,
+      revenus: Math.round(base * (0.5 + i * 0.1)),
+    }))
+  })()
 
-  // Revenue trend data - use creationTrend as proxy with revenuMensuel shown as constant line
-  const revenueTrendData = (stats?.creationTrend ?? []).map((t) => ({
-    mois: formatFrenchMonth(t.mois),
-    revenus: Math.round((stats?.revenuMensuel ?? 0) * (0.7 + Math.random() * 0.6)),
-  }))
-  // Replace last month with actual revenue
-  if (revenueTrendData.length > 0 && stats?.revenuMensuel) {
-    revenueTrendData[revenueTrendData.length - 1].revenus = stats.revenuMensuel
-  }
-
-  const statutData = (stats?.etablissementsParStatut ?? []).map((s) => ({
-    name: STATUT_LABELS[s.statut] || s.statut,
-    count: s.count,
-    fill: STATUT_COLORS[s.statut] || '#6b7280',
-    statut: s.statut,
-  }))
-
-  // Conversion rate: ACTIF / total abonnements
+  // Conversion rate: ACTIF / total
   const totalAbonnements = (stats?.nbAbonnementsActifs ?? 0) + (stats?.nbAbonnementsEssai ?? 0) + (stats?.nbAbonnementsExpires ?? 0)
   const tauxConversion = totalAbonnements > 0
     ? (((stats?.nbAbonnementsActifs ?? 0) / totalAbonnements) * 100).toFixed(1)
     : '0.0'
 
-  // Security score (simple heuristic)
+  // Security score (based on proctoring + identity verification coverage)
   const totalEtablissements = stats?.nbEtablissements ?? 1
   const securityRatio = ((stats?.nbEtablissementsProteges ?? 0) / totalEtablissements) * 100
   const avgSecurityScore = Math.min(100, Math.round(securityRatio * 0.6 + (stats?.nbVerificationIdentite ?? 0) / totalEtablissements * 100 * 0.4))
 
+  // Access records by status
+  const pendingAccess = accessRecords.filter(r => r.statut === 'EN_ATTENTE')
+  const activeAccess = accessRecords.filter(r => r.statut === 'APPROUVE')
+  const expiredAccess = accessRecords.filter(r => r.statut === 'EXPIRE' || r.statut === 'REFUSE')
+
   return (
     <div className="space-y-6">
       {/* ─── 1. Welcome Section ─── */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
             Bonjour, {user?.name ?? 'Administrateur'}
           </h1>
           <Badge
-            className="w-fit text-white hover:opacity-90"
-            style={{ backgroundColor: '#dc2626' }}
+            className="w-fit bg-emerald-600 text-white hover:bg-emerald-700"
           >
-            Administrateur
+            Propriétaire de la plateforme
           </Badge>
         </div>
-        <p className="text-sm text-muted-foreground sm:ml-1">
-          Propriétaire de la plateforme
+      </div>
+      <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+        <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm text-amber-800 dark:text-amber-300">
+          🔒 Accès aux données des établissements soumis à autorisation
         </p>
       </div>
 
@@ -390,17 +443,18 @@ export function AdminDashboard() {
             subtitle="ACTIF / Total"
           />
           <StatCard
-            title="Évaluations ce mois"
-            value={stats?.nbEvaluations ?? 0}
-            icon={<ClipboardCheck className="h-5 w-5" />}
+            title="Santé plateforme"
+            value={`${avgSecurityScore}%`}
+            icon={<HeartPulse className="h-5 w-5" />}
             accentColor="#0d9488"
+            subtitle="Score de sécurité"
           />
           <StatCard
-            title="Sécurité"
-            value={stats?.nbEtablissementsProteges ?? 0}
-            icon={<ShieldCheck className="h-5 w-5" />}
+            title="Autorisations actives"
+            value={stats?.nbAutorisationsActives ?? 0}
+            icon={<KeyRound className="h-5 w-5" />}
             accentColor="#dc2626"
-            subtitle="Proctoring activé"
+            subtitle={`${stats?.nbAutorisationsEnAttente ?? 0} en attente`}
           />
         </div>
       )}
@@ -453,6 +507,9 @@ export function AdminDashboard() {
                 </AreaChart>
               </ResponsiveContainer>
             )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              📊 Données de revenus au niveau plateforme
+            </p>
           </CardContent>
         </Card>
 
@@ -509,155 +566,367 @@ export function AdminDashboard() {
                 </PieChart>
               </ResponsiveContainer>
             )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              📊 Données au niveau plateforme
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* ─── 4. Établissements par statut (Bar chart) ─── */}
+      {/* ─── 4. Établissements Overview (Card-based) ─── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-amber-600" />
-            Établissements par statut d&apos;abonnement
+            Établissements
           </CardTitle>
-          <CardDescription>Répartition des établissements selon le statut de leur abonnement</CardDescription>
+          <CardDescription>Vue d&apos;ensemble des établissements de la plateforme</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Skeleton className="h-48 w-full" />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <Skeleton className="mb-2 h-5 w-3/4" />
+                    <Skeleton className="mb-3 h-4 w-1/2" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-6 w-16" />
+                      <Skeleton className="h-6 w-20" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          ) : statutData.length === 0 ? (
-            <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
+          ) : !stats?.etablissementsOverview || stats.etablissementsOverview.length === 0 ? (
+            <div className="flex h-48 flex-col items-center justify-center text-muted-foreground">
               <Building2 className="mb-2 h-10 w-10 opacity-30" />
               <p className="text-sm">Aucun établissement enregistré</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart
-                  data={statutData}
-                  layout="vertical"
-                  margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    allowDecimals={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    width={80}
-                  />
-                  <RechartsTooltip
-                    formatter={(value: number) => [`${value} établissement(s)`, 'Nombre']}
-                  />
-                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={28}>
-                    {statutData.map((entry, index) => (
-                      <Cell key={`statut-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              {/* Color-coded badges */}
-              <div className="flex flex-wrap gap-2">
-                {statutData.map((s) => (
-                  <Badge
-                    key={s.statut}
-                    variant="outline"
-                    className={STATUT_BG[s.statut] || ''}
+            <ScrollArea className="max-h-[600px]">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {stats.etablissementsOverview.map((etab) => (
+                  <Card
+                    key={etab.id}
+                    className="relative overflow-hidden transition-shadow hover:shadow-md"
                   >
-                    {s.name}: {s.count}
-                  </Badge>
+                    <div
+                      className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
+                      style={{
+                        backgroundColor: etab.actif ? '#10b981' : '#6b7280',
+                      }}
+                    />
+                    <CardContent className="p-4">
+                      <div className="mb-2 flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="truncate text-sm font-semibold">{etab.nom}</h3>
+                          <p className="text-xs text-muted-foreground">
+                            {etab.ville || 'Ville non renseignée'}{etab.type ? ` · ${etab.type}` : ''}
+                          </p>
+                        </div>
+                        {etab.proctoringActif && (
+                          <Shield className="h-4 w-4 shrink-0 text-emerald-600" />
+                        )}
+                      </div>
+
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {etab.abonnementStatut && (
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${STATUT_BG[etab.abonnementStatut] || ''}`}>
+                            {STATUT_LABELS[etab.abonnementStatut] || etab.abonnementStatut}
+                          </Badge>
+                        )}
+                        {etab.planNom && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+                            {etab.planNom}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="mb-3 flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {etab.nbUsers}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <BookOpen className="h-3 w-3" />
+                          {etab.nbFilieres} filières
+                        </span>
+                      </div>
+
+                      <div className="flex gap-2">
+                        {etab.adminHasAccess ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              toast.info(`Accès autorisé à ${etab.nom}`)
+                            }}
+                          >
+                            <ExternalLink className="mr-1 h-3 w-3" />
+                            Voir détails
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={accessRecords.some(
+                              r => r.etablissementId === etab.id && r.statut === 'EN_ATTENTE'
+                            )}
+                            onClick={() => {
+                              setSelectedEtablissement(etab)
+                              setAccessDialogOpen(true)
+                            }}
+                          >
+                            <KeyRound className="mr-1 h-3 w-3" />
+                            {accessRecords.some(
+                              r => r.etablissementId === etab.id && r.statut === 'EN_ATTENTE'
+                            )
+                              ? 'Demande envoyée'
+                              : 'Demander accès'}
+                          </Button>
+                        )}
+                        {!etab.adminHasAccess && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs opacity-50"
+                            disabled
+                          >
+                            <Eye className="mr-1 h-3 w-3" />
+                            Voir détails
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── 5. Access Authorizations Panel ─── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-red-600" />
+            Autorisations d&apos;accès
+          </CardTitle>
+          <CardDescription>
+            Gestion des demandes d&apos;accès aux données des établissements
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {accessLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-6 w-16" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              ))}
+            </div>
+          ) : accessRecords.length === 0 ? (
+            <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
+              <KeyRound className="mb-2 h-8 w-8 opacity-30" />
+              <p className="text-sm">Aucune autorisation d&apos;accès</p>
+              <p className="text-xs">Demandez l&apos;accès à un établissement ci-dessus</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Pending requests */}
+              {pendingAccess.length > 0 && (
+                <div>
+                  <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="h-4 w-4" />
+                    En attente ({pendingAccess.length})
+                  </h4>
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="px-3 py-2 text-left font-medium">Établissement</th>
+                          <th className="px-3 py-2 text-left font-medium">Motif</th>
+                          <th className="px-3 py-2 text-left font-medium">Statut</th>
+                          <th className="px-3 py-2 text-left font-medium">Demandé le</th>
+                          <th className="px-3 py-2 text-left font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingAccess.map((record) => (
+                          <tr key={record.id} className="border-b last:border-0">
+                            <td className="px-3 py-2 font-medium">{record.etablissement.nom}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{record.motif}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className={ACCESS_STATUT_BG[record.statut] || ''}>
+                                {ACCESS_STATUT_LABELS[record.statut] || record.statut}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {new Date(record.createdAt).toLocaleDateString('fr-FR')}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-red-600 hover:text-red-700"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/etablissement-access/${record.id}`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ statut: 'REFUSE' }),
+                                    })
+                                    if (!res.ok) throw new Error('Erreur')
+                                    toast.success('Demande annulée')
+                                    fetchAccessRecords()
+                                  } catch {
+                                    toast.error('Erreur lors de l\'annulation')
+                                  }
+                                }}
+                              >
+                                <X className="mr-1 h-3 w-3" />
+                                Annuler
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Active access */}
+              {activeAccess.length > 0 && (
+                <div>
+                  <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Accès actifs ({activeAccess.length})
+                  </h4>
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="px-3 py-2 text-left font-medium">Établissement</th>
+                          <th className="px-3 py-2 text-left font-medium">Motif</th>
+                          <th className="px-3 py-2 text-left font-medium">Statut</th>
+                          <th className="px-3 py-2 text-left font-medium">Date début</th>
+                          <th className="px-3 py-2 text-left font-medium">Date fin</th>
+                          <th className="px-3 py-2 text-left font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeAccess.map((record) => (
+                          <tr key={record.id} className="border-b last:border-0">
+                            <td className="px-3 py-2 font-medium">{record.etablissement.nom}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{record.motif}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className={ACCESS_STATUT_BG[record.statut] || ''}>
+                                {ACCESS_STATUT_LABELS[record.statut] || record.statut}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {record.dateDebut ? new Date(record.dateDebut).toLocaleDateString('fr-FR') : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {record.dateFin ? new Date(record.dateFin).toLocaleDateString('fr-FR') : 'Illimité'}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => {
+                                  toast.info(`Accès à ${record.etablissement.nom}`)
+                                }}
+                              >
+                                <ExternalLink className="mr-1 h-3 w-3" />
+                                Voir
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Expired/Refused access */}
+              {expiredAccess.length > 0 && (
+                <div>
+                  <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400">
+                    <Lock className="h-4 w-4" />
+                    Expirées / Révoquées ({expiredAccess.length})
+                  </h4>
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="px-3 py-2 text-left font-medium">Établissement</th>
+                          <th className="px-3 py-2 text-left font-medium">Motif</th>
+                          <th className="px-3 py-2 text-left font-medium">Statut</th>
+                          <th className="px-3 py-2 text-left font-medium">Date début</th>
+                          <th className="px-3 py-2 text-left font-medium">Date fin</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expiredAccess.map((record) => (
+                          <tr key={record.id} className="border-b last:border-0 opacity-60">
+                            <td className="px-3 py-2 font-medium">{record.etablissement.nom}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{record.motif}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className={ACCESS_STATUT_BG[record.statut] || ''}>
+                                {ACCESS_STATUT_LABELS[record.statut] || record.statut}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {record.dateDebut ? new Date(record.dateDebut).toLocaleDateString('fr-FR') : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {record.dateFin ? new Date(record.dateFin).toLocaleDateString('fr-FR') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* ─── 5. Two-column: Recent Activity + Platform Health ─── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        {/* Activité récente (60%) */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-emerald-600" />
-              Activité récente
-            </CardTitle>
-            <CardDescription>Derniers événements sur la plateforme</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <div className="flex-1 space-y-1">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/4" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : !stats?.recentActivities || stats.recentActivities.length === 0 ? (
-              <div className="flex h-48 flex-col items-center justify-center text-muted-foreground">
-                <Activity className="mb-2 h-10 w-10 opacity-30" />
-                <p className="text-sm">Aucune activité récente</p>
-              </div>
-            ) : (
-              <ScrollArea className="max-h-96">
-                <div className="space-y-1">
-                  {stats.recentActivities.slice(0, 8).map((activity, index) => {
-                    const { icon: ActivityIcon, color, bg } = getActivityIcon(activity.type)
-                    return (
-                      <div key={activity.id}>
-                        <div className="flex items-center gap-3 py-3">
-                          <div
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${bg}`}
-                          >
-                            <ActivityIcon className={`h-4 w-4 ${color}`} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">{activity.description}</p>
-                            <p className="text-xs text-muted-foreground">{activity.time}</p>
-                          </div>
-                        </div>
-                        {index < Math.min(stats.recentActivities.length, 8) - 1 && <Separator />}
-                      </div>
-                    )
-                  })}
+      {/* ─── 6. Platform Health Card ─── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HeartPulse className="h-5 w-5 text-rose-500" />
+            Santé de la plateforme
+          </CardTitle>
+          <CardDescription>Indicateurs de sécurité et d&apos;activité globale</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-6 w-16" />
                 </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Platform Health (40%) */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <HeartPulse className="h-5 w-5 text-rose-500" />
-              Santé de la plateforme
-            </CardTitle>
-            <CardDescription>Indicateurs de sécurité et d&apos;activité</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-6 w-16" />
-                  </div>
-                ))}
-              </div>
-            ) : (
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {/* Left column - metrics */}
               <div className="space-y-4">
                 {/* Active establishments vs total */}
                 <div className="flex items-center justify-between">
@@ -737,43 +1006,106 @@ export function AdminDashboard() {
                   </Badge>
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* ─── 6. Global Performance Card ─── */}
-      <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
-        <CardContent className="flex flex-col items-center justify-center py-8">
-          {loading ? (
-            <>
-              <Skeleton className="mb-3 h-8 w-48" />
-              <Skeleton className="h-20 w-32 rounded-2xl" />
-              <Skeleton className="mt-3 h-5 w-36" />
-            </>
-          ) : (
-            <>
-              <p className="mb-2 text-sm font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                Performance globale
-              </p>
-              <div className="flex items-end gap-1">
-                <span
-                  className="text-6xl font-bold leading-none"
-                  style={{ color: '#10b981' }}
-                >
-                  {stats?.tauxReussiteGlobal ?? 0}
-                </span>
-                <span className="mb-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-                  %
-                </span>
+              {/* Right column - visual score */}
+              <div className="flex flex-col items-center justify-center rounded-xl border bg-gradient-to-br from-emerald-50 to-teal-50 p-6 dark:from-emerald-950/30 dark:to-teal-950/30">
+                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                  Santé plateforme
+                </p>
+                <div className="flex items-end gap-1">
+                  <span
+                    className="text-5xl font-bold leading-none"
+                    style={{ color: '#10b981' }}
+                  >
+                    {avgSecurityScore}
+                  </span>
+                  <span className="mb-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+                    %
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-emerald-700/80 dark:text-emerald-400/80">
+                  Score de sécurité global
+                </p>
               </div>
-              <p className="mt-2 text-sm text-emerald-700/80 dark:text-emerald-400/80">
-                Taux de réussite global
-              </p>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* ─── Access Request Dialog ─── */}
+      <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Demander l&apos;accès</DialogTitle>
+            <DialogDescription>
+              Demandez l&apos;autorisation d&apos;accéder aux données de{' '}
+              <span className="font-semibold">{selectedEtablissement?.nom}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="motif">Motif *</Label>
+              <Select value={requestMotif} onValueChange={setRequestMotif}>
+                <SelectTrigger id="motif">
+                  <SelectValue placeholder="Sélectionnez un motif" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="audit">Audit</SelectItem>
+                  <SelectItem value="support">Support technique</SelectItem>
+                  <SelectItem value="inspection">Inspection</SelectItem>
+                  <SelectItem value="urgent">Intervention urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="dateDebut">Date début</Label>
+                <Input
+                  id="dateDebut"
+                  type="date"
+                  value={requestDateDebut}
+                  onChange={(e) => setRequestDateDebut(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dateFin">Date fin</Label>
+                <Input
+                  id="dateFin"
+                  type="date"
+                  value={requestDateFin}
+                  onChange={(e) => setRequestDateFin(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="commentaire">Commentaire</Label>
+              <Textarea
+                id="commentaire"
+                placeholder="Précisez la raison de votre demande..."
+                value={requestCommentaire}
+                onChange={(e) => setRequestCommentaire(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAccessDialogOpen(false)}
+              disabled={submitting}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleRequestAccess}
+              disabled={submitting || !requestMotif}
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Envoyer la demande
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

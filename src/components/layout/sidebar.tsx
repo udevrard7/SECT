@@ -20,6 +20,7 @@ import {
   Award,
   CreditCard,
   Shield,
+  KeyRound,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -62,6 +63,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Award,
   CreditCard,
   Shield,
+  KeyRound,
 }
 
 // ─── Role badge styling ───

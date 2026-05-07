@@ -8,9 +8,18 @@ export async function POST() {
     const existingPlans = await db.plan.count()
     const existingAbonnements = await db.abonnement.count()
     const existingSecuritySettings = await db.securitySettings.count()
+    const existingSessions = await db.sessionPassation.count()
+    const existingEpreuves = await db.epreuve.count()
 
-    // If all data already exists, skip seeding entirely
-    if (existingUsers > 0 && existingPlans > 0 && existingAbonnements > 0 && existingSecuritySettings > 0) {
+    // If all data (including evaluation data) already exists, skip seeding entirely
+    if (
+      existingUsers > 0 &&
+      existingPlans > 0 &&
+      existingAbonnements > 0 &&
+      existingSecuritySettings > 0 &&
+      existingSessions > 0 &&
+      existingEpreuves > 0
+    ) {
       return NextResponse.json(
         {
           message: 'La base de données contient déjà toutes les données',
@@ -18,6 +27,8 @@ export async function POST() {
           plans: existingPlans,
           abonnements: existingAbonnements,
           securitySettings: existingSecuritySettings,
+          epreuves: existingEpreuves,
+          sessions: existingSessions,
         },
         { status: 200 }
       )
@@ -176,6 +187,38 @@ export async function POST() {
         },
       })
       result.push('User: etudiant@sect.fr')
+    }
+
+    // ─── 3b. Create More Demo Student Users (if missing) ───
+    const demoStudents = [
+      { email: 'lucas.petit@sect.fr', name: 'Lucas Petit', filiereId: filiere1.id },
+      { email: 'camille.roux@sect.fr', name: 'Camille Roux', filiereId: filiere1.id },
+      { email: 'emma.moreau@sect.fr', name: 'Emma Moreau', filiereId: filiere2.id },
+      { email: 'hugo.lefebvre@sect.fr', name: 'Hugo Lefebvre', filiereId: filiere2.id },
+      { email: 'chloe.garcia@sect.fr', name: 'Chloé Garcia', filiereId: filiere1.id },
+      { email: 'nathan.simon@sect.fr', name: 'Nathan Simon', filiereId: filiere2.id },
+    ]
+
+    const studentUsers: { id: string; name: string; email: string }[] = []
+    // Always include the original etudiant@sect.fr
+    if (etuUser) studentUsers.push({ id: etuUser.id, name: etuUser.name, email: etuUser.email })
+
+    for (const s of demoStudents) {
+      let stu = await db.user.findFirst({ where: { email: s.email } })
+      if (!stu) {
+        stu = await db.user.create({
+          data: {
+            email: s.email,
+            name: s.name,
+            password: await bcrypt.hash('etu123', saltRounds),
+            role: 'ETUDIANT',
+            etablissementId: etab1.id,
+            filiereId: s.filiereId,
+          },
+        })
+        result.push(`User: ${s.email}`)
+      }
+      studentUsers.push({ id: stu.id, name: stu.name, email: stu.email })
     }
 
     // Update filiere responsable
@@ -381,6 +424,355 @@ export async function POST() {
       })
 
       result.push('SecuritySettings: 3 créés')
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 7. Create Demo Questions (if missing) ───
+    // ═══════════════════════════════════════════════════════════════
+    const existingQuestions = await db.question.count()
+
+    if (existingQuestions === 0 && ensUser) {
+      const questionsData = [
+        {
+          auteurId: ensUser.id,
+          type: 'QCU' as const,
+          enonce: 'Quelle est la complexité temporelle de la recherche binaire dans un tableau trié de taille n ?',
+          propositions: '["O(n)", "O(log n)", "O(n²)", "O(1)"]',
+          reponseCorrecte: '{"answer": "O(log n)"}',
+          difficulte: 'MOYEN' as const,
+          themes: '["Algorithmique"]',
+          tags: '["complexité", "recherche binaire"]',
+          explication: 'La recherche binaire divise l\'espace de recherche par 2 à chaque étape, d\'où une complexité logarithmique.',
+          validee: true,
+          scoreQualite: 85,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QCU' as const,
+          enonce: 'Quel protocole de la couche transport assure une livraison fiable des données ?',
+          propositions: '["UDP", "TCP", "ICMP", "ARP"]',
+          reponseCorrecte: '{"answer": "TCP"}',
+          difficulte: 'FACILE' as const,
+          themes: '["Réseaux"]',
+          tags: '["protocole", "transport", "fiabilité"]',
+          explication: 'TCP (Transmission Control Protocol) assure une livraison fiable avec accusé de réception et retransmission.',
+          validee: true,
+          scoreQualite: 90,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QCM' as const,
+          enonce: 'Quelles sont les propriétés ACID d\'une transaction dans une base de données ? (Sélectionnez toutes les réponses correctes)',
+          propositions: '["Atomicité", "Cohérence", "Isolation", "Durabilité", "Disponibilité"]',
+          reponseCorrecte: '{"answers": ["Atomicité", "Cohérence", "Isolation", "Durabilité"]}',
+          difficulte: 'MOYEN' as const,
+          themes: '["Bases de données"]',
+          tags: '["ACID", "transactions", "propriétés"]',
+          explication: 'ACID signifie Atomicité, Cohérence, Isolation, Durabilité. La Disponibilité fait partie du théorème CAP, pas d\'ACID.',
+          validee: true,
+          scoreQualite: 92,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QRC' as const,
+          enonce: 'Expliquez la différence entre une pile (stack) et une file (queue). Donnez un exemple d\'utilisation pour chaque structure.',
+          propositions: null,
+          reponseCorrecte: '{"answer": "Une pile fonctionne en LIFO (Last In First Out) : le dernier élément ajouté est le premier retiré. Exemple : pile d\'appels de fonctions (call stack). Une file fonctionne en FIFO (First In First Out) : le premier élément ajouté est le premier retiré. Exemple : file d\'attente d\'impression."}',
+          difficulte: 'FACILE' as const,
+          themes: '["Algorithmique"]',
+          tags: '["structures de données", "pile", "file"]',
+          explication: 'Les deux sont des structures de données linéaires, mais elles diffèrent par leur politique d\'accès : LIFO vs FIFO.',
+          validee: true,
+          scoreQualite: 80,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QCU' as const,
+          enonce: 'Dans le modèle relationnel, quelle clause SQL permet de regrouper les lignes ayant les mêmes valeurs ?',
+          propositions: '["WHERE", "GROUP BY", "HAVING", "ORDER BY"]',
+          reponseCorrecte: '{"answer": "GROUP BY"}',
+          difficulte: 'FACILE' as const,
+          themes: '["Bases de données"]',
+          tags: '["SQL", "GROUP BY", "requêtes"]',
+          explication: 'GROUP BY regroupe les lignes ayant les mêmes valeurs dans une ou plusieurs colonnes, souvent utilisé avec des fonctions d\'agrégation.',
+          validee: true,
+          scoreQualite: 88,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QCM' as const,
+          enonce: 'Quels sont les algorithmes de tri qui ont une complexité moyenne de O(n log n) ? (Sélectionnez toutes les réponses correctes)',
+          propositions: '["Tri à bulles", "Tri fusion (Merge Sort)", "Tri rapide (Quick Sort)", "Tri par insertion", "Tri par tas (Heap Sort)"]',
+          reponseCorrecte: '{"answers": ["Tri fusion (Merge Sort)", "Tri rapide (Quick Sort)", "Tri par tas (Heap Sort)"]}',
+          difficulte: 'DIFFICILE' as const,
+          themes: '["Algorithmique"]',
+          tags: '["tri", "complexité", "O(n log n)"]',
+          explication: 'Le tri fusion, le tri rapide (en moyenne) et le tri par tas ont une complexité moyenne de O(n log n). Le tri à bulles et le tri par insertion sont en O(n²).',
+          validee: true,
+          scoreQualite: 87,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QCU' as const,
+          enonce: 'Quelle couche du modèle OSI est responsable du routage des paquets entre réseaux ?',
+          propositions: '["Couche 1 - Physique", "Couche 2 - Liaison", "Couche 3 - Réseau", "Couche 4 - Transport"]',
+          reponseCorrecte: '{"answer": "Couche 3 - Réseau"}',
+          difficulte: 'MOYEN' as const,
+          themes: '["Réseaux"]',
+          tags: '["modèle OSI", "routage", "couche réseau"]',
+          explication: 'La couche Réseau (couche 3) du modèle OSI gère l\'adressage logique (IP) et le routage des paquets entre différents réseaux.',
+          validee: true,
+          scoreQualite: 91,
+        },
+        {
+          auteurId: ensUser.id,
+          type: 'QRC' as const,
+          enonce: 'Décrivez le principe de la normalisation dans les bases de données relationnelles. Quels sont les trois premiers formes normales (1NF, 2NF, 3NF) ?',
+          propositions: null,
+          reponseCorrecte: '{"answer": "La normalisation vise à réduire la redondance et les anomalies. 1NF : tous les attributs sont atomiques. 2NF : 1NF + pas de dépendance partielle (tout attribut non-clé dépend de la clé complète). 3NF : 2NF + pas de dépendance transitive (tout attribut non-clé dépend directement de la clé)."}',
+          difficulte: 'EXPERT' as const,
+          themes: '["Bases de données"]',
+          tags: '["normalisation", "formes normales", "modélisation"]',
+          explication: 'La normalisation est essentielle pour la conception de schémas relationnels robustes et sans redondance.',
+          validee: true,
+          scoreQualite: 78,
+        },
+      ]
+
+      const createdQuestions = []
+      for (const q of questionsData) {
+        const created = await db.question.create({ data: q })
+        createdQuestions.push(created)
+      }
+      result.push(`Questions: ${createdQuestions.length} créées`)
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 8. Create Demo Epreuve #1 (TERMINEE) + link questions ───
+    // ═══════════════════════════════════════════════════════════════
+    let epreuve1 = await db.epreuve.findFirst({ where: { titre: 'Examen Informatique L3 - Session 1' } })
+
+    if (!epreuve1 && ensUser) {
+      const now = new Date()
+      const examDate = new Date(now)
+      examDate.setDate(examDate.getDate() - 7) // 7 days ago
+      const examStart = new Date(examDate)
+      examStart.setHours(9, 0, 0, 0)
+      const examEnd = new Date(examStart)
+      examEnd.setHours(examEnd.getHours() + 2) // 2 hours exam
+
+      epreuve1 = await db.epreuve.create({
+        data: {
+          enseignantId: ensUser.id,
+          titre: 'Examen Informatique L3 - Session 1',
+          description: 'Examen de fin de module couvrant l\'algorithmique, les bases de données et les réseaux. Licence 3 Informatique.',
+          duree: 120,
+          dateDebut: examStart,
+          dateFin: examEnd,
+          melangeQuestions: true,
+          melangePropositions: true,
+          blocageRetour: false,
+          statut: 'TERMINEE',
+          groupesCibles: JSON.stringify([filiere1.id, filiere2.id]),
+          proctoringActif: true,
+          verificationIdentite: true,
+        },
+      })
+
+      // Link the first 6 questions to this epreuve
+      const allQuestions = await db.question.findMany({
+        where: { auteurId: ensUser.id },
+        take: 6,
+        orderBy: { createdAt: 'asc' },
+      })
+
+      for (let i = 0; i < allQuestions.length; i++) {
+        await db.epreuveQuestion.create({
+          data: {
+            epreuveId: epreuve1.id,
+            questionId: allQuestions[i].id,
+            bareme: i < 2 ? 3.0 : i < 4 ? 2.0 : 4.0, // varying scores, total = 18
+            ordre: i + 1,
+          },
+        })
+      }
+
+      result.push('Epreuve: Examen Informatique L3 - Session 1 (TERMINEE)')
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 9. Create Demo Epreuve #2 (PLANIFIEE) ───
+    // ═══════════════════════════════════════════════════════════════
+    let epreuve2 = await db.epreuve.findFirst({ where: { titre: 'Contrôle Continu - Bases de Données' } })
+
+    if (!epreuve2 && ensUser) {
+      const now = new Date()
+      const futureDate = new Date(now)
+      futureDate.setDate(futureDate.getDate() + 14) // 14 days from now
+      const examStart = new Date(futureDate)
+      examStart.setHours(14, 0, 0, 0)
+      const examEnd = new Date(examStart)
+      examEnd.setMinutes(examEnd.getMinutes() + 90)
+
+      epreuve2 = await db.epreuve.create({
+        data: {
+          enseignantId: ensUser.id,
+          titre: 'Contrôle Continu - Bases de Données',
+          description: 'Contrôle continu portant sur la modélisation relationnelle, SQL et la normalisation.',
+          duree: 90,
+          dateDebut: examStart,
+          dateFin: examEnd,
+          melangeQuestions: true,
+          melangePropositions: true,
+          blocageRetour: true,
+          statut: 'PLANIFIEE',
+          groupesCibles: JSON.stringify([filiere1.id]),
+          proctoringActif: false,
+          verificationIdentite: false,
+        },
+      })
+
+      // Link the last 2 questions (BD themed) to this epreuve
+      const bdQuestions = await db.question.findMany({
+        where: {
+          auteurId: ensUser.id,
+          themes: { contains: 'Bases de données' },
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+
+      for (let i = 0; i < bdQuestions.length; i++) {
+        await db.epreuveQuestion.create({
+          data: {
+            epreuveId: epreuve2.id,
+            questionId: bdQuestions[i].id,
+            bareme: 5.0,
+            ordre: i + 1,
+          },
+        })
+      }
+
+      result.push('Epreuve: Contrôle Continu - Bases de Données (PLANIFIEE)')
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 10. Create Demo SessionPassation + Resultat ───
+    // ═══════════════════════════════════════════════════════════════
+    if (existingSessions === 0 && epreuve1 && studentUsers.length > 0) {
+      const now = new Date()
+      const examStart = new Date(epreuve1.dateDebut)
+
+      // Create sessions for 5 students
+      const sessionConfigs = [
+        { studentIndex: 0, statut: 'CORRIGEE' as const, score: 14.5, alertes: 0 },
+        { studentIndex: 1, statut: 'CORRIGEE' as const, score: 11.0, alertes: 0 },
+        { studentIndex: 2, statut: 'CORRIGEE' as const, score: 16.0, alertes: 0 },
+        { studentIndex: 3, statut: 'SOUMISE' as const, score: 8.5, alertes: 1 },
+        { studentIndex: 4, statut: 'CORRIGEE' as const, score: 12.5, alertes: 0 },
+      ]
+
+      for (const config of sessionConfigs) {
+        if (config.studentIndex >= studentUsers.length) break
+
+        const student = studentUsers[config.studentIndex]
+        const sessionStart = new Date(examStart)
+        const sessionEnd = new Date(sessionStart)
+        sessionEnd.setMinutes(sessionEnd.getMinutes() + 105 + Math.floor(Math.random() * 15)) // ~105-120 min
+
+        const session = await db.sessionPassation.create({
+          data: {
+            etudiantId: student.id,
+            epreuveId: epreuve1.id,
+            statut: config.statut,
+            dateDebut: sessionStart,
+            dateFin: sessionEnd,
+            score: config.score,
+            alertes: config.alertes,
+            logEvents: JSON.stringify([
+              { event: 'SESSION_START', timestamp: sessionStart.toISOString() },
+              { event: 'QUESTION_VIEW', questionIndex: 0, timestamp: new Date(sessionStart.getTime() + 30000).toISOString() },
+              { event: 'ANSWER_SUBMIT', questionIndex: 0, timestamp: new Date(sessionStart.getTime() + 120000).toISOString() },
+              { event: 'SESSION_END', timestamp: sessionEnd.toISOString() },
+            ]),
+          },
+        })
+
+        // Create Resultat for CORRIGEE sessions
+        if (config.statut === 'CORRIGEE') {
+          const epreuveQuestions = await db.epreuveQuestion.findMany({
+            where: { epreuveId: epreuve1.id },
+            orderBy: { ordre: 'asc' },
+          })
+
+          const detailParQuestion = epreuveQuestions.map((eq, idx) => ({
+            questionId: eq.questionId,
+            bareme: eq.bareme,
+            score: Math.min(eq.bareme, Math.max(0, eq.bareme * (config.score / 18) + (Math.random() - 0.5) * 2)),
+          }))
+
+          await db.resultat.create({
+            data: {
+              sessionId: session.id,
+              scoreFinal: config.score,
+              detailParQuestion: JSON.stringify(detailParQuestion),
+              dateCorrection: new Date(sessionEnd.getTime() + 3600000), // 1h after session end
+              commentaires: JSON.stringify({
+                general: config.score >= 14 ? 'Bon travail, continuez ainsi.' : config.score >= 10 ? 'Résultat acceptable, des progrès sont possibles.' : 'Des lacunes importantes nécessitent un travail approfondi.',
+              }),
+            },
+          })
+        }
+
+        // Create demo Reponses for the session
+        const epreuveQuestions = await db.epreuveQuestion.findMany({
+          where: { epreuveId: epreuve1.id },
+          orderBy: { ordre: 'asc' },
+          include: { question: true },
+        })
+
+        for (const eq of epreuveQuestions) {
+          const question = eq.question
+          let contenu: string | null = null
+          let reponseScore: number | null = null
+
+          if (question.type === 'QCU') {
+            const propositions: string[] = JSON.parse(question.propositions || '[]')
+            const correctAnswer = JSON.parse(question.reponseCorrecte || '{}').answer
+            // 70% chance of correct answer
+            contenu = JSON.stringify({ answer: Math.random() > 0.3 ? correctAnswer : propositions.find(p => p !== correctAnswer) || propositions[0] })
+            reponseScore = contenu.includes(correctAnswer) ? eq.bareme : 0
+          } else if (question.type === 'QCM') {
+            const correctAnswers: string[] = JSON.parse(question.reponseCorrecte || '{}').answers || []
+            // Select most correct answers with some variation
+            const selected = correctAnswers.filter(() => Math.random() > 0.2)
+            contenu = JSON.stringify({ answers: selected })
+            const proportion = selected.length / correctAnswers.length
+            reponseScore = Math.round(eq.bareme * proportion * 10) / 10
+          } else if (question.type === 'QRC') {
+            contenu = JSON.stringify({ text: 'Réponse de l\'étudiant avec des éléments partiels sur le sujet demandé.' })
+            reponseScore = Math.round(eq.bareme * (0.4 + Math.random() * 0.6) * 10) / 10
+          }
+
+          // Check if reponse already exists for this session+question
+          const existingReponse = await db.reponse.findFirst({
+            where: { sessionId: session.id, questionId: eq.questionId },
+          })
+
+          if (!existingReponse) {
+            await db.reponse.create({
+              data: {
+                sessionId: session.id,
+                questionId: eq.questionId,
+                contenu,
+                score: reponseScore,
+                commentaire: config.statut === 'CORRIGEE' ? 'Correction automatique' : null,
+              },
+            })
+          }
+        }
+      }
+
+      result.push('Sessions: 5 créées avec réponses et résultats')
     }
 
     return NextResponse.json({

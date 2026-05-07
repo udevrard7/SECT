@@ -10,7 +10,7 @@ export const db =
     log: [],
     datasources: {
       db: {
-        url: process.env.DATABASE_URL,
+        url: process.env.SUPABASE_URL || process.env.DATABASE_URL,
       },
     },
   })

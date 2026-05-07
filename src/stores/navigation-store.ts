@@ -24,6 +24,7 @@ export type PageId =
   | 'passation'
   | 'abonnements'
   | 'securite'
+  | 'acces-etablissements'
 
 interface NavigationState {
   currentPage: PageId
@@ -54,12 +55,12 @@ export interface NavItem {
 export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   ADMIN: [
     { id: 'dashboard', label: 'Tableau de bord', icon: 'LayoutDashboard' },
-    { id: 'utilisateurs', label: 'Utilisateurs', icon: 'Users' },
     { id: 'etablissements', label: 'Établissements', icon: 'Building2' },
-    { id: 'configuration', label: 'Configuration', icon: 'Settings' },
-    { id: 'logs', label: 'Journaux d\'audit', icon: 'FileText' },
+    { id: 'acces-etablissements', label: 'Accès établissements', icon: 'KeyRound' },
     { id: 'abonnements', label: 'Abonnements', icon: 'CreditCard' },
     { id: 'securite', label: 'Sécurité', icon: 'Shield' },
+    { id: 'logs', label: 'Journaux d\'audit', icon: 'FileText' },
+    { id: 'configuration', label: 'Configuration', icon: 'Settings' },
   ],
   RESPONSABLE: [
     { id: 'dashboard', label: 'Tableau de bord', icon: 'LayoutDashboard' },

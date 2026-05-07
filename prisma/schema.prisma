@@ -4,8 +4,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  url       = env("SUPABASE_URL")
+  directUrl = env("SUPABASE_URL")
 }
 
 // ─── Rôles ───
@@ -90,6 +90,7 @@ model User {
   filieresResponsable Filiere[]     @relation("FiliereResponsable")
   alertes            Alerte[]
   enseignantFilieres EnseignantFiliere[]
+  etablissementAccess EtablissementAccess[]
 }
 
 // ─── Établissement ───
@@ -111,6 +112,7 @@ model Etablissement {
   users            User[]
   abonnements      Abonnement[]
   securitySettings SecuritySettings?
+  adminAccess      EtablissementAccess[]
 }
 
 // ─── Filière ───
@@ -375,6 +377,27 @@ model Abonnement {
   notes              String?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+}
+
+// ─── Autorisation d'accès Admin ───
+// L'administrateur SaaS ne peut pas voir les données d'un établissement
+// sauf s'il a une autorisation explicite (audit, support, etc.)
+model EtablissementAccess {
+  id                String         @id @default(cuid())
+  adminId           String         // User ID of the ADMIN requesting access
+  admin             User           @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  etablissementId   String
+  etablissement     Etablissement  @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  motif             String         // "audit", "support", "inspection", "urgent"
+  statut            String         @default("EN_ATTENTE") // EN_ATTENTE, APPROUVE, REFUSE, EXPIRE
+  dateDebut         DateTime?      // when access becomes valid
+  dateFin           DateTime?      // when access expires
+  approuvePar       String?        // who approved (another admin or auto)
+  commentaire       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([adminId, etablissementId])
 }
 
 // ─── Paramètres de sécurité ───
