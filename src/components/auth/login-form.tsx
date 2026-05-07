@@ -98,9 +98,11 @@ export function LoginForm() {
           className="text-center mb-8"
         >
           <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg">
-              <GraduationCap className="w-7 h-7" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="SECT"
+              className="w-14 h-14 rounded-xl shadow-lg object-cover"
+            />
             <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-emerald-700 to-teal-600 dark:from-emerald-300 dark:to-teal-400 bg-clip-text text-transparent">
               SECT
             </h1>

@@ -18,7 +18,20 @@ export const metadata: Metadata = {
   title: "SECT — Système d'Evaluation Casse-Tête",
   description: "Plateforme d'évaluation en ligne propulsée par l'Intelligence Artificielle pour l'enseignement supérieur.",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.png", sizes: "1024x1024", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: "SECT — Système d'Evaluation Casse-Tête",
+    description: "Plateforme d'évaluation en ligne propulsée par l'Intelligence Artificielle pour l'enseignement supérieur.",
+    images: ["/logo.png"],
+    url: "https://sect-app.vercel.app",
+    siteName: "SECT",
+    type: "website",
   },
 };
 
