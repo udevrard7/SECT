@@ -269,11 +269,32 @@ export function EvaluationsPage() {
 
   // ─── Fetch epreuves by filiere ───
   const fetchEpreuves = useCallback(async () => {
-    if (!user?.filiereId) return
     setIsLoading(true)
     try {
+      // First get the filières managed by this responsable
+      let filiereIds: string[] = []
+      if (user?.id) {
+        const filRes = await fetch(`/api/filieres?responsableId=${user.id}`)
+        if (filRes.ok) {
+          const filData = await filRes.json()
+          filiereIds = (filData.filieres ?? []).map((f: { id: string }) => f.id)
+        }
+      }
+
+      if (filiereIds.length === 0 && !user?.filiereId) {
+        setEpreuves([])
+        setIsLoading(false)
+        return
+      }
+
+      // If a specific filiere is selected, filter by it
+      const targetFiliereId = filiereFilter !== 'all' ? filiereFilter : ''
+      
+      // Fetch epreuves - get all epreuves and filter client-side by sessions in our filières
       const params = new URLSearchParams()
-      params.set('filiereId', user.filiereId)
+      if (targetFiliereId) {
+        params.set('filiereId', targetFiliereId)
+      }
       if (statutFilter !== 'all') params.set('statut', statutFilter)
 
       const res = await fetch(`/api/epreuves?${params.toString()}`)
@@ -286,7 +307,7 @@ export function EvaluationsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user?.filiereId, statutFilter])
+  }, [user?.id, user?.filiereId, statutFilter, filiereFilter])
 
   // ─── Fetch filieres ───
   const fetchFilieres = useCallback(async () => {

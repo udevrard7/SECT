@@ -4,18 +4,39 @@ import { db } from '@/lib/db'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const filiere = searchParams.get('filiere')
+    const filiereId = searchParams.get('filiereId') || ''
+    const filiereNom = searchParams.get('filiere') || ''
+
+    // ─── Resolve filiereId from filiere name if needed ───
+    let resolvedFiliereId = filiereId
+    if (!resolvedFiliereId && filiereNom) {
+      const found = await db.filiere.findFirst({
+        where: { nom: filiereNom },
+        select: { id: true },
+      })
+      resolvedFiliereId = found?.id || ''
+    }
 
     // ─── Basic counts ───
     const whereEtudiant: Record<string, unknown> = { role: 'ETUDIANT' }
-    if (filiere) whereEtudiant.filiere = filiere
+    if (resolvedFiliereId) whereEtudiant.filiereId = resolvedFiliereId
+
+    const whereEnseignant: Record<string, unknown> = { role: 'ENSEIGNANT' }
+    // Get enseignants assigned to this filiere
+    if (resolvedFiliereId) {
+      const assignedEnseignantIds = await db.enseignantFiliere.findMany({
+        where: { filiereId: resolvedFiliereId },
+        select: { enseignantId: true },
+      })
+      whereEnseignant.id = { in: assignedEnseignantIds.map((a) => a.enseignantId) }
+    }
 
     const [nbEtudiants, nbEnseignants, nbEvaluations] = await Promise.all([
       db.user.count({ where: whereEtudiant }),
-      db.user.count({ where: { role: 'ENSEIGNANT' } }),
+      db.user.count({ where: whereEnseignant }),
       db.epreuve.count({
-        where: filiere
-          ? { sessions: { some: { etudiant: { filiere } } } }
+        where: resolvedFiliereId
+          ? { sessions: { some: { etudiant: { filiereId: resolvedFiliereId } } } }
           : {},
       }),
     ])
@@ -25,8 +46,8 @@ export async function GET(request: NextRequest) {
       statut: { in: ['SOUMISE', 'CORRIGEE'] },
       score: { not: null },
     }
-    if (filiere) {
-      sessionsWhere.etudiant = { filiere }
+    if (resolvedFiliereId) {
+      sessionsWhere.etudiant = { filiereId: resolvedFiliereId }
     }
 
     const allSessions = await db.sessionPassation.findMany({
@@ -59,14 +80,19 @@ export async function GET(request: NextRequest) {
     const epreuvesAvecResultats = await db.epreuve.findMany({
       where: {
         statut: { in: ['TERMINEE', 'CLOTUREE'] },
-        ...(filiere ? { sessions: { some: { etudiant: { filiere } } } } : {}),
+        ...(resolvedFiliereId
+          ? { sessions: { some: { etudiant: { filiereId: resolvedFiliereId } } } }
+          : {}),
       },
       orderBy: { dateDebut: 'desc' },
       take: 10,
       include: {
         enseignant: { select: { name: true } },
         sessions: {
-          where: { score: { not: null }, ...(filiere ? { etudiant: { filiere } } : {}) },
+          where: {
+            score: { not: null },
+            ...(resolvedFiliereId ? { etudiant: { filiereId: resolvedFiliereId } } : {}),
+          },
           select: { score: true },
         },
       },
@@ -87,15 +113,30 @@ export async function GET(request: NextRequest) {
 
     // ─── Students per filiere ───
     const etudiantsParFiliereRaw = await db.user.groupBy({
-      by: ['filiere'],
-      where: { role: 'ETUDIANT' },
-      _count: { filiere: true },
+      by: ['filiereId'],
+      where: { role: 'ETUDIANT', filiereId: { not: null } },
+      _count: { filiereId: true },
     })
+
+    // Resolve filiere names
+    const filiereIds = etudiantsParFiliereRaw
+      .map((r) => r.filiereId)
+      .filter((id): id is string => id !== null)
+
+    const filiereNames = await db.filiere.findMany({
+      where: { id: { in: filiereIds } },
+      select: { id: true, nom: true },
+    })
+
+    const filiereNameMap = Object.fromEntries(
+      filiereNames.map((f) => [f.id, f.nom])
+    )
+
     const etudiantsParFiliere = etudiantsParFiliereRaw
-      .filter((r) => r.filiere !== null)
+      .filter((r) => r.filiereId !== null)
       .map((r) => ({
-        filiere: r.filiere || 'Non défini',
-        count: r._count.filiere,
+        filiere: filiereNameMap[r.filiereId!] || 'Non défini',
+        count: r._count.filiereId,
       }))
 
     // ─── Monthly score trend ───
@@ -107,7 +148,7 @@ export async function GET(request: NextRequest) {
         statut: { in: ['SOUMISE', 'CORRIGEE'] },
         score: { not: null },
         dateFin: { not: null, gte: sixMonthsAgo },
-        ...(filiere ? { etudiant: { filiere } } : {}),
+        ...(resolvedFiliereId ? { etudiant: { filiereId: resolvedFiliereId } } : {}),
       },
       select: { score: true, dateFin: true },
     })
@@ -148,12 +189,12 @@ export async function GET(request: NextRequest) {
 
     const topEnseignants = enseignants
       .map((ens) => {
-        const allScores = ens.epreuves.flatMap((ep) =>
+        const ensScores = ens.epreuves.flatMap((ep) =>
           ep.sessions.map((s) => s.score as number)
         )
-        const avg = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0
-        const taux = allScores.length > 0
-          ? Math.round((allScores.filter((s) => s >= 10).length / allScores.length) * 100)
+        const avg = ensScores.length > 0 ? ensScores.reduce((a, b) => a + b, 0) / ensScores.length : 0
+        const taux = ensScores.length > 0
+          ? Math.round((ensScores.filter((s) => s >= 10).length / ensScores.length) * 100)
           : 0
         return {
           nom: ens.name,

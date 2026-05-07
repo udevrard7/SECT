@@ -183,7 +183,7 @@ export function RapportsPage() {
     setIsLoading(true)
     try {
       const filiereParam = selectedFiliere !== 'all' ? selectedFiliere : (user?.filiereId || '')
-      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiere=${filiereParam}` : ''}`)
+      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
       if (res.ok) {
         const data = await res.json()
         setStats(data)

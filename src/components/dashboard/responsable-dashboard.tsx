@@ -322,8 +322,11 @@ export function ResponsableDashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const url = user?.filiere?.nom
-        ? `/api/stats/responsable?filiere=${encodeURIComponent(user.filiere.nom)}`
+      const params = new URLSearchParams()
+      if (user?.filiere?.id) params.set('filiereId', user.filiere.id)
+      else if (user?.filiereId) params.set('filiereId', user.filiereId)
+      const url = params.toString()
+        ? `/api/stats/responsable?${params.toString()}`
         : '/api/stats/responsable'
       const res = await fetch(url)
       if (!res.ok) throw new Error('Erreur réseau')
@@ -334,14 +337,36 @@ export function ResponsableDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [user?.filiere?.nom])
+  }, [user?.filiere?.id, user?.filiereId])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
-  if (loading || !data) {
+  if (loading) {
     return <DashboardSkeleton />
+  }
+
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+            Bonjour, {user?.name ?? 'Responsable'}
+          </h1>
+          <Badge className="w-fit text-white hover:opacity-90" style={{ backgroundColor: '#d97706' }}>
+            Responsable de filière
+          </Badge>
+        </div>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+          <BarChart3 className="mb-4 h-12 w-12 text-muted-foreground/40" />
+          <h3 className="text-lg font-semibold">Aucune donnée disponible</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Les statistiques apparaîtront une fois que des évaluations seront réalisées.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (

@@ -323,7 +323,7 @@ export function AlertesPage() {
   const loadFallbackAlerts = async () => {
     try {
       const filiereParam = user?.filiereId || ''
-      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiere=${filiereParam}` : ''}`)
+      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
       if (res.ok) {
         const stats = await res.json()
         const dynamicAlerts = generateDynamicAlerts(stats)

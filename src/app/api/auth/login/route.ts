@@ -15,6 +15,10 @@ export async function POST(request: NextRequest) {
 
     const user = await db.user.findUnique({
       where: { email },
+      include: {
+        etablissement: { select: { id: true, nom: true } },
+        filiere: { select: { id: true, nom: true } },
+      },
     })
 
     if (!user) {
