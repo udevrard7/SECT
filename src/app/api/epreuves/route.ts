@@ -109,17 +109,20 @@ export async function GET(request: NextRequest) {
         select: { etablissementId: true },
       })
 
+      // If the filiere doesn't exist (data inconsistency), return empty array
+      if (!filiere) {
+        return NextResponse.json({ epreuves: [] })
+      }
+
       const whereFiliere: Record<string, unknown> = {}
       if (statut) whereFiliere.statut = statut
 
-      if (filiere) {
-        whereFiliere.OR = [
-          // Epreuves with sessions from students in the filiere
-          { sessions: { some: { etudiant: { filiereId } } } },
-          // Epreuves by enseignants in the same etablissement
-          { enseignant: { etablissementId: filiere.etablissementId } },
-        ]
-      }
+      whereFiliere.OR = [
+        // Epreuves with sessions from students in the filiere
+        { sessions: { some: { etudiant: { filiereId } } } },
+        // Epreuves by enseignants in the same etablissement
+        { enseignant: { etablissementId: filiere.etablissementId } },
+      ]
 
       const epreuves = await db.epreuve.findMany({
         where: whereFiliere,

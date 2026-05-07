@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // ─── Rôles ───
@@ -52,6 +51,21 @@ enum StatutSession {
   CORRIGEE
 }
 
+enum StatutAbonnement {
+  ESSAI
+  ACTIF
+  SUSPENDU
+  EXPIRE
+  RESILIE
+}
+
+enum TypePlan {
+  GRATUIT
+  ESSENTIEL
+  PROFESSIONNEL
+  ENTREPRISE
+}
+
 // ─── Utilisateur ───
 model User {
   id                 String          @id @default(cuid())
@@ -92,8 +106,10 @@ model Etablissement {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  filieres  Filiere[]
-  users     User[]
+  filieres         Filiere[]
+  users            User[]
+  abonnements      Abonnement[]
+  securitySettings SecuritySettings?
 }
 
 // ─── Filière ───
@@ -206,6 +222,8 @@ model Epreuve {
   blocageRetour        Boolean         @default(false)
   statut               StatutEpreuve   @default(BROUILLON)
   groupesCibles        String?         // JSON array of target group IDs
+  proctoringActif      Boolean         @default(false) // per-exam proctoring override
+  verificationIdentite Boolean         @default(false) // per-exam identity check
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
@@ -310,4 +328,74 @@ model Resultat {
   exporte           Boolean         @default(false)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+}
+
+// ─── Plan d'abonnement ───
+model Plan {
+  id                  String      @id @default(cuid())
+  nom                 String      @unique // plan name like "Gratuit", "Essentiel", etc.
+  type                TypePlan
+  prixMensuel         Float       // monthly price in EUR
+  prixAnnuel          Float?      // annual price in EUR (discounted)
+  nbEtablissementsMax Int         // max establishments
+  nbFilieresMax       Int         // max filières per establishment
+  nbEnseignantsMax    Int         // max teachers
+  nbEtudiantsMax      Int         // max students
+  nbQuestionsMax      Int         // max questions in bank
+  nbEvaluationsMois   Int         // max evaluations per month
+  iaGeneration        Boolean     @default(true)  // AI question generation
+  iaCorrection        Boolean     @default(false) // AI correction
+  proctoring          Boolean     @default(false) // anti-cheat proctoring
+  exportPDF           Boolean     @default(true)  // PDF export
+  support             String      @default("email") // support type: email, chat, telephone
+  description         String?
+  actif               Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  abonnements         Abonnement[]
+}
+
+// ─── Abonnement ───
+model Abonnement {
+  id                 String             @id @default(cuid())
+  etablissementId    String
+  etablissement      Etablissement      @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  planId             String
+  plan               Plan               @relation(fields: [planId], references: [id])
+  statut             StatutAbonnement   @default(ESSAI)
+  dateDebut          DateTime
+  dateFin            DateTime?
+  periodeEssaiJours  Int                @default(14)
+  modePaiement       String?            // "carte", "virement", "cheque"
+  referencePaiement  String?
+  montantPaye        Float              @default(0)
+  renouvellementAuto  Boolean            @default(true)
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+// ─── Paramètres de sécurité ───
+model SecuritySettings {
+  id                     String         @id @default(cuid())
+  etablissementId        String         @unique
+  etablissement          Etablissement  @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  proctoringActif        Boolean        @default(false) // enable proctoring
+  detectionCopie         Boolean        @default(true)  // copy/paste detection
+  detectionOnglet        Boolean        @default(true)  // tab switch detection
+  detectionFullscreen    Boolean        @default(true)  // fullscreen exit detection
+  blocageCopie           Boolean        @default(true)  // block copy/paste
+  blocageClicDroit       Boolean        @default(true)  // block right click
+  blocageImpression      Boolean        @default(true)  // block print screen
+  verificationIdentite   Boolean        @default(false) // identity verification
+  tempsInactiviteMax     Int            @default(120)   // max inactive time in seconds before alert
+  nbOngletsMax           Int            @default(3)     // max tab switches before auto-submit
+  nbAlertesMax           Int            @default(5)     // max alerts before auto-submit
+  autoSubmitOnViolation  Boolean        @default(false) // auto-submit on violation
+  captureEcran           Boolean        @default(false) // screen capture (if proctoring)
+  rapportFraude          Boolean        @default(true)  // fraud report generation
+  seuilSimilarite        Float          @default(0.85)  // similarity threshold for copy detection
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 }

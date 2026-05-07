@@ -18,6 +18,8 @@ import {
   TrendingUp,
   FileCheck,
   Award,
+  CreditCard,
+  Shield,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -58,6 +60,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   TrendingUp,
   FileCheck,
   Award,
+  CreditCard,
+  Shield,
 }
 
 // ─── Role badge styling ───

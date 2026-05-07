@@ -33,6 +33,8 @@ import { EvaluationsPage } from '@/components/evaluations/evaluations-page'
 import { FilieresPage } from '@/components/filieres/filieres-page'
 import { EtudiantsPage } from '@/components/responsable/etudiants-page'
 import { EnseignantsPage } from '@/components/responsable/enseignants-page'
+import { AbonnementsPage } from '@/components/admin/abonnements-page'
+import { SecuritePage } from '@/components/admin/securite-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -64,6 +66,8 @@ const PAGE_LABELS: Record<PageId, string> = {
   'mes-epreuves': 'Mes épreuves',
   'mes-resultats': 'Mes résultats',
   passation: 'Passation d\'épreuve',
+  abonnements: 'Gestion des abonnements',
+  securite: 'Sécurité des évaluations',
 }
 
 // ─── Page descriptions for placeholder cards ───
@@ -88,6 +92,8 @@ const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'mes-epreuves': 'Voir les épreuves programmées et passées',
   'mes-resultats': 'Consulter vos notes et résultats',
   passation: 'Passer une épreuve en ligne',
+  abonnements: 'Gérer les abonnements et plans tarifaires',
+  securite: 'Configurer la sécurité et l\'anti-fraude',
 }
 
 // ─── Placeholder page component ───
@@ -215,6 +221,16 @@ function PageContent() {
   // Responsable: Enseignants page
   if (currentPage === 'enseignants') {
     return <EnseignantsPage />
+  }
+
+  // Admin: Abonnements page
+  if (currentPage === 'abonnements') {
+    return <AbonnementsPage />
+  }
+
+  // Admin: Sécurité page
+  if (currentPage === 'securite') {
+    return <SecuritePage />
   }
 
   // All other pages: placeholder

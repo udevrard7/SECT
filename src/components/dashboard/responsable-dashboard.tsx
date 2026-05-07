@@ -323,6 +323,10 @@ export function ResponsableDashboard() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
+      // For RESPONSABLE users, use responsableId to resolve their managed filieres
+      // (a responsable manages filieres via Filiere.responsableId, NOT via User.filiereId)
+      if (user?.id) params.set('responsableId', user.id)
+      // Also allow optional specific filiereId filter if set
       if (user?.filiere?.id) params.set('filiereId', user.filiere.id)
       else if (user?.filiereId) params.set('filiereId', user.filiereId)
       const url = params.toString()
@@ -337,7 +341,7 @@ export function ResponsableDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [user?.filiere?.id, user?.filiereId])
+  }, [user?.id, user?.filiere?.id, user?.filiereId])
 
   useEffect(() => {
     fetchData()

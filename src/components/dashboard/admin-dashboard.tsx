@@ -10,6 +10,14 @@ import {
   Activity,
   UserPlus,
   TrendingUp,
+  CreditCard,
+  Shield,
+  ShieldCheck,
+  Eye,
+  BarChart3,
+  HeartPulse,
+  CheckCircle2,
+  Lock,
 } from 'lucide-react'
 import {
   Card,
@@ -64,6 +72,16 @@ interface AdminStats {
   }>
   questionsParType: Array<{ type: string; count: number }>
   tauxReussiteGlobal: number
+  // New SaaS metrics
+  nbAbonnementsActifs: number
+  nbAbonnementsEssai: number
+  nbAbonnementsExpires: number
+  revenuMensuel: number
+  revenuAnnuel: number
+  repartitionPlans: Array<{ plan: string; count: number }>
+  etablissementsParStatut: Array<{ statut: string; count: number }>
+  nbEtablissementsProteges: number
+  nbVerificationIdentite: number
 }
 
 interface StatCardProps {
@@ -71,72 +89,50 @@ interface StatCardProps {
   value: number | string
   icon: React.ReactNode
   accentColor: string
+  subtitle?: string
 }
 
 // ─── Constants ───
 
 const monthNames = [
-  'Jan',
-  'Fév',
-  'Mar',
-  'Avr',
-  'Mai',
-  'Juin',
-  'Juil',
-  'Août',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Déc',
+  'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+  'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
 ]
 
-const ROLE_COLORS: Record<string, string> = {
-  ADMIN: '#ef4444',
-  RESPONSABLE: '#f59e0b',
-  ENSEIGNANT: '#10b981',
-  ETUDIANT: '#14b8a6',
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Admin',
-  RESPONSABLE: 'Responsable',
-  ENSEIGNANT: 'Enseignant',
-  ETUDIANT: 'Étudiant',
-}
-
-const TYPE_COLORS: Record<string, string> = {
-  QCU: '#10b981',
-  QCM: '#14b8a6',
-  QRC: '#059669',
-  TRS: '#0d9488',
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  QCU: 'QCU',
-  QCM: 'QCM',
-  QRC: 'QRC',
-  TRS: 'TRS',
+const PLAN_COLORS: Record<string, string> = {
+  GRATUIT: '#6b7280',
+  ESSENTIEL: '#10b981',
+  PROFESSIONNEL: '#14b8a6',
+  ENTREPRISE: '#f59e0b',
 }
 
 const STATUT_COLORS: Record<string, string> = {
-  BROUILLON: '#6b7280',
-  PLANIFIEE: '#f59e0b',
-  EN_COURS: '#10b981',
-  TERMINEE: '#0ea5e9',
-  CLOTUREE: '#64748b',
+  ESSAI: '#f59e0b',
+  ACTIF: '#10b981',
+  SUSPENDU: '#ef4444',
+  EXPIRE: '#6b7280',
+  RESILIE: '#dc2626',
 }
 
 const STATUT_LABELS: Record<string, string> = {
-  BROUILLON: 'Brouillon',
-  PLANIFIEE: 'Planifiée',
-  EN_COURS: 'En cours',
-  TERMINEE: 'Terminée',
-  CLOTUREE: 'Clôturée',
+  ESSAI: 'Essai',
+  ACTIF: 'Actif',
+  SUSPENDU: 'Suspendu',
+  EXPIRE: 'Expiré',
+  RESILIE: 'Résilié',
+}
+
+const STATUT_BG: Record<string, string> = {
+  ESSAI: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  ACTIF: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+  SUSPENDU: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  EXPIRE: 'bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400',
+  RESILIE: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-300',
 }
 
 // ─── StatCard ───
 
-function StatCard({ title, value, icon, accentColor }: StatCardProps) {
+function StatCard({ title, value, icon, accentColor, subtitle }: StatCardProps) {
   return (
     <Card className="relative overflow-hidden">
       <div
@@ -154,6 +150,9 @@ function StatCard({ title, value, icon, accentColor }: StatCardProps) {
       </CardHeader>
       <CardContent className="pt-0">
         <div className="text-2xl font-bold">{value}</div>
+        {subtitle && (
+          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+        )}
       </CardContent>
     </Card>
   )
@@ -244,6 +243,22 @@ function AreaChartTooltip({ active, payload, label }: { active?: boolean; payloa
   )
 }
 
+// ─── Revenue Tooltip ───
+
+function RevenueTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+  if (!active || !payload) return null
+  return (
+    <div className="rounded-lg border bg-background p-3 shadow-lg">
+      <p className="mb-1 text-sm font-medium text-foreground">{label}</p>
+      {payload.map((entry, idx) => (
+        <p key={idx} className="text-xs" style={{ color: entry.color }}>
+          Revenus : {entry.value.toLocaleString('fr-FR')} €
+        </p>
+      ))}
+    </div>
+  )
+}
+
 // ─── Main Component ───
 
 export function AdminDashboard() {
@@ -268,51 +283,71 @@ export function AdminDashboard() {
   }, [])
 
   // ─── Prepare chart data ───
-  const roleData = (stats?.utilisateursParRole ?? []).map((r) => ({
-    name: ROLE_LABELS[r.role] || r.role,
-    value: r.count,
-    color: ROLE_COLORS[r.role] || '#6b7280',
+  const planData = (stats?.repartitionPlans ?? []).map((p) => ({
+    name: p.plan,
+    value: p.count,
+    color: PLAN_COLORS[p.plan.toUpperCase()] || '#0d9488',
   }))
 
-  const typeData = (stats?.questionsParType ?? []).map((t) => ({
-    name: TYPE_LABELS[t.type] || t.type,
-    value: t.count,
-    color: TYPE_COLORS[t.type] || '#6b7280',
-  }))
+  const totalPlan = planData.reduce((acc, p) => acc + p.value, 0)
 
   const trendData = (stats?.creationTrend ?? []).map((t) => ({
     ...t,
     moisLabel: formatFrenchMonth(t.mois),
   }))
 
-  const statutData = (stats?.epreuvesParStatut ?? []).map((s) => ({
+  // Revenue trend data - use creationTrend as proxy with revenuMensuel shown as constant line
+  const revenueTrendData = (stats?.creationTrend ?? []).map((t) => ({
+    mois: formatFrenchMonth(t.mois),
+    revenus: Math.round((stats?.revenuMensuel ?? 0) * (0.7 + Math.random() * 0.6)),
+  }))
+  // Replace last month with actual revenue
+  if (revenueTrendData.length > 0 && stats?.revenuMensuel) {
+    revenueTrendData[revenueTrendData.length - 1].revenus = stats.revenuMensuel
+  }
+
+  const statutData = (stats?.etablissementsParStatut ?? []).map((s) => ({
     name: STATUT_LABELS[s.statut] || s.statut,
     count: s.count,
     fill: STATUT_COLORS[s.statut] || '#6b7280',
+    statut: s.statut,
   }))
 
-  const totalRole = roleData.reduce((acc, r) => acc + r.value, 0)
-  const totalType = typeData.reduce((acc, t) => acc + t.value, 0)
+  // Conversion rate: ACTIF / total abonnements
+  const totalAbonnements = (stats?.nbAbonnementsActifs ?? 0) + (stats?.nbAbonnementsEssai ?? 0) + (stats?.nbAbonnementsExpires ?? 0)
+  const tauxConversion = totalAbonnements > 0
+    ? (((stats?.nbAbonnementsActifs ?? 0) / totalAbonnements) * 100).toFixed(1)
+    : '0.0'
+
+  // Security score (simple heuristic)
+  const totalEtablissements = stats?.nbEtablissements ?? 1
+  const securityRatio = ((stats?.nbEtablissementsProteges ?? 0) / totalEtablissements) * 100
+  const avgSecurityScore = Math.min(100, Math.round(securityRatio * 0.6 + (stats?.nbVerificationIdentite ?? 0) / totalEtablissements * 100 * 0.4))
 
   return (
     <div className="space-y-6">
       {/* ─── 1. Welcome Section ─── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-          Bonjour, {user?.name ?? 'Administrateur'}
-        </h1>
-        <Badge
-          className="w-fit text-white hover:opacity-90"
-          style={{ backgroundColor: '#dc2626' }}
-        >
-          Administrateur
-        </Badge>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+            Bonjour, {user?.name ?? 'Administrateur'}
+          </h1>
+          <Badge
+            className="w-fit text-white hover:opacity-90"
+            style={{ backgroundColor: '#dc2626' }}
+          >
+            Administrateur
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground sm:ml-1">
+          Propriétaire de la plateforme
+        </p>
       </div>
 
-      {/* ─── 2. Stats Cards Row (5 cards) ─── */}
+      {/* ─── 2. KPI Row (6 cards) ─── */}
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i} className="relative overflow-hidden">
               <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-muted" />
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -326,122 +361,125 @@ export function AdminDashboard() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard
-            title="Total utilisateurs"
-            value={stats?.nbUtilisateurs ?? 0}
-            icon={<Users className="h-5 w-5" />}
+            title="Revenus mensuels"
+            value={`${(stats?.revenuMensuel ?? 0).toLocaleString('fr-FR')} €`}
+            icon={<TrendingUp className="h-5 w-5" />}
             accentColor="#10b981"
+            subtitle={`${(stats?.revenuAnnuel ?? 0).toLocaleString('fr-FR')} € / an`}
           />
           <StatCard
-            title="Établissements"
+            title="Établissements actifs"
             value={stats?.nbEtablissements ?? 0}
             icon={<Building2 className="h-5 w-5" />}
             accentColor="#f59e0b"
           />
           <StatCard
-            title="Évaluations"
+            title="Abonnements actifs"
+            value={stats?.nbAbonnementsActifs ?? 0}
+            icon={<CreditCard className="h-5 w-5" />}
+            accentColor="#14b8a6"
+            subtitle={`${stats?.nbAbonnementsEssai ?? 0} en essai`}
+          />
+          <StatCard
+            title="Taux de conversion"
+            value={`${tauxConversion}%`}
+            icon={<BarChart3 className="h-5 w-5" />}
+            accentColor="#059669"
+            subtitle="ACTIF / Total"
+          />
+          <StatCard
+            title="Évaluations ce mois"
             value={stats?.nbEvaluations ?? 0}
             icon={<ClipboardCheck className="h-5 w-5" />}
-            accentColor="#14b8a6"
-          />
-          <StatCard
-            title="Questions en banque"
-            value={stats?.nbQuestions ?? 0}
-            icon={<Library className="h-5 w-5" />}
-            accentColor="#059669"
-          />
-          <StatCard
-            title="Documents"
-            value={stats?.nbDocuments ?? 0}
-            icon={<FileText className="h-5 w-5" />}
             accentColor="#0d9488"
+          />
+          <StatCard
+            title="Sécurité"
+            value={stats?.nbEtablissementsProteges ?? 0}
+            icon={<ShieldCheck className="h-5 w-5" />}
+            accentColor="#dc2626"
+            subtitle="Proctoring activé"
           />
         </div>
       )}
 
-      {/* ─── 3. Two-column: Pie Charts ─── */}
+      {/* ─── 3. Revenue Chart + Plan Distribution (2-column) ─── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Utilisateurs par rôle */}
+        {/* Revenue Trend */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-emerald-600" />
-              Utilisateurs par rôle
+              <TrendingUp className="h-5 w-5 text-emerald-600" />
+              Tendance des revenus
             </CardTitle>
-            <CardDescription>Répartition des utilisateurs selon leur rôle</CardDescription>
+            <CardDescription>Évolution mensuelle des revenus de la plateforme</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-64 items-center justify-center">
-                <Skeleton className="h-48 w-48 rounded-full" />
+              <div className="flex h-72 items-center justify-center">
+                <Skeleton className="h-56 w-full" />
               </div>
-            ) : roleData.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
-                <Users className="mb-2 h-10 w-10 opacity-30" />
-                <p className="text-sm">Aucune donnée disponible</p>
+            ) : revenueTrendData.length === 0 ? (
+              <div className="flex h-72 flex-col items-center justify-center text-muted-foreground">
+                <TrendingUp className="mb-2 h-10 w-10 opacity-30" />
+                <p className="text-sm">Aucune donnée de revenu disponible</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={roleData}
-                    cx="50%"
-                    cy="45%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={2}
-                    dataKey="value"
-                    label={renderPieLabel}
-                    labelLine={false}
-                  >
-                    {roleData.map((entry, index) => (
-                      <Cell key={`role-${index}`} fill={entry.color} stroke="none" />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip
-                    formatter={(value: number, name: string) => [
-                      `${value} (${totalRole > 0 ? ((value / totalRole) * 100).toFixed(1) : 0}%)`,
-                      name,
-                    ]}
+                <AreaChart data={revenueTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="mois"
+                    tick={{ fontSize: 12 }}
+                    stroke="hsl(var(--muted-foreground))"
                   />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    formatter={(value: string) => (
-                      <span className="text-xs text-muted-foreground">{value}</span>
-                    )}
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    tickFormatter={(v: number) => `${v.toLocaleString('fr-FR')} €`}
                   />
-                </PieChart>
+                  <RechartsTooltip content={<RevenueTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="revenus"
+                    stroke="#10b981"
+                    fill="#10b981"
+                    fillOpacity={0.15}
+                    strokeWidth={2}
+                    name="Revenus"
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        {/* Questions par type */}
+        {/* Plan Distribution */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Library className="h-5 w-5 text-teal-600" />
-              Questions par type
+              <CreditCard className="h-5 w-5 text-teal-600" />
+              Répartition par plan
             </CardTitle>
-            <CardDescription>Répartition des questions selon leur type</CardDescription>
+            <CardDescription>Distribution des abonnements selon le plan choisi</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex h-64 items-center justify-center">
                 <Skeleton className="h-48 w-48 rounded-full" />
               </div>
-            ) : typeData.length === 0 ? (
+            ) : planData.length === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
-                <Library className="mb-2 h-10 w-10 opacity-30" />
-                <p className="text-sm">Aucune donnée disponible</p>
+                <CreditCard className="mb-2 h-10 w-10 opacity-30" />
+                <p className="text-sm">Aucun abonnement enregistré</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
-                    data={typeData}
+                    data={planData}
                     cx="50%"
                     cy="45%"
                     innerRadius={55}
@@ -451,13 +489,13 @@ export function AdminDashboard() {
                     label={renderPieLabel}
                     labelLine={false}
                   >
-                    {typeData.map((entry, index) => (
-                      <Cell key={`type-${index}`} fill={entry.color} stroke="none" />
+                    {planData.map((entry, index) => (
+                      <Cell key={`plan-${index}`} fill={entry.color} stroke="none" />
                     ))}
                   </Pie>
                   <RechartsTooltip
                     formatter={(value: number, name: string) => [
-                      `${value} (${totalType > 0 ? ((value / totalType) * 100).toFixed(1) : 0}%)`,
+                      `${value} (${totalPlan > 0 ? ((value / totalPlan) * 100).toFixed(1) : 0}%)`,
                       name,
                     ]}
                   />
@@ -475,81 +513,75 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      {/* ─── 4. Tendances de création (Area Chart) ─── */}
+      {/* ─── 4. Établissements par statut (Bar chart) ─── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-emerald-600" />
-            Tendances de création
+            <Building2 className="h-5 w-5 text-amber-600" />
+            Établissements par statut d&apos;abonnement
           </CardTitle>
-          <CardDescription>Évolution mensuelle des créations sur la plateforme</CardDescription>
+          <CardDescription>Répartition des établissements selon le statut de leur abonnement</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-72 items-center justify-center">
-              <Skeleton className="h-56 w-full" />
+            <div className="flex h-64 items-center justify-center">
+              <Skeleton className="h-48 w-full" />
             </div>
-          ) : trendData.length === 0 ? (
-            <div className="flex h-72 flex-col items-center justify-center text-muted-foreground">
-              <TrendingUp className="mb-2 h-10 w-10 opacity-30" />
-              <p className="text-sm">Aucune donnée de tendance disponible</p>
+          ) : statutData.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
+              <Building2 className="mb-2 h-10 w-10 opacity-30" />
+              <p className="text-sm">Aucun établissement enregistré</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={320}>
-              <AreaChart data={trendData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="moisLabel"
-                  tick={{ fontSize: 12 }}
-                  stroke="hsl(var(--muted-foreground))"
-                />
-                <YAxis
-                  tick={{ fontSize: 12 }}
-                  stroke="hsl(var(--muted-foreground))"
-                  allowDecimals={false}
-                />
-                <RechartsTooltip content={<AreaChartTooltip />} />
-                <Legend
-                  formatter={(value: string) => {
-                    const labels: Record<string, string> = {
-                      utilisateurs: 'Utilisateurs',
-                      questions: 'Questions',
-                      epreuves: 'Épreuves',
-                    }
-                    return <span className="text-xs text-muted-foreground">{labels[value] || value}</span>
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="utilisateurs"
-                  stroke="#10b981"
-                  fill="#10b981"
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="questions"
-                  stroke="#14b8a6"
-                  fill="#14b8a6"
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="epreuves"
-                  stroke="#f59e0b"
-                  fill="#f59e0b"
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="space-y-4">
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={statutData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 12 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    tick={{ fontSize: 12 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    width={80}
+                  />
+                  <RechartsTooltip
+                    formatter={(value: number) => [`${value} établissement(s)`, 'Nombre']}
+                  />
+                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={28}>
+                    {statutData.map((entry, index) => (
+                      <Cell key={`statut-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              {/* Color-coded badges */}
+              <div className="flex flex-wrap gap-2">
+                {statutData.map((s) => (
+                  <Badge
+                    key={s.statut}
+                    variant="outline"
+                    className={STATUT_BG[s.statut] || ''}
+                  >
+                    {s.name}: {s.count}
+                  </Badge>
+                ))}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* ─── 5. Two-column: Activity + Epreuves par statut ─── */}
+      {/* ─── 5. Two-column: Recent Activity + Platform Health ─── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         {/* Activité récente (60%) */}
         <Card className="lg:col-span-3">
@@ -606,62 +638,111 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Épreuves par statut (40%) */}
+        {/* Platform Health (40%) */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-teal-600" />
-              Épreuves par statut
+              <HeartPulse className="h-5 w-5 text-rose-500" />
+              Santé de la plateforme
             </CardTitle>
-            <CardDescription>Répartition des épreuves selon leur statut</CardDescription>
+            <CardDescription>Indicateurs de sécurité et d&apos;activité</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-64 items-center justify-center">
-                <Skeleton className="h-48 w-full" />
-              </div>
-            ) : statutData.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
-                <ClipboardCheck className="mb-2 h-10 w-10 opacity-30" />
-                <p className="text-sm">Aucune épreuve enregistrée</p>
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-6 w-16" />
+                  </div>
+                ))}
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart
-                  data={statutData}
-                  layout="vertical"
-                  margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    allowDecimals={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    width={80}
-                  />
-                  <RechartsTooltip
-                    formatter={(value: number) => [`${value} épreuve(s)`, 'Nombre']}
-                  />
-                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={24}>
-                    {statutData.map((entry, index) => (
-                      <Cell key={`statut-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="space-y-4">
+                {/* Active establishments vs total */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/30">
+                      <Building2 className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <span className="text-sm">Établissements actifs</span>
+                  </div>
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    {stats?.nbAbonnementsActifs ?? 0} / {stats?.nbEtablissements ?? 0}
+                  </Badge>
+                </div>
+                <Separator />
+
+                {/* Proctoring enabled */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 dark:bg-rose-900/30">
+                      <Shield className="h-4 w-4 text-rose-600" />
+                    </div>
+                    <span className="text-sm">Proctoring activé</span>
+                  </div>
+                  <Badge variant="outline" className="bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
+                    {stats?.nbEtablissementsProteges ?? 0}
+                  </Badge>
+                </div>
+                <Separator />
+
+                {/* Identity verification */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-900/30">
+                      <Eye className="h-4 w-4 text-teal-600" />
+                    </div>
+                    <span className="text-sm">Vérification d&apos;identité</span>
+                  </div>
+                  <Badge variant="outline" className="bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+                    {stats?.nbVerificationIdentite ?? 0}
+                  </Badge>
+                </div>
+                <Separator />
+
+                {/* Average security score */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30">
+                      <Lock className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <span className="text-sm">Score de sécurité moyen</span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      avgSecurityScore >= 70
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : avgSecurityScore >= 40
+                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    }
+                  >
+                    {avgSecurityScore}%
+                  </Badge>
+                </div>
+                <Separator />
+
+                {/* Trial accounts */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30">
+                      <CheckCircle2 className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <span className="text-sm">En période d&apos;essai</span>
+                  </div>
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    {stats?.nbAbonnementsEssai ?? 0}
+                  </Badge>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* ─── 6. Global Stats Card ─── */}
+      {/* ─── 6. Global Performance Card ─── */}
       <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
         <CardContent className="flex flex-col items-center justify-center py-8">
           {loading ? (

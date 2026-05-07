@@ -6,37 +6,75 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const filiereId = searchParams.get('filiereId') || ''
     const filiereNom = searchParams.get('filiere') || ''
+    const responsableId = searchParams.get('responsableId') || ''
 
-    // ─── Resolve filiereId from filiere name if needed ───
-    let resolvedFiliereId = filiereId
-    if (!resolvedFiliereId && filiereNom) {
+    // ─── Resolve filiere IDs ───
+    // A responsable can manage multiple filieres via Filiere.responsableId
+    let resolvedFiliereIds: string[] = []
+
+    if (filiereId) {
+      // Specific filiereId provided — verify it exists
+      const filiere = await db.filiere.findUnique({
+        where: { id: filiereId },
+        select: { id: true },
+      })
+      if (filiere) {
+        resolvedFiliereIds = [filiereId]
+      }
+      // If filiere doesn't exist, treat as no data (empty)
+    } else if (filiereNom) {
+      // Resolve from filiere name
       const found = await db.filiere.findFirst({
         where: { nom: filiereNom },
         select: { id: true },
       })
-      resolvedFiliereId = found?.id || ''
+      if (found) {
+        resolvedFiliereIds = [found.id]
+      }
     }
+
+    // If responsableId is provided, find all filieres managed by this responsable
+    if (responsableId) {
+      const filieresDuResponsable = await db.filiere.findMany({
+        where: { responsableId },
+        select: { id: true },
+      })
+      const responsableFiliereIds = filieresDuResponsable.map((f) => f.id)
+
+      if (resolvedFiliereIds.length > 0) {
+        // Intersection: only keep filiereIds that belong to this responsable
+        resolvedFiliereIds = resolvedFiliereIds.filter((id) =>
+          responsableFiliereIds.includes(id)
+        )
+      } else {
+        // No specific filiereId — use all of the responsable's filieres
+        resolvedFiliereIds = responsableFiliereIds
+      }
+    }
+
+    const hasFiliereFilter = resolvedFiliereIds.length > 0
 
     // ─── Basic counts ───
     const whereEtudiant: Record<string, unknown> = { role: 'ETUDIANT' }
-    if (resolvedFiliereId) whereEtudiant.filiereId = resolvedFiliereId
+    if (hasFiliereFilter) whereEtudiant.filiereId = { in: resolvedFiliereIds }
 
     const whereEnseignant: Record<string, unknown> = { role: 'ENSEIGNANT' }
-    // Get enseignants assigned to this filiere
-    if (resolvedFiliereId) {
+    // Get enseignants assigned to these filieres
+    if (hasFiliereFilter) {
       const assignedEnseignantIds = await db.enseignantFiliere.findMany({
-        where: { filiereId: resolvedFiliereId },
+        where: { filiereId: { in: resolvedFiliereIds } },
         select: { enseignantId: true },
       })
-      whereEnseignant.id = { in: assignedEnseignantIds.map((a) => a.enseignantId) }
+      const enseignantIdList = [...new Set(assignedEnseignantIds.map((a) => a.enseignantId))]
+      whereEnseignant.id = { in: enseignantIdList }
     }
 
     const [nbEtudiants, nbEnseignants, nbEvaluations] = await Promise.all([
       db.user.count({ where: whereEtudiant }),
       db.user.count({ where: whereEnseignant }),
       db.epreuve.count({
-        where: resolvedFiliereId
-          ? { sessions: { some: { etudiant: { filiereId: resolvedFiliereId } } } }
+        where: hasFiliereFilter
+          ? { sessions: { some: { etudiant: { filiereId: { in: resolvedFiliereIds } } } } }
           : {},
       }),
     ])
@@ -46,8 +84,8 @@ export async function GET(request: NextRequest) {
       statut: { in: ['SOUMISE', 'CORRIGEE'] },
       score: { not: null },
     }
-    if (resolvedFiliereId) {
-      sessionsWhere.etudiant = { filiereId: resolvedFiliereId }
+    if (hasFiliereFilter) {
+      sessionsWhere.etudiant = { filiereId: { in: resolvedFiliereIds } }
     }
 
     const allSessions = await db.sessionPassation.findMany({
@@ -80,8 +118,8 @@ export async function GET(request: NextRequest) {
     const epreuvesAvecResultats = await db.epreuve.findMany({
       where: {
         statut: { in: ['TERMINEE', 'CLOTUREE'] },
-        ...(resolvedFiliereId
-          ? { sessions: { some: { etudiant: { filiereId: resolvedFiliereId } } } }
+        ...(hasFiliereFilter
+          ? { sessions: { some: { etudiant: { filiereId: { in: resolvedFiliereIds } } } } }
           : {}),
       },
       orderBy: { dateDebut: 'desc' },
@@ -91,7 +129,7 @@ export async function GET(request: NextRequest) {
         sessions: {
           where: {
             score: { not: null },
-            ...(resolvedFiliereId ? { etudiant: { filiereId: resolvedFiliereId } } : {}),
+            ...(hasFiliereFilter ? { etudiant: { filiereId: { in: resolvedFiliereIds } } } : {}),
           },
           select: { score: true },
         },
@@ -112,9 +150,14 @@ export async function GET(request: NextRequest) {
     })
 
     // ─── Students per filiere ───
+    // Filter by resolved filiere IDs when available
     const etudiantsParFiliereRaw = await db.user.groupBy({
       by: ['filiereId'],
-      where: { role: 'ETUDIANT', filiereId: { not: null } },
+      where: {
+        role: 'ETUDIANT',
+        filiereId: { not: null },
+        ...(hasFiliereFilter ? { filiereId: { in: resolvedFiliereIds } } : {}),
+      },
       _count: { filiereId: true },
     })
 
@@ -148,7 +191,7 @@ export async function GET(request: NextRequest) {
         statut: { in: ['SOUMISE', 'CORRIGEE'] },
         score: { not: null },
         dateFin: { not: null, gte: sixMonthsAgo },
-        ...(resolvedFiliereId ? { etudiant: { filiereId: resolvedFiliereId } } : {}),
+        ...(hasFiliereFilter ? { etudiant: { filiereId: { in: resolvedFiliereIds } } } : {}),
       },
       select: { score: true, dateFin: true },
     })
@@ -171,15 +214,38 @@ export async function GET(request: NextRequest) {
       }))
 
     // ─── Top teachers ───
+    // Filter by enseignants assigned to the responsable's filieres
+    const topEnseignantsWhere: Record<string, unknown> = { role: 'ENSEIGNANT' }
+    if (hasFiliereFilter) {
+      const assignedIds = await db.enseignantFiliere.findMany({
+        where: { filiereId: { in: resolvedFiliereIds } },
+        select: { enseignantId: true },
+      })
+      const uniqueIds = [...new Set(assignedIds.map((a) => a.enseignantId))]
+      topEnseignantsWhere.id = { in: uniqueIds }
+    }
+
     const enseignants = await db.user.findMany({
-      where: { role: 'ENSEIGNANT' },
+      where: topEnseignantsWhere,
       select: {
         id: true,
         name: true,
         epreuves: {
+          where: hasFiliereFilter
+            ? {
+                sessions: {
+                  some: { etudiant: { filiereId: { in: resolvedFiliereIds } } },
+                },
+              }
+            : {},
           include: {
             sessions: {
-              where: { score: { not: null } },
+              where: {
+                score: { not: null },
+                ...(hasFiliereFilter
+                  ? { etudiant: { filiereId: { in: resolvedFiliereIds } } }
+                  : {}),
+              },
               select: { score: true },
             },
           },
@@ -233,9 +299,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Pending corrections
+    // Pending corrections — filter by filiere
     const correctionsEnAttente = await db.sessionPassation.count({
-      where: { statut: 'SOUMISE' },
+      where: {
+        statut: 'SOUMISE',
+        ...(hasFiliereFilter ? { etudiant: { filiereId: { in: resolvedFiliereIds } } } : {}),
+      },
     })
     if (correctionsEnAttente > 0) {
       alertes.push({

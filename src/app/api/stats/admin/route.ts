@@ -22,12 +22,7 @@ export async function GET() {
     }))
 
     // ─── Unique establishments ───
-    const etablissements = await db.user.findMany({
-      where: { etablissement: { not: null } },
-      select: { etablissement: true },
-      distinct: ['etablissement'],
-    })
-    const nbEtablissements = etablissements.length
+    const nbEtablissements = await db.etablissement.count()
 
     // ─── Epreuves by status ───
     const epreuvesByStatusRaw = await db.epreuve.groupBy({
@@ -163,6 +158,54 @@ export async function GET() {
         ? Math.round((allScores.filter((s) => s >= 10).length / allScores.length) * 100)
         : 0
 
+    // ─── SaaS Metrics ───
+    const [nbAbonnementsActifs, nbAbonnementsEssai, nbAbonnementsExpires, revenuMensuel, nbEtablissementsProteges] = await Promise.all([
+      db.abonnement.count({ where: { statut: 'ACTIF' } }),
+      db.abonnement.count({ where: { statut: 'ESSAI' } }),
+      db.abonnement.count({ where: { statut: { in: ['EXPIRE', 'SUSPENDU'] } } }),
+      db.abonnement.aggregate({ where: { statut: 'ACTIF' }, _sum: { montantPaye: true } }),
+      db.securitySettings.count({ where: { proctoringActif: true } }),
+    ])
+
+    // ─── Revenue ───
+    const revenuMensuelTotal = revenuMensuel._sum.montantPaye || 0
+
+    // ─── Annual revenue: sum of plan.prixAnnuel for ACTIF annual abonnements ───
+    const abonnementsActifsAnnuel = await db.abonnement.findMany({
+      where: { statut: 'ACTIF' },
+      include: { plan: { select: { prixAnnuel: true } } },
+    })
+    const revenuAnnuel = abonnementsActifsAnnuel.reduce((sum, a) => {
+      return sum + (a.plan.prixAnnuel || 0)
+    }, 0)
+
+    // ─── Plan distribution ───
+    const abonnementsParPlan = await db.abonnement.groupBy({
+      by: ['planId'],
+      _count: { planId: true },
+    })
+    const plans = await db.plan.findMany({ select: { id: true, nom: true } })
+    const planNameMap = Object.fromEntries(plans.map(p => [p.id, p.nom]))
+    const repartitionPlans = abonnementsParPlan.map(a => ({
+      plan: planNameMap[a.planId] || 'Inconnu',
+      count: a._count.planId,
+    }))
+
+    // ─── Establishments by subscription status ───
+    const abonnementsParStatut = await db.abonnement.groupBy({
+      by: ['statut'],
+      _count: { statut: true },
+    })
+    const etablissementsParStatut = abonnementsParStatut.map(a => ({
+      statut: a.statut,
+      count: a._count.statut,
+    }))
+
+    // ─── Identity verification count ───
+    const nbVerificationIdentite = await db.securitySettings.count({
+      where: { verificationIdentite: true },
+    })
+
     return NextResponse.json({
       nbUtilisateurs,
       nbEtablissements,
@@ -175,6 +218,16 @@ export async function GET() {
       recentActivities,
       questionsParType,
       tauxReussiteGlobal,
+      // New SaaS metrics
+      nbAbonnementsActifs,
+      nbAbonnementsEssai,
+      nbAbonnementsExpires,
+      revenuMensuel: revenuMensuelTotal,
+      revenuAnnuel,
+      repartitionPlans,
+      etablissementsParStatut,
+      nbEtablissementsProteges,
+      nbVerificationIdentite,
     })
   } catch (error) {
     console.error('Stats admin error:', error)

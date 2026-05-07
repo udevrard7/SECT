@@ -22,6 +22,8 @@ export type PageId =
   | 'mes-epreuves'
   | 'mes-resultats'
   | 'passation'
+  | 'abonnements'
+  | 'securite'
 
 interface NavigationState {
   currentPage: PageId
@@ -56,6 +58,8 @@ export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { id: 'etablissements', label: 'Établissements', icon: 'Building2' },
     { id: 'configuration', label: 'Configuration', icon: 'Settings' },
     { id: 'logs', label: 'Journaux d\'audit', icon: 'FileText' },
+    { id: 'abonnements', label: 'Abonnements', icon: 'CreditCard' },
+    { id: 'securite', label: 'Sécurité', icon: 'Shield' },
   ],
   RESPONSABLE: [
     { id: 'dashboard', label: 'Tableau de bord', icon: 'LayoutDashboard' },

@@ -147,6 +147,173 @@ export async function POST() {
       ],
     })
 
+    // ─── Create Default Plans ───
+    const planGratuit = await db.plan.create({
+      data: {
+        nom: 'Gratuit',
+        type: 'GRATUIT',
+        prixMensuel: 0,
+        prixAnnuel: 0,
+        nbEtablissementsMax: 1,
+        nbFilieresMax: 3,
+        nbEnseignantsMax: 10,
+        nbEtudiantsMax: 50,
+        nbQuestionsMax: 100,
+        nbEvaluationsMois: 5,
+        iaGeneration: false,
+        iaCorrection: false,
+        proctoring: false,
+        exportPDF: true,
+        support: 'email',
+        description: 'Découvrez SECT avec ce plan gratuit',
+        actif: true,
+      },
+    })
+
+    const planEssentiel = await db.plan.create({
+      data: {
+        nom: 'Essentiel',
+        type: 'ESSENTIEL',
+        prixMensuel: 49,
+        prixAnnuel: 470,
+        nbEtablissementsMax: 1,
+        nbFilieresMax: 10,
+        nbEnseignantsMax: 50,
+        nbEtudiantsMax: 500,
+        nbQuestionsMax: 500,
+        nbEvaluationsMois: 50,
+        iaGeneration: true,
+        iaCorrection: false,
+        proctoring: false,
+        exportPDF: true,
+        support: 'email',
+        description: 'Idéal pour les petites structures',
+        actif: true,
+      },
+    })
+
+    const planProfessionnel = await db.plan.create({
+      data: {
+        nom: 'Professionnel',
+        type: 'PROFESSIONNEL',
+        prixMensuel: 149,
+        prixAnnuel: 1430,
+        nbEtablissementsMax: 5,
+        nbFilieresMax: 50,
+        nbEnseignantsMax: 200,
+        nbEtudiantsMax: 2000,
+        nbQuestionsMax: 5000,
+        nbEvaluationsMois: 500,
+        iaGeneration: true,
+        iaCorrection: true,
+        proctoring: true,
+        exportPDF: true,
+        support: 'chat',
+        description: 'Pour les établissements exigeants',
+        actif: true,
+      },
+    })
+
+    const planEntreprise = await db.plan.create({
+      data: {
+        nom: 'Entreprise',
+        type: 'ENTREPRISE',
+        prixMensuel: 399,
+        prixAnnuel: 3830,
+        nbEtablissementsMax: 50,
+        nbFilieresMax: 200,
+        nbEnseignantsMax: 1000,
+        nbEtudiantsMax: 10000,
+        nbQuestionsMax: 50000,
+        nbEvaluationsMois: 5000,
+        iaGeneration: true,
+        iaCorrection: true,
+        proctoring: true,
+        exportPDF: true,
+        support: 'telephone',
+        description: 'Solution complète pour les grands groupes',
+        actif: true,
+      },
+    })
+
+    // ─── Create Abonnements for Demo Establishments ───
+    const now = new Date()
+    const sixMonthsAgo = new Date(now)
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+    const sixMonthsFromNow = new Date(now)
+    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6)
+    const oneYearAgo = new Date(now)
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+    const fourteenDaysFromNow = new Date(now)
+    fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14)
+
+    // etab1 (Université SECT) → Plan Professionnel, ACTIF
+    await db.abonnement.create({
+      data: {
+        etablissementId: etab1.id,
+        planId: planProfessionnel.id,
+        statut: 'ACTIF',
+        dateDebut: sixMonthsAgo,
+        dateFin: sixMonthsFromNow,
+        montantPaye: 1430,
+        modePaiement: 'virement',
+        renouvellementAuto: true,
+      },
+    })
+
+    // etab2 (École Polytechnique SECT) → Plan Essentiel, ESSAI
+    await db.abonnement.create({
+      data: {
+        etablissementId: etab2.id,
+        planId: planEssentiel.id,
+        statut: 'ESSAI',
+        dateDebut: now,
+        dateFin: fourteenDaysFromNow,
+        periodeEssaiJours: 14,
+        montantPaye: 0,
+        renouvellementAuto: true,
+      },
+    })
+
+    // etab3 (Institut SECT) → Plan Gratuit, ACTIF
+    await db.abonnement.create({
+      data: {
+        etablissementId: etab3.id,
+        planId: planGratuit.id,
+        statut: 'ACTIF',
+        dateDebut: oneYearAgo,
+        dateFin: null,
+        montantPaye: 0,
+        renouvellementAuto: false,
+      },
+    })
+
+    // ─── Create Security Settings for Demo Establishments ───
+    // etab1: proctoring + identity verification enabled
+    await db.securitySettings.create({
+      data: {
+        etablissementId: etab1.id,
+        proctoringActif: true,
+        verificationIdentite: true,
+      },
+    })
+
+    // etab2: all defaults (proctoring off)
+    await db.securitySettings.create({
+      data: {
+        etablissementId: etab2.id,
+        proctoringActif: false,
+      },
+    })
+
+    // etab3: all defaults (proctoring off)
+    await db.securitySettings.create({
+      data: {
+        etablissementId: etab3.id,
+        proctoringActif: false,
+      },
+    })
+
     return NextResponse.json({
       message: 'Données de démonstration créées avec succès',
       users: users.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role })),
