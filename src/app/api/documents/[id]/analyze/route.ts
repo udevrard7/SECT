@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { readFile } from 'fs/promises'
-import path from 'path'
-import { extractTextFromFile, getMimeType } from '@/lib/text-extraction'
 
 export async function POST(
   request: NextRequest,
@@ -22,41 +19,21 @@ export async function POST(
       )
     }
 
+    // Get extracted text from database (Vercel-compatible: no filesystem reads)
+    const extractedText = document.contenuTexte
+
+    if (!extractedText || extractedText.length < 50) {
+      return NextResponse.json(
+        { error: 'Le document ne contient pas assez de texte exploitable. Veuillez le téléverser à nouveau.' },
+        { status: 400 }
+      )
+    }
+
     // Update status to processing
     await db.document.update({
       where: { id },
       data: { statutAnalyse: 'EN_COURS' },
     })
-
-    // Read and extract text from file
-    const filePath = path.join(process.cwd(), document.cheminStockage)
-    let extractedText = ''
-
-    try {
-      const extractionResult = await extractTextFromFile(filePath, document.typeMime || getMimeType(document.nomFichier))
-      extractedText = extractionResult.text
-    } catch (error) {
-      console.error('Text extraction error:', error)
-      await db.document.update({
-        where: { id },
-        data: { statutAnalyse: 'ERREUR' },
-      })
-      return NextResponse.json(
-        { error: 'Impossible d\'extraire le texte du document' },
-        { status: 400 }
-      )
-    }
-
-    if (!extractedText || extractedText.length < 50) {
-      await db.document.update({
-        where: { id },
-        data: { statutAnalyse: 'ERREUR' },
-      })
-      return NextResponse.json(
-        { error: 'Le document ne contient pas assez de texte exploitable' },
-        { status: 400 }
-      )
-    }
 
     // Analyze with AI
     const ZAI = (await import('z-ai-web-dev-sdk')).default

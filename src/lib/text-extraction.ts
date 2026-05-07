@@ -1,4 +1,3 @@
-import fs from 'fs'
 import path from 'path'
 import mammoth from 'mammoth'
 
@@ -9,14 +8,13 @@ export interface ExtractionResult {
 }
 
 /**
- * Extract text from a file based on its MIME type
+ * Extract text from a Buffer based on its MIME type
+ * Compatible with Vercel serverless (no filesystem required)
  */
-export async function extractTextFromFile(
-  filePath: string,
+export async function extractTextFromBuffer(
+  buffer: Buffer,
   mimeType: string
 ): Promise<ExtractionResult> {
-  const buffer = fs.readFileSync(filePath)
-
   switch (mimeType) {
     case 'application/pdf':
       return extractFromPDF(buffer)
@@ -35,6 +33,19 @@ export async function extractTextFromFile(
     default:
       throw new Error(`Format non supporté: ${mimeType}`)
   }
+}
+
+/**
+ * Extract text from a file path (legacy - requires filesystem)
+ * @deprecated Use extractTextFromBuffer for Vercel compatibility
+ */
+export async function extractTextFromFile(
+  filePath: string,
+  mimeType: string
+): Promise<ExtractionResult> {
+  const { readFileSync } = await import('fs')
+  const buffer = readFileSync(filePath)
+  return extractTextFromBuffer(buffer, mimeType)
 }
 
 async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {

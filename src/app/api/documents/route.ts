@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { writeFile, mkdir } from 'fs/promises'
-import path from 'path'
-import { extractTextFromFile, getMimeType, isSupportedFileType, isWithinSizeLimit } from '@/lib/text-extraction'
-
-// Directory to store uploaded files
-const UPLOAD_DIR = path.join(process.cwd(), 'upload', 'documents')
+import { extractTextFromBuffer, getMimeType, isSupportedFileType, isWithinSizeLimit } from '@/lib/text-extraction'
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,29 +32,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Ensure upload directory exists
-    await mkdir(UPLOAD_DIR, { recursive: true })
-
-    // Generate unique filename
-    const timestamp = Date.now()
-    const ext = path.extname(file.name)
-    const baseName = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_')
-    const uniqueFileName = `${baseName}_${timestamp}${ext}`
-    const filePath = path.join(UPLOAD_DIR, uniqueFileName)
-
-    // Write file to disk
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
-
     // Get MIME type
     const mimeType = getMimeType(file.name)
 
-    // Extract text from file
+    // Read file as buffer for text extraction (Vercel-compatible: no filesystem writes)
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    // Extract text from buffer directly
     let extractedText = ''
     let wordCount = 0
     try {
-      const extractionResult = await extractTextFromFile(filePath, mimeType)
+      const extractionResult = await extractTextFromBuffer(buffer, mimeType)
       extractedText = extractionResult.text
       wordCount = extractionResult.wordCount
     } catch (extractionError) {
@@ -67,18 +51,19 @@ export async function POST(request: NextRequest) {
       // Continue without extracted text - analysis will handle it
     }
 
-    // Save document to database
-    const relativePath = path.relative(process.cwd(), filePath)
+    // Use a storage path reference (no actual file stored on disk)
+    const storagePath = `documents/${userId}/${Date.now()}_${file.name}`
+
+    // Save document to database WITH extracted text
     const document = await db.document.create({
       data: {
         ownerId: userId,
         nomFichier: file.name,
-        cheminStockage: relativePath,
+        cheminStockage: storagePath,
         tailleFichier: file.size,
         typeMime: mimeType,
         statutAnalyse: 'EN_ATTENTE',
-        themesDetectes: extractedText ? undefined : undefined,
-        volumeEstime: undefined,
+        contenuTexte: extractedText || null,
       },
     })
 

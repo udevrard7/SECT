@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { readFile } from 'fs/promises'
-import path from 'path'
-import { extractTextFromFile, getMimeType } from '@/lib/text-extraction'
 
 interface GenerateRequest {
   documentId: string
@@ -51,24 +48,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Extract text from document
-    const filePath = path.join(process.cwd(), document.cheminStockage)
-    let extractedText = ''
-
-    try {
-      const mimeType = document.typeMime || getMimeType(document.nomFichier)
-      const result = await extractTextFromFile(filePath, mimeType)
-      extractedText = result.text
-    } catch {
-      return NextResponse.json(
-        { error: 'Impossible d\'extraire le texte du document' },
-        { status: 400 }
-      )
-    }
+    // Get extracted text from database (Vercel-compatible: no filesystem reads)
+    const extractedText = document.contenuTexte
 
     if (!extractedText || extractedText.length < 100) {
       return NextResponse.json(
-        { error: 'Le document ne contient pas assez de texte pour générer des questions' },
+        { error: 'Le document ne contient pas assez de texte pour générer des questions. Veuillez le téléverser à nouveau.' },
         { status: 400 }
       )
     }

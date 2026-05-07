@@ -83,6 +83,7 @@ model Document {
   themesDetectes  String?        // JSON array of detected themes
   conceptsCles    String?        // JSON array of key concepts
   volumeEstime    String?        // JSON: estimated question counts per type
+  contenuTexte    String?        // Full extracted text (for Vercel serverless - no filesystem)
   dateUpload      DateTime       @default(now())
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

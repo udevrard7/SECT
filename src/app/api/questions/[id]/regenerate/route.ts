@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { readFile } from 'fs/promises'
-import path from 'path'
-import { extractTextFromFile, getMimeType } from '@/lib/text-extraction'
 
 export async function POST(
   request: NextRequest,
@@ -18,7 +15,7 @@ export async function POST(
       where: { id },
       include: {
         document: {
-          select: { id: true, nomFichier: true, cheminStockage: true, typeMime: true },
+          select: { id: true, nomFichier: true, cheminStockage: true, typeMime: true, contenuTexte: true },
         },
       },
     })
@@ -30,17 +27,10 @@ export async function POST(
       )
     }
 
-    // Get document text for context
+    // Get document text from database (Vercel-compatible: no filesystem reads)
     let contextText = ''
-    if (originalQuestion.document) {
-      try {
-        const filePath = path.join(process.cwd(), originalQuestion.document.cheminStockage)
-        const mimeType = originalQuestion.document.typeMime || getMimeType(originalQuestion.document.nomFichier)
-        const result = await extractTextFromFile(filePath, mimeType)
-        contextText = result.text.slice(0, 8000)
-      } catch {
-        // Continue without context
-      }
+    if (originalQuestion.document?.contenuTexte) {
+      contextText = originalQuestion.document.contenuTexte.slice(0, 8000)
     }
 
     // Delete the old question
