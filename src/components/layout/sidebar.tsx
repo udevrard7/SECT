@@ -97,9 +97,9 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
           <img
-            src="/logo.png"
+            src="/logo.svg"
             alt="SECT"
-            className="h-9 w-9 shrink-0 rounded-lg object-cover"
+            className="h-9 w-9 shrink-0 rounded-lg"
           />
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-lg font-bold tracking-tight">SECT</span>

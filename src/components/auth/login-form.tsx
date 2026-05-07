@@ -99,9 +99,9 @@ export function LoginForm() {
         >
           <div className="flex items-center justify-center gap-3 mb-3">
             <img
-              src="/logo.png"
+              src="/logo.svg"
               alt="SECT"
-              className="w-14 h-14 rounded-xl shadow-lg object-cover"
+              className="w-14 h-14 rounded-xl shadow-lg"
             />
             <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-emerald-700 to-teal-600 dark:from-emerald-300 dark:to-teal-400 bg-clip-text text-transparent">
               SECT
