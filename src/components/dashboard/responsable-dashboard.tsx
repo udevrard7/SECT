@@ -322,8 +322,8 @@ export function ResponsableDashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const url = user?.filiere
-        ? `/api/stats/responsable?filiere=${encodeURIComponent(user.filiere)}`
+      const url = user?.filiere?.nom
+        ? `/api/stats/responsable?filiere=${encodeURIComponent(user.filiere.nom)}`
         : '/api/stats/responsable'
       const res = await fetch(url)
       if (!res.ok) throw new Error('Erreur réseau')
@@ -334,7 +334,7 @@ export function ResponsableDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [user?.filiere])
+  }, [user?.filiere?.nom])
 
   useEffect(() => {
     fetchData()

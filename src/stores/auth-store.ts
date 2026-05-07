@@ -8,9 +8,13 @@ export interface AuthUser {
   email: string
   name: string
   role: UserRole
-  etablissement?: string
-  filiere?: string
+  etablissementId?: string
+  filiereId?: string
+  etablissement?: { id: string; nom: string }
+  filiere?: { id: string; nom: string }
   image?: string
+  actif?: boolean
+  derniereConnexion?: string
 }
 
 interface AuthState {

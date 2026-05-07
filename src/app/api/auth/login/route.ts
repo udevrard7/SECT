@@ -33,11 +33,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if user is active
+    if (!user.actif) {
+      return NextResponse.json(
+        { error: 'Votre compte a été désactivé. Contactez un administrateur.' },
+        { status: 403 }
+      )
+    }
+
+    // Update derniereConnexion
+    await db.user.update({
+      where: { id: user.id },
+      data: { derniereConnexion: new Date() },
+    })
+
+    // Create audit log for login
+    const adresseIp = request.headers.get('x-forwarded-for') ||
+      request.headers.get('x-real-ip') ||
+      'unknown'
+
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        userEmail: user.email,
+        action: 'LOGIN',
+        entite: 'User',
+        entiteId: user.id,
+        details: JSON.stringify({ name: user.name, role: user.role }),
+        adresseIp,
+      },
+    })
+
     // Return user data (without password)
     const { password: _, ...userWithoutPassword } = user
 
     return NextResponse.json({
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        derniereConnexion: new Date(),
+      },
       message: 'Connexion réussie',
     })
   } catch (error) {

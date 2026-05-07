@@ -54,20 +54,78 @@ enum StatutSession {
 
 // ─── Utilisateur ───
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  name           String
-  password       String
-  role           Role     @default(ETUDIANT)
-  etablissement  String?
-  filiere        String?
-  image          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String          @id @default(cuid())
+  email              String          @unique
+  name               String
+  password           String
+  role               Role            @default(ETUDIANT)
+  etablissementId    String?
+  etablissement      Etablissement?  @relation(fields: [etablissementId], references: [id])
+  filiereId          String?
+  filiere            Filiere?        @relation("UserFiliere", fields: [filiereId], references: [id])
+  image              String?
+  actif              Boolean         @default(true)
+  derniereConnexion  DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
-  documents      Document[]
-  epreuves       Epreuve[]
-  sessions       SessionPassation[]
+  documents          Document[]
+  epreuves           Epreuve[]
+  sessions           SessionPassation[]
+  filieresResponsable Filiere[]     @relation("FiliereResponsable")
+}
+
+// ─── Établissement ───
+model Etablissement {
+  id        String   @id @default(cuid())
+  nom       String   @unique
+  type      String?  // Université, École, Institut, etc.
+  ville     String?
+  pays      String?  @default("France")
+  adresse   String?
+  telephone String?
+  email     String?
+  siteWeb   String?
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filieres  Filiere[]
+  users     User[]
+}
+
+// ─── Filière ───
+model Filiere {
+  id               String         @id @default(cuid())
+  nom              String
+  code             String?        // e.g. "L3-INFO"
+  niveau           String?        // L1, L2, L3, M1, M2
+  etablissementId  String
+  etablissement    Etablissement  @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  responsableId    String?        // User ID of the responsible
+  responsable      User?          @relation("FiliereResponsable", fields: [responsableId], references: [id])
+  description      String?
+  nbEtudiants      Int?
+  actif            Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  etudiants        User[]         @relation("UserFiliere")
+
+  @@unique([nom, etablissementId])
+}
+
+// ─── Journal d'audit ───
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userEmail String?
+  action    String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  entite    String   // User, Etablissement, Filiere, etc.
+  entiteId  String?
+  details   String?  // JSON string with change details
+  adresseIp String?
+  createdAt DateTime @default(now())
 }
 
 // ─── Document source ───

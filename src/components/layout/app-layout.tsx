@@ -23,6 +23,10 @@ import { PassationPage } from '@/components/passation/passation-page'
 import { ResultatsPage } from '@/components/epreuves/resultats-page'
 import { MesResultatsPage } from '@/components/passation/mes-resultats-page'
 import { CorrectionPage } from '@/components/correction/correction-page'
+import { UtilisateursPage } from '@/components/utilisateurs/utilisateurs-page'
+import { EtablissementsPage } from '@/components/etablissements/etablissements-page'
+import { ConfigurationPage } from '@/components/configuration/configuration-page'
+import { LogsPage } from '@/components/logs/logs-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -151,6 +155,26 @@ function PageContent() {
   // Mes résultats page (student)
   if (currentPage === 'mes-resultats') {
     return <MesResultatsPage />
+  }
+
+  // Admin: Utilisateurs page
+  if (currentPage === 'utilisateurs') {
+    return <UtilisateursPage />
+  }
+
+  // Admin: Etablissements page
+  if (currentPage === 'etablissements') {
+    return <EtablissementsPage />
+  }
+
+  // Admin: Configuration page
+  if (currentPage === 'configuration') {
+    return <ConfigurationPage />
+  }
+
+  // Admin: Logs page
+  if (currentPage === 'logs') {
+    return <LogsPage />
   }
 
   // All other pages: placeholder
