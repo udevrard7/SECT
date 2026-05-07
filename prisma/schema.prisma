@@ -74,6 +74,7 @@ model User {
   sessions           SessionPassation[]
   filieresResponsable Filiere[]     @relation("FiliereResponsable")
   alertes            Alerte[]
+  enseignantFilieres EnseignantFiliere[]
 }
 
 // ─── Établissement ───
@@ -113,8 +114,23 @@ model Filiere {
 
   etudiants        User[]         @relation("UserFiliere")
   alertes          Alerte[]
+  enseignantFilieres EnseignantFiliere[]
 
   @@unique([nom, etablissementId])
+}
+
+// ─── Enseignant-Filière (affectation des niveaux) ───
+model EnseignantFiliere {
+  id           String   @id @default(cuid())
+  enseignantId String
+  enseignant   User     @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  filiereId    String
+  filiere      Filiere  @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  niveau       String   // L1, L2, L3, M1, M2
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([enseignantId, filiereId, niveau])
 }
 
 // ─── Journal d'audit ───

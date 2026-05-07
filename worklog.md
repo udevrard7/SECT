@@ -1,4 +1,51 @@
 ---
+Task ID: 4
+Agent: Responsable Étudiants Page Agent
+Task: Create the Responsable Étudiants management page
+
+Work Log:
+- Created `/src/components/responsable/etudiants-page.tsx` — full-featured student management component (~680 lines)
+- Implemented header with "Gestion des Étudiants" title + subtitle + action buttons (Add, Import CSV, Download Template)
+- Implemented stats bar with 4 cards: total students, active students, with filière assigned, recent imports (7 days)
+- Implemented search and filter toolbar: search by name/email, filter by filière (populated from responsable's filières), filter by status (actif/inactif)
+- Implemented student card grid (responsive: 1 col mobile, 2 sm, 3 lg) with each card showing:
+  - Avatar with initials, name, email
+  - Filière badge (emerald) or "Sans filière" badge (amber outline)
+  - Status badge (actif=teal, inactif=gray)
+  - Creation date
+  - Actions: Edit, Toggle active/inactive, Remove from filière, View detail
+- Implemented Add Individual Student Dialog:
+  - Name, Email, auto-generated password with show/hide toggle and regenerate button
+  - Filière selector (populated from responsable's filières)
+  - Établissement auto-filled from current user's profile
+  - Submit: POST /api/users with role=ETUDIANT
+- Implemented Import CSV Dialog:
+  - File upload accepting .csv with visual drop zone
+  - Client-side CSV parsing (parseCSV function) with header detection
+  - Preview table showing parsed data before import
+  - Filière selector for all imported students
+  - Import button with loading state → POST /api/users/import
+  - After import: results display (imported count, errors list) with color-coded summary
+  - Download button for generated passwords CSV
+  - Download CSV template button
+- Implemented Edit Student Dialog:
+  - Name, Email, Filière selector, Active toggle (custom checkbox)
+  - Submit: PATCH /api/users/[id]
+- Implemented Remove from Filiere Confirmation (AlertDialog)
+- Implemented Detail View Dialog:
+  - Large avatar with initials, name, email
+  - Status badge, filière badge, établissement, creation date
+  - "Modifier" button to open edit dialog from detail view
+- Utility functions: formatDateFR, generatePassword, parseCSV, getInitials, downloadCSV
+- Filters students to only show those in filières managed by the current responsable
+- Uses useAuthStore for current user info
+- All text in French, emerald/teal/amber color scheme (NO indigo/blue)
+- Toast notifications with sonner for all actions
+- Loading skeletons, empty states with helpful messages
+- Responsive design (mobile-first)
+- ESLint passes clean (0 errors), dev server compiles successfully
+
+---
 Task ID: 5-b
 Agent: Resultats Pages Agent
 Task: Create teacher results/analytics page and student results page
@@ -564,3 +611,113 @@ Stage Summary:
 - Rapports page: Charts (Area/Bar/Pie), student rankings, top enseignants, CSV export
 - Complete Alerte system with database model, API routes, and UI
 - 4618 lines of new code across 17 modified files
+
+---
+Task ID: 3-a
+Agent: Users Import API Agent
+Task: Create API route `/api/users/import` for bulk CSV import of students and teachers
+
+Work Log:
+- Created `/src/app/api/users/import/route.ts` — Bulk user import API endpoint
+- Implemented POST handler accepting JSON body with:
+  - `users`: array of { name, email, password? } objects
+  - `role`: "ETUDIANT" or "ENSEIGNANT"
+  - `filiereId`: optional (for students only, validated against DB)
+  - `etablissementId`: optional (validated against DB)
+- Input validation:
+  - Validates users array is non-empty
+  - Validates role is ETUDIANT or ENSEIGNANT
+  - Rejects filiereId for ENSEIGNANT role
+  - Verifies filiereId references an existing Filiere
+  - Verifies etablissementId references an existing Etablissement
+  - Validates each user row: name required, email required, email format validation
+  - Checks for duplicate emails within the import list (seenEmails Set)
+  - Checks for duplicate emails against existing DB users (batch query with `email: { in: [...] }`)
+- Auto-generates secure random passwords (10 chars, alphanumeric + symbols) for users without a password
+- Hashes all passwords with bcrypt (salt rounds: 10)
+- Creates users in DB with role, filiereId, etablissementId, actif: true
+- Returns plain-text passwords in response for frontend download feature
+- Error handling per-row: catches individual create errors, adds to errors array, continues processing
+- Audit logging: creates single BULK_IMPORT audit log entry with count, role, filiereId, etablissementId
+- Response format: { imported: number, errors: [{row, email, error}], users: [{id, name, email, password, role}] }
+- French error messages matching project convention
+- ESLint passes clean, dev server compiles successfully
+
+---
+Task ID: 3-b
+Agent: Enseignant-Filieres API Agent
+Task: Create API route `/api/enseignant-filieres` for managing teacher-filiere-level assignments
+
+Work Log:
+- Created `/src/app/api/enseignant-filieres/route.ts` — CRUD API for EnseignantFiliere assignments
+- Implemented GET handler:
+  - Query params: `enseignantId`, `filiereId`, `responsableId` (filters assignments for filières managed by a responsable)
+  - When `responsableId` is provided, looks up all filières with that responsableId and filters assignments to those filières only
+  - Includes related enseignant (id, name, email) and filiere (id, nom, code, niveau)
+  - Returns: `{ assignments: [...] }`
+  - Ordered by createdAt descending
+- Implemented POST handler:
+  - Accepts single assignment `{ enseignantId, filiereId, niveau }` or bulk `{ assignments: [...] }`
+  - Validates all required fields per entry
+  - Validates niveau is one of: L1, L2, L3, M1, M2
+  - Validates enseignant exists and has role ENSEIGNANT
+  - Validates filiere exists
+  - Handles unique constraint violations (P2002) gracefully with descriptive French error messages
+  - Returns created assignments with includes, plus any per-item errors
+  - Returns 201 on success, 400 on validation errors, 409 if all creations fail
+- Implemented DELETE handler:
+  - Accepts `{ id }` for deletion by primary key
+  - Or accepts `{ enseignantId, filiereId, niveau }` for deletion by unique compound key
+  - Validates niveau in compound key mode
+  - Returns 404 if assignment not found
+  - Returns success message on deletion
+- All error messages in French
+- ESLint passes clean (0 errors)
+
+---
+Task ID: 5
+Agent: Responsable Enseignants Page Agent
+Task: Create the Responsable Enseignants management page
+
+Work Log:
+- Created `/src/components/responsable/enseignants-page.tsx` — full-featured teacher management component (~730 lines)
+- Implemented header with "Gestion des Enseignants" title + subtitle + action buttons (Template CSV, Importer CSV, Ajouter un enseignant)
+- Implemented stats bar with 4 cards: total teachers, active teachers, with filière assignments, total level assignments
+- Implemented search and filter toolbar: search by name/email, filter by filière (populated from responsable's filières), filter by status (actif/inactif)
+- Implemented teacher card grid (responsive: 1 col mobile, 2 sm, 3 lg) with each card showing:
+  - Avatar with initials, name, email
+  - Status badge (actif=teal, inactif=gray)
+  - Filière-Level assignment badges (e.g., "L3-Informatique", "M1-Mathématiques") with color-coded niveau badges
+  - "Sans affectation" badge (amber outline) for teachers with no assignments
+  - Actions: Edit, Manage Assignments (Affectations), Toggle active/inactive
+- Implemented Add Individual Teacher Dialog:
+  - Name, Email, auto-generated password with show/hide toggle and regenerate button
+  - Dynamic assignment rows: Filière dropdown + Niveau dropdown (L1, L2, L3, M1, M2)
+  - Can add multiple assignment rows with "+" button, remove rows with X button
+  - Creates teacher via POST /api/users then assignments via POST /api/enseignant-filieres
+- Implemented Import CSV Dialog:
+  - File upload accepting .csv with visual upload zone
+  - Client-side CSV parsing (parseCSV function) with header detection
+  - Preview table showing parsed data before import
+  - Import button with loading state → POST /api/users/import with role=ENSEIGNANT
+  - After import: results display (imported count, errors list) with color-coded summary
+  - Download button for generated passwords CSV
+  - Download CSV template button
+- Implemented Edit Teacher Dialog:
+  - Name, Email, Active toggle (custom switch)
+  - Submit: PATCH /api/users/[id]
+- Implemented Manage Assignments Dialog (per teacher):
+  - Shows current filière-level assignments as colored badges with remove button
+  - Empty state with dashed border when no assignments
+  - Add new assignment: filière selector + niveau selector + add button
+  - Remove existing assignment: trash button → confirmation AlertDialog
+  - Real-time refresh after add/remove via fetchAssignments + teacher-specific query
+- Implemented Delete Assignment Confirmation (AlertDialog) with assignment label
+- Filters teachers to only show those with assignments in filières managed by the current responsable
+- Uses useAuthStore for current user info
+- Utility functions: formatDateFR, generatePassword, parseCSV, getInitials, downloadCSV, getNiveauBadgeColor
+- All text in French, emerald/teal/amber color scheme (NO indigo/blue)
+- Toast notifications with sonner for all actions
+- Loading skeletons, empty states with helpful messages
+- Responsive design (mobile-first)
+- ESLint passes clean (0 errors), dev server compiles successfully

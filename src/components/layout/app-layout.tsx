@@ -31,6 +31,8 @@ import { AlertesPage } from '@/components/alertes/alertes-page'
 import { RapportsPage } from '@/components/rapports/rapports-page'
 import { EvaluationsPage } from '@/components/evaluations/evaluations-page'
 import { FilieresPage } from '@/components/filieres/filieres-page'
+import { EtudiantsPage } from '@/components/responsable/etudiants-page'
+import { EnseignantsPage } from '@/components/responsable/enseignants-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -48,6 +50,8 @@ const PAGE_LABELS: Record<PageId, string> = {
   configuration: 'Configuration du système',
   logs: 'Journaux d\'audit',
   filieres: 'Gestion des filières',
+  etudiants: 'Gestion des étudiants',
+  enseignants: 'Gestion des enseignants',
   evaluations: 'Gestion des évaluations',
   rapports: 'Rapports et statistiques',
   alertes: 'Alertes et notifications',
@@ -70,6 +74,8 @@ const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   configuration: 'Paramétrer le fonctionnement de la plateforme',
   logs: 'Consulter les journaux d\'activité du système',
   filieres: 'Organiser les filières et formations',
+  etudiants: 'Gérer les étudiants et leurs inscriptions',
+  enseignants: 'Gérer les enseignants et leurs affectations',
   evaluations: 'Planifier et suivre les évaluations',
   rapports: 'Consulter les rapports et statistiques détaillés',
   alertes: 'Voir les alertes et notifications importantes',
@@ -199,6 +205,16 @@ function PageContent() {
   // Responsable: Filieres page
   if (currentPage === 'filieres') {
     return <FilieresPage />
+  }
+
+  // Responsable: Etudiants page
+  if (currentPage === 'etudiants') {
+    return <EtudiantsPage />
+  }
+
+  // Responsable: Enseignants page
+  if (currentPage === 'enseignants') {
+    return <EnseignantsPage />
   }
 
   // All other pages: placeholder
