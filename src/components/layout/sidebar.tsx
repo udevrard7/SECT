@@ -21,6 +21,9 @@ import {
   CreditCard,
   Shield,
   KeyRound,
+  Layers,
+  UserCheck,
+  BookMarked,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -64,6 +67,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   CreditCard,
   Shield,
   KeyRound,
+  Layers,
+  UserCheck,
+  BookMarked,
 }
 
 // ─── Role badge styling ───
@@ -76,7 +82,7 @@ const ROLE_BADGE_STYLES: Record<UserRole, string> = {
 
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Admin',
-  RESPONSABLE: 'Responsable',
+  RESPONSABLE: 'Responsable des études',
   ENSEIGNANT: 'Enseignant',
   ETUDIANT: 'Étudiant',
 }

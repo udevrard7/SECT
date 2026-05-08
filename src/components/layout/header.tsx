@@ -22,7 +22,7 @@ import { useNavigationStore, NAV_ITEMS } from '@/stores/navigation-store'
 // ─── Role display names ───
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Administrateur',
-  RESPONSABLE: 'Responsable',
+  RESPONSABLE: 'Responsable des études',
   ENSEIGNANT: 'Enseignant',
   ETUDIANT: 'Étudiant',
 }

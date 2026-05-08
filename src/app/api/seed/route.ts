@@ -10,15 +10,19 @@ export async function POST() {
     const existingSecuritySettings = await db.securitySettings.count()
     const existingSessions = await db.sessionPassation.count()
     const existingEpreuves = await db.epreuve.count()
+    const existingUEs = await db.uniteEnseignement.count()
+    const existingAffectations = await db.affectation.count()
 
-    // If all data (including evaluation data) already exists, skip seeding entirely
+    // If all data (including evaluation, UE, and affectation data) already exists, skip seeding entirely
     if (
       existingUsers > 0 &&
       existingPlans > 0 &&
       existingAbonnements > 0 &&
       existingSecuritySettings > 0 &&
       existingSessions > 0 &&
-      existingEpreuves > 0
+      existingEpreuves > 0 &&
+      existingUEs > 0 &&
+      existingAffectations > 0
     ) {
       return NextResponse.json(
         {
@@ -29,6 +33,8 @@ export async function POST() {
           securitySettings: existingSecuritySettings,
           epreuves: existingEpreuves,
           sessions: existingSessions,
+          unitesEnseignement: existingUEs,
+          affectations: existingAffectations,
         },
         { status: 200 }
       )
@@ -225,6 +231,14 @@ export async function POST() {
     if (filiere1 && respUser && !filiere1.responsableId) {
       await db.filiere.update({
         where: { id: filiere1.id },
+        data: { responsableId: respUser.id },
+      })
+    }
+
+    // Also set respUser as responsable of filiere2
+    if (filiere2 && respUser && !filiere2.responsableId) {
+      await db.filiere.update({
+        where: { id: filiere2.id },
         data: { responsableId: respUser.id },
       })
     }
@@ -773,6 +787,186 @@ export async function POST() {
       }
 
       result.push('Sessions: 5 créées avec réponses et résultats')
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 11. Create Additional Enseignant Users (if missing) ───
+    // ═══════════════════════════════════════════════════════════════
+    const additionalEnseignants = [
+      { email: 'prof.gondo@sect.fr', name: 'Prof M Gondo' },
+      { email: 'prof.dubois@sect.fr', name: 'Isabelle Dubois' },
+      { email: 'prof.konate@sect.fr', name: 'Amadou Konaté' },
+      { email: 'prof.petit@sect.fr', name: 'Claire Petit' },
+    ]
+
+    const enseignantUsers: { id: string; name: string; email: string }[] = []
+    // Always include the original enseignant@sect.fr (Pierre Martin)
+    if (ensUser) enseignantUsers.push({ id: ensUser.id, name: ensUser.name, email: ensUser.email })
+
+    for (const e of additionalEnseignants) {
+      let ens = await db.user.findFirst({ where: { email: e.email } })
+      if (!ens) {
+        ens = await db.user.create({
+          data: {
+            email: e.email,
+            name: e.name,
+            password: await bcrypt.hash('ens123', saltRounds),
+            role: 'ENSEIGNANT',
+            etablissementId: etab1.id,
+          },
+        })
+        result.push(`User: ${e.email}`)
+      }
+      enseignantUsers.push({ id: ens.id, name: ens.name, email: ens.email })
+    }
+
+    // Helper: find enseignant by email prefix (e.g. 'prof.gondo')
+    const findEnseignant = (emailPrefix: string) => enseignantUsers.find(u => u.email.startsWith(emailPrefix))
+    const pierreMartin = findEnseignant('enseignant') // Pierre Martin (original)
+    const profGondo = findEnseignant('prof.gondo')
+    const isabelleDubois = findEnseignant('prof.dubois')
+    const amadouKonate = findEnseignant('prof.konate')
+    const clairePetit = findEnseignant('prof.petit')
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 12. Create Demo UniteEnseignement (if missing) ───
+    // ═══════════════════════════════════════════════════════════════
+    const ueDefinitions = [
+      // Filiere1: Informatique L3
+      { code: 'UE-INF301', nom: 'Algorithmique avancée', filiereId: filiere1.id, niveau: 'L3' as const, semestre: 1, creditsECTS: 6, volumeHeuresCM: 30, volumeHeuresTD: 15, volumeHeuresTP: 15 },
+      { code: 'UE-INF302', nom: 'Bases de données', filiereId: filiere1.id, niveau: 'L3' as const, semestre: 1, creditsECTS: 6, volumeHeuresCM: 24, volumeHeuresTD: 18, volumeHeuresTP: 12 },
+      { code: 'UE-INF303', nom: 'Réseaux informatiques', filiereId: filiere1.id, niveau: 'L3' as const, semestre: 2, creditsECTS: 6, volumeHeuresCM: 30, volumeHeuresTD: 12, volumeHeuresTP: 18 },
+      { code: 'UE-INF304', nom: 'Intelligence artificielle', filiereId: filiere1.id, niveau: 'L3' as const, semestre: 2, creditsECTS: 6, volumeHeuresCM: 24, volumeHeuresTD: 15, volumeHeuresTP: 15 },
+      { code: 'UE-INF305', nom: 'Programmation web', filiereId: filiere1.id, niveau: 'L3' as const, semestre: 1, creditsECTS: 4, volumeHeuresCM: 18, volumeHeuresTD: 12, volumeHeuresTP: 24 },
+      // Filiere2: Informatique L2
+      { code: 'UE-INF201', nom: 'Algorithmique', filiereId: filiere2.id, niveau: 'L2' as const, semestre: 1, creditsECTS: 6, volumeHeuresCM: 30, volumeHeuresTD: 18, volumeHeuresTP: 12 },
+      { code: 'UE-INF202', nom: 'Structures de données', filiereId: filiere2.id, niveau: 'L2' as const, semestre: 1, creditsECTS: 6, volumeHeuresCM: 24, volumeHeuresTD: 18, volumeHeuresTP: 12 },
+      { code: 'UE-INF203', nom: 'Systèmes d\'exploitation', filiereId: filiere2.id, niveau: 'L2' as const, semestre: 2, creditsECTS: 6, volumeHeuresCM: 30, volumeHeuresTD: 15, volumeHeuresTP: 15 },
+      // Filiere3: Mathématiques Appliquées M1
+      { code: 'UE-MAT401', nom: 'Analyse numérique', filiereId: filiere3.id, niveau: 'M1' as const, semestre: 1, creditsECTS: 6, volumeHeuresCM: 30, volumeHeuresTD: 15, volumeHeuresTP: 15 },
+      { code: 'UE-MAT402', nom: 'Probabilités et statistiques', filiereId: filiere3.id, niveau: 'M1' as const, semestre: 1, creditsECTS: 6, volumeHeuresCM: 24, volumeHeuresTD: 18, volumeHeuresTP: 12 },
+      { code: 'UE-MAT403', nom: 'Optimisation', filiereId: filiere3.id, niveau: 'M1' as const, semestre: 2, creditsECTS: 6, volumeHeuresCM: 30, volumeHeuresTD: 15, volumeHeuresTP: 15 },
+    ]
+
+    // Store created UE references by code for affectation seeding
+    const ueByCode: Record<string, { id: string; code: string; nom: string }> = {}
+
+    for (const ueDef of ueDefinitions) {
+      let ue = await db.uniteEnseignement.findFirst({ where: { code: ueDef.code, filiereId: ueDef.filiereId } })
+      if (!ue) {
+        ue = await db.uniteEnseignement.create({ data: ueDef })
+        result.push(`UE: ${ueDef.code} - ${ueDef.nom}`)
+      }
+      ueByCode[ueDef.code] = { id: ue.id, code: ue.code, nom: ue.nom }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 13. Create Demo Affectations (if missing) ───
+    // ═══════════════════════════════════════════════════════════════
+    const affectationDefinitions = [
+      // Filiere1: Informatique L3
+      { enseignant: pierreMartin, ueCode: 'UE-INF301', typeSeance: 'CM' as const, volumeHeures: 30, statut: 'VALIDEE' as const },
+      { enseignant: pierreMartin, ueCode: 'UE-INF302', typeSeance: 'CM' as const, volumeHeures: 24, statut: 'VALIDEE' as const },
+      { enseignant: profGondo, ueCode: 'UE-INF304', typeSeance: 'CM' as const, volumeHeures: 24, statut: 'PUBLIEE' as const },
+      { enseignant: profGondo, ueCode: 'UE-INF305', typeSeance: 'TD' as const, volumeHeures: 12, statut: 'VALIDEE' as const },
+      { enseignant: isabelleDubois, ueCode: 'UE-INF303', typeSeance: 'CM' as const, volumeHeures: 30, statut: 'VALIDEE' as const },
+      { enseignant: isabelleDubois, ueCode: 'UE-INF301', typeSeance: 'TD' as const, volumeHeures: 15, statut: 'PROVISOIRE' as const },
+      { enseignant: amadouKonate, ueCode: 'UE-INF302', typeSeance: 'TD' as const, volumeHeures: 18, statut: 'VALIDEE' as const },
+      { enseignant: amadouKonate, ueCode: 'UE-INF303', typeSeance: 'TP' as const, volumeHeures: 18, statut: 'PROVISOIRE' as const },
+      { enseignant: clairePetit, ueCode: 'UE-INF304', typeSeance: 'TP' as const, volumeHeures: 15, statut: 'PROVISOIRE' as const },
+      { enseignant: clairePetit, ueCode: 'UE-INF305', typeSeance: 'CM' as const, volumeHeures: 18, statut: 'PUBLIEE' as const },
+      // Filiere2: Informatique L2
+      { enseignant: isabelleDubois, ueCode: 'UE-INF201', typeSeance: 'CM' as const, volumeHeures: 30, statut: 'VALIDEE' as const },
+      { enseignant: amadouKonate, ueCode: 'UE-INF202', typeSeance: 'CM' as const, volumeHeures: 24, statut: 'VALIDEE' as const },
+      { enseignant: pierreMartin, ueCode: 'UE-INF201', typeSeance: 'TD' as const, volumeHeures: 18, statut: 'PROVISOIRE' as const },
+      { enseignant: clairePetit, ueCode: 'UE-INF203', typeSeance: 'CM' as const, volumeHeures: 30, statut: 'PROVISOIRE' as const },
+      // Filiere3: Mathématiques M1
+      { enseignant: profGondo, ueCode: 'UE-MAT401', typeSeance: 'CM' as const, volumeHeures: 30, statut: 'VALIDEE' as const },
+      { enseignant: profGondo, ueCode: 'UE-MAT403', typeSeance: 'CM' as const, volumeHeures: 30, statut: 'PUBLIEE' as const },
+      { enseignant: pierreMartin, ueCode: 'UE-MAT402', typeSeance: 'TD' as const, volumeHeures: 18, statut: 'PROVISOIRE' as const },
+    ]
+
+    for (const aff of affectationDefinitions) {
+      if (!aff.enseignant) continue
+      const ue = ueByCode[aff.ueCode]
+      if (!ue) continue
+
+      try {
+        // Check for existing affectation using unique constraint fields
+        const existingAff = await db.affectation.findFirst({
+          where: {
+            enseignantId: aff.enseignant.id,
+            uniteEnseignementId: ue.id,
+            typeSeance: aff.typeSeance,
+            groupe: null,
+            anneeUniversitaire: '2024-2025',
+          },
+        })
+
+        if (!existingAff) {
+          await db.affectation.create({
+            data: {
+              enseignantId: aff.enseignant.id,
+              uniteEnseignementId: ue.id,
+              typeSeance: aff.typeSeance,
+              groupe: null,
+              volumeHeures: aff.volumeHeures,
+              anneeUniversitaire: '2024-2025',
+              statut: aff.statut,
+            },
+          })
+          result.push(`Affectation: ${aff.enseignant.name} → ${ue.code} (${aff.typeSeance}, ${aff.volumeHeures}h, ${aff.statut})`)
+        }
+      } catch {
+        // Skip if already exists (unique constraint)
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── 14. Create Demo EnseignantFiliere (if missing) ───
+    // ═══════════════════════════════════════════════════════════════
+    const enseignantFiliereDefinitions = [
+      // Pierre Martin → filiere1 (L3), filiere2 (L2), filiere3 (M1)
+      { enseignant: pierreMartin, filiereId: filiere1.id, niveau: 'L3' as const },
+      { enseignant: pierreMartin, filiereId: filiere2.id, niveau: 'L2' as const },
+      { enseignant: pierreMartin, filiereId: filiere3.id, niveau: 'M1' as const },
+      // Prof M Gondo → filiere1 (L3), filiere3 (M1)
+      { enseignant: profGondo, filiereId: filiere1.id, niveau: 'L3' as const },
+      { enseignant: profGondo, filiereId: filiere3.id, niveau: 'M1' as const },
+      // Isabelle Dubois → filiere1 (L3), filiere2 (L2)
+      { enseignant: isabelleDubois, filiereId: filiere1.id, niveau: 'L3' as const },
+      { enseignant: isabelleDubois, filiereId: filiere2.id, niveau: 'L2' as const },
+      // Amadou Konaté → filiere1 (L3), filiere2 (L2)
+      { enseignant: amadouKonate, filiereId: filiere1.id, niveau: 'L3' as const },
+      { enseignant: amadouKonate, filiereId: filiere2.id, niveau: 'L2' as const },
+      // Claire Petit → filiere1 (L3), filiere2 (L2)
+      { enseignant: clairePetit, filiereId: filiere1.id, niveau: 'L3' as const },
+      { enseignant: clairePetit, filiereId: filiere2.id, niveau: 'L2' as const },
+    ]
+
+    for (const ef of enseignantFiliereDefinitions) {
+      if (!ef.enseignant) continue
+
+      try {
+        await db.enseignantFiliere.upsert({
+          where: {
+            enseignantId_filiereId_niveau: {
+              enseignantId: ef.enseignant.id,
+              filiereId: ef.filiereId,
+              niveau: ef.niveau,
+            },
+          },
+          update: {},
+          create: {
+            enseignantId: ef.enseignant.id,
+            filiereId: ef.filiereId,
+            niveau: ef.niveau,
+          },
+        })
+        result.push(`EnseignantFiliere: ${ef.enseignant.name} → ${ef.niveau}`)
+      } catch {
+        // Skip if already exists
+      }
     }
 
     return NextResponse.json({

@@ -10,6 +10,8 @@ import {
   Info,
   Trophy,
   BookOpen,
+  BookMarked,
+  UserCheck,
 } from 'lucide-react'
 import {
   Card,
@@ -40,6 +42,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 
 // ─── Types ───
+
 interface RepartitionNote {
   label: string
   count: number
@@ -78,6 +81,21 @@ interface Alerte {
   severity: 'critical' | 'warning' | 'info'
 }
 
+interface ChargeEnseignant {
+  enseignantId: string
+  enseignantNom: string
+  totalHeures: number
+  nbUEs: number
+  statut: string
+}
+
+interface AffectationParNiveau {
+  niveau: string
+  nbUEs: number
+  nbAffectations: number
+  tauxCouverture: number
+}
+
 interface StatsData {
   nbEtudiants: number
   nbEnseignants: number
@@ -90,9 +108,16 @@ interface StatsData {
   evolutionMoyennes: EvolutionMoyenne[]
   topEnseignants: TopEnseignant[]
   alertes: Alerte[]
+  nbUnitesEnseignement: number
+  nbAffectations: number
+  nbAffectationsValidees: number
+  tauxCouvertureAffectations: number
+  chargeEnseignants: ChargeEnseignant[]
+  affectationsParNiveau: AffectationParNiveau[]
 }
 
 // ─── Helpers ───
+
 const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 
 function formatMonth(mois: string): string {
@@ -107,6 +132,7 @@ function abbreviateTitle(titre: string, maxLen = 14): string {
 }
 
 // ─── Note colors ───
+
 const noteBarColors: Record<string, string> = {
   '0-4': '#ef4444',
   '4-8': '#f59e0b',
@@ -118,9 +144,11 @@ const noteBarColors: Record<string, string> = {
 }
 
 // ─── Pie colors (emerald/teal/amber tones) ───
+
 const pieColors = ['#10b981', '#14b8a6', '#0d9488', '#059669', '#d97706', '#f59e0b', '#047857', '#0f766e']
 
 // ─── StatCard ───
+
 interface StatCardProps {
   title: string
   value: number | string
@@ -153,10 +181,11 @@ function StatCard({ title, value, icon, accentColor, subtitle }: StatCardProps) 
   )
 }
 
-// ─── Custom Tooltip for subject results ───
+// ─── Custom Tooltips ───
+
 function SubjectTooltip({ active, payload, data }: {
   active?: boolean
-  payload?: Array<{ value: number; dataKey: string; color: string }>
+  payload?: Array<{ value: number; dataKey: string; color: string; payload?: Record<string, unknown> }>
   data?: ResultatMatiere[]
 }) {
   if (!active || !payload || !payload.length) return null
@@ -184,7 +213,6 @@ function SubjectTooltip({ active, payload, data }: {
   )
 }
 
-// ─── Custom Tooltip for notes distribution ───
 function NotesTooltip({ active, payload }: {
   active?: boolean
   payload?: Array<{ value: number; dataKey: string; payload: { label: string; count: number } }>
@@ -199,7 +227,6 @@ function NotesTooltip({ active, payload }: {
   )
 }
 
-// ─── Custom Tooltip for evolution line ───
 function EvolutionTooltip({ active, payload }: {
   active?: boolean
   payload?: Array<{ value: number; payload: { mois: string; moyenne: number; nbEvaluations: number } }>
@@ -215,7 +242,23 @@ function EvolutionTooltip({ active, payload }: {
   )
 }
 
+function CoverageTooltip({ active, payload }: {
+  active?: boolean
+  payload?: Array<{ value: number; payload: { niveau: string; tauxCouverture: number; nbUEs: number; nbAffectations: number } }>
+}) {
+  if (!active || !payload || !payload.length) return null
+  const d = payload[0].payload
+  return (
+    <div className="rounded-lg border border-border bg-background p-3 shadow-lg text-sm">
+      <p className="font-semibold">{d.niveau}</p>
+      <p>Taux de couverture : <span className="font-medium">{d.tauxCouverture}%</span></p>
+      <p className="text-muted-foreground">{d.nbUEs} UE · {d.nbAffectations} affectation(s)</p>
+    </div>
+  )
+}
+
 // ─── Loading Skeleton ───
+
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
@@ -223,8 +266,8 @@ function DashboardSkeleton() {
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-6 w-44" />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
           <Card key={i} className="relative overflow-hidden">
             <div className="absolute left-0 top-0 h-full w-1 bg-muted" />
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -237,6 +280,18 @@ function DashboardSkeleton() {
             </CardContent>
           </Card>
         ))}
+      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader><Skeleton className="h-5 w-40" /><Skeleton className="h-4 w-56" /></CardHeader>
+          <CardContent><Skeleton className="h-72 w-full" /></CardContent>
+        </Card>
+        <Card>
+          <CardHeader><Skeleton className="h-5 w-36" /><Skeleton className="h-4 w-48" /></CardHeader>
+          <CardContent className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (<Skeleton key={i} className="h-14 w-full" />))}
+          </CardContent>
+        </Card>
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
@@ -277,6 +332,7 @@ function DashboardSkeleton() {
 }
 
 // ─── Alert component ───
+
 function AlertCard({ alerte }: { alerte: Alerte }) {
   const config = {
     critical: {
@@ -313,7 +369,53 @@ function AlertCard({ alerte }: { alerte: Alerte }) {
   )
 }
 
+// ─── Teacher Workload Row ───
+
+function TeacherWorkloadRow({ teacher }: { teacher: ChargeEnseignant }) {
+  // Color: green (normal load ≤30h), amber (high load 30-40h), red (overloaded >40h)
+  let loadColor: string
+  let loadLabel: string
+  if (teacher.totalHeures > 40) {
+    loadColor = 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800'
+    loadLabel = 'Surchargé'
+  } else if (teacher.totalHeures > 30) {
+    loadColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+    loadLabel = 'Charge élevée'
+  } else {
+    loadColor = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+    loadLabel = 'Normal'
+  }
+
+  // Progress bar width
+  const maxHours = 50
+  const widthPct = Math.min((teacher.totalHeures / maxHours) * 100, 100)
+  const barColor = teacher.totalHeures > 40 ? 'bg-red-500' : teacher.totalHeures > 30 ? 'bg-amber-500' : 'bg-emerald-500'
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between mb-1">
+          <p className="truncate text-sm font-medium">{teacher.enseignantNom}</p>
+          <Badge className={`text-xs shrink-0 ${loadColor}`}>{loadLabel}</Badge>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              className={`h-full rounded-full ${barColor} transition-all`}
+              style={{ width: `${widthPct}%` }}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {teacher.totalHeures}h · {teacher.nbUEs} UE{teacher.nbUEs > 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ───
+
 export function ResponsableDashboard() {
   const user = useAuthStore((s) => s.user)
   const [data, setData] = useState<StatsData | null>(null)
@@ -323,10 +425,7 @@ export function ResponsableDashboard() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      // For RESPONSABLE users, use responsableId to resolve their managed filieres
-      // (a responsable manages filieres via Filiere.responsableId, NOT via User.filiereId)
       if (user?.id) params.set('responsableId', user.id)
-      // Also allow optional specific filiereId filter if set
       if (user?.filiere?.id) params.set('filiereId', user.filiere.id)
       else if (user?.filiereId) params.set('filiereId', user.filiereId)
       const url = params.toString()
@@ -359,7 +458,7 @@ export function ResponsableDashboard() {
             Bonjour, {user?.name ?? 'Responsable'}
           </h1>
           <Badge className="w-fit text-white hover:opacity-90" style={{ backgroundColor: '#d97706' }}>
-            Responsable de filière
+            Responsable des études
           </Badge>
         </div>
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
@@ -373,6 +472,19 @@ export function ResponsableDashboard() {
     )
   }
 
+  // ─── Compute KPI values ───
+  const tauxCouvertureValue = data.tauxCouvertureAffectations ?? 0
+  const tauxCouvertureColor = tauxCouvertureValue >= 80 ? '#10b981' : tauxCouvertureValue >= 50 ? '#f59e0b' : '#ef4444'
+
+  // ─── Affectation coverage bar data ───
+  const coverageBarData = (data.affectationsParNiveau ?? []).map((n) => ({
+    ...n,
+    fill: n.tauxCouverture >= 80 ? '#10b981' : n.tauxCouverture >= 50 ? '#f59e0b' : '#ef4444',
+  }))
+
+  // ─── Teacher workload (top 8) ───
+  const teacherWorkload = (data.chargeEnseignants ?? []).slice(0, 8)
+
   return (
     <div className="space-y-6">
       {/* ─── 1. Welcome Section ─── */}
@@ -381,43 +493,133 @@ export function ResponsableDashboard() {
           Bonjour, {user?.name ?? 'Responsable'}
         </h1>
         <Badge className="w-fit text-white hover:opacity-90" style={{ backgroundColor: '#d97706' }}>
-          Responsable de filière
+          Responsable des études
         </Badge>
       </div>
 
-      {/* ─── 2. Stats Cards Row ─── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* ─── 2. KPI Cards (3x2 grid) ─── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Étudiants inscrits"
           value={data.nbEtudiants}
           icon={<GraduationCap className="h-5 w-5" />}
           accentColor="#10b981"
-          subtitle="Total des étudiants dans la filière"
+          subtitle="Total des étudiants dans vos filières"
         />
         <StatCard
-          title="Évaluations réalisées"
-          value={data.nbEvaluations}
-          icon={<ClipboardCheck className="h-5 w-5" />}
+          title="Enseignants"
+          value={data.nbEnseignants}
+          icon={<BookOpen className="h-5 w-5" />}
           accentColor="#14b8a6"
-          subtitle="Épreuves terminées ou clôturées"
+          subtitle="Enseignants affectés à vos filières"
+        />
+        <StatCard
+          title="Unités d'enseignement"
+          value={data.nbUnitesEnseignement ?? 0}
+          icon={<BookMarked className="h-5 w-5" />}
+          accentColor="#f59e0b"
+          subtitle="UEs actives dans vos filières"
+        />
+        <StatCard
+          title="Taux de couverture"
+          value={`${tauxCouvertureValue}%`}
+          icon={<UserCheck className="h-5 w-5" />}
+          accentColor={tauxCouvertureColor}
+          subtitle="UEs avec au moins une affectation"
         />
         <StatCard
           title="Taux de réussite"
           value={`${data.tauxReussiteGlobal}%`}
           icon={<TrendingUp className="h-5 w-5" />}
-          accentColor="#f59e0b"
+          accentColor="#10b981"
           subtitle="Étudiants avec note ≥ 10/20"
         />
         <StatCard
           title="Moyenne générale"
           value={`${data.moyenneGenerale}/20`}
           icon={<BarChart3 className="h-5 w-5" />}
-          accentColor="#059669"
+          accentColor="#14b8a6"
           subtitle="Moyenne de toutes les épreuves"
         />
       </div>
 
-      {/* ─── 3. Résultats par matière + Alertes ─── */}
+      {/* ─── 3. Affectation Coverage Chart + Teacher Workload ─── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Left — Horizontal BarChart by niveau */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-emerald-600" />
+              Couverture par niveau
+            </CardTitle>
+            <CardDescription>
+              Taux d&apos;affectation des UEs par niveau d&apos;étude
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {coverageBarData.length === 0 ? (
+              <div className="flex h-72 flex-col items-center justify-center text-muted-foreground">
+                <UserCheck className="mb-2 h-10 w-10 opacity-40" />
+                <p className="text-sm">Aucune donnée de couverture disponible</p>
+              </div>
+            ) : (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={coverageBarData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" horizontal={false} />
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v}%`} />
+                    <YAxis type="category" dataKey="niveau" tick={{ fontSize: 12 }} width={70} />
+                    <Tooltip content={<CoverageTooltip />} />
+                    <Bar
+                      dataKey="tauxCouverture"
+                      name="Taux de couverture"
+                      radius={[0, 6, 6, 0]}
+                      maxBarSize={32}
+                    >
+                      {coverageBarData.map((entry, i) => (
+                        <Cell key={i} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right — Teacher Workload List */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-teal-600" />
+              Charge enseignants
+            </CardTitle>
+            <CardDescription>
+              Volume horaire et nombre d&apos;UEs par enseignant
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {teacherWorkload.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <BookOpen className="mb-3 h-10 w-10 opacity-40" />
+                <p className="text-sm">Aucune affectation enregistrée</p>
+              </div>
+            ) : (
+              <div className="max-h-80 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+                {teacherWorkload.map((teacher) => (
+                  <TeacherWorkloadRow key={teacher.enseignantId} teacher={teacher} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ─── 4. Results by Subject + Alerts ─── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         {/* Left 60% — Bar Chart */}
         <Card className="lg:col-span-3">
@@ -502,7 +704,7 @@ export function ResponsableDashboard() {
         </Card>
       </div>
 
-      {/* ─── 4. Répartition des notes + Étudiants par filière ─── */}
+      {/* ─── 5. Score Distribution + Students per Filière ─── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Left — Histogram */}
         <Card>
@@ -599,7 +801,7 @@ export function ResponsableDashboard() {
         </Card>
       </div>
 
-      {/* ─── 5. Évolution des moyennes + Top enseignants ─── */}
+      {/* ─── 6. Score Evolution + Top Teachers ─── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Left — Line Chart */}
         <Card>
@@ -705,22 +907,17 @@ export function ResponsableDashboard() {
                       key={i}
                       className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
                     >
-                      {/* Rank badge */}
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${rankBg}`}
                       >
                         {i + 1}
                       </span>
-
-                      {/* Info */}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{ens.nom}</p>
                         <p className="text-xs text-muted-foreground">
                           {ens.nbEpreuves} épreuve{ens.nbEpreuves > 1 ? 's' : ''}
                         </p>
                       </div>
-
-                      {/* Badges */}
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge variant="secondary" className={`text-xs ${moyColor}`}>
                           {ens.moyenne}/20

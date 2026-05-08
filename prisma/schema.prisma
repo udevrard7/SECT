@@ -67,6 +67,30 @@ enum TypePlan {
   ENTREPRISE
 }
 
+// ─── Niveau d'étude (LMD) ───
+enum NiveauEtude {
+  L1
+  L2
+  L3
+  M1
+  M2
+  DOCTORAT
+}
+
+// ─── Type de séance ───
+enum TypeSeance {
+  CM    // Cours Magistral
+  TD    // Travaux Dirigés
+  TP    // Travaux Pratiques
+}
+
+// ─── Statut d'affectation ───
+enum StatutAffectation {
+  PROVISOIRE   // Brouillon / en attente de validation
+  VALIDEE      // Validé par le responsable des études
+  PUBLIEE      // Publié et visible par l'enseignant
+}
+
 // ─── Utilisateur ───
 model User {
   id                 String          @id @default(cuid())
@@ -91,6 +115,7 @@ model User {
   alertes            Alerte[]
   enseignantFilieres EnseignantFiliere[]
   etablissementAccess EtablissementAccess[]
+  affectations       Affectation[]  // Enseignant → UE affectations
 }
 
 // ─── Établissement ───
@@ -119,11 +144,11 @@ model Etablissement {
 model Filiere {
   id               String         @id @default(cuid())
   nom              String
-  code             String?        // e.g. "L3-INFO"
-  niveau           String?        // L1, L2, L3, M1, M2
+  code             String?        // e.g. "INFO"
+  niveau           NiveauEtude?   // L1, L2, L3, M1, M2 — niveau principal de la filière
   etablissementId  String
   etablissement    Etablissement  @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
-  responsableId    String?        // User ID of the responsible
+  responsableId    String?        // User ID of the responsable des études
   responsable      User?          @relation("FiliereResponsable", fields: [responsableId], references: [id])
   description      String?
   nbEtudiants      Int?
@@ -134,22 +159,68 @@ model Filiere {
   etudiants        User[]         @relation("UserFiliere")
   alertes          Alerte[]
   enseignantFilieres EnseignantFiliere[]
+  unitesEnseignement UniteEnseignement[]  // UE rattachées à cette filière
 
   @@unique([nom, etablissementId])
 }
 
-// ─── Enseignant-Filière (affectation des niveaux) ───
+// ─── Enseignant-Filière (affectation basique des niveaux) ───
 model EnseignantFiliere {
-  id           String   @id @default(cuid())
+  id           String       @id @default(cuid())
   enseignantId String
-  enseignant   User     @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  enseignant   User         @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
   filiereId    String
-  filiere      Filiere  @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  niveau       String   // L1, L2, L3, M1, M2
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  filiere      Filiere      @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  niveau       NiveauEtude  // L1, L2, L3, M1, M2
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@unique([enseignantId, filiereId, niveau])
+}
+
+// ─── Unité d'Enseignement (UE) ───
+// Représente une matière/course au sein d'une filière
+model UniteEnseignement {
+  id               String       @id @default(cuid())
+  code             String       // e.g. "UE-INF301"
+  nom              String       // e.g. "Algorithmique avancée"
+  description      String?
+  filiereId        String
+  filiere          Filiere      @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  niveau           NiveauEtude  // L1, L2, L3, M1, M2 — niveau de l'UE
+  semestre         Int?         // 1 ou 2
+  creditsECTS      Int?         // Crédits ECTS
+  volumeHeuresCM   Int          @default(0)  // Heures de Cours Magistral
+  volumeHeuresTD   Int          @default(0)  // Heures de Travaux Dirigés
+  volumeHeuresTP   Int          @default(0)  // Heures de Travaux Pratiques
+  obligatoire      Boolean      @default(true)
+  actif            Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  affectations     Affectation[]  // Affectations enseignants
+
+  @@unique([code, filiereId])
+}
+
+// ─── Affectation (Enseignant → UE) ───
+// Affectation détaillée d'un enseignant à une unité d'enseignement
+model Affectation {
+  id                  String              @id @default(cuid())
+  enseignantId        String
+  enseignant          User                @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  uniteEnseignementId String
+  uniteEnseignement   UniteEnseignement   @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+  typeSeance          TypeSeance          @default(CM)  // CM, TD ou TP
+  groupe              String?             // e.g. "Groupe A", "Groupe B" — pour les TD/TP
+  volumeHeures        Float               // Volume horaire affecté
+  anneeUniversitaire  String              @default("2024-2025") // e.g. "2024-2025"
+  statut              StatutAffectation   @default(PROVISOIRE)
+  commentaire         String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire])
 }
 
 // ─── Journal d'audit ───

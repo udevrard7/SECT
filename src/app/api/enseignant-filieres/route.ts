@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-const VALID_NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2']
+const VALID_NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2', 'DOCTORAT']
 
 // ─── GET /api/enseignant-filieres ───
 // List teacher-filiere assignments with optional filters
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
           data: {
             enseignantId: entry.enseignantId,
             filiereId: entry.filiereId,
-            niveau: entry.niveau,
+            niveau: entry.niveau as 'L1' | 'L2' | 'L3' | 'M1' | 'M2' | 'DOCTORAT',
           },
           include: {
             enseignant: {
@@ -248,7 +248,7 @@ export async function DELETE(request: NextRequest) {
           enseignantId_filiereId_niveau: {
             enseignantId,
             filiereId,
-            niveau,
+            niveau: niveau as 'L1' | 'L2' | 'L3' | 'M1' | 'M2' | 'DOCTORAT',
           },
         },
       })
@@ -265,7 +265,7 @@ export async function DELETE(request: NextRequest) {
           enseignantId_filiereId_niveau: {
             enseignantId,
             filiereId,
-            niveau,
+            niveau: niveau as 'L1' | 'L2' | 'L3' | 'M1' | 'M2' | 'DOCTORAT',
           },
         },
       })

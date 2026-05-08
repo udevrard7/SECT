@@ -315,6 +315,163 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // ─── UE & Affectation metrics ───
+    const ueWhere: Record<string, unknown> = { actif: true }
+    if (hasFiliereFilter) ueWhere.filiereId = { in: resolvedFiliereIds }
+
+    const [nbUnitesEnseignement, allUEs] = await Promise.all([
+      db.uniteEnseignement.count({ where: ueWhere }),
+      db.uniteEnseignement.findMany({
+        where: ueWhere,
+        select: {
+          id: true,
+          niveau: true,
+          filiereId: true,
+          filiere: { select: { id: true, nom: true } },
+          _count: { select: { affectations: true } },
+        },
+      }),
+    ])
+
+    const affectationWhere: Record<string, unknown> = {}
+    if (hasFiliereFilter) {
+      affectationWhere.uniteEnseignement = { filiereId: { in: resolvedFiliereIds } }
+    }
+
+    const [nbAffectations, nbAffectationsValidees, allAffectations] = await Promise.all([
+      db.affectation.count({ where: affectationWhere }),
+      db.affectation.count({
+        where: {
+          ...affectationWhere,
+          statut: { in: ['VALIDEE', 'PUBLIEE'] },
+        },
+      }),
+      db.affectation.findMany({
+        where: affectationWhere,
+        select: {
+          enseignantId: true,
+          uniteEnseignementId: true,
+          volumeHeures: true,
+          statut: true,
+          enseignant: { select: { id: true, name: true } },
+          uniteEnseignement: {
+            select: {
+              id: true,
+              niveau: true,
+              filiereId: true,
+              filiere: { select: { id: true, nom: true } },
+            },
+          },
+        },
+      }),
+    ])
+
+    // tauxCouvertureAffectations: % of UEs with at least one affectation
+    const uesWithAffectation = allUEs.filter((ue) => ue._count.affectations > 0).length
+    const tauxCouvertureAffectations = allUEs.length > 0
+      ? Math.round((uesWithAffectation / allUEs.length) * 100)
+      : 0
+
+    // chargeEnseignants: teacher workload
+    const enseignantChargeMap = new Map<string, { enseignantNom: string; totalHeures: number; ueIds: Set<string>; statuts: Set<string> }>()
+    allAffectations.forEach((aff) => {
+      const existing = enseignantChargeMap.get(aff.enseignantId)
+      if (existing) {
+        existing.totalHeures += aff.volumeHeures
+        existing.ueIds.add(aff.uniteEnseignementId)
+        existing.statuts.add(aff.statut)
+      } else {
+        enseignantChargeMap.set(aff.enseignantId, {
+          enseignantNom: aff.enseignant.name,
+          totalHeures: aff.volumeHeures,
+          ueIds: new Set([aff.uniteEnseignementId]),
+          statuts: new Set([aff.statut]),
+        })
+      }
+    })
+
+    const chargeEnseignants = Array.from(enseignantChargeMap.entries()).map(
+      ([enseignantId, data]) => ({
+        enseignantId,
+        enseignantNom: data.enseignantNom,
+        totalHeures: Math.round(data.totalHeures * 10) / 10,
+        nbUEs: data.ueIds.size,
+        statut: data.statuts.has('PUBLIEE')
+          ? 'PUBLIEE'
+          : data.statuts.has('VALIDEE')
+            ? 'VALIDEE'
+            : 'PROVISOIRE',
+      })
+    ).sort((a, b) => b.totalHeures - a.totalHeures)
+
+    // affectationsParNiveau: coverage by level
+    const niveauData = new Map<string, { nbUEs: number; ueWithAffectation: number; nbAffectations: number }>()
+    allUEs.forEach((ue) => {
+      const niv = ue.niveau || 'NON_DEFINI'
+      const existing = niveauData.get(niv)
+      if (existing) {
+        existing.nbUEs += 1
+        if (ue._count.affectations > 0) existing.ueWithAffectation += 1
+      } else {
+        niveauData.set(niv, {
+          nbUEs: 1,
+          ueWithAffectation: ue._count.affectations > 0 ? 1 : 0,
+          nbAffectations: 0,
+        })
+      }
+    })
+    allAffectations.forEach((aff) => {
+      const niv = aff.uniteEnseignement.niveau || 'NON_DEFINI'
+      const existing = niveauData.get(niv)
+      if (existing) existing.nbAffectations += 1
+    })
+
+    const affectationsParNiveau = Array.from(niveauData.entries()).map(
+      ([niveau, data]) => ({
+        niveau,
+        nbUEs: data.nbUEs,
+        nbAffectations: data.nbAffectations,
+        tauxCouverture: data.nbUEs > 0
+          ? Math.round((data.ueWithAffectation / data.nbUEs) * 100)
+          : 0,
+      })
+    )
+
+    // affectationsParFiliere: coverage by filiere
+    const filiereData = new Map<string, { filiereNom: string; nbUEs: number; ueWithAffectation: number; nbAffectations: number }>()
+    allUEs.forEach((ue) => {
+      const fId = ue.filiereId
+      const existing = filiereData.get(fId)
+      if (existing) {
+        existing.nbUEs += 1
+        if (ue._count.affectations > 0) existing.ueWithAffectation += 1
+      } else {
+        filiereData.set(fId, {
+          filiereNom: ue.filiere.nom,
+          nbUEs: 1,
+          ueWithAffectation: ue._count.affectations > 0 ? 1 : 0,
+          nbAffectations: 0,
+        })
+      }
+    })
+    allAffectations.forEach((aff) => {
+      const fId = aff.uniteEnseignement.filiereId
+      const existing = filiereData.get(fId)
+      if (existing) existing.nbAffectations += 1
+    })
+
+    const affectationsParFiliere = Array.from(filiereData.entries()).map(
+      ([filiereId, data]) => ({
+        filiereId,
+        filiereNom: data.filiereNom,
+        nbUEs: data.nbUEs,
+        nbAffectations: data.nbAffectations,
+        tauxCouverture: data.nbUEs > 0
+          ? Math.round((data.ueWithAffectation / data.nbUEs) * 100)
+          : 0,
+      })
+    )
+
     return NextResponse.json({
       nbEtudiants,
       nbEnseignants,
@@ -327,6 +484,13 @@ export async function GET(request: NextRequest) {
       evolutionMoyennes,
       topEnseignants,
       alertes,
+      nbUnitesEnseignement,
+      nbAffectations,
+      nbAffectationsValidees,
+      tauxCouvertureAffectations,
+      chargeEnseignants,
+      affectationsParNiveau,
+      affectationsParFiliere,
     })
   } catch (error) {
     console.error('Stats responsable error:', error)

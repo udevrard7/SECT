@@ -138,7 +138,7 @@ function getAvatarColor(role: string): string {
 function getRoleLabel(role: string): string {
   switch (role) {
     case 'ADMIN': return 'Admin'
-    case 'RESPONSABLE': return 'Responsable'
+    case 'RESPONSABLE': return 'Responsable des études'
     case 'ENSEIGNANT': return 'Enseignant'
     case 'ETUDIANT': return 'Étudiant'
     default: return role

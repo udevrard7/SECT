@@ -33,9 +33,12 @@ import { EvaluationsPage } from '@/components/evaluations/evaluations-page'
 import { FilieresPage } from '@/components/filieres/filieres-page'
 import { EtudiantsPage } from '@/components/responsable/etudiants-page'
 import { EnseignantsPage } from '@/components/responsable/enseignants-page'
+import { UnitesEnseignementPage } from '@/components/responsable/unites-enseignement-page'
+import { AffectationsPage } from '@/components/responsable/affectations-page'
 import { AbonnementsPage } from '@/components/admin/abonnements-page'
 import { SecuritePage } from '@/components/admin/securite-page'
 import { AccesEtablissementsPage } from '@/components/admin/acces-etablissements-page'
+import { NiveauxPage } from '@/components/responsable/niveaux-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -53,6 +56,9 @@ const PAGE_LABELS: Record<PageId, string> = {
   configuration: 'Configuration du système',
   logs: 'Journaux d\'audit',
   filieres: 'Gestion des filières',
+  niveaux: 'Niveaux d\'étude',
+  'unites-enseignement': 'Unités d\'enseignement',
+  affectations: 'Affectations',
   etudiants: 'Gestion des étudiants',
   enseignants: 'Gestion des enseignants',
   evaluations: 'Gestion des évaluations',
@@ -80,6 +86,9 @@ const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   configuration: 'Paramétrer le fonctionnement de la plateforme',
   logs: 'Consulter les journaux d\'activité du système',
   filieres: 'Organiser les filières et formations',
+  niveaux: 'Gérer les niveaux L1 à M2 et doctorat',
+  'unites-enseignement': 'Gérer les matières et unités d\'enseignement',
+  affectations: 'Affecter les enseignants aux classes et unités d\'enseignement',
   etudiants: 'Gérer les étudiants et leurs inscriptions',
   enseignants: 'Gérer les enseignants et leurs affectations',
   evaluations: 'Planifier et suivre les évaluations',
@@ -239,6 +248,21 @@ function PageContent() {
   // Admin: Accès établissements page
   if (currentPage === 'acces-etablissements') {
     return <AccesEtablissementsPage />
+  }
+
+  // Responsable: Niveaux page
+  if (currentPage === 'niveaux') {
+    return <NiveauxPage />
+  }
+
+  // Responsable: Unités d'enseignement page
+  if (currentPage === 'unites-enseignement') {
+    return <UnitesEnseignementPage />
+  }
+
+  // Responsable: Affectations page
+  if (currentPage === 'affectations') {
+    return <AffectationsPage />
   }
 
   // All other pages: placeholder

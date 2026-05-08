@@ -8,6 +8,9 @@ export type PageId =
   | 'configuration'
   | 'logs'
   | 'filieres'
+  | 'niveaux'
+  | 'unites-enseignement'
+  | 'affectations'
   | 'etudiants'
   | 'enseignants'
   | 'evaluations'
@@ -64,7 +67,10 @@ export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   ],
   RESPONSABLE: [
     { id: 'dashboard', label: 'Tableau de bord', icon: 'LayoutDashboard' },
-    { id: 'filieres', label: 'Filières', icon: 'GraduationCap' },
+    { id: 'filieres', label: 'Filières & Niveaux', icon: 'GraduationCap' },
+    { id: 'niveaux', label: 'Niveaux d\'étude', icon: 'Layers' },
+    { id: 'unites-enseignement', label: 'Unités d\'enseignement', icon: 'BookMarked' },
+    { id: 'affectations', label: 'Affectations', icon: 'UserCheck' },
     { id: 'etudiants', label: 'Étudiants', icon: 'Users' },
     { id: 'enseignants', label: 'Enseignants', icon: 'BookOpen' },
     { id: 'evaluations', label: 'Évaluations', icon: 'ClipboardCheck' },

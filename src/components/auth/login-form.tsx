@@ -49,7 +49,7 @@ type LoginFormValues = z.infer<typeof loginSchema>
 
 const demoAccounts = [
   { role: 'Administrateur', email: 'admin@sect.fr', password: 'admin123' },
-  { role: 'Responsable', email: 'responsable@sect.fr', password: 'resp123' },
+  { role: 'Responsable des études', email: 'responsable@sect.fr', password: 'resp123' },
   { role: 'Enseignant', email: 'enseignant@sect.fr', password: 'ens123' },
   { role: 'Étudiant', email: 'etudiant@sect.fr', password: 'etu123' },
 ]
