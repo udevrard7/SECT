@@ -12,6 +12,7 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  ArrowLeft,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
@@ -54,7 +55,11 @@ const demoAccounts = [
   { role: 'Étudiant', email: 'etudiant@sect.fr', password: 'etu123' },
 ]
 
-export function LoginForm() {
+interface LoginFormProps {
+  onBack?: () => void
+}
+
+export function LoginForm({ onBack }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const login = useAuthStore((state) => state.login)
@@ -88,6 +93,21 @@ export function LoginForm() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950 dark:via-teal-950 dark:to-emerald-900">
+      {/* Back button */}
+      {onBack && (
+        <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBack}
+            className="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 -ml-2"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1.5" />
+            Retour
+          </Button>
+        </div>
+      )}
+
       {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12">
         {/* Branding */}

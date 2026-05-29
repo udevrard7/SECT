@@ -1,27 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { LandingPage } from '@/components/landing/landing-page'
 import { LoginForm } from '@/components/auth/login-form'
 import { AppLayout } from '@/components/layout/app-layout'
 import { Loader2 } from 'lucide-react'
 
+type ViewState = 'landing' | 'login'
+
 export default function Home() {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
+  const [view, setView] = useState<ViewState>('landing')
   const [initializing, setInitializing] = useState(true)
 
-  // Seed the database on first load
+  // Seed the database in background (non-blocking)
   useEffect(() => {
-    const seedDB = async () => {
-      try {
-        await fetch('/api/seed', { method: 'POST' })
-      } catch {
-        // Ignore errors - might already be seeded
-      } finally {
-        setInitializing(false)
-      }
-    }
-    seedDB()
+    fetch('/api/seed', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => setInitializing(false))
   }, [])
 
   // Show loading while initializing the database
@@ -38,10 +35,21 @@ export default function Home() {
     )
   }
 
-  // Show login or app based on auth state
-  if (!isAuthenticated) {
-    return <LoginForm />
+  // Show app directly if authenticated (derived state, no useEffect needed)
+  if (isAuthenticated) {
+    return <AppLayout />
   }
 
-  return <AppLayout />
+  // Show login form
+  if (view === 'login') {
+    return <LoginForm onBack={() => setView('landing')} />
+  }
+
+  // Show landing page by default
+  return (
+    <LandingPage
+      onLogin={() => setView('login')}
+      onDemo={() => setView('login')}
+    />
+  )
 }
