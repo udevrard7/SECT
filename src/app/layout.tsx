@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://sect-app.vercel.app"),
   title: "SECT — Système d'Evaluation Casse-Tête",
   description: "Plateforme d'évaluation en ligne propulsée par l'Intelligence Artificielle pour l'enseignement supérieur.",
   icons: {
