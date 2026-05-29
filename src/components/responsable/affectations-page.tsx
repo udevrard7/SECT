@@ -91,7 +91,6 @@ interface AffectationItem {
       id: string
       nom: string
       code: string | null
-      niveau: string | null
     }
   }
 }
@@ -106,7 +105,6 @@ interface UEItem {
     id: string
     nom: string
     code: string | null
-    niveau: string | null
   }
   volumeHeuresCM: number
   volumeHeuresTD: number
@@ -126,7 +124,6 @@ interface FiliereOption {
   id: string
   nom: string
   code: string | null
-  niveau: string | null
 }
 
 // ─── Badge helpers ───
@@ -232,7 +229,6 @@ export function AffectationsPage() {
           id: f.id,
           nom: f.nom,
           code: f.code ?? null,
-          niveau: f.niveau ?? null,
         })))
       }
     } catch {

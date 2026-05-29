@@ -53,7 +53,6 @@ interface FiliereItem {
   id: string
   nom: string
   code: string | null
-  niveau: string | null
 }
 
 interface UEItem {
@@ -68,7 +67,6 @@ interface UEItem {
     id: string
     nom: string
     code: string | null
-    niveau: string | null
   }
   _count: { affectations: number }
 }
@@ -95,7 +93,6 @@ interface AffectationItem {
       id: string
       nom: string
       code: string | null
-      niveau: string | null
     }
   }
 }
@@ -304,7 +301,6 @@ export function NiveauxPage() {
             id: f.id,
             nom: f.nom,
             code: f.code ?? null,
-            niveau: f.niveau ?? null,
           }))
         )
       }
@@ -360,7 +356,7 @@ export function NiveauxPage() {
       const uesAtNiveau = ues.filter((ue) => ue.niveau === config.key)
       const filiereIdsWithUEs = new Set(uesAtNiveau.map((ue) => ue.filiereId))
       const filieresAtNiveau = filieres.filter(
-        (f) => filiereIdsWithUEs.has(f.id) || f.niveau === config.key
+        (f) => filiereIdsWithUEs.has(f.id)
       )
 
       // Get UE IDs at this niveau for affectation counting
@@ -532,7 +528,6 @@ export function NiveauxPage() {
             id: ue.filiere.id,
             nom: ue.filiere.nom,
             code: ue.filiere.code,
-            niveau: ue.filiere.niveau,
           },
           ues: [],
           affectations: [],

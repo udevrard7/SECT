@@ -17,7 +17,6 @@ export async function GET(
             id: true,
             nom: true,
             code: true,
-            niveau: true,
             etablissement: {
               select: { id: true, nom: true },
             },
@@ -68,7 +67,6 @@ export async function GET(
               id: true,
               nom: true,
               code: true,
-              niveau: true,
               etablissement: {
                 select: { id: true, nom: true },
               },

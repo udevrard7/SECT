@@ -85,7 +85,7 @@ interface EnseignantFiliereItem {
   enseignantId: string
   filiereId: string
   niveau: string
-  filiere: { id: string; nom: string; code: string | null; niveau: string | null }
+  filiere: { id: string; nom: string; code: string | null }
   enseignant?: { id: string; name: string; email: string }
 }
 
@@ -93,7 +93,6 @@ interface FiliereOption {
   id: string
   nom: string
   code: string | null
-  niveau: string | null
 }
 
 interface ImportResult {
@@ -242,11 +241,10 @@ export function EnseignantsPage() {
       const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
-        const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null; niveau?: string | null }) => ({
+        const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null }) => ({
           id: f.id,
           nom: f.nom,
           code: f.code ?? null,
-          niveau: f.niveau ?? null,
         }))
         setFilieres(filieresData)
       }
@@ -781,7 +779,7 @@ export function EnseignantsPage() {
             <SelectItem value="all">Toutes les filières</SelectItem>
             {filieres.map((f) => (
               <SelectItem key={f.id} value={f.id}>
-                {f.nom}{f.niveau ? ` (${f.niveau})` : ''}
+                {f.nom}{f.code ? ` (${f.code})` : ''}
               </SelectItem>
             ))}
           </SelectContent>

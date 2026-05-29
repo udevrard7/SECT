@@ -18,7 +18,6 @@ export async function GET(
             id: true,
             nom: true,
             code: true,
-            niveau: true,
             etablissementId: true,
           },
         },
@@ -145,7 +144,6 @@ export async function PATCH(
             id: true,
             nom: true,
             code: true,
-            niveau: true,
           },
         },
         _count: {
@@ -204,7 +202,6 @@ export async function DELETE(
             id: true,
             nom: true,
             code: true,
-            niveau: true,
           },
         },
       },

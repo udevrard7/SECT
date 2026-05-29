@@ -91,7 +91,6 @@ export async function PATCH(
                 id: true,
                 nom: true,
                 code: true,
-                niveau: true,
               },
             },
           },

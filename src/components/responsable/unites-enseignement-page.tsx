@@ -68,7 +68,6 @@ interface FiliereOption {
   id: string
   nom: string
   code: string | null
-  niveau: string | null
 }
 
 interface AffectationItem {
@@ -98,7 +97,7 @@ interface UEItem {
   obligatoire: boolean
   actif: boolean
   createdAt: string
-  filiere: { id: string; nom: string; code: string | null; niveau: string | null }
+  filiere: { id: string; nom: string; code: string | null }
   _count: { affectations: number }
   affectations?: AffectationItem[]
 }
@@ -193,7 +192,6 @@ export function UnitesEnseignementPage() {
           id: f.id,
           nom: f.nom,
           code: f.code ?? null,
-          niveau: f.niveau ?? null,
         }))
         setFilieres(filieresData)
       }
@@ -506,7 +504,7 @@ export function UnitesEnseignementPage() {
             <SelectContent>
               {filieres.map((f) => (
                 <SelectItem key={f.id} value={f.id}>
-                  {f.nom}{f.niveau ? ` (${f.niveau})` : ''}
+                  {f.nom}{f.code ? ` (${f.code})` : ''}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -701,7 +699,7 @@ export function UnitesEnseignementPage() {
             <SelectItem value="all">Toutes les filières</SelectItem>
             {filieres.map((f) => (
               <SelectItem key={f.id} value={f.id}>
-                {f.nom}{f.niveau ? ` (${f.niveau})` : ''}
+                {f.nom}{f.code ? ` (${f.code})` : ''}
               </SelectItem>
             ))}
           </SelectContent>

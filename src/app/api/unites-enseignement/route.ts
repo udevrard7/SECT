@@ -60,7 +60,6 @@ export async function GET(request: NextRequest) {
             id: true,
             nom: true,
             code: true,
-            niveau: true,
           },
         },
         _count: {
@@ -182,7 +181,6 @@ export async function POST(request: NextRequest) {
             id: true,
             nom: true,
             code: true,
-            niveau: true,
           },
         },
         _count: {

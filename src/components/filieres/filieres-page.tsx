@@ -62,7 +62,6 @@ interface FiliereItem {
   id: string
   nom: string
   code: string | null
-  niveau: string | null
   etablissementId: string
   description: string | null
   nbEtudiants: number | null
@@ -96,17 +95,7 @@ interface ResponsableOption {
 
 // ─── Utility functions ───
 
-function getNiveauBadge(niveau: string | null) {
-  if (!niveau) return null
-  const n = niveau.toUpperCase()
-  if (n.startsWith('L')) {
-    return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">{niveau}</Badge>
-  }
-  if (n.startsWith('M')) {
-    return <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">{niveau}</Badge>
-  }
-  return <Badge variant="outline">{niveau}</Badge>
-}
+
 
 function formatDateFR(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -128,7 +117,6 @@ export function FilieresPage() {
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [etablissementFilter, setEtablissementFilter] = useState('all')
-  const [niveauFilter, setNiveauFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
   // ─── Dialog state ───
@@ -145,7 +133,6 @@ export function FilieresPage() {
   // ─── Form state ───
   const [formNom, setFormNom] = useState('')
   const [formCode, setFormCode] = useState('')
-  const [formNiveau, setFormNiveau] = useState('')
   const [formEtablissementId, setFormEtablissementId] = useState('')
   const [formResponsableId, setFormResponsableId] = useState('')
   const [formDescription, setFormDescription] = useState('')
@@ -166,7 +153,6 @@ export function FilieresPage() {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (etablissementFilter && etablissementFilter !== 'all') params.set('etablissementId', etablissementFilter)
-      if (niveauFilter && niveauFilter !== 'all') params.set('niveau', niveauFilter)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
       // If user is RESPONSABLE, filter to only their filieres
       if (isResponsable && user?.id) {
@@ -183,7 +169,7 @@ export function FilieresPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [search, etablissementFilter, niveauFilter, statusFilter, isResponsable, user?.id])
+  }, [search, etablissementFilter, statusFilter, isResponsable, user?.id])
 
   // ─── Fetch etablissements & responsables ───
   const fetchOptions = useCallback(async () => {
@@ -224,7 +210,6 @@ export function FilieresPage() {
     setEditingFiliere(null)
     setFormNom('')
     setFormCode('')
-    setFormNiveau('')
     setFormEtablissementId('')
     setFormResponsableId('')
     setFormDescription('')
@@ -238,7 +223,6 @@ export function FilieresPage() {
     setEditingFiliere(filiere)
     setFormNom(filiere.nom)
     setFormCode(filiere.code ?? '')
-    setFormNiveau(filiere.niveau ?? '')
     setFormEtablissementId(filiere.etablissementId)
     setFormResponsableId(filiere.responsable?.id ?? '')
     setFormDescription(filiere.description ?? '')
@@ -263,7 +247,6 @@ export function FilieresPage() {
       const body = {
         nom: formNom,
         code: formCode || null,
-        niveau: formNiveau || null,
         etablissementId: formEtablissementId,
         responsableId: formResponsableId || null,
         description: formDescription || null,
@@ -445,20 +428,6 @@ export function FilieresPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={niveauFilter} onValueChange={setNiveauFilter}>
-          <SelectTrigger className="w-[130px]">
-            <Filter className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-            <SelectValue placeholder="Niveau" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous niveaux</SelectItem>
-            <SelectItem value="L1">L1</SelectItem>
-            <SelectItem value="L2">L2</SelectItem>
-            <SelectItem value="L3">L3</SelectItem>
-            <SelectItem value="M1">M1</SelectItem>
-            <SelectItem value="M2">M2</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="Statut" />
@@ -507,11 +476,11 @@ export function FilieresPage() {
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucune filière trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-            {search || etablissementFilter !== 'all' || niveauFilter !== 'all' || statusFilter !== 'all'
+            {search || etablissementFilter !== 'all' || statusFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
               : 'Commencez par créer votre première filière.'}
           </p>
-          {!search && etablissementFilter === 'all' && niveauFilter === 'all' && statusFilter === 'all' && (
+          {!search && etablissementFilter === 'all' && statusFilter === 'all' && (
             <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
               <Plus className="h-4 w-4" />
               Créer une filière
@@ -536,7 +505,7 @@ export function FilieresPage() {
                           {filiere.code}
                         </Badge>
                       )}
-                      {getNiveauBadge(filiere.niveau)}
+
                     </div>
                   </div>
                   {filiere.actif ? (
@@ -659,31 +628,14 @@ export function FilieresPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="filiere-code">Code</Label>
-                <Input
-                  id="filiere-code"
-                  placeholder="Ex: L3-INFO"
-                  value={formCode}
-                  onChange={(e) => setFormCode(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="filiere-niveau">Niveau</Label>
-                <Select value={formNiveau} onValueChange={setFormNiveau}>
-                  <SelectTrigger id="filiere-niveau">
-                    <SelectValue placeholder="Sélectionner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="L1">L1</SelectItem>
-                    <SelectItem value="L2">L2</SelectItem>
-                    <SelectItem value="L3">L3</SelectItem>
-                    <SelectItem value="M1">M1</SelectItem>
-                    <SelectItem value="M2">M2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="filiere-code">Code</Label>
+              <Input
+                id="filiere-code"
+                placeholder="Ex: L3-INFO"
+                value={formCode}
+                onChange={(e) => setFormCode(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
@@ -827,12 +779,7 @@ export function FilieresPage() {
                       <Badge variant="outline" className="font-mono">{detailFiliere.code}</Badge>
                     </div>
                   )}
-                  {detailFiliere.niveau && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-muted-foreground">Niveau :</span>
-                      {getNiveauBadge(detailFiliere.niveau)}
-                    </div>
-                  )}
+
                   <div className="flex items-center gap-2 text-sm">
                     <Building2 className="h-3.5 w-3.5 text-emerald-600" />
                     <span className="text-muted-foreground">Établissement :</span>

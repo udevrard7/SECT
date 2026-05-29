@@ -8,14 +8,12 @@ export async function GET(request: Request) {
     const etablissementId = searchParams.get('etablissementId') || ''
     const search = searchParams.get('search') || ''
     const responsableId = searchParams.get('responsableId') || ''
-    const niveau = searchParams.get('niveau') || ''
     const actif = searchParams.get('actif') || ''
 
     const where: Record<string, unknown> = {}
 
     if (etablissementId) where.etablissementId = etablissementId
     if (responsableId) where.responsableId = responsableId
-    if (niveau) where.niveau = niveau
     if (actif !== '') where.actif = actif === 'true'
     if (search) {
       where.OR = [
@@ -45,7 +43,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { nom, code, niveau, etablissementId, responsableId, description, nbEtudiants, actif } = body
+    const { nom, code, etablissementId, responsableId, description, nbEtudiants, actif } = body
 
     if (!nom || !etablissementId) {
       return NextResponse.json({ error: 'Le nom et l\'établissement sont obligatoires' }, { status: 400 })
@@ -63,7 +61,6 @@ export async function POST(request: Request) {
       data: {
         nom,
         code: code || null,
-        niveau: niveau || null,
         etablissementId,
         responsableId: responsableId || null,
         description: description || null,

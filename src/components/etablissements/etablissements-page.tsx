@@ -81,7 +81,6 @@ interface EtablissementDetail extends EtablissementItem {
     id: string
     nom: string
     code: string | null
-    niveau: string | null
     description: string | null
     nbEtudiants: number | null
     actif: boolean
@@ -782,7 +781,7 @@ export function EtablissementsPage() {
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <p className="font-medium text-sm">{f.nom}</p>
-                                {f.code && <p className="text-xs text-muted-foreground">{f.code} · {f.niveau || ''}</p>}
+                                {f.code && <p className="text-xs text-muted-foreground">{f.code}</p>}
                                 {f.responsable && <p className="text-xs text-muted-foreground mt-0.5">Resp: {f.responsable.name}</p>}
                               </div>
                               <Badge variant="secondary" className="text-xs">

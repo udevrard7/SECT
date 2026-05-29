@@ -57,7 +57,7 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const { nom, code, niveau, etablissementId, responsableId, description, nbEtudiants, actif } = body
+    const { nom, code, etablissementId, responsableId, description, nbEtudiants, actif } = body
 
     const existing = await db.filiere.findUnique({ where: { id } })
     if (!existing) {
@@ -87,7 +87,6 @@ export async function PATCH(
     const data: Record<string, unknown> = {}
     if (nom !== undefined) data.nom = nom
     if (code !== undefined) data.code = code
-    if (niveau !== undefined) data.niveau = niveau
     if (etablissementId !== undefined) data.etablissementId = etablissementId
     if (responsableId !== undefined) data.responsableId = responsableId
     if (description !== undefined) data.description = description

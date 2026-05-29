@@ -96,7 +96,6 @@ export async function POST() {
         data: {
           nom: 'Informatique',
           code: 'INFO-L3',
-          niveau: 'L3',
           etablissementId: etab1.id,
           description: 'Licence 3 Informatique',
           nbEtudiants: 120,
@@ -111,7 +110,6 @@ export async function POST() {
         data: {
           nom: 'Informatique L2',
           code: 'INFO-L2',
-          niveau: 'L2',
           etablissementId: etab1.id,
           description: 'Licence 2 Informatique',
           nbEtudiants: 150,
@@ -126,7 +124,6 @@ export async function POST() {
         data: {
           nom: 'Mathématiques Appliquées',
           code: 'MATH-M1',
-          niveau: 'M1',
           etablissementId: etab2.id,
           description: 'Master 1 Mathématiques Appliquées',
           nbEtudiants: 80,
