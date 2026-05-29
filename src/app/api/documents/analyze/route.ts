@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { extractText } from '@/lib/text-extraction';
+import { extractTextFromFile } from '@/lib/text-extraction';
 
 /**
  * Batch analyze all documents with EN_ATTENTE or ERREUR status.
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         // Extract text
         let content = doc.contenuTexte;
         if (!content) {
-          const extraction = await extractText(doc.cheminStockage);
+          const extraction = await extractTextFromFile(doc.cheminStockage, doc.typeMime || 'application/pdf');
           content = extraction.text;
 
           if (!content || extraction.wordCount === 0) {

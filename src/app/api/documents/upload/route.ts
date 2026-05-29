@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { isAllowedFile, ALLOWED_EXTENSIONS } from '@/lib/text-extraction';
+import { isSupportedFileType, getMimeType } from '@/lib/text-extraction';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
     for (const file of files) {
       try {
         // Validate file type
-        if (!isAllowedFile(file.name)) {
+        if (!isSupportedFileType(file.name)) {
           errors.push({
             filename: file.name,
-            error: `Format non supporté. Formats acceptés: ${ALLOWED_EXTENSIONS.join(', ')}`
+            error: 'Format non supporté. Formats acceptés: .pdf, .docx, .doc, .pptx, .txt, .md'
           });
           continue;
         }
@@ -57,15 +57,7 @@ export async function POST(request: NextRequest) {
         fs.writeFileSync(filePath, buffer);
 
         // Determine MIME type
-        const mimeTypes: Record<string, string> = {
-          '.pdf': 'application/pdf',
-          '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          '.doc': 'application/msword',
-          '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-          '.txt': 'text/plain',
-          '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          '.xls': 'application/vnd.ms-excel',
-        };
+        const mimeType = getMimeType(file.name);
 
         // Create database record with EN_ATTENTE status
         const document = await db.document.create({
@@ -73,7 +65,7 @@ export async function POST(request: NextRequest) {
             nomFichier: file.name,
             cheminStockage: filePath,
             tailleFichier: file.size,
-            typeMime: mimeTypes[ext] || 'application/octet-stream',
+            typeMime: mimeType,
             statutAnalyse: 'EN_ATTENTE',
             ownerId: ownerId,
           }
