@@ -18,6 +18,7 @@ import { DocumentsPage } from '@/components/documents/documents-page'
 import { BanqueQuestionsPage } from '@/components/questions/banque-questions-page'
 import { QuestionsIAPage } from '@/components/questions/questions-ia-page'
 import { EpreuvesPage } from '@/components/epreuves/epreuves-page'
+import { DevoirsPage } from '@/components/devoirs/devoirs-page'
 import { MesEpreuvesPage } from '@/components/passation/mes-epreuves-page'
 import { PassationPage } from '@/components/passation/passation-page'
 import { ResultatsPage } from '@/components/epreuves/resultats-page'
@@ -68,6 +69,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   'questions-ia': 'Génération de questions IA',
   'banque-questions': 'Banque de questions',
   epreuves: 'Gestion des épreuves',
+  devoirs: 'Gestion des devoirs',
   correction: 'Correction des copies',
   resultats: 'Résultats et analyses',
   'mes-epreuves': 'Mes épreuves',
@@ -98,6 +100,7 @@ const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'questions-ia': 'Générer des questions automatiquement avec l\'IA',
   'banque-questions': 'Parcourir et gérer la banque de questions',
   epreuves: 'Créer et organiser les épreuves d\'évaluation',
+  devoirs: 'Gérer les devoirs et les soumissions',
   correction: 'Corriger les copies et attribuer les notes',
   resultats: 'Consulter les résultats et les analyses',
   'mes-epreuves': 'Voir les épreuves programmées et passées',
@@ -158,6 +161,11 @@ function PageContent() {
   // Épreuves page (teacher)
   if (currentPage === 'epreuves') {
     return <EpreuvesPage />
+  }
+
+  // Devoirs page (teacher)
+  if (currentPage === 'devoirs') {
+    return <DevoirsPage />
   }
 
   // Mes épreuves page (student)

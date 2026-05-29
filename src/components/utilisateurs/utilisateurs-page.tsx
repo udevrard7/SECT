@@ -21,13 +21,20 @@ import {
   Building2,
   GraduationCap,
   Clock,
+  Send,
+  FileUp,
+  X,
+  AlertCircle,
+  CheckCircle2,
+  Copy,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
@@ -69,6 +76,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -97,6 +105,33 @@ interface UserItem {
   createdAt: string
   etablissement: { id: string; nom: string } | null
   filiere: { id: string; nom: string } | null
+}
+
+interface InvitationItem {
+  id: string
+  email: string
+  role: string
+  name: string | null
+  used: boolean
+  createdAt: string
+  expiresAt: string
+  Etablissement: { id: string; nom: string } | null
+  Filiere: { id: string; nom: string } | null
+  User: { id: string; name: string; email: string } | null
+}
+
+interface ImportResultUser {
+  id: string
+  name: string
+  email: string
+  password: string
+  role: string
+}
+
+interface ImportError {
+  row: number
+  email: string
+  error: string
 }
 
 // ─── Utility functions ───
@@ -161,6 +196,16 @@ function formatRelativeDate(dateStr: string | null): string {
   return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 // ─── Main Component ───
 
 export function UtilisateursPage() {
@@ -196,6 +241,28 @@ export function UtilisateursPage() {
   // ─── Options state ───
   const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
   const [filieres, setFilieres] = useState<FiliereOption[]>([])
+
+  // ─── Invitation state ───
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('ETUDIANT')
+  const [inviteName, setInviteName] = useState('')
+  const [inviteEtablissementId, setInviteEtablissementId] = useState('')
+  const [inviteSubmitting, setInviteSubmitting] = useState(false)
+  const [invitations, setInvitations] = useState<InvitationItem[]>([])
+  const [invitationsLoading, setInvitationsLoading] = useState(false)
+  const [cancelInviteTarget, setCancelInviteTarget] = useState<InvitationItem | null>(null)
+
+  // ─── Import state ───
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importCsvData, setImportCsvData] = useState('')
+  const [importRole, setImportRole] = useState('ETUDIANT')
+  const [importSubmitting, setImportSubmitting] = useState(false)
+  const [importResult, setImportResult] = useState<{
+    imported: number
+    errors: ImportError[]
+    users: ImportResultUser[]
+  } | null>(null)
 
   // ─── Fetch users ───
   const fetchUsers = useCallback(async () => {
@@ -241,13 +308,30 @@ export function UtilisateursPage() {
     }
   }, [])
 
+  // ─── Fetch invitations ───
+  const fetchInvitations = useCallback(async () => {
+    setInvitationsLoading(true)
+    try {
+      const res = await fetch('/api/invitations?limit=50')
+      if (res.ok) {
+        const data = await res.json()
+        setInvitations(data.invitations ?? [])
+      }
+    } catch {
+      // Silent
+    } finally {
+      setInvitationsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
   }, [fetchUsers])
 
   useEffect(() => {
     fetchOptions()
-  }, [fetchOptions])
+    fetchInvitations()
+  }, [fetchOptions, fetchInvitations])
 
   // ─── Filtered filieres based on selected etablissement ───
   const filteredFilieres = formEtablissementId
@@ -382,10 +466,157 @@ export function UtilisateursPage() {
     }
   }
 
+  // ─── Submit invitation ───
+  const handleInviteSubmit = async () => {
+    if (!inviteEmail.trim()) {
+      toast.error('Champ requis', { description: 'L\'email est obligatoire.' })
+      return
+    }
+    if (!user?.id) {
+      toast.error('Erreur', { description: 'Vous devez être connecté pour envoyer une invitation.' })
+      return
+    }
+
+    setInviteSubmitting(true)
+    try {
+      const body: Record<string, unknown> = {
+        email: inviteEmail.trim(),
+        role: inviteRole,
+        createdById: user.id,
+      }
+      if (inviteName.trim()) body.name = inviteName.trim()
+      if (inviteEtablissementId) body.etablissementId = inviteEtablissementId
+
+      const res = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de l\'invitation')
+      }
+      toast.success('Invitation envoyée', {
+        description: `Une invitation a été envoyée à ${inviteEmail}.`,
+      })
+      setInviteDialogOpen(false)
+      setInviteEmail('')
+      setInviteRole('ETUDIANT')
+      setInviteName('')
+      setInviteEtablissementId('')
+      await fetchInvitations()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
+    } finally {
+      setInviteSubmitting(false)
+    }
+  }
+
+  // ─── Cancel invitation ───
+  const handleCancelInvitation = async () => {
+    if (!cancelInviteTarget) return
+    try {
+      const res = await fetch(`/api/invitations/${cancelInviteTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
+      toast.success('Invitation annulée', {
+        description: `L'invitation pour ${cancelInviteTarget.email} a été annulée.`,
+      })
+      setCancelInviteTarget(null)
+      await fetchInvitations()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible d\'annuler l\'invitation.' })
+    }
+  }
+
+  // ─── Submit import ───
+  const handleImportSubmit = async () => {
+    if (!importCsvData.trim()) {
+      toast.error('Champ requis', { description: 'Veuillez saisir les données CSV.' })
+      return
+    }
+
+    // Parse CSV: email,name,role per line
+    const lines = importCsvData.trim().split('\n').filter((l) => l.trim())
+    const usersToImport: { email: string; name: string }[] = []
+    const parseErrors: string[] = []
+
+    for (let i = 0; i < lines.length; i++) {
+      const parts = lines[i].split(',').map((s) => s.trim())
+      if (parts.length < 2) {
+        parseErrors.push(`Ligne ${i + 1}: format invalide (email,nom requis)`)
+        continue
+      }
+      const [email, name] = parts
+      if (!email || !name) {
+        parseErrors.push(`Ligne ${i + 1}: email et nom sont requis`)
+        continue
+      }
+      usersToImport.push({ email, name })
+    }
+
+    if (parseErrors.length > 0) {
+      toast.error('Erreurs de format', {
+        description: parseErrors.slice(0, 3).join('. ') + (parseErrors.length > 3 ? ` ... et ${parseErrors.length - 3} autres.` : ''),
+      })
+      if (usersToImport.length === 0) return
+    }
+
+    setImportSubmitting(true)
+    setImportResult(null)
+    try {
+      const res = await fetch('/api/users/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          users: usersToImport,
+          role: importRole,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de l\'import')
+      }
+      setImportResult(data)
+      toast.success('Import terminé', {
+        description: `${data.imported} utilisateur(s) importé(s) sur ${usersToImport.length}.`,
+      })
+      await fetchUsers()
+      await fetchInvitations()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue lors de l\'import.' })
+    } finally {
+      setImportSubmitting(false)
+    }
+  }
+
+  // ─── Open invite dialog ───
+  const handleOpenInvite = () => {
+    setInviteEmail('')
+    setInviteRole('ETUDIANT')
+    setInviteName('')
+    setInviteEtablissementId('')
+    setInviteDialogOpen(true)
+  }
+
+  // ─── Open import dialog ───
+  const handleOpenImport = () => {
+    setImportCsvData('')
+    setImportRole('ETUDIANT')
+    setImportResult(null)
+    setImportDialogOpen(true)
+  }
+
   // ─── Reset page when filters change ───
   useEffect(() => {
     setPage(1)
   }, [search, roleFilter, statusFilter])
+
+  // ─── Pending invitations ───
+  const pendingInvitations = invitations.filter((inv) => !inv.used)
+  const usedInvitations = invitations.filter((inv) => inv.used)
 
   return (
     <div className="space-y-6">
@@ -400,10 +631,20 @@ export function UtilisateursPage() {
             Créez, modifiez et gérez les comptes utilisateurs
           </p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4" />
-          Nouvel utilisateur
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenImport}>
+            <FileUp className="h-4 w-4" />
+            Importer
+          </Button>
+          <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenInvite}>
+            <Send className="h-4 w-4" />
+            Inviter
+          </Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+            <Plus className="h-4 w-4" />
+            Nouvel utilisateur
+          </Button>
+        </div>
       </div>
 
       {/* ─── Stats bar ─── */}
@@ -527,10 +768,16 @@ export function UtilisateursPage() {
               : 'Commencez par créer votre premier utilisateur.'}
           </p>
           {!search && roleFilter === 'all' && statusFilter === 'all' && (
-            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
-              <Plus className="h-4 w-4" />
-              Créer un utilisateur
-            </Button>
+            <div className="flex gap-2 mt-6">
+              <Button variant="outline" className="border-emerald-200 dark:border-emerald-800" onClick={handleOpenImport}>
+                <FileUp className="h-4 w-4" />
+                Importer
+              </Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+                <Plus className="h-4 w-4" />
+                Créer un utilisateur
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -682,6 +929,117 @@ export function UtilisateursPage() {
         </div>
       )}
 
+      {/* ─── Pending Invitations Section ─── */}
+      {!isLoading && invitations.length > 0 && (
+        <div className="space-y-4">
+          <Separator />
+          <div>
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Send className="h-5 w-5 text-emerald-600" />
+              Invitations
+              {pendingInvitations.length > 0 && (
+                <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 ml-1">
+                  {pendingInvitations.length} en attente
+                </Badge>
+              )}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Gérez les invitations envoyées aux futurs utilisateurs
+            </p>
+          </div>
+
+          {invitationsLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Rôle</TableHead>
+                      <TableHead className="hidden md:table-cell">Nom</TableHead>
+                      <TableHead className="hidden lg:table-cell">Établissement</TableHead>
+                      <TableHead>Date d&apos;envoi</TableHead>
+                      <TableHead>Statut</TableHead>
+                      <TableHead className="w-20">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingInvitations.map((inv) => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            {inv.email}
+                          </span>
+                        </TableCell>
+                        <TableCell>{getRoleBadge(inv.role)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground">
+                          {inv.name || '—'}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          {inv.Etablissement ? inv.Etablissement.nom : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDate(inv.createdAt)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+                            En attente
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            onClick={() => setCancelInviteTarget(inv)}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Annuler
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {usedInvitations.map((inv) => (
+                      <TableRow key={inv.id} className="opacity-60">
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            {inv.email}
+                          </span>
+                        </TableCell>
+                        <TableCell>{getRoleBadge(inv.role)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground">
+                          {inv.name || '—'}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          {inv.Etablissement ? inv.Etablissement.nom : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDate(inv.createdAt)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+                            Utilisée
+                          </Badge>
+                        </TableCell>
+                        <TableCell>—</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── Create/Edit User Dialog ─── */}
       <Dialog open={createDialogOpen} onOpenChange={(open) => {
         if (!open) setCreateDialogOpen(false)
@@ -822,6 +1180,236 @@ export function UtilisateursPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Invite User Dialog ─── */}
+      <Dialog open={inviteDialogOpen} onOpenChange={(open) => { if (!open) setInviteDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-emerald-600" />
+              Inviter un utilisateur
+            </DialogTitle>
+            <DialogDescription>
+              Envoyez une invitation par email. Le destinataire pourra créer son compte avec le rôle choisi.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Email *</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="utilisateur@universite.fr"
+                  className="pl-9"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invite-role">Rôle *</Label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger id="invite-role">
+                  <SelectValue placeholder="Sélectionner un rôle" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="RESPONSABLE">Responsable</SelectItem>
+                  <SelectItem value="ENSEIGNANT">Enseignant</SelectItem>
+                  <SelectItem value="ETUDIANT">Étudiant</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invite-name">Nom (optionnel)</Label>
+              <Input
+                id="invite-name"
+                placeholder="Ex: Jean Dupont"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invite-etablissement">Établissement (optionnel)</Label>
+              <Select value={inviteEtablissementId} onValueChange={setInviteEtablissementId}>
+                <SelectTrigger id="invite-etablissement">
+                  <SelectValue placeholder="Sélectionner un établissement" />
+                </SelectTrigger>
+                <SelectContent>
+                  {etablissements.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleInviteSubmit}
+              disabled={inviteSubmitting}
+            >
+              {inviteSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Envoi...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Envoyer l&apos;invitation
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Import Users Dialog ─── */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => { if (!open) setImportDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileUp className="h-5 w-5 text-emerald-600" />
+              Importer des utilisateurs
+            </DialogTitle>
+            <DialogDescription>
+              Importez plusieurs utilisateurs en une seule opération via un format CSV.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="space-y-2">
+              <Label htmlFor="import-role">Rôle par défaut</Label>
+              <Select value={importRole} onValueChange={setImportRole}>
+                <SelectTrigger id="import-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ETUDIANT">Étudiant</SelectItem>
+                  <SelectItem value="ENSEIGNANT">Enseignant</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Tous les utilisateurs importés auront ce rôle
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="import-csv">Données CSV</Label>
+              <Textarea
+                id="import-csv"
+                placeholder="email,nom&#10;jean.dupont@univ.fr,Jean Dupont&#10;marie.martin@univ.fr,Marie Martin"
+                value={importCsvData}
+                onChange={(e) => setImportCsvData(e.target.value)}
+                rows={8}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Un utilisateur par ligne. Format : <code className="bg-muted px-1 py-0.5 rounded">email,nom</code>
+              </p>
+            </div>
+
+            {/* Import result */}
+            {importResult && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+                    Import terminé : {importResult.imported} utilisateur(s) créé(s)
+                  </span>
+                </div>
+
+                {importResult.users.length > 0 && (
+                  <div className="rounded-lg border overflow-hidden max-h-64 overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Nom</TableHead>
+                          <TableHead className="text-xs">Email</TableHead>
+                          <TableHead className="text-xs">Mot de passe</TableHead>
+                          <TableHead className="text-xs w-10"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {importResult.users.map((u) => (
+                          <TableRow key={u.id}>
+                            <TableCell className="text-xs font-medium">{u.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{u.email}</TableCell>
+                            <TableCell className="text-xs font-mono">{u.password}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(u.password)
+                                  toast.success('Copié', { description: 'Mot de passe copié dans le presse-papier.' })
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {importResult.errors.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3">
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {importResult.errors.length} erreur(s)
+                    </p>
+                    <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                      {importResult.errors.map((e, i) => (
+                        <li key={i}>Ligne {e.row} ({e.email}): {e.error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-4 border-t">
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              {importResult ? 'Fermer' : 'Annuler'}
+            </Button>
+            {!importResult && (
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={handleImportSubmit}
+                disabled={importSubmitting}
+              >
+                {importSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Import en cours...
+                  </>
+                ) : (
+                  <>
+                    <FileUp className="h-4 w-4 mr-2" />
+                    Importer
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ─── Delete Confirmation Dialog ─── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent>
@@ -839,6 +1427,28 @@ export function UtilisateursPage() {
               onClick={handleDelete}
             >
               Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Cancel Invitation Confirmation Dialog ─── */}
+      <AlertDialog open={!!cancelInviteTarget} onOpenChange={(open) => { if (!open) setCancelInviteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Annuler l&apos;invitation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir annuler l&apos;invitation envoyée à <strong>{cancelInviteTarget?.email}</strong> ?
+              Le lien d&apos;invitation ne sera plus utilisable.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleCancelInvitation}
+            >
+              Confirmer l&apos;annulation
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

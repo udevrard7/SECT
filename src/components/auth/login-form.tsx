@@ -13,6 +13,8 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
+  KeyRound,
+  CheckCircle2,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
@@ -30,6 +32,14 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableHeader,
@@ -65,6 +75,20 @@ export function LoginForm({ onBack }: LoginFormProps) {
   const login = useAuthStore((state) => state.login)
   const isLoading = useAuthStore((state) => state.isLoading)
 
+  // ─── Password Reset state ───
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSending, setResetSending] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+  const [resetToken, setResetToken] = useState<string | null>(null)
+
+  // ─── Password Reset Confirm state ───
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [confirmToken, setConfirmToken] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false)
+  const [confirmSuccess, setConfirmSuccess] = useState(false)
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -89,6 +113,84 @@ export function LoginForm({ onBack }: LoginFormProps) {
     form.setValue('password', password)
     setLoginError(null)
     form.clearErrors()
+  }
+
+  // ─── Handle password reset request ───
+  const handleResetRequest = async () => {
+    if (!resetEmail.trim()) {
+      toast.error('Champ requis', { description: 'Veuillez entrer votre adresse email.' })
+      return
+    }
+    setResetSending(true)
+    try {
+      const res = await fetch('/api/auth/password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail.trim() }),
+      })
+      const data = await res.json()
+      setResetSent(true)
+      if (data.token) {
+        setResetToken(data.token)
+      }
+      toast.success('Demande envoyée', {
+        description: data.message || 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.',
+      })
+    } catch {
+      toast.error('Erreur', { description: 'Impossible d\'envoyer la demande. Veuillez réessayer.' })
+    } finally {
+      setResetSending(false)
+    }
+  }
+
+  // ─── Handle password reset confirm ───
+  const handleResetConfirm = async () => {
+    if (!confirmToken.trim()) {
+      toast.error('Champ requis', { description: 'Veuillez entrer le token de réinitialisation.' })
+      return
+    }
+    if (!confirmPassword || confirmPassword.length < 6) {
+      toast.error('Mot de passe invalide', { description: 'Le mot de passe doit contenir au moins 6 caractères.' })
+      return
+    }
+    setConfirmSubmitting(true)
+    try {
+      const res = await fetch('/api/auth/password-reset/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: confirmToken.trim(), password: confirmPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de la réinitialisation')
+      }
+      setConfirmSuccess(true)
+      toast.success('Mot de passe réinitialisé', {
+        description: 'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
+      })
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de réinitialiser le mot de passe.',
+      })
+    } finally {
+      setConfirmSubmitting(false)
+    }
+  }
+
+  // ─── Open reset dialog ───
+  const openResetDialog = () => {
+    setResetEmail('')
+    setResetSent(false)
+    setResetToken(null)
+    setResetDialogOpen(true)
+  }
+
+  // ─── Open confirm dialog with token ───
+  const openConfirmDialog = (token?: string) => {
+    setConfirmToken(token || '')
+    setConfirmPassword('')
+    setConfirmSuccess(false)
+    setConfirmDialogOpen(true)
   }
 
   return (
@@ -215,6 +317,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                   </div>
                   <button
                     type="button"
+                    onClick={openResetDialog}
                     className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
                   >
                     Mot de passe oublié ?
@@ -324,6 +427,204 @@ export function LoginForm({ onBack }: LoginFormProps) {
           &copy; 2026 SECT — Tous droits réservés
         </p>
       </footer>
+
+      {/* ─── Password Reset Request Dialog ─── */}
+      <Dialog open={resetDialogOpen} onOpenChange={(open) => { if (!open) setResetDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-emerald-600" />
+              Mot de passe oublié
+            </DialogTitle>
+            <DialogDescription>
+              Entrez votre adresse email pour recevoir un lien de réinitialisation.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!resetSent ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Adresse email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    placeholder="votre.email@universite.fr"
+                    className="pl-9"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleResetRequest()
+                    }}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={handleResetRequest}
+                  disabled={resetSending}
+                >
+                  {resetSending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Envoi en cours...
+                    </>
+                  ) : (
+                    'Envoyer'
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center text-center py-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 mb-4">
+                  <CheckCircle2 className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.
+                </p>
+              </div>
+
+              {/* Dev notice with token */}
+              {resetToken && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                    ⚙️ Notice de développement
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                    Token de réinitialisation (envoyé normalement par email) :
+                  </p>
+                  <div className="bg-white dark:bg-gray-900 rounded border p-2">
+                    <code className="text-xs break-all select-all">{resetToken}</code>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 text-xs"
+                    onClick={() => openConfirmDialog(resetToken)}
+                  >
+                    <KeyRound className="h-3 w-3 mr-1" />
+                    Utiliser ce token
+                  </Button>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setResetDialogOpen(false)
+                  }}
+                >
+                  Fermer
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => openConfirmDialog()}
+                >
+                  J&apos;ai un token
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Password Reset Confirm Dialog ─── */}
+      <Dialog open={confirmDialogOpen} onOpenChange={(open) => { if (!open) setConfirmDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-emerald-600" />
+              Réinitialiser le mot de passe
+            </DialogTitle>
+            <DialogDescription>
+              Entrez le token reçu par email et votre nouveau mot de passe.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!confirmSuccess ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="confirm-token">Token de réinitialisation</Label>
+                <Input
+                  id="confirm-token"
+                  placeholder="Collez le token reçu par email"
+                  value={confirmToken}
+                  onChange={(e) => setConfirmToken(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Nouveau mot de passe</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    placeholder="Minimum 6 caractères"
+                    className="pl-9"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleResetConfirm()
+                    }}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setConfirmDialogOpen(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={handleResetConfirm}
+                  disabled={confirmSubmitting}
+                >
+                  {confirmSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Réinitialisation...
+                    </>
+                  ) : (
+                    'Réinitialiser'
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center text-center py-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 mb-4">
+                  <CheckCircle2 className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <p className="font-semibold text-emerald-800 dark:text-emerald-300 mb-1">
+                  Mot de passe réinitialisé !
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 w-full"
+                  onClick={() => {
+                    setConfirmDialogOpen(false)
+                    setResetDialogOpen(false)
+                  }}
+                >
+                  Retour à la connexion
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

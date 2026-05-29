@@ -24,6 +24,7 @@ import {
   Layers,
   UserCheck,
   BookMarked,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -70,6 +71,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Layers,
   UserCheck,
   BookMarked,
+  BookOpen,
 }
 
 // ─── Role badge styling ───

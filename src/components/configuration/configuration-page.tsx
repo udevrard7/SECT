@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Settings,
   Save,
@@ -12,6 +12,7 @@ import {
   Thermometer,
   FileText,
   Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,35 +30,36 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 
-// ─── Config types ───
+// ─── Config types (mapped from the API settings object) ───
 
 interface GeneralConfig {
-  platformName: string
-  description: string
-  defaultLanguage: string
-  academicYear: string
+  siteName: string
+  siteDescription: string
+  maintenanceMode: boolean
+  registrationOpen: boolean
+  contactEmail: string
+  helpUrl: string
+  legalNoticeUrl: string
+  privacyPolicyUrl: string
 }
 
 interface SecurityConfig {
-  minPasswordLength: number
-  sessionTimeout: number
-  maxLoginAttempts: number
-  passwordPolicyDesc: string
+  maxUploadSizeMB: number
+  allowedFileTypes: string[]
+  proctoringEnabled: boolean
 }
 
 interface NotificationConfig {
   emailNotifications: boolean
-  alertThreshold: number
-  notificationRecipients: string
+  defaultPlanType: string
 }
 
 interface IAConfig {
-  defaultModel: string
-  temperature: number
-  maxQuestionsPerDoc: number
-  qualityScoreThreshold: number
+  aiGenerationEnabled: boolean
+  aiCorrectionEnabled: boolean
 }
 
 interface AppConfig {
@@ -67,101 +69,187 @@ interface AppConfig {
   ia: IAConfig
 }
 
-// ─── Default config ───
+// ─── Default config (fallback) ───
 
 const DEFAULT_CONFIG: AppConfig = {
   general: {
-    platformName: 'SECT',
-    description: 'Système d\'Évaluation Casse-Tête — Plateforme d\'évaluation intelligente',
-    defaultLanguage: 'fr',
-    academicYear: '2025-2026',
+    siteName: 'SECT',
+    siteDescription: "Système d'Évaluation et de Contrôle des Tests",
+    maintenanceMode: false,
+    registrationOpen: true,
+    contactEmail: 'contact@sect.fr',
+    helpUrl: '',
+    legalNoticeUrl: '',
+    privacyPolicyUrl: '',
   },
   security: {
-    minPasswordLength: 8,
-    sessionTimeout: 60,
-    maxLoginAttempts: 5,
-    passwordPolicyDesc: 'Le mot de passe doit contenir au moins 8 caractères, incluant une majuscule, une minuscule, un chiffre et un caractère spécial.',
+    maxUploadSizeMB: 50,
+    allowedFileTypes: ['pdf', 'docx', 'txt', 'csv'],
+    proctoringEnabled: false,
   },
   notifications: {
     emailNotifications: true,
-    alertThreshold: 3,
-    notificationRecipients: 'admin@sect.fr',
+    defaultPlanType: 'GRATUIT',
   },
   ia: {
-    defaultModel: 'gpt-4o',
-    temperature: 0.7,
-    maxQuestionsPerDoc: 20,
-    qualityScoreThreshold: 70,
+    aiGenerationEnabled: true,
+    aiCorrectionEnabled: false,
   },
 }
 
-// ─── LocalStorage key ───
+// ─── Map flat API settings to tabbed AppConfig ───
 
-const CONFIG_KEY = 'sect-app-config'
-
-function loadConfig(): AppConfig {
-  if (typeof window === 'undefined') return DEFAULT_CONFIG
-  try {
-    const stored = localStorage.getItem(CONFIG_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      return {
-        general: { ...DEFAULT_CONFIG.general, ...parsed.general },
-        security: { ...DEFAULT_CONFIG.security, ...parsed.security },
-        notifications: { ...DEFAULT_CONFIG.notifications, ...parsed.notifications },
-        ia: { ...DEFAULT_CONFIG.ia, ...parsed.ia },
-      }
-    }
-  } catch {
-    // Silent
+function mapApiToConfig(apiSettings: Record<string, unknown>): AppConfig {
+  return {
+    general: {
+      siteName: (apiSettings.siteName as string) ?? DEFAULT_CONFIG.general.siteName,
+      siteDescription: (apiSettings.siteDescription as string) ?? DEFAULT_CONFIG.general.siteDescription,
+      maintenanceMode: (apiSettings.maintenanceMode as boolean) ?? DEFAULT_CONFIG.general.maintenanceMode,
+      registrationOpen: (apiSettings.registrationOpen as boolean) ?? DEFAULT_CONFIG.general.registrationOpen,
+      contactEmail: (apiSettings.contactEmail as string) ?? DEFAULT_CONFIG.general.contactEmail,
+      helpUrl: (apiSettings.helpUrl as string) ?? DEFAULT_CONFIG.general.helpUrl,
+      legalNoticeUrl: (apiSettings.legalNoticeUrl as string) ?? DEFAULT_CONFIG.general.legalNoticeUrl,
+      privacyPolicyUrl: (apiSettings.privacyPolicyUrl as string) ?? DEFAULT_CONFIG.general.privacyPolicyUrl,
+    },
+    security: {
+      maxUploadSizeMB: (apiSettings.maxUploadSizeMB as number) ?? DEFAULT_CONFIG.security.maxUploadSizeMB,
+      allowedFileTypes: (apiSettings.allowedFileTypes as string[]) ?? DEFAULT_CONFIG.security.allowedFileTypes,
+      proctoringEnabled: (apiSettings.proctoringEnabled as boolean) ?? DEFAULT_CONFIG.security.proctoringEnabled,
+    },
+    notifications: {
+      emailNotifications: (apiSettings.emailNotifications as boolean) ?? DEFAULT_CONFIG.notifications.emailNotifications,
+      defaultPlanType: (apiSettings.defaultPlanType as string) ?? DEFAULT_CONFIG.notifications.defaultPlanType,
+    },
+    ia: {
+      aiGenerationEnabled: (apiSettings.aiGenerationEnabled as boolean) ?? DEFAULT_CONFIG.ia.aiGenerationEnabled,
+      aiCorrectionEnabled: (apiSettings.aiCorrectionEnabled as boolean) ?? DEFAULT_CONFIG.ia.aiCorrectionEnabled,
+    },
   }
-  return DEFAULT_CONFIG
 }
 
-function saveConfig(config: AppConfig): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(config))
+// ─── Map tabbed AppConfig back to flat API object ───
+
+function mapConfigToApi(config: AppConfig): Record<string, unknown> {
+  return {
+    ...config.general,
+    ...config.security,
+    ...config.notifications,
+    ...config.ia,
+  }
 }
 
 // ─── Main Component ───
 
 export function ConfigurationPage() {
-  const [config, setConfig] = useState<AppConfig>(() => loadConfig())
+  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [savingTab, setSavingTab] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  // ─── Handlers per tab ───
+  // ─── Fetch settings on mount ───
 
-  const handleSaveGeneral = async () => {
-    setSavingTab('general')
-    // Simulate network delay for UX
-    await new Promise((r) => setTimeout(r, 500))
-    saveConfig(config)
-    setSavingTab(null)
-    toast.success('Configuration sauvegardée', { description: 'Les paramètres généraux ont été mis à jour.' })
+  const fetchSettings = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const res = await fetch('/api/platform-settings')
+      if (!res.ok) throw new Error('Erreur réseau')
+      const data = await res.json()
+      const settings = data.settings ?? {}
+      setConfig(mapApiToConfig(settings))
+    } catch {
+      setLoadError('Impossible de charger la configuration. Vérifiez votre connexion.')
+      toast.error('Erreur de chargement', {
+        description: 'Impossible de récupérer les paramètres de la plateforme.',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchSettings()
+  }, [fetchSettings])
+
+  // ─── Save handler (generic) ───
+
+  const handleSave = async (tab: string) => {
+    setSavingTab(tab)
+    try {
+      const flatSettings = mapConfigToApi(config)
+      const res = await fetch('/api/platform-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flatSettings),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la sauvegarde')
+      }
+      toast.success('Configuration sauvegardée', {
+        description: `Les paramètres ${tab === 'general' ? 'généraux' : tab === 'security' ? 'de sécurité' : tab === 'notifications' ? 'de notifications' : 'IA'} ont été mis à jour.`,
+      })
+    } catch (err) {
+      toast.error('Erreur de sauvegarde', {
+        description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+      })
+    } finally {
+      setSavingTab(null)
+    }
   }
 
-  const handleSaveSecurity = async () => {
-    setSavingTab('security')
-    await new Promise((r) => setTimeout(r, 500))
-    saveConfig(config)
-    setSavingTab(null)
-    toast.success('Configuration sauvegardée', { description: 'Les paramètres de sécurité ont été mis à jour.' })
+  // ─── Loading state ───
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-9 w-64 mb-2" />
+          <Skeleton className="h-5 w-96" />
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
-  const handleSaveNotifications = async () => {
-    setSavingTab('notifications')
-    await new Promise((r) => setTimeout(r, 500))
-    saveConfig(config)
-    setSavingTab(null)
-    toast.success('Configuration sauvegardée', { description: 'Les paramètres de notifications ont été mis à jour.' })
-  }
+  // ─── Error state ───
 
-  const handleSaveIA = async () => {
-    setSavingTab('ia')
-    await new Promise((r) => setTimeout(r, 500))
-    saveConfig(config)
-    setSavingTab(null)
-    toast.success('Configuration sauvegardée', { description: 'Les paramètres IA ont été mis à jour.' })
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <Settings className="h-7 w-7 text-emerald-600" />
+            Configuration du Système
+          </h1>
+        </div>
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+            <p className="text-lg font-semibold text-destructive mb-2">Erreur de chargement</p>
+            <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+            <Button variant="outline" onClick={fetchSettings}>
+              <Loader2 className="h-4 w-4 mr-2" />
+              Réessayer
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -212,57 +300,114 @@ export function ConfigurationPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="cfg-platform-name">Nom de la plateforme</Label>
+                <Label htmlFor="cfg-site-name">Nom du site</Label>
                 <Input
-                  id="cfg-platform-name"
-                  value={config.general.platformName}
-                  readOnly
-                  className="bg-muted cursor-not-allowed"
+                  id="cfg-site-name"
+                  value={config.general.siteName}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    general: { ...config.general, siteName: e.target.value },
+                  })}
                 />
-                <p className="text-xs text-muted-foreground">Le nom de la plateforme est fixe et ne peut pas être modifié.</p>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="cfg-description">Description</Label>
                 <Textarea
                   id="cfg-description"
-                  value={config.general.description}
+                  value={config.general.siteDescription}
                   onChange={(e) => setConfig({
                     ...config,
-                    general: { ...config.general, description: e.target.value },
+                    general: { ...config.general, siteDescription: e.target.value },
                   })}
                   rows={3}
                 />
               </div>
 
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-maintenance">Mode maintenance</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Désactive l&apos;accès à la plateforme pour les utilisateurs non-admin
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-maintenance"
+                  checked={config.general.maintenanceMode}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    general: { ...config.general, maintenanceMode: checked },
+                  })}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-registration">Inscriptions ouvertes</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Permettre aux nouveaux utilisateurs de s&apos;inscrire
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-registration"
+                  checked={config.general.registrationOpen}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    general: { ...config.general, registrationOpen: checked },
+                  })}
+                />
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label htmlFor="cfg-contact-email">Email de contact</Label>
+                <Input
+                  id="cfg-contact-email"
+                  type="email"
+                  value={config.general.contactEmail}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    general: { ...config.general, contactEmail: e.target.value },
+                  })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cfg-help-url">URL de l&apos;aide</Label>
+                <Input
+                  id="cfg-help-url"
+                  placeholder="https://help.sect.fr"
+                  value={config.general.helpUrl}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    general: { ...config.general, helpUrl: e.target.value },
+                  })}
+                />
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="cfg-language">Langue par défaut</Label>
-                  <Select
-                    value={config.general.defaultLanguage}
-                    onValueChange={(val) => setConfig({
-                      ...config,
-                      general: { ...config.general, defaultLanguage: val },
-                    })}
-                  >
-                    <SelectTrigger id="cfg-language">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fr">Français</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cfg-academic-year">Année universitaire</Label>
+                  <Label htmlFor="cfg-legal-url">URL mentions légales</Label>
                   <Input
-                    id="cfg-academic-year"
-                    placeholder="Ex: 2025-2026"
-                    value={config.general.academicYear}
+                    id="cfg-legal-url"
+                    placeholder="https://sect.fr/legal"
+                    value={config.general.legalNoticeUrl}
                     onChange={(e) => setConfig({
                       ...config,
-                      general: { ...config.general, academicYear: e.target.value },
+                      general: { ...config.general, legalNoticeUrl: e.target.value },
+                    })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-privacy-url">URL politique de confidentialité</Label>
+                  <Input
+                    id="cfg-privacy-url"
+                    placeholder="https://sect.fr/privacy"
+                    value={config.general.privacyPolicyUrl}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      general: { ...config.general, privacyPolicyUrl: e.target.value },
                     })}
                   />
                 </div>
@@ -273,7 +418,7 @@ export function ConfigurationPage() {
               <div className="flex justify-end">
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={handleSaveGeneral}
+                  onClick={() => handleSave('general')}
                   disabled={savingTab === 'general'}
                 >
                   {savingTab === 'general' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -294,81 +439,88 @@ export function ConfigurationPage() {
                 Paramètres de sécurité
               </CardTitle>
               <CardDescription>
-                Configurer les règles de sécurité et d&apos;authentification
+                Configurer les règles de sécurité et le contrôle d&apos;accès
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="cfg-pwd-length">Longueur minimale du mot de passe</Label>
-                  <Input
-                    id="cfg-pwd-length"
-                    type="number"
-                    min={4}
-                    max={32}
-                    value={config.security.minPasswordLength}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      security: { ...config.security, minPasswordLength: parseInt(e.target.value) || 8 },
-                    })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cfg-session-timeout">Délai d&apos;expiration de session (minutes)</Label>
-                  <Input
-                    id="cfg-session-timeout"
-                    type="number"
-                    min={5}
-                    max={480}
-                    value={config.security.sessionTimeout}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      security: { ...config.security, sessionTimeout: parseInt(e.target.value) || 60 },
-                    })}
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <Label htmlFor="cfg-max-attempts">Tentatives de connexion avant verrouillage</Label>
+                <Label htmlFor="cfg-max-upload">Taille maximale des fichiers (MB)</Label>
                 <Input
-                  id="cfg-max-attempts"
+                  id="cfg-max-upload"
                   type="number"
                   min={1}
-                  max={20}
-                  value={config.security.maxLoginAttempts}
+                  max={500}
+                  value={config.security.maxUploadSizeMB}
                   onChange={(e) => setConfig({
                     ...config,
-                    security: { ...config.security, maxLoginAttempts: parseInt(e.target.value) || 5 },
+                    security: { ...config.security, maxUploadSizeMB: parseInt(e.target.value) || 50 },
                   })}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Limite de taille pour les fichiers téléversés sur la plateforme
+                </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cfg-pwd-policy">Politique de mots de passe</Label>
-                <Textarea
-                  id="cfg-pwd-policy"
-                  value={config.security.passwordPolicyDesc}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    security: { ...config.security, passwordPolicyDesc: e.target.value },
+                <Label>Types de fichiers autorisés</Label>
+                <div className="flex flex-wrap gap-2">
+                  {['pdf', 'docx', 'txt', 'csv', 'xlsx', 'png', 'jpg', 'jpeg'].map((ft) => {
+                    const isSelected = config.security.allowedFileTypes.includes(ft)
+                    return (
+                      <button
+                        key={ft}
+                        type="button"
+                        onClick={() => {
+                          const updated = isSelected
+                            ? config.security.allowedFileTypes.filter((t) => t !== ft)
+                            : [...config.security.allowedFileTypes, ft]
+                          setConfig({
+                            ...config,
+                            security: { ...config.security, allowedFileTypes: updated },
+                          })
+                        }}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+                            : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+                        }`}
+                      >
+                        {ft}
+                      </button>
+                    )
                   })}
-                  rows={3}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-proctoring">Surveillance des examens (Proctoring)</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Activer la surveillance anti-fraude pendant les examens en ligne
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-proctoring"
+                  checked={config.security.proctoringEnabled}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    security: { ...config.security, proctoringEnabled: checked },
+                  })}
                 />
-                <p className="text-xs text-muted-foreground">Cette description sera affichée aux utilisateurs lors de la création de leur mot de passe.</p>
               </div>
 
               {/* Security summary */}
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
                 <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2 flex items-center gap-2">
                   <Lock className="h-4 w-4" />
-                  Résumé de la politique de sécurité
+                  Résumé de la configuration sécurité
                 </h4>
                 <ul className="text-sm text-emerald-700 dark:text-emerald-400 space-y-1">
-                  <li>• Mot de passe : minimum {config.security.minPasswordLength} caractères</li>
-                  <li>• Session expire après {config.security.sessionTimeout} minutes d&apos;inactivité</li>
-                  <li>• Compte verrouillé après {config.security.maxLoginAttempts} tentatives échouées</li>
+                  <li>• Taille max fichiers : {config.security.maxUploadSizeMB} MB</li>
+                  <li>• Types autorisés : {config.security.allowedFileTypes.join(', ')}</li>
+                  <li>• Proctoring : {config.security.proctoringEnabled ? 'Activé' : 'Désactivé'}</li>
                 </ul>
               </div>
 
@@ -377,7 +529,7 @@ export function ConfigurationPage() {
               <div className="flex justify-end">
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={handleSaveSecurity}
+                  onClick={() => handleSave('security')}
                   disabled={savingTab === 'security'}
                 >
                   {savingTab === 'security' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -422,36 +574,25 @@ export function ConfigurationPage() {
               <Separator />
 
               <div className="space-y-2">
-                <Label htmlFor="cfg-alert-threshold">Seuil d&apos;alerte pour anomalies d&apos;examen</Label>
-                <Input
-                  id="cfg-alert-threshold"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={config.notifications.alertThreshold}
-                  onChange={(e) => setConfig({
+                <Label htmlFor="cfg-default-plan">Plan par défaut</Label>
+                <Select
+                  value={config.notifications.defaultPlanType}
+                  onValueChange={(val) => setConfig({
                     ...config,
-                    notifications: { ...config.notifications, alertThreshold: parseInt(e.target.value) || 3 },
+                    notifications: { ...config.notifications, defaultPlanType: val },
                   })}
-                />
+                >
+                  <SelectTrigger id="cfg-default-plan">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GRATUIT">Gratuit</SelectItem>
+                    <SelectItem value="ESSENTIEL">Essentiel</SelectItem>
+                    <SelectItem value="PROFESSIONNEL">Professionnel</SelectItem>
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
-                  Nombre d&apos;alertes (changement d&apos;onglet, copier-coller, etc.) avant de déclencher une notification à l&apos;enseignant.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cfg-notif-recipients">Destinataires des notifications</Label>
-                <Input
-                  id="cfg-notif-recipients"
-                  placeholder="admin@sect.fr, resp@sect.fr"
-                  value={config.notifications.notificationRecipients}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    notifications: { ...config.notifications, notificationRecipients: e.target.value },
-                  })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Adresses email séparées par des virgules
+                  Plan attribué par défaut lors de l&apos;inscription d&apos;un nouvel établissement
                 </p>
               </div>
 
@@ -460,7 +601,7 @@ export function ConfigurationPage() {
               <div className="flex justify-end">
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={handleSaveNotifications}
+                  onClick={() => handleSave('notifications')}
                   disabled={savingTab === 'notifications'}
                 >
                   {savingTab === 'notifications' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -481,88 +622,44 @@ export function ConfigurationPage() {
                 Paramètres IA
               </CardTitle>
               <CardDescription>
-                Configurer le modèle d&apos;IA et les paramètres de génération de questions
+                Configurer les fonctionnalités d&apos;intelligence artificielle
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="cfg-ia-model">Modèle de génération par défaut</Label>
-                <Select
-                  value={config.ia.defaultModel}
-                  onValueChange={(val) => setConfig({
-                    ...config,
-                    ia: { ...config.ia, defaultModel: val },
-                  })}
-                >
-                  <SelectTrigger id="cfg-ia-model">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                    <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                    <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                    <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Thermometer className="h-4 w-4 text-emerald-600" />
-                    Température : {config.ia.temperature.toFixed(1)}
-                  </Label>
-                  <Slider
-                    value={[config.ia.temperature]}
-                    onValueChange={([val]) => setConfig({
-                      ...config,
-                      ia: { ...config.ia, temperature: val },
-                    })}
-                    min={0}
-                    max={2}
-                    step={0.1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Précis (0)</span>
-                    <span>Créatif (2)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="cfg-max-questions">Max questions par document</Label>
-                  <Input
-                    id="cfg-max-questions"
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={config.ia.maxQuestionsPerDoc}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      ia: { ...config.ia, maxQuestionsPerDoc: parseInt(e.target.value) || 20 },
-                    })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cfg-quality-threshold">Seuil de score de qualité</Label>
-                  <Input
-                    id="cfg-quality-threshold"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={config.ia.qualityScoreThreshold}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      ia: { ...config.ia, qualityScoreThreshold: parseInt(e.target.value) || 70 },
-                    })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Les questions avec un score inférieur seront marquées pour révision
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-ai-gen">Génération IA de questions</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Permettre la génération automatique de questions par l&apos;IA à partir de documents
                   </p>
                 </div>
+                <Switch
+                  id="cfg-ai-gen"
+                  checked={config.ia.aiGenerationEnabled}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    ia: { ...config.ia, aiGenerationEnabled: checked },
+                  })}
+                />
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-ai-correction">Correction IA automatique</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Permettre la correction automatique des copies par l&apos;IA
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-ai-correction"
+                  checked={config.ia.aiCorrectionEnabled}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    ia: { ...config.ia, aiCorrectionEnabled: checked },
+                  })}
+                />
               </div>
 
               {/* IA Summary */}
@@ -572,10 +669,8 @@ export function ConfigurationPage() {
                   Résumé de la configuration IA
                 </h4>
                 <ul className="text-sm text-emerald-700 dark:text-emerald-400 space-y-1">
-                  <li>• Modèle : {config.ia.defaultModel}</li>
-                  <li>• Température : {config.ia.temperature.toFixed(1)} {config.ia.temperature < 0.5 ? '(précis)' : config.ia.temperature > 1.5 ? '(créatif)' : '(équilibré)'}</li>
-                  <li>• Maximum {config.ia.maxQuestionsPerDoc} questions par document</li>
-                  <li>• Seuil de qualité : {config.ia.qualityScoreThreshold}%</li>
+                  <li>• Génération de questions : {config.ia.aiGenerationEnabled ? 'Activée' : 'Désactivée'}</li>
+                  <li>• Correction automatique : {config.ia.aiCorrectionEnabled ? 'Activée' : 'Désactivée'}</li>
                 </ul>
               </div>
 
@@ -584,7 +679,7 @@ export function ConfigurationPage() {
               <div className="flex justify-end">
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={handleSaveIA}
+                  onClick={() => handleSave('ia')}
                   disabled={savingTab === 'ia'}
                 >
                   {savingTab === 'ia' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

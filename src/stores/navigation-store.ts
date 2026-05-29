@@ -20,6 +20,7 @@ export type PageId =
   | 'questions-ia'
   | 'banque-questions'
   | 'epreuves'
+  | 'devoirs'
   | 'correction'
   | 'resultats'
   | 'mes-epreuves'
@@ -83,6 +84,7 @@ export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { id: 'questions-ia', label: 'Questions IA', icon: 'Sparkles' },
     { id: 'banque-questions', label: 'Banque de questions', icon: 'Library' },
     { id: 'epreuves', label: 'Épreuves', icon: 'ClipboardList' },
+    { id: 'devoirs', label: 'Devoirs', icon: 'BookOpen' },
     { id: 'correction', label: 'Correction', icon: 'PenTool' },
     { id: 'resultats', label: 'Résultats', icon: 'TrendingUp' },
   ],
