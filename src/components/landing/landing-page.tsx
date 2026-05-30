@@ -1,39 +1,33 @@
 'use client'
 
+import { useRef, type ReactNode } from 'react'
 import { motion, useInView } from 'framer-motion'
-import { useRef } from 'react'
 import {
-  Sparkles,
-  FileText,
-  CheckCircle,
-  Shield,
-  BarChart3,
-  Building2,
   ArrowRight,
-  Star,
-  Quote,
-  Twitter,
-  Linkedin,
+  BarChart3,
+  Brain,
+  Building2,
+  Check,
+  CheckCircle,
+  ChevronRight,
+  Clock3,
+  FileText,
   Github,
+  GraduationCap,
+  LockKeyhole,
   Mail,
   Phone,
+  PlayCircle,
+  Quote,
+  Shield,
+  Sparkles,
+  Star,
   Upload,
-  Monitor,
-  Brain,
-  Check,
-  Zap,
-  Crown,
+  UsersRound,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 
 interface LandingPageProps {
@@ -41,734 +35,624 @@ interface LandingPageProps {
   onDemo: () => void
 }
 
-/* ─── Animation helpers ─── */
 function FadeInWhenVisible({
   children,
   delay = 0,
   direction = 'up',
 }: {
-  children: React.ReactNode
+  children: ReactNode
   delay?: number
   direction?: 'up' | 'down' | 'left' | 'right'
 }) {
   const ref = useRef(null)
-  const isInView = useInView(ref, { once: true, margin: '-60px' })
+  const isInView = useInView(ref, { once: true, margin: '-80px' })
 
   const directionMap = {
-    up: { y: 40, x: 0 },
-    down: { y: -40, x: 0 },
-    left: { x: 40, y: 0 },
-    right: { x: -40, y: 0 },
+    up: { y: 36, x: 0 },
+    down: { y: -36, x: 0 },
+    left: { x: 36, y: 0 },
+    right: { x: -36, y: 0 },
   }
 
   return (
     <motion.div
       ref={ref}
-      initial={{
-        opacity: 0,
-        ...directionMap[direction],
-      }}
+      initial={{ opacity: 0, ...directionMap[direction] }}
       animate={isInView ? { opacity: 1, x: 0, y: 0 } : {}}
-      transition={{ duration: 0.6, delay, ease: 'easeOut' }}
+      transition={{ duration: 0.65, delay, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
   )
 }
 
-/* ─── Features data ─── */
+const navItems = [
+  { label: 'Plateforme', href: '#plateforme' },
+  { label: 'Workflow', href: '#workflow' },
+  { label: 'Tarifs', href: '#tarifs' },
+  { label: 'Avis', href: '#temoignages' },
+]
+
+const heroStats = [
+  { value: '2 min', label: 'pour générer un sujet' },
+  { value: '99,7%', label: 'fiabilité de correction' },
+  { value: '24/7', label: 'sessions surveillées' },
+]
+
 const features = [
   {
     icon: Sparkles,
-    title: 'Génération IA de questions',
+    title: 'Studio IA de questions',
     description:
-      'Importez vos documents et laissez l\'IA générer automatiquement des questions pertinentes et variées adaptées à votre programme.',
-    color: 'from-amber-500 to-orange-500',
-    bgColor: 'bg-amber-50 dark:bg-amber-950/30',
-  },
-  {
-    icon: FileText,
-    title: 'Épreuves en ligne interactives',
-    description:
-      'Créez des épreuves personnalisées avec QCM, questions ouvertes, et bien plus. Planifiez et diffusez en un clic.',
-    color: 'from-emerald-500 to-teal-500',
-    bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
-  },
-  {
-    icon: CheckCircle,
-    title: 'Correction automatisée par IA',
-    description:
-      'La correction des copies est effectuée par l\'IA en quelques secondes, avec une fiabilité de 99.7% et des feedbacks détaillés.',
-    color: 'from-sky-500 to-blue-500',
-    bgColor: 'bg-sky-50 dark:bg-sky-950/30',
+      'Transformez cours, PDF et supports pédagogiques en QCM, questions ouvertes et barèmes cohérents.',
+    color: 'from-amber-400 to-orange-500',
   },
   {
     icon: Shield,
-    title: 'Proctoring & anti-fraude',
+    title: 'Passation sécurisée',
     description:
-      'Surveillance intelligente par IA : détection de triche, verrouillage du navigateur, et suivi comportemental en temps réel.',
-    color: 'from-rose-500 to-pink-500',
-    bgColor: 'bg-rose-50 dark:bg-rose-950/30',
+      'Proctoring, verrouillage du navigateur et alertes comportementales pour des examens en ligne maîtrisés.',
+    color: 'from-rose-400 to-pink-500',
+  },
+  {
+    icon: Brain,
+    title: 'Correction augmentée',
+    description:
+      'Notation automatique, feedbacks argumentés et relecture humaine intégrée pour garder le contrôle.',
+    color: 'from-sky-400 to-blue-500',
   },
   {
     icon: BarChart3,
-    title: 'Tableaux de bord analytiques',
+    title: 'Analytics pédagogiques',
     description:
-      'Visualisez les performances, identifiez les lacunes et prenez des décisions éclairées grâce à des statistiques détaillées.',
-    color: 'from-violet-500 to-purple-500',
-    bgColor: 'bg-violet-50 dark:bg-violet-950/30',
+      'Repérez les lacunes, comparez les cohortes et pilotez les décisions avec des indicateurs actionnables.',
+    color: 'from-violet-400 to-purple-500',
   },
   {
     icon: Building2,
-    title: 'Multi-établissements SaaS',
+    title: 'Multi-établissements',
     description:
-      'Gérez plusieurs établissements depuis une seule plateforme. Architecture multi-tenant sécurisée et évolutive.',
-    color: 'from-emerald-500 to-cyan-500',
-    bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
+      'Déployez une organisation complète avec rôles, filières, unités d’enseignement et espaces cloisonnés.',
+    color: 'from-emerald-400 to-teal-500',
+  },
+  {
+    icon: LockKeyhole,
+    title: 'Gouvernance & conformité',
+    description:
+      'Traçabilité, journaux d’activité, permissions fines et paramètres de sécurité par établissement.',
+    color: 'from-slate-500 to-emerald-500',
   },
 ]
 
-/* ─── Steps data ─── */
-const steps = [
+const workflow = [
   {
-    number: '01',
     icon: Upload,
-    title: 'Créez vos épreuves',
+    eyebrow: 'Préparer',
+    title: 'Importez vos ressources',
     description:
-      'Uploadez vos documents pédagogiques et laissez l\'IA générer des questions pertinentes. Personnalisez, organisez et composez vos épreuves en quelques minutes.',
+      'Centralisez documents, banques de questions et grilles d’évaluation dans un espace pédagogique unique.',
   },
   {
-    number: '02',
-    icon: Monitor,
-    title: 'Faites passer les examens',
+    icon: FileText,
+    eyebrow: 'Composer',
+    title: 'Assemblez l’épreuve',
     description:
-      'Diffusez les épreuves en ligne avec un système de proctoring intégré. Les étudiants passent les examens en toute sécurité depuis n\'importe quel appareil.',
+      'L’IA propose une structure, vous ajustez la difficulté, les consignes et le barème avant diffusion.',
   },
   {
-    number: '03',
-    icon: Brain,
-    title: 'Corrigez automatiquement',
+    icon: UsersRound,
+    eyebrow: 'Superviser',
+    title: 'Surveillez en temps réel',
     description:
-      'L\'IA corrige les copies instantanément et génère des analytics détaillés. Identifiez les forces et les axes d\'amélioration de chaque étudiant.',
+      'Suivez la présence, les alertes et la progression des étudiants depuis un cockpit clair et réactif.',
+  },
+  {
+    icon: CheckCircle,
+    eyebrow: 'Analyser',
+    title: 'Publiez les résultats',
+    description:
+      'Validez les corrections, partagez les feedbacks et exportez les statistiques en quelques clics.',
   },
 ]
 
-/* ─── Stats data ─── */
-const stats = [
-  { value: '10 000+', label: 'Questions générées' },
-  { value: '500+', label: 'Épreuves créées' },
-  { value: '99.7%', label: 'Fiabilité' },
-  { value: '50+', label: 'Établissements' },
-]
-
-/* ─── Pricing data ─── */
 const plans = [
   {
-    name: 'Gratuit',
+    name: 'Starter',
     price: '0€',
     period: '/mois',
-    description: 'Idéal pour découvrir la plateforme',
-    icon: Zap,
-    features: [
-      '1 établissement',
-      '50 questions IA / mois',
-      '5 épreuves actives',
-      'Correction automatique',
-      'Support communautaire',
-    ],
-    cta: 'Commencer gratuitement',
+    description: 'Pour tester SECT avec une petite équipe.',
+    features: ['1 établissement', '50 questions IA / mois', '5 épreuves actives', 'Correction automatique'],
+    cta: 'Commencer',
     popular: false,
   },
   {
-    name: 'Essentiel',
+    name: 'Campus',
     price: '49€',
     period: '/mois',
-    description: 'Pour les établissements en croissance',
-    icon: Crown,
-    features: [
-      '3 établissements',
-      '500 questions IA / mois',
-      '50 épreuves actives',
-      'Proctoring basique',
-      'Analytics avancés',
-      'Support prioritaire',
-    ],
-    cta: 'Essayer gratuitement',
+    description: 'Pour structurer les évaluations d’un établissement.',
+    features: ['3 établissements', '500 questions IA / mois', 'Proctoring standard', 'Analytics avancés', 'Support prioritaire'],
+    cta: 'Essayer Campus',
     popular: true,
   },
   {
-    name: 'Professionnel',
-    price: '149€',
-    period: '/mois',
-    description: 'Pour les grandes institutions',
-    icon: Building2,
-    features: [
-      'Établissements illimités',
-      'Questions IA illimitées',
-      'Épreuves illimitées',
-      'Proctoring avancé',
-      'API & intégrations',
-      'Support dédié 24/7',
-      'SLA garanti 99.9%',
-    ],
-    cta: 'Contacter les ventes',
+    name: 'Institution',
+    price: 'Sur mesure',
+    period: '',
+    description: 'Pour les réseaux multi-sites et besoins avancés.',
+    features: ['Établissements illimités', 'Questions IA illimitées', 'Proctoring avancé', 'API & intégrations', 'SLA dédié'],
+    cta: 'Parler à un expert',
     popular: false,
   },
 ]
 
-/* ─── Testimonials data ─── */
 const testimonials = [
   {
     name: 'Dr. Marie Dupont',
     role: 'Doyenne de la Faculté des Sciences',
     institution: 'Université de Lyon',
     content:
-      'SECT a révolutionné notre processus d\'évaluation. La génération de questions par IA nous fait gagner des heures de travail chaque semaine, et la correction automatique est d\'une fiabilité remarquable.',
-    rating: 5,
+      'SECT a remplacé plusieurs outils dispersés. Nos équipes préparent les examens plus vite, et les résultats sont plus faciles à exploiter.',
   },
   {
     name: 'Prof. Ahmed Benali',
-    role: 'Responsable Pédagogique',
-    institution: 'École Nationale d\'Ingénieurs',
+    role: 'Responsable pédagogique',
+    institution: 'École Nationale d’Ingénieurs',
     content:
-      'Le système de proctoring nous a permis de passer aux examens en ligne en toute confiance. Les étudiants apprécient la flexibilité et nous, la qualité des analytics.',
-    rating: 5,
+      'Le cockpit de passation rassure les enseignants. Les alertes sont lisibles et la correction assistée nous fait gagner un temps considérable.',
   },
   {
     name: 'Dr. Claire Martin',
-    role: 'Directrice des Études',
-    institution: 'Institut d\'Administration des Entreprises',
+    role: 'Directrice des études',
+    institution: 'Institut d’Administration des Entreprises',
     content:
-      'La plateforme multi-établissements est exactement ce dont nous avions besoin. Un seul outil pour gérer les évaluations de toutes nos composantes. L\'accompagnement est excellent.',
-    rating: 5,
+      'La gestion multi-établissements est un vrai atout : chaque filière garde son autonomie tout en respectant nos standards communs.',
   },
 ]
 
-/* ─── Main Component ─── */
+const trustBadges = ['IA générative', 'Proctoring', 'Multi-tenant', 'Exports & rapports']
+
 export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950 dark:via-teal-950 dark:to-emerald-900">
-      {/* ─── Navbar ─── */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/70 dark:bg-emerald-950/70 border-b border-emerald-200/50 dark:border-emerald-800/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <div className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="SECT" className="w-9 h-9 rounded-lg" />
-            <span className="text-xl font-bold bg-gradient-to-r from-emerald-700 to-teal-600 dark:from-emerald-300 dark:to-teal-400 bg-clip-text text-transparent">
-              SECT
-            </span>
+    <div className="min-h-screen overflow-hidden bg-[#eefdf6] text-slate-950 dark:bg-slate-950 dark:text-white">
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute left-1/2 top-0 h-[520px] w-[900px] -translate-x-1/2 rounded-full bg-emerald-300/30 blur-3xl dark:bg-emerald-500/10" />
+        <div className="absolute bottom-0 right-0 h-[440px] w-[440px] rounded-full bg-cyan-300/25 blur-3xl dark:bg-cyan-500/10" />
+      </div>
+
+      <nav className="sticky top-0 z-50 border-b border-white/50 bg-white/75 backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/70">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <a href="#top" className="flex items-center gap-3" aria-label="Accueil SECT">
+            <img src="/logo.svg" alt="SECT" className="h-10 w-10 rounded-2xl shadow-lg shadow-emerald-900/10" />
+            <div>
+              <span className="block text-lg font-black tracking-tight text-emerald-950 dark:text-white">SECT</span>
+              <span className="hidden text-xs font-medium text-emerald-700/70 dark:text-emerald-300/70 sm:block">
+                Evaluation OS
+              </span>
+            </div>
+          </a>
+
+          <div className="hidden items-center gap-2 rounded-full border border-emerald-100 bg-white/70 p-1 shadow-sm dark:border-white/10 dark:bg-white/5 lg:flex">
+            {navItems.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="rounded-full px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                {item.label}
+              </a>
+            ))}
           </div>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#fonctionnalites" className="text-sm font-medium text-emerald-800/70 dark:text-emerald-200/70 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
-              Fonctionnalités
-            </a>
-            <a href="#comment" className="text-sm font-medium text-emerald-800/70 dark:text-emerald-200/70 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
-              Comment ça marche
-            </a>
-            <a href="#tarifs" className="text-sm font-medium text-emerald-800/70 dark:text-emerald-200/70 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
-              Tarifs
-            </a>
-            <a href="#temoignages" className="text-sm font-medium text-emerald-800/70 dark:text-emerald-200/70 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
-              Témoignages
-            </a>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              onClick={onLogin}
-              className="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
-            >
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="ghost" onClick={onLogin} className="hidden text-emerald-800 hover:bg-emerald-100 dark:text-emerald-200 dark:hover:bg-white/10 sm:inline-flex">
               Connexion
             </Button>
-            <Button
-              onClick={onLogin}
-              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-600/20"
-            >
+            <Button onClick={onLogin} className="rounded-full bg-slate-950 px-5 text-white shadow-xl shadow-emerald-900/15 hover:bg-emerald-700 dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-100">
               Essai gratuit
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </div>
       </nav>
 
-      {/* ─── Hero Section ─── */}
-      <section className="relative overflow-hidden py-20 px-4 sm:px-6 lg:px-8">
-        {/* Decorative orbs */}
-        <div className="absolute top-20 -left-32 w-96 h-96 bg-emerald-400/20 dark:bg-emerald-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-10 -right-32 w-80 h-80 bg-teal-400/20 dark:bg-teal-500/10 rounded-full blur-3xl" />
-
-        <div className="max-w-7xl mx-auto relative">
-          <div className="max-w-3xl mx-auto text-center">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <Badge
-                variant="secondary"
-                className="mb-6 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 px-4 py-1.5 text-sm"
-              >
-                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                Propulsé par l&apos;Intelligence Artificielle
+      <main id="top">
+        <section className="relative px-4 pb-16 pt-12 sm:px-6 sm:pb-24 lg:px-8 lg:pt-20">
+          <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
+            <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: 'easeOut' }}>
+              <Badge className="mb-6 rounded-full border-emerald-200 bg-white/70 px-4 py-2 text-emerald-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10 dark:text-emerald-200">
+                <Sparkles className="mr-2 h-4 w-4" />
+                Nouvelle génération d’évaluations augmentées par IA
               </Badge>
-            </motion.div>
 
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-emerald-900 dark:text-emerald-50 leading-tight"
-            >
-              Transformez{' '}
-              <span className="bg-gradient-to-r from-emerald-600 to-teal-500 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">
-                l&apos;évaluation
-              </span>{' '}
-              avec l&apos;Intelligence Artificielle
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="mt-6 text-lg sm:text-xl text-emerald-700/80 dark:text-emerald-200/70 max-w-2xl mx-auto leading-relaxed"
-            >
-              SECT est la plateforme tout-en-un qui automatise la création, la passation et la
-              correction des épreuves. Gagnez du temps, améliorez la fiabilité et offrez une
-              expérience moderne à vos étudiants.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
-            >
-              <Button
-                size="lg"
-                onClick={onLogin}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-600/25 px-8 text-base h-12"
-              >
-                Commencer gratuitement
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={onDemo}
-                className="border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 px-8 text-base h-12"
-              >
-                Voir une démo
-              </Button>
-            </motion.div>
-
-            {/* Floating decorative cards */}
-            <div className="relative mt-16 hidden lg:block">
-              <motion.div
-                initial={{ opacity: 0, x: -60, y: 20 }}
-                animate={{ opacity: 1, x: 0, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.5 }}
-                className="absolute -left-16 top-0"
-              >
-                <Card className="w-56 backdrop-blur-md bg-white/80 dark:bg-emerald-900/50 border-emerald-200/60 dark:border-emerald-800/40 shadow-xl">
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">+247 questions</p>
-                      <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">générées cette semaine</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, x: 60, y: 20 }}
-                animate={{ opacity: 1, x: 0, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.7 }}
-                className="absolute -right-16 top-0"
-              >
-                <Card className="w-56 backdrop-blur-md bg-white/80 dark:bg-emerald-900/50 border-emerald-200/60 dark:border-emerald-800/40 shadow-xl">
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
-                      <CheckCircle className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">99.7% fiabilité</p>
-                      <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">correction automatique</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Features Section ─── */}
-      <section id="fonctionnalites" className="py-20 px-4 sm:px-6 lg:px-8 bg-white/60 dark:bg-emerald-950/40">
-        <div className="max-w-7xl mx-auto">
-          <FadeInWhenVisible>
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <Badge variant="secondary" className="mb-4 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
-                Fonctionnalités
-              </Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold text-emerald-900 dark:text-emerald-50">
-                Tout ce dont vous avez besoin
-              </h2>
-              <p className="mt-4 text-lg text-emerald-700/70 dark:text-emerald-200/60">
-                Une suite complète d&apos;outils pour moderniser l&apos;évaluation dans l&apos;enseignement supérieur.
+              <h1 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.05em] text-emerald-950 dark:text-white sm:text-6xl lg:text-7xl">
+                Le campus digital qui prépare, surveille et corrige vos examens.
+              </h1>
+              <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600 dark:text-slate-300 sm:text-xl">
+                SECT modernise tout le cycle d’évaluation : génération de sujets, passation sécurisée,
+                correction IA, dashboards pédagogiques et gouvernance multi-établissements.
               </p>
-            </div>
-          </FadeInWhenVisible>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature, index) => (
-              <FadeInWhenVisible key={feature.title} delay={index * 0.1}>
-                <Card className="h-full backdrop-blur-md bg-white/70 dark:bg-emerald-900/40 border-emerald-200/50 dark:border-emerald-800/40 hover:shadow-lg hover:shadow-emerald-900/5 dark:hover:shadow-emerald-900/20 transition-all duration-300 group">
-                  <CardContent className="p-6">
-                    <div className={`w-12 h-12 rounded-xl ${feature.bgColor} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}>
-                      <feature.icon className={`w-6 h-6 bg-gradient-to-r ${feature.color} bg-clip-text`} style={{ color: 'inherit' }} />
-                    </div>
-                    <h3 className="text-lg font-semibold text-emerald-900 dark:text-emerald-50 mb-2">
-                      {feature.title}
-                    </h3>
-                    <p className="text-sm text-emerald-700/70 dark:text-emerald-200/60 leading-relaxed">
-                      {feature.description}
-                    </p>
-                  </CardContent>
-                </Card>
-              </FadeInWhenVisible>
-            ))}
-          </div>
-        </div>
-      </section>
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Button size="lg" onClick={onLogin} className="h-14 rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 px-7 text-base font-bold text-white shadow-2xl shadow-emerald-600/25 hover:from-emerald-700 hover:to-teal-600">
+                  Créer mon espace
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+                <Button size="lg" variant="outline" onClick={onDemo} className="h-14 rounded-full border-emerald-200 bg-white/70 px-7 text-base font-bold text-emerald-800 shadow-sm hover:bg-emerald-50 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15">
+                  <PlayCircle className="mr-2 h-5 w-5" />
+                  Voir la démo
+                </Button>
+              </div>
 
-      {/* ─── How it Works Section ─── */}
-      <section id="comment" className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <FadeInWhenVisible>
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <Badge variant="secondary" className="mb-4 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
-                Comment ça marche
-              </Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold text-emerald-900 dark:text-emerald-50">
-                Trois étapes simples
-              </h2>
-              <p className="mt-4 text-lg text-emerald-700/70 dark:text-emerald-200/60">
-                De la création à la correction, SECT simplifie chaque étape du processus d&apos;évaluation.
-              </p>
-            </div>
-          </FadeInWhenVisible>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
-            {steps.map((step, index) => (
-              <FadeInWhenVisible key={step.number} delay={index * 0.15}>
-                <div className="relative text-center">
-                  {/* Connector line */}
-                  {index < steps.length - 1 && (
-                    <div className="hidden md:block absolute top-12 left-[calc(50%+48px)] w-[calc(100%-96px)] h-0.5 bg-gradient-to-r from-emerald-300 to-teal-300 dark:from-emerald-700 dark:to-teal-700" />
-                  )}
-                  <div className="relative z-10">
-                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/20">
-                      <step.icon className="w-10 h-10 text-white" />
-                    </div>
-                    <span className="text-sm font-bold text-emerald-500 dark:text-emerald-400 tracking-widest uppercase">
-                      Étape {step.number}
-                    </span>
-                    <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-50 mt-2 mb-3">
-                      {step.title}
-                    </h3>
-                    <p className="text-sm text-emerald-700/70 dark:text-emerald-200/60 leading-relaxed max-w-sm mx-auto">
-                      {step.description}
-                    </p>
+              <div className="mt-9 grid max-w-2xl grid-cols-3 gap-3">
+                {heroStats.map((stat) => (
+                  <div key={stat.label} className="rounded-3xl border border-white/70 bg-white/65 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
+                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{stat.value}</p>
+                    <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{stat.label}</p>
                   </div>
-                </div>
-              </FadeInWhenVisible>
-            ))}
-          </div>
-        </div>
-      </section>
+                ))}
+              </div>
+            </motion.div>
 
-      {/* ─── Stats Section ─── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-700 dark:to-teal-700 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-1/4 w-72 h-72 bg-white rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-white rounded-full blur-3xl" />
-        </div>
-        <div className="max-w-7xl mx-auto relative">
-          <FadeInWhenVisible>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-              {stats.map((stat, index) => (
-                <motion.div
-                  key={stat.label}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                >
-                  <p className="text-4xl sm:text-5xl font-extrabold text-white">
-                    {stat.value}
-                  </p>
-                  <p className="mt-2 text-emerald-100/80 text-sm sm:text-base font-medium">
-                    {stat.label}
-                  </p>
-                </motion.div>
+            <motion.div initial={{ opacity: 0, scale: 0.96, y: 24 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.75, delay: 0.15, ease: 'easeOut' }} className="relative">
+              <div className="absolute -inset-6 rounded-[3rem] bg-gradient-to-br from-emerald-400/25 via-teal-300/20 to-sky-300/20 blur-2xl" />
+              <Card className="relative overflow-hidden rounded-[2rem] border-white/70 bg-white/85 shadow-2xl shadow-emerald-950/10 backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/80">
+                <CardContent className="p-0">
+                  <div className="flex items-center justify-between border-b border-emerald-100 bg-slate-950 px-5 py-4 text-white dark:border-white/10">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-red-400" />
+                      <span className="h-3 w-3 rounded-full bg-amber-400" />
+                      <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                    </div>
+                    <Badge className="rounded-full bg-emerald-400/15 text-emerald-200 hover:bg-emerald-400/15">
+                      Live exam cockpit
+                    </Badge>
+                  </div>
+
+                  <div className="grid gap-5 p-5 sm:p-6">
+                    <div className="rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-500 p-6 text-white shadow-xl shadow-emerald-700/20">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-100">Épreuve en cours</p>
+                          <h2 className="mt-2 text-2xl font-black">Algorithmique avancée</h2>
+                        </div>
+                        <div className="rounded-2xl bg-white/15 px-4 py-3 text-right backdrop-blur">
+                          <p className="text-xs text-emerald-100">Temps restant</p>
+                          <p className="text-xl font-black">42:18</p>
+                        </div>
+                      </div>
+                      <div className="mt-6 grid grid-cols-3 gap-3">
+                        {[
+                          ['124', 'inscrits'],
+                          ['117', 'connectés'],
+                          ['6', 'alertes'],
+                        ].map(([value, label]) => (
+                          <div key={label} className="rounded-2xl bg-white/15 p-3 backdrop-blur">
+                            <p className="text-2xl font-black">{value}</p>
+                            <p className="text-xs text-emerald-100">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-[1fr_0.85fr]">
+                      <div className="rounded-3xl border border-emerald-100 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white">Pipeline IA</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Sujet, correction, feedback</p>
+                          </div>
+                          <Brain className="h-5 w-5 text-emerald-500" />
+                        </div>
+                        {[
+                          ['Extraction des notions clés', '100%'],
+                          ['Génération des variantes', '82%'],
+                          ['Barème contextualisé', '64%'],
+                        ].map(([label, width]) => (
+                          <div key={label} className="mb-4 last:mb-0">
+                            <div className="mb-2 flex justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+                              <span>{label}</span>
+                              <span>{width}</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-emerald-100 dark:bg-white/10">
+                              <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded-3xl border border-emerald-100 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">Alertes proctoring</p>
+                        <div className="mt-4 space-y-3">
+                          {[
+                            ['Regard hors écran', '2 cas'],
+                            ['Changement onglet', '3 cas'],
+                            ['Identité vérifiée', '117/117'],
+                          ].map(([label, value]) => (
+                            <div key={label} className="flex items-center justify-between rounded-2xl bg-emerald-50 px-3 py-2 text-sm dark:bg-white/5">
+                              <span className="text-slate-600 dark:text-slate-300">{label}</span>
+                              <span className="font-bold text-emerald-700 dark:text-emerald-300">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+        </section>
+
+        <section className="border-y border-white/60 bg-white/45 px-4 py-5 backdrop-blur-xl dark:border-white/10 dark:bg-white/5 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-7xl flex-col gap-4 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-700/70 dark:text-emerald-300/70">
+              Une plateforme unifiée pour
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 sm:justify-end">
+              {trustBadges.map((badge) => (
+                <span key={badge} className="rounded-full border border-emerald-100 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white">
+                  {badge}
+                </span>
               ))}
             </div>
-          </FadeInWhenVisible>
-        </div>
-      </section>
-
-      {/* ─── Pricing Section ─── */}
-      <section id="tarifs" className="py-20 px-4 sm:px-6 lg:px-8 bg-white/60 dark:bg-emerald-950/40">
-        <div className="max-w-7xl mx-auto">
-          <FadeInWhenVisible>
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <Badge variant="secondary" className="mb-4 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
-                Tarifs
-              </Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold text-emerald-900 dark:text-emerald-50">
-                Un plan pour chaque besoin
-              </h2>
-              <p className="mt-4 text-lg text-emerald-700/70 dark:text-emerald-200/60">
-                Commencez gratuitement et évoluez selon vos besoins. Aucune carte de crédit requise.
-              </p>
-            </div>
-          </FadeInWhenVisible>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {plans.map((plan, index) => (
-              <FadeInWhenVisible key={plan.name} delay={index * 0.1}>
-                <Card
-                  className={`relative h-full backdrop-blur-md transition-all duration-300 ${
-                    plan.popular
-                      ? 'bg-white/90 dark:bg-emerald-900/60 border-emerald-400 dark:border-emerald-500 shadow-2xl shadow-emerald-500/10 scale-105 md:-mt-4 md:mb-[-16px]'
-                      : 'bg-white/70 dark:bg-emerald-900/40 border-emerald-200/50 dark:border-emerald-800/40 hover:shadow-lg'
-                  }`}
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0 px-4 py-1 text-xs font-semibold">
-                        Le plus populaire
-                      </Badge>
-                    </div>
-                  )}
-                  <CardHeader className="text-center pb-2">
-                    <div className={`w-12 h-12 rounded-xl mx-auto mb-4 flex items-center justify-center ${
-                      plan.popular
-                        ? 'bg-gradient-to-br from-emerald-500 to-teal-500'
-                        : 'bg-emerald-100 dark:bg-emerald-900/50'
-                    }`}>
-                      <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
-                    </div>
-                    <CardTitle className="text-xl text-emerald-900 dark:text-emerald-50">{plan.name}</CardTitle>
-                    <CardDescription className="text-emerald-600/70 dark:text-emerald-400/70">
-                      {plan.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-center pb-2">
-                    <div className="mb-6">
-                      <span className="text-5xl font-extrabold text-emerald-900 dark:text-emerald-50">{plan.price}</span>
-                      <span className="text-emerald-600/60 dark:text-emerald-400/60 text-lg">{plan.period}</span>
-                    </div>
-                    <Separator className="mb-6 bg-emerald-200/50 dark:bg-emerald-800/40" />
-                    <ul className="space-y-3 text-left">
-                      {plan.features.map((feature) => (
-                        <li key={feature} className="flex items-start gap-2.5">
-                          <Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
-                          <span className="text-sm text-emerald-800/80 dark:text-emerald-200/70">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                  <CardFooter className="pt-4">
-                    <Button
-                      className={`w-full ${
-                        plan.popular
-                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-600/20'
-                          : 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30'
-                      }`}
-                      variant={plan.popular ? 'default' : 'outline'}
-                      onClick={onLogin}
-                    >
-                      {plan.cta}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </FadeInWhenVisible>
-            ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ─── Testimonials Section ─── */}
-      <section id="temoignages" className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <FadeInWhenVisible>
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <Badge variant="secondary" className="mb-4 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
-                Témoignages
-              </Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold text-emerald-900 dark:text-emerald-50">
-                Ils nous font confiance
-              </h2>
-              <p className="mt-4 text-lg text-emerald-700/70 dark:text-emerald-200/60">
-                Découvrez ce que les professionnels de l&apos;enseignement supérieur disent de SECT.
-              </p>
-            </div>
-          </FadeInWhenVisible>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {testimonials.map((testimonial, index) => (
-              <FadeInWhenVisible key={testimonial.name} delay={index * 0.1}>
-                <Card className="h-full backdrop-blur-md bg-white/70 dark:bg-emerald-900/40 border-emerald-200/50 dark:border-emerald-800/40 hover:shadow-lg transition-shadow duration-300">
-                  <CardContent className="p-6">
-                    <Quote className="w-8 h-8 text-emerald-300 dark:text-emerald-700 mb-4" />
-                    <p className="text-sm text-emerald-800/80 dark:text-emerald-200/70 leading-relaxed mb-6">
-                      &ldquo;{testimonial.content}&rdquo;
-                    </p>
-                    <div className="flex items-center gap-1 mb-4">
-                      {Array.from({ length: testimonial.rating }).map((_, i) => (
-                        <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                      ))}
-                    </div>
-                    <Separator className="mb-4 bg-emerald-200/50 dark:bg-emerald-800/40" />
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-50">
-                        {testimonial.name}
-                      </p>
-                      <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">
-                        {testimonial.role}
-                      </p>
-                      <p className="text-xs text-emerald-500/60 dark:text-emerald-500/60 font-medium">
-                        {testimonial.institution}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </FadeInWhenVisible>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── CTA Section ─── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 dark:from-emerald-700 dark:via-teal-700 dark:to-emerald-800 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-20 -left-20 w-80 h-80 bg-white rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-white rounded-full blur-3xl" />
-        </div>
-        <div className="max-w-4xl mx-auto text-center relative">
-          <FadeInWhenVisible>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight">
-              Prêt à transformer vos évaluations ?
-            </h2>
-            <p className="mt-6 text-lg text-emerald-100/80 max-w-2xl mx-auto">
-              Rejoignez les établissements qui ont déjà adopté SECT. Commencez gratuitement et
-              découvrez la puissance de l&apos;IA au service de l&apos;évaluation.
-            </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button
-                size="lg"
-                onClick={onLogin}
-                className="bg-white text-emerald-700 hover:bg-emerald-50 shadow-lg px-8 text-base h-12 font-semibold"
-              >
-                Commencer gratuitement
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={onDemo}
-                className="border-white/30 text-white hover:bg-white/10 px-8 text-base h-12"
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                Nous contacter
-              </Button>
-            </div>
-          </FadeInWhenVisible>
-        </div>
-      </section>
-
-      {/* ─── Footer ─── */}
-      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-emerald-900 dark:bg-emerald-950">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-            {/* Brand */}
-            <div className="md:col-span-1">
-              <div className="flex items-center gap-2.5 mb-4">
-                <img src="/logo.svg" alt="SECT" className="w-8 h-8 rounded-lg" />
-                <span className="text-lg font-bold text-emerald-300">SECT</span>
+        <section id="plateforme" className="px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <FadeInWhenVisible>
+              <div className="mx-auto mb-14 max-w-3xl text-center">
+                <Badge className="mb-4 rounded-full bg-emerald-100 px-4 py-2 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-200">
+                  Plateforme
+                </Badge>
+                <h2 className="text-4xl font-black tracking-[-0.04em] text-emerald-950 dark:text-white sm:text-5xl">
+                  Une stack moderne pour l’évaluation supérieure.
+                </h2>
+                <p className="mt-5 text-lg leading-8 text-slate-600 dark:text-slate-300">
+                  Chaque module est pensé pour réduire la charge administrative et augmenter la qualité pédagogique.
+                </p>
               </div>
-              <p className="text-sm text-emerald-400/70 leading-relaxed">
-                Système d&apos;Evaluation Casse-Tête. La plateforme d&apos;évaluation en ligne propulsée par l&apos;Intelligence Artificielle.
-              </p>
-            </div>
+            </FadeInWhenVisible>
 
-            {/* Product links */}
-            <div>
-              <h4 className="text-sm font-semibold text-emerald-200 mb-4">Produit</h4>
-              <ul className="space-y-2.5">
-                <li><a href="#fonctionnalites" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Fonctionnalités</a></li>
-                <li><a href="#tarifs" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Tarifs</a></li>
-                <li><a href="#comment" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Comment ça marche</a></li>
-                <li><a href="#temoignages" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Témoignages</a></li>
-              </ul>
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {features.map((feature, index) => (
+                <FadeInWhenVisible key={feature.title} delay={index * 0.06}>
+                  <Card className="group h-full rounded-[1.75rem] border-white/70 bg-white/75 shadow-sm backdrop-blur transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-950/10 dark:border-white/10 dark:bg-white/5">
+                    <CardContent className="p-6">
+                      <div className={`mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${feature.color} text-white shadow-lg shadow-emerald-950/10 transition group-hover:scale-110`}>
+                        <feature.icon className="h-7 w-7" />
+                      </div>
+                      <h3 className="text-xl font-black text-slate-950 dark:text-white">{feature.title}</h3>
+                      <p className="mt-3 leading-7 text-slate-600 dark:text-slate-300">{feature.description}</p>
+                    </CardContent>
+                  </Card>
+                </FadeInWhenVisible>
+              ))}
             </div>
+          </div>
+        </section>
 
-            {/* Company links */}
-            <div>
-              <h4 className="text-sm font-semibold text-emerald-200 mb-4">Entreprise</h4>
-              <ul className="space-y-2.5">
-                <li><a href="#" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">À propos</a></li>
-                <li><a href="#" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Contact</a></li>
-                <li><a href="#" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Mentions légales</a></li>
-                <li><a href="#" className="text-sm text-emerald-400/70 hover:text-emerald-300 transition-colors">Support</a></li>
-              </ul>
-            </div>
+        <section id="workflow" className="bg-slate-950 px-4 py-20 text-white sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+              <FadeInWhenVisible direction="right">
+                <Badge className="mb-5 rounded-full bg-white/10 px-4 py-2 text-emerald-200 hover:bg-white/10">Workflow</Badge>
+                <h2 className="text-4xl font-black tracking-[-0.04em] sm:text-5xl">
+                  De vos supports aux résultats publiés, sans rupture.
+                </h2>
+                <p className="mt-5 text-lg leading-8 text-slate-300">
+                  SECT orchestre enseignants, responsables et étudiants dans un parcours fluide, transparent et sécurisé.
+                </p>
+                <Button onClick={onDemo} className="mt-8 rounded-full bg-white px-6 text-slate-950 hover:bg-emerald-100">
+                  Explorer le parcours
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              </FadeInWhenVisible>
 
-            {/* Contact */}
-            <div>
-              <h4 className="text-sm font-semibold text-emerald-200 mb-4">Contact</h4>
-              <ul className="space-y-2.5">
-                <li className="flex items-center gap-2 text-sm text-emerald-400/70">
-                  <Mail className="w-4 h-4" /> contact@sect.fr
-                </li>
-                <li className="flex items-center gap-2 text-sm text-emerald-400/70">
-                  <Phone className="w-4 h-4" /> +33 1 23 45 67 89
-                </li>
-              </ul>
-              <div className="flex items-center gap-3 mt-4">
-                <a href="#" className="w-9 h-9 rounded-lg bg-emerald-800/50 hover:bg-emerald-700/50 flex items-center justify-center transition-colors" aria-label="Twitter">
-                  <Twitter className="w-4 h-4 text-emerald-400/70" />
-                </a>
-                <a href="#" className="w-9 h-9 rounded-lg bg-emerald-800/50 hover:bg-emerald-700/50 flex items-center justify-center transition-colors" aria-label="LinkedIn">
-                  <Linkedin className="w-4 h-4 text-emerald-400/70" />
-                </a>
-                <a href="#" className="w-9 h-9 rounded-lg bg-emerald-800/50 hover:bg-emerald-700/50 flex items-center justify-center transition-colors" aria-label="GitHub">
-                  <Github className="w-4 h-4 text-emerald-400/70" />
-                </a>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {workflow.map((step, index) => (
+                  <FadeInWhenVisible key={step.title} delay={index * 0.08}>
+                    <div className="h-full rounded-[1.75rem] border border-white/10 bg-white/[0.06] p-6 backdrop-blur transition hover:bg-white/[0.09]">
+                      <div className="mb-6 flex items-center justify-between">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300">
+                          <step.icon className="h-6 w-6" />
+                        </div>
+                        <span className="text-sm font-black text-white/30">0{index + 1}</span>
+                      </div>
+                      <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-300">{step.eyebrow}</p>
+                      <h3 className="mt-3 text-xl font-black">{step.title}</h3>
+                      <p className="mt-3 leading-7 text-slate-300">{step.description}</p>
+                    </div>
+                  </FadeInWhenVisible>
+                ))}
               </div>
             </div>
           </div>
+        </section>
 
-          <Separator className="bg-emerald-800/50 mb-6" />
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-emerald-500/60">
-              &copy; 2026 SECT — Tous droits réservés
-            </p>
-            <div className="flex items-center gap-6">
-              <a href="#" className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors">
-                Politique de confidentialité
-              </a>
-              <a href="#" className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors">
-                CGU
-              </a>
-              <a href="#" className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors">
-                Cookies
-              </a>
+        <section className="px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 p-1 shadow-2xl shadow-emerald-900/15">
+            <div className="grid gap-8 rounded-[1.85rem] bg-white/10 p-8 text-white backdrop-blur md:grid-cols-4 md:p-10">
+              {[
+                { icon: Clock3, value: '70%', label: 'de temps gagné sur la préparation' },
+                { icon: GraduationCap, value: '4 rôles', label: 'admin, responsable, enseignant, étudiant' },
+                { icon: BarChart3, value: '360°', label: 'vision des performances pédagogiques' },
+                { icon: Shield, value: 'Audit', label: 'journalisation complète des actions' },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <stat.icon className="mb-4 h-7 w-7 text-emerald-100" />
+                  <p className="text-4xl font-black tracking-tight">{stat.value}</p>
+                  <p className="mt-2 text-sm font-semibold text-white/75">{stat.label}</p>
+                </div>
+              ))}
             </div>
           </div>
+        </section>
+
+        <section id="tarifs" className="px-4 pb-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <FadeInWhenVisible>
+              <div className="mx-auto mb-14 max-w-3xl text-center">
+                <Badge className="mb-4 rounded-full bg-emerald-100 px-4 py-2 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-200">Tarifs</Badge>
+                <h2 className="text-4xl font-black tracking-[-0.04em] text-emerald-950 dark:text-white sm:text-5xl">
+                  Démarrez simplement, déployez à l’échelle.
+                </h2>
+                <p className="mt-5 text-lg leading-8 text-slate-600 dark:text-slate-300">
+                  Choisissez le niveau adapté à votre établissement, puis activez les modules avancés selon vos usages.
+                </p>
+              </div>
+            </FadeInWhenVisible>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              {plans.map((plan, index) => (
+                <FadeInWhenVisible key={plan.name} delay={index * 0.08}>
+                  <Card className={`relative h-full rounded-[2rem] border-white/70 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 ${plan.popular ? 'ring-2 ring-emerald-400 shadow-2xl shadow-emerald-900/10 lg:-translate-y-3' : ''}`}>
+                    {plan.popular && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                        <Badge className="rounded-full bg-slate-950 px-4 py-1.5 text-white dark:bg-white dark:text-slate-950">Recommandé</Badge>
+                      </div>
+                    )}
+                    <CardHeader className="p-7 pb-3">
+                      <CardTitle className="text-2xl font-black text-slate-950 dark:text-white">{plan.name}</CardTitle>
+                      <p className="min-h-12 text-slate-600 dark:text-slate-300">{plan.description}</p>
+                      <div className="pt-5">
+                        <span className="text-5xl font-black tracking-tight text-emerald-700 dark:text-emerald-300">{plan.price}</span>
+                        <span className="font-semibold text-slate-500 dark:text-slate-400">{plan.period}</span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-7 pt-3">
+                      <Separator className="mb-6 bg-emerald-100 dark:bg-white/10" />
+                      <ul className="space-y-4">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="flex gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                    <CardFooter className="p-7 pt-0">
+                      <Button onClick={onLogin} className={`h-12 w-full rounded-full font-bold ${plan.popular ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white hover:from-emerald-700 hover:to-teal-600' : 'bg-slate-950 text-white hover:bg-emerald-700 dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-100'}`}>
+                        {plan.cta}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </FadeInWhenVisible>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="temoignages" className="bg-white/55 px-4 py-20 backdrop-blur dark:bg-white/5 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <FadeInWhenVisible>
+              <div className="mx-auto mb-14 max-w-3xl text-center">
+                <Badge className="mb-4 rounded-full bg-emerald-100 px-4 py-2 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-200">Avis</Badge>
+                <h2 className="text-4xl font-black tracking-[-0.04em] text-emerald-950 dark:text-white sm:text-5xl">
+                  Adopté par les équipes pédagogiques exigeantes.
+                </h2>
+              </div>
+            </FadeInWhenVisible>
+
+            <div className="grid gap-5 lg:grid-cols-3">
+              {testimonials.map((testimonial, index) => (
+                <FadeInWhenVisible key={testimonial.name} delay={index * 0.08}>
+                  <Card className="h-full rounded-[1.75rem] border-white/70 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+                    <CardContent className="p-6">
+                      <Quote className="mb-5 h-9 w-9 text-emerald-400" />
+                      <p className="leading-7 text-slate-700 dark:text-slate-200">“{testimonial.content}”</p>
+                      <div className="mt-6 flex items-center gap-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                        ))}
+                      </div>
+                      <Separator className="my-5 bg-emerald-100 dark:bg-white/10" />
+                      <p className="font-black text-slate-950 dark:text-white">{testimonial.name}</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">{testimonial.role}</p>
+                      <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{testimonial.institution}</p>
+                    </CardContent>
+                  </Card>
+                </FadeInWhenVisible>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-5xl rounded-[2.5rem] bg-slate-950 p-8 text-center text-white shadow-2xl shadow-emerald-950/20 dark:bg-white dark:text-slate-950 sm:p-12">
+            <FadeInWhenVisible>
+              <Badge className="mb-5 rounded-full bg-emerald-400/15 px-4 py-2 text-emerald-200 hover:bg-emerald-400/15 dark:bg-emerald-100 dark:text-emerald-700">
+                Prêt pour votre prochain examen ?
+              </Badge>
+              <h2 className="text-4xl font-black tracking-[-0.04em] sm:text-5xl">
+                Donnez à vos équipes un système d’évaluation vraiment moderne.
+              </h2>
+              <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-300 dark:text-slate-600">
+                Lancez un espace pilote, invitez vos enseignants et mesurez l’impact dès la première session.
+              </p>
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                <Button size="lg" onClick={onLogin} className="h-14 rounded-full bg-white px-7 text-base font-bold text-slate-950 hover:bg-emerald-100 dark:bg-slate-950 dark:text-white dark:hover:bg-emerald-700">
+                  Commencer gratuitement
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+                <Button size="lg" variant="outline" onClick={onDemo} className="h-14 rounded-full border-white/20 bg-white/5 px-7 text-base font-bold text-white hover:bg-white/10 dark:border-slate-200 dark:text-slate-950 dark:hover:bg-slate-50">
+                  <Mail className="mr-2 h-5 w-5" />
+                  Contacter l’équipe
+                </Button>
+              </div>
+            </FadeInWhenVisible>
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-white/60 bg-emerald-950 px-4 py-12 text-emerald-50 dark:border-white/10 dark:bg-slate-950 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.2fr_0.8fr_0.8fr_1fr]">
+          <div>
+            <div className="mb-4 flex items-center gap-3">
+              <img src="/logo.svg" alt="SECT" className="h-10 w-10 rounded-2xl" />
+              <div>
+                <p className="text-lg font-black">SECT</p>
+                <p className="text-xs text-emerald-300/70">Système d’Evaluation Casse-Tête</p>
+              </div>
+            </div>
+            <p className="max-w-sm text-sm leading-7 text-emerald-100/65">
+              La plateforme d’évaluation en ligne propulsée par l’intelligence artificielle pour les établissements d’enseignement supérieur.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-emerald-300">Produit</h4>
+            <ul className="space-y-3 text-sm text-emerald-100/70">
+              {navItems.map((item) => (
+                <li key={item.href}><a href={item.href} className="transition hover:text-white">{item.label}</a></li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-emerald-300">Ressources</h4>
+            <ul className="space-y-3 text-sm text-emerald-100/70">
+              <li><a href="#" className="transition hover:text-white">Support</a></li>
+              <li><a href="#" className="transition hover:text-white">Mentions légales</a></li>
+              <li><a href="#" className="transition hover:text-white">Confidentialité</a></li>
+              <li><a href="#" className="transition hover:text-white">CGU</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-emerald-300">Contact</h4>
+            <ul className="space-y-3 text-sm text-emerald-100/70">
+              <li className="flex items-center gap-2"><Mail className="h-4 w-4" /> contact@sect.fr</li>
+              <li className="flex items-center gap-2"><Phone className="h-4 w-4" /> +33 1 23 45 67 89</li>
+            </ul>
+            <a href="#" className="mt-5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-emerald-100 transition hover:bg-white/15" aria-label="GitHub">
+              <Github className="h-4 w-4" />
+            </a>
+          </div>
+        </div>
+        <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-3 border-t border-white/10 pt-6 text-xs text-emerald-100/50 sm:flex-row sm:items-center sm:justify-between">
+          <p>&copy; 2026 SECT — Tous droits réservés.</p>
+          <p>Conçu pour les examens fiables, rapides et pilotables.</p>
         </div>
       </footer>
     </div>
