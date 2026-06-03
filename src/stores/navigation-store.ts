@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { UserRole } from './auth-store'
 
 export type PageId =
@@ -47,15 +48,25 @@ interface NavigationState {
   setSidebarOpen: (open: boolean) => void
 }
 
-export const useNavigationStore = create<NavigationState>()((set) => ({
-  currentPage: 'dashboard',
-  currentPageParams: {},
-  sidebarOpen: true,
+export const useNavigationStore = create<NavigationState>()(
+  persist(
+    (set) => ({
+      currentPage: 'dashboard' as PageId,
+      currentPageParams: {},
+      sidebarOpen: true,
 
-  setCurrentPage: (page, params = {}) => set({ currentPage: page, currentPageParams: params }),
-  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-}))
+      setCurrentPage: (page, params = {}) => set({ currentPage: page, currentPageParams: params }),
+      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+    }),
+    {
+      name: 'sect-navigation',
+      partialize: (state) => ({
+        currentPage: state.currentPage,
+      }),
+    }
+  )
+)
 
 // ─── Navigation items with category structure ───
 export interface NavItem {
