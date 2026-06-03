@@ -78,6 +78,7 @@ import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { AIProviderInfo, AIProviderType } from '@/lib/ai-providers/types'
 import { PROVIDER_TYPES } from '@/lib/ai-providers/types'
+import { getAuthHeaders } from '@/stores/auth-store'
 
 // ─── Provider type config ───
 const PROVIDER_META: Record<AIProviderType, {
