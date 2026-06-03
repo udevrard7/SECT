@@ -110,3 +110,37 @@ Stage Summary:
 - AI providers page confirmed working: 5 providers displayed, MuleRouter AI active + Test OK
 - All TypeScript errors in API routes fixed
 - .env file removed from git tracking (was committed with secrets)
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Add students from PDF to Supabase database
+
+Work Log:
+- Read PDF file "liste Edudiant.pdf" from /home/z/my-project/upload/
+- Extracted text using pdfjs-dist: 13 students from LICENCE 2 TRONC COMMUN 2025-2026
+- Created script scripts/add-students.mjs to insert students into Supabase PostgreSQL
+- Email format: prenom.nom@uniabidjan.com (lowercase, no accents, spaces→dots)
+- Default password: Etudiant@2024 (must change on first login)
+- Matricule used as login identifier for student mode
+- All 13 students successfully inserted into Supabase database
+- Verified student login works: POST /api/auth/login-student with matricule SEG/LJ/24/001
+
+Stage Summary:
+- 13 students added to production database (Supabase)
+- Students can login via "Espace Étudiant" with their matricule + password Etudiant@2024
+- mustChangePwd=true → students must change password on first login
+- Student list:
+  1. SOUMAHORO Rocka Almatou → rocka.almatou.soumahoro@uniabidjan.com (SEG/LJ/24/001)
+  2. LATH You Grâce Jessica → you.grace.jessica.lath@uniabidjan.com (SEG/LJ/24/002)
+  3. DALLI Grâce Oriane Sephora → grace.oriane.sephora.dalli@uniabidjan.com (SEG/LJ/24/003)
+  4. ASSIELOU Tehoua Dan Irvin Othniel → tehoua.dan.irvin.othniel.assielou@uniabidjan.com (SEG/LJ/24/004)
+  5. KOKORA Grâce Sharon → grace.sharon.kokora@uniabidjan.com (SEG/LJ/24/005)
+  6. JAMAL Deen Lawal → deen.lawal.jamal@uniabidjan.com (SEG/LJ/24/008)
+  7. ZOUGMORE Maimounata → maimounata.zougmore@uniabidjan.com (INF/LJ/24/001)
+  8. SAMBAKE Thiam Samuel Eliel → thiam.samuel.eliel.sambake@uniabidjan.com (INF/LJ/24/002)
+  9. LIATCHE Christ-Johan Siaka → christ.johan.siaka.liatche@uniabidjan.com (INF/LJ/24/003)
+  10. AKA N'cho Ariel Yoram → n.cho.ariel.yoram.aka@uniabidjan.com (INF/LJ/24/004)
+  11. SEGNIBO Kouassi Elie Wilfried → kouassi.elie.wilfried.segnibo@uniabidjan.com (INF/LJ/24/005)
+  12. ASSIELOU Tanoh Yann-Harrel Mardochée → tanoh.yann.harrel.mardochee.assielou@uniabidjan.com (INF/LJ/24/006)
+  13. ASSANI Emile Junior Assani → emile.junior.assani.assani@uniabidjan.com (INF/LJ/25/008)
