@@ -2,6 +2,7 @@
 
 import { motion, useInView, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { useRef, useState, useEffect } from 'react'
+import Image from 'next/image'
 import {
   Sparkles,
   FileText,
@@ -28,6 +29,10 @@ import {
   Menu,
   X,
   LucideIcon,
+  Lightbulb,
+  TrendingUp,
+  Users,
+  Target,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -469,27 +474,31 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
   }, [])
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 via-white to-gray-50 text-gray-900 overflow-x-hidden">
-      {/* ─── Navbar ─── */}
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-white overflow-x-hidden">
+      {/* ─── Advanced Navbar ─── */}
       <motion.nav
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
           scrolled
-            ? 'bg-white/80 backdrop-blur-xl shadow-sm shadow-gray-200/50 border-b border-gray-100'
+            ? 'bg-slate-900/90 backdrop-blur-2xl shadow-2xl shadow-emerald-500/10 border-b border-emerald-500/20'
             : 'bg-transparent'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-              <span className="text-white font-bold text-sm">S</span>
-            </div>
-            <span className="text-xl font-extrabold bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">
+          <motion.div className="flex items-center gap-3" whileHover={{ scale: 1.05 }}>
+            <motion.div
+              className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-emerald-500/50"
+              animate={{ boxShadow: ['0 0 20px rgba(16,185,129,0.5)', '0 0 30px rgba(16,185,129,0.8)', '0 0 20px rgba(16,185,129,0.5)'] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              <span className="text-white font-black text-lg">S</span>
+            </motion.div>
+            <span className="text-xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">
               SECT
             </span>
-          </div>
+          </motion.div>
 
           <div className="hidden md:flex items-center gap-8">
             {[
@@ -498,34 +507,47 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
               { href: '#tarifs', label: 'Tarifs' },
               { href: '#temoignages', label: 'Témoignages' },
             ].map((link) => (
-              <a
+              <motion.a
                 key={link.href}
                 href={link.href}
-                className="text-sm font-medium text-gray-500 hover:text-emerald-600 transition-colors duration-200"
+                className={`text-sm font-semibold transition-colors duration-200 ${
+                  scrolled ? 'text-slate-300 hover:text-emerald-300' : 'text-slate-300 hover:text-white'
+                }`}
+                whileHover={{ scale: 1.05 }}
               >
                 {link.label}
-              </a>
+              </motion.a>
             ))}
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <Button
-              variant="ghost"
-              onClick={onLogin}
-              className="text-gray-600 hover:text-emerald-700 hover:bg-emerald-50"
-            >
-              Connexion
-            </Button>
-            <Button
-              onClick={onLogin}
-              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 px-5 rounded-xl border-0"
-            >
-              Essai gratuit
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                variant="ghost"
+                onClick={onLogin}
+                className={`font-semibold rounded-lg transition-colors ${
+                  scrolled
+                    ? 'text-slate-300 hover:text-emerald-300 hover:bg-slate-800/50'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/30'
+                }`}
+              >
+                Connexion
+              </Button>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={onLogin}
+                className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/30 px-6 rounded-lg border-0 font-semibold"
+              >
+                Essai gratuit
+              </Button>
+            </motion.div>
           </div>
 
           <button
-            className="md:hidden text-gray-600 hover:text-emerald-600"
+            className={`md:hidden rounded-lg p-2 transition-colors ${
+              scrolled ? 'text-slate-300 hover:bg-slate-800/50' : 'text-slate-300 hover:bg-slate-700/30'
+            }`}
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -538,7 +560,7 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden bg-white/95 backdrop-blur-xl border-b border-gray-100 px-4 py-4 space-y-3"
+              className="md:hidden bg-slate-900/95 backdrop-blur-xl border-b border-emerald-500/20 px-4 py-4 space-y-3"
             >
               {[
                 { href: '#fonctionnalites', label: 'Fonctionnalités' },
@@ -549,19 +571,19 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="block text-sm font-medium text-gray-500 hover:text-emerald-600 py-2"
+                  className="block text-sm font-semibold text-slate-300 hover:text-emerald-300 py-2 px-3 rounded-lg hover:bg-slate-800/50 transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {link.label}
                 </a>
               ))}
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={onLogin} className="text-gray-600 flex-1 rounded-xl">
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
+                <Button variant="outline" onClick={onLogin} className="text-slate-300 flex-1 rounded-lg border-slate-600 hover:border-emerald-500 hover:text-emerald-300">
                   Connexion
                 </Button>
                 <Button
                   onClick={onLogin}
-                  className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex-1 rounded-xl border-0"
+                  className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white flex-1 rounded-lg border-0 font-semibold"
                 >
                   Essai gratuit
                 </Button>
@@ -573,10 +595,10 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
 
       {/* ─── Hero Section ─── */}
       <section ref={heroRef} className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-teal-50" />
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
         <motion.div style={{ y: heroY }} className="absolute inset-0">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(16,185,129,0.15),rgba(255,255,255,0))]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_80%_50%,rgba(20,184,166,0.08),rgba(255,255,255,0))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(16,185,129,0.2),rgba(255,255,255,0))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_80%_50%,rgba(20,184,166,0.1),rgba(255,255,255,0))]" />
         </motion.div>
 
         <FloatingShapes />
@@ -584,105 +606,133 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         <DecorativeGrid />
 
         <motion.div style={{ opacity: heroOpacity }} className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20" >
-          <div className="max-w-4xl mx-auto text-center relative" style={{ zIndex: 2 }}>
-            <motion.div
-              initial={{ opacity: 0, y: 30, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 backdrop-blur-sm px-5 py-2 mb-8 shadow-sm">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative" style={{ zIndex: 2 }}>
+            {/* Left content */}
+            <div>
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/40 backdrop-blur-sm px-5 py-2 mb-8 shadow-sm">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-sm font-semibold text-emerald-300">Propulsé par l&apos;Intelligence Artificielle</span>
+                </div>
+              </motion.div>
+
+              <motion.h1
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.3 }}
+                className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1] mb-6"
+              >
+                <span className="text-white">Transformez</span>
+                <br />
+                <span className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
+                  l&apos;évaluation
                 </span>
-                <span className="text-sm font-semibold text-emerald-700">Propulsé par l&apos;Intelligence Artificielle</span>
-              </div>
-            </motion.div>
+                <br />
+                <span className="bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">avec l&apos;IA</span>
+              </motion.h1>
 
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.3 }}
-              className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1]"
-            >
-              <span className="text-gray-900">Transformez</span>
-              <br />
-              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">
-                l&apos;évaluation
-              </span>
-              <br />
-              <span className="text-gray-900">avec l&apos;IA</span>
-            </motion.h1>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.5 }}
-              className="mt-6 h-8"
-            >
-              <TypingText
-                texts={[
-                  'Génération automatique de questions',
-                  'Correction intelligente des copies',
-                  'Analytics en temps réel',
-                  'Proctoring anti-fraude IA',
-                ]}
-                className="text-lg text-emerald-600 font-medium"
-              />
-            </motion.div>
-
-            <motion.p
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.55 }}
-              className="mt-4 text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed"
-            >
-              SECT est la plateforme tout-en-un qui automatise la création, la passation et la
-              correction des épreuves. Gagnez du temps, améliorez la fiabilité.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.6 }}
-              className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
-            >
-              <Button
-                size="lg"
-                onClick={onLogin}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-xl shadow-emerald-500/25 px-8 text-base h-14 rounded-2xl border-0 group"
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.5 }}
+                className="mt-6 h-8"
               >
-                Commencer gratuitement
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={onDemo}
-                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 px-8 text-base h-14 rounded-2xl backdrop-blur-sm"
-              >
-                <Play className="mr-2 h-5 w-5" />
-                Voir une démo
-              </Button>
-            </motion.div>
+                <TypingText
+                  texts={[
+                    'Génération automatique de questions',
+                    'Correction intelligente des copies',
+                    'Analytics en temps réel',
+                    'Proctoring anti-fraude IA',
+                  ]}
+                  className="text-lg text-emerald-300 font-medium"
+                />
+              </motion.div>
 
+              <motion.p
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.55 }}
+                className="mt-4 text-lg text-slate-300 max-w-2xl leading-relaxed"
+              >
+                SECT est la plateforme tout-en-un qui automatise la création, la passation et la correction des épreuves. Gagnez du temps, améliorez la fiabilité.
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.6 }}
+                className="mt-10 flex flex-col sm:flex-row items-start gap-4"
+              >
+                <Button
+                  size="lg"
+                  onClick={onLogin}
+                  className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-2xl shadow-emerald-500/40 px-8 text-base h-14 rounded-xl border-0 group font-semibold"
+                >
+                  Commencer gratuitement
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={onDemo}
+                  className="border-slate-600 text-slate-200 hover:bg-slate-700/50 hover:text-white px-8 text-base h-14 rounded-xl backdrop-blur-sm"
+                >
+                  <Play className="mr-2 h-5 w-5" />
+                  Voir une démo
+                </Button>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 1, delay: 0.9 }}
+                className="mt-12 flex flex-col sm:flex-row items-start gap-6 text-sm text-slate-400"
+              >
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-emerald-400" />
+                  <span>Données chiffrées</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-400" />
+                  <span>Configuration en 5 min</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-cyan-400" />
+                  <span>Sans carte de crédit</span>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Right image with animation */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 0.9 }}
-              className="mt-14 flex flex-col sm:flex-row items-center justify-center gap-6 text-sm text-gray-400"
+              initial={{ opacity: 0, x: 50, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.4 }}
+              className="hidden lg:block relative"
             >
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-emerald-500" />
-                <span>Données chiffrées</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-amber-500" />
-                <span>Configuration en 5 min</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-cyan-500" />
-                <span>Sans carte de crédit</span>
+              <div className="relative h-[500px] rounded-2xl overflow-hidden">
+                <motion.div
+                  animate={{ y: [0, -20, 0] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                  className="h-full"
+                >
+                  <Image
+                    src="https://images.pexels.com/photos/3769997/pexels-photo-3769997.jpeg?auto=compress&cs=tinysrgb&w=1200"
+                    alt="Modern learning platform"
+                    width={600}
+                    height={500}
+                    className="w-full h-full object-cover"
+                    priority
+                  />
+                </motion.div>
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
               </div>
             </motion.div>
           </div>
@@ -700,33 +750,40 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         </motion.div>
       </section>
 
-      {/* ─── Trust bar ─── */}
-      <section className="relative py-12 px-4 border-y border-gray-100 bg-white/50">
+      {/* ─── Trust bar with gradient ─── */}
+      <section className="relative py-12 px-4 border-b border-slate-700/50 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
         <div className="max-w-5xl mx-auto text-center">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-6">Ils nous font confiance</p>
-          <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 text-gray-300">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 opacity-60">Ils nous font confiance</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 text-slate-400">
             {['Université de Lyon', 'ENI Paris', 'IAE Bordeaux', 'UTC Compiègne', 'INSA Toulouse'].map((name) => (
-              <span key={name} className="text-lg font-bold tracking-tight">{name}</span>
+              <motion.span
+                key={name}
+                className="text-sm font-bold tracking-tight"
+                whileHover={{ scale: 1.1, color: '#4ade80' }}
+                transition={{ type: 'spring', stiffness: 300 }}
+              >
+                {name}
+              </motion.span>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── Features Section ─── */}
-      <section id="fonctionnalites" className="relative py-28 px-4 sm:px-6 lg:px-8">
+      {/* ─── Features Section with Images ─── */}
+      <section id="fonctionnalites" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-800 via-slate-900 to-slate-900">
         <FloatingShapes />
         <div className="max-w-7xl mx-auto relative">
           <FadeInWhenVisible>
             <div className="text-center max-w-2xl mx-auto mb-20">
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 mb-6">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-sm font-semibold text-emerald-700">Fonctionnalités</span>
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-4 py-1.5 mb-6 backdrop-blur-sm">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-sm font-semibold text-emerald-300">Fonctionnalités</span>
               </div>
-              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+              <h2 className="text-4xl sm:text-5xl font-black text-white">
                 Tout ce dont vous{' '}
-                <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">avez besoin</span>
+                <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">avez besoin</span>
               </h2>
-              <p className="mt-5 text-lg text-gray-500">
+              <p className="mt-5 text-lg text-slate-400">
                 Une suite complète d&apos;outils pour moderniser l&apos;évaluation dans l&apos;enseignement supérieur.
               </p>
             </div>
@@ -734,26 +791,42 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, index) => (
-              <FeatureCard key={feature.title} {...feature} delay={index * 0.1} />
+              <FadeInWhenVisible key={feature.title} delay={index * 0.1}>
+                <motion.div
+                  whileHover={{ y: -8, scale: 1.02 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                >
+                  <Card className="h-full bg-gradient-to-b from-slate-700/50 to-slate-800/50 backdrop-blur-sm border-slate-600/50 hover:border-emerald-500/50 hover:shadow-2xl hover:shadow-emerald-500/20 transition-all duration-500 group rounded-2xl overflow-hidden">
+                    <div className="h-1 bg-gradient-to-r from-emerald-400 to-cyan-400 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" />
+                    <CardContent className="p-7">
+                      <div className={`w-14 h-14 rounded-2xl ${feature.iconBg} flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
+                        <feature.icon className={`w-7 h-7 ${feature.iconColor}`} />
+                      </div>
+                      <h3 className="text-lg font-bold text-white mb-3">{feature.title}</h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">{feature.description}</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </FadeInWhenVisible>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── How it Works ─── */}
-      <section id="comment" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-emerald-50/30 to-white">
+      {/* ─── How it Works with Images ─── */}
+      <section id="comment" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900">
         <div className="max-w-7xl mx-auto relative">
           <FadeInWhenVisible>
             <div className="text-center max-w-2xl mx-auto mb-20">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-1.5 mb-6">
-                <Cpu className="w-3.5 h-3.5 text-cyan-600" />
-                <span className="text-sm font-semibold text-cyan-700">Comment ça marche</span>
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-950/40 px-4 py-1.5 mb-6 backdrop-blur-sm">
+                <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-sm font-semibold text-cyan-300">Comment ça marche</span>
               </div>
-              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+              <h2 className="text-4xl sm:text-5xl font-black text-white">
                 Trois étapes{' '}
-                <span className="bg-gradient-to-r from-cyan-600 to-teal-500 bg-clip-text text-transparent">simples</span>
+                <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">simples</span>
               </h2>
-              <p className="mt-5 text-lg text-gray-500">
+              <p className="mt-5 text-lg text-slate-400">
                 De la création à la correction, SECT simplifie chaque étape du processus d&apos;évaluation.
               </p>
             </div>
@@ -765,7 +838,7 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                 <div className="relative text-center group">
                   {index < steps.length - 1 && (
                     <div className="hidden md:block absolute top-20 left-[calc(50%+72px)] w-[calc(100%-144px)] h-0.5">
-                      <div className="h-full bg-gradient-to-r from-emerald-300 to-cyan-300 opacity-30" />
+                      <div className="h-full bg-gradient-to-r from-slate-600 to-slate-600 opacity-30" />
                       <motion.div
                         className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 -mt-0.5"
                         initial={{ width: '0%' }}
@@ -779,15 +852,15 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                     <motion.div
                       whileHover={{ scale: 1.08, rotate: 3 }}
                       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                      className={`w-28 h-28 rounded-3xl bg-gradient-to-br ${step.color} flex items-center justify-center mx-auto mb-8 shadow-xl group-hover:shadow-2xl transition-shadow duration-500`}
+                      className={`w-28 h-28 rounded-3xl bg-gradient-to-br ${step.color} flex items-center justify-center mx-auto mb-8 shadow-2xl group-hover:shadow-3xl group-hover:shadow-emerald-500/30 transition-all duration-500`}
                     >
                       <step.icon className="w-12 h-12 text-white" />
                     </motion.div>
-                    <span className="text-sm font-bold text-emerald-600/60 tracking-[0.2em] uppercase">
+                    <span className="text-sm font-bold text-emerald-400/70 tracking-[0.2em] uppercase">
                       Étape {step.number}
                     </span>
-                    <h3 className="text-2xl font-bold text-gray-900 mt-3 mb-4">{step.title}</h3>
-                    <p className="text-sm text-gray-500 leading-relaxed max-w-sm mx-auto">{step.description}</p>
+                    <h3 className="text-2xl font-bold text-white mt-3 mb-4">{step.title}</h3>
+                    <p className="text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">{step.description}</p>
                   </div>
                 </div>
               </FadeInWhenVisible>
@@ -796,9 +869,8 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         </div>
       </section>
 
-      {/* ─── Stats Section ─── */}
-      <section className="relative py-28 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600" />
+      {/* ─── Stats Section (Dark) ─── */}
+      <section className="relative py-28 px-4 sm:px-6 lg:px-8 overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_50%,rgba(255,255,255,0.1),rgba(255,255,255,0))]" />
         <FloatingShapes />
         <div className="max-w-7xl mx-auto relative">
@@ -813,13 +885,16 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                   transition={{ duration: 0.6, delay: index * 0.1 }}
                   className="text-center group"
                 >
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 mb-4 group-hover:bg-white/25 transition-colors">
+                  <motion.div
+                    className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 mb-4"
+                    whileHover={{ scale: 1.15, backgroundColor: 'rgba(255,255,255,0.3)' }}
+                  >
                     <stat.icon className="w-6 h-6 text-white" />
-                  </div>
-                  <p className="text-4xl sm:text-5xl font-extrabold text-white">
+                  </motion.div>
+                  <p className="text-4xl sm:text-5xl font-black text-white">
                     <AnimatedCounter target={stat.value} suffix={stat.suffix} />
                   </p>
-                  <p className="mt-2 text-sm text-white/70 font-medium">{stat.label}</p>
+                  <p className="mt-2 text-sm text-white/80 font-medium">{stat.label}</p>
                 </motion.div>
               ))}
             </div>
@@ -827,20 +902,20 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         </div>
       </section>
 
-      {/* ─── Pricing Section ─── */}
-      <section id="tarifs" className="relative py-28 px-4 sm:px-6 lg:px-8">
+      {/* ─── Pricing Section (Dark) ─── */}
+      <section id="tarifs" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900">
         <div className="max-w-7xl mx-auto">
           <FadeInWhenVisible>
             <div className="text-center max-w-2xl mx-auto mb-20">
-              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-1.5 mb-6">
-                <Crown className="w-3.5 h-3.5 text-amber-600" />
-                <span className="text-sm font-semibold text-amber-700">Tarifs</span>
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-950/40 px-4 py-1.5 mb-6 backdrop-blur-sm">
+                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-sm font-semibold text-amber-300">Tarifs</span>
               </div>
-              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+              <h2 className="text-4xl sm:text-5xl font-black text-white">
                 Un plan pour{' '}
-                <span className="bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">chaque besoin</span>
+                <span className="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">chaque besoin</span>
               </h2>
-              <p className="mt-5 text-lg text-gray-500">
+              <p className="mt-5 text-lg text-slate-400">
                 Commencez gratuitement et évoluez selon vos besoins. Aucune carte de crédit requise.
               </p>
             </div>
@@ -853,13 +928,13 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                   <Card
                     className={`relative h-full transition-all duration-500 rounded-2xl ${
                       plan.popular
-                        ? 'bg-gradient-to-b from-emerald-50 to-white border-2 border-emerald-300 shadow-2xl shadow-emerald-200/50 scale-[1.02] md:-mt-4 md:mb-[-16px]'
-                        : 'bg-white/80 backdrop-blur-sm border border-gray-200 hover:border-emerald-200 hover:shadow-lg'
+                        ? 'bg-gradient-to-b from-emerald-950/50 to-slate-900/50 border-2 border-emerald-500/50 shadow-2xl shadow-emerald-500/20 scale-[1.02] md:-mt-4 md:mb-[-16px]'
+                        : 'bg-slate-800/50 border border-slate-700/50 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/10 backdrop-blur-sm'
                     }`}
                   >
                     {plan.popular && (
                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full px-5 py-1.5 text-xs font-bold shadow-lg shadow-emerald-500/30">
+                        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full px-5 py-1.5 text-xs font-bold shadow-lg shadow-emerald-500/40">
                           Le plus populaire
                         </div>
                       </div>
@@ -867,29 +942,29 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                     <CardHeader className="text-center pb-2 pt-8">
                       <div className={`w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center ${
                         plan.popular
-                          ? 'bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/25'
-                          : 'bg-gray-100'
+                          ? 'bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/40'
+                          : 'bg-slate-700/50'
                       }`}>
-                        <plan.icon className={`w-7 h-7 ${plan.popular ? 'text-white' : 'text-gray-500'}`} />
+                        <plan.icon className={`w-7 h-7 ${plan.popular ? 'text-white' : 'text-slate-300'}`} />
                       </div>
-                      <CardTitle className="text-xl text-gray-900">{plan.name}</CardTitle>
-                      <CardDescription className="text-gray-500">{plan.description}</CardDescription>
+                      <CardTitle className="text-xl text-white">{plan.name}</CardTitle>
+                      <CardDescription className="text-slate-400">{plan.description}</CardDescription>
                     </CardHeader>
                     <CardContent className="text-center pb-2">
                       <div className="mb-6">
-                        <span className="text-5xl font-extrabold text-gray-900">{plan.price}</span>
-                        <span className="text-gray-400 text-lg">{plan.period}</span>
+                        <span className="text-5xl font-black text-white">{plan.price}</span>
+                        <span className="text-slate-400 text-lg">{plan.period}</span>
                       </div>
-                      <Separator className="mb-6 bg-gray-100" />
+                      <Separator className="mb-6 bg-slate-700/50" />
                       <ul className="space-y-3.5 text-left">
                         {plan.features.map((feature) => (
                           <li key={feature} className="flex items-start gap-3">
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                              plan.popular ? 'bg-emerald-100' : 'bg-gray-100'
+                              plan.popular ? 'bg-emerald-500/20' : 'bg-slate-700/50'
                             }`}>
-                              <Check className={`w-3 h-3 ${plan.popular ? 'text-emerald-600' : 'text-gray-400'}`} />
+                              <Check className={`w-3 h-3 ${plan.popular ? 'text-emerald-400' : 'text-slate-400'}`} />
                             </div>
-                            <span className="text-sm text-gray-600">{feature}</span>
+                            <span className="text-sm text-slate-300">{feature}</span>
                           </li>
                         ))}
                       </ul>
@@ -898,8 +973,8 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                       <Button
                         className={`w-full h-12 rounded-xl text-sm font-semibold ${
                           plan.popular
-                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20 border-0'
-                            : 'bg-white border-2 border-gray-200 text-gray-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/30 border-0'
+                            : 'bg-slate-700/50 border-2 border-slate-600 text-slate-200 hover:bg-slate-700 hover:border-emerald-500/50 hover:text-emerald-300'
                         }`}
                         variant={plan.popular ? 'default' : 'outline'}
                         onClick={onLogin}
@@ -915,20 +990,20 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         </div>
       </section>
 
-      {/* ─── Testimonials ─── */}
-      <section id="temoignages" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-emerald-50/20 to-white">
+      {/* ─── Testimonials Section (Dark) ─── */}
+      <section id="temoignages" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
         <div className="max-w-7xl mx-auto relative">
           <FadeInWhenVisible>
             <div className="text-center max-w-2xl mx-auto mb-20">
-              <div className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-4 py-1.5 mb-6">
-                <GraduationCap className="w-3.5 h-3.5 text-teal-600" />
-                <span className="text-sm font-semibold text-teal-700">Témoignages</span>
+              <div className="inline-flex items-center gap-2 rounded-full border border-teal-500/30 bg-teal-950/40 px-4 py-1.5 mb-6 backdrop-blur-sm">
+                <GraduationCap className="w-3.5 h-3.5 text-teal-400" />
+                <span className="text-sm font-semibold text-teal-300">Témoignages</span>
               </div>
-              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+              <h2 className="text-4xl sm:text-5xl font-black text-white">
                 Ils nous font{' '}
-                <span className="bg-gradient-to-r from-teal-500 to-emerald-500 bg-clip-text text-transparent">confiance</span>
+                <span className="bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">confiance</span>
               </h2>
-              <p className="mt-5 text-lg text-gray-500">
+              <p className="mt-5 text-lg text-slate-400">
                 Découvrez ce que les professionnels de l&apos;enseignement supérieur disent de SECT.
               </p>
             </div>
@@ -938,10 +1013,12 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
             {testimonials.map((testimonial, index) => (
               <FadeInWhenVisible key={testimonial.name} delay={index * 0.1}>
                 <motion.div whileHover={{ y: -6 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
-                  <Card className="h-full bg-white/80 backdrop-blur-sm border border-gray-100 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-50/50 transition-all duration-500 rounded-2xl">
+                  <Card className="h-full bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 hover:border-emerald-500/30 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-500 rounded-2xl">
                     <CardContent className="p-7">
-                      <Quote className="w-8 h-8 text-emerald-200 mb-5" />
-                      <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                      <motion.div whileHover={{ scale: 1.1 }} className="mb-5">
+                        <Quote className="w-8 h-8 text-emerald-400/50" />
+                      </motion.div>
+                      <p className="text-sm text-slate-300 leading-relaxed mb-6">
                         &ldquo;{testimonial.content}&rdquo;
                       </p>
                       <div className="flex items-center gap-1 mb-5">
@@ -949,15 +1026,18 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                           <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
                         ))}
                       </div>
-                      <Separator className="mb-5 bg-gray-100" />
+                      <Separator className="mb-5 bg-slate-700/50" />
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-sm font-bold text-white shadow-md shadow-emerald-500/20">
+                        <motion.div
+                          className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-sm font-bold text-white shadow-md shadow-emerald-500/30"
+                          whileHover={{ scale: 1.2, rotate: 10 }}
+                        >
                           {testimonial.avatar}
-                        </div>
+                        </motion.div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{testimonial.name}</p>
-                          <p className="text-xs text-gray-500">{testimonial.role}</p>
-                          <p className="text-xs text-gray-400 font-medium">{testimonial.institution}</p>
+                          <p className="text-sm font-semibold text-white">{testimonial.name}</p>
+                          <p className="text-xs text-slate-400">{testimonial.role}</p>
+                          <p className="text-xs text-slate-500 font-medium">{testimonial.institution}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -969,9 +1049,8 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
         </div>
       </section>
 
-      {/* ─── CTA Section ─── */}
-      <section className="relative py-28 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600" />
+      {/* ─── CTA Section (Premium Dark) ─── */}
+      <section className="relative py-28 px-4 sm:px-6 lg:px-8 overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(255,255,255,0.15),rgba(255,255,255,0))]" />
         <FloatingShapes />
         <div className="max-w-4xl mx-auto text-center relative">
@@ -980,84 +1059,87 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
               <Zap className="w-3.5 h-3.5 text-amber-300" />
               <span className="text-sm font-semibold text-white/90">Commencez maintenant</span>
             </div>
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight">
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight">
               Prêt à transformer
               <br />
               <span className="bg-gradient-to-r from-emerald-200 via-teal-200 to-cyan-200 bg-clip-text text-transparent">
                 vos évaluations ?
               </span>
             </h2>
-            <p className="mt-6 text-lg text-white/80 max-w-2xl mx-auto">
-              Rejoignez les établissements qui ont déjà adopté SECT. Commencez gratuitement et
-              découvrez la puissance de l&apos;IA au service de l&apos;évaluation.
+            <p className="mt-6 text-lg text-white/90 max-w-2xl mx-auto leading-relaxed">
+              Rejoignez les établissements qui ont déjà adopté SECT. Commencez gratuitement et découvrez la puissance de l&apos;IA au service de l&apos;évaluation.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button
-                size="lg"
-                onClick={onLogin}
-                className="bg-white text-emerald-700 hover:bg-emerald-50 shadow-xl px-8 text-base h-14 rounded-2xl font-semibold group"
-              >
-                Commencer gratuitement
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={onDemo}
-                className="border-white/30 text-white/90 hover:bg-white/10 hover:text-white px-8 text-base h-14 rounded-2xl"
-              >
-                <Mail className="mr-2 h-5 w-5" />
-                Nous contacter
-              </Button>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  size="lg"
+                  onClick={onLogin}
+                  className="bg-white text-emerald-700 hover:bg-emerald-50 shadow-2xl shadow-white/20 px-8 text-base h-14 rounded-xl font-black group"
+                >
+                  Commencer gratuitement
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={onDemo}
+                  className="border-white/30 text-white hover:bg-white/10 hover:text-white px-8 text-base h-14 rounded-xl font-semibold"
+                >
+                  <Mail className="mr-2 h-5 w-5" />
+                  Nous contacter
+                </Button>
+              </motion.div>
             </div>
           </FadeInWhenVisible>
         </div>
       </section>
 
-      {/* ─── Footer ─── */}
-      <footer className="mt-auto relative py-16 px-4 sm:px-6 lg:px-8 border-t border-gray-100 bg-white">
+      {/* ─── Footer (Dark) ─── */}
+      <footer className="mt-auto relative py-16 px-4 sm:px-6 lg:px-8 border-t border-slate-700/50 bg-slate-950">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-10">
             <div className="md:col-span-1">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/20">
-                  <span className="text-white font-bold text-sm">S</span>
+              <motion.div className="flex items-center gap-3 mb-5" whileHover={{ scale: 1.05 }}>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/40">
+                  <span className="text-white font-black text-sm">S</span>
                 </div>
-                <span className="text-lg font-extrabold bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">SECT</span>
-              </div>
-              <p className="text-sm text-gray-400 leading-relaxed">
+                <span className="text-lg font-black bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">SECT</span>
+              </motion.div>
+              <p className="text-sm text-slate-400 leading-relaxed">
                 Système d&apos;Évaluation et de Contrôle des Tests. La plateforme d&apos;évaluation en ligne propulsée par l&apos;Intelligence Artificielle.
               </p>
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-gray-900 mb-5">Produit</h4>
+              <h4 className="text-sm font-bold text-white mb-5 uppercase tracking-wide">Produit</h4>
               <ul className="space-y-3">
-                <li><a href="#fonctionnalites" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Fonctionnalités</a></li>
-                <li><a href="#tarifs" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Tarifs</a></li>
-                <li><a href="#comment" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Comment ça marche</a></li>
-                <li><a href="#temoignages" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Témoignages</a></li>
+                <li><motion.a href="#fonctionnalites" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Fonctionnalités</motion.a></li>
+                <li><motion.a href="#tarifs" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Tarifs</motion.a></li>
+                <li><motion.a href="#comment" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Comment ça marche</motion.a></li>
+                <li><motion.a href="#temoignages" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Témoignages</motion.a></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-gray-900 mb-5">Entreprise</h4>
+              <h4 className="text-sm font-bold text-white mb-5 uppercase tracking-wide">Entreprise</h4>
               <ul className="space-y-3">
-                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">À propos</a></li>
-                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Contact</a></li>
-                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Mentions légales</a></li>
-                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Support</a></li>
+                <li><motion.a href="#" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>À propos</motion.a></li>
+                <li><motion.a href="#" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Contact</motion.a></li>
+                <li><motion.a href="#" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Mentions légales</motion.a></li>
+                <li><motion.a href="#" className="text-sm text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ x: 5 }}>Support</motion.a></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-gray-900 mb-5">Contact</h4>
+              <h4 className="text-sm font-bold text-white mb-5 uppercase tracking-wide">Contact</h4>
               <ul className="space-y-3">
-                <li className="flex items-center gap-2 text-sm text-gray-400">
-                  <Mail className="w-4 h-4" /> contact@sect.fr
+                <li className="flex items-center gap-2 text-sm text-slate-400">
+                  <Mail className="w-4 h-4 text-emerald-400" /> contact@sect.fr
                 </li>
-                <li className="flex items-center gap-2 text-sm text-gray-400">
-                  <Phone className="w-4 h-4" /> +33 1 23 45 67 89
+                <li className="flex items-center gap-2 text-sm text-slate-400">
+                  <Phone className="w-4 h-4 text-emerald-400" /> +33 1 23 45 67 89
                 </li>
               </ul>
               <div className="flex items-center gap-3 mt-5">
@@ -1066,26 +1148,27 @@ export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
                   { label: 'LinkedIn', icon: 'in' },
                   { label: 'GitHub', icon: 'GH' },
                 ].map((social) => (
-                  <a
+                  <motion.a
                     key={social.label}
                     href="#"
-                    className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-emerald-100 hover:text-emerald-600 flex items-center justify-center text-gray-400 text-xs font-bold transition-all duration-200"
+                    className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-emerald-500/20 hover:text-emerald-400 flex items-center justify-center text-slate-400 text-xs font-bold transition-all duration-200 border border-slate-700/50 hover:border-emerald-500/50"
+                    whileHover={{ scale: 1.15, rotate: 5 }}
                   >
                     {social.icon}
-                  </a>
+                  </motion.a>
                 ))}
               </div>
             </div>
           </div>
 
-          <Separator className="mb-6 bg-gray-100" />
+          <Separator className="mb-6 bg-slate-700/50" />
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-gray-400">&copy; 2026 SECT — Tous droits réservés</p>
+            <p className="text-xs text-slate-500">&copy; 2026 SECT — Tous droits réservés</p>
             <div className="flex items-center gap-6">
-              <a href="#" className="text-xs text-gray-400 hover:text-emerald-600 transition-colors">Politique de confidentialité</a>
-              <a href="#" className="text-xs text-gray-400 hover:text-emerald-600 transition-colors">CGU</a>
-              <a href="#" className="text-xs text-gray-400 hover:text-emerald-600 transition-colors">Cookies</a>
+              <motion.a href="#" className="text-xs text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ scale: 1.05 }}>Politique de confidentialité</motion.a>
+              <motion.a href="#" className="text-xs text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ scale: 1.05 }}>CGU</motion.a>
+              <motion.a href="#" className="text-xs text-slate-400 hover:text-emerald-300 transition-colors" whileHover={{ scale: 1.05 }}>Cookies</motion.a>
             </div>
           </div>
         </div>
