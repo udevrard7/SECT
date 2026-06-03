@@ -672,9 +672,23 @@ model AIProviderConfig {
   temperature Float    @default(0.7)
   maxTokens   Int      @default(4096)
   isActive    Boolean  @default(false)
+  priority    Int      @default(99) // Failover priority (lower = higher priority, 1 = primary)
   extraConfig String?  // JSON for provider-specific settings
   lastTestAt  DateTime?
   lastTestOk  Boolean?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model AIFailoverEvent {
+  id           String   @id @default(cuid())
+  providerId   String?  // Which provider was involved (null = system event)
+  providerName String?
+  eventType    String   // FAIL_OVER, RECOVERY, MANUAL_SWITCH, COOLDOWN_EXPIRED
+  fromProvider String?  // Name of provider we switched FROM
+  toProvider   String?  // Name of provider we switched TO
+  reason       String   // Human-readable reason
+  errorDetails String?  // Error message that triggered the failover
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
 }

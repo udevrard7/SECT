@@ -36,6 +36,7 @@ async function main() {
       "temperature" DOUBLE PRECISION NOT NULL DEFAULT 0.7,
       "maxTokens" INTEGER NOT NULL DEFAULT 4096,
       "isActive" BOOLEAN NOT NULL DEFAULT false,
+      "priority" INTEGER NOT NULL DEFAULT 99,
       "extraConfig" TEXT,
       "lastTestAt" TIMESTAMP(3),
       "lastTestOk" BOOLEAN,
@@ -45,9 +46,38 @@ async function main() {
   `);
   console.log("✅ Table AIProviderConfig créée avec succès");
 
+  // 2b. Create AIFailoverEvent table
+  const failoverTableCheck = await client.query(`
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_name = 'AIFailoverEvent'
+    );
+  `);
+  
+  if (failoverTableCheck.rows[0].exists) {
+    console.log("⚠️ Table AIFailoverEvent existe déjà, suppression pour recréer...");
+    await client.query('DROP TABLE IF EXISTS "AIFailoverEvent" CASCADE;');
+  }
+
+  await client.query(`
+    CREATE TABLE "AIFailoverEvent" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "providerId" TEXT,
+      "providerName" TEXT,
+      "eventType" TEXT NOT NULL,
+      "fromProvider" TEXT,
+      "toProvider" TEXT,
+      "reason" TEXT NOT NULL,
+      "errorDetails" TEXT,
+      "resolved" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  console.log("✅ Table AIFailoverEvent créée avec succès");
+
   // 3. Insert Z-AI provider
   await client.query(`
-    INSERT INTO "AIProviderConfig" (id, name, provider, "baseUrl", "apiKey", model, temperature, "maxTokens", "isActive", "createdAt", "updatedAt")
+    INSERT INTO "AIProviderConfig" (id, name, provider, "baseUrl", "apiKey", model, temperature, "maxTokens", "isActive", priority, "createdAt", "updatedAt")
     VALUES (
       'zai-provider-001',
       'Z-AI (principal)',
@@ -58,6 +88,7 @@ async function main() {
       0.7,
       4096,
       true,
+      1,
       CURRENT_TIMESTAMP,
       CURRENT_TIMESTAMP
     );
