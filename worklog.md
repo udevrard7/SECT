@@ -48,3 +48,30 @@ Stage Summary:
 - Script Supabase mis à jour pour créer les tables avec les bons champs
 - Code poussé vers GitHub → Vercel va redéployer automatiquement
 - ⚠️ IMPORTANT : En production, il faut aussi mettre à jour la table Supabase PostgreSQL (soit via le script deploy-supabase.mjs, soit via la migration /api/migrate/failover)
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix production login failure ("Identifiants incorrects")
+
+Work Log:
+- Analyzed the authentication system: bcrypt password hashing, Zustand+localStorage auth, x-user-id/x-user-role headers
+- Discovered root cause: `prisma/schema.prisma` had `provider = "sqlite"` but Vercel production uses PostgreSQL (Supabase)
+- The SQLite schema was committed and pushed in a previous session, causing Vercel to generate a SQLite Prisma client that can't connect to PostgreSQL
+- Restored `prisma/schema.prisma` to PostgreSQL with proper enums (Role, TypeQuestion, etc.)
+- Updated datasource from `env("SUPABASE_URL")` to `env("DATABASE_URL")` + `env("DIRECT_URL")` matching Vercel env vars
+- Updated `DATABASE_URL` and `DIRECT_URL` production environment variables on Vercel via API
+- Committed and pushed fix to GitHub (commit a89da31)
+- Vercel auto-deployed successfully
+- Found admin email in Supabase: `ulrichdouh@gmail.com` (not `admin@sect.fr`)
+- Reset admin password to `Admin@2024` with `mustChangePwd: true`
+- Verified production login works: POST /api/auth/login → "Connexion réussie"
+- Verified AI providers API works: GET /api/ai-providers → returns 5 providers
+- Switched local sandbox back to SQLite schema for development
+
+Stage Summary:
+- Root cause: SQLite Prisma schema deployed to Vercel (PostgreSQL environment)
+- Fix: Restored PostgreSQL schema with DATABASE_URL + DIRECT_URL
+- Admin credentials: ulrichdouh@gmail.com / Admin@2024 (must change on first login)
+- AI providers confirmed loading: 5 providers (MuleRouter AI active, others inactive)
+- Both login and AI provider issues are now resolved in production
