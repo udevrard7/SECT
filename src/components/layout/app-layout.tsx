@@ -156,10 +156,16 @@ function PlaceholderPage({ pageId }: { pageId: PageId }) {
 
 // ─── Main content router ───
 function PageContent() {
-  const { currentPage } = useNavigationStore()
+  const { currentPage, _hasHydrated } = useNavigationStore()
   const { user } = useAuthStore()
 
   if (!user) return null
+
+  // Wait for navigation store to hydrate from localStorage before rendering
+  // This prevents flashing the dashboard when user was on a different page
+  if (!_hasHydrated) {
+    return null
+  }
 
   // Dashboard: render role-specific component
   if (currentPage === 'dashboard') {

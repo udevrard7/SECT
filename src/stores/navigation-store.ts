@@ -43,9 +43,11 @@ interface NavigationState {
   currentPage: PageId
   currentPageParams: Record<string, string>
   sidebarOpen: boolean
+  _hasHydrated: boolean
   setCurrentPage: (page: PageId, params?: Record<string, string>) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
+  setHasHydrated: (state: boolean) => void
 }
 
 export const useNavigationStore = create<NavigationState>()(
@@ -54,16 +56,25 @@ export const useNavigationStore = create<NavigationState>()(
       currentPage: 'dashboard' as PageId,
       currentPageParams: {},
       sidebarOpen: true,
+      _hasHydrated: false,
 
       setCurrentPage: (page, params = {}) => set({ currentPage: page, currentPageParams: params }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
     }),
     {
       name: 'sect-navigation',
       partialize: (state) => ({
         currentPage: state.currentPage,
       }),
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (!error && state) {
+            state.setHasHydrated(true)
+          }
+        }
+      },
     }
   )
 )
