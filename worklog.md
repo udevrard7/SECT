@@ -75,3 +75,38 @@ Stage Summary:
 - Admin credentials: ulrichdouh@gmail.com / Admin@2024 (must change on first login)
 - AI providers confirmed loading: 5 providers (MuleRouter AI active, others inactive)
 - Both login and AI provider issues are now resolved in production
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix Vercel build 240a4cf failure + production login issues
+
+Work Log:
+- Investigated the Vercel build failure for deployment 240a4cf
+- Found that the latest commit d5779cd changed `.env` from SQLite to PostgreSQL URL and committed it to git
+- Identified root causes of Vercel build failure:
+  1. `sharp` native module (v0.34.3) in dependencies but NOT used anywhere in src/ — causes native binary compilation failures on Vercel
+  2. `next-auth` (v4.24.11) in dependencies but NOT used anywhere — adds unnecessary complexity
+  3. `.env` file committed to git with production secrets — potential conflicts with Vercel env vars
+- Verified production login API still works (POST /api/auth/login → success with ulrichdouh@gmail.com / Admin@2024)
+- Verified AI providers API returns 5 providers correctly
+- Fixed all TypeScript errors in API routes:
+  - Removed all `deletedAt` references (soft delete not in schema)
+  - Added missing `updatedAt: new Date()` in create operations
+  - Fixed Prisma include type issues with `as any` and optional chaining
+  - Fixed null/undefined type mismatches
+  - Fixed `getAuthHeaders` missing import in force-change-password-page.tsx and configuration-page.tsx
+  - Added `matricule` and `mustChangePwd` fields to AuthUser interface
+  - Fixed sidebar type mismatch for PageId
+- Removed `sharp` and `next-auth` from package.json
+- Untracked `.env` from git (`git rm --cached .env`)
+- Committed and pushed all fixes to GitHub (commit 15a88dc)
+- Verified production site after deploy: login works, AI providers page shows 5 providers with MuleRouter AI active
+
+Stage Summary:
+- Vercel build failure root cause: `sharp` native module (unused) + `next-auth` (unused)
+- Fix: Removed both unused dependencies, untracked .env, fixed TypeScript errors
+- Production login confirmed working: ulrichdouh@gmail.com / Admin@2024
+- AI providers page confirmed working: 5 providers displayed, MuleRouter AI active + Test OK
+- All TypeScript errors in API routes fixed
+- .env file removed from git tracking (was committed with secrets)
