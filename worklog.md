@@ -26,3 +26,25 @@ Stage Summary:
 - Landing page and login page render correctly
 - Git is configured to push to GitHub main branch (auto-deploys to Vercel)
 - Key fix: seed/route.ts - added updatedAt field for PlatformSettings
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Corriger le bug de chargement des fournisseurs AI sur le frontend
+
+Work Log:
+- Investigué le problème : les fournisseurs AI configurés dans Supabase ne se chargent plus sur le frontend
+- Identifié la cause racine : le schéma Prisma est incomplet - il manque le champ `priority` dans `AIProviderConfig` et le modèle `AIFailoverEvent` est absent
+- Toutes les API utilisant `orderBy: [{ priority: 'asc' }]` crashent avec `PrismaClientValidationError`
+- Corrigé les 4 schémas Prisma : schema.prisma, schema.sqlite.current.prisma, schema.sqlite.prisma, schema.postgres.backup
+- Ajouté `priority Int @default(99)` au modèle AIProviderConfig
+- Ajouté le modèle AIFailoverEvent complet
+- Mis à jour le script deploy-supabase.mjs avec la colonne priority et la table AIFailoverEvent
+- Régénéré Prisma Client et poussé le schéma SQLite local
+- Commité et poussé vers GitHub main (force push) - déclenchera déploiement Vercel
+
+Stage Summary:
+- Bug corrigé : champ `priority` + modèle `AIFailoverEvent` ajoutés aux 4 schémas Prisma
+- Script Supabase mis à jour pour créer les tables avec les bons champs
+- Code poussé vers GitHub → Vercel va redéployer automatiquement
+- ⚠️ IMPORTANT : En production, il faut aussi mettre à jour la table Supabase PostgreSQL (soit via le script deploy-supabase.mjs, soit via la migration /api/migrate/failover)
