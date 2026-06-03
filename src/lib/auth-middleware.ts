@@ -1,102 +1,66 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 
-export interface AuthContext {
-  userId: string
-  role: string
-  email: string
-  etablissementId: string | null
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSession } from 'next-auth/react'; // Placeholder for your actual session management
+
+// Define a user type with the properties we expect
+export interface AuthenticatedUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  actif: boolean;
+  etablissementId: string | null;
+  filiereId: string | null;
 }
 
-/**
- * Validates authentication by extracting x-user-id and x-user-role headers
- * AND verifying them against the database.
- *
- * This prevents header spoofing since the server confirms the user exists
- * and the role matches what's in the database.
- *
- * @param request - The incoming NextRequest
- * @returns AuthContext with verified user info, or null if invalid
- */
-export async function getVerifiedUser(request: NextRequest): Promise<AuthContext | null> {
-  const userId = request.headers.get('x-user-id')
-  const clientRole = request.headers.get('x-user-role')
-
-  if (!userId || !clientRole) {
-    return null
-  }
-
-  try {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        role: true,
-        email: true,
-        actif: true,
-        etablissementId: true,
-      },
-    })
-
-    // User must exist, be active, and the client-provided role must match the DB
-    if (!user || !user.actif || user.role !== clientRole) {
-      return null
-    }
-
-    return {
-      userId: user.id,
-      role: user.role,
-      email: user.email,
-      etablissementId: user.etablissementId,
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * Requires the user to be authenticated (any role).
- * Returns AuthContext or a 401 NextResponse.
- */
-export async function requireAuth(request: NextRequest): Promise<AuthContext | NextResponse> {
-  const user = await getVerifiedUser(request)
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentification requise. Veuillez vous reconnecter.' },
-      { status: 401 }
-    )
-  }
-  return user
-}
-
-/**
- * Requires the user to have a specific role (or one of several roles).
- * Returns AuthContext or a 403 NextResponse.
- */
-export async function requireRole(
+// Define the type for a handler that uses the authenticated user
+export type AuthenticatedHandler = (
   request: NextRequest,
-  allowedRoles: string[]
-): Promise<AuthContext | NextResponse> {
-  const user = await getVerifiedUser(request)
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentification requise.' },
-      { status: 401 }
-    )
-  }
-  if (!allowedRoles.includes(user.role)) {
-    return NextResponse.json(
-      { error: 'Vous n\'avez pas les permissions pour effectuer cette action.' },
-      { status: 403 }
-    )
-  }
-  return user
-}
+  context: { params: any; user: AuthenticatedUser }
+) => Promise<NextResponse>;
 
 /**
- * Quick check — is this response an error (i.e., the auth check failed)?
- * Usage: const authResult = await requireRole(req, ['ADMIN']); if (authResult instanceof NextResponse) return authResult;
+ * Higher-order function to protect API routes.
+ * It checks for a valid user session and injects user data into the request.
+ *
+ * @param handler - The API route handler to protect.
+ * @param allowedRoles - Optional array of roles that are allowed to access the route.
  */
-export function isAuthError(result: AuthContext | NextResponse): result is NextResponse {
-  return result instanceof NextResponse
+export function withAuth(
+  handler: AuthenticatedHandler,
+  allowedRoles?: string[]
+) {
+  return async (request: NextRequest, context: { params: any }) => {
+    // In a real app, you would get the session from a secure, HttpOnly cookie
+    // For this example, we'll simulate getting a session.
+    // Replace this with your actual session retrieval and verification logic.
+    const session = await getSession({ req: request });
+
+    if (!session || !session.user || !session.user.id) {
+      return NextResponse.json({ error: 'Non authentifié. Session invalide ou expirée.' }, { status: 401 });
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+    });
+
+    if (!user || !user.actif) {
+      return NextResponse.json({ error: 'Accès non autorisé. Compte inactif ou invalide.' }, { status: 403 });
+    }
+
+    // Role-based access control
+    if (allowedRoles && allowedRoles.length > 0) {
+      if (!allowedRoles.includes(user.role)) {
+        return NextResponse.json(
+          { error: `Accès refusé. Rôle '${user.role}' non autorisé pour cette action.` },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Attach user to the context and call the original handler
+    const newContext = { ...context, user: user as AuthenticatedUser };
+    return handler(request, newContext);
+  };
 }
