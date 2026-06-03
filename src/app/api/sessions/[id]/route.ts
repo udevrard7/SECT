@@ -61,7 +61,7 @@ export async function POST(
       const reponse = session.reponses.find((r) => r.questionId === question.id)
 
       let questionScore = 0
-      let correctAnswer = null
+      let correctAnswer: unknown = null
 
       try {
         correctAnswer = question.reponseCorrecte ? JSON.parse(question.reponseCorrecte) : null
@@ -78,8 +78,8 @@ export async function POST(
         // Partial scoring: proportion of correctly selected answers
         if (reponse && correctAnswer) {
           try {
-            const studentAnswers = JSON.parse(reponse.contenu) as string[]
-            const correctAnswers = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer]
+            const studentAnswers = JSON.parse(reponse.contenu || '[]') as string[]
+            const correctAnswers: unknown[] = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer]
 
             const correctSelections = studentAnswers.filter((a: string) => correctAnswers.includes(a)).length
             const incorrectSelections = studentAnswers.filter((a: string) => !correctAnswers.includes(a)).length
@@ -113,7 +113,7 @@ export async function POST(
     }
 
     // Create result
-    const totalPossible = session.epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+    const totalPossible = (session.epreuve.questions as any[]).reduce((sum: number, eq: any) => sum + eq.bareme, 0)
 
     const resultat = await db.resultat.create({
       data: {

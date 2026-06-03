@@ -200,7 +200,7 @@ export async function PATCH(
 
       // Calculate total score
       const detailParQuestion = session.reponses.map((r) => {
-        const eq = session.epreuve.questions.find((q) => q.questionId === r.questionId)
+        const eq = (session.epreuve.questions as any[]).find((q: any) => q.questionId === r.questionId)
         return {
           questionId: r.questionId,
           type: eq?.question ? 'QCU/QCM/QRC/TRS' : 'unknown',
@@ -212,7 +212,7 @@ export async function PATCH(
       })
 
       const totalScore = session.reponses.reduce((sum, r) => sum + (r.score || 0), 0)
-      const totalPossible = session.epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+      const totalPossible = (session.epreuve.questions as any[]).reduce((sum: number, eq: any) => sum + eq.bareme, 0)
 
       // Create or update resultat
       if (session.resultat) {

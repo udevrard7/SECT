@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     if (enseignantId) {
       // Get teacher's exams
-      const where: Record<string, unknown> = { enseignantId, deletedAt: null }
+      const where: Record<string, unknown> = { enseignantId }
       if (statut) where.statut = statut
 
       const epreuves = await db.epreuve.findMany({
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ epreuves: [] })
       }
 
-      const whereFiliere: Record<string, unknown> = { deletedAt: null }
+      const whereFiliere: Record<string, unknown> = {}
       if (statut) whereFiliere.statut = statut
 
       whereFiliere.OR = [
@@ -175,7 +175,6 @@ export async function GET(request: NextRequest) {
       // Get all active/planned exams
       const epreuves = await db.epreuve.findMany({
         where: {
-          deletedAt: null,
           statut: { in: ['PLANIFIEE', 'EN_COURS'] },
           dateFin: { gte: now },
         },
@@ -193,7 +192,6 @@ export async function GET(request: NextRequest) {
       // Also get completed exams with student's results
       const completedEpreuves = await db.epreuve.findMany({
         where: {
-          deletedAt: null,
           statut: { in: ['TERMINEE', 'CLOTUREE'] },
           sessions: { some: { etudiantId } },
         },

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate and update each priority
-    const updates = []
+    const updates: Record<string, unknown>[] = []
     for (const item of priorities) {
       if (!item.id || typeof item.priority !== 'number') continue
 

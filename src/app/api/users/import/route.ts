@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
             name: user.name.trim(),
             email: normalizedEmail,
             password: hashedPassword,
-            role,
+            role: role as 'ETUDIANT' | 'ENSEIGNANT',
             filiereId: filiereId || null,
             etablissementId: resolvedEtablissementId,
             actif: true,

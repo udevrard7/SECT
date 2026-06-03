@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 
 // ─── POST /api/corbeille/restore — Restore soft-deleted items ───
+// Note: Soft delete (deletedAt) is not supported in the current schema.
+// This endpoint returns a message indicating the feature is not available.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -14,66 +15,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let restoredCount = 0
-
-    // Group items by type for batch processing
-    const byType: Record<string, string[]> = {}
-    for (const item of items) {
-      if (!byType[item.type]) byType[item.type] = []
-      byType[item.type].push(item.id)
-    }
-
-    // Restore documents
-    if (byType.document?.length) {
-      const result = await db.document.updateMany({
-        where: { id: { in: byType.document }, deletedAt: { not: null } },
-        data: { deletedAt: null },
-      })
-      restoredCount += result.count
-    }
-
-    // Restore questions
-    if (byType.question?.length) {
-      const result = await db.question.updateMany({
-        where: { id: { in: byType.question }, deletedAt: { not: null } },
-        data: { deletedAt: null },
-      })
-      restoredCount += result.count
-    }
-
-    // Restore epreuves
-    if (byType.epreuve?.length) {
-      const result = await db.epreuve.updateMany({
-        where: { id: { in: byType.epreuve }, deletedAt: { not: null } },
-        data: { deletedAt: null },
-      })
-      restoredCount += result.count
-    }
-
-    // Restore devoirs
-    if (byType.devoir?.length) {
-      const result = await db.devoir.updateMany({
-        where: { id: { in: byType.devoir }, deletedAt: { not: null } },
-        data: { deletedAt: null },
-      })
-      restoredCount += result.count
-    }
-
-    // Audit log
-    await db.auditLog.create({
-      data: {
-        userId: 'system',
-        userEmail: 'system',
-        action: 'RESTORE_FROM_CORBEILLE',
-        entite: 'Corbeille',
-        entiteId: items.map((i) => i.id).join(','),
-        details: `${restoredCount} élément(s) restauré(s) depuis la corbeille`,
-      },
-    })
-
+    // Soft delete is not supported in the current schema (no deletedAt field)
+    // Return a message indicating no items were restored
     return NextResponse.json({
-      message: `${restoredCount} élément(s) restauré(s) avec succès`,
-      restoredCount,
+      message: 'La restauration n\'est pas disponible (suppression douce non supportée)',
+      restoredCount: 0,
     })
   } catch (error) {
     console.error('Restore from corbeille error:', error)

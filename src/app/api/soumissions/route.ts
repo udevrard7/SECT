@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
         commentaireEtudiant: commentaireEtudiant || null,
         statut: isSoumis ? 'SOUMIS' : 'BROUILLON',
         renduAt: isSoumis ? new Date() : null,
+        updatedAt: new Date(),
         historiqueVersions: JSON.stringify([
           {
             date: new Date().toISOString(),

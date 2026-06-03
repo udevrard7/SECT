@@ -30,7 +30,7 @@ export async function GET(
         },
         sessions: {
           include: {
-            etudiant: { select: { id: true, name: true, email: true, filiere: true } },
+            etudiant: { select: { id: true, name: true, email: true, filiere: { select: { id: true, nom: true } } } },
             reponses: {
               include: {
                 question: { select: { id: true, type: true, enonce: true } },
@@ -68,7 +68,7 @@ export async function GET(
         id: session.etudiant.id,
         nom: session.etudiant.name,
         email: session.etudiant.email,
-        filiere: session.etudiant.filiere,
+        filiere: session.etudiant.filiere?.nom || null,
         statut: session.statut,
         dateDebut: session.dateDebut,
         dateFin: session.dateFin,
@@ -134,7 +134,7 @@ function exportCSV(data: Record<string, unknown>, title: string): NextResponse {
 
   const csvContent = [
     headers.map(escapeCSV).join(','),
-    ...rows.map((row) => row.map(escapeCSV).join(',')),
+    ...rows.map((row) => row.map((v) => escapeCSV(String(v))).join(',')),
   ].join('\n')
 
   return new NextResponse(csvContent, {

@@ -15,9 +15,6 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    // Always exclude soft-deleted items
-    where.deletedAt = null
-
     if (documentId) where.documentId = documentId
     if (type) where.type = type
     if (difficulte) where.difficulte = difficulte
@@ -92,10 +89,10 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Soft delete questions in a transaction
+    // Hard delete questions in a transaction (soft delete not supported)
     const result = await db.$transaction(
       ids.map((id) =>
-        db.question.update({ where: { id }, data: { deletedAt: new Date() } })
+        db.question.delete({ where: { id } })
       )
     )
 
@@ -107,12 +104,12 @@ export async function DELETE(request: NextRequest) {
         action: 'BATCH_DELETE_QUESTIONS',
         entite: 'Question',
         entiteId: ids.join(','),
-        details: `${ids.length} question(s) déplacée(s) vers la corbeille`,
+        details: `${ids.length} question(s) supprimée(s) définitivement`,
       },
     })
 
     return NextResponse.json({
-      message: `${result.length} question(s) déplacée(s) vers la corbeille`,
+      message: `${result.length} question(s) supprimée(s) définitivement`,
       deletedCount: result.length,
     })
   } catch (error) {

@@ -251,7 +251,7 @@ Important:
     }
 
     // Save generated questions to database
-    const savedQuestions = []
+    const savedQuestions: Record<string, unknown>[] = []
     const validTypes = ['QCU', 'QCM', 'QRC', 'TRS']
     const validDifficultes = ['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT']
 

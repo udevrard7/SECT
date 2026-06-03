@@ -242,10 +242,7 @@ export async function DELETE(
       )
     }
 
-    await db.epreuve.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    })
+    await db.epreuve.delete({ where: { id } })
 
     // Audit log
     await db.auditLog.create({
@@ -255,11 +252,11 @@ export async function DELETE(
         action: 'DELETE_EPREUVE',
         entite: 'Epreuve',
         entiteId: id,
-        details: `Épreuve déplacée vers la corbeille — ${existing.titre}`,
+        details: `Épreuve supprimée définitivement — ${existing.titre}`,
       },
     })
 
-    return NextResponse.json({ message: 'Épreuve déplacée vers la corbeille' })
+    return NextResponse.json({ message: 'Épreuve supprimée définitivement' })
   } catch (error) {
     console.error('Delete epreuve error:', error)
     return NextResponse.json(

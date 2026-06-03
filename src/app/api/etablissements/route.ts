@@ -167,7 +167,6 @@ export async function POST(request: NextRequest) {
           etablissementId: etablissement.id,
           actif: true,
           mustChangePwd: true,
-          telephone: responsableTelephone || null,
         },
       })
 

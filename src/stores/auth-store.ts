@@ -8,13 +8,15 @@ export interface AuthUser {
   email: string
   name: string
   role: UserRole
-  etablissementId?: string
-  filiereId?: string
-  etablissement?: { id: string; nom: string }
-  filiere?: { id: string; nom: string }
-  image?: string
+  etablissementId?: string | null
+  filiereId?: string | null
+  etablissement?: { id: string; nom: string } | null
+  filiere?: { id: string; nom: string } | null
+  image?: string | null
   actif?: boolean
-  derniereConnexion?: string
+  matricule?: string | null
+  mustChangePwd?: boolean
+  derniereConnexion?: string | null
 }
 
 interface AuthState {

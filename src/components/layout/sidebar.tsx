@@ -283,7 +283,7 @@ function NavCategoryGroup({
     defaultOpen?: boolean
   }
   currentPage: string
-  onPageChange: (page: string) => void
+  onPageChange: (page: string | import('@/stores/navigation-store').PageId) => void
   colors: typeof ROLE_COLORS[UserRole]
 }) {
   // Auto-expand if the category contains the current page
