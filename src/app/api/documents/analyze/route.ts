@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const pendingDocs = await db.document.findMany({
       where: {
         statutAnalyse: { in: ['EN_ATTENTE', 'ERREUR'] },
-        contenuTexte: { not: null },
+        contenuTexte: { not: null } as any,
       }
     });
 
@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const results = [];
-    const errors = [];
+    const results: Array<{ id: string; filename: string }> = [];
+    const errors: Array<{ id: string; filename: string; error: string }> = [];
 
     for (const doc of pendingDocs) {
       try {

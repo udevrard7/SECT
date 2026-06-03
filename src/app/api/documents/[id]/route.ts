@@ -70,13 +70,10 @@ export async function DELETE(
       )
     }
 
-    // Soft delete: set deletedAt instead of hard delete
-    await db.document.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    })
+    // Hard delete (soft delete not supported - no deletedAt field in schema)
+    await db.document.delete({ where: { id } })
 
-    return NextResponse.json({ message: 'Document déplacé vers la corbeille' })
+    return NextResponse.json({ message: 'Document supprimé définitivement' })
   } catch (error) {
     console.error('Delete document error:', error)
     return NextResponse.json(

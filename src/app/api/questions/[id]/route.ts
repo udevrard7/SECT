@@ -171,11 +171,8 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    // Soft delete: set deletedAt instead of hard delete
-    await db.question.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    })
+    // Hard delete (soft delete not supported - no deletedAt field in schema)
+    await db.question.delete({ where: { id } })
 
     // Audit log
     await db.auditLog.create({
@@ -185,11 +182,11 @@ export async function DELETE(
         action: 'DELETE_QUESTION',
         entite: 'Question',
         entiteId: id,
-        details: 'Question déplacée vers la corbeille',
+        details: 'Question supprimée définitivement',
       },
     })
 
-    return NextResponse.json({ message: 'Question déplacée vers la corbeille' })
+    return NextResponse.json({ message: 'Question supprimée définitivement' })
   } catch (error) {
     console.error('Delete question error:', error)
     return NextResponse.json(

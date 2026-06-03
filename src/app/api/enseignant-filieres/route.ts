@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create assignments
-    const created = []
+    const created: Record<string, unknown>[] = []
 
     for (const entry of toCreate) {
       try {

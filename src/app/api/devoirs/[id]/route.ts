@@ -218,18 +218,11 @@ export async function DELETE(
       )
     }
 
-    // Soft delete: set deletedAt timestamp
-    const devoir = await db.devoir.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    })
+    // Hard delete (soft delete not supported - no deletedAt field in schema)
+    await db.devoir.delete({ where: { id } })
 
     return NextResponse.json({
-      devoir: {
-        ...devoir,
-        renduFichiers: devoir.renduFichiers ? JSON.parse(devoir.renduFichiers) : null,
-      },
-      message: 'Devoir déplacé vers la corbeille',
+      message: 'Devoir supprimé définitivement',
     })
   } catch (error) {
     console.error('Delete devoir error:', error)

@@ -49,7 +49,7 @@ export async function GET() {
         health: health?.health || null,
         status: health?.health?.isCoolingDown
           ? 'COOLING_DOWN'
-          : health?.health?.consecutiveFailures > 0
+          : (health?.health?.consecutiveFailures ?? 0) > 0
             ? 'DEGRADED'
             : 'HEALTHY',
       }
@@ -60,8 +60,8 @@ export async function GET() {
     const degradedCount = providersWithHealth.filter(p => p.status === 'DEGRADED').length
     const coolingCount = providersWithHealth.filter(p => p.status === 'COOLING_DOWN').length
 
-    const totalCalls = healthStatus.reduce((sum, h) => sum + h.health.totalCalls, 0)
-    const totalFailovers = healthStatus.reduce((sum, h) => sum + h.health.totalFailovers, 0)
+    const totalCalls = healthStatus.reduce((sum, h) => sum + (h.health?.totalCalls ?? 0), 0)
+    const totalFailovers = healthStatus.reduce((sum, h) => sum + (h.health?.totalFailovers ?? 0), 0)
 
     return NextResponse.json({
       config,

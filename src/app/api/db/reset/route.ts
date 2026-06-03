@@ -108,6 +108,7 @@ export async function POST(request: Request) {
           devise: 'XOF',
           paysDefault: "Côte d'Ivoire",
         }),
+        updatedAt: new Date(),
       },
     })
 

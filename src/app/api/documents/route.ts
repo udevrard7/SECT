@@ -171,7 +171,7 @@ export async function GET(request: NextRequest) {
     }
 
     const documents = await db.document.findMany({
-      where: { ownerId: userId, deletedAt: null },
+      where: { ownerId: userId },
       orderBy: { dateUpload: 'desc' },
       select: {
         id: true,

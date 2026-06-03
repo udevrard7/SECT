@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         id: createId(),
         devoirId,
         criteres: typeof criteres === 'string' ? criteres : JSON.stringify(criteres),
+        updatedAt: new Date(),
       },
       include: {
         Devoir: { select: { id: true, titre: true } },

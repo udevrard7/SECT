@@ -102,21 +102,23 @@ export async function POST(request: NextRequest) {
 
     // For each question, shuffle propositions if QCU/QCM and melangePropositions is enabled
     const epreuveQuestions = questionsForStudent.map((eq) => {
-      const questionData: Record<string, unknown> = {
-        ...eq,
-        question: {
-          ...eq.question,
-          propositions: eq.question.propositions ? JSON.parse(eq.question.propositions) : null,
-          reponseCorrecte: undefined, // Never send correct answers to client!
-          explication: undefined, // Never send explanations to client!
-          themes: eq.question.themes ? JSON.parse(eq.question.themes) : null,
-        },
+      const questionObj: Record<string, unknown> = {
+        ...eq.question,
+        propositions: eq.question.propositions ? JSON.parse(eq.question.propositions) : null,
+        reponseCorrecte: undefined, // Never send correct answers to client!
+        explication: undefined, // Never send explanations to client!
+        themes: eq.question.themes ? JSON.parse(eq.question.themes) : null,
       }
 
       // Shuffle propositions if needed
       if (epreuve.melangePropositions && eq.question.propositions && (eq.question.type === 'QCU' || eq.question.type === 'QCM')) {
         const props = JSON.parse(eq.question.propositions) as string[]
-        questionData.question.propositions = shuffleArray([...props])
+        questionObj.propositions = shuffleArray([...props])
+      }
+
+      const questionData: Record<string, unknown> = {
+        ...eq,
+        question: questionObj,
       }
 
       return questionData

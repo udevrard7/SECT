@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
         tailleMaxFichier: tailleMaxFichier ?? 52428800,
         statut: 'BROUILLON',
         anneeUniversitaire: anneeUniversitaire || '2024-2025',
+        updatedAt: new Date(),
       },
       include: {
         User: { select: { id: true, name: true, email: true } },
@@ -135,7 +136,6 @@ export async function GET(request: NextRequest) {
       // Get devoirs for those UEs that are PUBLIE or FERME
       const devoirs = await db.devoir.findMany({
         where: {
-          deletedAt: null,
           uniteEnseignementId: { in: ueIds },
           statut: { in: ['PUBLIE', 'FERME'] },
         },
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
 
       const soumissionMap = new Map(soumissions.map((s) => [s.devoirId, s]))
 
-      const parsedDevoirs = devoirs.map((d) => {
+      const parsedDevoirs = devoirs.map((d: any) => {
         const soumission = soumissionMap.get(d.id)
         return {
           ...d,
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
                 criteres: d.GrilleEvaluation.criteres ? JSON.parse(d.GrilleEvaluation.criteres) : null,
               }
             : null,
-          soumissionCount: d._count.Soumission,
+          soumissionCount: d._count?.Soumission ?? 0,
           soumission: soumission
             ? {
                 id: soumission.id,
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ─── Standard filters (enseignant, UE, statut, annee) ───
-    const where: Record<string, unknown> = { deletedAt: null }
+    const where: Record<string, unknown> = {}
 
     if (enseignantId) where.enseignantId = enseignantId
     if (uniteEnseignementId) where.uniteEnseignementId = uniteEnseignementId
@@ -213,13 +213,13 @@ export async function GET(request: NextRequest) {
       orderBy: { dateLimite: 'desc' },
       include: {
         User: { select: { id: true, name: true, email: true } },
-        UniteEnseignement: { select: { id: true, code: true, nom: true, niveau: true } },
+        UniteEnseignement: { select: { id: true, code: true, nom: true } },
         GrilleEvaluation: true,
         _count: { select: { Soumission: true } },
       },
     })
 
-    const parsedDevoirs = devoirs.map((d) => ({
+    const parsedDevoirs = devoirs.map((d: any) => ({
       ...d,
       renduFichiers: d.renduFichiers ? JSON.parse(d.renduFichiers) : null,
       GrilleEvaluation: d.GrilleEvaluation
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
             criteres: d.GrilleEvaluation.criteres ? JSON.parse(d.GrilleEvaluation.criteres) : null,
           }
         : null,
-      soumissionCount: d._count.Soumission,
+      soumissionCount: d._count?.Soumission ?? 0,
     }))
 
     return NextResponse.json({ devoirs: parsedDevoirs })
