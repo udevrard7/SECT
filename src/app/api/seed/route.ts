@@ -6,8 +6,8 @@ import bcrypt from 'bcryptjs'
  * POST /api/seed
  * Initialisation de la base de données.
  * - Crée les plans d'abonnement par défaut en Franc CFA (XOF)
- * - Ne crée AUCUNE donnée de démonstration
- * - L'admin doit être créé manuellement ou via le formulaire d'inscription
+ * - Crée un compte Admin SaaS par défaut si aucun admin n'existe
+ * - Crée un établissement de démonstration avec un Responsable si demandé
  */
 export async function POST(request: NextRequest) {
   try {
@@ -15,8 +15,31 @@ export async function POST(request: NextRequest) {
     const existingUsers = await db.user.count()
     const existingPlans = await db.plan.count()
 
-    // If plans already exist, DB is seeded
+    // If plans already exist, still check if admin needs to be created
     if (existingPlans > 0) {
+      // Check if admin user exists
+      const existingAdmin = await db.user.findFirst({ where: { role: 'ADMIN' } })
+      if (!existingAdmin) {
+        const adminPassword = await bcrypt.hash('Admin123!', 10)
+        await db.user.create({
+          data: {
+            name: 'Admin SECT',
+            email: 'admin@sect.com',
+            password: adminPassword,
+            role: 'ADMIN',
+            etablissementId: null,
+            actif: true,
+            mustChangePwd: true,
+          },
+        })
+        return NextResponse.json({
+          message: 'Admin SaaS créé avec succès',
+          adminEmail: 'admin@sect.com',
+          adminPassword: 'Admin123!',
+          note: 'Mot de passe à changer à la première connexion',
+        })
+      }
+
       return NextResponse.json(
         {
           message: 'La base de données est déjà initialisée',
@@ -140,6 +163,24 @@ export async function POST(request: NextRequest) {
         },
       })
       result.push('PlatformSettings: créé')
+    }
+
+    // ─── Create default Admin SaaS user ───
+    const existingAdmin = await db.user.findFirst({ where: { role: 'ADMIN' } })
+    if (!existingAdmin) {
+      const adminPassword = await bcrypt.hash('Admin123!', saltRounds)
+      await db.user.create({
+        data: {
+          name: 'Admin SECT',
+          email: 'admin@sect.com',
+          password: adminPassword,
+          role: 'ADMIN',
+          etablissementId: null, // Admin SaaS n'est lié à aucun établissement
+          actif: true,
+          mustChangePwd: true,
+        },
+      })
+      result.push('Admin: admin@sect.com / Admin123! (mot de passe à changer)')
     }
 
     return NextResponse.json({

@@ -59,11 +59,18 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    // SECURITY: Auto-filter by etablissementId for RESPONSABLE role
-    // RESPONSABLE can only see users from their own etablissement
-    // ENSEIGNANT can only see users from their own etablissement
-    // ADMIN can see all users (optionally filtered by etablissementId param)
-    if (authUser.role === 'RESPONSABLE') {
+    // SECURITY: Role-based data isolation
+    // ADMIN (SaaS owner): Can ONLY see RESPONSABLE users — no access to ENSEIGNANT/ETUDIANT data
+    // RESPONSABLE: Can only see users from their own etablissement
+    // ENSEIGNANT: Can only see users from their own etablissement
+    if (authUser.role === 'ADMIN') {
+      // ADMIN: Only RESPONSABLE users are visible (SaaS owner manages Responsable accounts only)
+      where.role = 'RESPONSABLE'
+      // If a specific etablissementId is requested, filter by it
+      if (etablissementIdParam) {
+        where.etablissementId = etablissementIdParam
+      }
+    } else if (authUser.role === 'RESPONSABLE') {
       // RESPONSABLE: always filter by their own etablissement (ignore client param for security)
       if (authUser.etablissementId) {
         where.etablissementId = authUser.etablissementId
@@ -73,9 +80,6 @@ export async function GET(request: NextRequest) {
       if (authUser.etablissementId) {
         where.etablissementId = authUser.etablissementId
       }
-    } else if (etablissementIdParam) {
-      // ADMIN: use the param if provided
-      where.etablissementId = etablissementIdParam
     }
 
     if (search) {
@@ -84,7 +88,8 @@ export async function GET(request: NextRequest) {
         { email: { contains: search, mode: 'insensitive' } },
       ]
     }
-    if (role) where.role = role
+    // SECURITY: ADMIN cannot override the RESPONSABLE filter via role param
+    if (role && authUser.role !== 'ADMIN') where.role = role
     if (actif !== '') where.actif = actif === 'true'
     if (filiereId) where.filiereId = filiereId
 

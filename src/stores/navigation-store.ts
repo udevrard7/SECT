@@ -111,17 +111,16 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     defaultOpen: true,
     items: [
       { id: 'dashboard', label: 'Tableau de bord', icon: 'LayoutDashboard' },
-      { id: 'utilisateurs', label: 'Utilisateurs', icon: 'Users' },
     ],
   },
   {
-    id: 'admin-etablissements',
-    label: 'Établissements',
+    id: 'admin-clients',
+    label: 'Gestion Clients',
     icon: 'Building2',
     defaultOpen: true,
     items: [
-      { id: 'etablissements', label: 'Gestion des établissements', icon: 'Building2' },
-      { id: 'acces-etablissements', label: 'Accès & autorisations', icon: 'KeyRound' },
+      { id: 'etablissements', label: 'Établissements', icon: 'Building2' },
+      { id: 'utilisateurs', label: 'Responsables', icon: 'UserCheck' },
     ],
   },
   {
@@ -132,17 +131,16 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'abonnements', label: 'Plans & abonnements', icon: 'CreditCard' },
       { id: 'facturation', label: 'Facturation & Revenus', icon: 'Receipt' },
-      { id: 'notifications', label: 'Notifications', icon: 'Bell' },
     ],
   },
   {
-    id: 'admin-securite',
-    label: 'Sécurité & Contrôle',
+    id: 'admin-autorisations',
+    label: 'Autorisations & Sécurité',
     icon: 'Shield',
     defaultOpen: false,
     items: [
+      { id: 'acces-etablissements', label: 'Accès & autorisations', icon: 'KeyRound' },
       { id: 'monitoring', label: 'Monitoring plateforme', icon: 'Activity' },
-      { id: 'securite', label: 'Paramètres de sécurité', icon: 'Shield' },
       { id: 'logs', label: 'Journaux d\'audit', icon: 'FileText' },
     ],
   },
@@ -154,6 +152,7 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'ai-providers', label: 'Fournisseurs IA', icon: 'Sparkles' },
       { id: 'configuration', label: 'Configuration', icon: 'Settings' },
+      { id: 'notifications', label: 'Notifications', icon: 'Bell' },
     ],
   },
 ]

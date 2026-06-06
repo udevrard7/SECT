@@ -3,17 +3,36 @@ import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { requireRole, isAuthError } from '@/lib/auth-middleware'
+import { getUserFromRequest } from '@/lib/auth-helpers'
 
-// GET /api/etablissements — List etablissements (any authenticated user)
+// GET /api/etablissements — List etablissements
+// ADMIN: Sees all establishments (platform owner), but only metadata — no user/filiere data without authorization
+// RESPONSABLE: Sees only their own establishment with full details
 export async function GET(request: NextRequest) {
   try {
-    // Minimal auth check — must be authenticated to list
+    const authUser = getUserFromRequest(request)
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
     const type = searchParams.get('type') || ''
     const actif = searchParams.get('actif') || ''
 
     const where: Record<string, unknown> = {}
+
+    // RESPONSABLE: Only see their own establishment
+    if (authUser.role === 'RESPONSABLE') {
+      if (authUser.etablissementId) {
+        where.id = authUser.etablissementId
+      } else {
+        // No establishment linked — return empty
+        return NextResponse.json({ etablissements: [] })
+      }
+    }
+
+    // ADMIN: Sees all establishments (no filter by id)
 
     if (search) {
       where.OR = [
@@ -29,9 +48,45 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         _count: { select: { filieres: true, users: true } },
+        abonnements: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: { plan: { select: { nom: true } } },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
+
+    // ADMIN: Check which establishments the admin has authorized access to
+    if (authUser.role === 'ADMIN') {
+      const adminAccesses = await db.etablissementAccess.findMany({
+        where: {
+          adminId: authUser.userId,
+          statut: 'APPROUVE',
+        },
+        select: { etablissementId: true },
+      })
+      const authorizedIds = new Set(adminAccesses.map(a => a.etablissementId))
+
+      // For ADMIN: Add adminHasAccess flag and get the responsable info
+      const etabsWithAccess = await Promise.all(
+        etablissements.map(async (etab) => {
+          const hasAccess = authorizedIds.has(etab.id)
+          // Get responsable info for this establishment (ADMIN can see who manages it)
+          const responsable = await db.user.findFirst({
+            where: { etablissementId: etab.id, role: 'RESPONSABLE' },
+            select: { id: true, name: true, email: true, actif: true, derniereConnexion: true },
+          })
+          return {
+            ...etab,
+            adminHasAccess: hasAccess,
+            responsable,
+          }
+        })
+      )
+
+      return NextResponse.json({ etablissements: etabsWithAccess })
+    }
 
     return NextResponse.json({ etablissements })
   } catch (error) {

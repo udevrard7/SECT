@@ -408,6 +408,7 @@ export function UtilisateursPage() {
   const respCount = users.filter((u) => u.role === 'RESPONSABLE').length
   const ensCount = users.filter((u) => u.role === 'ENSEIGNANT').length
   const etuCount = users.filter((u) => u.role === 'ETUDIANT').length
+  const avecEtablissementCount = users.filter((u) => u.etablissementId !== null).length
 
   const totalPages = Math.ceil(total / limit)
 
@@ -793,24 +794,26 @@ export function UtilisateursPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Users className="h-7 w-7 text-emerald-600" />
-            Gestion des Utilisateurs
+            {isAdmin ? 'Gestion des Responsables' : 'Gestion des Utilisateurs'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Créez, modifiez et gérez les comptes utilisateurs
+            {isAdmin ? 'Gérez les comptes responsables des établissements clients' : 'Créez, modifiez et gérez les comptes utilisateurs'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenImport}>
-            <FileUp className="h-4 w-4" />
-            Importer
-          </Button>
+          {!isAdmin && (
+            <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenImport}>
+              <FileUp className="h-4 w-4" />
+              Importer
+            </Button>
+          )}
           <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenInvite}>
             <Mail className="h-4 w-4" />
-            Inviter
+            {isAdmin ? 'Inviter un responsable' : 'Inviter'}
           </Button>
           <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
             <UserPlus className="h-4 w-4" />
-            Nouvel utilisateur
+            {isAdmin ? 'Nouveau responsable' : 'Nouvel utilisateur'}
           </Button>
         </div>
       </div>
@@ -850,22 +853,36 @@ export function UtilisateursPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Par rôle</p>
-              <p className="text-sm font-semibold">
-                <span className="text-rose-600">{adminCount}A</span>{' '}
-                <span className="text-amber-600">{respCount}R</span>{' '}
-                <span className="text-emerald-600">{ensCount}E</span>{' '}
-                <span className="text-sky-600">{etuCount}É</span>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {isAdmin ? (
+          <Card className="border-l-4 border-l-amber-500">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+                <Building2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Avec établissement</p>
+                <p className="text-xl font-bold">{avecEtablissementCount}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-l-4 border-l-amber-500">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+                <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Par rôle</p>
+                <p className="text-sm font-semibold">
+                  <span className="text-rose-600">{adminCount}A</span>{' '}
+                  <span className="text-amber-600">{respCount}R</span>{' '}
+                  <span className="text-emerald-600">{ensCount}E</span>{' '}
+                  <span className="text-sky-600">{etuCount}É</span>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ─── Toolbar ─── */}
@@ -886,7 +903,7 @@ export function UtilisateursPage() {
               <SelectValue placeholder="Rôle" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tous les rôles</SelectItem>
+              <SelectItem value="all">{isAdmin ? 'Tous' : 'Tous les rôles'}</SelectItem>
               {isAdmin && <SelectItem value="RESPONSABLE">Responsable</SelectItem>}
               {isResponsable && (
                 <>
@@ -940,21 +957,25 @@ export function UtilisateursPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
             <Users className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun utilisateur trouvé</h3>
+          <h3 className="mt-4 text-lg font-semibold">{isAdmin ? 'Aucun responsable trouvé' : 'Aucun utilisateur trouvé'}</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || roleFilter !== 'all' || statusFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
-              : 'Commencez par créer votre premier utilisateur.'}
+              : isAdmin
+                ? 'Commencez par créer votre premier responsable.'
+                : 'Commencez par créer votre premier utilisateur.'}
           </p>
           {!search && roleFilter === 'all' && statusFilter === 'all' && (
             <div className="flex gap-2 mt-6">
-              <Button variant="outline" className="border-emerald-200 dark:border-emerald-800" onClick={handleOpenImport}>
-                <FileUp className="h-4 w-4" />
-                Importer
-              </Button>
+              {!isAdmin && (
+                <Button variant="outline" className="border-emerald-200 dark:border-emerald-800" onClick={handleOpenImport}>
+                  <FileUp className="h-4 w-4" />
+                  Importer
+                </Button>
+              )}
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
                 <UserPlus className="h-4 w-4" />
-                Créer un utilisateur
+                {isAdmin ? 'Créer un responsable' : 'Créer un utilisateur'}
               </Button>
             </div>
           )}
@@ -973,7 +994,7 @@ export function UtilisateursPage() {
                   <TableHead className="hidden md:table-cell">Email</TableHead>
                   <TableHead>Rôle</TableHead>
                   <TableHead className="hidden lg:table-cell">Établissement</TableHead>
-                  <TableHead className="hidden lg:table-cell">Filière</TableHead>
+                  {!isAdmin && <TableHead className="hidden lg:table-cell">Filière</TableHead>}
                   <TableHead>Statut</TableHead>
                   <TableHead className="hidden sm:table-cell">Dernière connexion</TableHead>
                   <TableHead className="w-12">Actions</TableHead>
@@ -1010,16 +1031,18 @@ export function UtilisateursPage() {
                         <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      {u.filiere ? (
-                        <span className="flex items-center gap-1 text-sm">
-                          <GraduationCap className="h-3 w-3 text-muted-foreground" />
-                          {u.filiere.nom}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
-                      )}
-                    </TableCell>
+                    {!isAdmin && (
+                      <TableCell className="hidden lg:table-cell">
+                        {u.filiere ? (
+                          <span className="flex items-center gap-1 text-sm">
+                            <GraduationCap className="h-3 w-3 text-muted-foreground" />
+                            {u.filiere.nom}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {u.actif ? (
                         <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Actif</Badge>
@@ -1284,18 +1307,18 @@ export function UtilisateursPage() {
               {editingUser ? (
                 <>
                   <Users className="h-5 w-5 text-emerald-600" />
-                  Modifier l&apos;utilisateur
+                  {isAdmin ? 'Modifier le responsable' : 'Modifier l\'utilisateur'}
                 </>
               ) : (
                 <>
                   <UserPlus className="h-5 w-5 text-emerald-600" />
-                  Nouvel utilisateur
+                  {isAdmin ? 'Nouveau responsable' : 'Nouvel utilisateur'}
                 </>
               )}
             </DialogTitle>
             <DialogDescription>
               {editingUser
-                ? 'Modifiez les informations de l\'utilisateur.'
+                ? isAdmin ? 'Modifiez les informations du responsable.' : 'Modifiez les informations de l\'utilisateur.'
                 : 'Choisissez le mode de création du compte.'}
             </DialogDescription>
           </DialogHeader>
@@ -1439,19 +1462,21 @@ export function UtilisateursPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="user-filiere">Filière</Label>
-                  <Select value={formFiliereId} onValueChange={setFormFiliereId}>
-                    <SelectTrigger id="user-filiere">
-                      <SelectValue placeholder="Sélectionner une filière" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredFilieres.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isAdmin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="user-filiere">Filière</Label>
+                    <Select value={formFiliereId} onValueChange={setFormFiliereId}>
+                      <SelectTrigger id="user-filiere">
+                        <SelectValue placeholder="Sélectionner une filière" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredFilieres.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -1545,19 +1570,21 @@ export function UtilisateursPage() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="invite-filiere">Filière (optionnel)</Label>
-                  <Select value={formFiliereId} onValueChange={setFormFiliereId}>
-                    <SelectTrigger id="invite-filiere">
-                      <SelectValue placeholder="Sélectionner une filière" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredFilieres.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isAdmin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-filiere">Filière (optionnel)</Label>
+                    <Select value={formFiliereId} onValueChange={setFormFiliereId}>
+                      <SelectTrigger id="invite-filiere">
+                        <SelectValue placeholder="Sélectionner une filière" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredFilieres.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </>
             )}
 
@@ -1676,19 +1703,21 @@ export function UtilisateursPage() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="direct-filiere">Filière (optionnel)</Label>
-                  <Select value={formFiliereId} onValueChange={setFormFiliereId}>
-                    <SelectTrigger id="direct-filiere">
-                      <SelectValue placeholder="Sélectionner une filière" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredFilieres.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isAdmin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="direct-filiere">Filière (optionnel)</Label>
+                    <Select value={formFiliereId} onValueChange={setFormFiliereId}>
+                      <SelectTrigger id="direct-filiere">
+                        <SelectValue placeholder="Sélectionner une filière" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredFilieres.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="direct-matricule">Matricule (optionnel)</Label>

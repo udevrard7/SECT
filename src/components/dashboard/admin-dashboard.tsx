@@ -14,10 +14,10 @@ import {
   Users,
   BookOpen,
   KeyRound,
-  AlertCircle,
   Loader2,
   ExternalLink,
-  X,
+  Plus,
+  Zap,
 } from 'lucide-react'
 import {
   Card,
@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useNavigationStore } from '@/stores/navigation-store'
 import { toast } from 'sonner'
 import {
   PieChart,
@@ -67,6 +68,13 @@ import {
 
 // ─── Types ───
 
+interface EtablissementResponsable {
+  id: string
+  name: string
+  email: string
+  actif: boolean
+}
+
 interface EtablissementOverview {
   id: string
   nom: string
@@ -79,6 +87,7 @@ interface EtablissementOverview {
   nbFilieres: number
   proctoringActif: boolean
   adminHasAccess: boolean
+  responsable: EtablissementResponsable | null
 }
 
 interface AccessRecord {
@@ -143,20 +152,6 @@ const STATUT_BG: Record<string, string> = {
   SUSPENDU: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   EXPIRE: 'bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400',
   RESILIE: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-300',
-}
-
-const ACCESS_STATUT_BG: Record<string, string> = {
-  EN_ATTENTE: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  APPROUVE: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  REFUSE: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  EXPIRE: 'bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400',
-}
-
-const ACCESS_STATUT_LABELS: Record<string, string> = {
-  EN_ATTENTE: 'En attente',
-  APPROUVE: 'Approuvé',
-  REFUSE: 'Refusé',
-  EXPIRE: 'Expiré',
 }
 
 // ─── StatCard ───
@@ -250,7 +245,6 @@ export function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [accessRecords, setAccessRecords] = useState<AccessRecord[]>([])
-  const [accessLoading, setAccessLoading] = useState(true)
   const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const [selectedEtablissement, setSelectedEtablissement] = useState<EtablissementOverview | null>(null)
   const [requestMotif, setRequestMotif] = useState('')
@@ -283,15 +277,12 @@ export function AdminDashboard() {
   const fetchAccessRecords = useCallback(async () => {
     if (!user?.id) return
     try {
-      setAccessLoading(true)
       const res = await fetch(`/api/etablissement-access?adminId=${user.id}`, { headers: getAuthHeaders() })
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setAccessRecords(data.accessRecords || [])
     } catch {
       toast.error('Impossible de charger les autorisations')
-    } finally {
-      setAccessLoading(false)
     }
   }, [user?.id])
 
@@ -370,10 +361,8 @@ export function AdminDashboard() {
   const securityRatio = ((stats?.nbEtablissementsProteges ?? 0) / totalEtablissements) * 100
   const avgSecurityScore = Math.min(100, Math.round(securityRatio * 0.6 + (stats?.nbVerificationIdentite ?? 0) / totalEtablissements * 100 * 0.4))
 
-  // Access records by status
-  const pendingAccess = accessRecords.filter(r => r.statut === 'EN_ATTENTE')
-  const activeAccess = accessRecords.filter(r => r.statut === 'APPROUVE')
-  const expiredAccess = accessRecords.filter(r => r.statut === 'EXPIRE' || r.statut === 'REFUSE')
+  // Navigation helper
+  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
 
   return (
     <div className="space-y-6">
@@ -386,14 +375,14 @@ export function AdminDashboard() {
           <Badge
             className="w-fit bg-emerald-600 text-white hover:bg-emerald-700"
           >
-            Propriétaire de la plateforme
+            Propriétaire SaaS
           </Badge>
         </div>
       </div>
       <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
         <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
         <p className="text-sm text-amber-800 dark:text-amber-300">
-          🔒 Accès aux données des établissements soumis à autorisation
+          🔒 Accès aux données des établissements soumis à autorisation explicite
         </p>
       </div>
 
@@ -654,6 +643,21 @@ export function AdminDashboard() {
                         </span>
                       </div>
 
+                      {/* Responsable */}
+                      {etab.responsable && (
+                        <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            <span className="font-medium text-foreground">{etab.responsable.name}</span>
+                            {!etab.responsable.actif && (
+                              <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                Inactif
+                              </Badge>
+                            )}
+                          </span>
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
                         {etab.adminHasAccess ? (
                           <Button
@@ -661,7 +665,7 @@ export function AdminDashboard() {
                             variant="outline"
                             className="h-7 text-xs"
                             onClick={() => {
-                              toast.info(`Accès autorisé à ${etab.nom}`)
+                              setCurrentPage('etablissements')
                             }}
                           >
                             <ExternalLink className="mr-1 h-3 w-3" />
@@ -688,17 +692,6 @@ export function AdminDashboard() {
                               : 'Demander accès'}
                           </Button>
                         )}
-                        {!etab.adminHasAccess && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs opacity-50"
-                            disabled
-                          >
-                            <Eye className="mr-1 h-3 w-3" />
-                            Voir détails
-                          </Button>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -709,199 +702,45 @@ export function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* ─── 5. Access Authorizations Panel ─── */}
+      {/* ─── 5. Quick Actions ─── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-red-600" />
-            Autorisations d&apos;accès
+            <Zap className="h-5 w-5 text-amber-600" />
+            Actions rapides
           </CardTitle>
-          <CardDescription>
-            Gestion des demandes d&apos;accès aux données des établissements
-          </CardDescription>
+          <CardDescription>Accès directs aux fonctionnalités clés</CardDescription>
         </CardHeader>
         <CardContent>
-          {accessLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-6 w-16" />
-                  <Skeleton className="h-4 w-24" />
-                </div>
-              ))}
-            </div>
-          ) : accessRecords.length === 0 ? (
-            <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
-              <KeyRound className="mb-2 h-8 w-8 opacity-30" />
-              <p className="text-sm">Aucune autorisation d&apos;accès</p>
-              <p className="text-xs">Demandez l&apos;accès à un établissement ci-dessus</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Pending requests */}
-              {pendingAccess.length > 0 && (
-                <div>
-                  <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-                    <AlertCircle className="h-4 w-4" />
-                    En attente ({pendingAccess.length})
-                  </h4>
-                  <div className="overflow-x-auto rounded-md border">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="px-3 py-2 text-left font-medium">Établissement</th>
-                          <th className="px-3 py-2 text-left font-medium">Motif</th>
-                          <th className="px-3 py-2 text-left font-medium">Statut</th>
-                          <th className="px-3 py-2 text-left font-medium">Demandé le</th>
-                          <th className="px-3 py-2 text-left font-medium">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pendingAccess.map((record) => (
-                          <tr key={record.id} className="border-b last:border-0">
-                            <td className="px-3 py-2 font-medium">{record.etablissement.nom}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{record.motif}</td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className={ACCESS_STATUT_BG[record.statut] || ''}>
-                                {ACCESS_STATUT_LABELS[record.statut] || record.statut}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {new Date(record.createdAt).toLocaleDateString('fr-FR')}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs text-red-600 hover:text-red-700"
-                                onClick={async () => {
-                                  try {
-                                    const res = await fetch(`/api/etablissement-access/${record.id}`, {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                                      body: JSON.stringify({ statut: 'REFUSE' }),
-                                    })
-                                    if (!res.ok) throw new Error('Erreur')
-                                    toast.success('Demande annulée')
-                                    fetchAccessRecords()
-                                  } catch {
-                                    toast.error('Erreur lors de l\'annulation')
-                                  }
-                                }}
-                              >
-                                <X className="mr-1 h-3 w-3" />
-                                Annuler
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Active access */}
-              {activeAccess.length > 0 && (
-                <div>
-                  <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Accès actifs ({activeAccess.length})
-                  </h4>
-                  <div className="overflow-x-auto rounded-md border">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="px-3 py-2 text-left font-medium">Établissement</th>
-                          <th className="px-3 py-2 text-left font-medium">Motif</th>
-                          <th className="px-3 py-2 text-left font-medium">Statut</th>
-                          <th className="px-3 py-2 text-left font-medium">Date début</th>
-                          <th className="px-3 py-2 text-left font-medium">Date fin</th>
-                          <th className="px-3 py-2 text-left font-medium">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeAccess.map((record) => (
-                          <tr key={record.id} className="border-b last:border-0">
-                            <td className="px-3 py-2 font-medium">{record.etablissement.nom}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{record.motif}</td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className={ACCESS_STATUT_BG[record.statut] || ''}>
-                                {ACCESS_STATUT_LABELS[record.statut] || record.statut}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {record.dateDebut ? new Date(record.dateDebut).toLocaleDateString('fr-FR') : '—'}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {record.dateFin ? new Date(record.dateFin).toLocaleDateString('fr-FR') : 'Illimité'}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  toast.info(`Accès à ${record.etablissement.nom}`)
-                                }}
-                              >
-                                <ExternalLink className="mr-1 h-3 w-3" />
-                                Voir
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Expired/Refused access */}
-              {expiredAccess.length > 0 && (
-                <div>
-                  <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400">
-                    <Lock className="h-4 w-4" />
-                    Expirées / Révoquées ({expiredAccess.length})
-                  </h4>
-                  <div className="overflow-x-auto rounded-md border">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="px-3 py-2 text-left font-medium">Établissement</th>
-                          <th className="px-3 py-2 text-left font-medium">Motif</th>
-                          <th className="px-3 py-2 text-left font-medium">Statut</th>
-                          <th className="px-3 py-2 text-left font-medium">Date début</th>
-                          <th className="px-3 py-2 text-left font-medium">Date fin</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expiredAccess.map((record) => (
-                          <tr key={record.id} className="border-b last:border-0 opacity-60">
-                            <td className="px-3 py-2 font-medium">{record.etablissement.nom}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{record.motif}</td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className={ACCESS_STATUT_BG[record.statut] || ''}>
-                                {ACCESS_STATUT_LABELS[record.statut] || record.statut}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {record.dateDebut ? new Date(record.dateDebut).toLocaleDateString('fr-FR') : '—'}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {record.dateFin ? new Date(record.dateFin).toLocaleDateString('fr-FR') : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Button
+              variant="outline"
+              className="h-auto flex-col gap-2 py-4"
+              onClick={() => setCurrentPage('etablissements')}
+            >
+              <Plus className="h-5 w-5 text-amber-600" />
+              <span className="text-sm font-medium">Créer un établissement</span>
+              <span className="text-xs text-muted-foreground">Ajouter un nouvel établissement</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto flex-col gap-2 py-4"
+              onClick={() => setCurrentPage('utilisateurs')}
+            >
+              <Users className="h-5 w-5 text-teal-600" />
+              <span className="text-sm font-medium">Voir les responsables</span>
+              <span className="text-xs text-muted-foreground">Gérer les comptes responsables</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto flex-col gap-2 py-4"
+              onClick={() => setCurrentPage('acces-etablissements')}
+            >
+              <KeyRound className="h-5 w-5 text-red-600" />
+              <span className="text-sm font-medium">Accès & autorisations</span>
+              <span className="text-xs text-muted-foreground">Gérer les autorisations d&apos;accès</span>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
