@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { checkAndAutoCloseEpreuve } from '@/lib/auto-closure'
 import {
   parsePropositionMappings,
   parseCorrectAnswer,
@@ -508,13 +507,9 @@ export async function PATCH(
         },
       })
 
-      // Check if all students have submitted → auto-close
-      let autoCloseResult = null
-      try {
-        autoCloseResult = await checkAndAutoCloseEpreuve(session.epreuveId)
-      } catch (e) {
-        console.error('Auto-close check failed after force submit:', e)
-      }
+      // NOTE: Auto-closure is handled by the closure-watcher mini-service.
+      // Not triggered on force-submit to avoid premature epreuve closure.
+      // See submit route for detailed explanation.
 
       return NextResponse.json({
         session: updatedSession,
@@ -525,8 +520,7 @@ export async function PATCH(
         pendingCorrection: scenario.manualCorrectionCount,
         scenario: scenario.type,
         message: 'Soumission forcée avec succès',
-        epreuveAutoClosed: autoCloseResult?.closed || false,
-        autoCloseRaison: autoCloseResult?.raison || null,
+        epreuveAutoClosed: false,
       })
     }
 
