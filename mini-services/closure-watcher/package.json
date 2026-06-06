@@ -1,0 +1,10 @@
+{
+  "name": "closure-watcher",
+  "version": "1.0.0",
+  "description": "Background watcher that auto-closes epreuves when deadline is reached or all students have submitted",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts"
+  },
+  "dependencies": {}
+}

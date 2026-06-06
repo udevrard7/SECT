@@ -1,0 +1,694 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                  String                @id @default(cuid())
+  email               String                @unique
+  name                String
+  password            String
+  role                Role                  @default(ETUDIANT)
+  etablissementId     String?
+  filiereId           String?
+  image               String?
+  actif               Boolean               @default(true)
+  derniereConnexion   DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  lockedUntil         DateTime?
+  loginAttempts       Int                   @default(0)
+  matricule           String?               @unique
+  mustChangePwd       Boolean               @default(false)
+  affectations        Affectation[]
+  alertes             Alerte[]
+  Devoir              Devoir[]
+  documents           Document[]
+  enseignantFilieres  EnseignantFiliere[]
+  epreuves            Epreuve[]
+  etablissementAccess EtablissementAccess[]
+  filieresResponsable Filiere[]             @relation("FiliereResponsable")
+  Invitation          Invitation[]
+  PasswordReset       PasswordReset[]
+  sessions            SessionPassation[]
+  Soumission          Soumission[]
+  etablissement       Etablissement?        @relation(fields: [etablissementId], references: [id])
+  filiere             Filiere?              @relation("UserFiliere", fields: [filiereId], references: [id])
+  notificationsAdmin  NotificationAdmin[]
+}
+
+model Etablissement {
+  id               String                @id @default(cuid())
+  nom              String                @unique
+  type             String?
+  ville            String?
+  pays             String?               @default("France")
+  adresse          String?
+  telephone        String?
+  email            String?
+  siteWeb          String?
+  actif            Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  exempleMatricule String?
+  formatMatricule  String?
+  regexMatricule   String?
+  abonnements      Abonnement[]
+  adminAccess      EtablissementAccess[]
+  factures         Facture[]
+  filieres         Filiere[]
+  ipWhitelist      IpWhitelist[]
+  Invitation       Invitation[]
+  securitySettings SecuritySettings?
+  users            User[]
+}
+
+model Filiere {
+  id                 String              @id @default(cuid())
+  nom                String
+  code               String?
+  etablissementId    String
+  responsableId      String?
+  description        String?
+  nbEtudiants        Int?
+  actif              Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  alertes            Alerte[]
+  enseignantFilieres EnseignantFiliere[]
+  etablissement      Etablissement       @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  responsable        User?               @relation("FiliereResponsable", fields: [responsableId], references: [id])
+  Invitation         Invitation[]
+  unitesEnseignement UniteEnseignement[]
+  etudiants          User[]              @relation("UserFiliere")
+
+  @@unique([nom, etablissementId])
+}
+
+model EnseignantFiliere {
+  id           String      @id @default(cuid())
+  enseignantId String
+  filiereId    String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  niveau       NiveauEtude
+  enseignant   User        @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  filiere      Filiere     @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+
+  @@unique([enseignantId, filiereId, niveau])
+}
+
+model UniteEnseignement {
+  id             String        @id @default(cuid())
+  code           String
+  nom            String
+  description    String?
+  filiereId      String
+  niveau         NiveauEtude
+  semestre       Int?
+  creditsECTS    Int?
+  volumeHeuresCM Int           @default(0)
+  volumeHeuresTD Int           @default(0)
+  volumeHeuresTP Int           @default(0)
+  obligatoire    Boolean       @default(true)
+  actif          Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  affectations   Affectation[]
+  Devoir         Devoir[]
+  filiere        Filiere       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+
+  @@unique([code, filiereId])
+}
+
+model Affectation {
+  id                  String            @id @default(cuid())
+  enseignantId        String
+  uniteEnseignementId String
+  typeSeance          TypeSeance        @default(CM)
+  groupe              String?
+  volumeHeures        Float
+  anneeUniversitaire  String            @default("2024-2025")
+  statut              StatutAffectation @default(PROVISOIRE)
+  commentaire         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  enseignant          User              @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  uniteEnseignement   UniteEnseignement @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+
+  @@unique([enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userEmail String?
+  action    String
+  entite    String
+  entiteId  String?
+  details   String?
+  adresseIp String?
+  createdAt DateTime @default(now())
+}
+
+model Document {
+  id             String        @id @default(cuid())
+  ownerId        String
+  nomFichier     String
+  cheminStockage String
+  tailleFichier  Int?
+  typeMime       String?
+  statutAnalyse  StatutAnalyse @default(EN_ATTENTE)
+  themesDetectes String?
+  conceptsCles   String?
+  volumeEstime   String?
+  contenuTexte   String?
+  dateUpload     DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  erreurAnalyse  String?
+  resumeAnalyse  String?
+  owner          User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  questions      Question[]
+}
+
+model Question {
+  id               String            @id @default(cuid())
+  documentId       String?
+  auteurId         String?
+  type             TypeQuestion
+  enonce           String
+  propositions     String?
+  reponseCorrecte  String?
+  explication      String?
+  difficulte       Difficulte        @default(MOYEN)
+  themes           String?
+  tags             String?
+  scoreQualite     Float?
+  validee          Boolean           @default(false)
+  langue           String            @default("fr")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  epreuveQuestions EpreuveQuestion[]
+  document         Document?         @relation(fields: [documentId], references: [id])
+  reponses         Reponse[]
+}
+
+model Epreuve {
+  id                   String             @id @default(cuid())
+  enseignantId         String
+  titre                String
+  description          String?
+  duree                Int
+  dateDebut            DateTime
+  dateFin              DateTime
+  melangeQuestions     Boolean            @default(true)
+  melangePropositions  Boolean            @default(true)
+  blocageRetour        Boolean            @default(false)
+  statut               StatutEpreuve      @default(BROUILLON)
+  groupesCibles        String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  proctoringActif      Boolean            @default(false)
+  verificationIdentite Boolean            @default(false)
+  alertes              Alerte[]
+  enseignant           User               @relation(fields: [enseignantId], references: [id])
+  questions            EpreuveQuestion[]
+  sessions             SessionPassation[]
+}
+
+model EpreuveQuestion {
+  id         String   @id @default(cuid())
+  epreuveId  String
+  questionId String
+  bareme     Float    @default(1.0)
+  ordre      Int      @default(0)
+  epreuve    Epreuve  @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id])
+
+  @@unique([epreuveId, questionId])
+}
+
+model SessionPassation {
+  id                  String        @id @default(cuid())
+  etudiantId          String
+  epreuveId           String
+  statut              StatutSession @default(NON_COMMENCEE)
+  dateDebut           DateTime?
+  dateFin             DateTime?
+  score               Float?
+  logEvents           String?
+  alertes             Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  propositionMappings String?
+  reponses            Reponse[]
+  resultat            Resultat?
+  epreuve             Epreuve       @relation(fields: [epreuveId], references: [id])
+  etudiant            User          @relation(fields: [etudiantId], references: [id])
+}
+
+model Reponse {
+  id              String           @id @default(cuid())
+  sessionId       String
+  questionId      String
+  contenu         String?
+  score           Float?
+  commentaire     String?
+  noteIA          Float?
+  justificationIA String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  question        Question         @relation(fields: [questionId], references: [id])
+  session         SessionPassation @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+}
+
+model Alerte {
+  id          String         @id @default(cuid())
+  titre       String
+  description String
+  severity    SeverityAlerte @default(INFO)
+  type        TypeAlerte     @default(CUSTOM)
+  lue         Boolean        @default(false)
+  resolu      Boolean        @default(false)
+  filiereId   String?
+  epreuveId   String?
+  userId      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  epreuve     Epreuve?       @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+  filiere     Filiere?       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  user        User?          @relation(fields: [userId], references: [id])
+}
+
+model Resultat {
+  id                String           @id @default(cuid())
+  sessionId         String           @unique
+  scoreFinal        Float
+  detailParQuestion String?
+  dateCorrection    DateTime?
+  commentaires      String?
+  exporte           Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  totalPossible     Float            @default(20)
+  session           SessionPassation @relation(fields: [sessionId], references: [id])
+}
+
+model Plan {
+  id                  String       @id @default(cuid())
+  nom                 String       @unique
+  type                TypePlan
+  prixMensuel         Float
+  prixAnnuel          Float?
+  nbEtablissementsMax Int
+  nbFilieresMax       Int
+  nbEnseignantsMax    Int
+  nbEtudiantsMax      Int
+  nbQuestionsMax      Int
+  nbEvaluationsMois   Int
+  iaGeneration        Boolean      @default(true)
+  iaCorrection        Boolean      @default(false)
+  proctoring          Boolean      @default(false)
+  exportPDF           Boolean      @default(true)
+  support             String       @default("email")
+  description         String?
+  actif               Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  abonnements         Abonnement[]
+}
+
+model Abonnement {
+  id                 String           @id @default(cuid())
+  etablissementId    String
+  planId             String
+  statut             StatutAbonnement @default(ESSAI)
+  dateDebut          DateTime
+  dateFin            DateTime?
+  periodeEssaiJours  Int              @default(14)
+  modePaiement       String?
+  referencePaiement  String?
+  montantPaye        Float            @default(0)
+  renouvellementAuto Boolean          @default(true)
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  etablissement      Etablissement    @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  plan               Plan             @relation(fields: [planId], references: [id])
+  factures           Facture[]
+}
+
+model EtablissementAccess {
+  id              String        @id @default(cuid())
+  adminId         String
+  etablissementId String
+  motif           String
+  statut          String        @default("EN_ATTENTE")
+  dateDebut       DateTime?
+  dateFin         DateTime?
+  approuvePar     String?
+  commentaire     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  admin           User          @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+
+  @@unique([adminId, etablissementId])
+}
+
+model SecuritySettings {
+  id                    String        @id @default(cuid())
+  etablissementId       String        @unique
+  proctoringActif       Boolean       @default(false)
+  detectionCopie        Boolean       @default(true)
+  detectionOnglet       Boolean       @default(true)
+  detectionFullscreen   Boolean       @default(true)
+  blocageCopie          Boolean       @default(true)
+  blocageClicDroit      Boolean       @default(true)
+  blocageImpression     Boolean       @default(true)
+  verificationIdentite  Boolean       @default(false)
+  tempsInactiviteMax    Int           @default(120)
+  nbOngletsMax          Int           @default(3)
+  nbAlertesMax          Int           @default(5)
+  autoSubmitOnViolation Boolean       @default(false)
+  captureEcran          Boolean       @default(false)
+  rapportFraude         Boolean       @default(true)
+  seuilSimilarite       Float         @default(0.85)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  etablissement         Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+}
+
+model Devoir {
+  id                  String            @id
+  titre               String
+  description         String?
+  consignes           String?
+  uniteEnseignementId String
+  enseignantId        String
+  typeSeance          TypeSeance        @default(TD)
+  datePublication     DateTime?
+  dateLimite          DateTime
+  noteMax             Float             @default(20)
+  renduFichiers       String?
+  soumissionGroupe    Boolean           @default(false)
+  nbMaxFichiers       Int               @default(10)
+  tailleMaxFichier    Int               @default(52428800)
+  statut              StatutDevoir      @default(BROUILLON)
+  anneeUniversitaire  String            @default("2024-2025")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime
+  User                User              @relation(fields: [enseignantId], references: [id])
+  UniteEnseignement   UniteEnseignement @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+  GrilleEvaluation    GrilleEvaluation?
+  Soumission          Soumission[]
+}
+
+model GrilleEvaluation {
+  id        String   @id
+  devoirId  String   @unique
+  criteres  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Devoir    Devoir   @relation(fields: [devoirId], references: [id], onDelete: Cascade)
+}
+
+model Invitation {
+  id              String         @id
+  token           String         @unique
+  email           String
+  role            Role
+  name            String?
+  etablissementId String?
+  filiereId       String?
+  expiresAt       DateTime
+  used            Boolean        @default(false)
+  usedAt          DateTime?
+  createdById     String
+  createdAt       DateTime       @default(now())
+  User            User           @relation(fields: [createdById], references: [id])
+  Etablissement   Etablissement? @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  Filiere         Filiere?       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+}
+
+model PasswordReset {
+  id        String    @id
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model PlatformSettings {
+  id        String   @id @default("default")
+  settings  String
+  updatedAt DateTime
+}
+
+model Soumission {
+  id                    String           @id
+  devoirId              String
+  etudiantId            String
+  groupeId              String?
+  contenuTexte          String?
+  fichiersSoumis        String?
+  commentaireEtudiant   String?
+  statut                StatutSoumission @default(BROUILLON)
+  renduAt               DateTime?
+  note                  Float?
+  commentaireEnseignant String?
+  noteIA                Float?
+  justificationIA       String?
+  rapportPlagiat        String?
+  historiqueVersions    String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime
+  Devoir                Devoir           @relation(fields: [devoirId], references: [id], onDelete: Cascade)
+  User                  User             @relation(fields: [etudiantId], references: [id])
+
+  @@unique([devoirId, etudiantId])
+}
+
+enum Role {
+  ADMIN
+  RESPONSABLE
+  ENSEIGNANT
+  ETUDIANT
+}
+
+enum TypeQuestion {
+  QCU
+  QCM
+  QRC
+  TRS
+  CODE
+}
+
+enum Difficulte {
+  FACILE
+  MOYEN
+  DIFFICILE
+  EXPERT
+}
+
+enum StatutAnalyse {
+  EN_ATTENTE
+  EN_COURS
+  ANALYSE
+  ERREUR
+}
+
+enum StatutEpreuve {
+  BROUILLON
+  PLANIFIEE
+  EN_COURS
+  TERMINEE
+  CLOTUREE
+}
+
+enum StatutSession {
+  NON_COMMENCEE
+  EN_COURS
+  SOUMISE
+  CORRIGEE
+}
+
+enum StatutAbonnement {
+  ESSAI
+  ACTIF
+  SUSPENDU
+  EXPIRE
+  RESILIE
+}
+
+enum TypePlan {
+  GRATUIT
+  ESSENTIEL
+  PROFESSIONNEL
+  ENTREPRISE
+}
+
+enum NiveauEtude {
+  L1
+  L2
+  L3
+  M1
+  M2
+  DOCTORAT
+}
+
+enum TypeSeance {
+  CM
+  TD
+  TP
+}
+
+enum StatutAffectation {
+  PROVISOIRE
+  VALIDEE
+  PUBLIEE
+}
+
+enum SeverityAlerte {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum TypeAlerte {
+  PERFORMANCE
+  FRAUDE
+  SYSTEME
+  RAPPEL
+  CUSTOM
+}
+
+enum StatutDevoir {
+  BROUILLON
+  PUBLIE
+  FERME
+  ARCHIVE
+}
+
+enum StatutSoumission {
+  BROUILLON
+  SOUMIS
+  CORRIGE
+  RETOURNE
+}
+
+model Facture {
+  id              String   @id @default(cuid())
+  numero          String   @unique
+  abonnementId    String
+  etablissementId String
+  montantHt       Float
+  tva             Float    @default(20.0)
+  montantTtc      Float
+  statut          String   @default("EN_ATTENTE") // EN_ATTENTE, PAYEE, EN_RETARD, ANNULEE
+  dateEmission    DateTime @default(now())
+  dateEcheance    DateTime
+  datePaiement    DateTime?
+  modePaiement    String?
+  referencePaiement String?
+  lignes          String   // JSON array of invoice lines
+  notes           String?
+  abonnement      Abonnement @relation(fields: [abonnementId], references: [id])
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model NotificationAdmin {
+  id          String   @id @default(cuid())
+  type        String   // INFO, WARNING, ERROR, SUCCESS, BROADCAST
+  titre       String
+  message     String
+  destinataireId String? // null = broadcast to all
+  destinataireRole String? // ADMIN, RESPONSABLE, ENSEIGNANT, ETUDIANT, or null for all
+  lu          Boolean  @default(false)
+  actionUrl   String?  // URL to navigate when clicking
+  actionLabel String?  // Label for the action button
+  priorite    String   @default("NORMALE") // BASSE, NORMALE, HAUTE, URGENTE
+  categorie   String   @default("SYSTEME") // SYSTEME, ABONNEMENT, SECURITE, EVALUATION, COMPTE
+  icone       String?  // lucide icon name
+  expireLe    DateTime?
+  destinataire User?   @relation(fields: [destinataireId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model MonitoringEvent {
+  id          String   @id @default(cuid())
+  type        String   // API, DATABASE, AUTH, EVALUATION, PAYMENT, SYSTEM
+  severite    String   @default("INFO") // INFO, WARNING, ERROR, CRITICAL
+  message     String
+  details     String?  // JSON details
+  source      String?  // service name
+  duree       Int?     // duration in ms
+  statut      String   @default("ACTIF") // ACTIF, RESOLU, IGNORE
+  resoluLe    DateTime?
+  resoluPar   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model IpWhitelist {
+  id              String   @id @default(cuid())
+  adresseIp       String   @unique
+  description     String?
+  etablissementId String?
+  creePar         String?
+  actif           Boolean  @default(true)
+  etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
+  createdAt       DateTime @default(now())
+}
+
+
+
+model AIProviderConfig {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  provider    String   // ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE
+  baseUrl     String?  // API base URL
+  apiKey      String?  // API key
+  model       String?  // Model name
+  temperature Float    @default(0.7)
+  maxTokens   Int      @default(4096)
+  isActive    Boolean  @default(false)
+  priority    Int      @default(99) // Failover priority (lower = higher priority, 1 = primary)
+  extraConfig String?  // JSON for provider-specific settings
+  lastTestAt  DateTime?
+  lastTestOk  Boolean?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AIFailoverEvent {
+  id           String   @id @default(cuid())
+  providerId   String?  // Which provider was involved (null = system event)
+  providerName String?
+  eventType    String   // FAIL_OVER, RECOVERY, MANUAL_SWITCH, COOLDOWN_EXPIRED
+  fromProvider String?  // Name of provider we switched FROM
+  toProvider   String?  // Name of provider we switched TO
+  reason       String   // Human-readable reason
+  errorDetails String?  // Error message that triggered the failover
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
