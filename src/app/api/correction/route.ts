@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
     // sessions for soft-deleted epreuves could appear.
     const where: Record<string, unknown> = {
       epreuve: { enseignantId, deletedAt: null },
-      statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'] },
+      // Only show students who have SUBMITTED their exam — NON_SOUMIS and NON_COMMENCEE must NOT appear
+      statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE'] },
     }
     if (epreuveId) where.epreuveId = epreuveId
 

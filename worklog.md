@@ -118,3 +118,32 @@ Stage Summary:
 - Auto-graded score is displayed as info badge with Zap icon
 - Progress bar only counts open questions
 - Final score calculation remains correct (includes all question types)
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix NON_SOUMIS appearing in correction list + Create Surveillance page for teachers to view proctoring alerts and screenshots
+
+Work Log:
+- Fixed correction API (`src/app/api/correction/route.ts`): Removed 'NON_SOUMIS' from status filter. Now only shows sessions with statut in ['SOUMISE', 'CORRIGEE', 'RETOURNEE'] — students who haven't submitted their exam are excluded from the correction list
+- Created surveillance API endpoint (`src/app/api/surveillance/route.ts`): New GET endpoint that fetches all sessions with proctoring events for a teacher's epreuves, including categorized logEvents (fraud, screenshots, submissions)
+- Fixed screenshot capture (`src/app/api/sessions/[id]/capture/route.ts`): Now stores the actual base64 image data as `thumbnail` in the logEvents JSON, so teachers can view screenshots in the surveillance page
+- Created SurveillancePage component (`src/components/surveillance/surveillance-page.tsx`): Full-featured surveillance dashboard with:
+  - Stats cards (sessions, alerts, fraud, screenshots)
+  - Epreuve selector and event type filter (all/alerts/fraud/screenshots)
+  - Student search by name/email
+  - Expandable session cards showing categorized events (fraud alerts, screenshots, submissions)
+  - Screenshot viewer dialog with zoom
+  - Event type badges with severity color coding
+  - Penalty display per session
+- Added `surveillance` PageId to navigation store (`src/stores/navigation-store.ts`)
+- Added "Surveillance" category with "Surveillance & Alertes" item to ENSEIGNANT sidebar
+- Wired up SurveillancePage in app-layout router
+- Lint passes cleanly, dev server compiles without errors
+- Verified with Agent Browser: Surveillance page renders correctly with filters, stats cards, and session list
+
+Stage Summary:
+- NON_SOUMIS students no longer appear in correction list (business rule verified)
+- New Surveillance & Alertes page available for teachers in sidebar
+- Teachers can now view proctoring alerts (fullscreen exit, tab switch, copy attempts, etc.) and screenshots
+- Screenshots are stored in logEvents for teacher review
+- All changes compile and render correctly
