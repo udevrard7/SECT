@@ -106,7 +106,7 @@ export async function POST(
     }
 
     // Get the correct answer and bareme
-    let correctAnswer = null
+    let correctAnswer: string | null = null
     try {
       correctAnswer = questionData.reponseCorrecte ? JSON.parse(questionData.reponseCorrecte) : null
     } catch {

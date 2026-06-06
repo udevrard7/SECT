@@ -38,11 +38,7 @@ export async function GET(
           sessions: {
             include: {
               etudiant: { select: { id: true, name: true, email: true } },
-              reponses: {
-                include: {
-                  question: { select: { id: true, type: true, enonce: true } },
-                },
-              },
+              reponses: true,
               resultat: true,
             },
           },
@@ -87,13 +83,16 @@ export async function GET(
       })),
       // Only include sessions for non-student views
       ...(studentView ? {} : {
-        sessions: epreuve.sessions?.map((s) => ({
-          ...s,
-          logEvents: s.logEvents ? JSON.parse(s.logEvents) : null,
-          reponses: s.reponses.map((r) => ({
-            ...r,
-          })),
-        })) || [],
+        sessions: (epreuve.sessions as Array<Record<string, unknown>> | undefined)?.map((sRaw) => {
+          const s = sRaw as Record<string, unknown> & { logEvents: string | null; reponses: Array<Record<string, unknown>> }
+          return {
+            ...s,
+            logEvents: s.logEvents ? JSON.parse(s.logEvents) : null,
+            reponses: s.reponses.map((r) => ({
+              ...r,
+            })),
+          }
+        }) || [],
       }),
     }
 

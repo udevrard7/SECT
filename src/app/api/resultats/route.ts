@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
               titre: true,
               description: true,
               duree: true,
+              contenu: true,
               enseignant: { select: { name: true } },
               questions: {
                 include: {
@@ -33,36 +34,63 @@ export async function GET(request: NextRequest) {
               },
             },
           },
-          reponses: {
-            include: {
-              question: { select: { id: true, type: true, enonce: true } },
-            },
-          },
+          reponses: true,
           resultat: true,
         },
         orderBy: { dateFin: 'desc' },
       })
 
-      const parsedSessions = sessions.map((session) => ({
-        ...session,
-        logEvents: null, // Don't expose logs to students
-        epreuve: {
-          ...session.epreuve,
-          questions: session.epreuve.questions.map((eq) => ({
-            ...eq,
-            question: {
-              ...eq.question,
-              enonce: eq.question.enonce,
-            },
-          })),
-        },
-        resultat: session.resultat ? {
-          ...session.resultat,
-          detailParQuestion: session.resultat.detailParQuestion
-            ? JSON.parse(session.resultat.detailParQuestion)
-            : null,
-        } : null,
-      }))
+      const parsedSessions = sessions.map((session) => {
+        // Build unified questions from both formats
+        type ContenuQuestion = { id?: unknown; type?: unknown; enonce?: unknown; difficulte?: unknown; bareme?: unknown }
+        const manualQuestions = session.epreuve.questions.map((eq) => ({
+          ...eq,
+          question: {
+            ...eq.question,
+          },
+        }))
+
+        // Build unified questions list
+        let unifiedQuestions: Array<typeof manualQuestions[number] | {
+          id: string; questionId: string; bareme: number; ordre: number;
+          question: { id: string; type: string; enonce: string; difficulte: string }
+        }> = [...manualQuestions]
+
+        // Add questions from contenu JSONB if no EpreuveQuestion relations
+        if (unifiedQuestions.length === 0 && session.epreuve.contenu) {
+          const contenuData = session.epreuve.contenu as Record<string, unknown> | null
+          if (contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)) {
+            const contenuQuestions = contenuData.questions as Array<ContenuQuestion>
+            unifiedQuestions = contenuQuestions.map((q, idx) => ({
+              id: String(q.id || `contenu-q${idx}`),
+              questionId: String(q.id || `contenu-q${idx}`),
+              bareme: typeof q.bareme === 'number' ? q.bareme : 1,
+              ordre: idx,
+              question: {
+                id: String(q.id || `contenu-q${idx}`),
+                type: String(q.type || 'QRC') as 'QCU' | 'QCM' | 'QRC' | 'TRS' | 'REFLEXION' | 'CODE',
+                enonce: String(q.enonce || ''),
+                difficulte: String(q.difficulte || 'MOYEN') as 'FACILE' | 'MOYEN' | 'DIFFICILE' | 'EXPERT',
+              },
+            }))
+          }
+        }
+
+        return {
+          ...session,
+          logEvents: null,
+          epreuve: {
+            ...session.epreuve,
+            questions: unifiedQuestions,
+          },
+          resultat: session.resultat ? {
+            ...session.resultat,
+            detailParQuestion: session.resultat.detailParQuestion
+              ? JSON.parse(session.resultat.detailParQuestion)
+              : null,
+          } : null,
+        }
+      })
 
       return NextResponse.json({ resultats: parsedSessions })
     }
