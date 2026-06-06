@@ -410,14 +410,25 @@ export function MesResultatsPage() {
             const isCorrected = session.statut === 'CORRIGEE'
             const isReturned = session.statut === 'RETOURNEE'
 
-            // Detect if this is a Scenario A (100% auto-gradable) exam
+            // Detect if this is a Scenario A (100% auto-gradable) or Scenario B (mixed) exam
             const hasManualQuestions = session.epreuve.questions?.some(
               (eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type)
             )
             const isScenarioA = !hasManualQuestions
+            const isScenarioB = !!hasManualQuestions
 
-            // Show score for Scenario A when CORRIGEE, or for any scenario when RETOURNEE
-            const canSeeScore = isReturned || (isScenarioA && isCorrected)
+            // Calculate auto-gradable total for partial score display (Scenario B)
+            const autoGradableTotal = session.epreuve.questions
+              ?.filter((eq) => ['QCU', 'QCM'].includes(eq.question.type))
+              .reduce((sum, eq) => sum + eq.bareme, 0) ?? 0
+            const manualQuestionCount = session.epreuve.questions
+              ?.filter((eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type))
+              .length ?? 0
+
+            // Show final score when: RETOURNEE or CORRIGEE (teacher has validated all corrections)
+            // Show partial score when: Scenario B + SOUMISE (auto-graded only, pending manual correction)
+            const canSeeFinalScore = isReturned || isCorrected
+            const canSeePartialScore = isScenarioB && !isCorrected && !isReturned && autoGradableTotal > 0
 
             return (
               <Card
@@ -455,7 +466,7 @@ export function MesResultatsPage() {
 
                       {/* Score display */}
                       <div className="pl-[60px]">
-                        {canSeeScore ? (
+                        {canSeeFinalScore ? (
                           <>
                             <div className="flex items-center gap-3">
                               <span className={`text-3xl font-bold ${getScoreColor(score)}`}>
@@ -478,11 +489,29 @@ export function MesResultatsPage() {
                               </div>
                             </div>
                           </>
+                        ) : canSeePartialScore ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                              <span className={`text-2xl font-bold ${getScoreColor(score)}`}>
+                                {score.toFixed(1)}
+                                <span className="text-sm text-muted-foreground">/{autoGradableTotal}</span>
+                              </span>
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700 text-xs">
+                                Provisoire
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
+                              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                              <span className="text-sm text-amber-700 dark:text-amber-400">
+                                En attente de la correction manuelle de l&apos;enseignant pour {manualQuestionCount} question{manualQuestionCount > 1 ? 's' : ''} ouverte{manualQuestionCount > 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
                             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                             <span className="text-sm text-amber-700 dark:text-amber-400">
-                              {isCorrected ? 'Correction terminée — En attente de retour par l\'enseignant' : 'En attente de correction'}
+                              En attente de correction
                             </span>
                           </div>
                         )}
@@ -553,7 +582,15 @@ export function MesResultatsPage() {
               (eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type)
             )
             const dialogIsScenarioA = !dialogHasManualQuestions
-            const dialogCanSeeScore = dialogIsReturned || (dialogIsScenarioA && dialogIsCorrected)
+            const dialogIsScenarioB = !!dialogHasManualQuestions
+            const dialogAutoGradableTotal = selectedResult.epreuve.questions
+              ?.filter((eq) => ['QCU', 'QCM'].includes(eq.question.type))
+              .reduce((sum, eq) => sum + eq.bareme, 0) ?? 0
+            const dialogManualQuestionCount = selectedResult.epreuve.questions
+              ?.filter((eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type))
+              .length ?? 0
+            const dialogCanSeeFinalScore = dialogIsReturned || dialogIsCorrected
+            const dialogCanSeePartialScore = dialogIsScenarioB && !dialogIsCorrected && !dialogIsReturned && dialogAutoGradableTotal > 0
 
             return (
             <ScrollArea className="max-h-[60vh] pr-2">
@@ -564,7 +601,7 @@ export function MesResultatsPage() {
                     <Trophy className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div className="flex-1">
-                    {dialogCanSeeScore ? (
+                    {dialogCanSeeFinalScore ? (
                       <>
                         <div className="flex items-center gap-3">
                           <span className={`text-3xl font-bold ${getScoreColor(dialogScore)}`}>
@@ -589,11 +626,29 @@ export function MesResultatsPage() {
                           </div>
                         </div>
                       </>
+                    ) : dialogCanSeePartialScore ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-2xl font-bold ${getScoreColor(dialogScore)}`}>
+                            {dialogScore.toFixed(1)}
+                            <span className="text-sm text-muted-foreground">/{dialogAutoGradableTotal}</span>
+                          </span>
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700 text-xs">
+                            Provisoire
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
+                          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                          <span className="text-sm text-amber-700 dark:text-amber-400">
+                            En attente de la correction manuelle de l&apos;enseignant pour {dialogManualQuestionCount} question{dialogManualQuestionCount > 1 ? 's' : ''} ouverte{dialogManualQuestionCount > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
                     ) : (
                       <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
                         <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                         <span className="text-sm text-amber-700 dark:text-amber-400">
-                          {dialogIsCorrected ? 'Correction terminée — En attente de retour par l\'enseignant' : 'En attente de correction'}
+                          En attente de correction
                         </span>
                       </div>
                     )}
@@ -621,16 +676,7 @@ export function MesResultatsPage() {
                 <Separator />
 
                 {/* Per-question breakdown */}
-                {!dialogIsReturned && dialogIsCorrected ? (
-                  <div className="flex flex-col items-center justify-center rounded-lg border border-amber-200 bg-amber-50/50 p-8 dark:border-amber-900 dark:bg-amber-950/20">
-                    <Clock className="h-10 w-10 text-amber-500 dark:text-amber-400" />
-                    <h4 className="mt-3 text-base font-semibold">Correction en cours de validation</h4>
-                    <p className="mt-1 text-sm text-muted-foreground text-center max-w-sm">
-                      Votre copie a été corrigée. L&apos;enseignant doit encore valider et retourner les résultats.
-                      Vous pourrez consulter le détail par question une fois les copies rendues.
-                    </p>
-                  </div>
-                ) : dialogQuestionDetails.length > 0 ? (
+                {dialogQuestionDetails.length > 0 ? (
                   <div className="space-y-4">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
                       <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
@@ -641,7 +687,7 @@ export function MesResultatsPage() {
                         const isGraded = q.pointsObtenus !== null
                         const isCorrect = q.correct === true
                         const isIncorrect = q.correct === false
-                        const isManual = q.type === 'QRC' || q.type === 'TRS'
+                        const isManual = q.type === 'QRC' || q.type === 'TRS' || q.type === 'REFLEXION'
 
                         return (
                           <div
