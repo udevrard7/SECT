@@ -549,12 +549,14 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   // ─── Soft delete ───
 
   const handleDelete = async () => {
-    if (!deleteTarget) return
+    // Capture the target BEFORE the dialog closes and sets deleteTarget to null
+    const target = deleteTarget
+    setDeleteTarget(null)
+    if (!target) return
     try {
-      const res = await fetch(`/api/unites-enseignement/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement/${target.id}`, { method: 'DELETE', headers: getAuthHeaders() })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la suppression') }
-      toast.success('UE désactivée', { description: `${deleteTarget.nom} a été désactivée avec succès.` })
-      setDeleteTarget(null)
+      toast.success('UE désactivée', { description: `${target.nom} a été désactivée avec succès.` })
       await fetchAllData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })

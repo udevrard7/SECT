@@ -531,9 +531,11 @@ export function EtudiantsPage() {
 
   // ─── Cancel invitation ───
   const handleCancelInvitation = async () => {
-    if (!cancelInvitationTarget) return
+    const target = cancelInvitationTarget
+    setCancelInvitationTarget(null)
+    if (!target) return
     try {
-      const res = await fetch(`/api/invitations/${cancelInvitationTarget.id}`, {
+      const res = await fetch(`/api/invitations/${target.id}`, {
         method: 'DELETE',
         headers: {
           ...getAuthHeaders(),
@@ -544,9 +546,8 @@ export function EtudiantsPage() {
         throw new Error(err.error || 'Erreur lors de l\'annulation')
       }
       toast.success('Invitation annulée', {
-        description: `L'invitation pour ${cancelInvitationTarget.email} a été annulée.`,
+        description: `L'invitation pour ${target.email} a été annulée.`,
       })
-      setCancelInvitationTarget(null)
       await fetchInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible d\'annuler l\'invitation.' })
@@ -636,9 +637,11 @@ export function EtudiantsPage() {
 
   // ─── Remove from filiere ───
   const handleRemoveFromFiliere = async () => {
-    if (!removeFiliereTarget) return
+    const target = removeFiliereTarget
+    setRemoveFiliereTarget(null)
+    if (!target) return
     try {
-      const res = await fetch(`/api/users/${removeFiliereTarget.id}`, {
+      const res = await fetch(`/api/users/${target.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -648,9 +651,8 @@ export function EtudiantsPage() {
       })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Filière retirée', {
-        description: `${removeFiliereTarget.name} a été retiré de sa filière.`,
+        description: `${target.name} a été retiré de sa filière.`,
       })
-      setRemoveFiliereTarget(null)
       await fetchEtudiants()
     } catch {
       toast.error('Erreur', { description: 'Impossible de retirer la filière.' })

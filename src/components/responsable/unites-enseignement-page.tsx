@@ -456,9 +456,12 @@ export function UnitesEnseignementPage() {
 
   // ─── Soft delete ───
   const handleDelete = async () => {
-    if (!deleteTarget) return
+    // Capture the target BEFORE the dialog closes and sets deleteTarget to null
+    const target = deleteTarget
+    setDeleteTarget(null)
+    if (!target) return
     try {
-      const res = await fetch(`/api/unites-enseignement/${deleteTarget.id}`, {
+      const res = await fetch(`/api/unites-enseignement/${target.id}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       })
@@ -467,9 +470,8 @@ export function UnitesEnseignementPage() {
         throw new Error(err.error || 'Erreur lors de la suppression')
       }
       toast.success('UE désactivée', {
-        description: `${deleteTarget.nom} a été désactivée avec succès.`,
+        description: `${target.nom} a été désactivée avec succès.`,
       })
-      setDeleteTarget(null)
       await fetchUEs()
     } catch (err) {
       toast.error('Erreur', {
