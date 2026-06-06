@@ -1,0 +1,6 @@
+{
+  "name": "ai-proxy",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  }
+}

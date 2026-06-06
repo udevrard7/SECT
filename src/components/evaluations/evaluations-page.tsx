@@ -1,0 +1,987 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import {
+  ClipboardCheck,
+  Clock,
+  Calendar,
+  HelpCircle,
+  Users,
+  Eye,
+  BarChart3,
+  Search,
+  Filter,
+  AlertTriangle,
+  Check,
+  Activity,
+  Lock,
+  Edit3,
+  Trophy,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  User,
+} from 'lucide-react'
+import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Progress } from '@/components/ui/progress'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
+
+// ─── Types ───
+
+interface EnseignantInfo {
+  id: string
+  name: string
+  email?: string
+}
+
+interface EpreuveQuestion {
+  id: string
+  questionId: string
+  bareme: number
+  ordre: number
+  question: {
+    id: string
+    type: string
+    enonce: string
+    difficulte: string
+  }
+}
+
+interface Session {
+  id: string
+  statut: string
+  score: number | null
+  etudiantId: string
+  alertes: number
+  etudiant?: {
+    id: string
+    name: string
+    email: string
+  }
+  reponses?: Array<{ id: string; questionId: string }>
+  logEvents?: unknown
+}
+
+interface Epreuve {
+  id: string
+  enseignantId: string
+  titre: string
+  description: string | null
+  duree: number
+  dateDebut: string
+  dateFin: string
+  melangeQuestions: boolean
+  melangePropositions: boolean
+  blocageRetour: boolean
+  statut: 'BROUILLON' | 'PLANIFIEE' | 'EN_COURS' | 'TERMINEE' | 'CLOTUREE'
+  groupesCibles: string[] | null
+  questions: EpreuveQuestion[]
+  sessions: Session[]
+  questionCount?: number
+  totalPoints?: number
+  enseignant?: EnseignantInfo
+  createdAt: string
+}
+
+interface FiliereOption {
+  id: string
+  nom: string
+}
+
+// ─── Utility functions ───
+
+function formatDate(date: string | Date): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  const months = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+  ]
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+}
+
+function formatDateTime(date: string | Date): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  return d.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function truncateText(text: string, maxLen: number = 120): string {
+  if (text.length <= maxLen) return text
+  return text.slice(0, maxLen).trim() + '...'
+}
+
+function getStatutLabel(statut: string): string {
+  switch (statut) {
+    case 'BROUILLON': return 'Brouillon'
+    case 'PLANIFIEE': return 'Planifiée'
+    case 'EN_COURS': return 'En cours'
+    case 'TERMINEE': return 'Terminée'
+    case 'CLOTUREE': return 'Clôturée'
+    default: return statut
+  }
+}
+
+function getStatutBadge(statut: string) {
+  switch (statut) {
+    case 'BROUILLON':
+      return (
+        <Badge variant="outline" className="gap-1 bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+          <Edit3 className="h-3 w-3" />
+          Brouillon
+        </Badge>
+      )
+    case 'PLANIFIEE':
+      return (
+        <Badge variant="outline" className="gap-1 bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+          <Calendar className="h-3 w-3" />
+          Planifiée
+        </Badge>
+      )
+    case 'EN_COURS':
+      return (
+        <Badge variant="outline" className="gap-1 bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+          <Activity className="h-3 w-3" />
+          En cours
+        </Badge>
+      )
+    case 'TERMINEE':
+      return (
+        <Badge variant="outline" className="gap-1 bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">
+          <Check className="h-3 w-3" />
+          Terminée
+        </Badge>
+      )
+    case 'CLOTUREE':
+      return (
+        <Badge variant="outline" className="gap-1 bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800/60 dark:text-gray-400 dark:border-gray-700">
+          <Lock className="h-3 w-3" />
+          Clôturée
+        </Badge>
+      )
+    default:
+      return <Badge variant="outline">{statut}</Badge>
+  }
+}
+
+function getScoreColor(score: number): string {
+  if (score >= 10) return 'text-emerald-600 dark:text-emerald-400'
+  if (score >= 8) return 'text-amber-600 dark:text-amber-400'
+  return 'text-red-600 dark:text-red-400'
+}
+
+function getScoreBadgeClasses(score: number): string {
+  if (score >= 10) return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+  if (score >= 8) return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+  return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+}
+
+// ─── Score distribution mini chart ───
+
+function ScoreDistributionChart({ sessions }: { sessions: Session[] }) {
+  const scored = sessions.filter((s) => s.score !== null)
+  if (scored.length === 0) return null
+
+  const bins = [
+    { label: '0-4', min: 0, max: 4, count: 0, color: 'bg-red-400' },
+    { label: '4-8', min: 4, max: 8, count: 0, color: 'bg-amber-400' },
+    { label: '8-10', min: 8, max: 10, count: 0, color: 'bg-amber-500' },
+    { label: '10-12', min: 10, max: 12, count: 0, color: 'bg-emerald-400' },
+    { label: '12-14', min: 12, max: 14, count: 0, color: 'bg-emerald-500' },
+    { label: '14-16', min: 14, max: 16, count: 0, color: 'bg-teal-400' },
+    { label: '16-20', min: 16, max: 20, count: 0, color: 'bg-teal-500' },
+  ]
+
+  scored.forEach((s) => {
+    const score = s.score ?? 0
+    const bin = bins.find((b) => score >= b.min && score < b.max)
+    if (bin) bin.count++
+    else if (score >= 16) bins[6].count++
+  })
+
+  const maxCount = Math.max(...bins.map((b) => b.count), 1)
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-medium text-muted-foreground">Répartition des notes</h4>
+      <div className="flex items-end gap-1 h-20">
+        {bins.map((bin) => (
+          <div key={bin.label} className="flex-1 flex flex-col items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">{bin.count > 0 ? bin.count : ''}</span>
+            <div
+              className={`w-full rounded-t ${bin.color} transition-all`}
+              style={{ height: `${Math.max((bin.count / maxCount) * 56, bin.count > 0 ? 4 : 0)}px` }}
+            />
+            <span className="text-[9px] text-muted-foreground">{bin.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───
+
+export function EvaluationsPage() {
+  const user = useAuthStore((s) => s.user)
+
+  // ─── State ───
+  const [epreuves, setEpreuves] = useState<Epreuve[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statutFilter, setStatutFilter] = useState('all')
+  const [filiereFilter, setFiliereFilter] = useState('all')
+  const [filieres, setFilieres] = useState<FiliereOption[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+
+  // Detail dialog
+  const [detailEpreuve, setDetailEpreuve] = useState<Epreuve | null>(null)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [sessionsExpanded, setSessionsExpanded] = useState(false)
+
+  // ─── Fetch epreuves by filiere ───
+  const fetchEpreuves = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      // First get the filières managed by this responsable
+      let filiereIds: string[] = []
+      if (user?.id) {
+        const filRes = await fetch(`/api/filieres?responsableId=${user.id}`, { headers: getAuthHeaders() })
+        if (filRes.ok) {
+          const filData = await filRes.json()
+          filiereIds = (filData.filieres ?? []).map((f: { id: string }) => f.id)
+        }
+      }
+
+      if (filiereIds.length === 0 && !user?.filiereId) {
+        setEpreuves([])
+        setIsLoading(false)
+        return
+      }
+
+      // If a specific filiere is selected, filter by it
+      const targetFiliereId = filiereFilter !== 'all' ? filiereFilter : ''
+      
+      // Fetch epreuves - get all epreuves and filter client-side by sessions in our filières
+      const params = new URLSearchParams()
+      if (targetFiliereId) {
+        params.set('filiereId', targetFiliereId)
+      }
+      if (statutFilter !== 'all') params.set('statut', statutFilter)
+
+      const res = await fetch(`/api/epreuves?${params.toString()}`, { headers: getAuthHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        setEpreuves(data.epreuves ?? [])
+      }
+    } catch {
+      toast.error('Erreur', { description: 'Impossible de charger les évaluations.' })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user?.id, user?.filiereId, statutFilter, filiereFilter])
+
+  // ─── Fetch filieres ───
+  const fetchFilieres = useCallback(async () => {
+    try {
+      const res = await fetch('/api/filieres', { headers: getAuthHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
+      }
+    } catch {
+      // Silent
+    }
+  }, [])
+
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true)
+      await Promise.all([fetchEpreuves(), fetchFilieres()])
+      setIsLoading(false)
+    }
+    load()
+  }, [fetchEpreuves, fetchFilieres])
+
+  // ─── Computed stats ───
+  const filteredEpreuves = epreuves.filter((ep) => {
+    // Search filter
+    if (search) {
+      const q = search.toLowerCase()
+      const matchTitre = ep.titre.toLowerCase().includes(q)
+      const matchDesc = ep.description?.toLowerCase().includes(q) ?? false
+      const matchEnseignant = ep.enseignant?.name?.toLowerCase().includes(q) ?? false
+      if (!matchTitre && !matchDesc && !matchEnseignant) return false
+    }
+    return true
+  })
+
+  const totalEvaluations = epreuves.length
+  const enCoursCount = epreuves.filter((e) => e.statut === 'EN_COURS').length
+  const planifieesCount = epreuves.filter((e) => e.statut === 'PLANIFIEE').length
+  const termineesCount = epreuves.filter((e) => e.statut === 'TERMINEE' || e.statut === 'CLOTUREE').length
+
+  // ─── Open detail dialog ───
+  const handleOpenDetail = async (epreuve: Epreuve) => {
+    setDetailEpreuve(epreuve)
+    setDetailDialogOpen(true)
+    setSessionsExpanded(false)
+    setDetailLoading(true)
+
+    try {
+      const res = await fetch(`/api/epreuves/${epreuve.id}`, { headers: getAuthHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        setDetailEpreuve(data.epreuve ?? epreuve)
+      }
+    } catch {
+      // Keep existing epreuve data
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  // ─── Get stats for a single epreuve ───
+  const getEpreuveStats = (epreuve: Epreuve) => {
+    const sessions = epreuve.sessions ?? []
+    const totalSessions = sessions.length
+    const completedSessions = sessions.filter(
+      (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE'
+    ).length
+    const completionRate = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0
+    const totalAlerts = sessions.reduce((sum, s) => sum + (s.alertes ?? 0), 0)
+    const scoredSessions = sessions.filter((s) => s.score !== null)
+    const avgScore = scoredSessions.length > 0
+      ? Math.round((scoredSessions.reduce((sum, s) => sum + (s.score ?? 0), 0) / scoredSessions.length) * 10) / 10
+      : null
+    const questionCount = epreuve.questions?.length ?? epreuve.questionCount ?? 0
+    const totalPoints = epreuve.questions
+      ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+      : (epreuve.totalPoints ?? 0)
+
+    return { totalSessions, completedSessions, completionRate, totalAlerts, avgScore, questionCount, totalPoints }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ─── Header ─── */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+          <ClipboardCheck className="h-7 w-7 text-emerald-600" />
+          Suivi des Évaluations
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Supervisez les épreuves de vos filières
+        </p>
+      </div>
+
+      {/* ─── Stats cards ─── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="border-l-4 border-l-emerald-500">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+              <ClipboardCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total évaluations</p>
+              <p className="text-xl font-bold">{totalEvaluations}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-emerald-500">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+              <Activity className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">En cours</p>
+              <p className="text-xl font-bold">{enCoursCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-amber-500">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+              <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Planifiées</p>
+              <p className="text-xl font-bold">{planifieesCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-teal-500">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
+              <Trophy className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Terminées</p>
+              <p className="text-xl font-bold">{termineesCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ─── Filter toolbar ─── */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher par titre, description ou enseignant..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={statutFilter} onValueChange={setStatutFilter}>
+              <SelectTrigger className="w-[160px]">
+                <Filter className="h-3.5 w-3.5 mr-1" />
+                <SelectValue placeholder="Statut" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les statuts</SelectItem>
+                <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                <SelectItem value="PLANIFIEE">Planifiée</SelectItem>
+                <SelectItem value="EN_COURS">En cours</SelectItem>
+                <SelectItem value="TERMINEE">Terminée</SelectItem>
+                <SelectItem value="CLOTUREE">Clôturée</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => fetchEpreuves()}
+              title="Rafraîchir"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Advanced filters toggle */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            {showFilters ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+            Filtres avancés
+          </Button>
+          {(statutFilter !== 'all' || search) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-emerald-600 hover:text-emerald-700"
+              onClick={() => {
+                setSearch('')
+                setStatutFilter('all')
+                setFiliereFilter('all')
+              }}
+            >
+              Réinitialiser les filtres
+            </Button>
+          )}
+        </div>
+
+        {showFilters && (
+          <Card className="p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Filière</Label>
+                <Select value={filiereFilter} onValueChange={setFiliereFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Toutes les filières" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les filières</SelectItem>
+                    {filieres.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </Card>
+        )}
+      </div>
+
+      {/* ─── Loading skeleton ─── */}
+      {isLoading && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="flex flex-col gap-3 p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-48" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <div className="flex gap-4">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Skeleton className="h-8 w-24" />
+                  <Skeleton className="h-8 w-24" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* ─── Empty state ─── */}
+      {!isLoading && filteredEpreuves.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
+            <ClipboardCheck className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          </div>
+          <h3 className="mt-4 text-lg font-semibold">Aucune évaluation trouvée</h3>
+          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+            {search || statutFilter !== 'all'
+              ? 'Aucun résultat ne correspond à vos critères de recherche. Essayez de modifier vos filtres.'
+              : 'Aucune épreuve n\'a encore été créée par les enseignants de vos filières.'}
+          </p>
+          {(search || statutFilter !== 'all') && (
+            <Button
+              variant="outline"
+              className="mt-6 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+              onClick={() => {
+                setSearch('')
+                setStatutFilter('all')
+                setFiliereFilter('all')
+              }}
+            >
+              Réinitialiser les filtres
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* ─── Evaluation cards ─── */}
+      {!isLoading && filteredEpreuves.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {filteredEpreuves.map((epreuve) => {
+            const stats = getEpreuveStats(epreuve)
+
+            return (
+              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
+                <CardContent className="flex flex-col gap-4 p-6">
+                  {/* Title + Status */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+                      {epreuve.description && (
+                        <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                          {truncateText(epreuve.description, 100)}
+                        </p>
+                      )}
+                    </div>
+                    {getStatutBadge(epreuve.statut)}
+                  </div>
+
+                  {/* Teacher name */}
+                  {epreuve.enseignant && (
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <User className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                      <span className="font-medium text-foreground">{epreuve.enseignant.name}</span>
+                    </div>
+                  )}
+
+                  {/* Duration + Date range */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      {epreuve.duree} min
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                      {formatDateTime(epreuve.dateDebut)} — {formatDateTime(epreuve.dateFin)}
+                    </span>
+                  </div>
+
+                  {/* Question count + total points + participants + completion */}
+                  <div className="flex flex-wrap gap-3">
+                    <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                      <HelpCircle className="h-3 w-3" />
+                      {stats.questionCount} question{stats.questionCount > 1 ? 's' : ''}
+                    </Badge>
+                    <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                      <Trophy className="h-3 w-3" />
+                      {stats.totalPoints} point{stats.totalPoints > 1 ? 's' : ''}
+                    </Badge>
+                    {stats.totalSessions > 0 ? (
+                      <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                        <Users className="h-3 w-3" />
+                        {stats.completedSessions}/{stats.totalSessions} ({stats.completionRate}%)
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="gap-1 bg-gray-50 text-gray-500 dark:bg-gray-900/20 dark:text-gray-400">
+                        <Users className="h-3 w-3" />
+                        Aucun participant
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Alert count */}
+                  {stats.totalAlerts > 0 && (
+                    <div className="flex items-center gap-1.5 text-sm">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-amber-700 dark:text-amber-400 font-medium">
+                        {stats.totalAlerts} alerte{stats.totalAlerts > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Average score (if TERMINEE/CLOTUREE) */}
+                  {(epreuve.statut === 'TERMINEE' || epreuve.statut === 'CLOTUREE') && stats.avgScore !== null && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Moyenne :</span>
+                      <span className={`font-bold text-lg ${getScoreColor(stats.avgScore)}`}>
+                        {stats.avgScore}/20
+                      </span>
+                      <Badge variant="outline" className={getScoreBadgeClasses(stats.avgScore)}>
+                        {Math.round((stats.avgScore / 20) * 100)}%
+                      </Badge>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Actions */}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                      onClick={() => handleOpenDetail(epreuve)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Voir les détails
+                    </Button>
+                    {(epreuve.statut === 'TERMINEE' || epreuve.statut === 'CLOTUREE') && stats.avgScore !== null && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+                        onClick={() => handleOpenDetail(epreuve)}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" />
+                        Voir les résultats
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ─── Evaluation Detail Dialog ─── */}
+      <Dialog open={detailDialogOpen} onOpenChange={(open) => { if (!open) setDetailDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-emerald-600" />
+              Détail de l&apos;évaluation
+            </DialogTitle>
+            <DialogDescription>
+              Informations complètes sur l&apos;épreuve et ses participants
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailLoading ? (
+            <div className="flex-1 space-y-4 py-4">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-full" />
+              <div className="grid grid-cols-2 gap-4">
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+              </div>
+              <Skeleton className="h-40" />
+            </div>
+          ) : detailEpreuve ? (
+            <ScrollArea className="flex-1 pr-1">
+              <div className="space-y-6 pb-4">
+                {/* Title & Status */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-lg font-bold">{detailEpreuve.titre}</h3>
+                    {detailEpreuve.description && (
+                      <p className="mt-1 text-sm text-muted-foreground">{detailEpreuve.description}</p>
+                    )}
+                  </div>
+                  {getStatutBadge(detailEpreuve.statut)}
+                </div>
+
+                {/* Teacher info */}
+                {detailEpreuve.enseignant && (
+                  <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/40">
+                      <User className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{detailEpreuve.enseignant.name}</p>
+                      {detailEpreuve.enseignant.email && (
+                        <p className="text-xs text-muted-foreground">{detailEpreuve.enseignant.email}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Info grid */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <Card className="border-l-4 border-l-emerald-500">
+                    <CardContent className="p-3">
+                      <p className="text-xs text-muted-foreground">Durée</p>
+                      <p className="text-sm font-semibold flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-emerald-600" />
+                        {detailEpreuve.duree} min
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-l-4 border-l-teal-500">
+                    <CardContent className="p-3">
+                      <p className="text-xs text-muted-foreground">Questions</p>
+                      <p className="text-sm font-semibold flex items-center gap-1">
+                        <HelpCircle className="h-3.5 w-3.5 text-teal-600" />
+                        {detailEpreuve.questions?.length ?? detailEpreuve.questionCount ?? 0}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-l-4 border-l-amber-500">
+                    <CardContent className="p-3">
+                      <p className="text-xs text-muted-foreground">Points total</p>
+                      <p className="text-sm font-semibold flex items-center gap-1">
+                        <Trophy className="h-3.5 w-3.5 text-amber-600" />
+                        {(() => {
+                          const pts = detailEpreuve.questions
+                            ? detailEpreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+                            : (detailEpreuve.totalPoints ?? 0)
+                          return pts
+                        })()}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-l-4 border-l-sky-500">
+                    <CardContent className="p-3">
+                      <p className="text-xs text-muted-foreground">Participants</p>
+                      <p className="text-sm font-semibold flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-sky-600" />
+                        {detailEpreuve.sessions?.length ?? 0}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Date range */}
+                <div className="rounded-lg border p-3 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Période</p>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-medium">{formatDateTime(detailEpreuve.dateDebut)}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="font-medium">{formatDateTime(detailEpreuve.dateFin)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Créée le {formatDate(detailEpreuve.createdAt)}
+                  </p>
+                </div>
+
+                {/* Options */}
+                {(detailEpreuve.melangeQuestions || detailEpreuve.melangePropositions || detailEpreuve.blocageRetour) && (
+                  <div className="flex flex-wrap gap-2">
+                    {detailEpreuve.melangeQuestions && (
+                      <Badge variant="outline" className="text-xs gap-1">
+                        Questions mélangées
+                      </Badge>
+                    )}
+                    {detailEpreuve.melangePropositions && (
+                      <Badge variant="outline" className="text-xs gap-1">
+                        Propositions mélangées
+                      </Badge>
+                    )}
+                    {detailEpreuve.blocageRetour && (
+                      <Badge variant="outline" className="text-xs gap-1 text-red-600 dark:text-red-400">
+                        Retour bloqué
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
+                {/* Score distribution chart (TERMINEE/CLOTUREE) */}
+                {(detailEpreuve.statut === 'TERMINEE' || detailEpreuve.statut === 'CLOTUREE') && (
+                  <>
+                    <Separator />
+                    <ScoreDistributionChart sessions={detailEpreuve.sessions ?? []} />
+
+                    {/* Average / median stats */}
+                    {(() => {
+                      const scored = (detailEpreuve.sessions ?? []).filter((s: Session) => s.score !== null)
+                      if (scored.length === 0) return null
+                      const scores = scored.map((s: Session) => s.score ?? 0)
+                      const avg = Math.round((scores.reduce((a: number, b: number) => a + b, 0) / scores.length) * 10) / 10
+                      const sorted = [...scores].sort((a: number, b: number) => a - b)
+                      const median = sorted.length % 2 === 0
+                        ? Math.round(((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2) * 10) / 10
+                        : sorted[Math.floor(sorted.length / 2)]
+                      const passRate = Math.round((scores.filter((s: number) => s >= 10).length / scores.length) * 100)
+
+                      return (
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+                            <p className="text-xs text-muted-foreground">Moyenne</p>
+                            <p className={`text-lg font-bold ${getScoreColor(avg)}`}>{avg}/20</p>
+                          </div>
+                          <div className="text-center p-3 rounded-lg bg-teal-50 dark:bg-teal-950/30">
+                            <p className="text-xs text-muted-foreground">Médiane</p>
+                            <p className={`text-lg font-bold ${getScoreColor(median)}`}>{median}/20</p>
+                          </div>
+                          <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
+                            <p className="text-xs text-muted-foreground">Réussite</p>
+                            <p className="text-lg font-bold text-amber-700 dark:text-amber-400">{passRate}%</p>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </>
+                )}
+
+                {/* Sessions / Participants list */}
+                <Separator />
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                      <Users className="h-4 w-4 text-emerald-600" />
+                      Participants ({detailEpreuve.sessions?.length ?? 0})
+                    </h4>
+                    {(detailEpreuve.sessions?.length ?? 0) > 5 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSessionsExpanded(!sessionsExpanded)}
+                      >
+                        {sessionsExpanded ? 'Voir moins' : 'Voir tout'}
+                      </Button>
+                    )}
+                  </div>
+
+                  {(detailEpreuve.sessions?.length ?? 0) === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      Aucun participant pour le moment
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {(sessionsExpanded
+                        ? detailEpreuve.sessions
+                        : (detailEpreuve.sessions ?? []).slice(0, 5)
+                      ).map((session: Session) => (
+                        <div
+                          key={session.id}
+                          className="flex items-center justify-between rounded-lg border p-3 gap-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                              {session.etudiant?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) ?? '??'}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{session.etudiant?.name ?? 'Étudiant inconnu'}</p>
+                              {session.etudiant?.email && (
+                                <p className="text-xs text-muted-foreground truncate">{session.etudiant.email}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            {session.score !== null && (
+                              <Badge variant="outline" className={getScoreBadgeClasses(session.score)}>
+                                {session.score}/20
+                              </Badge>
+                            )}
+                            {session.statut === 'EN_COURS' && (
+                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+                                En cours
+                              </Badge>
+                            )}
+                            {session.statut === 'SOUMISE' && (
+                              <Badge variant="outline" className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">
+                                Soumise
+                              </Badge>
+                            )}
+                            {session.statut === 'CORRIGEE' && (
+                              <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+                                Corrigée
+                              </Badge>
+                            )}
+                            {session.statut === 'NON_COMMENCEE' && (
+                              <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+                                Non commencée
+                              </Badge>
+                            )}
+                            {session.alertes > 0 && (
+                              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                <AlertTriangle className="h-3 w-3" />
+                                {session.alertes}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {!sessionsExpanded && (detailEpreuve.sessions?.length ?? 0) > 5 && (
+                        <p className="text-xs text-center text-muted-foreground pt-1">
+                          Et {(detailEpreuve.sessions?.length ?? 0) - 5} autre(s) participant(s)...
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          ) : null}
+
+          <DialogFooter className="border-t pt-4">
+            <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
