@@ -37,13 +37,15 @@ export interface ClosureResult {
 async function getEligibleStudentCount(
   filiereId: string | null,
   groupesCibles: string | null,
-  existingSessionCount?: number
+  _existingSessionCount?: number
 ): Promise<number> {
   if (!filiereId) {
     // No filiere → can't determine eligible students from DB
-    // Fallback: use existing session count as a proxy
-    // This allows auto-closure Condition A to work for epreuves without filiere
-    return existingSessionCount ?? 0
+    // Return 0 so Condition A (all submitted) cannot trigger incorrectly.
+    // Previously, falling back to existingSessionCount caused a critical bug:
+    // when only 1 student started & submitted, existingSessionCount = 1 = submittedCount
+    // → premature closure. Epreuves without filiere rely on Condition B (deadline) only.
+    return 0
   }
 
   // Parse niveau from groupesCibles if available
@@ -119,9 +121,10 @@ export async function checkAndAutoCloseEpreuve(epreuveId: string): Promise<Closu
   // Sessions are only created when a student starts the exam, so using
   // totalSessions would incorrectly close when only 1 student (who started)
   // submits. We must check against the total eligible student population.
+  // SAFETY: Also ensure no sessions are still EN_COURS before closing.
   const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions)
 
-  if (eligibleStudentCount > 0 && submittedSessions === eligibleStudentCount) {
+  if (eligibleStudentCount > 0 && submittedSessions === eligibleStudentCount && activeSessions === 0) {
     return await performClosure(epreuveId, 'TOUS_SOUMIS', epreuve.sessions, epreuve.enseignantId)
   }
 

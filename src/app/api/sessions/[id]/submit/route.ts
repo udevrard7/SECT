@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { checkAndAutoCloseEpreuve } from '@/lib/auto-closure'
 import {
   parsePropositionMappings,
   parseCorrectAnswer,
@@ -268,13 +267,12 @@ export async function POST(
       },
     })
 
-    // ─── Check if all students have submitted → auto-close ───────────────────
-    let autoCloseResult = null
-    try {
-      autoCloseResult = await checkAndAutoCloseEpreuve(session.epreuveId)
-    } catch (e) {
-      console.error('Auto-close check failed after submission:', e)
-    }
+    // NOTE: Auto-closure is handled by the closure-watcher mini-service,
+    // NOT on every student submission. Calling checkAndAutoCloseEpreuve here
+    // was causing a critical bug: epreuves were closed when a single student
+    // submitted because getEligibleStudentCount fell back to existingSessionCount
+    // (which equals 1 when only 1 student has started the exam).
+    // The closure-watcher polls every 30s and correctly handles both conditions.
 
     // ─── Build response ──────────────────────────────────────────────────────
     const response: Record<string, unknown> = {
@@ -295,8 +293,8 @@ export async function POST(
       message: autoSubmit
         ? 'Épreuve soumise automatiquement (temps écoulé)'
         : 'Épreuve soumise avec succès',
-      epreuveAutoClosed: autoCloseResult?.closed || false,
-      autoCloseRaison: autoCloseResult?.raison || null,
+      epreuveAutoClosed: false,
+      autoCloseRaison: null,
     }
 
     // Add scenario-specific information
