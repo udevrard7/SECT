@@ -1,16 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth-helpers'
 
 // GET /api/ip-whitelist — List IP whitelist entries
+// RESPONSABLE: Only sees entries for their own establishment
+// ADMIN: Sees all or filtered by etablissementId
 export async function GET(request: NextRequest) {
   try {
+    const authUser = getUserFromRequest(request)
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const etablissementId = searchParams.get('etablissementId') || ''
     const actif = searchParams.get('actif') || ''
 
     const where: Record<string, unknown> = {}
 
-    if (etablissementId) where.etablissementId = etablissementId
+    // RESPONSABLE: Force filter to their own establishment
+    if (authUser.role === 'RESPONSABLE') {
+      where.etablissementId = authUser.etablissementId
+    } else if (etablissementId) {
+      where.etablissementId = etablissementId
+    }
+
     if (actif === 'true') where.actif = true
     else if (actif === 'false') where.actif = false
 
@@ -39,10 +53,26 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/ip-whitelist — Add IP to whitelist
+// ADMIN: Can add for any establishment
+// RESPONSABLE: Can add for their own establishment only
 export async function POST(request: NextRequest) {
   try {
+    const authUser = getUserFromRequest(request)
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
+    if (authUser.role !== 'ADMIN' && authUser.role !== 'RESPONSABLE') {
+      return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 })
+    }
+
     const body = await request.json()
     const { adresseIp, description, etablissementId, creePar } = body
+
+    // RESPONSABLE: Force etablissementId to their own
+    const targetEtablissementId = authUser.role === 'RESPONSABLE'
+      ? authUser.etablissementId
+      : etablissementId
 
     // Validate required fields
     if (!adresseIp) {
@@ -74,9 +104,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify etablissement exists if provided
-    if (etablissementId) {
+    if (targetEtablissementId) {
       const etablissement = await db.etablissement.findUnique({
-        where: { id: etablissementId },
+        where: { id: targetEtablissementId },
       })
       if (!etablissement) {
         return NextResponse.json(
@@ -90,8 +120,8 @@ export async function POST(request: NextRequest) {
       data: {
         adresseIp,
         description: description || null,
-        etablissementId: etablissementId || null,
-        creePar: creePar || null,
+        etablissementId: targetEtablissementId || null,
+        creePar: creePar || authUser.userId || null,
         actif: true,
       },
       include: {

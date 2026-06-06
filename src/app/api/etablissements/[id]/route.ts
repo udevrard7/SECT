@@ -135,6 +135,8 @@ export async function GET(
 }
 
 // PATCH /api/etablissements/[id] — Update an etablissement
+// ADMIN: Can update any etablissement (full access)
+// RESPONSABLE: Can only update their own etablissement (restricted fields: no actif toggle)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -147,21 +149,35 @@ export async function PATCH(
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
+    // RESPONSABLE: can only update their own establishment
+    if (authUser.role === 'RESPONSABLE' && authUser.etablissementId !== id) {
+      return NextResponse.json({ error: 'Vous ne pouvez modifier que votre propre établissement' }, { status: 403 })
+    }
+
+    // ENSEIGNANT / ETUDIANT: cannot update establishments
+    if (authUser.role !== 'ADMIN' && authUser.role !== 'RESPONSABLE') {
+      return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 })
+    }
+
     const body = await request.json()
 
     const data: Record<string, unknown> = {}
     if (body.nom !== undefined) data.nom = body.nom
     if (body.type !== undefined) data.type = body.type || null
     if (body.ville !== undefined) data.ville = body.ville || null
-    if (body.pays !== undefined) data.pays = body.pays
     if (body.adresse !== undefined) data.adresse = body.adresse || null
     if (body.telephone !== undefined) data.telephone = body.telephone || null
     if (body.email !== undefined) data.email = body.email || null
     if (body.siteWeb !== undefined) data.siteWeb = body.siteWeb || null
-    if (body.actif !== undefined) data.actif = body.actif
     if (body.formatMatricule !== undefined) data.formatMatricule = body.formatMatricule || null
     if (body.exempleMatricule !== undefined) data.exempleMatricule = body.exempleMatricule || null
     if (body.regexMatricule !== undefined) data.regexMatricule = body.regexMatricule || null
+
+    // ADMIN-only fields
+    if (authUser.role === 'ADMIN') {
+      if (body.pays !== undefined) data.pays = body.pays
+      if (body.actif !== undefined) data.actif = body.actif
+    }
 
     const etablissement = await db.etablissement.update({
       where: { id },
@@ -174,10 +190,11 @@ export async function PATCH(
     // Log audit
     await db.auditLog.create({
       data: {
+        userId: authUser.userId,
         action: 'UPDATE',
         entite: 'Etablissement',
         entiteId: id,
-        details: JSON.stringify(data),
+        details: JSON.stringify({ updatedFields: Object.keys(data), updatedBy: authUser.role }),
       },
     })
 

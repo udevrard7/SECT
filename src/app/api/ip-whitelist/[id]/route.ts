@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth-helpers'
 
 // PATCH /api/ip-whitelist/[id] — Toggle active status
+// ADMIN: Can update any entry
+// RESPONSABLE: Can only update entries for their own establishment
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const authUser = getUserFromRequest(request)
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { actif, description } = body
 
@@ -20,6 +29,15 @@ export async function PATCH(
         { error: 'Entrée de liste blanche non trouvée' },
         { status: 404 }
       )
+    }
+
+    // RESPONSABLE: can only update entries for their own establishment
+    if (authUser.role === 'RESPONSABLE' && authUser.etablissementId !== existing.etablissementId) {
+      return NextResponse.json({ error: 'Vous ne pouvez modifier que les entrées de votre établissement' }, { status: 403 })
+    }
+
+    if (authUser.role !== 'ADMIN' && authUser.role !== 'RESPONSABLE') {
+      return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 })
     }
 
     const updateData: Record<string, unknown> = {}
@@ -76,12 +94,19 @@ export async function PATCH(
 }
 
 // DELETE /api/ip-whitelist/[id] — Remove IP from whitelist
+// ADMIN: Can delete any entry
+// RESPONSABLE: Can only delete entries for their own establishment
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const authUser = getUserFromRequest(request)
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
 
     // Verify entry exists
     const existing = await db.ipWhitelist.findUnique({
@@ -97,6 +122,15 @@ export async function DELETE(
         { error: 'Entrée de liste blanche non trouvée' },
         { status: 404 }
       )
+    }
+
+    // RESPONSABLE: can only delete entries for their own establishment
+    if (authUser.role === 'RESPONSABLE' && authUser.etablissementId !== existing.etablissementId) {
+      return NextResponse.json({ error: 'Vous ne pouvez supprimer que les entrées de votre établissement' }, { status: 403 })
+    }
+
+    if (authUser.role !== 'ADMIN' && authUser.role !== 'RESPONSABLE') {
+      return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 })
     }
 
     // Delete the entry

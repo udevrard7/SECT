@@ -39,6 +39,7 @@ export type PageId =
   | 'ai-providers'
   | 'surveillance'
   | 'profil'
+  | 'parametres'
 
 interface NavigationState {
   currentPage: PageId
@@ -198,6 +199,15 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
       { id: 'evaluations', label: 'Évaluations', icon: 'ClipboardCheck' },
       { id: 'rapports', label: 'Rapports & Statistiques', icon: 'BarChart3' },
       { id: 'alertes', label: 'Alertes', icon: 'Bell' },
+    ],
+  },
+  {
+    id: 'resp-parametres',
+    label: 'Paramètres',
+    icon: 'Settings',
+    defaultOpen: false,
+    items: [
+      { id: 'parametres', label: 'Paramètres établissement', icon: 'Settings' },
     ],
   },
 ]
