@@ -90,3 +90,31 @@ Stage Summary:
 - All 5 bugs fixed across 3 files
 - Lint passes cleanly
 - Commit: 6eaf0b3 — pushed to GitHub
+
+---
+Task ID: 1
+Agent: main
+Task: Filter correction page to only show open questions (QRC/TRS/REFLEXION) - hide auto-graded QCU/QCM
+
+Work Log:
+- Analyzed the complete correction system: API GET /api/correction, frontend correction-page.tsx, ai-grade routes
+- Modified API GET /api/correction/route.ts to filter unifiedQuestions to only include QRC/TRS/REFLEXION types
+- Added autoGradedScore and autoGradedTotal fields to API response for display purposes
+- Updated allCorrected logic: changed from `unifiedQuestions.length > 0 && needsCorrection.length === 0` to `needsCorrection.length === 0`
+- Removed renderAutoGradedAnswer() function from correction-page.tsx (no longer needed)
+- Updated CorrectionSession type to include autoGradedScore/autoGradedTotal
+- Updated progress bar to show "questions ouvertes corrigées" instead of generic count
+- Added auto-graded score display (Zap icon + "Auto-corrigé: X/Y") in student info bar
+- Updated question type labels to French (Réponse courte, Travail structuré, Réflexion)
+- Removed unused imports (CheckCircle2, XCircle, MinusCircle, Filter, Flag)
+- Cleaned up isManualType function (no longer needed since questions array only contains manual types)
+- Verified finalizeAll in ai-grade/route.ts still correctly sums ALL reponses (QCU/QCM + manual)
+- Lint passes cleanly, dev server compiles without errors
+- Committed and pushed to GitHub (commit 459aa89)
+
+Stage Summary:
+- Correction page now only shows QRC, TRS, and REFLEXION questions
+- QCU/QCM are completely hidden from the correction interface
+- Auto-graded score is displayed as info badge with Zap icon
+- Progress bar only counts open questions
+- Final score calculation remains correct (includes all question types)
