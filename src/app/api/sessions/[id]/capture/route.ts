@@ -24,15 +24,19 @@ export async function POST(
       return NextResponse.json({ error: 'Session non active' }, { status: 400 })
     }
 
-    // Log the capture event in logEvents (we store a reference, not the full image)
+    // Store a compressed thumbnail alongside the capture event
+    // We keep the full image as a data URL so the teacher can view it later
+    // For production, upload to S3/cloud storage and store only the URL
+    const thumbnail = image // Store full capture for teacher review
+
+    // Log the capture event in logEvents with the thumbnail embedded
     const currentLogs = session.logEvents ? JSON.parse(session.logEvents) : []
     currentLogs.push({
       type: 'SCREEN_CAPTURE',
       timestamp: new Date().toISOString(),
       details: 'Capture d\'écran périodique effectuée',
-      imageLength: image.length, // Track size for reference
-      // Note: For production, upload the image to cloud storage (S3, etc.)
-      // and store only the URL here. For now, we store a small thumbnail reference.
+      imageLength: image.length,
+      thumbnail, // Store the actual image data for teacher review
     })
 
     await db.sessionPassation.update({

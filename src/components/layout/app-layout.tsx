@@ -50,6 +50,7 @@ import { ProfilPage } from '@/components/profil/profil-page'
 import { ForceChangePasswordPage } from '@/components/auth/force-change-password-page'
 import { AIProvidersPage } from '@/components/admin/ai-providers-page'
 import { CorbeillePage } from '@/components/corbeille/corbeille-page'
+import { SurveillancePage } from '@/components/surveillance/surveillance-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -95,6 +96,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   notifications: 'Centre de notifications',
   'ai-providers': 'Fournisseurs IA',
   corbeille: 'Corbeille',
+  surveillance: 'Surveillance & Alertes',
   profil: 'Mon profil',
 }
 
@@ -134,6 +136,7 @@ const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   notifications: 'Gérer les notifications et les diffusions de la plateforme',
   'ai-providers': 'Configurer et gérer les fournisseurs d\'intelligence artificielle',
   corbeille: 'Restaurez ou supprimez définitivement vos éléments',
+  surveillance: 'Consultez les alertes anti-fraude et captures d\'écran',
   profil: 'Gérer vos informations personnelles et préférences',
 }
 
@@ -341,6 +344,11 @@ function PageContent() {
   // Corbeille page (teacher)
   if (currentPage === 'corbeille') {
     return <CorbeillePage />
+  }
+
+  // Surveillance page (teacher)
+  if (currentPage === 'surveillance') {
+    return <SurveillancePage />
   }
 
   // All other pages: placeholder

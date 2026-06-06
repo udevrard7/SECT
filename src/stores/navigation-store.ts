@@ -37,6 +37,7 @@ export type PageId =
   | 'notifications'
   | 'facturation'
   | 'ai-providers'
+  | 'surveillance'
   | 'profil'
 
 interface NavigationState {
@@ -241,6 +242,15 @@ const ENSEIGNANT_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'correction', label: 'Correction', icon: 'PenTool' },
       { id: 'resultats', label: 'Résultats & Analyses', icon: 'TrendingUp' },
+    ],
+  },
+  {
+    id: 'ens-surveillance',
+    label: 'Surveillance',
+    icon: 'Shield',
+    defaultOpen: true,
+    items: [
+      { id: 'surveillance', label: 'Surveillance & Alertes', icon: 'Shield' },
     ],
   },
   {
