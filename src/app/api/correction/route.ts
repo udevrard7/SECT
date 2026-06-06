@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     // Find all submitted sessions for this teacher's exams
     const where: Record<string, unknown> = {
       epreuve: { enseignantId },
-      statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE'] },
+      statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'] },
     }
     if (epreuveId) where.epreuveId = epreuveId
 
@@ -142,10 +142,7 @@ export async function GET(request: NextRequest) {
         return !reponse || reponse.score === null
       })
 
-      const allCorrected = unifiedQuestions.length > 0 && unifiedQuestions.every((q) => {
-        const rep = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
-        return rep && rep.score !== null
-      })
+      const allCorrected = unifiedQuestions.length > 0 && needsCorrection.length === 0
 
       return {
         ...session,
