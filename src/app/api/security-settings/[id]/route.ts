@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth-helpers'
 
 // GET /api/security-settings/[id] — Get security settings by ID
 export async function GET(
@@ -35,13 +36,19 @@ export async function GET(
 }
 
 // PATCH /api/security-settings/[id] — Update security settings
+// ADMIN: Can update any establishment's security settings
+// RESPONSABLE: Can only update their own establishment's security settings
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-    const body = await request.json()
+    const authUser = getUserFromRequest(request)
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
 
     // Verify existence
     const existing = await db.securitySettings.findUnique({ where: { id } })
@@ -51,6 +58,21 @@ export async function PATCH(
         { status: 404 }
       )
     }
+
+    // RESPONSABLE: can only update their own establishment's settings
+    if (authUser.role === 'RESPONSABLE' && authUser.etablissementId !== existing.etablissementId) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez modifier que les paramètres de votre propre établissement' },
+        { status: 403 }
+      )
+    }
+
+    // ENSEIGNANT / ETUDIANT: cannot update security settings
+    if (authUser.role !== 'ADMIN' && authUser.role !== 'RESPONSABLE') {
+      return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 })
+    }
+
+    const body = await request.json()
 
     const data: Record<string, unknown> = {}
 
@@ -89,10 +111,11 @@ export async function PATCH(
     // Log audit
     await db.auditLog.create({
       data: {
+        userId: authUser.userId,
         action: 'UPDATE',
         entite: 'SecuritySettings',
         entiteId: id,
-        details: JSON.stringify(data),
+        details: JSON.stringify({ updatedFields: Object.keys(data), updatedBy: authUser.role }),
       },
     })
 

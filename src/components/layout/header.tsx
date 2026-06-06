@@ -172,7 +172,14 @@ export function AppHeader() {
                   <User className="mr-2 h-4 w-4" />
                   <span>Mon profil</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCurrentPage('configuration')} className="cursor-pointer rounded-md">
+                <DropdownMenuItem
+                  onClick={() => {
+                    // Route to role-specific settings page
+                    const settingsPage = user.role === 'ADMIN' ? 'configuration' : user.role === 'RESPONSABLE' ? 'parametres' : 'profil'
+                    setCurrentPage(settingsPage as import('@/stores/navigation-store').PageId)
+                  }}
+                  className="cursor-pointer rounded-md"
+                >
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Paramètres</span>
                 </DropdownMenuItem>

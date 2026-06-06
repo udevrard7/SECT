@@ -51,6 +51,7 @@ import { ForceChangePasswordPage } from '@/components/auth/force-change-password
 import { AIProvidersPage } from '@/components/admin/ai-providers-page'
 import { CorbeillePage } from '@/components/corbeille/corbeille-page'
 import { SurveillancePage } from '@/components/surveillance/surveillance-page'
+import { ResponsableParametresPage } from '@/components/responsable/responsable-parametres-page'
 
 // ─── Dashboard component mapping per role ───
 const DASHBOARD_COMPONENTS: Record<UserRole, React.ComponentType> = {
@@ -98,6 +99,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   corbeille: 'Corbeille',
   surveillance: 'Surveillance & Alertes',
   profil: 'Mon profil',
+  parametres: 'Paramètres établissement',
 }
 
 // ─── Page descriptions for placeholder cards ───
@@ -138,6 +140,7 @@ const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   corbeille: 'Restaurez ou supprimez définitivement vos éléments',
   surveillance: 'Consultez les alertes anti-fraude et captures d\'écran',
   profil: 'Gérer vos informations personnelles et préférences',
+  parametres: 'Configurer les paramètres de votre établissement',
 }
 
 // ─── Placeholder page component ───
@@ -349,6 +352,11 @@ function PageContent() {
   // Surveillance page (teacher)
   if (currentPage === 'surveillance') {
     return <SurveillancePage />
+  }
+
+  // Responsable: Paramètres page
+  if (currentPage === 'parametres') {
+    return <ResponsableParametresPage />
   }
 
   // All other pages: placeholder

@@ -235,8 +235,8 @@ export function ConfigurationPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Settings className="h-7 w-7 text-emerald-600" />
-            Configuration du Système
+            <Settings className="h-7 w-7 text-rose-600" />
+            Paramètres Plateforme
           </h1>
         </div>
         <Card className="border-destructive/30 bg-destructive/5">
@@ -259,11 +259,11 @@ export function ConfigurationPage() {
       {/* ─── Header ─── */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <Settings className="h-7 w-7 text-emerald-600" />
-          Configuration du Système
+          <Settings className="h-7 w-7 text-rose-600" />
+          Paramètres Plateforme
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Paramétrer le fonctionnement de la plateforme
+          Configuration globale de la plateforme SaaS — réservée à l&apos;administrateur
         </p>
       </div>
 
