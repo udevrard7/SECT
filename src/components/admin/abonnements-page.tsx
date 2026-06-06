@@ -165,6 +165,10 @@ interface SouscriptionCredentials {
   montant: number
   dateDebut: string
   dateFin: string
+  // Invitation mode fields
+  responsableMode?: 'direct' | 'invitation'
+  invitationToken?: string
+  invitationExpiresAt?: string
 }
 
 // ─── Utility functions ───
@@ -386,6 +390,7 @@ export function AbonnementsPage() {
   const [wizRespNom, setWizRespNom] = useState('')
   const [wizRespEmail, setWizRespEmail] = useState('')
   const [wizRespTelephone, setWizRespTelephone] = useState('')
+  const [wizRespMode, setWizRespMode] = useState<'direct' | 'invitation'>('direct')
 
   // ─── Fetch data ───
   const fetchData = useCallback(async () => {
@@ -516,6 +521,7 @@ export function AbonnementsPage() {
     setWizRespNom('')
     setWizRespEmail('')
     setWizRespTelephone('')
+    setWizRespMode('direct')
     setWizardOpen(true)
   }
 
@@ -530,7 +536,9 @@ export function AbonnementsPage() {
 
   const canGoStep2 = !!wizPlanId
   const canGoStep3 = !!wizNom.trim()
-  const canSubmit = !!wizRespNom.trim() && !!wizRespEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizRespEmail)
+  const canSubmit = wizRespMode === 'direct'
+    ? !!wizRespNom.trim() && !!wizRespEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizRespEmail)
+    : !!wizRespEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizRespEmail)
 
   // ─── Submit souscription ───
   const handleSouscriptionSubmit = async () => {
@@ -548,11 +556,10 @@ export function AbonnementsPage() {
         formatMatricule: wizFormatMatricule || null,
         exempleMatricule: wizExempleMatricule || null,
         regexMatricule: wizRegexMatricule || null,
-        responsable: {
-          nom: wizRespNom,
-          email: wizRespEmail,
-          telephone: wizRespTelephone || null,
-        },
+        responsableNom: wizRespMode === 'direct' ? wizRespNom : '',
+        responsableEmail: wizRespEmail,
+        responsableTelephone: wizRespTelephone || null,
+        responsableMode: wizRespMode,
         planId: wizPlanId,
         periodeFacturation: wizPeriodeFacturation,
       }
@@ -568,7 +575,7 @@ export function AbonnementsPage() {
       }
       const data = await res.json()
 
-      if (data.responsable?.temporaryPassword) {
+      if (wizRespMode === 'direct' && data.responsable?.temporaryPassword) {
         setWizardCredentials({
           etablissementNom: wizNom,
           responsableNom: wizRespNom,
@@ -579,6 +586,22 @@ export function AbonnementsPage() {
           montant: wizPlanPrice,
           dateDebut: wizAbonnementDates.debut,
           dateFin: wizAbonnementDates.fin,
+          responsableMode: 'direct',
+        })
+      } else if (wizRespMode === 'invitation' && data.invitation) {
+        setWizardCredentials({
+          etablissementNom: wizNom,
+          responsableNom: '',
+          responsableEmail: wizRespEmail,
+          temporaryPassword: '',
+          planNom: wizSelectedPlan?.nom ?? data.abonnement?.planNom ?? '',
+          periode: wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel',
+          montant: wizPlanPrice,
+          dateDebut: wizAbonnementDates.debut,
+          dateFin: wizAbonnementDates.fin,
+          responsableMode: 'invitation',
+          invitationToken: data.invitation.token,
+          invitationExpiresAt: data.invitation.expiresAt,
         })
       }
 
@@ -1614,31 +1637,108 @@ export function AbonnementsPage() {
                     Responsable de l&apos;établissement
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Un compte responsable sera créé automatiquement avec un mot de passe temporaire.
+                    Choisissez comment créer le compte responsable.
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3 flex items-start gap-2">
-                  <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Le responsable recevra ses identifiants de connexion par email. Il devra changer son mot de passe lors de sa première connexion.
+                {/* Info banner */}
+                <div className={`rounded-lg border p-3 flex items-start gap-2 ${
+                  wizRespMode === 'direct'
+                    ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800'
+                    : 'border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800'
+                }`}>
+                  <Info className={`h-4 w-4 shrink-0 mt-0.5 ${
+                    wizRespMode === 'direct'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                  }`} />
+                  <p className={`text-xs ${
+                    wizRespMode === 'direct'
+                      ? 'text-amber-700 dark:text-amber-300'
+                      : 'text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    {wizRespMode === 'direct'
+                      ? 'Un mot de passe temporaire sera généré automatiquement. Le responsable devra le changer à sa première connexion.'
+                      : 'Un lien d\'invitation valide 48h sera généré. Le responsable créera son compte en cliquant sur ce lien.'}
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="wiz-resp-nom">Nom du responsable *</Label>
-                  <Input id="wiz-resp-nom" placeholder="Ex: Jean Dupont" value={wizRespNom} onChange={(e) => setWizRespNom(e.target.value)} />
+                {/* Toggle section */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setWizRespMode('direct')}
+                    className={`relative text-left rounded-lg border-2 p-3 transition-all hover:shadow-sm ${
+                      wizRespMode === 'direct'
+                        ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 ring-2 ring-emerald-500/30'
+                        : 'border-muted bg-muted/30 hover:border-emerald-300 dark:hover:border-emerald-700'
+                    }`}
+                  >
+                    {wizRespMode === 'direct' && (
+                      <div className="absolute top-2 right-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Lock className="h-4 w-4 text-emerald-600" />
+                      <span className="text-sm font-semibold">Création directe</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      Un mot de passe temporaire sera généré. Le responsable le changera à sa première connexion.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setWizRespMode('invitation')}
+                    className={`relative text-left rounded-lg border-2 p-3 transition-all hover:shadow-sm ${
+                      wizRespMode === 'invitation'
+                        ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 ring-2 ring-emerald-500/30'
+                        : 'border-muted bg-muted/30 hover:border-emerald-300 dark:hover:border-emerald-700'
+                    }`}
+                  >
+                    {wizRespMode === 'invitation' && (
+                      <div className="absolute top-2 right-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Mail className="h-4 w-4 text-emerald-600" />
+                      <span className="text-sm font-semibold">Invitation par lien</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      Un lien d&apos;invitation sera envoyé par email. Le responsable créera son propre compte.
+                    </p>
+                  </button>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="wiz-resp-email">Email du responsable *</Label>
-                  <Input id="wiz-resp-email" type="email" placeholder="responsable@etablissement.fr" value={wizRespEmail} onChange={(e) => setWizRespEmail(e.target.value)} />
-                </div>
+                {/* Conditional form fields */}
+                {wizRespMode === 'direct' ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="wiz-resp-nom">Nom du responsable *</Label>
+                      <Input id="wiz-resp-nom" placeholder="Ex: Jean Dupont" value={wizRespNom} onChange={(e) => setWizRespNom(e.target.value)} />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="wiz-resp-telephone">Téléphone (optionnel)</Label>
-                  <Input id="wiz-resp-telephone" placeholder="+225 07 12 34 56 78" value={wizRespTelephone} onChange={(e) => setWizRespTelephone(e.target.value)} />
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="wiz-resp-email">Email du responsable *</Label>
+                      <Input id="wiz-resp-email" type="email" placeholder="responsable@etablissement.fr" value={wizRespEmail} onChange={(e) => setWizRespEmail(e.target.value)} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="wiz-resp-telephone">Téléphone (optionnel)</Label>
+                      <Input id="wiz-resp-telephone" placeholder="+225 07 12 34 56 78" value={wizRespTelephone} onChange={(e) => setWizRespTelephone(e.target.value)} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="wiz-resp-email-invitation">Email du responsable *</Label>
+                    <Input id="wiz-resp-email-invitation" type="email" placeholder="responsable@etablissement.fr" value={wizRespEmail} onChange={(e) => setWizRespEmail(e.target.value)} />
+                    <p className="text-xs text-muted-foreground">
+                      Le responsable recevra un lien pour créer son compte et définir son mot de passe.
+                    </p>
+                  </div>
+                )}
 
                 {/* Summary */}
                 <Separator />
@@ -1653,8 +1753,14 @@ export function AbonnementsPage() {
                     <span className="font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
                     <span className="text-muted-foreground">Montant :</span>
                     <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizPlanPrice)}</span>
-                    <span className="text-muted-foreground">Responsable :</span>
-                    <span className="font-medium">{wizRespNom || '—'}</span>
+                    <span className="text-muted-foreground">Mode :</span>
+                    <span className="font-medium">{wizRespMode === 'direct' ? 'Création directe' : 'Invitation par lien'}</span>
+                    {wizRespMode === 'direct' && (
+                      <>
+                        <span className="text-muted-foreground">Responsable :</span>
+                        <span className="font-medium">{wizRespNom || '—'}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1668,7 +1774,8 @@ export function AbonnementsPage() {
                   <div>
                     <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Souscription créée avec succès !</p>
                     <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80">
-                      L&apos;établissement, le responsable et l&apos;abonnement ont été créés.
+                      L&apos;établissement et l&apos;abonnement ont été créés
+                      {wizardCredentials.responsableMode === 'direct' ? ', ainsi que le compte responsable' : ', et l\'invitation a été envoyée'}.
                     </p>
                   </div>
                 </div>
@@ -1684,41 +1791,118 @@ export function AbonnementsPage() {
                   </div>
                 </div>
 
-                {/* Responsable & Credentials */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <Lock className="h-4 w-4 text-emerald-600" />
-                    Identifiants de connexion
-                  </h4>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">Nom :</span>
-                      <span className="text-sm font-medium">{wizardCredentials.responsableNom}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">Email :</span>
-                      <div className="flex items-center gap-1.5">
-                        <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
-                          {wizardCredentials.responsableEmail}
-                        </code>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'email')}>
-                          {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                        </Button>
+                {/* Responsable & Credentials / Invitation */}
+                {wizardCredentials.responsableMode === 'direct' ? (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-emerald-600" />
+                      Identifiants de connexion
+                    </h4>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">Nom :</span>
+                        <span className="text-sm font-medium">{wizardCredentials.responsableNom}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">Email :</span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                            {wizardCredentials.responsableEmail}
+                          </code>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'email')}>
+                            {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">Mot de passe :</span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                            {wizardCredentials.temporaryPassword}
+                          </code>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.temporaryPassword, 'password')}>
+                            {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">Mot de passe :</span>
-                      <div className="flex items-center gap-1.5">
-                        <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
-                          {wizardCredentials.temporaryPassword}
-                        </code>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.temporaryPassword, 'password')}>
-                          {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                        </Button>
-                      </div>
+
+                    {/* Disclaimer */}
+                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
+                      <p className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                        Ce mot de passe est temporaire. Le responsable devra le modifier lors de sa première connexion.
+                      </p>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-emerald-600" />
+                      Invitation envoyée
+                    </h4>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">Email :</span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                            {wizardCredentials.responsableEmail}
+                          </code>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'inv-email')}>
+                            {wizardCopiedField === 'inv-email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <span className="text-xs text-muted-foreground">Lien d&apos;invitation :</span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-1 border break-all flex-1">
+                            {typeof window !== 'undefined' && wizardCredentials.invitationToken
+                              ? `${window.location.origin}/?token=${wizardCredentials.invitationToken}`
+                              : ''}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 shrink-0"
+                            onClick={() => {
+                              if (wizardCredentials.invitationToken) {
+                                handleWizardCopy(
+                                  `${window.location.origin}/?token=${wizardCredentials.invitationToken}`,
+                                  'inv-link'
+                                )
+                              }
+                            }}
+                          >
+                            {wizardCopiedField === 'inv-link' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">Expire le :</span>
+                        <span className="text-xs font-medium">
+                          {wizardCredentials.invitationExpiresAt
+                            ? new Date(wizardCredentials.invitationExpiresAt).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: 'long',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Disclaimer */}
+                    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3">
+                      <p className="text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                        Ce lien d&apos;invitation est valide 48 heures. Le responsable créera son propre mot de passe en l&apos;utilisant.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Abonnement */}
                 <div className="space-y-2">
@@ -1748,14 +1932,6 @@ export function AbonnementsPage() {
                       <span className="text-xs font-medium">{wizardCredentials.dateFin}</span>
                     </div>
                   </div>
-                </div>
-
-                {/* Disclaimer */}
-                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
-                  <p className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                    <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                    Ce mot de passe est temporaire. Le responsable devra le modifier lors de sa première connexion.
-                  </p>
                 </div>
               </div>
             )}

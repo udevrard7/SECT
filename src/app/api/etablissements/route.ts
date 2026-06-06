@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
       actif, formatMatricule, exempleMatricule, regexMatricule,
       // Responsable info
       responsableNom, responsableEmail, responsableTelephone,
+      responsableMode = 'direct',
       // Abonnement info
       planId, periodeFacturation,
     } = body
@@ -125,12 +126,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ─── Responsable fields are REQUIRED for creation ───
-    if (!responsableNom || !responsableEmail) {
+    // ─── Validate responsableMode ───
+    if (responsableMode !== 'direct' && responsableMode !== 'invitation') {
       return NextResponse.json(
-        { error: 'Les informations du responsable (nom et email) sont obligatoires.' },
+        { error: 'Le mode de création du responsable doit être "direct" ou "invitation".' },
         { status: 400 }
       )
+    }
+
+    // ─── Mode-specific validation ───
+    if (responsableMode === 'direct') {
+      if (!responsableNom || !responsableEmail) {
+        return NextResponse.json(
+          { error: 'Les informations du responsable (nom et email) sont obligatoires en mode direct.' },
+          { status: 400 }
+        )
+      }
+    } else {
+      // invitation mode
+      if (!responsableEmail) {
+        return NextResponse.json(
+          { error: 'L\'email du responsable est obligatoire en mode invitation.' },
+          { status: 400 }
+        )
+      }
     }
 
     // Validate email format for responsable
@@ -180,73 +199,152 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // ─── Auto-create Responsable (ADMIN is the ONLY one who can do this) ───
+    // ─── Create Responsable or Invitation based on mode ───
     let responsable: { id: string; name: string; email: string; temporaryPassword: string } | null = null
+    let invitation: { id: string; token: string; email: string; expiresAt: Date } | null = null
 
-    // Check if a responsable already exists for this etablissement
-    const existingResp = await db.user.findFirst({
-      where: { etablissementId: etablissement.id, role: 'RESPONSABLE' },
-    })
+    if (responsableMode === 'direct') {
+      // ─── DIRECT MODE: Create responsable with auto-generated password ───
 
-    if (existingResp) {
-      // A responsable already exists for this etablissement — link them
-      responsable = { id: existingResp.id, name: existingResp.name, email: existingResp.email, temporaryPassword: '' }
-    } else {
-      // Check if the email is already used by another user (but NOT an ADMIN)
-      const existingUser = await db.user.findUnique({ where: { email: responsableEmail } })
-      if (existingUser) {
-        // SECURITY: Do NOT allow role change on existing users (prevents admin takeover)
-        if (existingUser.role === 'ADMIN') {
+      // Check if a responsable already exists for this etablissement
+      const existingResp = await db.user.findFirst({
+        where: { etablissementId: etablissement.id, role: 'RESPONSABLE' },
+      })
+
+      if (existingResp) {
+        // A responsable already exists for this etablissement — link them
+        responsable = { id: existingResp.id, name: existingResp.name, email: existingResp.email, temporaryPassword: '' }
+      } else {
+        // Check if the email is already used by another user (but NOT an ADMIN)
+        const existingUser = await db.user.findUnique({ where: { email: responsableEmail } })
+        if (existingUser) {
+          // SECURITY: Do NOT allow role change on existing users (prevents admin takeover)
+          if (existingUser.role === 'ADMIN') {
+            return NextResponse.json(
+              { error: 'Cet email appartient à un administrateur. Impossible de le réassigner.' },
+              { status: 409 }
+            )
+          }
+          // If the user has another role, reject to avoid confusion
           return NextResponse.json(
-            { error: 'Cet email appartient à un administrateur. Impossible de le réassigner.' },
+            { error: `Cet email est déjà utilisé par un ${existingUser.role.toLowerCase()}. Utilisez un autre email.` },
             { status: 409 }
           )
         }
-        // If the user has another role, reject to avoid confusion
+
+        // Generate a SECURE temporary password using crypto.randomInt
+        const temporaryPassword = generateTempPassword()
+        const hashedPassword = await bcrypt.hash(temporaryPassword, 10)
+
+        const newResponsable = await db.user.create({
+          data: {
+            name: responsableNom,
+            email: responsableEmail,
+            password: hashedPassword,
+            role: 'RESPONSABLE',
+            etablissementId: etablissement.id,
+            actif: true,
+            mustChangePwd: true,
+            telephone: responsableTelephone || null,
+          },
+        })
+
+        responsable = {
+          id: newResponsable.id,
+          name: newResponsable.name,
+          email: newResponsable.email,
+          temporaryPassword,
+        }
+
+        // Audit (without password in logs)
+        await db.auditLog.create({
+          data: {
+            userId: auth.id,
+            userEmail: auth.email,
+            action: 'CREATE_RESPONSABLE_AUTO',
+            entite: 'User',
+            entiteId: newResponsable.id,
+            details: JSON.stringify({
+              name: responsableNom,
+              email: responsableEmail,
+              role: 'RESPONSABLE',
+              etablissementId: etablissement.id,
+              etablissementNom: etablissement.nom,
+              createdByAdmin: true,
+              mode: 'direct',
+            }),
+          },
+        })
+      }
+    } else {
+      // ─── INVITATION MODE: Create an invitation instead of a responsable ───
+
+      // Check if the email is already used by another user
+      const existingUser = await db.user.findUnique({ where: { email: responsableEmail } })
+      if (existingUser) {
+        if (existingUser.role === 'ADMIN') {
+          return NextResponse.json(
+            { error: 'Cet email appartient à un administrateur. Impossible de créer une invitation.' },
+            { status: 409 }
+          )
+        }
         return NextResponse.json(
           { error: `Cet email est déjà utilisé par un ${existingUser.role.toLowerCase()}. Utilisez un autre email.` },
           { status: 409 }
         )
       }
 
-      // Generate a SECURE temporary password using crypto.randomInt
-      const temporaryPassword = generateTempPassword()
-      const hashedPassword = await bcrypt.hash(temporaryPassword, 10)
-
-      const newResponsable = await db.user.create({
-        data: {
-          name: responsableNom,
+      // Check that no active invitation exists for that email
+      const existingInvitation = await db.invitation.findFirst({
+        where: {
           email: responsableEmail,
-          password: hashedPassword,
+          used: false,
+          expiresAt: { gt: new Date() },
+        },
+      })
+      if (existingInvitation) {
+        return NextResponse.json(
+          { error: 'Une invitation active existe déjà pour cet email.' },
+          { status: 409 }
+        )
+      }
+
+      const token = crypto.randomUUID()
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000) // 48 hours
+
+      const newInvitation = await db.invitation.create({
+        data: {
+          token,
+          email: responsableEmail,
           role: 'RESPONSABLE',
+          name: responsableNom || null,
           etablissementId: etablissement.id,
-          actif: true,
-          mustChangePwd: true,
+          expiresAt,
+          createdById: auth.id,
         },
       })
 
-      responsable = {
-        id: newResponsable.id,
-        name: newResponsable.name,
-        email: newResponsable.email,
-        temporaryPassword,
+      invitation = {
+        id: newInvitation.id,
+        token: newInvitation.token,
+        email: newInvitation.email,
+        expiresAt: newInvitation.expiresAt,
       }
 
-      // Audit (without password in logs)
+      // Audit
       await db.auditLog.create({
         data: {
           userId: auth.id,
           userEmail: auth.email,
-          action: 'CREATE_RESPONSABLE_AUTO',
-          entite: 'User',
-          entiteId: newResponsable.id,
+          action: 'CREATE_INVITATION',
+          entite: 'Invitation',
+          entiteId: newInvitation.id,
           details: JSON.stringify({
-            name: responsableNom,
             email: responsableEmail,
             role: 'RESPONSABLE',
             etablissementId: etablissement.id,
             etablissementNom: etablissement.nom,
-            createdByAdmin: true,
+            mode: 'invitation',
           }),
         },
       })
@@ -313,7 +411,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       etablissement,
       responsable,
+      invitation,
       abonnement,
+      responsableMode,
     }, { status: 201 })
   } catch (error) {
     console.error('Error creating etablissement:', error)
