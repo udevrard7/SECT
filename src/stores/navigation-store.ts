@@ -120,7 +120,7 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     icon: 'Building2',
     defaultOpen: true,
     items: [
-      { id: 'etablissements', label: 'Établissements', icon: 'Building2' },
+      { id: 'etablissements', label: 'Établissements (consultation)', icon: 'Building2' },
       { id: 'utilisateurs', label: 'Responsables', icon: 'UserCheck' },
     ],
   },
@@ -130,7 +130,7 @@ const ADMIN_CATEGORIES: NavCategory[] = [
     icon: 'CreditCard',
     defaultOpen: true,
     items: [
-      { id: 'abonnements', label: 'Plans & abonnements', icon: 'CreditCard' },
+      { id: 'abonnements', label: 'Souscriptions & Plans', icon: 'CreditCard' },
       { id: 'facturation', label: 'Facturation & Revenus', icon: 'Receipt' },
     ],
   },

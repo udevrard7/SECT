@@ -3,11 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Building2,
-  Plus,
   Search,
   Filter,
   Edit3,
-  Trash2,
   Eye,
   Power,
   PowerOff,
@@ -20,20 +18,16 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
-  X,
   IdCard,
   Info,
-  UserPlus,
-  Copy,
-  CheckCircle2,
   CreditCard,
-  Calendar,
   UserCheck,
-  ShieldCheck,
   Lock,
+  ArrowRight,
 } from 'lucide-react'
 import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useNavigationStore } from '@/stores/navigation-store'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -83,6 +77,9 @@ interface EtablissementItem {
   siteWeb: string | null
   actif: boolean
   createdAt: string
+  formatMatricule?: string | null
+  exempleMatricule?: string | null
+  regexMatricule?: string | null
   _count: { filieres: number; users: number }
   adminHasAccess?: boolean
   responsable?: {
@@ -155,6 +152,8 @@ function getRoleBadge(role: string) {
 // ─── Main Component ───
 
 export function EtablissementsPage() {
+  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+
   // ─── Data state ───
   const [etablissements, setEtablissements] = useState<EtablissementItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -164,7 +163,7 @@ export function EtablissementsPage() {
   const [typeFilter, setTypeFilter] = useState('all')
 
   // ─── Dialog state ───
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingEtab, setEditingEtab] = useState<EtablissementItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<EtablissementItem | null>(null)
@@ -187,39 +186,6 @@ export function EtablissementsPage() {
   const [formFormatMatricule, setFormFormatMatricule] = useState('')
   const [formExempleMatricule, setFormExempleMatricule] = useState('')
   const [formRegexMatricule, setFormRegexMatricule] = useState('')
-
-  // ─── Responsable auto-creation fields (create only) ───
-  const [formRespNom, setFormRespNom] = useState('')
-  const [formRespEmail, setFormRespEmail] = useState('')
-  const [formRespTelephone, setFormRespTelephone] = useState('')
-
-  // ─── Plan / Abonnement fields (create only) ───
-  const [formPlanId, setFormPlanId] = useState('')
-  const [formPeriodeFacturation, setFormPeriodeFacturation] = useState<'mensuel' | 'annuel'>('mensuel')
-  const [plans, setPlans] = useState<Array<{ id: string; nom: string; prixMensuel: number; prixAnnuel: number; description: string | null; nbMaxEtudiants: number | null; nbMaxEnseignants: number | null }>>([])
-
-  // ─── Credentials after creation ───
-  const [createdCredentials, setCreatedCredentials] = useState<{
-    etablissementNom: string
-    responsableNom: string
-    responsableEmail: string
-    temporaryPassword: string
-    planNom: string
-    periode: string
-    montant: number
-    dateDebut: string
-    dateFin: string
-  } | null>(null)
-  const [copiedField, setCopiedField] = useState<string | null>(null)
-
-  const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedField(field)
-      setTimeout(() => setCopiedField(null), 2000)
-    }).catch(() => {
-      // Fallback: ignore
-    })
-  }
 
   // ─── Fetch etablissements ───
   const fetchEtablissements = useCallback(async () => {
@@ -245,84 +211,13 @@ export function EtablissementsPage() {
     fetchEtablissements()
   }, [fetchEtablissements])
 
-  // ─── Fetch plans ───
-  const fetchPlans = useCallback(async () => {
-    try {
-      const res = await fetch('/api/plans', { headers: getAuthHeaders() })
-      if (res.ok) {
-        const data = await res.json()
-        setPlans(data.plans ?? [])
-      }
-    } catch {
-      // Silent
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchPlans()
-  }, [fetchPlans])
-
-  // ─── Selected plan helper ───
-  const selectedPlan = plans.find((p) => p.id === formPlanId)
-  const planPrice = selectedPlan
-    ? formPeriodeFacturation === 'annuel'
-      ? selectedPlan.prixAnnuel
-      : selectedPlan.prixMensuel
-    : 0
-  const planLabel = formPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'
-
-  function formatFCFA(amount: number): string {
-    return new Intl.NumberFormat('fr-FR').format(amount) + ' FCFA'
-  }
-
-  function getAbonnementDates(): { debut: string; fin: string } {
-    const today = new Date()
-    const debut = today.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-    const finDate = new Date(today)
-    if (formPeriodeFacturation === 'annuel') {
-      finDate.setFullYear(finDate.getFullYear() + 1)
-    } else {
-      finDate.setMonth(finDate.getMonth() + 1)
-    }
-    const fin = finDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-    return { debut, fin }
-  }
-
-  const abonnementDates = getAbonnementDates()
-
   // ─── Stats ───
   const totalEtab = etablissements.length
   const actifCount = etablissements.filter((e) => e.actif).length
   const types = [...new Set(etablissements.map((e) => e.type).filter(Boolean))]
 
-  // ─── Open create dialog ───
-  const handleOpenCreate = () => {
-    setEditingEtab(null)
-    setFormNom('')
-    setFormType('')
-    setFormVille('')
-    setFormPays("Côte d'Ivoire")
-    setFormAdresse('')
-    setFormTelephone('')
-    setFormEmail('')
-    setFormSiteWeb('')
-    setFormFormatMatricule('')
-    setFormExempleMatricule('')
-    setFormRegexMatricule('')
-    // Reset responsable fields
-    setFormRespNom('')
-    setFormRespEmail('')
-    setFormRespTelephone('')
-    // Reset plan fields
-    setFormPlanId('')
-    setFormPeriodeFacturation('mensuel')
-    // Reset credentials
-    setCreatedCredentials(null)
-    setCreateDialogOpen(true)
-  }
-
   // ─── Open edit dialog ───
-  const handleOpenEdit = (etab: EtablissementItem & { formatMatricule?: string | null; exempleMatricule?: string | null; regexMatricule?: string | null }) => {
+  const handleOpenEdit = (etab: EtablissementItem) => {
     setEditingEtab(etab)
     setFormNom(etab.nom)
     setFormType(etab.type ?? '')
@@ -335,40 +230,20 @@ export function EtablissementsPage() {
     setFormFormatMatricule(etab.formatMatricule ?? '')
     setFormExempleMatricule(etab.exempleMatricule ?? '')
     setFormRegexMatricule(etab.regexMatricule ?? '')
-    setCreateDialogOpen(true)
+    setEditDialogOpen(true)
   }
 
-  // ─── Submit create/edit ───
+  // ─── Submit edit ───
   const handleSubmit = async () => {
     if (!formNom) {
       toast.error('Nom manquant', { description: 'Le nom de l\'établissement est obligatoire.' })
       return
     }
-
-    // Additional validation for create mode
-    if (!editingEtab) {
-      if (!formRespNom) {
-        toast.error('Responsable manquant', { description: 'Le nom du responsable est obligatoire.' })
-        return
-      }
-      if (!formRespEmail) {
-        toast.error('Email du responsable manquant', { description: 'L\'email du responsable est obligatoire.' })
-        return
-      }
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(formRespEmail)) {
-        toast.error('Email invalide', { description: 'L\'adresse email du responsable n\'est pas valide.' })
-        return
-      }
-      if (!formPlanId) {
-        toast.error('Plan manquant', { description: 'Veuillez sélectionner un plan d\'abonnement.' })
-        return
-      }
-    }
+    if (!editingEtab) return
 
     setIsSubmitting(true)
     try {
-      const body: Record<string, unknown> = {
+      const body = {
         nom: formNom,
         type: formType || null,
         ville: formVille || null,
@@ -382,60 +257,18 @@ export function EtablissementsPage() {
         regexMatricule: formRegexMatricule || null,
       }
 
-      if (editingEtab) {
-        const res = await fetch(`/api/etablissements/${editingEtab.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || 'Erreur lors de la modification')
-        }
-        toast.success('Établissement modifié', { description: `${formNom} a été mis à jour.` })
-        setCreateDialogOpen(false)
-        await fetchEtablissements()
-      } else {
-        // Create mode: include responsable and plan info
-        body.responsable = {
-          nom: formRespNom,
-          email: formRespEmail,
-          telephone: formRespTelephone || null,
-        }
-        body.planId = formPlanId
-        body.periodeFacturation = formPeriodeFacturation
-
-        const res = await fetch('/api/etablissements', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || 'Erreur lors de la création')
-        }
-        const data = await res.json()
-
-        // Check if API returned credentials
-        if (data.responsable?.temporaryPassword) {
-          setCreatedCredentials({
-            etablissementNom: formNom,
-            responsableNom: formRespNom,
-            responsableEmail: formRespEmail,
-            temporaryPassword: data.responsable.temporaryPassword,
-            planNom: selectedPlan?.nom ?? data.abonnement?.planNom ?? '',
-            periode: planLabel,
-            montant: planPrice,
-            dateDebut: abonnementDates.debut,
-            dateFin: abonnementDates.fin,
-          })
-          setCreateDialogOpen(false)
-        } else {
-          toast.success('Établissement créé', { description: `${formNom} a été ajouté.` })
-          setCreateDialogOpen(false)
-        }
-        await fetchEtablissements()
+      const res = await fetch(`/api/etablissements/${editingEtab.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la modification')
       }
+      toast.success('Établissement modifié', { description: `${formNom} a été mis à jour.` })
+      setEditDialogOpen(false)
+      await fetchEtablissements()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -504,12 +337,13 @@ export function EtablissementsPage() {
             Gestion des Établissements
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Administrer les établissements partenaires
+            Consulter et administrer les établissements partenaires
           </p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4" />
-          Nouvel établissement
+        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setCurrentPage('abonnements')}>
+          <CreditCard className="h-4 w-4" />
+          Nouvelle souscription
+          <ArrowRight className="h-3.5 w-3.5 ml-1" />
         </Button>
       </div>
 
@@ -614,12 +448,13 @@ export function EtablissementsPage() {
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || typeFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres.'
-              : 'Commencez par créer votre premier établissement.'}
+              : 'Aucun établissement enregistré. Créez-en un via la page Abonnements.'}
           </p>
           {!search && typeFilter === 'all' && (
-            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
-              <Plus className="h-4 w-4" />
-              Créer un établissement
+            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={() => setCurrentPage('abonnements')}>
+              <CreditCard className="h-4 w-4" />
+              Nouvelle souscription
+              <ArrowRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           )}
         </div>
@@ -753,18 +588,18 @@ export function EtablissementsPage() {
         </div>
       )}
 
-      {/* ─── Create/Edit Etablissement Dialog ─── */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => {
-        if (!open) setCreateDialogOpen(false)
+      {/* ─── Edit Etablissement Dialog ─── */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        if (!open) setEditDialogOpen(false)
       }}>
-        <DialogContent className={editingEtab ? 'sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col' : 'sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col'}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-emerald-600" />
-              {editingEtab ? 'Modifier l\'établissement' : 'Nouvel établissement'}
+              Modifier l&apos;établissement
             </DialogTitle>
             <DialogDescription>
-              {editingEtab ? 'Modifiez les informations de l\'établissement.' : 'Remplissez les informations pour créer un nouvel établissement.'}
+              Modifiez les informations de l&apos;établissement.
             </DialogDescription>
           </DialogHeader>
 
@@ -921,133 +756,10 @@ export function EtablissementsPage() {
                 </p>
               )}
             </div>
-
-            {/* ─── Responsable auto-creation (create mode only) ─── */}
-            {!editingEtab && (
-              <>
-                <Separator />
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
-                    <UserPlus className="h-4 w-4" />
-                    Responsable de l'établissement
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Un compte responsable sera créé automatiquement avec l'établissement.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="resp-nom" className="text-xs">Nom du responsable *</Label>
-                      <Input
-                        id="resp-nom"
-                        placeholder="Ex: Jean Dupont"
-                        value={formRespNom}
-                        onChange={(e) => setFormRespNom(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="resp-email" className="text-xs">Email du responsable *</Label>
-                      <Input
-                        id="resp-email"
-                        type="email"
-                        placeholder="responsable@etablissement.fr"
-                        value={formRespEmail}
-                        onChange={(e) => setFormRespEmail(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="resp-telephone" className="text-xs">Téléphone (optionnel)</Label>
-                    <Input
-                      id="resp-telephone"
-                      placeholder="+225 07 12 34 56 78"
-                      value={formRespTelephone}
-                      onChange={(e) => setFormRespTelephone(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ─── Plan / Abonnement selection (create mode only) ─── */}
-            {!editingEtab && (
-              <>
-                <Separator />
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
-                    <CreditCard className="h-4 w-4" />
-                    Plan d'abonnement
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Sélectionnez le plan d'abonnement pour cet établissement.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="plan-select" className="text-xs">Plan *</Label>
-                      <Select value={formPlanId} onValueChange={setFormPlanId}>
-                        <SelectTrigger id="plan-select">
-                          <SelectValue placeholder="Sélectionner un plan" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {plans.map((plan) => (
-                            <SelectItem key={plan.id} value={plan.id}>
-                              {plan.nom} — {formatFCFA(plan.prixMensuel)}/mois
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="periode-facturation" className="text-xs">Période de facturation</Label>
-                      <Select value={formPeriodeFacturation} onValueChange={(v: string) => setFormPeriodeFacturation(v as 'mensuel' | 'annuel')}>
-                        <SelectTrigger id="periode-facturation">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="mensuel">Mensuel</SelectItem>
-                          <SelectItem value="annuel">Annuel</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Plan price & dates summary */}
-                  {selectedPlan && (
-                    <div className="rounded-md bg-white dark:bg-gray-900 border p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Plan sélectionné :</span>
-                        <span className="text-sm font-semibold">{selectedPlan.nom}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Montant ({planLabel}) :</span>
-                        <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatFCFA(planPrice)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Début :
-                        </span>
-                        <span className="text-xs font-medium">{abonnementDates.debut}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Fin :
-                        </span>
-                        <span className="text-xs font-medium">{abonnementDates.fin}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
           </div>
 
           <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Annuler
             </Button>
             <Button
@@ -1056,7 +768,7 @@ export function EtablissementsPage() {
               disabled={isSubmitting}
             >
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingEtab ? 'Enregistrer' : 'Créer'}
+              Enregistrer
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1083,158 +795,6 @@ export function EtablissementsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* ─── Success / Credentials Dialog ─── */}
-      <Dialog open={!!createdCredentials} onOpenChange={(open) => {
-        if (!open) setCreatedCredentials(null)
-      }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-emerald-700">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              Établissement créé avec succès
-            </DialogTitle>
-            <DialogDescription>
-              Voici les informations de connexion du responsable.
-            </DialogDescription>
-          </DialogHeader>
-
-          {createdCredentials && (
-            <div className="space-y-4">
-              {/* Établissement info */}
-              <Card className="border-emerald-200 bg-emerald-50/50">
-                <CardContent className="p-4">
-                  <p className="text-sm font-semibold">{createdCredentials.etablissementNom}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Établissement créé avec succès</p>
-                </CardContent>
-              </Card>
-
-              {/* Responsable info */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-emerald-600" />
-                  Responsable
-                </h4>
-                <div className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Nom :</span>
-                    <span className="text-sm font-medium">{createdCredentials.responsableNom}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Email :</span>
-                    <span className="text-sm font-medium">{createdCredentials.responsableEmail}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Identifiants de connexion */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <IdCard className="h-4 w-4 text-emerald-600" />
-                  Identifiants de connexion
-                </h4>
-                <div className="rounded-lg border bg-amber-50/50 border-amber-200 p-3 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Email :</span>
-                    <div className="flex items-center gap-1.5">
-                      <code className="text-sm font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border text-xs">
-                        {createdCredentials.responsableEmail}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => copyToClipboard(createdCredentials.responsableEmail, 'email')}
-                      >
-                        {copiedField === 'email' ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Mot de passe temporaire :</span>
-                    <div className="flex items-center gap-1.5">
-                      <code className="text-sm font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border text-xs">
-                        {createdCredentials.temporaryPassword}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => copyToClipboard(createdCredentials.temporaryPassword, 'password')}
-                      >
-                        {copiedField === 'password' ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Abonnement summary */}
-              {createdCredentials.planNom && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <CreditCard className="h-4 w-4 text-emerald-600" />
-                    Abonnement
-                  </h4>
-                  <div className="rounded-lg border p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Plan :</span>
-                      <span className="text-sm font-medium">{createdCredentials.planNom}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Période :</span>
-                      <span className="text-sm font-medium">{createdCredentials.periode}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Montant :</span>
-                      <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatFCFA(createdCredentials.montant)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Début :
-                      </span>
-                      <span className="text-xs font-medium">{createdCredentials.dateDebut}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Fin :
-                      </span>
-                      <span className="text-xs font-medium">{createdCredentials.dateFin}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Disclaimer */}
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
-                <p className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                  <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                  Ce mot de passe est temporaire. Le responsable devra le modifier lors de sa première connexion.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => setCreatedCredentials(null)}
-            >
-              Fermer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ─── Detail View Dialog ─── */}
       <Dialog open={detailOpen} onOpenChange={(open) => {
