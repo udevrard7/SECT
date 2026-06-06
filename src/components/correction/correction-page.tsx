@@ -202,9 +202,11 @@ export function CorrectionPage() {
           (e) => ['EN_COURS', 'TERMINEE', 'CLOTUREE'].includes(e.statut)
         )
         setEpreuves(filtered)
+      } else {
+        console.error('[correction] Failed to fetch epreuves:', res.status, await res.text().catch(() => ''))
       }
-    } catch {
-      // Silent
+    } catch (err) {
+      console.error('[correction] Error fetching epreuves:', err)
     } finally {
       setIsLoadingEpreuves(false)
     }
@@ -227,9 +229,18 @@ export function CorrectionPage() {
         const data = await res.json()
         setSessions(data.sessions ?? [])
       } else {
+        const errorText = await res.text().catch(() => '')
+        console.error('[correction] Failed to fetch sessions:', res.status, errorText)
+        toast.error('Erreur de chargement', {
+          description: `Impossible de charger les copies (erreur ${res.status}).`,
+        })
         setSessions([])
       }
-    } catch {
+    } catch (err) {
+      console.error('[correction] Error fetching sessions:', err)
+      toast.error('Erreur réseau', {
+        description: 'Impossible de contacter le serveur pour charger les copies.',
+      })
       setSessions([])
     } finally {
       setIsLoadingSessions(false)

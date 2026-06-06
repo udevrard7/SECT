@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+/** Safe JSON.parse that returns fallback instead of throwing */
+function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    console.warn('[correction] Failed to parse JSON:', value?.slice(0, 80))
+    return fallback
+  }
+}
+
 // Get sessions needing correction for a teacher
 export async function GET(request: NextRequest) {
   try {
@@ -13,8 +24,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Find all submitted sessions for this teacher's exams
+    // IMPORTANT: Must include deletedAt: null on epreuve relation to match
+    // the epreuves list filter (which uses deletedAt: null). Without this,
+    // sessions for soft-deleted epreuves could appear.
     const where: Record<string, unknown> = {
-      epreuve: { enseignantId },
+      epreuve: { enseignantId, deletedAt: null },
       statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'] },
     }
     if (epreuveId) where.epreuveId = epreuveId
@@ -90,8 +104,8 @@ export async function GET(request: NextRequest) {
             id: eq.question.id,
             type: eq.question.type,
             enonce: eq.question.enonce,
-            propositions: eq.question.propositions ? JSON.parse(eq.question.propositions) : null,
-            reponseCorrecte: eq.question.reponseCorrecte ? JSON.parse(eq.question.reponseCorrecte) : null,
+            propositions: safeJsonParse<string[] | null>(eq.question.propositions, null),
+            reponseCorrecte: safeJsonParse<string | string[] | null>(eq.question.reponseCorrecte, null),
             explication: eq.question.explication || null,
             difficulte: eq.question.difficulte || 'MOYEN',
           },
@@ -146,7 +160,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...session,
-        logEvents: session.logEvents ? JSON.parse(session.logEvents) : null,
+        logEvents: safeJsonParse(session.logEvents, null),
         reponses,
         epreuve: {
           ...session.epreuve,
@@ -154,8 +168,8 @@ export async function GET(request: NextRequest) {
         },
         resultat: session.resultat ? {
           ...session.resultat,
-          detailParQuestion: session.resultat.detailParQuestion ? JSON.parse(session.resultat.detailParQuestion) : null,
-          commentaires: session.resultat.commentaires ? JSON.parse(session.resultat.commentaires) : null,
+          detailParQuestion: safeJsonParse(session.resultat.detailParQuestion, null),
+          commentaires: safeJsonParse(session.resultat.commentaires, null),
         } : null,
         needsCorrectionCount: needsCorrection.length,
         allCorrected,
