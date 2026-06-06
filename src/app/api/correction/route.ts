@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
                 ? q.propositions.map((p: unknown) => typeof p === 'object' && p !== null ? String((p as Record<string, unknown>).text || (p as Record<string, unknown>).id || '') : String(p))
                 : null)
               : null
-            let reponseCorrecte = null
+            let reponseCorrecte: string | string[] | null = null
             if (q.reponseCorrecte) {
               reponseCorrecte = q.reponseCorrecte
               // Normalize: if it's a string like "A", keep as-is; if array, keep as array

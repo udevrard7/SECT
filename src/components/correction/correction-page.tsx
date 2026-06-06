@@ -80,7 +80,6 @@ interface CorrectionSession {
     noteIA: number | null
     justificationIA: string | null
     commentaire: string | null
-    question: { id: string; type: string; enonce: string }
   }>
   resultat: {
     id: string
@@ -497,8 +496,8 @@ export function CorrectionPage() {
   const renderAutoGradedAnswer = () => {
     if (!currentQuestion || !currentReponse) return null
     const q = currentQuestion.question
-    const propositions = parseJsonSafe<string[]>(q.propositions as string | null, [])
-    const correctAnswer = parseJsonSafe<string | string[]>(q.reponseCorrecte as string | null, '')
+    const propositions = Array.isArray(q.propositions) ? q.propositions : (typeof q.propositions === 'string' ? parseJsonSafe<string[]>(q.propositions, []) : null)
+    const correctAnswer = q.reponseCorrecte ?? null
     const studentAnswer = currentReponse.contenu
 
     const correctLetters = Array.isArray(correctAnswer)
@@ -521,7 +520,7 @@ export function CorrectionPage() {
       <div className="space-y-3">
         {/* Propositions review */}
         <div className="space-y-2">
-          {propositions.map((prop, idx) => {
+          {(propositions ?? []).map((prop, idx) => {
             const letter = String.fromCharCode(65 + idx)
             const isCorrectOption = correctLetters.includes(letter)
             const isStudentOption = studentLetters.includes(letter)
@@ -624,7 +623,7 @@ export function CorrectionPage() {
   const renderQRCCorrection = () => {
     if (!currentQuestion) return null
     const q = currentQuestion.question
-    const expectedAnswer = parseJsonSafe<string>(q.reponseCorrecte as string | null, '')
+    const expectedAnswer = typeof q.reponseCorrecte === 'string' ? q.reponseCorrecte : (q.reponseCorrecte ? String(q.reponseCorrecte) : '')
 
     return (
       <div className="space-y-4">
@@ -749,7 +748,7 @@ export function CorrectionPage() {
   const renderTRSCorrection = () => {
     if (!currentQuestion) return null
     const q = currentQuestion.question
-    const grilleCorrection = parseJsonSafe<string>(q.reponseCorrecte as string | null, '')
+    const grilleCorrection = typeof q.reponseCorrecte === 'string' ? q.reponseCorrecte : (q.reponseCorrecte ? String(q.reponseCorrecte) : '')
 
     return (
       <div className="space-y-4">

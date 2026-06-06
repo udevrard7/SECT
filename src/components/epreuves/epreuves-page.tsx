@@ -1334,8 +1334,12 @@ function SessionsTab() {
       {!isLoading && filteredEpreuves.length > 0 && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {filteredEpreuves.map((epreuve) => {
-            const questionCount = epreuve.questions.length
-            const pts = epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+            const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
+            const contenuQuestions = contenuData?.questions ?? []
+            const questionCount = epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
+            const pts = epreuve.questions.length > 0
+              ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+              : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
             const sessionCount = epreuve.sessions.length
             const completedSessions = epreuve.sessions.filter((s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE').length
             const completionRate = sessionCount > 0 ? Math.round((completedSessions / sessionCount) * 100) : 0

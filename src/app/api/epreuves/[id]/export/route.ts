@@ -31,11 +31,7 @@ export async function GET(
         sessions: {
           include: {
             etudiant: { select: { id: true, name: true, email: true, filiere: { select: { id: true, nom: true } } } },
-            reponses: {
-              include: {
-                question: { select: { id: true, type: true, enonce: true } },
-              },
-            },
+            reponses: true,
             resultat: true,
           },
         },
@@ -55,7 +51,7 @@ export async function GET(
         duree: epreuve.duree,
         dateDebut: epreuve.dateDebut,
         dateFin: epreuve.dateFin,
-        enseignant: epreuve.enseignant.name,
+        enseignant: epreuve.enseignant?.name || '',
       },
       questions: epreuve.questions.map((eq, index) => ({
         numero: index + 1,
@@ -76,7 +72,6 @@ export async function GET(
         alertes: session.alertes,
         reponses: session.reponses.map((r) => ({
           questionId: r.questionId,
-          type: r.question.type,
           contenu: r.contenu,
           score: r.score,
           noteIA: r.noteIA,
