@@ -23,14 +23,25 @@ import {
   Check,
   X,
   ChevronDown,
+  ChevronUp,
   UserPlus,
   Mail,
   Zap,
   AlertTriangle,
   Copy,
+  Building2,
+  MapPin,
+  Phone,
+  Globe,
+  IdCard,
+  Info,
+  Calendar,
+  ArrowLeft,
+  ArrowRight,
+  Lock,
 } from 'lucide-react'
 import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -144,6 +155,18 @@ interface ResponsableInfo {
   actif: boolean
 }
 
+interface SouscriptionCredentials {
+  etablissementNom: string
+  responsableNom: string
+  responsableEmail: string
+  temporaryPassword: string
+  planNom: string
+  periode: string
+  montant: number
+  dateDebut: string
+  dateFin: string
+}
+
 // ─── Utility functions ───
 
 function getStatutBadge(statut: string) {
@@ -193,6 +216,7 @@ function getPlanColor(type: string) {
         accent: 'text-gray-700 dark:text-gray-300',
         badge: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
         icon: 'text-gray-500 dark:text-gray-400',
+        ring: 'ring-gray-300 dark:ring-gray-700',
       }
     case 'ESSENTIEL':
       return {
@@ -202,6 +226,7 @@ function getPlanColor(type: string) {
         accent: 'text-emerald-700 dark:text-emerald-300',
         badge: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300',
         icon: 'text-emerald-500 dark:text-emerald-400',
+        ring: 'ring-emerald-500 dark:ring-emerald-400',
       }
     case 'PROFESSIONNEL':
       return {
@@ -211,6 +236,7 @@ function getPlanColor(type: string) {
         accent: 'text-teal-700 dark:text-teal-300',
         badge: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300',
         icon: 'text-teal-500 dark:text-teal-400',
+        ring: 'ring-teal-500 dark:ring-teal-400',
       }
     case 'ENTREPRISE':
       return {
@@ -220,6 +246,7 @@ function getPlanColor(type: string) {
         accent: 'text-cyan-700 dark:text-cyan-300',
         badge: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-300',
         icon: 'text-cyan-500 dark:text-cyan-400',
+        ring: 'ring-cyan-500 dark:ring-cyan-400',
       }
     default:
       return {
@@ -229,6 +256,7 @@ function getPlanColor(type: string) {
         accent: 'text-gray-700 dark:text-gray-300',
         badge: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
         icon: 'text-gray-500 dark:text-gray-400',
+        ring: 'ring-gray-300 dark:ring-gray-700',
       }
   }
 }
@@ -248,6 +276,19 @@ function formatCurrency(amount: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount) + ' FCFA'
+}
+
+function getAbonnementDates(periode: 'mensuel' | 'annuel'): { debut: string; fin: string } {
+  const today = new Date()
+  const debut = today.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+  const finDate = new Date(today)
+  if (periode === 'annuel') {
+    finDate.setFullYear(finDate.getFullYear() + 1)
+  } else {
+    finDate.setMonth(finDate.getMonth() + 1)
+  }
+  const fin = finDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+  return { debut, fin }
 }
 
 // ─── Main Component ───
@@ -304,7 +345,7 @@ export function AbonnementsPage() {
   const [formPlanSupport, setFormPlanSupport] = useState('email')
   const [formPlanDescription, setFormPlanDescription] = useState('')
 
-  // ─── Responsable state ───
+  // ─── Responsable state (for existing abonnement dialog) ───
   const [responsablesMap, setResponsablesMap] = useState<Record<string, ResponsableInfo>>({})
   const [selectedEtabResponsable, setSelectedEtabResponsable] = useState<ResponsableInfo | null>(null)
   const [checkingResponsable, setCheckingResponsable] = useState(false)
@@ -315,6 +356,36 @@ export function AbonnementsPage() {
   const [isCreatingResp, setIsCreatingResp] = useState(false)
   const [createdTempPassword, setCreatedTempPassword] = useState<string | null>(null)
   const [respCreated, setRespCreated] = useState(false)
+
+  // ─── Souscription wizard state ───
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1)
+  const [wizardSubmitting, setWizardSubmitting] = useState(false)
+  const [wizardCredentials, setWizardCredentials] = useState<SouscriptionCredentials | null>(null)
+  const [wizardCopiedField, setWizardCopiedField] = useState<string | null>(null)
+  const [matriculeOpen, setMatriculeOpen] = useState(false)
+
+  // Wizard form - Step 1: Plan
+  const [wizPlanId, setWizPlanId] = useState('')
+  const [wizPeriodeFacturation, setWizPeriodeFacturation] = useState<'mensuel' | 'annuel'>('mensuel')
+
+  // Wizard form - Step 2: Établissement
+  const [wizNom, setWizNom] = useState('')
+  const [wizType, setWizType] = useState('')
+  const [wizVille, setWizVille] = useState('')
+  const [wizPays, setWizPays] = useState("Côte d'Ivoire")
+  const [wizTelephone, setWizTelephone] = useState('')
+  const [wizEmail, setWizEmail] = useState('')
+  const [wizSiteWeb, setWizSiteWeb] = useState('')
+  const [wizAdresse, setWizAdresse] = useState('')
+  const [wizFormatMatricule, setWizFormatMatricule] = useState('')
+  const [wizExempleMatricule, setWizExempleMatricule] = useState('')
+  const [wizRegexMatricule, setWizRegexMatricule] = useState('')
+
+  // Wizard form - Step 3: Responsable
+  const [wizRespNom, setWizRespNom] = useState('')
+  const [wizRespEmail, setWizRespEmail] = useState('')
+  const [wizRespTelephone, setWizRespTelephone] = useState('')
 
   // ─── Fetch data ───
   const fetchData = useCallback(async () => {
@@ -378,7 +449,6 @@ export function AbonnementsPage() {
       setSelectedEtabResponsable(existing)
     } else {
       setSelectedEtabResponsable(null)
-      // Also do a fresh check from API in case map is stale
       setCheckingResponsable(true)
       fetch(`/api/users?role=RESPONSABLE&etablissementId=${formAboEtabId}`)
         .then((res) => res.json())
@@ -421,7 +491,117 @@ export function AbonnementsPage() {
     return matchStatut && matchSearch
   })
 
-  // ─── Open create abonnement dialog ───
+  // ─── Open souscription wizard ───
+  const handleOpenWizard = () => {
+    setWizardStep(1)
+    setWizardCredentials(null)
+    setWizardCopiedField(null)
+    setMatriculeOpen(false)
+    // Reset step 1
+    setWizPlanId('')
+    setWizPeriodeFacturation('mensuel')
+    // Reset step 2
+    setWizNom('')
+    setWizType('')
+    setWizVille('')
+    setWizPays("Côte d'Ivoire")
+    setWizTelephone('')
+    setWizEmail('')
+    setWizSiteWeb('')
+    setWizAdresse('')
+    setWizFormatMatricule('')
+    setWizExempleMatricule('')
+    setWizRegexMatricule('')
+    // Reset step 3
+    setWizRespNom('')
+    setWizRespEmail('')
+    setWizRespTelephone('')
+    setWizardOpen(true)
+  }
+
+  // ─── Wizard step validation ───
+  const wizSelectedPlan = plans.find((p) => p.id === wizPlanId)
+  const wizPlanPrice = wizSelectedPlan
+    ? wizPeriodeFacturation === 'annuel'
+      ? (wizSelectedPlan.prixAnnuel ?? wizSelectedPlan.prixMensuel * 12)
+      : wizSelectedPlan.prixMensuel
+    : 0
+  const wizAbonnementDates = getAbonnementDates(wizPeriodeFacturation)
+
+  const canGoStep2 = !!wizPlanId
+  const canGoStep3 = !!wizNom.trim()
+  const canSubmit = !!wizRespNom.trim() && !!wizRespEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizRespEmail)
+
+  // ─── Submit souscription ───
+  const handleSouscriptionSubmit = async () => {
+    setWizardSubmitting(true)
+    try {
+      const body = {
+        nom: wizNom,
+        type: wizType || null,
+        ville: wizVille || null,
+        pays: wizPays || "Côte d'Ivoire",
+        telephone: wizTelephone || null,
+        email: wizEmail || null,
+        siteWeb: wizSiteWeb || null,
+        adresse: wizAdresse || null,
+        formatMatricule: wizFormatMatricule || null,
+        exempleMatricule: wizExempleMatricule || null,
+        regexMatricule: wizRegexMatricule || null,
+        responsable: {
+          nom: wizRespNom,
+          email: wizRespEmail,
+          telephone: wizRespTelephone || null,
+        },
+        planId: wizPlanId,
+        periodeFacturation: wizPeriodeFacturation,
+      }
+
+      const res = await fetch('/api/etablissements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la création')
+      }
+      const data = await res.json()
+
+      if (data.responsable?.temporaryPassword) {
+        setWizardCredentials({
+          etablissementNom: wizNom,
+          responsableNom: wizRespNom,
+          responsableEmail: wizRespEmail,
+          temporaryPassword: data.responsable.temporaryPassword,
+          planNom: wizSelectedPlan?.nom ?? data.abonnement?.planNom ?? '',
+          periode: wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel',
+          montant: wizPlanPrice,
+          dateDebut: wizAbonnementDates.debut,
+          dateFin: wizAbonnementDates.fin,
+        })
+      }
+
+      setWizardStep(4)
+      await fetchData()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
+    } finally {
+      setWizardSubmitting(false)
+    }
+  }
+
+  const handleWizardCopy = (text: string, field: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setWizardCopiedField(field)
+      toast.success('Copié dans le presse-papiers')
+      setTimeout(() => setWizardCopiedField(null), 2000)
+    }).catch(() => {
+      // Fallback: ignore
+    })
+  }
+
+  // ─── Open create abonnement dialog (for existing etablissements) ───
   const handleOpenCreateAbo = () => {
     setEditingAbo(null)
     setFormAboEtabId('')
@@ -432,7 +612,6 @@ export function AbonnementsPage() {
     setFormAboMontant('')
     setFormAboRenouvellement(true)
     setFormAboNotes('')
-    // Reset responsable state
     setSelectedEtabResponsable(null)
     setResponsableMode('invitation')
     setFormRespName('')
@@ -454,7 +633,6 @@ export function AbonnementsPage() {
     setFormAboMontant(abo.montantPaye ? String(abo.montantPaye) : '')
     setFormAboRenouvellement(abo.renouvellementAuto)
     setFormAboNotes(abo.notes ?? '')
-    // Reset responsable state for edit
     setSelectedEtabResponsable(responsablesMap[abo.etablissementId] ?? null)
     setResponsableMode('invitation')
     setFormRespName('')
@@ -748,7 +926,6 @@ export function AbonnementsPage() {
         email: data.user.email,
         actif: true,
       })
-      // Update the map
       setResponsablesMap((prev) => ({
         ...prev,
         [formAboEtabId]: { id: data.user.id, name: data.user.name, email: data.user.email, actif: true },
@@ -792,7 +969,7 @@ export function AbonnementsPage() {
             Gestion des Abonnements
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Gérez les plans tarifaires et les abonnements des établissements
+            Gérez les souscriptions, plans tarifaires et abonnements
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -804,9 +981,16 @@ export function AbonnementsPage() {
             <Plus className="h-4 w-4" />
             Nouveau plan
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreateAbo}>
+          <Button
+            variant="outline"
+            onClick={handleOpenCreateAbo}
+          >
             <Plus className="h-4 w-4" />
-            Nouvel abonnement
+            Ajouter abonnement
+          </Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenWizard}>
+            <Sparkles className="h-4 w-4" />
+            Nouvelle souscription
           </Button>
         </div>
       </div>
@@ -914,7 +1098,6 @@ export function AbonnementsPage() {
                     key={plan.id}
                     className={`relative transition-shadow hover:shadow-md ${colors.border} ${colors.bg}`}
                   >
-                    {/* Plan type badge */}
                     <div className={`absolute -top-0 left-1/2 -translate-x-1/2 -translate-y-1/2`}>
                       <Badge className={`${colors.badge} text-xs font-semibold`}>
                         {plan.type}
@@ -941,7 +1124,6 @@ export function AbonnementsPage() {
                     </CardHeader>
 
                     <CardContent className="p-4">
-                      {/* Features list */}
                       <ul className="space-y-2 text-sm">
                         {features.map((f, idx) => (
                           <li key={idx} className="flex items-start gap-2">
@@ -957,7 +1139,6 @@ export function AbonnementsPage() {
                         ))}
                       </ul>
 
-                      {/* Support badge */}
                       <div className="mt-3 flex items-center gap-1.5">
                         <span className="text-xs text-muted-foreground">Support :</span>
                         <Badge variant="secondary" className="text-xs">
@@ -965,7 +1146,6 @@ export function AbonnementsPage() {
                         </Badge>
                       </div>
 
-                      {/* Subscriber count */}
                       <div className="mt-2 flex items-center gap-1.5">
                         <Users className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">
@@ -994,7 +1174,6 @@ export function AbonnementsPage() {
 
         {/* ─── Abonnements Section ─── */}
         <TabsContent value="abonnements">
-          {/* Toolbar */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1021,7 +1200,6 @@ export function AbonnementsPage() {
             </Select>
           </div>
 
-          {/* Loading state */}
           {isLoading && (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -1030,7 +1208,6 @@ export function AbonnementsPage() {
             </div>
           )}
 
-          {/* Empty state */}
           {!isLoading && filteredAbonnements.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
@@ -1043,15 +1220,14 @@ export function AbonnementsPage() {
                   : 'Commencez par créer votre premier abonnement.'}
               </p>
               {!search && statutFilter === 'all' && (
-                <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreateAbo}>
-                  <Plus className="h-4 w-4" />
-                  Créer un abonnement
+                <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenWizard}>
+                  <Sparkles className="h-4 w-4" />
+                  Nouvelle souscription
                 </Button>
               )}
             </div>
           )}
 
-          {/* Abonnements Table */}
           {!isLoading && filteredAbonnements.length > 0 && (
             <div className="rounded-lg border overflow-hidden">
               <div className="overflow-x-auto">
@@ -1085,9 +1261,7 @@ export function AbonnementsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            className={getPlanColor(abo.plan.type).badge}
-                          >
+                          <Badge className={getPlanColor(abo.plan.type).badge}>
                             {abo.plan.nom}
                           </Badge>
                         </TableCell>
@@ -1163,7 +1337,475 @@ export function AbonnementsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ─── Create/Edit Abonnement Dialog ─── */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* ─── SOUSCRIPTION WIZARD DIALOG ─── */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={wizardOpen} onOpenChange={(open) => { if (!open) setWizardOpen(false) }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-600" />
+              Nouvelle souscription
+            </DialogTitle>
+            <DialogDescription>
+              Créez un nouvel établissement avec son abonnement et son responsable en quelques étapes.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Step indicators */}
+          <div className="flex items-center gap-2 px-1">
+            {[
+              { step: 1, label: 'Plan' },
+              { step: 2, label: 'Établissement' },
+              { step: 3, label: 'Responsable' },
+              { step: 4, label: 'Confirmation' },
+            ].map((s, idx) => (
+              <div key={s.step} className="flex items-center gap-2 flex-1">
+                <div className={`flex items-center gap-1.5 ${wizardStep >= s.step ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                    wizardStep > s.step
+                      ? 'bg-emerald-600 text-white'
+                      : wizardStep === s.step
+                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-500'
+                        : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {wizardStep > s.step ? <Check className="h-4 w-4" /> : s.step}
+                  </div>
+                  <span className="text-xs font-medium hidden sm:inline">{s.label}</span>
+                </div>
+                {idx < 3 && <div className={`flex-1 h-0.5 ${wizardStep > s.step ? 'bg-emerald-500' : 'bg-muted'}`} />}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-1">
+            {/* ─── Step 1: Plan Selection ─── */}
+            {wizardStep === 1 && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                    <CreditCard className="h-4 w-4" />
+                    Sélectionnez un plan
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Choisissez le plan d&apos;abonnement et la période de facturation.
+                  </p>
+                </div>
+
+                {plans.filter((p) => p.actif).length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+                    <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Aucun plan actif. Créez d&apos;abord un plan.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {plans.filter((p) => p.actif).map((plan) => {
+                      const colors = getPlanColor(plan.type)
+                      const isSelected = wizPlanId === plan.id
+                      return (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          onClick={() => setWizPlanId(plan.id)}
+                          className={`relative text-left rounded-lg border-2 p-4 transition-all hover:shadow-md ${
+                            isSelected
+                              ? `border-emerald-500 dark:border-emerald-400 ${colors.bg} ring-2 ${colors.ring}`
+                              : `border-muted ${colors.bg} hover:border-emerald-300 dark:hover:border-emerald-700`
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className="absolute top-2 right-2">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                          )}
+                          <Badge className={`${colors.badge} text-[10px] mb-2`}>{plan.type}</Badge>
+                          <p className="font-bold text-sm">{plan.nom}</p>
+                          <div className="mt-1">
+                            <span className="text-lg font-bold">
+                              {plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
+                            </span>
+                            {plan.prixMensuel > 0 && <span className="text-xs text-muted-foreground">/mois</span>}
+                          </div>
+                          {plan.prixAnnuel != null && plan.prixAnnuel > 0 && (
+                            <p className="text-xs text-muted-foreground">{formatCurrency(plan.prixAnnuel)}/an</p>
+                          )}
+                          <ul className="mt-2 space-y-0.5">
+                            {getPlanFeatures(plan).slice(0, 4).map((f, i) => (
+                              <li key={i} className="flex items-center gap-1 text-[11px]">
+                                {f.included ? <Check className="h-3 w-3 text-emerald-500 shrink-0" /> : <X className="h-3 w-3 text-gray-400 shrink-0" />}
+                                <span className={f.included ? '' : 'line-through text-muted-foreground'}>{f.label}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Période de facturation */}
+                {wizPlanId && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Période de facturation</Label>
+                    <div className="flex rounded-lg border overflow-hidden">
+                      <button
+                        type="button"
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                          wizPeriodeFacturation === 'mensuel'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-background text-muted-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => setWizPeriodeFacturation('mensuel')}
+                      >
+                        <Calendar className="h-4 w-4" />
+                        Mensuel
+                      </button>
+                      <button
+                        type="button"
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                          wizPeriodeFacturation === 'annuel'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-background text-muted-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => setWizPeriodeFacturation('annuel')}
+                      >
+                        <Calendar className="h-4 w-4" />
+                        Annuel
+                      </button>
+                    </div>
+
+                    {/* Price summary */}
+                    {wizSelectedPlan && (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Plan :</span>
+                          <span className="text-sm font-semibold">{wizSelectedPlan.nom}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Période :</span>
+                          <span className="text-sm font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
+                        </div>
+                        <Separator />
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Montant :</span>
+                          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizPlanPrice)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── Step 2: Établissement Info ─── */}
+            {wizardStep === 2 && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                    <Building2 className="h-4 w-4" />
+                    Informations de l&apos;établissement
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Renseignez les informations du nouvel établissement.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-nom">Nom de l&apos;établissement *</Label>
+                  <Input id="wiz-nom" placeholder="Ex: Université de Paris" value={wizNom} onChange={(e) => setWizNom(e.target.value)} />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="wiz-type">Type</Label>
+                    <Select value={wizType} onValueChange={setWizType}>
+                      <SelectTrigger id="wiz-type"><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Université">Université</SelectItem>
+                        <SelectItem value="École d&apos;ingénieurs">École d&apos;ingénieurs</SelectItem>
+                        <SelectItem value="Institut">Institut</SelectItem>
+                        <SelectItem value="École de commerce">École de commerce</SelectItem>
+                        <SelectItem value="Autre">Autre</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="wiz-ville">Ville</Label>
+                    <Input id="wiz-ville" placeholder="Abidjan" value={wizVille} onChange={(e) => setWizVille(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="wiz-pays">Pays</Label>
+                    <Input id="wiz-pays" placeholder="Côte d'Ivoire" value={wizPays} onChange={(e) => setWizPays(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="wiz-telephone">Téléphone</Label>
+                    <Input id="wiz-telephone" placeholder="+225 07 12 34 56 78" value={wizTelephone} onChange={(e) => setWizTelephone(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-email">Email</Label>
+                  <Input id="wiz-email" type="email" placeholder="contact@etablissement.fr" value={wizEmail} onChange={(e) => setWizEmail(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-siteweb">Site web</Label>
+                  <Input id="wiz-siteweb" placeholder="https://www.etablissement.fr" value={wizSiteWeb} onChange={(e) => setWizSiteWeb(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-adresse">Adresse</Label>
+                  <Textarea id="wiz-adresse" placeholder="Adresse complète..." value={wizAdresse} onChange={(e) => setWizAdresse(e.target.value)} rows={2} />
+                </div>
+
+                {/* Matricule - collapsible */}
+                <div className="rounded-lg border">
+                  <button
+                    type="button"
+                    className="flex items-center justify-between w-full p-3 text-left hover:bg-muted/50 transition-colors"
+                    onClick={() => setMatriculeOpen(!matriculeOpen)}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <IdCard className="h-4 w-4 text-emerald-600" />
+                      Configuration des matricules (optionnel)
+                    </div>
+                    {matriculeOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {matriculeOpen && (
+                    <div className="border-t p-3 space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="wiz-format-matricule" className="text-xs">Format du matricule</Label>
+                        <Input id="wiz-format-matricule" placeholder="Ex: {YYYY}/{FIL}-{NIV}/{NNN}" value={wizFormatMatricule} onChange={(e) => setWizFormatMatricule(e.target.value)} className="text-sm font-mono" />
+                        <p className="text-xs text-muted-foreground">
+                          Variables : {'{YYYY}'} (année), {'{YY}'} (année courte), {'{FIL}'} (code filière), {'{NIV}'} (niveau), {'{CODE}'} (code étab.), {'{NNN}'} (numéro)
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="wiz-exemple-matricule" className="text-xs">Exemple</Label>
+                          <Input id="wiz-exemple-matricule" placeholder="Ex: 2026/INFO-L3/001" value={wizExempleMatricule} onChange={(e) => setWizExempleMatricule(e.target.value)} className="text-sm font-mono" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="wiz-regex-matricule" className="text-xs">Regex de validation</Label>
+                          <Input id="wiz-regex-matricule" placeholder="Ex: ^\\d{4}/.+\\/.+$" value={wizRegexMatricule} onChange={(e) => setWizRegexMatricule(e.target.value)} className="text-sm font-mono" />
+                        </div>
+                      </div>
+                      {!wizFormatMatricule && (
+                        <p className="text-xs text-amber-600 flex items-center gap-1">
+                          <Info className="h-3 w-3" />
+                          Sans format défini, un matricule aléatoire (ETU-XXXXXX) sera généré.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ─── Step 3: Responsable Info ─── */}
+            {wizardStep === 3 && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                    <UserPlus className="h-4 w-4" />
+                    Responsable de l&apos;établissement
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Un compte responsable sera créé automatiquement avec un mot de passe temporaire.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3 flex items-start gap-2">
+                  <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Le responsable recevra ses identifiants de connexion par email. Il devra changer son mot de passe lors de sa première connexion.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-resp-nom">Nom du responsable *</Label>
+                  <Input id="wiz-resp-nom" placeholder="Ex: Jean Dupont" value={wizRespNom} onChange={(e) => setWizRespNom(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-resp-email">Email du responsable *</Label>
+                  <Input id="wiz-resp-email" type="email" placeholder="responsable@etablissement.fr" value={wizRespEmail} onChange={(e) => setWizRespEmail(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wiz-resp-telephone">Téléphone (optionnel)</Label>
+                  <Input id="wiz-resp-telephone" placeholder="+225 07 12 34 56 78" value={wizRespTelephone} onChange={(e) => setWizRespTelephone(e.target.value)} />
+                </div>
+
+                {/* Summary */}
+                <Separator />
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Résumé de la souscription</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    <span className="text-muted-foreground">Établissement :</span>
+                    <span className="font-medium">{wizNom}</span>
+                    <span className="text-muted-foreground">Plan :</span>
+                    <span className="font-medium">{wizSelectedPlan?.nom ?? '—'}</span>
+                    <span className="text-muted-foreground">Période :</span>
+                    <span className="font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
+                    <span className="text-muted-foreground">Montant :</span>
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizPlanPrice)}</span>
+                    <span className="text-muted-foreground">Responsable :</span>
+                    <span className="font-medium">{wizRespNom || '—'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ─── Step 4: Confirmation ─── */}
+            {wizardStep === 4 && wizardCredentials && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800 p-4">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Souscription créée avec succès !</p>
+                    <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80">
+                      L&apos;établissement, le responsable et l&apos;abonnement ont été créés.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Établissement */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-emerald-600" />
+                    Établissement
+                  </h4>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-sm font-semibold">{wizardCredentials.etablissementNom}</p>
+                  </div>
+                </div>
+
+                {/* Responsable & Credentials */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-emerald-600" />
+                    Identifiants de connexion
+                  </h4>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Nom :</span>
+                      <span className="text-sm font-medium">{wizardCredentials.responsableNom}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Email :</span>
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                          {wizardCredentials.responsableEmail}
+                        </code>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'email')}>
+                          {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Mot de passe :</span>
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                          {wizardCredentials.temporaryPassword}
+                        </code>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.temporaryPassword, 'password')}>
+                          {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Abonnement */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <CreditCard className="h-4 w-4 text-emerald-600" />
+                    Abonnement
+                  </h4>
+                  <div className="rounded-lg border p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Plan :</span>
+                      <span className="text-sm font-medium">{wizardCredentials.planNom}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Période :</span>
+                      <span className="text-sm font-medium">{wizardCredentials.periode}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Montant :</span>
+                      <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizardCredentials.montant)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Début :</span>
+                      <span className="text-xs font-medium">{wizardCredentials.dateDebut}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Fin :</span>
+                      <span className="text-xs font-medium">{wizardCredentials.dateFin}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Disclaimer */}
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
+                  <p className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                    Ce mot de passe est temporaire. Le responsable devra le modifier lors de sa première connexion.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-4 border-t">
+            {wizardStep === 1 && (
+              <>
+                <Button variant="outline" onClick={() => setWizardOpen(false)}>Annuler</Button>
+                <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!canGoStep2} onClick={() => setWizardStep(2)}>
+                  Suivant
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Button>
+              </>
+            )}
+            {wizardStep === 2 && (
+              <>
+                <Button variant="outline" onClick={() => setWizardStep(1)}>
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Précédent
+                </Button>
+                <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!canGoStep3} onClick={() => setWizardStep(3)}>
+                  Suivant
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Button>
+              </>
+            )}
+            {wizardStep === 3 && (
+              <>
+                <Button variant="outline" onClick={() => setWizardStep(2)}>
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Précédent
+                </Button>
+                <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!canSubmit || wizardSubmitting} onClick={handleSouscriptionSubmit}>
+                  {wizardSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  Créer la souscription
+                </Button>
+              </>
+            )}
+            {wizardStep === 4 && (
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setWizardOpen(false)}>
+                Terminer
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Create/Edit Abonnement Dialog (for existing etablissements) ─── */}
       <Dialog
         open={aboDialogOpen}
         onOpenChange={(open) => {
@@ -1174,41 +1816,32 @@ export function AbonnementsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5 text-emerald-600" />
-              {editingAbo ? 'Modifier l\'abonnement' : 'Nouvel abonnement'}
+              {editingAbo ? 'Modifier l\'abonnement' : 'Ajouter un abonnement'}
             </DialogTitle>
             <DialogDescription>
               {editingAbo
                 ? 'Modifiez les informations de l\'abonnement.'
-                : 'Remplissez les informations pour créer un nouvel abonnement.'}
+                : 'Ajoutez un abonnement à un établissement existant.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            {/* Établissement */}
             <div className="space-y-2">
               <Label htmlFor="abo-etab">Établissement *</Label>
-              <Select
-                value={formAboEtabId}
-                onValueChange={setFormAboEtabId}
-                disabled={!!editingAbo}
-              >
+              <Select value={formAboEtabId} onValueChange={setFormAboEtabId} disabled={!!editingAbo}>
                 <SelectTrigger id="abo-etab">
                   <SelectValue placeholder="Sélectionner un établissement" />
                 </SelectTrigger>
                 <SelectContent>
-                  {etablissements
-                    .filter((e) => e.actif)
-                    .map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.nom}
-                        {e.ville ? ` — ${e.ville}` : ''}
-                      </SelectItem>
-                    ))}
+                  {etablissements.filter((e) => e.actif).map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.nom}{e.ville ? ` — ${e.ville}` : ''}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Plan */}
             <div className="space-y-2">
               <Label htmlFor="abo-plan">Plan *</Label>
               <Select value={formAboPlanId} onValueChange={setFormAboPlanId}>
@@ -1216,34 +1849,24 @@ export function AbonnementsPage() {
                   <SelectValue placeholder="Sélectionner un plan" />
                 </SelectTrigger>
                 <SelectContent>
-                  {plans
-                    .filter((p) => p.actif)
-                    .map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nom} — {p.prixMensuel === 0 ? 'Gratuit' : `${formatCurrency(p.prixMensuel)}/mois`}
-                      </SelectItem>
-                    ))}
+                  {plans.filter((p) => p.actif).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nom} — {p.prixMensuel === 0 ? 'Gratuit' : `${formatCurrency(p.prixMensuel)}/mois`}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Date de début & Statut */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="abo-datedebut">Date de début *</Label>
-                <Input
-                  id="abo-datedebut"
-                  type="date"
-                  value={formAboDateDebut}
-                  onChange={(e) => setFormAboDateDebut(e.target.value)}
-                />
+                <Input id="abo-datedebut" type="date" value={formAboDateDebut} onChange={(e) => setFormAboDateDebut(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="abo-statut">Statut</Label>
                 <Select value={formAboStatut} onValueChange={setFormAboStatut}>
-                  <SelectTrigger id="abo-statut">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger id="abo-statut"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ESSAI">Essai</SelectItem>
                     <SelectItem value="ACTIF">Actif</SelectItem>
@@ -1255,14 +1878,11 @@ export function AbonnementsPage() {
               </div>
             </div>
 
-            {/* Mode de paiement & Montant */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="abo-paiement">Mode de paiement</Label>
                 <Select value={formAboModePaiement} onValueChange={setFormAboModePaiement}>
-                  <SelectTrigger id="abo-paiement">
-                    <SelectValue placeholder="Sélectionner" />
-                  </SelectTrigger>
+                  <SelectTrigger id="abo-paiement"><SelectValue placeholder="Sélectionner" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="carte">Carte bancaire</SelectItem>
                     <SelectItem value="virement">Virement</SelectItem>
@@ -1272,39 +1892,18 @@ export function AbonnementsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="abo-montant">Montant payé (€)</Label>
-                <Input
-                  id="abo-montant"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formAboMontant}
-                  onChange={(e) => setFormAboMontant(e.target.value)}
-                />
+                <Input id="abo-montant" type="number" step="0.01" placeholder="0.00" value={formAboMontant} onChange={(e) => setFormAboMontant(e.target.value)} />
               </div>
             </div>
 
-            {/* Renouvellement auto */}
             <div className="flex items-center gap-3">
-              <Switch
-                id="abo-renouvellement"
-                checked={formAboRenouvellement}
-                onCheckedChange={setFormAboRenouvellement}
-              />
-              <Label htmlFor="abo-renouvellement" className="cursor-pointer">
-                Renouvellement automatique
-              </Label>
+              <Switch id="abo-renouvellement" checked={formAboRenouvellement} onCheckedChange={setFormAboRenouvellement} />
+              <Label htmlFor="abo-renouvellement" className="cursor-pointer">Renouvellement automatique</Label>
             </div>
 
-            {/* Notes */}
             <div className="space-y-2">
               <Label htmlFor="abo-notes">Notes</Label>
-              <Textarea
-                id="abo-notes"
-                placeholder="Notes internes sur cet abonnement..."
-                value={formAboNotes}
-                onChange={(e) => setFormAboNotes(e.target.value)}
-                rows={3}
-              />
+              <Textarea id="abo-notes" placeholder="Notes internes sur cet abonnement..." value={formAboNotes} onChange={(e) => setFormAboNotes(e.target.value)} rows={3} />
             </div>
 
             {/* ─── Responsable de l'établissement ─── */}
@@ -1344,9 +1943,7 @@ export function AbonnementsPage() {
                     <div className="flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       <span className="text-sm">
-                        {responsableMode === 'invitation'
-                          ? 'Invitation envoyée avec succès'
-                          : 'Responsable créé avec succès'}
+                        {responsableMode === 'invitation' ? 'Invitation envoyée avec succès' : 'Responsable créé avec succès'}
                       </span>
                     </div>
                     {createdTempPassword && (
@@ -1358,15 +1955,10 @@ export function AbonnementsPage() {
                           <code className="flex-1 rounded bg-white dark:bg-gray-900 px-2 py-1 text-sm font-mono border">
                             {createdTempPassword}
                           </code>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="shrink-0"
-                            onClick={() => {
-                              navigator.clipboard.writeText(createdTempPassword)
-                              toast.success('Copié dans le presse-papiers')
-                            }}
-                          >
+                          <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
+                            navigator.clipboard.writeText(createdTempPassword)
+                            toast.success('Copié dans le presse-papiers')
+                          }}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -1382,7 +1974,6 @@ export function AbonnementsPage() {
                       </p>
                     </div>
 
-                    {/* Toggle between invitation and direct creation */}
                     <div className="flex rounded-lg border overflow-hidden">
                       <button
                         type="button"
@@ -1410,31 +2001,14 @@ export function AbonnementsPage() {
                       </button>
                     </div>
 
-                    {/* Invitation mode */}
                     {responsableMode === 'invitation' && (
                       <div className="space-y-3">
                         <div className="space-y-2">
                           <Label htmlFor="resp-invit-email" className="text-xs">Email du responsable</Label>
                           <div className="flex gap-2">
-                            <Input
-                              id="resp-invit-email"
-                              type="email"
-                              placeholder="responsable@etablissement.fr"
-                              value={formRespInvitEmail}
-                              onChange={(e) => setFormRespInvitEmail(e.target.value)}
-                              className="flex-1"
-                            />
-                            <Button
-                              type="button"
-                              className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
-                              onClick={handleSendInvitation}
-                              disabled={isCreatingResp || !formRespInvitEmail}
-                            >
-                              {isCreatingResp ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Mail className="h-4 w-4" />
-                              )}
+                            <Input id="resp-invit-email" type="email" placeholder="responsable@etablissement.fr" value={formRespInvitEmail} onChange={(e) => setFormRespInvitEmail(e.target.value)} className="flex-1" />
+                            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 shrink-0" onClick={handleSendInvitation} disabled={isCreatingResp || !formRespInvitEmail}>
+                              {isCreatingResp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                               Envoyer
                             </Button>
                           </div>
@@ -1445,39 +2019,18 @@ export function AbonnementsPage() {
                       </div>
                     )}
 
-                    {/* Direct creation mode */}
                     {responsableMode === 'direct' && (
                       <div className="space-y-3">
                         <div className="space-y-2">
                           <Label htmlFor="resp-name" className="text-xs">Nom complet</Label>
-                          <Input
-                            id="resp-name"
-                            placeholder="Jean Dupont"
-                            value={formRespName}
-                            onChange={(e) => setFormRespName(e.target.value)}
-                          />
+                          <Input id="resp-name" placeholder="Jean Dupont" value={formRespName} onChange={(e) => setFormRespName(e.target.value)} />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="resp-email" className="text-xs">Email</Label>
-                          <Input
-                            id="resp-email"
-                            type="email"
-                            placeholder="jean.dupont@etablissement.fr"
-                            value={formRespEmail}
-                            onChange={(e) => setFormRespEmail(e.target.value)}
-                          />
+                          <Input id="resp-email" type="email" placeholder="jean.dupont@etablissement.fr" value={formRespEmail} onChange={(e) => setFormRespEmail(e.target.value)} />
                         </div>
-                        <Button
-                          type="button"
-                          className="w-full bg-emerald-600 hover:bg-emerald-700"
-                          onClick={handleDirectCreateResponsable}
-                          disabled={isCreatingResp || !formRespName || !formRespEmail}
-                        >
-                          {isCreatingResp ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <UserPlus className="h-4 w-4 mr-2" />
-                          )}
+                        <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleDirectCreateResponsable} disabled={isCreatingResp || !formRespName || !formRespEmail}>
+                          {isCreatingResp ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserPlus className="h-4 w-4 mr-2" />}
                           Créer le responsable
                         </Button>
                         <p className="text-[11px] text-muted-foreground">
@@ -1492,14 +2045,8 @@ export function AbonnementsPage() {
           </div>
 
           <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setAboDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={handleSubmitAbo}
-              disabled={isSubmitting}
-            >
+            <Button variant="outline" onClick={() => setAboDialogOpen(false)}>Annuler</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSubmitAbo} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingAbo ? 'Enregistrer' : 'Créer'}
             </Button>
@@ -1508,12 +2055,7 @@ export function AbonnementsPage() {
       </Dialog>
 
       {/* ─── Create/Edit Plan Dialog ─── */}
-      <Dialog
-        open={planDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) setPlanDialogOpen(false)
-        }}
-      >
+      <Dialog open={planDialogOpen} onOpenChange={(open) => { if (!open) setPlanDialogOpen(false) }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1521,34 +2063,22 @@ export function AbonnementsPage() {
               {editingPlan ? 'Modifier le plan' : 'Nouveau plan'}
             </DialogTitle>
             <DialogDescription>
-              {editingPlan
-                ? 'Modifiez les caractéristiques et limites du plan.'
-                : 'Définissez un nouveau plan tarifaire avec ses limites et fonctionnalités.'}
+              {editingPlan ? 'Modifiez les caractéristiques et limites du plan.' : 'Définissez un nouveau plan tarifaire avec ses limites et fonctionnalités.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto space-y-5 pr-1">
-            {/* Basic info */}
             <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Informations générales
-              </h4>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Informations générales</h4>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="plan-nom">Nom du plan *</Label>
-                  <Input
-                    id="plan-nom"
-                    placeholder="Ex: Essentiel"
-                    value={formPlanNom}
-                    onChange={(e) => setFormPlanNom(e.target.value)}
-                  />
+                  <Input id="plan-nom" placeholder="Ex: Essentiel" value={formPlanNom} onChange={(e) => setFormPlanNom(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-type">Type *</Label>
                   <Select value={formPlanType} onValueChange={setFormPlanType}>
-                    <SelectTrigger id="plan-type">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger id="plan-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="GRATUIT">Gratuit</SelectItem>
                       <SelectItem value="ESSENTIEL">Essentiel</SelectItem>
@@ -1562,169 +2092,94 @@ export function AbonnementsPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="plan-prix-mensuel">Prix mensuel (€) *</Label>
-                  <Input
-                    id="plan-prix-mensuel"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formPlanPrixMensuel}
-                    onChange={(e) => setFormPlanPrixMensuel(e.target.value)}
-                  />
+                  <Input id="plan-prix-mensuel" type="number" step="0.01" placeholder="0.00" value={formPlanPrixMensuel} onChange={(e) => setFormPlanPrixMensuel(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-prix-annuel">Prix annuel (€)</Label>
-                  <Input
-                    id="plan-prix-annuel"
-                    type="number"
-                    step="0.01"
-                    placeholder="Optionnel"
-                    value={formPlanPrixAnnuel}
-                    onChange={(e) => setFormPlanPrixAnnuel(e.target.value)}
-                  />
+                  <Input id="plan-prix-annuel" type="number" step="0.01" placeholder="Optionnel" value={formPlanPrixAnnuel} onChange={(e) => setFormPlanPrixAnnuel(e.target.value)} />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="plan-description">Description</Label>
-                <Textarea
-                  id="plan-description"
-                  placeholder="Description du plan..."
-                  value={formPlanDescription}
-                  onChange={(e) => setFormPlanDescription(e.target.value)}
-                  rows={2}
-                />
+                <Textarea id="plan-description" placeholder="Description du plan..." value={formPlanDescription} onChange={(e) => setFormPlanDescription(e.target.value)} rows={2} />
               </div>
             </div>
 
             <Separator />
 
-            {/* Limits */}
             <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Limites & quotas
-              </h4>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Limites & quotas</h4>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="plan-etab-max">Établissements max</Label>
-                  <Input
-                    id="plan-etab-max"
-                    type="number"
-                    value={formPlanNbEtabMax}
-                    onChange={(e) => setFormPlanNbEtabMax(e.target.value)}
-                  />
+                  <Input id="plan-etab-max" type="number" value={formPlanNbEtabMax} onChange={(e) => setFormPlanNbEtabMax(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-filieres-max">Filières max</Label>
-                  <Input
-                    id="plan-filieres-max"
-                    type="number"
-                    value={formPlanNbFilieresMax}
-                    onChange={(e) => setFormPlanNbFilieresMax(e.target.value)}
-                  />
+                  <Input id="plan-filieres-max" type="number" value={formPlanNbFilieresMax} onChange={(e) => setFormPlanNbFilieresMax(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-enseignants-max">Enseignants max</Label>
-                  <Input
-                    id="plan-enseignants-max"
-                    type="number"
-                    value={formPlanNbEnseignantsMax}
-                    onChange={(e) => setFormPlanNbEnseignantsMax(e.target.value)}
-                  />
+                  <Input id="plan-enseignants-max" type="number" value={formPlanNbEnseignantsMax} onChange={(e) => setFormPlanNbEnseignantsMax(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-etudiants-max">Étudiants max</Label>
-                  <Input
-                    id="plan-etudiants-max"
-                    type="number"
-                    value={formPlanNbEtudiantsMax}
-                    onChange={(e) => setFormPlanNbEtudiantsMax(e.target.value)}
-                  />
+                  <Input id="plan-etudiants-max" type="number" value={formPlanNbEtudiantsMax} onChange={(e) => setFormPlanNbEtudiantsMax(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-questions-max">Questions max</Label>
-                  <Input
-                    id="plan-questions-max"
-                    type="number"
-                    value={formPlanNbQuestionsMax}
-                    onChange={(e) => setFormPlanNbQuestionsMax(e.target.value)}
-                  />
+                  <Input id="plan-questions-max" type="number" value={formPlanNbQuestionsMax} onChange={(e) => setFormPlanNbQuestionsMax(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="plan-eval-mois">Éval./mois</Label>
-                  <Input
-                    id="plan-eval-mois"
-                    type="number"
-                    value={formPlanNbEvaluationsMois}
-                    onChange={(e) => setFormPlanNbEvaluationsMois(e.target.value)}
-                  />
+                  <Input id="plan-eval-mois" type="number" value={formPlanNbEvaluationsMois} onChange={(e) => setFormPlanNbEvaluationsMois(e.target.value)} />
                 </div>
               </div>
             </div>
 
             <Separator />
 
-            {/* Features */}
             <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Fonctionnalités
-              </h4>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Fonctionnalités</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
                     <Brain className="h-4 w-4 text-emerald-500" />
                     <Label htmlFor="plan-ia-gen" className="cursor-pointer">Génération IA</Label>
                   </div>
-                  <Switch
-                    id="plan-ia-gen"
-                    checked={formPlanIaGeneration}
-                    onCheckedChange={setFormPlanIaGeneration}
-                  />
+                  <Switch id="plan-ia-gen" checked={formPlanIaGeneration} onCheckedChange={setFormPlanIaGeneration} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-teal-500" />
                     <Label htmlFor="plan-ia-correction" className="cursor-pointer">Correction IA</Label>
                   </div>
-                  <Switch
-                    id="plan-ia-correction"
-                    checked={formPlanIaCorrection}
-                    onCheckedChange={setFormPlanIaCorrection}
-                  />
+                  <Switch id="plan-ia-correction" checked={formPlanIaCorrection} onCheckedChange={setFormPlanIaCorrection} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-orange-500" />
                     <Label htmlFor="plan-proctoring" className="cursor-pointer">Proctoring</Label>
                   </div>
-                  <Switch
-                    id="plan-proctoring"
-                    checked={formPlanProctoring}
-                    onCheckedChange={setFormPlanProctoring}
-                  />
+                  <Switch id="plan-proctoring" checked={formPlanProctoring} onCheckedChange={setFormPlanProctoring} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-cyan-500" />
                     <Label htmlFor="plan-export-pdf" className="cursor-pointer">Export PDF</Label>
                   </div>
-                  <Switch
-                    id="plan-export-pdf"
-                    checked={formPlanExportPDF}
-                    onCheckedChange={setFormPlanExportPDF}
-                  />
+                  <Switch id="plan-export-pdf" checked={formPlanExportPDF} onCheckedChange={setFormPlanExportPDF} />
                 </div>
               </div>
             </div>
 
             <Separator />
 
-            {/* Support */}
             <div className="space-y-2">
               <Label htmlFor="plan-support">Type de support</Label>
               <Select value={formPlanSupport} onValueChange={setFormPlanSupport}>
-                <SelectTrigger id="plan-support">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger id="plan-support"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="email">Email</SelectItem>
                   <SelectItem value="chat">Chat</SelectItem>
@@ -1735,14 +2190,8 @@ export function AbonnementsPage() {
           </div>
 
           <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button
-              className="bg-teal-600 hover:bg-teal-700"
-              onClick={handleSubmitPlan}
-              disabled={isSubmitting}
-            >
+            <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>Annuler</Button>
+            <Button className="bg-teal-600 hover:bg-teal-700" onClick={handleSubmitPlan} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingPlan ? 'Enregistrer' : 'Créer le plan'}
             </Button>
@@ -1751,12 +2200,7 @@ export function AbonnementsPage() {
       </Dialog>
 
       {/* ─── Suspend Confirmation Dialog ─── */}
-      <AlertDialog
-        open={!!suspendTarget}
-        onOpenChange={(open) => {
-          if (!open) setSuspendTarget(null)
-        }}
-      >
+      <AlertDialog open={!!suspendTarget} onOpenChange={(open) => { if (!open) setSuspendTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -1771,23 +2215,13 @@ export function AbonnementsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-orange-600 hover:bg-orange-700"
-              onClick={handleSuspendAbo}
-            >
-              Suspendre
-            </AlertDialogAction>
+            <AlertDialogAction className="bg-orange-600 hover:bg-orange-700" onClick={handleSuspendAbo}>Suspendre</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* ─── Cancel (Résilier) Confirmation Dialog ─── */}
-      <AlertDialog
-        open={!!cancelTarget}
-        onOpenChange={(open) => {
-          if (!open) setCancelTarget(null)
-        }}
-      >
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -1802,26 +2236,13 @@ export function AbonnementsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={handleCancelAbo}
-            >
-              Résilier
-            </AlertDialogAction>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleCancelAbo}>Résilier</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* ─── Abonnement Detail Dialog ─── */}
-      <Dialog
-        open={detailOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDetailOpen(false)
-            setDetailAbo(null)
-          }
-        }}
-      >
+      <Dialog open={detailOpen} onOpenChange={(open) => { if (!open) { setDetailOpen(false); setDetailAbo(null) } }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1836,49 +2257,34 @@ export function AbonnementsPage() {
           {detailAbo && (
             <ScrollArea className="flex-1 -mx-6 px-6">
               <div className="space-y-5">
-                {/* Établissement info */}
                 <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Établissement
-                  </h4>
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Établissement</h4>
                   <div className="flex items-center gap-3 rounded-lg border p-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
                       {detailAbo.etablissement.nom.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <p className="font-medium">{detailAbo.etablissement.nom}</p>
-                      {detailAbo.etablissement.ville && (
-                        <p className="text-xs text-muted-foreground">{detailAbo.etablissement.ville}</p>
-                      )}
+                      {detailAbo.etablissement.ville && <p className="text-xs text-muted-foreground">{detailAbo.etablissement.ville}</p>}
                     </div>
                   </div>
                 </div>
 
-                {/* Plan info */}
                 <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Plan
-                  </h4>
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Plan</h4>
                   <div className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex items-center gap-2">
-                      <Badge className={getPlanColor(detailAbo.plan.type).badge}>
-                        {detailAbo.plan.nom}
-                      </Badge>
+                      <Badge className={getPlanColor(detailAbo.plan.type).badge}>{detailAbo.plan.nom}</Badge>
                       <span className="text-sm text-muted-foreground">
-                        {detailAbo.plan.prixMensuel === 0
-                          ? 'Gratuit'
-                          : `${formatCurrency(detailAbo.plan.prixMensuel)}/mois`}
+                        {detailAbo.plan.prixMensuel === 0 ? 'Gratuit' : `${formatCurrency(detailAbo.plan.prixMensuel)}/mois`}
                       </span>
                     </div>
                     {getStatutBadge(detailAbo.statut)}
                   </div>
                 </div>
 
-                {/* Responsable info */}
                 <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Responsable
-                  </h4>
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Responsable</h4>
                   {responsablesMap[detailAbo.etablissementId] ? (
                     <div className="flex items-center gap-3 rounded-lg border p-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
@@ -1901,84 +2307,49 @@ export function AbonnementsPage() {
                   )}
                 </div>
 
-                {/* Dates */}
                 <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Période
-                  </h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border p-3">
-                      <p className="text-xs text-muted-foreground">Date de début</p>
-                      <p className="font-medium text-sm">{formatDate(detailAbo.dateDebut)}</p>
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Détails</h4>
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Date début</span>
+                      <span className="font-medium">{formatDate(detailAbo.dateDebut)}</span>
                     </div>
-                    <div className="rounded-lg border p-3">
-                      <p className="text-xs text-muted-foreground">Date de fin</p>
-                      <p className="font-medium text-sm">{formatDate(detailAbo.dateFin)}</p>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Date fin</span>
+                      <span className="font-medium">{formatDate(detailAbo.dateFin)}</span>
                     </div>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">Période d&apos;essai</p>
-                    <p className="font-medium text-sm">{detailAbo.periodeEssaiJours} jours</p>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Période essai</span>
+                      <span className="font-medium">{detailAbo.periodeEssaiJours} jours</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Montant payé</span>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(detailAbo.montantPaye)}</span>
+                    </div>
+                    {detailAbo.modePaiement && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Mode de paiement</span>
+                        <span className="font-medium">{detailAbo.modePaiement === 'carte' ? 'Carte bancaire' : detailAbo.modePaiement === 'virement' ? 'Virement' : 'Chèque'}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Renouvellement auto</span>
+                      <span className="font-medium">{detailAbo.renouvellementAuto ? 'Oui' : 'Non'}</span>
+                    </div>
+                    {detailAbo.notes && (
+                      <div className="pt-2 border-t">
+                        <p className="text-xs text-muted-foreground mb-1">Notes :</p>
+                        <p className="text-sm">{detailAbo.notes}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {/* Paiement */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Paiement
-                  </h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border p-3">
-                      <p className="text-xs text-muted-foreground">Mode</p>
-                      <p className="font-medium text-sm">
-                        {detailAbo.modePaiement
-                          ? detailAbo.modePaiement === 'carte'
-                            ? 'Carte bancaire'
-                            : detailAbo.modePaiement === 'virement'
-                              ? 'Virement'
-                              : 'Chèque'
-                          : '—'}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border p-3">
-                      <p className="text-xs text-muted-foreground">Montant payé</p>
-                      <p className="font-medium text-sm">{formatCurrency(detailAbo.montantPaye)}</p>
-                    </div>
-                  </div>
-                  {detailAbo.referencePaiement && (
-                    <div className="rounded-lg border p-3">
-                      <p className="text-xs text-muted-foreground">Référence</p>
-                      <p className="font-medium text-sm">{detailAbo.referencePaiement}</p>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 rounded-lg border p-3">
-                    <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      Renouvellement automatique :{' '}
-                      <strong>{detailAbo.renouvellementAuto ? 'Oui' : 'Non'}</strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Notes */}
-                {detailAbo.notes && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                      Notes
-                    </h4>
-                    <div className="rounded-lg border p-3">
-                      <p className="text-sm whitespace-pre-wrap">{detailAbo.notes}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </ScrollArea>
           )}
 
           <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setDetailOpen(false)}>
-              Fermer
-            </Button>
+            <Button variant="outline" onClick={() => setDetailOpen(false)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
