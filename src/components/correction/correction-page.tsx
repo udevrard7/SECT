@@ -174,7 +174,6 @@ export function CorrectionPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isFinalizing, setIsFinalizing] = useState(false)
   const [isBatchAiLoading, setIsBatchAiLoading] = useState(false)
-  const [isReturning, setIsReturning] = useState(false)
   const [isBatchReturning, setIsBatchReturning] = useState(false)
   const [searchFilter, setSearchFilter] = useState('')
 
@@ -387,8 +386,8 @@ export function CorrectionPage() {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Erreur lors de la finalisation')
       }
-      toast.success('Correction finalisée', {
-        description: 'La note finale a été calculée et la session est corrigée.',
+      toast.success('Correction finalisée et copie rendue', {
+        description: 'La note finale a été calculée et la copie a été rendue à l\'étudiant.',
       })
       await fetchSessions()
     } catch (err) {
@@ -430,34 +429,7 @@ export function CorrectionPage() {
     }
   }
 
-  // ─── Return copy handler ───
-  const handleReturnCopy = async () => {
-    if (!selectedSessionId) return
-    setIsReturning(true)
-    try {
-      const res = await fetch(
-        `/api/correction/${selectedSessionId}/retourner`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        }
-      )
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors du retour')
-      }
-      toast.success('Copie retournée', {
-        description: 'L\'étudiant peut maintenant consulter sa note.',
-      })
-      await fetchSessions()
-    } catch (err) {
-      toast.error('Erreur', {
-        description: err instanceof Error ? err.message : 'Impossible de retourner la copie.',
-      })
-    } finally {
-      setIsReturning(false)
-    }
-  }
+  // NOTE: Return copy handler removed — copies are now auto-returned when finalized
 
   // ─── Batch return handler ───
   const handleBatchReturn = async () => {
@@ -841,7 +813,7 @@ export function CorrectionPage() {
         </div>
       )}
 
-      {/* Batch return button */}
+      {/* Batch return button for legacy CORRIGEE sessions */}
       {selectedEpreuveId && sessions.some(s => s.statut === 'CORRIGEE') && (
         <Button
           size="sm"
@@ -854,7 +826,7 @@ export function CorrectionPage() {
           ) : (
             <Send className="h-3.5 w-3.5" />
           )}
-          Rendre toutes les copies corrigées
+          Rendre les copies corrigées ({sessions.filter(s => s.statut === 'CORRIGEE').length})
         </Button>
       )}
 
@@ -890,70 +862,142 @@ export function CorrectionPage() {
           </div>
         ) : (
           <ScrollArea className="h-[calc(100vh-360px)]">
-            <div className="space-y-2 pr-1">
-              {filteredSessions.map((session) => {
-                const isSelected = session.id === selectedSessionId
+            <div className="space-y-3 pr-1">
+              {/* ─── En attente de correction ─── */}
+              {(() => {
+                const pending = filteredSessions.filter(s => s.statut !== 'RETOURNEE')
+                if (pending.length === 0) return null
                 return (
-                  <button
-                    key={session.id}
-                    onClick={() => {
-                      setSelectedSessionId(session.id)
-                      setCurrentQuestionIndex(0)
-                    }}
-                    className={`w-full text-left rounded-lg border p-3 transition-all hover:shadow-sm ${
-                      isSelected
-                        ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/30 ring-1 ring-emerald-400/50 dark:ring-emerald-700/50'
-                        : 'border-border bg-background hover:border-emerald-200 dark:hover:border-emerald-800'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold truncate">
-                          {session.etudiant.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {session.etudiant.email}
-                        </p>
-                      </div>
-                      {session.statut === 'RETOURNEE' ? (
-                        <Badge className="shrink-0 bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800 text-[10px]">
-                          <Send className="h-3 w-3 mr-0.5" />
-                          Rendue
-                        </Badge>
-                      ) : session.allCorrected ? (
-                        <Badge className="shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 text-[10px]">
-                          <Check className="h-3 w-3 mr-0.5" />
-                          Corrigé
-                        </Badge>
-                      ) : (
-                        <Badge className="shrink-0 bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800 text-[10px]">
-                          <PenTool className="h-3 w-3 mr-0.5" />
-                          À corriger
-                        </Badge>
-                      )}
+                  <div>
+                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <PenTool className="h-3 w-3" />
+                      En attente de correction ({pending.length})
+                    </p>
+                    <div className="space-y-2">
+                      {pending.map((session) => {
+                        const isSelected = session.id === selectedSessionId
+                        return (
+                          <button
+                            key={session.id}
+                            onClick={() => {
+                              setSelectedSessionId(session.id)
+                              setCurrentQuestionIndex(0)
+                            }}
+                            className={`w-full text-left rounded-lg border p-3 transition-all hover:shadow-sm ${
+                              isSelected
+                                ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/30 ring-1 ring-emerald-400/50 dark:ring-emerald-700/50'
+                                : 'border-border bg-background hover:border-emerald-200 dark:hover:border-emerald-800'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold truncate">
+                                  {session.etudiant.name}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {session.etudiant.email}
+                                </p>
+                              </div>
+                              {session.allCorrected ? (
+                                <Badge className="shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 text-[10px]">
+                                  <Check className="h-3 w-3 mr-0.5" />
+                                  Corrigé
+                                </Badge>
+                              ) : (
+                                <Badge className="shrink-0 bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800 text-[10px]">
+                                  <PenTool className="h-3 w-3 mr-0.5" />
+                                  À corriger
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              {session.score !== null && (
+                                <span className="text-xs text-muted-foreground">
+                                  <Award className="h-3 w-3 inline mr-0.5" />
+                                  {session.score.toFixed(1)} pts
+                                </span>
+                              )}
+                              {session.alertes > 0 && (
+                                <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
+                                  <AlertTriangle className="h-3 w-3 mr-0.5" />
+                                  {session.alertes}
+                                </Badge>
+                              )}
+                              {session.needsCorrectionCount > 0 && !session.allCorrected && (
+                                <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                                  {session.needsCorrectionCount} question{session.needsCorrectionCount > 1 ? 's' : ''} restante{session.needsCorrectionCount > 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      {session.score !== null && (
-                        <span className="text-xs text-muted-foreground">
-                          <Award className="h-3 w-3 inline mr-0.5" />
-                          {session.score.toFixed(1)} pts
-                        </span>
-                      )}
-                      {session.alertes > 0 && (
-                        <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
-                          <AlertTriangle className="h-3 w-3 mr-0.5" />
-                          {session.alertes}
-                        </Badge>
-                      )}
-                      {session.needsCorrectionCount > 0 && !session.allCorrected && (
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                          {session.needsCorrectionCount} question{session.needsCorrectionCount > 1 ? 's' : ''} restante{session.needsCorrectionCount > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                  </button>
+                  </div>
                 )
-              })}
+              })()}
+
+              {/* ─── Copies rendues ─── */}
+              {(() => {
+                const returned = filteredSessions.filter(s => s.statut === 'RETOURNEE')
+                if (returned.length === 0) return null
+                return (
+                  <div>
+                    <p className="text-xs font-semibold text-teal-700 dark:text-teal-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <Send className="h-3 w-3" />
+                      Copies rendues ({returned.length})
+                    </p>
+                    <div className="space-y-2">
+                      {returned.map((session) => {
+                        const isSelected = session.id === selectedSessionId
+                        return (
+                          <button
+                            key={session.id}
+                            onClick={() => {
+                              setSelectedSessionId(session.id)
+                              setCurrentQuestionIndex(0)
+                            }}
+                            className={`w-full text-left rounded-lg border p-3 transition-all hover:shadow-sm opacity-80 ${
+                              isSelected
+                                ? 'border-teal-400 bg-teal-50 dark:border-teal-700 dark:bg-teal-950/30 ring-1 ring-teal-400/50 dark:ring-teal-700/50'
+                                : 'border-border bg-background hover:border-teal-200 dark:hover:border-teal-800'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold truncate">
+                                  {session.etudiant.name}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {session.etudiant.email}
+                                </p>
+                              </div>
+                              <Badge className="shrink-0 bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800 text-[10px]">
+                                <Check className="h-3 w-3 mr-0.5" />
+                                Rendue
+                              </Badge>
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              {session.score !== null && (
+                                <span className="text-xs text-muted-foreground">
+                                  <Award className="h-3 w-3 inline mr-0.5" />
+                                  {session.score.toFixed(1)} pts
+                                </span>
+                              )}
+                              {session.alertes > 0 && (
+                                <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
+                                  <AlertTriangle className="h-3 w-3 mr-0.5" />
+                                  {session.alertes}
+                                </Badge>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </ScrollArea>
         )}
@@ -1002,8 +1046,30 @@ export function CorrectionPage() {
               ) : (
                 <Check className="h-4 w-4" />
               )}
-              Finaliser la correction
+              Finaliser et rendre
             </Button>
+          </div>
+        </div>
+      )
+    }
+
+    // Already returned — show read-only view
+    if (selectedSession.statut === 'RETOURNEE') {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center max-w-sm">
+            <div className="flex h-20 w-20 mx-auto items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
+              <Check className="h-10 w-10 text-teal-500 dark:text-teal-400" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold">Copie rendue</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              La copie de {selectedSession.etudiant.name} a été corrigée et rendue.
+            </p>
+            <div className="mt-3 rounded-lg border border-border bg-muted/50 p-3">
+              <p className="text-sm">
+                Score final : <span className="font-bold text-emerald-600 dark:text-emerald-400">{selectedSession.score?.toFixed(1) ?? '—'} pts</span>
+              </p>
+            </div>
           </div>
         </div>
       )
@@ -1033,10 +1099,12 @@ export function CorrectionPage() {
                 className={
                   selectedSession.statut === 'CORRIGEE'
                     ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+                    : selectedSession.statut === 'RETOURNEE'
+                    ? 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800'
                     : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
                 }
               >
-                {selectedSession.statut === 'CORRIGEE' ? 'Corrigée' : 'En correction'}
+                {selectedSession.statut === 'CORRIGEE' ? 'Corrigée' : selectedSession.statut === 'RETOURNEE' ? 'Rendue' : 'En correction'}
               </Badge>
             </div>
             <Separator orientation="vertical" className="h-8 hidden sm:block" />
@@ -1070,19 +1138,10 @@ export function CorrectionPage() {
             {selectedSession.statut === 'CORRIGEE' && (
               <>
                 <Separator orientation="vertical" className="h-8 hidden sm:block" />
-                <Button
-                  size="sm"
-                  className="bg-teal-600 hover:bg-teal-700"
-                  onClick={handleReturnCopy}
-                  disabled={isReturning}
-                >
-                  {isReturning ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Send className="h-3.5 w-3.5" />
-                  )}
-                  Rendre la copie
-                </Button>
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 gap-1">
+                  <Check className="h-3 w-3" />
+                  Corrigée
+                </Badge>
               </>
             )}
             {selectedSession.statut === 'RETOURNEE' && (
@@ -1090,7 +1149,7 @@ export function CorrectionPage() {
                 <Separator orientation="vertical" className="h-8 hidden sm:block" />
                 <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800 gap-1">
                   <Check className="h-3 w-3" />
-                  Copie retournée
+                  Copie rendue
                 </Badge>
               </>
             )}
@@ -1245,7 +1304,7 @@ export function CorrectionPage() {
             ) : (
               <Check className="h-4 w-4" />
             )}
-            Finaliser la correction
+            Finaliser et rendre
           </Button>
         </div>
       </div>

@@ -309,7 +309,7 @@ export async function PATCH(
       const totalScore = session.reponses.reduce((sum, r) => sum + (r.score ?? 0), 0)
       const totalPossible = allQuestions.reduce((sum, q) => sum + q.bareme, 0)
 
-      // Create or update resultat
+      // Create or update resultat (with dateRetour since we auto-return)
       if (session.resultat) {
         await db.resultat.update({
           where: { id: session.resultat.id },
@@ -318,6 +318,7 @@ export async function PATCH(
             totalPossible,
             detailParQuestion: JSON.stringify(detailParQuestion),
             dateCorrection: new Date(),
+            dateRetour: new Date(),
           },
         })
       } else {
@@ -328,28 +329,30 @@ export async function PATCH(
             totalPossible,
             detailParQuestion: JSON.stringify(detailParQuestion),
             dateCorrection: new Date(),
+            dateRetour: new Date(),
           },
         })
       }
 
-      // Update session status
+      // Update session status to RETOURNEE directly (auto-return)
+      // Teacher clicks "Finaliser" → copy is corrected AND returned in one step
       await db.sessionPassation.update({
         where: { id: sessionId },
         data: {
-          statut: 'CORRIGEE',
+          statut: 'RETOURNEE',
           score: totalScore,
         },
       })
 
-      // Audit log — finalize correction
+      // Audit log — finalize & return correction
       await db.auditLog.create({
         data: {
           userId: 'system',
           userEmail: 'system',
-          action: 'FINALIZE_CORRECTION',
+          action: 'FINALIZE_AND_RETURN_CORRECTION',
           entite: 'SessionPassation',
           entiteId: sessionId,
-          details: `Correction finalisée — score ${totalScore}/${totalPossible}`,
+          details: `Correction finalisée et copie rendue — score ${totalScore}/${totalPossible}`,
         },
       })
 
@@ -357,7 +360,8 @@ export async function PATCH(
         score: totalScore,
         totalPossible,
         percentage: totalPossible > 0 ? Math.round((totalScore / totalPossible) * 100) : 0,
-        message: 'Correction finalisée',
+        message: 'Correction finalisée et copie rendue',
+        statut: 'RETOURNEE',
       })
     }
 
