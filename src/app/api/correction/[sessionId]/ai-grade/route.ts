@@ -299,13 +299,14 @@ export async function PATCH(
           questionId: q.questionId,
           type: q.type,
           bareme: q.bareme,
-          score: rep?.score || 0,
+          score: rep?.score ?? null,
           noteIA: rep?.noteIA || null,
           repondu: !!rep?.contenu,
         }
       })
 
-      const totalScore = session.reponses.reduce((sum, r) => sum + (r.score || 0), 0)
+      // Only count scores from graded responses (score !== null)
+      const totalScore = session.reponses.reduce((sum, r) => sum + (r.score ?? 0), 0)
       const totalPossible = allQuestions.reduce((sum, q) => sum + q.bareme, 0)
 
       // Create or update resultat

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     if (hasContenu) {
       // Validate contenu structure
       const contenuQuestions = contenu.questions as Array<Record<string, unknown>>
-      const validTypes = ['QCU', 'QCM', 'QRC', 'REFLEXION']
+      const validTypes = ['QCU', 'QCM', 'QRC', 'TRS', 'REFLEXION', 'CODE']
       const validDifficultes = ['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT']
 
       const sanitizedQuestions = contenuQuestions.map((q, idx) => ({

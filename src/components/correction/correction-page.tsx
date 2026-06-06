@@ -259,7 +259,7 @@ export function CorrectionPage() {
 
   // ─── Current response ───
   const currentReponse = currentQuestion
-    ? selectedSession?.reponses.find((r) => r.questionId === currentQuestion.questionId) ?? null
+    ? selectedSession?.reponses.find((r) => r.questionId === currentQuestion.questionId || r.questionId === currentQuestion.id) ?? null
     : null
 
   // ─── Reset correction fields when question changes ───
@@ -289,7 +289,7 @@ export function CorrectionPage() {
     (r) => r.score !== null
   ).length ?? 0
   const needsCorrectionQuestions = questions.filter((q) => {
-    const rep = selectedSession?.reponses.find((r) => r.questionId === q.questionId)
+    const rep = selectedSession?.reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
     return isManualType(q.question.type) && (!rep || rep.score === null)
   })
   const needsCorrectionCount = needsCorrectionQuestions.length
@@ -888,7 +888,7 @@ export function CorrectionPage() {
       <div className="flex flex-wrap gap-1.5">
         {questions.map((q, idx) => {
           const rep = selectedSession?.reponses.find(
-            (r) => r.questionId === q.questionId
+            (r) => r.questionId === q.questionId || r.questionId === q.id
           )
           const isCurrent = idx === currentQuestionIndex
           const isCorrected = rep?.score !== null && rep?.score !== undefined

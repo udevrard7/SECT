@@ -170,8 +170,19 @@ export async function POST(
           where: { id: reponse.id },
           data: { score: questionScore },
         })
+      } else if (!reponse && isAutoGraded) {
+        // Create a Reponse record with score=0 for unanswered auto-graded questions
+        // This ensures the correction view sees all questions as graded
+        await db.reponse.create({
+          data: {
+            sessionId: id,
+            questionId: qg.questionId,
+            contenu: null,
+            score: questionScore, // will be 0 for unanswered questions
+          },
+        })
       }
-      // For manual correction questions, leave score as null (not 0!)
+      // For manual correction questions without a response, leave as-is (no Reponse record = pending)
 
       if (isAutoGraded && questionScore !== null) {
         autoGradedScore += questionScore
