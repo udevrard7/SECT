@@ -28,6 +28,9 @@ import {
   CheckCircle2,
   CreditCard,
   Calendar,
+  UserCheck,
+  ShieldCheck,
+  Lock,
 } from 'lucide-react'
 import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -81,6 +84,20 @@ interface EtablissementItem {
   actif: boolean
   createdAt: string
   _count: { filieres: number; users: number }
+  adminHasAccess?: boolean
+  responsable?: {
+    id: string
+    name: string
+    email: string
+    actif: boolean
+    derniereConnexion: string | null
+  } | null
+  abonnements?: Array<{
+    id: string
+    statut: string
+    plan: { nom: string }
+    dateFin: string | null
+  }>
 }
 
 interface EtablissementDetail extends EtablissementItem {
@@ -156,6 +173,7 @@ export function EtablissementsPage() {
   const [detailEtab, setDetailEtab] = useState<EtablissementDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [detailAdminAccess, setDetailAdminAccess] = useState<boolean | null>(null)
 
   // ─── Form state ───
   const [formNom, setFormNom] = useState('')
@@ -459,11 +477,15 @@ export function EtablissementsPage() {
   const handleViewDetail = async (etab: EtablissementItem) => {
     setDetailLoading(true)
     setDetailOpen(true)
+    setDetailAdminAccess(null)
     try {
       const res = await fetch(`/api/etablissements/${etab.id}`, { headers: getAuthHeaders() })
       if (res.ok) {
         const data = await res.json()
         setDetailEtab(data.etablissement)
+        if (typeof data.adminAccess === 'boolean') {
+          setDetailAdminAccess(data.adminAccess)
+        }
       }
     } catch {
       // Silent
@@ -642,7 +664,36 @@ export function EtablissementsPage() {
                       {etab.telephone}
                     </span>
                   )}
+                  {etab.responsable && (
+                    <span className="flex items-center gap-1.5">
+                      <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      <span className="truncate">Responsable: {etab.responsable.name}</span>
+                      {!etab.responsable.actif && (
+                        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-[10px] px-1.5 py-0">Inactif</Badge>
+                      )}
+                    </span>
+                  )}
                 </div>
+
+                {/* Abonnement badge */}
+                {etab.abonnements && etab.abonnements.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {etab.abonnements.map((abo) => {
+                      const statutLabel = abo.statut === 'ESSAI' ? 'Essai' : abo.statut === 'ACTIF' ? 'Actif' : abo.statut === 'EXPIRE' ? 'Expiré' : abo.statut === 'RESILIE' ? 'Résilié' : abo.statut
+                      const statutClass = abo.statut === 'ACTIF'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+                        : abo.statut === 'ESSAI'
+                          ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+                          : 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                      return (
+                        <Badge key={abo.id} className={`text-[10px] gap-1 ${statutClass}`}>
+                          <CreditCard className="h-2.5 w-2.5" />
+                          {abo.plan.nom} — {statutLabel}
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {/* Counts */}
                 <div className="flex gap-3">
@@ -1214,7 +1265,7 @@ export function EtablissementsPage() {
           {detailEtab && !detailLoading && (
             <ScrollArea className="flex-1 -mx-6 px-6">
               <div className="space-y-6">
-                {/* Info section */}
+                {/* Info section — always shown */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {detailEtab.type && (
                     <div className="flex items-center gap-2 text-sm">
@@ -1256,67 +1307,88 @@ export function EtablissementsPage() {
                   )}
                 </div>
 
-                <Separator />
-
-                {/* Filières section */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4 text-emerald-600" />
-                    Filières ({detailEtab.filieres.length})
-                  </h3>
-                  {detailEtab.filieres.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">Aucune filière dans cet établissement.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {detailEtab.filieres.map((f) => (
-                        <Card key={f.id} className="py-0">
-                          <CardContent className="p-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="font-medium text-sm">{f.nom}</p>
-                                {f.code && <p className="text-xs text-muted-foreground">{f.code}</p>}
-                                {f.responsable && <p className="text-xs text-muted-foreground mt-0.5">Resp: {f.responsable.name}</p>}
-                              </div>
-                              <Badge variant="secondary" className="text-xs">
-                                {f._count.etudiants} étud.
-                              </Badge>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                {/* Restricted access message for ADMIN without access */}
+                {detailAdminAccess === false && (
+                  <>
+                    <Separator />
+                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4 flex items-start gap-3">
+                      <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Accès non autorisé</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                          Vous n&apos;avez pas d&apos;accès autorisé aux données détaillées de cet établissement. Demandez une autorisation dans la section Accès &amp; autorisations.
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </div>
+                  </>
+                )}
 
-                <Separator />
+                {/* Full detail view — only when adminAccess is true or not applicable (non-ADMIN) */}
+                {detailAdminAccess !== false && (
+                  <>
+                    <Separator />
 
-                {/* Users section */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-teal-600" />
-                    Utilisateurs ({detailEtab.users.length})
-                  </h3>
-                  {detailEtab.users.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">Aucun utilisateur dans cet établissement.</p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                      {detailEtab.users.map((u) => (
-                        <div key={u.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                              {u.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">{u.name}</p>
-                              <p className="text-xs text-muted-foreground">{u.email}</p>
-                            </div>
-                          </div>
-                          {getRoleBadge(u.role)}
+                    {/* Filières section */}
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4 text-emerald-600" />
+                        Filières ({detailEtab.filieres?.length ?? 0})
+                      </h3>
+                      {!detailEtab.filieres || detailEtab.filieres.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">Aucune filière dans cet établissement.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {detailEtab.filieres.map((f) => (
+                            <Card key={f.id} className="py-0">
+                              <CardContent className="p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="font-medium text-sm">{f.nom}</p>
+                                    {f.code && <p className="text-xs text-muted-foreground">{f.code}</p>}
+                                    {f.responsable && <p className="text-xs text-muted-foreground mt-0.5">Resp: {f.responsable.name}</p>}
+                                  </div>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {f._count.etudiants} étud.
+                                  </Badge>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
+
+                    <Separator />
+
+                    {/* Users section */}
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-teal-600" />
+                        Utilisateurs ({detailEtab.users?.length ?? 0})
+                      </h3>
+                      {!detailEtab.users || detailEtab.users.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">Aucun utilisateur dans cet établissement.</p>
+                      ) : (
+                        <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                          {detailEtab.users.map((u) => (
+                            <div key={u.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
+                              <div className="flex items-center gap-2">
+                                <div className="h-7 w-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                                  {u.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium">{u.name}</p>
+                                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                                </div>
+                              </div>
+                              {getRoleBadge(u.role)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </ScrollArea>
           )}

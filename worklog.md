@@ -147,3 +147,130 @@ Stage Summary:
 - Teachers can now view proctoring alerts (fullscreen exit, tab switch, copy attempts, etc.) and screenshots
 - Screenshots are stored in logEvents for teacher review
 - All changes compile and render correctly
+
+---
+Task ID: 3-frontend
+Agent: Main Agent
+Task: Reinforce SaaS model on Etablissements page — ADMIN access control, responsable & abonnement display
+
+Work Log:
+- Updated `EtablissementItem` interface with 3 new optional fields:
+  - `adminHasAccess?: boolean` — whether admin has authorized access
+  - `responsable?: { id, name, email, actif, derniereConnexion } | null`
+  - `abonnements?: Array<{ id, statut, plan: { nom }, dateFin }>`
+- Added `UserCheck`, `ShieldCheck`, `Lock` icons to lucide-react imports
+- Added responsable display on establishment cards:
+  - Shows "Responsable: {name}" with UserCheck icon below city/email info
+  - Shows small "Inactif" badge next to name when responsable.actif is false
+- Added abonnement badge on establishment cards:
+  - Renders a colored badge with CreditCard icon showing "{plan.nom} — {statut}"
+  - Color-coded by statut: ACTIF=emerald, ESSAI=amber, others=gray
+- Added `detailAdminAccess` state (boolean | null) for tracking admin access in detail dialog
+- Updated `handleViewDetail` to read `adminAccess` from API response and store it
+- Modified detail dialog to handle ADMIN restricted access:
+  - Basic info (name, type, ville, email, phone, site, adresse) always shown
+  - When `detailAdminAccess === false`: shows locked access message with Lock icon, "Accès non autorisé" heading, and redirect message to "Accès & autorisations" section
+  - When `detailAdminAccess !== false` (true or null for non-ADMIN users): shows full filières and users sections as before
+  - Made `filieres` and `users` access safe with optional chaining (`.?`) and nullish coalescing (`?? 0`)
+- Fixed closing bracket syntax error (missing `}` after `)`)
+- Lint passes cleanly, dev server compiles without errors
+
+Stage Summary:
+- EtablissementItem type extended with adminHasAccess, responsable, abonnements fields
+- Establishment cards now display responsable name (with inactive badge) and abonnement status
+- Detail dialog enforces ADMIN access control: restricted view when adminAccess=false
+- "Détails" button always visible; content depends on access status
+- All changes lint cleanly and compile successfully
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Adapt Utilisateurs Page for ADMIN SaaS Model
+
+Work Log:
+- Modified `src/components/utilisateurs/utilisateurs-page.tsx` to support ADMIN SaaS model where ADMIN only manages RESPONSABLE users
+- All changes are conditional on `isAdmin` (user.role === 'ADMIN'), RESPONSABLE behavior is fully preserved
+
+Changes made:
+1. **Header**: Title changes to "Gestion des Responsables" for admin, subtitle to "Gérez les comptes responsables des établissements clients"
+2. **Action buttons**: "Nouvel utilisateur" → "Nouveau responsable" for admin, "Inviter" → "Inviter un responsable" for admin, "Importer" button hidden for admin
+3. **Stats bar**: 4th card "Par rôle" replaced with "Avec établissement" count card for admin (shows number of users with etablissementId)
+4. **Role filter**: "Tous les rôles" → "Tous" for admin since only Responsable option exists
+5. **Table**: "Filière" column hidden for admin (both header and data cells)
+6. **Empty state**: Text adapted ("Aucun responsable trouvé" / "Créer votre premier responsable"), Importer button hidden
+7. **Create/Edit dialog**: Title adapts ("Nouveau responsable" / "Modifier le responsable"), description adapts, Filiere field hidden in all 3 modes (edit, invitation, direct creation)
+8. **Added `avecEtablissementCount` stat** computed from users with non-null etablissementId
+9. **Preserved existing logic**: `allowedCreateRoles`, `defaultCreateRole`, `isEtablissementRequired` remain unchanged — Admin can only create RESPONSABLE, Responsable creates ENSEIGNANT/ETUDIANT
+
+Stage Summary:
+- ADMIN users now see a "Gestion des Responsables" page tailored to SaaS platform management
+- RESPONSABLE users see the original "Gestion des Utilisateurs" page unchanged
+- Filiere column/field hidden for ADMIN (not relevant for Responsable management)
+- Import feature removed for ADMIN (no bulk import of responsables)
+- Lint passes cleanly on the edited file
+- Dev server compiles successfully
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Reinforce SaaS multi-tenant model on Admin Dashboard
+
+Work Log:
+- Modified `src/components/dashboard/admin-dashboard.tsx` with 5 key changes to reinforce the SaaS multi-tenant model:
+
+1. **Welcome section badge**: Changed "Propriétaire de la plateforme" → "Propriétaire SaaS"
+2. **Info banner**: Updated text from "🔒 Accès aux données des établissements soumis à autorisation" → "🔒 Accès aux données des établissements soumis à autorisation explicite"
+3. **EtablissementOverview interface**: Added `EtablissementResponsable` interface with `{ id, name, email, actif }` and added `responsable: EtablissementResponsable | null` field to `EtablissementOverview`
+4. **Establishment cards**:
+   - Added responsable name display with inactive badge when applicable
+   - Removed disabled "Voir détails" button when `adminHasAccess` is false (completely removed, not just disabled)
+   - When `adminHasAccess` is true, "Voir détails" button now navigates to etablissements page via `useNavigationStore.setCurrentPage`
+   - Kept "Demander accès" button for establishments without access
+5. **Removed Access Authorizations Panel (section 5)**: The entire panel with pending/active/expired access records tables has been removed from the dashboard. This is now available via the dedicated "Accès & autorisations" sidebar page.
+6. **Added Quick Actions section (new section 5)**: Card with 3 action buttons:
+   - "Créer un établissement" → navigates to etablissements page
+   - "Voir les responsables" → navigates to utilisateurs page
+   - "Accès & autorisations" → navigates to acces-etablissements page
+7. **Cleanup**: Removed unused imports (AlertCircle, X), constants (ACCESS_STATUT_BG, ACCESS_STATUT_LABELS), and state variables (accessLoading). Added imports for useNavigationStore, Plus, and Zap icons.
+
+Stage Summary:
+- Admin dashboard now clearly communicates SaaS owner role ("Propriétaire SaaS") with reinforced multi-tenant boundaries
+- "Voir détails" button removed entirely when admin lacks access (not just disabled)
+- Responsable info displayed on each establishment card
+- Access authorizations panel moved off dashboard to dedicated page
+- Quick actions card provides shortcuts to key admin operations
+- All changes lint cleanly, dev server compiles successfully
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Refactor ADMIN role as SaaS platform owner — multi-tenant data isolation
+
+Work Log:
+- Modified `/api/users` GET: ADMIN now only sees RESPONSABLE users (where.role = 'RESPONSABLE'), and role filter param is ignored for ADMIN to prevent override
+- Rewrote `/api/etablissements/[id]` GET: Added auth-based access control:
+  - RESPONSABLE: sees full details for their own establishment
+  - ADMIN with APPROUVE EtablissementAccess: sees full details
+  - ADMIN without access: sees only metadata (no users, no filieres)
+  - Other roles: basic info only
+  - Added adminOnly DELETE restriction
+- Modified `/api/etablissements` GET:
+  - Added authentication requirement
+  - RESPONSABLE: only sees their own establishment
+  - ADMIN: sees all establishments with `adminHasAccess` flag and `responsable` info
+  - Added abonnement data to response
+- Updated navigation store (ADMIN_CATEGORIES):
+  - Renamed "Utilisateurs" → "Responsables" in "Gestion Clients" category
+  - Moved "Accès & autorisations" to "Autorisations & Sécurité" category
+  - Removed "Paramètres de sécurité" from ADMIN sidebar (per-establishment)
+  - Moved "Notifications" to "Système" category
+- Updated seed route to create default Admin SaaS user when no ADMIN exists
+- Reset admin password for testing (ulrichdouh@gmail.com)
+- Verified with Agent Browser: All pages render correctly
+
+Stage Summary:
+- ADMIN role is now properly isolated as SaaS platform owner
+- ADMIN cannot see ENSEIGNANT/ETUDIANT user data via API
+- ADMIN cannot see detailed establishment data without explicit authorization
+- Navigation sidebar restructured for SaaS admin workflow
+- All changes lint cleanly, dev server compiles successfully

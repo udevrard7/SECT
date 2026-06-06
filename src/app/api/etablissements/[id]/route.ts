@@ -1,33 +1,32 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth-helpers'
 
 // GET /api/etablissements/[id] — Get single etablissement with details
+// ADMIN: Only sees basic info unless they have an APPROUVE EtablissementAccess
+// RESPONSABLE: Sees full details for their own establishment
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const authUser = getUserFromRequest(request)
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
+    // Fetch establishment basic info first
     const etablissement = await db.etablissement.findUnique({
       where: { id },
       include: {
-        filieres: {
-          include: {
-            _count: { select: { etudiants: true } },
-            responsable: { select: { id: true, name: true, email: true } },
-          },
-        },
-        users: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            actif: true,
-          },
-          take: 50,
-        },
         _count: { select: { filieres: true, users: true } },
+        abonnements: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: { plan: { select: { nom: true } } },
+        },
       },
     })
 
@@ -35,7 +34,100 @@ export async function GET(
       return NextResponse.json({ error: 'Établissement non trouvé' }, { status: 404 })
     }
 
-    return NextResponse.json({ etablissement })
+    // RESPONSABLE: Can see full details for their own establishment
+    if (authUser.role === 'RESPONSABLE' && authUser.etablissementId === id) {
+      const fullEtab = await db.etablissement.findUnique({
+        where: { id },
+        include: {
+          filieres: {
+            include: {
+              _count: { select: { etudiants: true } },
+              responsable: { select: { id: true, name: true, email: true } },
+            },
+          },
+          users: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              actif: true,
+            },
+            take: 50,
+          },
+          _count: { select: { filieres: true, users: true } },
+        },
+      })
+      return NextResponse.json({ etablissement: fullEtab })
+    }
+
+    // ADMIN: Check if they have authorized access
+    if (authUser.role === 'ADMIN') {
+      const accessRecord = await db.etablissementAccess.findFirst({
+        where: {
+          adminId: authUser.userId,
+          etablissementId: id,
+          statut: 'APPROUVE',
+        },
+      })
+
+      if (accessRecord) {
+        // Admin has authorized access — return full details
+        const fullEtab = await db.etablissement.findUnique({
+          where: { id },
+          include: {
+            filieres: {
+              include: {
+                _count: { select: { etudiants: true } },
+                responsable: { select: { id: true, name: true, email: true } },
+              },
+            },
+            users: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                actif: true,
+              },
+              take: 50,
+            },
+            _count: { select: { filieres: true, users: true } },
+          },
+        })
+        return NextResponse.json({ etablissement: fullEtab, adminAccess: true })
+      }
+
+      // Admin has NO authorized access — return only metadata (no users, no filieres details)
+      return NextResponse.json({
+        etablissement: {
+          id: etablissement.id,
+          nom: etablissement.nom,
+          type: etablissement.type,
+          ville: etablissement.ville,
+          pays: etablissement.pays,
+          actif: etablissement.actif,
+          createdAt: etablissement.createdAt,
+          _count: etablissement._count,
+          abonnements: etablissement.abonnements,
+          adminAccess: false,
+        },
+        adminAccess: false,
+      })
+    }
+
+    // Other roles: return basic info only
+    return NextResponse.json({
+      etablissement: {
+        id: etablissement.id,
+        nom: etablissement.nom,
+        type: etablissement.type,
+        ville: etablissement.ville,
+        pays: etablissement.pays,
+        actif: etablissement.actif,
+        _count: etablissement._count,
+      },
+    })
   } catch (error) {
     console.error('Error fetching etablissement:', error)
     return NextResponse.json({ error: 'Erreur lors de la récupération' }, { status: 500 })
@@ -44,11 +136,17 @@ export async function GET(
 
 // PATCH /api/etablissements/[id] — Update an etablissement
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const authUser = getUserFromRequest(request)
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
     const body = await request.json()
 
     const data: Record<string, unknown> = {}
@@ -90,12 +188,18 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/etablissements/[id] — Delete an etablissement
+// DELETE /api/etablissements/[id] — Delete an etablissement (ADMIN only)
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authUser = getUserFromRequest(request)
+
+    if (!authUser || authUser.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Seul un administrateur peut supprimer un établissement' }, { status: 403 })
+    }
+
     const { id } = await params
 
     const etablissement = await db.etablissement.delete({
