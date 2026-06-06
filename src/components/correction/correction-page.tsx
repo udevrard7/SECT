@@ -12,18 +12,14 @@ import {
   FileCheck,
   Sparkles,
   Save,
-  CheckCircle2,
-  XCircle,
-  MinusCircle,
   User,
   Mail,
   Award,
   MessageSquare,
   FileText,
   Search,
-  Filter,
-  Flag,
   Send,
+  Zap,
 } from 'lucide-react'
 import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -53,6 +49,8 @@ interface CorrectionSession {
   alertes: number
   needsCorrectionCount: number
   allCorrected: boolean
+  autoGradedScore: number
+  autoGradedTotal: number
   etudiant: { id: string; name: string; email: string }
   epreuve: {
     id: string
@@ -119,19 +117,15 @@ function formatDate(date: string | Date): string {
 
 function getQuestionTypeLabel(type: string): string {
   switch (type) {
-    case 'QCU': return 'QCU'
-    case 'QCM': return 'QCM'
-    case 'QRC': return 'QRC'
-    case 'TRS': return 'TRS'
-    case 'REFLEXION': return 'REFLEXION'
+    case 'QRC': return 'Réponse courte'
+    case 'TRS': return 'Travail structuré'
+    case 'REFLEXION': return 'Réflexion'
     default: return type
   }
 }
 
 function getQuestionTypeBadgeClasses(type: string): string {
   switch (type) {
-    case 'QCU': return 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800'
-    case 'QCM': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
     case 'QRC': return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
     case 'TRS': return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800'
     case 'REFLEXION': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
@@ -157,10 +151,6 @@ function getDifficulteLabel(diff: string): string {
     case 'EXPERT': return 'Expert'
     default: return diff
   }
-}
-
-function isManualType(type: string): boolean {
-  return type === 'QRC' || type === 'TRS' || type === 'REFLEXION'
 }
 
 // ─── Main Component ───
@@ -294,14 +284,15 @@ export function CorrectionPage() {
     )
   })
 
-  // ─── Stats ───
+  // ─── Stats (questions array already only contains manual/open types) ───
   const totalQuestions = questions.length
-  const correctedCount = selectedSession?.reponses.filter(
-    (r) => r.score !== null
-  ).length ?? 0
+  const manualCorrectedCount = questions.filter((q) => {
+    const rep = selectedSession?.reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
+    return rep?.score !== null && rep?.score !== undefined
+  }).length
   const needsCorrectionQuestions = questions.filter((q) => {
     const rep = selectedSession?.reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
-    return isManualType(q.question.type) && (!rep || rep.score === null)
+    return !rep || rep.score === null
   })
   const needsCorrectionCount = needsCorrectionQuestions.length
 
@@ -501,133 +492,6 @@ export function CorrectionPage() {
     if (index >= 0 && index < totalQuestions) {
       setCurrentQuestionIndex(index)
     }
-  }
-
-  // ─── Render student answer for QCU/QCM ───
-  const renderAutoGradedAnswer = () => {
-    if (!currentQuestion || !currentReponse) return null
-    const q = currentQuestion.question
-    const propositions = Array.isArray(q.propositions) ? q.propositions : (typeof q.propositions === 'string' ? parseJsonSafe<string[]>(q.propositions, []) : null)
-    const correctAnswer = q.reponseCorrecte ?? null
-    const studentAnswer = currentReponse.contenu
-
-    const correctLetters = Array.isArray(correctAnswer)
-      ? correctAnswer
-      : correctAnswer
-        ? [String(correctAnswer)]
-        : []
-
-    const studentLetters = studentAnswer
-      ? parseJsonSafe<string[]>(studentAnswer, [studentAnswer])
-      : []
-
-    const isCorrect =
-      correctLetters.length > 0 &&
-      studentLetters.length > 0 &&
-      correctLetters.length === studentLetters.length &&
-      correctLetters.every((l) => studentLetters.includes(l))
-
-    return (
-      <div className="space-y-3">
-        {/* Propositions review */}
-        <div className="space-y-2">
-          {(propositions ?? []).map((prop, idx) => {
-            const letter = String.fromCharCode(65 + idx)
-            const isCorrectOption = correctLetters.includes(letter)
-            const isStudentOption = studentLetters.includes(letter)
-
-            return (
-              <div
-                key={idx}
-                className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
-                  isCorrectOption
-                    ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
-                    : isStudentOption && !isCorrectOption
-                      ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30'
-                      : 'border-border bg-background'
-                }`}
-              >
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    isCorrectOption
-                      ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200'
-                      : isStudentOption && !isCorrectOption
-                        ? 'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200'
-                        : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {letter}
-                </span>
-                <span className="flex-1">{prop}</span>
-                {isCorrectOption && (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                )}
-                {isStudentOption && !isCorrectOption && (
-                  <XCircle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Score adjustment */}
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
-          <Label className="text-sm font-medium shrink-0">Note obtenue</Label>
-          <Input
-            type="number"
-            min={0}
-            max={currentQuestion.bareme}
-            step={0.5}
-            value={noteFinale}
-            onChange={(e) => setNoteFinale(e.target.value)}
-            className="w-20 h-8 text-sm"
-          />
-          <span className="text-sm text-muted-foreground">
-            / {currentQuestion.bareme}
-          </span>
-          {isCorrect ? (
-            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Correct
-            </Badge>
-          ) : (
-            <Badge className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800">
-              <XCircle className="h-3 w-3 mr-1" />
-              Incorrect
-            </Badge>
-          )}
-        </div>
-
-        {/* Comment */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Commentaire (optionnel)</Label>
-          <Textarea
-            value={commentaire}
-            onChange={(e) => setCommentaire(e.target.value)}
-            placeholder="Ajouter un commentaire..."
-            rows={2}
-            className="text-sm"
-          />
-        </div>
-
-        {/* Save button for QCU/QCM */}
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="bg-emerald-600 hover:bg-emerald-700"
-          >
-            {isSaving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            Sauvegarder
-          </Button>
-        </div>
-      </div>
-    )
   }
 
   // ─── Render correction card for QRC ───
@@ -888,8 +752,8 @@ export function CorrectionPage() {
     if (type === 'QRC') return renderQRCCorrection()
     if (type === 'TRS') return renderTRSCorrection()
     if (type === 'REFLEXION') return renderTRSCorrection()
-    // QCU/QCM: read-only review with score adjustment
-    return renderAutoGradedAnswer()
+    // Fallback for unknown types (should not occur since only manual types are returned)
+    return null
   }
 
   // ─── Question navigation dots ───
@@ -903,12 +767,11 @@ export function CorrectionPage() {
           )
           const isCurrent = idx === currentQuestionIndex
           const isCorrected = rep?.score !== null && rep?.score !== undefined
-          const needsManual = isManualType(q.question.type)
 
           let dotClass = 'bg-muted text-muted-foreground border-border'
           if (isCurrent) {
             dotClass = 'bg-emerald-600 text-white border-emerald-600'
-          } else if (needsManual && !isCorrected) {
+          } else if (!isCorrected) {
             dotClass = 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700'
           } else if (isCorrected) {
             dotClass = 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
@@ -1186,6 +1049,15 @@ export function CorrectionPage() {
                 </span>
               </span>
             </div>
+            {selectedSession.autoGradedTotal > 0 && (
+              <>
+                <Separator orientation="vertical" className="h-8 hidden sm:block" />
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Zap className="h-3.5 w-3.5 text-amber-500" />
+                  <span>Auto-corrigé : <span className="font-semibold text-foreground">{selectedSession.autoGradedScore.toFixed(1)}/{selectedSession.autoGradedTotal.toFixed(1)}</span></span>
+                </div>
+              </>
+            )}
             {selectedSession.alertes > 0 && (
               <>
                 <Separator orientation="vertical" className="h-8 hidden sm:block" />
@@ -1217,7 +1089,7 @@ export function CorrectionPage() {
               <>
                 <Separator orientation="vertical" className="h-8 hidden sm:block" />
                 <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800 gap-1">
-                  <CheckCircle2 className="h-3 w-3" />
+                  <Check className="h-3 w-3" />
                   Copie retournée
                 </Badge>
               </>
@@ -1225,20 +1097,20 @@ export function CorrectionPage() {
           </div>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress bar - only counts open questions (QRC/TRS/REFLEXION) */}
         <div className="mb-4">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
             <span>
-              {correctedCount} / {totalQuestions} questions corrigées
+              {manualCorrectedCount} / {totalQuestions} questions ouvertes corrigées
             </span>
             {needsCorrectionCount > 0 && (
               <span className="text-amber-600 dark:text-amber-400">
-                {needsCorrectionCount} à corriger manuellement
+                {needsCorrectionCount} à corriger
               </span>
             )}
           </div>
           <Progress
-            value={totalQuestions > 0 ? (correctedCount / totalQuestions) * 100 : 0}
+            value={totalQuestions > 0 ? (manualCorrectedCount / totalQuestions) * 100 : 0}
             className="h-2"
           />
         </div>

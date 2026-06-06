@@ -149,14 +149,28 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Find QRC/TRS/REFLEXION answers that need manual correction
-      const needsCorrection = unifiedQuestions.filter((q) => {
-        if (!['QRC', 'TRS', 'REFLEXION'].includes(q.question.type)) return false
+      // Calculate auto-graded score (QCU/QCM) for display purposes
+      const autoTypes = ['QCU', 'QCM']
+      const autoGradedQuestions = unifiedQuestions.filter((q) => autoTypes.includes(q.question.type))
+      const autoGradedScore = autoGradedQuestions.reduce((sum, q) => {
+        const rep = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
+        return sum + (rep?.score ?? 0)
+      }, 0)
+      const autoGradedTotal = autoGradedQuestions.reduce((sum, q) => sum + q.bareme, 0)
+
+      // Filter to ONLY show manual correction questions (QRC, TRS, REFLEXION)
+      // QCU/QCM are auto-graded and don't need teacher review
+      const manualQuestions = unifiedQuestions.filter((q) =>
+        ['QRC', 'TRS', 'REFLEXION'].includes(q.question.type)
+      )
+
+      // Find manual questions that still need correction
+      const needsCorrection = manualQuestions.filter((q) => {
         const reponse = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
         return !reponse || reponse.score === null
       })
 
-      const allCorrected = unifiedQuestions.length > 0 && needsCorrection.length === 0
+      const allCorrected = needsCorrection.length === 0
 
       return {
         ...session,
@@ -164,7 +178,7 @@ export async function GET(request: NextRequest) {
         reponses,
         epreuve: {
           ...session.epreuve,
-          questions: unifiedQuestions,
+          questions: manualQuestions,
         },
         resultat: session.resultat ? {
           ...session.resultat,
@@ -173,6 +187,8 @@ export async function GET(request: NextRequest) {
         } : null,
         needsCorrectionCount: needsCorrection.length,
         allCorrected,
+        autoGradedScore,
+        autoGradedTotal,
       }
     })
 
