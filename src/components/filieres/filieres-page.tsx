@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   GraduationCap,
   Plus,
   Search,
-  Filter,
   Edit3,
   Trash2,
   Eye,
@@ -17,6 +16,15 @@ import {
   BookOpen,
   Loader2,
   UserCircle,
+  LayoutGrid,
+  List,
+  Download,
+  MoreHorizontal,
+  CheckSquare,
+  Square,
+  X,
+  AlertTriangle,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -51,9 +59,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -93,6 +122,9 @@ interface ResponsableOption {
   email: string
 }
 
+type ViewMode = 'card' | 'table'
+type BulkAction = 'activate' | 'deactivate' | 'delete'
+
 // ─── Utility functions ───
 
 function formatDateFR(dateStr: string): string {
@@ -101,6 +133,24 @@ function formatDateFR(dateStr: string): string {
     month: '2-digit',
     year: 'numeric',
   })
+}
+
+function escapeCSV(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
+// ─── Debounce hook ───
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(handler)
+  }, [value, delay])
+  return debouncedValue
 }
 
 // ─── Main Component ───
@@ -112,8 +162,12 @@ export function FilieresPage() {
   const [filieres, setFilieres] = useState<FiliereItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  // ─── View mode ───
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
+
   // ─── Filter state ───
-  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const debouncedSearch = useDebounce(searchInput, 300)
   const [etablissementFilter, setEtablissementFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -122,6 +176,8 @@ export function FilieresPage() {
   const [editingFiliere, setEditingFiliere] = useState<FiliereItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<FiliereItem | null>(null)
+  const [deleteDependencies, setDeleteDependencies] = useState<{ epreuves: number; etudiants: number; unitesEnseignement: number } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // ─── Detail view state ───
   const [detailFiliere, setDetailFiliere] = useState<FiliereDetail | null>(null)
@@ -141,8 +197,14 @@ export function FilieresPage() {
   const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
   const [responsables, setResponsables] = useState<ResponsableOption[]>([])
 
+  // ─── Bulk selection state ───
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActionDialog, setBulkActionDialog] = useState<BulkAction | null>(null)
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+
   // ─── Determine if user is Responsable ───
   const isResponsable = user?.role === 'RESPONSABLE'
+  const isAdmin = user?.role === 'ADMIN'
 
   // ─── Auto-generate filière code suggestion ───
   const suggestedFiliereCode = useMemo(() => {
@@ -168,10 +230,9 @@ export function FilieresPage() {
     setIsLoading(true)
     try {
       const params = new URLSearchParams()
-      if (search) params.set('search', search)
+      if (debouncedSearch) params.set('search', debouncedSearch)
       if (etablissementFilter && etablissementFilter !== 'all') params.set('etablissementId', etablissementFilter)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
-      // If user is RESPONSABLE, filter to only their filieres
       if (isResponsable && user?.id) {
         params.set('responsableId', user.id)
       }
@@ -186,7 +247,7 @@ export function FilieresPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [search, etablissementFilter, statusFilter, isResponsable, user?.id])
+  }, [debouncedSearch, etablissementFilter, statusFilter, isResponsable, user?.id])
 
   // ─── Fetch etablissements & responsables ───
   const fetchOptions = useCallback(async () => {
@@ -216,20 +277,49 @@ export function FilieresPage() {
     fetchOptions()
   }, [fetchOptions])
 
+  // ─── Clear selection when filieres change ───
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev)
+      const currentIds = new Set(filieres.map((f) => f.id))
+      for (const id of newSet) {
+        if (!currentIds.has(id)) newSet.delete(id)
+      }
+      return newSet
+    })
+  }, [filieres])
+
   // ─── Stats ───
   const totalFilieres = filieres.length
   const totalEtudiants = filieres.reduce((acc, f) => acc + (f._count?.etudiants ?? 0), 0)
   const actifCount = filieres.filter((f) => f.actif).length
   const withResponsable = filieres.filter((f) => f.responsable).length
 
+  // ─── Selection helpers ───
+  const allSelected = filieres.length > 0 && selectedIds.size === filieres.length
+  const someSelected = selectedIds.size > 0 && !allSelected
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filieres.map((f) => f.id)))
+    }
+  }
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) newSet.delete(id)
+      else newSet.add(id)
+      return newSet
+    })
+  }
+
   // ─── Open create dialog ───
   const handleOpenCreate = () => {
     setEditingFiliere(null)
     setFormNom('')
     setFormCode('')
-    // Auto-fill for RESPONSABLE: always their own établissement
     setFormEtablissementId(user?.etablissementId ?? '')
-    // Auto-fill responsableId for RESPONSABLE users
     setFormResponsableId(user?.etablissementId ? (user?.id ?? '') : '')
     setFormDescription('')
     setFormNbEtudiants('')
@@ -314,27 +404,64 @@ export function FilieresPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !filiere.actif }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
       toast.success(filiere.actif ? 'Filière désactivée' : 'Filière activée', {
         description: `${filiere.nom} est maintenant ${filiere.actif ? 'inactive' : 'active'}.`,
       })
       await fetchFilieres()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de modifier le statut.' })
     }
   }
 
   // ─── Delete ───
   const handleDelete = async () => {
     if (!deleteTarget) return
+    setIsDeleting(true)
     try {
       const res = await fetch(`/api/filieres/${deleteTarget.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Erreur')
-      toast.success('Filière supprimée', { description: `${deleteTarget.nom} a été désactivée.` })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la suppression')
+      }
+      const data = await res.json()
+      const deps = data.dependencies
+      toast.success('Filière supprimée', {
+        description: deps
+          ? `${deleteTarget.nom} a été désactivée (${deps.etudiants} étudiant(s), ${deps.epreuves} épreuve(s) affecté(s)).`
+          : `${deleteTarget.nom} a été désactivée.`,
+      })
       setDeleteTarget(null)
+      setDeleteDependencies(null)
       await fetchFilieres()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer la filière.' })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // ─── Open delete confirmation with dependency check ───
+  const handleOpenDelete = async (filiere: FiliereItem) => {
+    setDeleteTarget(filiere)
+    // Fetch dependencies by getting the filiere detail
+    try {
+      const res = await fetch(`/api/filieres/${filiere.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        // The API now returns dependency counts in the delete response
+        // But for preview, we can estimate from available data
+        setDeleteDependencies({
+          epreuves: 0, // Will be populated from actual DELETE response
+          etudiants: data._count?.etudiants ?? data.etudiants?.length ?? 0,
+          unitesEnseignement: 0,
+        })
+      }
     } catch {
-      toast.error('Erreur', { description: 'Impossible de supprimer la filière.' })
+      setDeleteDependencies(null)
     }
   }
 
@@ -355,6 +482,79 @@ export function FilieresPage() {
     }
   }
 
+  // ─── Bulk operations ───
+  const handleBulkAction = async () => {
+    if (!bulkActionDialog || selectedIds.size === 0) return
+    setIsBulkProcessing(true)
+    try {
+      const res = await fetch('/api/filieres/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+          action: bulkActionDialog,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de l\'opération')
+      }
+      const data = await res.json()
+      const actionLabels = {
+        activate: 'activée(s)',
+        deactivate: 'désactivée(s)',
+        delete: 'supprimée(s)',
+      }
+      toast.success('Opération réussie', {
+        description: `${data.updated} filière(s) ${actionLabels[bulkActionDialog]}.`,
+      })
+      setSelectedIds(new Set())
+      setBulkActionDialog(null)
+      await fetchFilieres()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }
+
+  // ─── CSV Export ───
+  const handleExportCSV = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (etablissementFilter && etablissementFilter !== 'all') params.set('etablissementId', etablissementFilter)
+      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+      if (isResponsable && user?.id) {
+        params.set('responsableId', user.id)
+      }
+
+      const res = await fetch(`/api/filieres/export?${params.toString()}`)
+      if (!res.ok) throw new Error('Erreur lors de l\'export')
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `filieres_export_${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success('Export réussi', { description: 'Le fichier CSV a été téléchargé.' })
+    } catch {
+      toast.error('Erreur', { description: 'Impossible d\'exporter les données.' })
+    }
+  }
+
+  // ─── Bulk action labels ───
+  const bulkActionLabels: Record<BulkAction, string> = {
+    activate: 'Activer',
+    deactivate: 'Désactiver',
+    delete: 'Supprimer',
+  }
+
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
@@ -370,10 +570,21 @@ export function FilieresPage() {
               : 'Organisez et gérez les filières et formations'}
           </p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4" />
-          Nouvelle filière
-        </Button>
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={handleExportCSV}>
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Exporter en CSV</TooltipContent>
+          </Tooltip>
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+            <Plus className="h-4 w-4" />
+            Nouvelle filière
+          </Button>
+        </div>
       </div>
 
       {/* ─── Stats bar ─── */}
@@ -424,16 +635,62 @@ export function FilieresPage() {
         </Card>
       </div>
 
+      {/* ─── Bulk Action Toolbar ─── */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border bg-emerald-50 p-3 dark:bg-emerald-950/30">
+          <span className="text-sm font-medium">
+            {selectedIds.size} filière(s) sélectionnée(s)
+          </span>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkActionDialog('activate')}
+            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+          >
+            <Power className="h-3.5 w-3.5" />
+            Activer
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkActionDialog('deactivate')}
+          >
+            <PowerOff className="h-3.5 w-3.5" />
+            Désactiver
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkActionDialog('delete')}
+            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Supprimer
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {/* ─── Search/Filter Toolbar ─── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Rechercher une filière..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
+          {searchInput && debouncedSearch !== searchInput && (
+            <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+          )}
         </div>
         <Select value={etablissementFilter} onValueChange={setEtablissementFilter}>
           <SelectTrigger className="w-[200px]">
@@ -457,34 +714,58 @@ export function FilieresPage() {
             <SelectItem value="inactif">Inactif</SelectItem>
           </SelectContent>
         </Select>
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(value) => { if (value) setViewMode(value as ViewMode) }}
+          variant="outline"
+          size="sm"
+        >
+          <ToggleGroupItem value="card" aria-label="Vue cartes">
+            <LayoutGrid className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="table" aria-label="Vue tableau">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       {/* ─── Loading state ─── */}
       {isLoading && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2">
-                    <div className="h-5 w-40 rounded bg-muted" />
-                    <div className="h-4 w-24 rounded bg-muted" />
+        viewMode === 'card' ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <div className="h-5 w-40 rounded bg-muted" />
+                      <div className="h-4 w-24 rounded bg-muted" />
+                    </div>
+                    <div className="h-6 w-20 rounded-full bg-muted" />
                   </div>
-                  <div className="h-6 w-20 rounded-full bg-muted" />
-                </div>
-                <div className="mt-4 space-y-2">
-                  <div className="h-3 w-32 rounded bg-muted" />
-                  <div className="h-3 w-24 rounded bg-muted" />
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <div className="h-8 w-20 rounded bg-muted" />
-                  <div className="h-8 w-20 rounded bg-muted" />
-                  <div className="h-8 w-20 rounded bg-muted" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  <div className="mt-4 space-y-2">
+                    <div className="h-3 w-32 rounded bg-muted" />
+                    <div className="h-3 w-24 rounded bg-muted" />
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <div className="h-8 w-20 rounded bg-muted" />
+                    <div className="h-8 w-20 rounded bg-muted" />
+                    <div className="h-8 w-20 rounded bg-muted" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border">
+            <div className="p-6 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </div>
+        )
       )}
 
       {/* ─── Empty state ─── */}
@@ -495,11 +776,11 @@ export function FilieresPage() {
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucune filière trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-            {search || etablissementFilter !== 'all' || statusFilter !== 'all'
+            {searchInput || etablissementFilter !== 'all' || statusFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
               : 'Commencez par créer votre première filière.'}
           </p>
-          {!search && etablissementFilter === 'all' && statusFilter === 'all' && (
+          {!searchInput && etablissementFilter === 'all' && statusFilter === 'all' && (
             <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
               <Plus className="h-4 w-4" />
               Créer une filière
@@ -508,23 +789,30 @@ export function FilieresPage() {
         </div>
       )}
 
-      {/* ─── Filiere card grid ─── */}
-      {!isLoading && filieres.length > 0 && (
+      {/* ─── Card View ─── */}
+      {!isLoading && filieres.length > 0 && viewMode === 'card' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filieres.map((filiere) => (
-            <Card key={filiere.id} className="group transition-shadow hover:shadow-md">
+            <Card key={filiere.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(filiere.id) ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
               <CardContent className="flex flex-col gap-4 p-6">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold leading-tight">{filiere.nom}</h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {filiere.code && (
-                        <Badge variant="outline" className="text-xs font-mono">
-                          {filiere.code}
-                        </Badge>
-                      )}
-
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <Checkbox
+                      checked={selectedIds.has(filiere.id)}
+                      onCheckedChange={() => toggleSelect(filiere.id)}
+                      className="mt-1"
+                      aria-label={`Sélectionner ${filiere.nom}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base font-semibold leading-tight">{filiere.nom}</h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {filiere.code && (
+                          <Badge variant="outline" className="text-xs font-mono">
+                            {filiere.code}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {filiere.actif ? (
@@ -578,7 +866,7 @@ export function FilieresPage() {
                 <Separator />
 
                 {/* Actions */}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -588,36 +876,167 @@ export function FilieresPage() {
                     <Edit3 className="h-3.5 w-3.5" />
                     Modifier
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleToggleActive(filiere)}
-                  >
-                    {filiere.actif ? (
-                      <>
-                        <PowerOff className="h-3.5 w-3.5" />
-                        Désactiver
-                      </>
-                    ) : (
-                      <>
-                        <Power className="h-3.5 w-3.5" />
-                        Activer
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleViewDetail(filiere)}
-                    className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    Détails
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleToggleActive(filiere)}>
+                        {filiere.actif ? (
+                          <>
+                            <PowerOff className="h-4 w-4" />
+                            Désactiver
+                          </>
+                        ) : (
+                          <>
+                            <Power className="h-4 w-4" />
+                            Activer
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleViewDetail(filiere)}>
+                        <Eye className="h-4 w-4" />
+                        Détails
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => handleOpenDelete(filiere)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Supprimer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* ─── Table View ─── */}
+      {!isLoading && filieres.length > 0 && viewMode === 'table' && (
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) {
+                        (el as HTMLButtonElement & { indeterminate?: boolean }).indeterminate = someSelected
+                      }
+                    }}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Sélectionner tout"
+                  />
+                </TableHead>
+                <TableHead>Nom</TableHead>
+                <TableHead className="hidden md:table-cell">Code</TableHead>
+                <TableHead className="hidden sm:table-cell">Établissement</TableHead>
+                <TableHead className="hidden lg:table-cell">Responsable</TableHead>
+                <TableHead>Étudiants</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filieres.map((filiere) => (
+                <TableRow
+                  key={filiere.id}
+                  className={selectedIds.has(filiere.id) ? 'bg-emerald-50 dark:bg-emerald-950/30' : ''}
+                >
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(filiere.id)}
+                      onCheckedChange={() => toggleSelect(filiere.id)}
+                      aria-label={`Sélectionner ${filiere.nom}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium">{filiere.nom}</p>
+                      {filiere.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{filiere.description}</p>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {filiere.code ? (
+                      <Badge variant="outline" className="font-mono text-xs">{filiere.code}</Badge>
+                    ) : '—'}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                    {filiere.etablissement?.nom ?? '—'}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {filiere.responsable ? (
+                      <span className="text-sm">{filiere.responsable.name}</span>
+                    ) : (
+                      <span className="text-xs text-amber-600 italic">Non assigné</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="gap-1 text-xs">
+                      <Users className="h-3 w-3" />
+                      {filiere._count?.etudiants ?? 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {filiere.actif ? (
+                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">Actif</Badge>
+                    ) : (
+                      <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleOpenEdit(filiere)}>
+                          <Edit3 className="h-4 w-4" />
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewDetail(filiere)}>
+                          <Eye className="h-4 w-4" />
+                          Détails
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleActive(filiere)}>
+                          {filiere.actif ? (
+                            <>
+                              <PowerOff className="h-4 w-4" />
+                              Désactiver
+                            </>
+                          ) : (
+                            <>
+                              <Power className="h-4 w-4" />
+                              Activer
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => handleOpenDelete(filiere)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -757,22 +1176,78 @@ export function FilieresPage() {
       </Dialog>
 
       {/* ─── Delete Confirmation Dialog ─── */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteDependencies(null) } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer la filière</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nom}</strong> ?
-              Cette action désactivera la filière (suppression logique). Les étudiants associés ne seront pas supprimés.
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Supprimer la filière
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nom}</strong> ?
+                </p>
+                <p className="text-amber-600 dark:text-amber-400">
+                  Cette action désactivera la filière (suppression logique). Les données associées ne seront pas perdues.
+                </p>
+                {deleteDependencies && (deleteDependencies.etudiants > 0 || deleteDependencies.epreuves > 0 || deleteDependencies.unitesEnseignement > 0) && (
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-sm space-y-1">
+                    <p className="font-medium text-amber-800 dark:text-amber-300">Dépendances trouvées :</p>
+                    {deleteDependencies.etudiants > 0 && (
+                      <p className="text-amber-700 dark:text-amber-400">• {deleteDependencies.etudiants} étudiant(s) inscrit(s)</p>
+                    )}
+                    {deleteDependencies.epreuves > 0 && (
+                      <p className="text-amber-700 dark:text-amber-400">• {deleteDependencies.epreuves} épreuve(s) associée(s)</p>
+                    )}
+                    {deleteDependencies.unitesEnseignement > 0 && (
+                      <p className="text-amber-700 dark:text-amber-400">• {deleteDependencies.unitesEnseignement} unité(s) d'enseignement</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={handleDelete}
+              disabled={isDeleting}
             >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Bulk Action Confirmation Dialog ─── */}
+      <AlertDialog open={!!bulkActionDialog} onOpenChange={(open) => { if (!open) setBulkActionDialog(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-red-500" />}
+              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-emerald-500" />}
+              {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-amber-500" />}
+              Confirmation d&apos;action groupée
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkActionDialog === 'delete'
+                ? `Êtes-vous sûr de vouloir supprimer (désactiver) ${selectedIds.size} filière(s) ? Les étudiants et données associées ne seront pas perdus.`
+                : `Êtes-vous sûr de vouloir ${bulkActionDialog === 'activate' ? 'activer' : 'désactiver'} ${selectedIds.size} filière(s) ?`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkProcessing}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className={bulkActionDialog === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              onClick={handleBulkAction}
+              disabled={isBulkProcessing}
+            >
+              {isBulkProcessing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {bulkActionDialog ? bulkActionLabels[bulkActionDialog] : 'Confirmer'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
