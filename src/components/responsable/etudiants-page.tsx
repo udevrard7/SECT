@@ -25,6 +25,10 @@ import {
   ChevronRight,
   KeyRound,
   FileText,
+  MoreHorizontal,
+  AlertTriangle,
+  X,
+  Loader2,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -68,6 +72,19 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -240,6 +257,13 @@ export function EtudiantsPage() {
   const [detailEtudiant, setDetailEtudiant] = useState<EtudiantItem | null>(null)
   const [removeFiliereTarget, setRemoveFiliereTarget] = useState<EtudiantItem | null>(null)
   const [cancelInvitationTarget, setCancelInvitationTarget] = useState<InvitationItem | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<EtudiantItem | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // ─── Bulk selection state ───
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActionDialog, setBulkActionDialog] = useState<'activate' | 'deactivate' | 'delete' | null>(null)
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
 
   // ─── Registration mode ───
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('invitation')
@@ -652,6 +676,85 @@ export function EtudiantsPage() {
     }
   }
 
+  // ─── Delete student (soft delete) ───
+  const handleDeleteStudent = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/users/${deleteTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la suppression')
+      }
+      const data = await res.json()
+      const deps = data.dependencies
+      toast.success('Étudiant supprimé', {
+        description: deps
+          ? `${deleteTarget.name} a été désactivé (${deps.sessions ?? 0} session(s), ${deps.reponses ?? 0} réponse(s) affectée(s)).`
+          : `${deleteTarget.name} a été désactivé.`,
+      })
+      setDeleteTarget(null)
+      await fetchEtudiants()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'étudiant.' })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // ─── Bulk operations ───
+  const handleBulkAction = async () => {
+    if (!bulkActionDialog || selectedIds.size === 0) return
+    setIsBulkProcessing(true)
+    try {
+      const results = await Promise.allSettled(
+        Array.from(selectedIds).map(async (id) => {
+          if (bulkActionDialog === 'delete') {
+            const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error('Erreur')
+          } else {
+            const etu = etudiants.find((e) => e.id === id)
+            const res = await fetch(`/api/users/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ actif: bulkActionDialog === 'activate' }),
+            })
+            if (!res.ok) throw new Error('Erreur')
+          }
+        })
+      )
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.filter((r) => r.status === 'rejected').length
+      const actionLabels = { activate: 'activé(s)', deactivate: 'désactivé(s)', delete: 'supprimé(s)' }
+      toast.success('Opération terminée', {
+        description: `${succeeded} étudiant(s) ${actionLabels[bulkActionDialog]}${failed > 0 ? `, ${failed} échoué(s)` : ''}.`,
+      })
+      setSelectedIds(new Set())
+      setBulkActionDialog(null)
+      await fetchEtudiants()
+    } catch {
+      toast.error('Erreur', { description: 'Une erreur est survenue lors de l\'opération en masse.' })
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }
+
+  // ─── Selection helpers ───
+  const allSelected = etudiants.length > 0 && selectedIds.size === etudiants.length
+  const someSelected = selectedIds.size > 0 && !allSelected
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set())
+    else setSelectedIds(new Set(etudiants.map((e) => e.id)))
+  }
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) newSet.delete(id)
+      else newSet.add(id)
+      return newSet
+    })
+  }
+
   // ─── View detail ───
   const handleViewDetail = (etudiant: EtudiantItem) => {
     setDetailEtudiant(etudiant)
@@ -984,14 +1087,63 @@ export function EtudiantsPage() {
         </div>
       )}
 
+      {/* ─── Bulk Action Toolbar ─── */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border bg-emerald-50 p-3 dark:bg-emerald-950/30">
+          <span className="text-sm font-medium">
+            {selectedIds.size} étudiant(s) sélectionné(s)
+          </span>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkActionDialog('activate')}
+            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+          >
+            <Power className="h-3.5 w-3.5" />
+            Activer
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkActionDialog('deactivate')}
+          >
+            <PowerOff className="h-3.5 w-3.5" />
+            Désactiver
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkActionDialog('delete')}
+            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Supprimer
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {/* ─── Card view ─── */}
       {!isLoading && etudiants.length > 0 && viewMode === 'cards' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {etudiants.map((etudiant) => (
-            <Card key={etudiant.id} className="group transition-shadow hover:shadow-md">
+            <Card key={etudiant.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(etudiant.id) ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
               <CardContent className="flex flex-col gap-3 p-5">
                 {/* Header */}
                 <div className="flex items-start gap-3">
+                  <Checkbox
+                    checked={selectedIds.has(etudiant.id)}
+                    onCheckedChange={() => toggleSelect(etudiant.id)}
+                    className="mt-1"
+                    aria-label={`Sélectionner ${etudiant.name}`}
+                  />
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
                     {getInitials(etudiant.name)}
                   </div>
@@ -1038,7 +1190,7 @@ export function EtudiantsPage() {
                 <Separator />
 
                 {/* Actions */}
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <Button
                     variant="outline"
                     size="sm"
@@ -1048,36 +1200,40 @@ export function EtudiantsPage() {
                     <Edit3 className="h-3 w-3" />
                     Modifier
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => handleToggleActive(etudiant)}
-                  >
-                    {etudiant.actif ? (
-                      <><PowerOff className="h-3 w-3" />Désactiver</>
-                    ) : (
-                      <><Power className="h-3 w-3" />Activer</>
-                    )}
-                  </Button>
-                  {etudiant.filiereId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950"
-                      onClick={() => setRemoveFiliereTarget(etudiant)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => handleViewDetail(etudiant)}
-                  >
-                    <Eye className="h-3 w-3" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 w-7 p-0">
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleToggleActive(etudiant)}>
+                        {etudiant.actif ? (
+                          <><PowerOff className="h-4 w-4" />Désactiver</>
+                        ) : (
+                          <><Power className="h-4 w-4" />Activer</>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleViewDetail(etudiant)}>
+                        <Eye className="h-4 w-4" />
+                        Détails
+                      </DropdownMenuItem>
+                      {etudiant.filiereId && (
+                        <DropdownMenuItem onClick={() => setRemoveFiliereTarget(etudiant)}>
+                          <XCircle className="h-4 w-4" />
+                          Retirer de la filière
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setDeleteTarget(etudiant)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Supprimer l'étudiant
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardContent>
             </Card>
@@ -1137,17 +1293,40 @@ export function EtudiantsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleOpenEdit(etudiant)}>
-                          <Edit3 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleToggleActive(etudiant)}>
-                          {etudiant.actif ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleViewDetail(etudiant)}>
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenEdit(etudiant)}>
+                            <Edit3 className="h-4 w-4" />
+                            Modifier
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleActive(etudiant)}>
+                            {etudiant.actif ? <><PowerOff className="h-4 w-4" />Désactiver</> : <><Power className="h-4 w-4" />Activer</>}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleViewDetail(etudiant)}>
+                            <Eye className="h-4 w-4" />
+                            Détails
+                          </DropdownMenuItem>
+                          {etudiant.filiereId && (
+                            <DropdownMenuItem onClick={() => setRemoveFiliereTarget(etudiant)}>
+                              <XCircle className="h-4 w-4" />
+                              Retirer de la filière
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleteTarget(etudiant)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1644,6 +1823,70 @@ export function EtudiantsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Delete Student Confirmation ─── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Supprimer l&apos;étudiant
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> ?
+                </p>
+                <p className="text-amber-600 dark:text-amber-400">
+                  Cette action désactivera le compte de l&apos;étudiant (suppression logique). Les données associées ne seront pas perdues.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDeleteStudent}
+              disabled={isDeleting}
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Bulk Action Confirmation ─── */}
+      <AlertDialog open={!!bulkActionDialog} onOpenChange={(open) => { if (!open) setBulkActionDialog(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-red-500" />}
+              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-emerald-500" />}
+              {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-amber-500" />}
+              Confirmation d&apos;action groupée
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkActionDialog === 'delete'
+                ? `Êtes-vous sûr de vouloir supprimer (désactiver) ${selectedIds.size} étudiant(s) ? Les données ne seront pas perdues.`
+                : `Êtes-vous sûr de vouloir ${bulkActionDialog === 'activate' ? 'activer' : 'désactiver'} ${selectedIds.size} étudiant(s) ?`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkProcessing}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className={bulkActionDialog === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              onClick={handleBulkAction}
+              disabled={isBulkProcessing}
+            >
+              {isBulkProcessing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ─── Remove Filiere Confirmation ─── */}
       <AlertDialog open={!!removeFiliereTarget} onOpenChange={(open) => !open && setRemoveFiliereTarget(null)}>
