@@ -174,14 +174,30 @@ async function _PATCH(
   }
 }
 
-// DELETE /api/users/[id] — Delete a user
-// Strategy:
-//   • If the user has NO blocking dependencies → hard delete (permanent removal from DB)
-//   • If the user HAS blocking dependencies (sessions, soumissions, etc.) →
-//     remove from establishment (clear etablissementId, filiereId, matricule, set actif: false)
-//     This preserves historical data while removing the student from the responsable's view.
-//   • This is distinct from the "deactivate" action (PATCH { actif: false }) which only
-//     disables the account but keeps the student linked to the establishment.
+// DELETE /api/users/[id] — Hard delete a user permanently
+//
+// This is a TRUE permanent deletion from the database.
+// All associated data is removed in the correct order to respect FK constraints:
+//
+//   Required FKs (must DELETE the referencing records):
+//     - SessionPassation (→ cascades Reponses automatically)
+//     - Soumission
+//     - Epreuve (teacher's exams)
+//     - Devoir (teacher's assignments → cascades Soumissions)
+//     - Invitation (created by this user)
+//
+//   Nullable FKs (set to NULL on referencing records):
+//     - Alerte.userId
+//     - NotificationAdmin.destinataireId
+//     - Filiere.responsableId (if this user is a filiere responsable)
+//
+//   Cascade FKs (auto-deleted by Prisma when User is deleted):
+//     - EnseignantFiliere, Affectation, Document (+ EpreuveDocument),
+//       PasswordReset, EtablissementAccess
+//
+// This is distinct from the "deactivate" action (PATCH { actif: false }) which
+// only archives the account — the student stays linked to the establishment,
+// data is preserved, but hidden from the default view.
 async function _DELETE(
   _request: NextRequest,
   context: { params: any; user: AuthenticatedUser }
@@ -203,11 +219,11 @@ async function _DELETE(
     const ownershipError = checkUserOwnership(context.user, existing)
     if (ownershipError) return ownershipError
 
-    // Count blocking dependencies before deletion
+    // Count dependencies BEFORE deletion for the audit log and response
     const [sessionsCount, reponsesCount, epreuvesCount, soumissionsCount, devoirsCount, alertesCount, invitationsCount, notificationsCount] = await Promise.all([
       db.sessionPassation.count({ where: { etudiantId: id } }),
       db.reponse.count({ where: { session: { etudiantId: id } } }),
-      db.epreuve.count({ where: { enseignantId: id, deletedAt: null } }),
+      db.epreuve.count({ where: { enseignantId: id } }),
       db.soumission.count({ where: { etudiantId: id } }),
       db.devoir.count({ where: { enseignantId: id } }),
       db.alerte.count({ where: { userId: id } }),
@@ -215,57 +231,54 @@ async function _DELETE(
       db.notificationAdmin.count({ where: { destinataireId: id } }),
     ])
 
-    const hasBlockingDeps =
-      sessionsCount > 0 || soumissionsCount > 0 || epreuvesCount > 0 ||
-      devoirsCount > 0 || alertesCount > 0 || invitationsCount > 0 || notificationsCount > 0
+    // ─── Step 1: Delete records with REQUIRED FKs pointing to this user ───
 
-    if (!hasBlockingDeps) {
-      // ─── Hard delete: no dependencies, safe to permanently remove ───
-      // Cascade-deleted automatically: EnseignantFiliere, Affectation, Document (+ EpreuveDocument), EtablissementAccess, PasswordReset
-      await db.user.delete({ where: { id } })
-
-      await db.auditLog.create({
-        data: {
-          action: 'DELETE',
-          entite: 'User',
-          entiteId: id,
-          userId: context.user.id,
-          userEmail: context.user.email,
-          details: JSON.stringify({
-            name: existing.name,
-            email: existing.email,
-            permanent: true,
-            reason: 'Aucune dépendance bloquante — suppression définitive',
-          }),
-        },
-      })
-
-      return NextResponse.json({
-        mode: 'permanent',
-        message: 'Utilisateur supprimé définitivement',
-        dependencies: {
-          sessions: sessionsCount,
-          reponses: reponsesCount,
-          epreuves: epreuvesCount,
-          soumissions: soumissionsCount,
-        },
-      })
+    // Delete student sessions → Reponses are cascade-deleted automatically
+    if (sessionsCount > 0) {
+      await db.sessionPassation.deleteMany({ where: { etudiantId: id } })
     }
 
-    // ─── Soft removal from establishment: has dependencies, preserve historical data ───
-    // Clear etablissementId + filiereId so the student disappears from the responsable's view,
-    // but keep the user record so existing sessions/reponses/soumissions remain intact.
-    const user = await db.user.update({
-      where: { id },
-      data: {
-        actif: false,
-        etablissementId: null,
-        filiereId: null,
-        matricule: null,
-      },
-      select: { id: true, name: true, email: true, actif: true },
-    })
+    // Delete student soumissions
+    if (soumissionsCount > 0) {
+      await db.soumission.deleteMany({ where: { etudiantId: id } })
+    }
 
+    // Delete teacher's epreuves
+    if (epreuvesCount > 0) {
+      await db.epreuve.deleteMany({ where: { enseignantId: id } })
+    }
+
+    // Delete teacher's devoirs → Soumissions on those devoirs are cascade-deleted
+    if (devoirsCount > 0) {
+      await db.devoir.deleteMany({ where: { enseignantId: id } })
+    }
+
+    // Delete invitations created by this user
+    if (invitationsCount > 0) {
+      await db.invitation.deleteMany({ where: { createdById: id } })
+    }
+
+    // ─── Step 2: Set NULL on records with NULLABLE FKs pointing to this user ───
+
+    // Alertes: userId is nullable
+    if (alertesCount > 0) {
+      await db.alerte.updateMany({ where: { userId: id }, data: { userId: null } })
+    }
+
+    // NotificationAdmin: destinataireId is nullable
+    if (notificationsCount > 0) {
+      await db.notificationAdmin.updateMany({ where: { destinataireId: id }, data: { destinataireId: null } })
+    }
+
+    // Filiere.responsableId: nullable — unlink if this user is a filiere responsable
+    await db.filiere.updateMany({ where: { responsableId: id }, data: { responsableId: null } })
+
+    // ─── Step 3: Hard delete the user ───
+    // Remaining cascade-deleted automatically: EnseignantFiliere, Affectation,
+    // Document (+ EpreuveDocument), PasswordReset, EtablissementAccess
+    await db.user.delete({ where: { id } })
+
+    // ─── Audit log ───
     await db.auditLog.create({
       data: {
         action: 'DELETE',
@@ -276,23 +289,35 @@ async function _DELETE(
         details: JSON.stringify({
           name: existing.name,
           email: existing.email,
-          permanent: false,
-          mode: 'remove_from_establishment',
-          reason: 'Dépendances existantes — retrait de l\'établissement avec conservation des données',
-          dependencies: { sessionsCount, reponsesCount, epreuvesCount, soumissionsCount, devoirsCount, alertesCount, invitationsCount, notificationsCount },
+          role: existing.role,
+          permanent: true,
+          reason: 'Suppression définitive avec toutes les données associées',
+          deletedDependencies: {
+            sessions: sessionsCount,
+            reponses: reponsesCount,
+            epreuves: epreuvesCount,
+            soumissions: soumissionsCount,
+            devoirs: devoirsCount,
+            alertes: alertesCount,
+            invitations: invitationsCount,
+            notifications: notificationsCount,
+          },
         }),
       },
     })
 
     return NextResponse.json({
-      mode: 'removed_from_establishment',
-      message: 'Étudiant retiré de l\'établissement (données historiques conservées)',
-      user,
-      dependencies: {
+      mode: 'permanent',
+      message: 'Utilisateur supprimé définitivement avec toutes ses données',
+      deletedDependencies: {
         sessions: sessionsCount,
         reponses: reponsesCount,
         epreuves: epreuvesCount,
         soumissions: soumissionsCount,
+        devoirs: devoirsCount,
+        alertes: alertesCount,
+        invitations: invitationsCount,
+        notifications: notificationsCount,
       },
     })
   } catch (error) {

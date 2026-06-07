@@ -236,7 +236,7 @@ export function EtudiantsPage() {
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [filiereFilter, setFiliereFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('actif')
   const [niveauFilter, setNiveauFilter] = useState('all')
 
   // ─── Pagination ───
@@ -653,8 +653,10 @@ export function EtudiantsPage() {
         body: JSON.stringify({ actif: !etudiant.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast.success(etudiant.actif ? 'Étudiant désactivé' : 'Étudiant activé', {
-        description: `${etudiant.name} est maintenant ${etudiant.actif ? 'inactif' : 'actif'}.`,
+      toast.success(etudiant.actif ? 'Étudiant désactivé (archivé)' : 'Étudiant réactivé', {
+        description: etudiant.actif
+          ? `${etudiant.name} est maintenant archivé. Ses données sont préservées mais il n'est plus visible par défaut.`
+          : `${etudiant.name} est de nouveau actif et visible.`,
       })
       await fetchEtudiants()
     } catch {
@@ -685,7 +687,7 @@ export function EtudiantsPage() {
     }
   }
 
-  // ─── Delete student (hard delete or remove from establishment) ───
+  // ─── Delete student (permanent hard delete) ───
   const handleDeleteStudent = async () => {
     if (!deleteTarget) return
     setIsDeleting(true)
@@ -696,20 +698,17 @@ export function EtudiantsPage() {
         throw new Error(err.error || 'Erreur lors de la suppression')
       }
       const data = await res.json()
-      const mode = data.mode
-      const deps = data.dependencies
+      const deps = data.deletedDependencies
 
-      if (mode === 'permanent') {
-        // Hard delete — student completely removed from database
-        toast.success('Étudiant supprimé définitivement', {
-          description: `${deleteTarget.name} a été supprimé définitivement de la base de données.`,
-        })
-      } else {
-        // Removed from establishment — historical data preserved
-        toast.success('Étudiant retiré de l\'établissement', {
-          description: `${deleteTarget.name} a été retiré de l\'établissement. Les données historiques (${deps?.sessions ?? 0} session(s), ${deps?.soumissions ?? 0} soumission(s)) ont été conservées.`,
-        })
-      }
+      const parts: string[] = []
+      if (deps?.sessions) parts.push(`${deps.sessions} session(s)`)
+      if (deps?.reponses) parts.push(`${deps.reponses} réponse(s)`)
+      if (deps?.soumissions) parts.push(`${deps.soumissions} soumission(s)`)
+      const depsText = parts.length > 0 ? ` Données supprimées : ${parts.join(', ')}.` : ''
+
+      toast.success('Étudiant supprimé définitivement', {
+        description: `${deleteTarget.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
+      })
       setDeleteTarget(null)
       await fetchEtudiants()
     } catch (err) {
@@ -742,7 +741,7 @@ export function EtudiantsPage() {
       )
       const succeeded = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected').length
-      const actionLabels = { activate: 'activé(s)', deactivate: 'désactivé(s)', delete: 'supprimé(s) de l\'établissement' }
+      const actionLabels = { activate: 'activé(s)', deactivate: 'désactivé(s) (archivé(s))', delete: 'supprimé(s) définitivement' }
       toast.success('Opération terminée', {
         description: `${succeeded} étudiant(s) ${actionLabels[bulkActionDialog]}${failed > 0 ? `, ${failed} échoué(s)` : ''}.`,
       })
@@ -1017,9 +1016,9 @@ export function EtudiantsPage() {
               <SelectValue placeholder="Statut" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tous</SelectItem>
-              <SelectItem value="actif">Actif</SelectItem>
-              <SelectItem value="inactif">Inactif</SelectItem>
+              <SelectItem value="all">Tous les statuts</SelectItem>
+              <SelectItem value="actif">Actifs</SelectItem>
+              <SelectItem value="inactif">Archivés (inactifs)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1118,7 +1117,7 @@ export function EtudiantsPage() {
             className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
           >
             <Power className="h-3.5 w-3.5" />
-            Activer
+            Réactiver
           </Button>
           <Button
             variant="outline"
@@ -1126,7 +1125,7 @@ export function EtudiantsPage() {
             onClick={() => setBulkActionDialog('deactivate')}
           >
             <PowerOff className="h-3.5 w-3.5" />
-            Désactiver
+            Archiver
           </Button>
           <Button
             variant="outline"
@@ -1226,9 +1225,9 @@ export function EtudiantsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleToggleActive(etudiant)}>
                         {etudiant.actif ? (
-                          <><PowerOff className="h-4 w-4" />Désactiver</>
+                          <><PowerOff className="h-4 w-4" />Archiver</>
                         ) : (
-                          <><Power className="h-4 w-4" />Activer</>
+                          <><Power className="h-4 w-4" />Réactiver</>
                         )}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleViewDetail(etudiant)}>
@@ -1322,7 +1321,7 @@ export function EtudiantsPage() {
                             Modifier
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleToggleActive(etudiant)}>
-                            {etudiant.actif ? <><PowerOff className="h-4 w-4" />Désactiver</> : <><Power className="h-4 w-4" />Activer</>}
+                            {etudiant.actif ? <><PowerOff className="h-4 w-4" />Archiver</> : <><Power className="h-4 w-4" />Réactiver</>}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleViewDetail(etudiant)}>
                             <Eye className="h-4 w-4" />
@@ -1890,31 +1889,24 @@ export function EtudiantsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-500" />
-              Supprimer l&apos;étudiant
+              Supprimer définitivement l&apos;étudiant
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
-                  Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> de l&apos;établissement ?
+                  Êtes-vous sûr de vouloir supprimer définitivement <strong>{deleteTarget?.name}</strong> ?
                 </p>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Comportement de la suppression :
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/40">
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                    ⚠️ Action irréversible
                   </p>
-                  <ul className="mt-1.5 space-y-1 text-sm text-amber-700 dark:text-amber-400">
-                    <li className="flex items-start gap-1.5">
-                      <span className="mt-0.5">•</span>
-                      <span><strong>Si l&apos;étudiant n&apos;a pas d&apos;historique</strong> (aucune session, soumission) → suppression définitive de la base de données.</span>
-                    </li>
-                    <li className="flex items-start gap-1.5">
-                      <span className="mt-0.5">•</span>
-                      <span><strong>Si l&apos;étudiant a un historique</strong> (sessions, soumissions) → il sera retiré de l&apos;établissement mais ses données historiques seront conservées.</span>
-                    </li>
-                  </ul>
+                  <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                    L&apos;étudiant sera définitivement supprimé de la base de données <strong>avec tout son historique</strong> (sessions, réponses, soumissions). Cette action est irréversible.
+                  </p>
                 </div>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
                   <p className="text-sm text-blue-700 dark:text-blue-400">
-                    💡 <strong>Astuce :</strong> Pour simplement désactiver le compte sans retirer l&apos;étudiant de l&apos;établissement, utilisez le bouton <em>« Désactiver »</em> dans le menu d&apos;actions.
+                    💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;étudiant sera invisible par défaut, mais pourra être réactivé à tout moment.
                   </p>
                 </div>
               </div>
@@ -1928,7 +1920,7 @@ export function EtudiantsPage() {
               disabled={isDeleting}
             >
               {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Supprimer de l&apos;établissement
+              Supprimer définitivement
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1946,8 +1938,8 @@ export function EtudiantsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {bulkActionDialog === 'delete'
-                ? `Êtes-vous sûr de vouloir supprimer ${selectedIds.size} étudiant(s) de l'établissement ? Les étudiants sans historique seront définitivement supprimés. Ceux avec un historique seront retirés de l'établissement avec conservation de leurs données.`
-                : `Êtes-vous sûr de vouloir ${bulkActionDialog === 'activate' ? 'activer' : 'désactiver'} ${selectedIds.size} étudiant(s) ?`
+                ? `Êtes-vous sûr de vouloir supprimer définitivement ${selectedIds.size} étudiant(s) ? Cette action est irréversible et supprimera tout l'historique associé (sessions, réponses, soumissions).`
+                : `Êtes-vous sûr de vouloir ${bulkActionDialog === 'activate' ? 'réactiver' : 'archiver'} ${selectedIds.size} étudiant(s) ?`
               }
             </AlertDialogDescription>
           </AlertDialogHeader>
