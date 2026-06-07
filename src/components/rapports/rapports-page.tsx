@@ -53,6 +53,8 @@ import {
   Cell,
   Legend,
 } from 'recharts'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 // ─── Types (aligned with API response) ───
 
@@ -284,6 +286,28 @@ export function RapportsPage() {
     stats.moyenneGenerale > 0
   )
 
+  // ─── Helper: download blob via hidden link (works on all browsers) ───
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    // Cleanup after a short delay to ensure download starts
+    setTimeout(() => {
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }, 100)
+  }
+
+  // ─── Helper: build date suffix for filenames ───
+  const getDateSuffix = () =>
+    dateDebut || dateFin
+      ? `${dateDebut || 'debut'}_${dateFin || 'fin'}`
+      : new Date().toISOString().slice(0, 10)
+
   // ─── Export CSV ───
   const handleExportCSV = () => {
     if (!stats) return
@@ -291,39 +315,40 @@ export function RapportsPage() {
       const rows: string[][] = []
 
       // Section 1: KPIs globaux
-      rows.push(['=== INDICATEURS CLÉS ==='])
+      rows.push(['INDICATEURS CLES'])
       rows.push(['Indicateur', 'Valeur'])
-      rows.push(['Moyenne générale', `${stats.moyenneGenerale}/20`])
-      rows.push(['Taux de réussite global', `${stats.tauxReussiteGlobal}%`])
-      rows.push(["Nombre d'évaluations", stats.nbEvaluations.toString()])
-      rows.push(["Nombre d'étudiants", stats.nbEtudiants.toString()])
+      rows.push(['Moyenne generale', `${stats.moyenneGenerale}/20`])
+      rows.push(['Taux de reussite global', `${stats.tauxReussiteGlobal}%`])
+      rows.push(["Nombre d'evaluations", stats.nbEvaluations.toString()])
+      rows.push(["Nombre d'etudiants", stats.nbEtudiants.toString()])
       rows.push(["Nombre d'enseignants", stats.nbEnseignants.toString()])
+      rows.push(["Etudiants en difficulte", stats.etudiantsEnDifficulte.length.toString()])
 
-      // Section 2: Par filière
+      // Section 2: Par filiere
       if (stats.etudiantsParFiliere.length > 0) {
         rows.push([])
-        rows.push(['=== ÉTUDIANTS PAR FILIÈRE ==='])
-        rows.push(['Filière', "Nombre d'étudiants"])
+        rows.push(['ETUDIANTS PAR FILIERE'])
+        rows.push(['Filiere', "Nombre d'etudiants"])
         stats.etudiantsParFiliere.forEach((f) => {
           rows.push([f.filiere, f.count.toString()])
         })
       }
 
-      // Section 3: Résultats par matière
+      // Section 3: Resultats par matiere
       if (stats.resultatsParMatiere.length > 0) {
         rows.push([])
-        rows.push(['=== RÉSULTATS PAR MATIÈRE ==='])
-        rows.push(['Matière', 'Enseignant', 'Moyenne', 'Taux de réussite', 'Participants'])
+        rows.push(['RESULTATS PAR MATIERE'])
+        rows.push(['Matiere', 'Enseignant', 'Moyenne', 'Taux de reussite', 'Participants'])
         stats.resultatsParMatiere.forEach((r) => {
           rows.push([r.titre, r.enseignant, `${r.moyenne}/20`, `${r.tauxReussite}%`, r.nbParticipants.toString()])
         })
       }
 
-      // Section 4: Répartition des notes
+      // Section 4: Repartition des notes
       if (stats.repartitionNotes.some(r => r.count > 0)) {
         rows.push([])
-        rows.push(['=== RÉPARTITION DES NOTES ==='])
-        rows.push(['Tranche', "Nombre d'étudiants"])
+        rows.push(['REPARTITION DES NOTES'])
+        rows.push(['Tranche', "Nombre d'etudiants"])
         stats.repartitionNotes.forEach((r) => {
           rows.push([r.label, r.count.toString()])
         })
@@ -332,53 +357,451 @@ export function RapportsPage() {
       // Section 5: Top enseignants
       if (stats.topEnseignants.length > 0) {
         rows.push([])
-        rows.push(['=== TOP ENSEIGNANTS ==='])
-        rows.push(['Enseignant', "Nb épreuves", 'Moyenne', 'Taux réussite'])
+        rows.push(['TOP ENSEIGNANTS'])
+        rows.push(['Enseignant', 'Nb epreuves', 'Moyenne', 'Taux reussite'])
         stats.topEnseignants.forEach((e) => {
           rows.push([e.nom, e.nbEpreuves.toString(), `${e.moyenne}/20`, `${e.tauxReussite}%`])
         })
       }
 
-      // Section 6: Top étudiants
+      // Section 6: Top etudiants
       if (stats.topEtudiants.length > 0) {
         rows.push([])
-        rows.push(['=== TOP 5 ÉTUDIANTS ==='])
-        rows.push(['Nom', 'Email', 'Filière', 'Moyenne'])
+        rows.push(['TOP 5 ETUDIANTS'])
+        rows.push(['Nom', 'Email', 'Filiere', 'Moyenne'])
         stats.topEtudiants.forEach((e) => {
           rows.push([e.nom, e.email, e.filiere, `${e.moyenne}/20`])
         })
       }
 
-      // Section 7: Étudiants en difficulté
+      // Section 7: Etudiants en difficulte
       if (stats.etudiantsEnDifficulte.length > 0) {
         rows.push([])
-        rows.push(['=== ÉTUDIANTS EN DIFFICULTÉ (< 10/20) ==='])
-        rows.push(['Nom', 'Email', 'Filière', 'Moyenne'])
+        rows.push(['ETUDIANTS EN DIFFICULTE (< 10/20)'])
+        rows.push(['Nom', 'Email', 'Filiere', 'Moyenne'])
         stats.etudiantsEnDifficulte.forEach((e) => {
           rows.push([e.nom, e.email, e.filiere, `${e.moyenne}/20`])
         })
       }
 
-      const csv = rows.map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n')
+      // Build CSV with BOM for Excel UTF-8 compatibility
+      const csv = rows.map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\r\n')
       const bom = '\uFEFF'
       const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      const dateSuffix = dateDebut || dateFin
-        ? `${dateDebut || 'debut'}_${dateFin || 'fin'}`
-        : new Date().toISOString().slice(0, 10)
-      link.download = `rapport-sect-${dateSuffix}.csv`
-      link.click()
-      URL.revokeObjectURL(url)
-      toast.success('Rapport exporté en CSV')
-    } catch {
-      toast.error('Erreur', { description: "Impossible d'exporter le rapport." })
+      downloadBlob(blob, `rapport-sect-${getDateSuffix()}.csv`)
+      toast.success('Rapport exporte en CSV')
+    } catch (err) {
+      console.error('CSV export error:', err)
+      toast.error('Erreur', { description: "Impossible d'exporter le rapport CSV." })
     }
   }
 
+  // ─── Export PDF ───
   const handleExportPDF = () => {
-    toast.info('Export PDF', { description: "L'export PDF sera disponible prochainement." })
+    if (!stats) return
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+      const contentWidth = pageWidth - margin * 2
+      let yPos = margin
+
+      // ─── Color palette (matching app theme) ───
+      const emerald = [16, 185, 129]  // #10b981
+      const teal = [20, 184, 166]     // #14b8a6
+      const dark = [30, 41, 59]       // slate-800
+      const muted = [100, 116, 139]   // slate-500
+      const light = [241, 245, 249]   // slate-100
+
+      // ─── Helper: add page footer ───
+      const addFooter = () => {
+        doc.setFontSize(8)
+        doc.setTextColor(...muted)
+        doc.text('SECT - Systeme d\'Evaluation Casse-Tete', margin, pageHeight - 8)
+        doc.text(`Genere le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth - margin, pageHeight - 8, { align: 'right' })
+      }
+
+      // ─── Helper: check page overflow ───
+      const checkPage = (needed: number) => {
+        if (yPos + needed > pageHeight - 15) {
+          addFooter()
+          doc.addPage()
+          yPos = margin
+        }
+      }
+
+      // ─── Helper: section title ───
+      const addSectionTitle = (title: string) => {
+        checkPage(12)
+        doc.setFontSize(12)
+        doc.setTextColor(...emerald)
+        doc.setFont('helvetica', 'bold')
+        doc.text(title, margin, yPos)
+        // Underline
+        doc.setDrawColor(...emerald)
+        doc.setLineWidth(0.5)
+        doc.line(margin, yPos + 1, margin + doc.getTextWidth(title), yPos + 1)
+        yPos += 8
+      }
+
+      // ═══════════════════════════════════════
+      // PAGE 1: HEADER + KPIs
+      // ═══════════════════════════════════════
+
+      // Header bar
+      doc.setFillColor(...emerald)
+      doc.rect(0, 0, pageWidth, 32, 'F')
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(18)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Rapport de Performance', margin, 14)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      const filiereLabel = selectedFiliere && selectedFiliere !== 'all'
+        ? filieres.find(f => f.id === selectedFiliere)?.nom || 'Toutes filieres'
+        : 'Toutes filieres'
+      doc.text(filiereLabel, margin, 22)
+      // Date range
+      const dateLabel = (dateDebut || dateFin)
+        ? `Periode: ${dateDebut || '...'} au ${dateFin || '...'}`
+        : `Date: ${new Date().toLocaleDateString('fr-FR')}`
+      doc.text(dateLabel, pageWidth - margin, 22, { align: 'right' })
+
+      yPos = 40
+
+      // KPI Cards row
+      const kpis = [
+        { label: 'Moyenne Generale', value: `${stats.moyenneGenerale}/20`, color: emerald },
+        { label: 'Taux de Reussite', value: `${stats.tauxReussiteGlobal}%`, color: teal },
+        { label: 'Evaluations', value: `${stats.nbEvaluations}`, color: [245, 158, 11] },
+        { label: 'Etudiants', value: `${stats.nbEtudiants}`, color: [239, 68, 68] },
+      ]
+
+      const cardWidth = (contentWidth - 9) / 4 // 3mm gap between cards
+      kpis.forEach((kpi, i) => {
+        const x = margin + i * (cardWidth + 3)
+        // Card background
+        doc.setFillColor(...light)
+        doc.roundedRect(x, yPos, cardWidth, 20, 2, 2, 'F')
+        // Left accent bar
+        doc.setFillColor(...kpi.color)
+        doc.rect(x, yPos, 2, 20, 'F')
+        // Value
+        doc.setFontSize(14)
+        doc.setTextColor(...dark)
+        doc.setFont('helvetica', 'bold')
+        doc.text(kpi.value, x + 5, yPos + 9)
+        // Label
+        doc.setFontSize(7)
+        doc.setTextColor(...muted)
+        doc.setFont('helvetica', 'normal')
+        doc.text(kpi.label, x + 5, yPos + 15)
+      })
+
+      yPos += 28
+
+      // Secondary KPIs
+      doc.setFontSize(8)
+      doc.setTextColor(...muted)
+      doc.text(`Enseignants actifs: ${stats.nbEnseignants}  |  Participants aux epreuves: ${stats.resultatsParMatiere.reduce((a, r) => a + r.nbParticipants, 0)}  |  Etudiants en difficulte: ${stats.etudiantsEnDifficulte.length}`, margin, yPos)
+      yPos += 8
+
+      // ═══════════════════════════════════════
+      // SECTION: Resultats par matiere
+      // ═══════════════════════════════════════
+      if (stats.resultatsParMatiere.length > 0) {
+        addSectionTitle('Resultats par matiere')
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Epreuve', 'Enseignant', 'Moyenne', 'Reussite', 'Participants']],
+          body: stats.resultatsParMatiere.map(r => [
+            r.titre,
+            r.enseignant,
+            `${r.moyenne}/20`,
+            `${r.tauxReussite}%`,
+            r.nbParticipants.toString(),
+          ]),
+          headStyles: {
+            fillColor: emerald,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 8,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            2: { halign: 'center', cellWidth: 22 },
+            3: { halign: 'center', cellWidth: 22 },
+            4: { halign: 'center', cellWidth: 22 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+
+        // @ts-ignore - autoTable adds lastAutoTable to doc
+        yPos = doc.lastAutoTable.finalY + 8
+      }
+
+      // ═══════════════════════════════════════
+      // SECTION: Repartition des notes
+      // ═══════════════════════════════════════
+      if (stats.repartitionNotes.some(r => r.count > 0)) {
+        addSectionTitle('Repartition des notes')
+
+        const noteData = stats.repartitionNotes.map(r => [r.label, r.count.toString()])
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Tranche', "Nombre d'etudiants"]],
+          body: noteData,
+          headStyles: {
+            fillColor: teal,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 9,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            0: { halign: 'center', cellWidth: 40 },
+            1: { halign: 'center', cellWidth: 40 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 8
+      }
+
+      // ═══════════════════════════════════════
+      // SECTION: Etudiants par filiere
+      // ═══════════════════════════════════════
+      if (stats.etudiantsParFiliere.length > 0) {
+        addSectionTitle('Etudiants par filiere')
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Filiere', "Nombre d'etudiants"]],
+          body: stats.etudiantsParFiliere.map(f => [f.filiere, f.count.toString()]),
+          headStyles: {
+            fillColor: emerald,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 9,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            1: { halign: 'center', cellWidth: 40 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 8
+      }
+
+      // ═══════════════════════════════════════
+      // SECTION: Top enseignants
+      // ═══════════════════════════════════════
+      if (stats.topEnseignants.length > 0) {
+        addSectionTitle('Performance des enseignants')
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Enseignant', 'Nb epreuves', 'Moyenne', 'Taux reussite']],
+          body: stats.topEnseignants.map(e => [
+            e.nom,
+            e.nbEpreuves.toString(),
+            `${e.moyenne}/20`,
+            `${e.tauxReussite}%`,
+          ]),
+          headStyles: {
+            fillColor: teal,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 9,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            1: { halign: 'center', cellWidth: 25 },
+            2: { halign: 'center', cellWidth: 22 },
+            3: { halign: 'center', cellWidth: 25 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 8
+      }
+
+      // ═══════════════════════════════════════
+      // SECTION: Top etudiants
+      // ═══════════════════════════════════════
+      if (stats.topEtudiants.length > 0) {
+        addSectionTitle('Top 5 etudiants')
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Nom', 'Email', 'Filiere', 'Moyenne']],
+          body: stats.topEtudiants.map(e => [
+            e.nom,
+            e.email,
+            e.filiere,
+            `${e.moyenne}/20`,
+          ]),
+          headStyles: {
+            fillColor: emerald,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 8,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            3: { halign: 'center', cellWidth: 22 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 8
+      }
+
+      // ═══════════════════════════════════════
+      // SECTION: Etudiants en difficulte
+      // ═══════════════════════════════════════
+      if (stats.etudiantsEnDifficulte.length > 0) {
+        addSectionTitle('Etudiants en difficulte (< 10/20)')
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Nom', 'Email', 'Filiere', 'Moyenne']],
+          body: stats.etudiantsEnDifficulte.map(e => [
+            e.nom,
+            e.email,
+            e.filiere,
+            `${e.moyenne}/20`,
+          ]),
+          headStyles: {
+            fillColor: [239, 68, 68], // red
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 8,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            3: { halign: 'center', cellWidth: 22 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 8
+      }
+
+      // ═══════════════════════════════════════
+      // SECTION: Alertes
+      // ═══════════════════════════════════════
+      if (stats.alertes.length > 0) {
+        addSectionTitle('Alertes detectees')
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          head: [['Type', 'Titre', 'Description']],
+          body: stats.alertes.map(a => [a.type, a.titre, a.description]),
+          headStyles: {
+            fillColor: [245, 158, 11], // amber
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+          },
+          bodyStyles: {
+            fontSize: 8,
+            textColor: dark,
+          },
+          alternateRowStyles: {
+            fillColor: light,
+          },
+          columnStyles: {
+            0: { cellWidth: 25 },
+          },
+          didDrawPage: () => {
+            addFooter()
+          },
+        })
+      }
+
+      // Add footer to last page
+      addFooter()
+
+      // Set PDF metadata
+      doc.setProperties({
+        title: 'Rapport de Performance SECT',
+        subject: filiereLabel,
+        author: 'SECT - Systeme d\'Evaluation Casse-Tete',
+        creator: 'SECT',
+      })
+
+      // Save
+      doc.save(`rapport-sect-${getDateSuffix()}.pdf`)
+      toast.success('Rapport exporte en PDF')
+    } catch (err) {
+      console.error('PDF export error:', err)
+      toast.error('Erreur', { description: "Impossible de generer le PDF. Reessayez." })
+    }
   }
 
   return (

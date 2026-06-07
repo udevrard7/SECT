@@ -309,6 +309,7 @@ async function _GET(request: NextRequest, context: { params: any; user: Authenti
         sessions: { some: { score: { not: null } } }
       },
       select: {
+        id: true,
         dateDebut: true,
         sessions: {
           where: { score: { not: null } },
