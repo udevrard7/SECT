@@ -259,7 +259,7 @@ export function EnseignantsPage() {
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [filiereFilter, setFiliereFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('actif')
 
   // ─── Dialog state ───
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -685,8 +685,10 @@ export function EnseignantsPage() {
         body: JSON.stringify({ actif: !enseignant.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast.success(enseignant.actif ? 'Enseignant désactivé' : 'Enseignant activé', {
-        description: `${enseignant.name} est maintenant ${enseignant.actif ? 'inactif' : 'actif'}.`,
+      toast.success(enseignant.actif ? 'Enseignant désactivé (archivé)' : 'Enseignant réactivé', {
+        description: enseignant.actif
+          ? `${enseignant.name} est maintenant archivé. Ses données sont préservées mais il n'est plus visible par défaut.`
+          : `${enseignant.name} est de nouveau actif et visible.`,
       })
       await fetchEnseignants()
     } catch {
@@ -972,7 +974,7 @@ export function EnseignantsPage() {
     })
   }
 
-  // ─── Delete enseignant (hard delete or remove from establishment) ───
+  // ─── Delete enseignant (permanent hard delete) ───
   const handleDeleteEnseignant = async () => {
     if (!deleteTarget) return
     setIsDeleting(true)
@@ -983,18 +985,17 @@ export function EnseignantsPage() {
         throw new Error(err.error || 'Erreur lors de la suppression')
       }
       const data = await res.json()
-      const mode = data.mode
-      const deps = data.dependencies
+      const deps = data.deletedDependencies
 
-      if (mode === 'permanent') {
-        toast.success('Enseignant supprimé définitivement', {
-          description: `${deleteTarget.name} a été supprimé définitivement de la base de données.`,
-        })
-      } else {
-        toast.success('Enseignant retiré de l\'établissement', {
-          description: `${deleteTarget.name} a été retiré de l\'établissement. Les données historiques (${deps?.epreuves ?? 0} épreuve(s), ${deps?.sessions ?? 0} session(s)) ont été conservées.`,
-        })
-      }
+      const parts: string[] = []
+      if (deps?.epreuves) parts.push(`${deps.epreuves} épreuve(s)`)
+      if (deps?.devoirs) parts.push(`${deps.devoirs} devoir(s)`)
+      if (deps?.sessions) parts.push(`${deps.sessions} session(s)`)
+      const depsText = parts.length > 0 ? ` Données supprimées : ${parts.join(', ')}.` : ''
+
+      toast.success('Enseignant supprimé définitivement', {
+        description: `${deleteTarget.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
+      })
       setDeleteTarget(null)
       setSelectedIds((prev) => {
         const next = new Set(prev)
@@ -1052,11 +1053,11 @@ export function EnseignantsPage() {
       const succeeded = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected').length
       if (bulkActionDialog === 'delete') {
-        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) supprimé(s) de l'établissement${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) supprimé(s) définitivement${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
       } else if (bulkActionDialog === 'activate') {
         toast.success('Activation en masse', { description: `${succeeded} enseignant(s) activé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
       } else {
-        toast.success('Désactivation en masse', { description: `${succeeded} enseignant(s) désactivé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+        toast.success('Archivage en masse', { description: `${succeeded} enseignant(s) archivé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
       }
       setBulkActionDialog(null)
       setSelectedIds(new Set())
@@ -1189,9 +1190,9 @@ export function EnseignantsPage() {
             <SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous</SelectItem>
-            <SelectItem value="actif">Actif</SelectItem>
-            <SelectItem value="inactif">Inactif</SelectItem>
+            <SelectItem value="all">Tous les statuts</SelectItem>
+            <SelectItem value="actif">Actifs</SelectItem>
+            <SelectItem value="inactif">Archivés (inactifs)</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -1210,7 +1211,7 @@ export function EnseignantsPage() {
               onClick={() => setBulkActionDialog('activate')}
             >
               <Power className="h-3.5 w-3.5 mr-1" />
-              Activer
+              Réactiver
             </Button>
             <Button
               variant="outline"
@@ -1219,7 +1220,7 @@ export function EnseignantsPage() {
               onClick={() => setBulkActionDialog('deactivate')}
             >
               <PowerOff className="h-3.5 w-3.5 mr-1" />
-              Désactiver
+              Archiver
             </Button>
             <Button
               variant="outline"
@@ -1350,12 +1351,12 @@ export function EnseignantsPage() {
                           {enseignant.actif ? (
                             <>
                               <PowerOff className="h-4 w-4 mr-2" />
-                              Désactiver
+                              Archiver
                             </>
                           ) : (
                             <>
                               <Power className="h-4 w-4 mr-2" />
-                              Activer
+                              Réactiver
                             </>
                           )}
                         </DropdownMenuItem>
@@ -1485,12 +1486,12 @@ export function EnseignantsPage() {
                                 {enseignant.actif ? (
                                   <>
                                     <PowerOff className="h-4 w-4 mr-2" />
-                                    Désactiver
+                                    Archiver
                                   </>
                                 ) : (
                                   <>
                                     <Power className="h-4 w-4 mr-2" />
-                                    Activer
+                                    Réactiver
                                   </>
                                 )}
                               </DropdownMenuItem>
@@ -2387,31 +2388,24 @@ export function EnseignantsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Trash2 className="h-5 w-5 text-red-600" />
-              Supprimer l&apos;enseignant
+              Supprimer définitivement l&apos;enseignant
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
-                  Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> de l&apos;établissement ?
+                  Êtes-vous sûr de vouloir supprimer définitivement <strong>{deleteTarget?.name}</strong> ?
                 </p>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Comportement de la suppression :
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/40">
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                    ⚠️ Action irréversible
                   </p>
-                  <ul className="mt-1.5 space-y-1 text-sm text-amber-700 dark:text-amber-400">
-                    <li className="flex items-start gap-1.5">
-                      <span className="mt-0.5">•</span>
-                      <span><strong>Si l&apos;enseignant n&apos;a pas d&apos;historique</strong> (aucune épreuve, session) → suppression définitive de la base de données.</span>
-                    </li>
-                    <li className="flex items-start gap-1.5">
-                      <span className="mt-0.5">•</span>
-                      <span><strong>Si l&apos;enseignant a un historique</strong> (épreuves, sessions) → il sera retiré de l&apos;établissement mais ses données historiques seront conservées.</span>
-                    </li>
-                  </ul>
+                  <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                    L&apos;enseignant sera définitivement supprimé de la base de données <strong>avec tout son historique</strong> (épreuves, devoirs, sessions). Cette action est irréversible.
+                  </p>
                 </div>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
                   <p className="text-sm text-blue-700 dark:text-blue-400">
-                    💡 <strong>Astuce :</strong> Pour simplement désactiver le compte sans retirer l&apos;enseignant de l&apos;établissement, utilisez le bouton <em>« Désactiver »</em> dans le menu d&apos;actions.
+                    💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;enseignant sera invisible par défaut, mais pourra être réactivé à tout moment.
                   </p>
                 </div>
               </div>
@@ -2430,7 +2424,7 @@ export function EnseignantsPage() {
                   Suppression...
                 </>
               ) : (
-              'Supprimer de l&apos;établissement'
+              'Supprimer définitivement'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2446,14 +2440,14 @@ export function EnseignantsPage() {
                 ? 'Suppression en masse'
                 : bulkActionDialog === 'activate'
                   ? 'Activation en masse'
-                  : 'Désactivation en masse'}
+                  : 'Archivage en masse'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {bulkActionDialog === 'delete'
-                ? `Êtes-vous sûr de vouloir supprimer ${selectedIds.size} enseignant(s) de l'établissement ? Les enseignants sans historique seront définitivement supprimés. Ceux avec un historique seront retirés de l'établissement avec conservation de leurs données.`
+                ? `Êtes-vous sûr de vouloir supprimer définitivement ${selectedIds.size} enseignant(s) ? Cette action est irréversible et supprimera tout l'historique associé (épreuves, devoirs, sessions).`
                 : bulkActionDialog === 'activate'
                   ? `Êtes-vous sûr de vouloir activer ${selectedIds.size} enseignant(s) sélectionné(s) ?`
-                  : `Êtes-vous sûr de vouloir désactiver ${selectedIds.size} enseignant(s) sélectionné(s) ? Ils ne pourront plus se connecter.`}
+                  : `Êtes-vous sûr de vouloir archiver ${selectedIds.size} enseignant(s) sélectionné(s) ? Ils seront invisibles par défaut mais pourront être réactivés.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2471,8 +2465,8 @@ export function EnseignantsPage() {
               ) : bulkActionDialog === 'delete'
                 ? 'Supprimer'
                 : bulkActionDialog === 'activate'
-                  ? 'Activer'
-                  : 'Désactiver'}
+                  ? 'Réactiver'
+                  : 'Archiver'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
