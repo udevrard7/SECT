@@ -21,9 +21,10 @@ import {
   ChevronDown,
   ChevronUp,
   User,
+  X,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -43,7 +44,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -85,6 +85,12 @@ interface Session {
   logEvents?: unknown
 }
 
+interface FiliereInfo {
+  id: string
+  nom: string
+  code?: string
+}
+
 interface Epreuve {
   id: string
   enseignantId: string
@@ -103,6 +109,7 @@ interface Epreuve {
   questionCount?: number
   totalPoints?: number
   enseignant?: EnseignantInfo
+  filiere?: FiliereInfo
   createdAt: string
 }
 
@@ -136,17 +143,6 @@ function formatDateTime(date: string | Date): string {
 function truncateText(text: string, maxLen: number = 120): string {
   if (text.length <= maxLen) return text
   return text.slice(0, maxLen).trim() + '...'
-}
-
-function getStatutLabel(statut: string): string {
-  switch (statut) {
-    case 'BROUILLON': return 'Brouillon'
-    case 'PLANIFIEE': return 'Planifiée'
-    case 'EN_COURS': return 'En cours'
-    case 'TERMINEE': return 'Terminée'
-    case 'CLOTUREE': return 'Clôturée'
-    default: return statut
-  }
 }
 
 function getStatutBadge(statut: string) {
@@ -201,6 +197,27 @@ function getScoreBadgeClasses(score: number): string {
   if (score >= 10) return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
   if (score >= 8) return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
   return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+}
+
+function getSessionBadge(statut: string) {
+  switch (statut) {
+    case 'EN_COURS':
+      return <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">En cours</Badge>
+    case 'SOUMISE':
+      return <Badge variant="outline" className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">Soumise</Badge>
+    case 'CORRIGEE':
+      return <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Corrigée</Badge>
+    case 'RETOURNEE':
+      return <Badge variant="outline" className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">Retournée</Badge>
+    case 'NON_COMMENCEE':
+      return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">Non commencée</Badge>
+    case 'ABSENT':
+      return <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">Absent</Badge>
+    case 'NON_SOUMIS':
+      return <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">Non soumis</Badge>
+    default:
+      return <Badge variant="outline">{statut}</Badge>
+  }
 }
 
 // ─── Score distribution mini chart ───
@@ -267,87 +284,60 @@ export function EvaluationsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [sessionsExpanded, setSessionsExpanded] = useState(false)
 
-  // ─── Fetch epreuves by filiere ───
+  // ─── Fetch epreuves using responsableId ───
   const fetchEpreuves = useCallback(async () => {
+    if (!user?.id) return
     setIsLoading(true)
     try {
-      // First get the filières managed by this responsable
-      let filiereIds: string[] = []
-      if (user?.id) {
-        const filRes = await fetch(`/api/filieres?responsableId=${user.id}`)
-        if (filRes.ok) {
-          const filData = await filRes.json()
-          filiereIds = (filData.filieres ?? []).map((f: { id: string }) => f.id)
-        }
-      }
-
-      if (filiereIds.length === 0 && !user?.filiereId) {
-        setEpreuves([])
-        setIsLoading(false)
-        return
-      }
-
-      // If a specific filiere is selected, filter by it
-      const targetFiliereId = filiereFilter !== 'all' ? filiereFilter : ''
-      
-      // Fetch epreuves - get all epreuves and filter client-side by sessions in our filières
       const params = new URLSearchParams()
-      if (targetFiliereId) {
-        params.set('filiereId', targetFiliereId)
-      }
+      params.set('responsableId', user.id)
+      if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statutFilter !== 'all') params.set('statut', statutFilter)
 
       const res = await fetch(`/api/epreuves?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])
+        // The API also returns the filieres for this responsable
+        if (data.filieres && data.filieres.length > 0 && filieres.length === 0) {
+          setFilieres(data.filieres.map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
+        }
+      } else {
+        const data = await res.json().catch(() => ({}))
+        console.error('Epreuves API error:', data.error)
+        setEpreuves([])
       }
     } catch {
       toast.error('Erreur', { description: 'Impossible de charger les évaluations.' })
+      setEpreuves([])
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id, user?.filiereId, statutFilter, filiereFilter])
-
-  // ─── Fetch filieres ───
-  const fetchFilieres = useCallback(async () => {
-    try {
-      const res = await fetch('/api/filieres')
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
-      }
-    } catch {
-      // Silent
-    }
-  }, [])
+  }, [user?.id, statutFilter, filiereFilter, filieres.length])
 
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      await Promise.all([fetchEpreuves(), fetchFilieres()])
-      setIsLoading(false)
-    }
-    load()
-  }, [fetchEpreuves, fetchFilieres])
+    fetchEpreuves()
+  }, [fetchEpreuves])
 
-  // ─── Computed stats ───
+  // ─── Client-side search filter ───
   const filteredEpreuves = epreuves.filter((ep) => {
-    // Search filter
-    if (search) {
-      const q = search.toLowerCase()
-      const matchTitre = ep.titre.toLowerCase().includes(q)
-      const matchDesc = ep.description?.toLowerCase().includes(q) ?? false
-      const matchEnseignant = ep.enseignant?.name?.toLowerCase().includes(q) ?? false
-      if (!matchTitre && !matchDesc && !matchEnseignant) return false
-    }
-    return true
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    const matchTitre = ep.titre.toLowerCase().includes(q)
+    const matchDesc = ep.description?.toLowerCase().includes(q) ?? false
+    const matchEnseignant = ep.enseignant?.name?.toLowerCase().includes(q) ?? false
+    const matchFiliere = ep.filiere?.nom?.toLowerCase().includes(q) ?? false
+    return matchTitre || matchDesc || matchEnseignant || matchFiliere
   })
 
-  const totalEvaluations = epreuves.length
-  const enCoursCount = epreuves.filter((e) => e.statut === 'EN_COURS').length
-  const planifieesCount = epreuves.filter((e) => e.statut === 'PLANIFIEE').length
-  const termineesCount = epreuves.filter((e) => e.statut === 'TERMINEE' || e.statut === 'CLOTUREE').length
+  // ─── Computed stats (from filtered epreuves) ───
+  const totalEvaluations = filteredEpreuves.length
+  const enCoursCount = filteredEpreuves.filter((e) => e.statut === 'EN_COURS').length
+  const planifieesCount = filteredEpreuves.filter((e) => e.statut === 'PLANIFIEE').length
+  const termineesCount = filteredEpreuves.filter((e) => e.statut === 'TERMINEE' || e.statut === 'CLOTUREE').length
+  const totalAlerts = filteredEpreuves.reduce((sum, ep) => {
+    return sum + (ep.sessions ?? []).reduce((s, sess) => s + (sess.alertes ?? 0), 0)
+  }, 0)
 
   // ─── Open detail dialog ───
   const handleOpenDetail = async (epreuve: Epreuve) => {
@@ -377,7 +367,7 @@ export function EvaluationsPage() {
       (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE'
     ).length
     const completionRate = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0
-    const totalAlerts = sessions.reduce((sum, s) => sum + (s.alertes ?? 0), 0)
+    const totalAlertsEpreuve = sessions.reduce((sum, s) => sum + (s.alertes ?? 0), 0)
     const scoredSessions = sessions.filter((s) => s.score !== null)
     const avgScore = scoredSessions.length > 0
       ? Math.round((scoredSessions.reduce((sum, s) => sum + (s.score ?? 0), 0) / scoredSessions.length) * 10) / 10
@@ -387,7 +377,15 @@ export function EvaluationsPage() {
       ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
       : (epreuve.totalPoints ?? 0)
 
-    return { totalSessions, completedSessions, completionRate, totalAlerts, avgScore, questionCount, totalPoints }
+    return { totalSessions, completedSessions, completionRate, totalAlerts: totalAlertsEpreuve, avgScore, questionCount, totalPoints }
+  }
+
+  const hasActiveFilters = statutFilter !== 'all' || filiereFilter !== 'all' || search.trim() !== ''
+
+  const resetFilters = () => {
+    setSearch('')
+    setStatutFilter('all')
+    setFiliereFilter('all')
   }
 
   return (
@@ -404,14 +402,14 @@ export function EvaluationsPage() {
       </div>
 
       {/* ─── Stats cards ─── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Card className="border-l-4 border-l-emerald-500">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
               <ClipboardCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total évaluations</p>
+              <p className="text-xs text-muted-foreground">Total</p>
               <p className="text-xl font-bold">{totalEvaluations}</p>
             </div>
           </CardContent>
@@ -449,6 +447,17 @@ export function EvaluationsPage() {
             </div>
           </CardContent>
         </Card>
+        <Card className="border-l-4 border-l-red-500">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Alertes</p>
+              <p className="text-xl font-bold">{totalAlerts}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* ─── Filter toolbar ─── */}
@@ -457,11 +466,19 @@ export function EvaluationsPage() {
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Rechercher par titre, description ou enseignant..."
+              placeholder="Rechercher par titre, description, enseignant ou filière..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
+            {search && (
+              <button
+                className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                onClick={() => setSearch('')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
           <div className="flex gap-2">
             <Select value={statutFilter} onValueChange={setStatutFilter}>
@@ -489,8 +506,8 @@ export function EvaluationsPage() {
           </div>
         </div>
 
-        {/* Advanced filters toggle */}
-        <div className="flex items-center gap-2">
+        {/* Advanced filters toggle + active filters display */}
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="ghost"
             size="sm"
@@ -500,25 +517,41 @@ export function EvaluationsPage() {
             {showFilters ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
             Filtres avancés
           </Button>
-          {(statutFilter !== 'all' || search) && (
+          {hasActiveFilters && (
             <Button
               variant="ghost"
               size="sm"
               className="text-emerald-600 hover:text-emerald-700"
-              onClick={() => {
-                setSearch('')
-                setStatutFilter('all')
-                setFiliereFilter('all')
-              }}
+              onClick={resetFilters}
             >
-              Réinitialiser les filtres
+              <X className="h-3.5 w-3.5 mr-1" />
+              Réinitialiser
             </Button>
+          )}
+          {/* Active filter badges */}
+          {statutFilter !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              Statut: {statutFilter === 'BROUILLON' ? 'Brouillon' : statutFilter === 'PLANIFIEE' ? 'Planifiée' : statutFilter === 'EN_COURS' ? 'En cours' : statutFilter === 'TERMINEE' ? 'Terminée' : 'Clôturée'}
+              <button onClick={() => setStatutFilter('all')} className="ml-1 hover:text-red-500"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {filiereFilter !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              Filière: {filieres.find(f => f.id === filiereFilter)?.nom ?? filiereFilter}
+              <button onClick={() => setFiliereFilter('all')} className="ml-1 hover:text-red-500"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {search.trim() && (
+            <Badge variant="secondary" className="gap-1">
+              Recherche: &ldquo;{search.trim().length > 20 ? search.trim().slice(0, 20) + '...' : search.trim()}&rdquo;
+              <button onClick={() => setSearch('')} className="ml-1 hover:text-red-500"><X className="h-3 w-3" /></button>
+            </Badge>
           )}
         </div>
 
         {showFilters && (
           <Card className="p-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Filière</Label>
                 <Select value={filiereFilter} onValueChange={setFiliereFilter}>
@@ -526,10 +559,26 @@ export function EvaluationsPage() {
                     <SelectValue placeholder="Toutes les filières" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Toutes les filières</SelectItem>
+                    <SelectItem value="all">Toutes mes filières</SelectItem>
                     {filieres.map((f) => (
                       <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Statut</Label>
+                <Select value={statutFilter} onValueChange={setStatutFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tous les statuts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                    <SelectItem value="PLANIFIEE">Planifiée</SelectItem>
+                    <SelectItem value="EN_COURS">En cours</SelectItem>
+                    <SelectItem value="TERMINEE">Terminée</SelectItem>
+                    <SelectItem value="CLOTUREE">Clôturée</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -575,19 +624,15 @@ export function EvaluationsPage() {
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucune évaluation trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-            {search || statutFilter !== 'all'
+            {hasActiveFilters
               ? 'Aucun résultat ne correspond à vos critères de recherche. Essayez de modifier vos filtres.'
               : 'Aucune épreuve n\'a encore été créée par les enseignants de vos filières.'}
           </p>
-          {(search || statutFilter !== 'all') && (
+          {hasActiveFilters && (
             <Button
               variant="outline"
               className="mt-6 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
-              onClick={() => {
-                setSearch('')
-                setStatutFilter('all')
-                setFiliereFilter('all')
-              }}
+              onClick={resetFilters}
             >
               Réinitialiser les filtres
             </Button>
@@ -617,13 +662,21 @@ export function EvaluationsPage() {
                     {getStatutBadge(epreuve.statut)}
                   </div>
 
-                  {/* Teacher name */}
-                  {epreuve.enseignant && (
-                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <User className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-                      <span className="font-medium text-foreground">{epreuve.enseignant.name}</span>
-                    </div>
-                  )}
+                  {/* Teacher + Filiere info */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {epreuve.enseignant && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <User className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                        <span className="font-medium text-foreground">{epreuve.enseignant.name}</span>
+                      </div>
+                    )}
+                    {epreuve.filiere && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <ClipboardCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>{epreuve.filiere.nom}</span>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Duration + Date range */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -663,8 +716,8 @@ export function EvaluationsPage() {
                   {/* Alert count */}
                   {stats.totalAlerts > 0 && (
                     <div className="flex items-center gap-1.5 text-sm">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="text-amber-700 dark:text-amber-400 font-medium">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                      <span className="text-red-700 dark:text-red-400 font-medium">
                         {stats.totalAlerts} alerte{stats.totalAlerts > 1 ? 's' : ''}
                       </span>
                     </div>
@@ -764,6 +817,12 @@ export function EvaluationsPage() {
                         <p className="text-xs text-muted-foreground">{detailEpreuve.enseignant.email}</p>
                       )}
                     </div>
+                    {detailEpreuve.filiere && (
+                      <Badge variant="secondary" className="ml-auto gap-1">
+                        <ClipboardCheck className="h-3 w-3" />
+                        {detailEpreuve.filiere.nom}
+                      </Badge>
+                    )}
                   </div>
                 )}
 
@@ -908,7 +967,7 @@ export function EvaluationsPage() {
                       Aucun participant pour le moment
                     </div>
                   ) : (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 space-y-2 max-h-96 overflow-y-auto">
                       {(sessionsExpanded
                         ? detailEpreuve.sessions
                         : (detailEpreuve.sessions ?? []).slice(0, 5)
@@ -928,45 +987,33 @@ export function EvaluationsPage() {
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                             {session.score !== null && (
                               <Badge variant="outline" className={getScoreBadgeClasses(session.score)}>
                                 {session.score}/20
                               </Badge>
                             )}
-                            {session.statut === 'EN_COURS' && (
-                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
-                                En cours
-                              </Badge>
-                            )}
-                            {session.statut === 'SOUMISE' && (
-                              <Badge variant="outline" className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">
-                                Soumise
-                              </Badge>
-                            )}
-                            {session.statut === 'CORRIGEE' && (
-                              <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
-                                Corrigée
-                              </Badge>
-                            )}
-                            {session.statut === 'NON_COMMENCEE' && (
-                              <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
-                                Non commencée
-                              </Badge>
-                            )}
+                            {getSessionBadge(session.statut)}
                             {session.alertes > 0 && (
-                              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                              <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 gap-1">
                                 <AlertTriangle className="h-3 w-3" />
                                 {session.alertes}
-                              </div>
+                              </Badge>
                             )}
                           </div>
                         </div>
                       ))}
                       {!sessionsExpanded && (detailEpreuve.sessions?.length ?? 0) > 5 && (
-                        <p className="text-xs text-center text-muted-foreground pt-1">
-                          Et {(detailEpreuve.sessions?.length ?? 0) - 5} autre(s) participant(s)...
-                        </p>
+                        <div className="text-center pt-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground"
+                            onClick={() => setSessionsExpanded(true)}
+                          >
+                            Et {(detailEpreuve.sessions?.length ?? 0) - 5} autre(s) participant(s)...
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -974,7 +1021,6 @@ export function EvaluationsPage() {
               </div>
             </ScrollArea>
           ) : null}
-
           <DialogFooter className="border-t pt-4">
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
               Fermer

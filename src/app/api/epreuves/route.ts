@@ -195,7 +195,97 @@ async function _GET(request: NextRequest) {
     const enseignantId = searchParams.get('enseignantId')
     const etudiantId = searchParams.get('etudiantId')
     const filiereId = searchParams.get('filiereId')
+    const responsableId = searchParams.get('responsableId')
     const statut = searchParams.get('statut')
+    const search = searchParams.get('search') || ''
+
+    // ─── Responsable mode: fetch epreuves for all filières managed by this responsable ───
+    if (responsableId) {
+      // Find all filières this responsable manages
+      const responsableFilieres = await db.filiere.findMany({
+        where: { responsableId },
+        select: { id: true, etablissementId: true, nom: true },
+      })
+
+      if (responsableFilieres.length === 0) {
+        return NextResponse.json({ epreuves: [], filieres: [] })
+      }
+
+      const etablissementId = responsableFilieres[0].etablissementId
+      const allFiliereIds = responsableFilieres.map((f) => f.id)
+
+      // If a specific filiereId is also provided, scope to that (must be one of the responsable's filières)
+      const targetFiliereIds = filiereId && allFiliereIds.includes(filiereId)
+        ? [filiereId]
+        : allFiliereIds
+
+      const whereResp: Record<string, unknown> = { deletedAt: null }
+      if (statut) whereResp.statut = statut
+
+      whereResp.OR = [
+        { sessions: { some: { etudiant: { filiereId: { in: targetFiliereIds } } } } },
+        { enseignant: { etablissementId } },
+      ]
+
+      const epreuves = await db.epreuve.findMany({
+        where: whereResp,
+        orderBy: { dateDebut: 'desc' },
+        include: {
+          enseignant: { select: { id: true, name: true, email: true } },
+          questions: { select: { id: true, bareme: true, question: { select: { id: true, type: true, enonce: true, difficulte: true } } } },
+          sessions: {
+            include: {
+              etudiant: { select: { id: true, name: true, email: true } },
+            },
+          },
+          filiere: { select: { id: true, nom: true, code: true } },
+        },
+      })
+
+      // Deduplicate (OR condition can produce duplicates)
+      const seen = new Set<string>()
+      const dedupedEpreuves = epreuves.filter((e) => {
+        if (seen.has(e.id)) return false
+        seen.add(e.id)
+        return true
+      })
+
+      const parsedEpreuves = dedupedEpreuves.map((e) => {
+        const contenuData = e.contenu as Record<string, unknown> | null
+        const contenuQuestions = contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)
+          ? contenuData.questions as Array<Record<string, unknown>>
+          : []
+        const relationCount = e.questions.length
+        const contenuCount = contenuQuestions.length
+        const questionCount = relationCount > 0 ? relationCount : contenuCount
+        const totalPoints = relationCount > 0
+          ? e.questions.reduce((sum, q) => sum + q.bareme, 0)
+          : contenuQuestions.reduce((sum, q) => sum + (typeof q.bareme === 'number' ? q.bareme : 1), 0)
+        return {
+          ...e,
+          groupesCibles: e.groupesCibles ? JSON.parse(e.groupesCibles) : null,
+          questionCount,
+          totalPoints,
+        }
+      })
+
+      // Server-side search filter
+      const filteredEpreuves = search
+        ? parsedEpreuves.filter((e) => {
+            const q = search.toLowerCase()
+            const matchTitre = e.titre.toLowerCase().includes(q)
+            const matchDesc = e.description?.toLowerCase().includes(q) ?? false
+            const matchEnseignant = e.enseignant?.name?.toLowerCase().includes(q) ?? false
+            const matchFiliere = e.filiere?.nom?.toLowerCase().includes(q) ?? false
+            return matchTitre || matchDesc || matchEnseignant || matchFiliere
+          })
+        : parsedEpreuves
+
+      return NextResponse.json({
+        epreuves: filteredEpreuves,
+        filieres: responsableFilieres.map((f) => ({ id: f.id, nom: f.nom })),
+      })
+    }
 
     if (enseignantId) {
       const where: Record<string, unknown> = { enseignantId, deletedAt: null }
@@ -424,7 +514,7 @@ async function _GET(request: NextRequest) {
       return NextResponse.json({ epreuves: allEpreuves })
     }
 
-    return NextResponse.json({ error: 'enseignantId, etudiantId ou filiereId requis' }, { status: 400 })
+    return NextResponse.json({ error: 'enseignantId, etudiantId, filiereId ou responsableId requis' }, { status: 400 })
   } catch (error) {
     console.error('List epreuves error:', error)
     return NextResponse.json(
