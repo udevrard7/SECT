@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { createId } from '@paralleldrive/cuid2'
-import { withAuth } from '@/lib/auth-session'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { requireAdminEtablissementAccess, verifySelfAccess } from '@/lib/tenant-access'
 
-async function _POST(request: NextRequest) {
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const {
       devoirId,
@@ -22,6 +27,44 @@ async function _POST(request: NextRequest) {
         { error: 'Devoir et étudiant requis' },
         { status: 400 }
       )
+    }
+
+    // ─── Tenant scoping for POST ───
+    if (user.role === 'ETUDIANT') {
+      // ETUDIANT: must submit as themselves
+      const selfCheck = verifySelfAccess(user, etudiantId)
+      if (selfCheck) return selfCheck
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can create soumissions for devoirs they created
+      const devoir = await db.devoir.findUnique({ where: { id: devoirId }, select: { enseignantId: true } })
+      if (devoir && devoir.enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des soumissions que pour vos propres devoirs.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can create soumissions in their establishment
+      const student = await db.user.findUnique({
+        where: { id: etudiantId },
+        select: { etablissementId: true },
+      })
+      if (student?.etablissementId && student.etablissementId !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des soumissions que pour les étudiants de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess
+      const student = await db.user.findUnique({
+        where: { id: etudiantId },
+        select: { etablissementId: true },
+      })
+      if (student?.etablissementId) {
+        const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
+        if (accessError) return accessError
+      }
     }
 
     // Verify devoir exists
@@ -140,8 +183,12 @@ async function _POST(request: NextRequest) {
   }
 }
 
-async function _GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const devoirId = searchParams.get('devoirId')
     const etudiantId = searchParams.get('etudiantId')
@@ -159,6 +206,36 @@ async function _GET(request: NextRequest) {
         { error: 'Au moins un filtre requis (devoirId, etudiantId ou statut)' },
         { status: 400 }
       )
+    }
+
+    // ─── Tenant scoping ───
+    if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the relevant establishment
+      if (etudiantId) {
+        const student = await db.user.findUnique({
+          where: { id: etudiantId },
+          select: { etablissementId: true },
+        })
+        if (student?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
+          if (accessError) return accessError
+        }
+      } else if (devoirId) {
+        const devoir = await db.devoir.findUnique({
+          where: { id: devoirId },
+          select: { enseignant: { select: { etablissementId: true } } },
+        })
+        if (devoir?.enseignant?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, devoir.enseignant.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can only see soumissions for devoirs they created
+      where.Devoir = { enseignantId: user.id }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can see soumissions in their establishment
+      where.Devoir = { enseignant: { etablissementId: user.etablissementId } }
     }
 
     const soumissions = await db.soumission.findMany({
@@ -196,5 +273,5 @@ async function _GET(request: NextRequest) {
   }
 }
 
-export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
 export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

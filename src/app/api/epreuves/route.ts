@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { withAuth } from '@/lib/auth-session'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { requireAdminEtablissementAccess, verifySelfAccess } from '@/lib/tenant-access'
 
-async function _POST(request: NextRequest) {
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
-    const {
+    let {
       enseignantId,
       titre,
       description,
@@ -31,6 +36,39 @@ async function _POST(request: NextRequest) {
         { error: 'Enseignant, titre, durée, dates de début et de fin requis' },
         { status: 400 }
       )
+    }
+
+    // ─── Tenant scoping for POST ───
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT must use their own enseignantId
+      if (enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des épreuves qu\'en votre nom.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can create epreuves for teachers in their establishment
+      const teacher = await db.user.findUnique({
+        where: { id: enseignantId },
+        select: { etablissementId: true },
+      })
+      if (teacher?.etablissementId && teacher.etablissementId !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des épreuves que pour les enseignants de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the enseignant's establishment
+      const teacher = await db.user.findUnique({
+        where: { id: enseignantId },
+        select: { etablissementId: true },
+      })
+      if (teacher?.etablissementId) {
+        const accessError = await requireAdminEtablissementAccess(user, teacher.etablissementId)
+        if (accessError) return accessError
+      }
     }
 
     // Validate generationMode
@@ -189,8 +227,12 @@ async function _POST(request: NextRequest) {
   }
 }
 
-async function _GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
     const etudiantId = searchParams.get('etudiantId')
@@ -198,6 +240,56 @@ async function _GET(request: NextRequest) {
     const responsableId = searchParams.get('responsableId')
     const statut = searchParams.get('statut')
     const search = searchParams.get('search') || ''
+
+    // ─── ETUDIANT: etudiantId must be their own ID ───
+    if (etudiantId && user.role === 'ETUDIANT') {
+      const selfCheck = verifySelfAccess(user, etudiantId)
+      if (selfCheck) return selfCheck
+    }
+
+    // ─── ADMIN: verify EtablissementAccess when specific IDs are provided ───
+    if (user.role === 'ADMIN') {
+      // When responsableId is provided, verify access to the responsable's establishment
+      if (responsableId) {
+        const responsable = await db.user.findUnique({
+          where: { id: responsableId },
+          select: { etablissementId: true },
+        })
+        if (responsable?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, responsable.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+      // When enseignantId is provided, verify access to the enseignant's establishment
+      if (enseignantId) {
+        const teacher = await db.user.findUnique({
+          where: { id: enseignantId },
+          select: { etablissementId: true },
+        })
+        if (teacher?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, teacher.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+      // When etudiantId is provided, verify access to the student's establishment
+      if (etudiantId) {
+        const student = await db.user.findUnique({
+          where: { id: etudiantId },
+          select: { etablissementId: true },
+        })
+        if (student?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+      // When no specific ID is provided, ADMIN must specify a scope
+      if (!responsableId && !enseignantId && !etudiantId && !filiereId) {
+        return NextResponse.json(
+          { error: 'Vous devez spécifier un scope (enseignantId, etudiantId, filiereId ou responsableId)' },
+          { status: 400 }
+        )
+      }
+    }
 
     // ─── Responsable mode: fetch epreuves for all filières managed by this responsable ───
     if (responsableId) {
@@ -213,6 +305,14 @@ async function _GET(request: NextRequest) {
 
       const etablissementId = responsableFilieres[0].etablissementId
       const allFiliereIds = responsableFilieres.map((f) => f.id)
+
+      // RESPONSABLE: verify they can only query their own filieres
+      if (user.role === 'RESPONSABLE' && user.etablissementId !== etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez accéder qu\'aux épreuves de votre établissement.' },
+          { status: 403 }
+        )
+      }
 
       // If a specific filiereId is also provided, scope to that (must be one of the responsable's filières)
       const targetFiliereIds = filiereId && allFiliereIds.includes(filiereId)
@@ -288,6 +388,14 @@ async function _GET(request: NextRequest) {
     }
 
     if (enseignantId) {
+      // ENSEIGNANT: can only query their own epreuves
+      if (user.role === 'ENSEIGNANT' && enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez accéder qu\'à vos propres épreuves.' },
+          { status: 403 }
+        )
+      }
+
       const where: Record<string, unknown> = { enseignantId, deletedAt: null }
       if (statut) where.statut = statut
 
@@ -347,6 +455,20 @@ async function _GET(request: NextRequest) {
 
       if (!filiere) {
         return NextResponse.json({ epreuves: [] })
+      }
+
+      // RESPONSABLE: verify the filiere belongs to their establishment
+      if (user.role === 'RESPONSABLE' && user.etablissementId !== filiere.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez accéder qu\'aux épreuves de votre établissement.' },
+          { status: 403 }
+        )
+      }
+
+      // ADMIN: verify EtablissementAccess for the filiere's establishment
+      if (user.role === 'ADMIN') {
+        const accessError = await requireAdminEtablissementAccess(user, filiere.etablissementId)
+        if (accessError) return accessError
       }
 
       const whereFiliere: Record<string, unknown> = { deletedAt: null }

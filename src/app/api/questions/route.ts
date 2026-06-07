@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { withAuth } from '@/lib/auth-session'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { resolveTenantFilter, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
-async function _GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     const documentId = searchParams.get('documentId')
@@ -25,11 +30,53 @@ async function _GET(request: NextRequest) {
       where.enonce = { contains: search }
     }
 
-    if (userId) {
-      where.OR = [
-        { auteurId: userId },
-        { document: { ownerId: userId } },
-      ]
+    // ─── Tenant scoping ───
+    if (user.role === 'ADMIN') {
+      if (userId) {
+        // ADMIN with userId filter: verify access to that user's establishment
+        const targetUser = await db.user.findUnique({
+          where: { id: userId },
+          select: { etablissementId: true },
+        })
+        if (targetUser?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, targetUser.etablissementId)
+          if (accessError) return accessError
+        }
+        where.OR = [
+          { auteurId: userId },
+          { document: { ownerId: userId } },
+        ]
+      } else {
+        // ADMIN without filter: return questions from authorized establishments only
+        const tenantFilter = await resolveTenantFilter(user)
+        if ('error' in tenantFilter) return tenantFilter.error
+        if ('etablissementIds' in tenantFilter) {
+          where.auteur = { etablissementId: { in: tenantFilter.etablissementIds } }
+        } else if ('etablissementId' in tenantFilter) {
+          where.auteur = { etablissementId: tenantFilter.etablissementId }
+        }
+      }
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: auto-scope to their establishment
+      if (userId) {
+        where.OR = [
+          { auteurId: userId },
+          { document: { ownerId: userId } },
+        ]
+      } else {
+        where.auteur = { etablissementId: user.etablissementId }
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: scope to their establishment
+      where.auteur = { etablissementId: user.etablissementId }
+      if (userId) {
+        // Additional filter for specific user (already scoped by etablissementId)
+        delete where.auteur
+        where.OR = [
+          { auteurId: userId, auteur: { etablissementId: user.etablissementId } },
+          { document: { ownerId: userId } },
+        ]
+      }
     }
 
     const [questions, total] = await Promise.all([
@@ -76,8 +123,12 @@ async function _GET(request: NextRequest) {
   }
 }
 
-async function _DELETE(request: NextRequest) {
+async function _DELETE(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const { ids } = body as { ids: string[] }
 
@@ -88,6 +139,39 @@ async function _DELETE(request: NextRequest) {
       )
     }
 
+    // ─── Verify ownership or EtablissementAccess before delete ───
+    const questionsToDelete = await db.question.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, auteurId: true, auteur: { select: { etablissementId: true } } },
+    })
+
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can only delete their own questions
+      const notOwned = questionsToDelete.filter(q => q.auteurId !== user.id)
+      if (notOwned.length > 0) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez supprimer que vos propres questions.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can delete questions in their establishment
+      const notInEtab = questionsToDelete.filter(q => q.auteur?.etablissementId !== user.etablissementId)
+      if (notInEtab.length > 0) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez supprimer que les questions de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the questions' establishments
+      const etabIds = new Set(questionsToDelete.map(q => q.auteur?.etablissementId).filter(Boolean) as string[])
+      for (const etabId of etabIds) {
+        const accessError = await requireAdminEtablissementAccess(user, etabId)
+        if (accessError) return accessError
+      }
+    }
+
     const result = await db.$transaction(
       ids.map((id) =>
         db.question.delete({ where: { id } })
@@ -96,8 +180,8 @@ async function _DELETE(request: NextRequest) {
 
     await db.auditLog.create({
       data: {
-        userId: 'system',
-        userEmail: 'system',
+        userId: user.id,
+        userEmail: user.email,
         action: 'BATCH_DELETE_QUESTIONS',
         entite: 'Question',
         entiteId: ids.join(','),
@@ -118,8 +202,12 @@ async function _DELETE(request: NextRequest) {
   }
 }
 
-async function _POST(request: NextRequest) {
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const { type, enonce, propositions, reponseCorrecte, explication, difficulte, themes, documentId, auteurId } = body
 
@@ -130,10 +218,45 @@ async function _POST(request: NextRequest) {
       )
     }
 
+    // ─── Tenant scoping for POST ───
+    let finalAuteurId = auteurId || null
+
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT must set auteurId to their own ID
+      finalAuteurId = user.id
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can create questions in their establishment
+      // auteurId must belong to their establishment if provided
+      if (finalAuteurId && finalAuteurId !== user.id) {
+        const auteur = await db.user.findUnique({
+          where: { id: finalAuteurId },
+          select: { etablissementId: true },
+        })
+        if (auteur?.etablissementId !== user.etablissementId) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez créer des questions que pour votre établissement.' },
+            { status: 403 }
+          )
+        }
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the auteur's establishment
+      if (finalAuteurId) {
+        const auteur = await db.user.findUnique({
+          where: { id: finalAuteurId },
+          select: { etablissementId: true },
+        })
+        if (auteur?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, auteur.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+    }
+
     const question = await db.question.create({
       data: {
         documentId: documentId || null,
-        auteurId: auteurId || null,
+        auteurId: finalAuteurId,
         type,
         enonce,
         propositions: propositions ? JSON.stringify(propositions) : null,
@@ -147,8 +270,8 @@ async function _POST(request: NextRequest) {
 
     await db.auditLog.create({
       data: {
-        userId: auteurId || 'system',
-        userEmail: 'system',
+        userId: finalAuteurId || user.id,
+        userEmail: user.email,
         action: 'CREATE_QUESTION',
         entite: 'Question',
         entiteId: question.id,

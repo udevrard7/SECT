@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { createId } from '@paralleldrive/cuid2'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { resolveTenantFilter, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
-export async function POST(request: NextRequest) {
+// POST /api/devoirs — Create a new devoir
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const {
       titre,
@@ -41,15 +48,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify uniteEnseignement exists
+    // Verify uniteEnseignement exists and get its etablissementId via filiere
     const ue = await db.uniteEnseignement.findUnique({
       where: { id: uniteEnseignementId },
+      include: { filiere: { select: { etablissementId: true } } },
     })
     if (!ue) {
       return NextResponse.json(
         { error: 'Unité d\'enseignement non trouvée' },
         { status: 404 }
       )
+    }
+
+    const ueEtablissementId = ue.filiere.etablissementId
+
+    // Role-based authorization for POST
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: enseignantId must be their own ID
+      if (enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des devoirs qu\'en votre nom.' },
+          { status: 403 }
+        )
+      }
+      // UE must be in their establishment
+      if (user.etablissementId !== ueEtablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des devoirs que dans votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can create devoirs in their establishment
+      if (user.etablissementId !== ueEtablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez créer des devoirs que dans votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: Must have EtablissementAccess for the UE's establishment
+      const accessError = await requireAdminEtablissementAccess(user, ueEtablissementId)
+      if (accessError) return accessError
     }
 
     const devoir = await db.devoir.create({
@@ -94,8 +134,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+// GET /api/devoirs — List devoirs with filters
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
     const uniteEnseignementId = searchParams.get('uniteEnseignementId')
@@ -103,12 +148,22 @@ export async function GET(request: NextRequest) {
     const anneeUniversitaire = searchParams.get('anneeUniversitaire')
     const etudiantId = searchParams.get('etudiantId')
 
+    // ─── ETUDIANT: can only query with their own etudiantId ───
+    if (user.role === 'ETUDIANT') {
+      if (!etudiantId || etudiantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez consulter que vos propres devoirs.' },
+          { status: 403 }
+        )
+      }
+    }
+
     // ─── Student-specific filter: return devoirs for the student's filiere ───
     if (etudiantId) {
       // Find the student and their filiere
       const etudiant = await db.user.findUnique({
         where: { id: etudiantId },
-        select: { id: true, filiereId: true },
+        select: { id: true, filiereId: true, etablissementId: true },
       })
 
       if (!etudiant) {
@@ -120,6 +175,12 @@ export async function GET(request: NextRequest) {
 
       if (!etudiant.filiereId) {
         return NextResponse.json({ devoirs: [] })
+      }
+
+      // Verify tenant access for non-ETUDIANT roles viewing a student's devoirs
+      if (user.role !== 'ETUDIANT') {
+        const tenantFilter = await resolveTenantFilter(user, etudiant.etablissementId)
+        if ('error' in tenantFilter) return tenantFilter.error
       }
 
       // Find UEs that belong to the student's filiere
@@ -210,6 +271,98 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Apply tenant-based filtering for non-ETUDIANT roles
+    if (user.role === 'ADMIN') {
+      // ADMIN: Must have EtablissementAccess. Apply establishment filter via UE's filiere.
+      const tenantFilter = await resolveTenantFilter(user)
+      if ('error' in tenantFilter) return tenantFilter.error
+
+      if ('etablissementIds' in tenantFilter) {
+        // Filter devoirs whose UE's filiere belongs to authorized establishments
+        const authorizedUes = await db.uniteEnseignement.findMany({
+          where: {
+            filiere: { etablissementId: { in: tenantFilter.etablissementIds } },
+          },
+          select: { id: true },
+        })
+        const authorizedUeIds = authorizedUes.map((u) => u.id)
+
+        if (uniteEnseignementId) {
+          if (!authorizedUeIds.includes(uniteEnseignementId)) {
+            return NextResponse.json(
+              { error: 'Accès refusé. Vous n\'êtes pas autorisé à accéder aux données de cet établissement.' },
+              { status: 403 }
+            )
+          }
+        } else {
+          where.uniteEnseignementId = { in: authorizedUeIds }
+        }
+      } else if ('etablissementId' in tenantFilter) {
+        const authorizedUes = await db.uniteEnseignement.findMany({
+          where: {
+            filiere: { etablissementId: tenantFilter.etablissementId },
+          },
+          select: { id: true },
+        })
+        const authorizedUeIds = authorizedUes.map((u) => u.id)
+
+        if (uniteEnseignementId) {
+          if (!authorizedUeIds.includes(uniteEnseignementId)) {
+            return NextResponse.json(
+              { error: 'Accès refusé. Vous n\'êtes pas autorisé à accéder aux données de cet établissement.' },
+              { status: 403 }
+            )
+          }
+        } else {
+          where.uniteEnseignementId = { in: authorizedUeIds }
+        }
+      }
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: Can only see devoirs they created or in their establishment
+      const authorizedUes = await db.uniteEnseignement.findMany({
+        where: {
+          filiere: { etablissementId: user.etablissementId },
+        },
+        select: { id: true },
+      })
+      const authorizedUeIds = authorizedUes.map((u) => u.id)
+
+      if (uniteEnseignementId) {
+        if (!authorizedUeIds.includes(uniteEnseignementId)) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez accéder qu\'aux devoirs de votre établissement.' },
+            { status: 403 }
+          )
+        }
+      } else {
+        // Either they created the devoir or it's in their establishment
+        where.OR = [
+          { enseignantId: user.id },
+          { uniteEnseignementId: { in: authorizedUeIds } },
+        ]
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: Can see devoirs in their establishment
+      const authorizedUes = await db.uniteEnseignement.findMany({
+        where: {
+          filiere: { etablissementId: user.etablissementId },
+        },
+        select: { id: true },
+      })
+      const authorizedUeIds = authorizedUes.map((u) => u.id)
+
+      if (uniteEnseignementId) {
+        if (!authorizedUeIds.includes(uniteEnseignementId)) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez accéder qu\'aux devoirs de votre établissement.' },
+            { status: 403 }
+          )
+        }
+      } else {
+        where.uniteEnseignementId = { in: authorizedUeIds }
+      }
+    }
+
     const devoirs = await db.devoir.findMany({
       where,
       orderBy: { dateLimite: 'desc' },
@@ -242,3 +395,6 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
