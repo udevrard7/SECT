@@ -221,21 +221,21 @@ export function ResponsableDashboard() {
                 description="Assigner les enseignants aux filières et unités d'enseignement."
                 icon={<Users className="h-6 w-6"/>}
                 color="#3498db"
-                href="/responsable/habilitations"
+                href="/affectations"
              />
              <ActionCard 
                 title="Centre d'Alertes"
                 description="Analyser les points de friction et les performances atypiques."
                 icon={<AlertTriangle className="h-6 w-6"/>}
                 color="#e74c3c"
-                href="/responsable/alertes"
+                href="/alertes"
              />
             <ActionCard 
                 title="Rapports & Exports"
                 description="Générer des synthèses de performance par filière ou enseignant."
                 icon={<BarChart3 className="h-6 w-6"/>}
                 color="#9b59b6"
-                href="/responsable/rapports"
+                href="/rapports"
             />
         </div>
       </div>
