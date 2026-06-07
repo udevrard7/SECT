@@ -91,6 +91,11 @@ interface FiliereInfo {
   code?: string
 }
 
+interface GroupesCibles {
+  groupes: string[]
+  niveau?: string | null
+}
+
 interface Epreuve {
   id: string
   enseignantId: string
@@ -103,11 +108,12 @@ interface Epreuve {
   melangePropositions: boolean
   blocageRetour: boolean
   statut: 'BROUILLON' | 'PLANIFIEE' | 'EN_COURS' | 'TERMINEE' | 'CLOTUREE'
-  groupesCibles: string[] | null
+  groupesCibles: GroupesCibles | string[] | null
   questions: EpreuveQuestion[]
   sessions: Session[]
   questionCount?: number
   totalPoints?: number
+  noteTotal?: number
   enseignant?: EnseignantInfo
   filiere?: FiliereInfo
   createdAt: string
@@ -880,7 +886,7 @@ export function EvaluationsPage() {
                         <p className="text-xs text-muted-foreground">Questions</p>
                         <p className="text-sm font-semibold flex items-center gap-1">
                           <HelpCircle className="h-3.5 w-3.5 text-teal-600" />
-                          {detailEpreuve.questions?.length ?? detailEpreuve.questionCount ?? 0}
+                          {detailEpreuve.questions && detailEpreuve.questions.length > 0 ? detailEpreuve.questions.length : (detailEpreuve.questionCount ?? 0)}
                         </p>
                       </CardContent>
                     </Card>
@@ -889,12 +895,9 @@ export function EvaluationsPage() {
                         <p className="text-xs text-muted-foreground">Points total</p>
                         <p className="text-sm font-semibold flex items-center gap-1">
                           <Trophy className="h-3.5 w-3.5 text-amber-600" />
-                          {(() => {
-                            const pts = detailEpreuve.questions
-                              ? detailEpreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
-                              : (detailEpreuve.totalPoints ?? 0)
-                            return pts
-                          })()}
+                          {detailEpreuve.questions != null && detailEpreuve.questions.length > 0
+                            ? detailEpreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+                            : (detailEpreuve.totalPoints ?? detailEpreuve.noteTotal ?? 0)}
                         </p>
                       </CardContent>
                     </Card>
@@ -984,16 +987,31 @@ export function EvaluationsPage() {
                   )}
 
                   {/* Groupes cibles */}
-                  {detailEpreuve.groupesCibles && detailEpreuve.groupesCibles.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Groupes cibles</p>
-                      <div className="flex flex-wrap gap-2">
-                        {detailEpreuve.groupesCibles.map((g, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs">{g}</Badge>
-                        ))}
+                  {(() => {
+                    const gc = detailEpreuve.groupesCibles
+                    if (!gc) return null
+                    const isObj = typeof gc === 'object' && !Array.isArray(gc) && 'groupes' in (gc as Record<string, unknown>)
+                    const groupes: string[] = isObj ? ((gc as { groupes: string[] }).groupes) : Array.isArray(gc) ? (gc as string[]) : []
+                    const niveau: string | null = isObj ? ((gc as { niveau?: string | null }).niveau ?? null) : null
+                    const hasContent = groupes.length > 0 || niveau
+                    if (!hasContent) return null
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Groupes cibles</p>
+                        <div className="flex flex-wrap gap-2">
+                          {niveau && (
+                            <Badge variant="secondary" className="text-xs gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                              <ClipboardCheck className="h-3 w-3" />
+                              Niveau : {niveau}
+                            </Badge>
+                          )}
+                          {groupes.map((g, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{g}</Badge>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                 </>
               )}
 
