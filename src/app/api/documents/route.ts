@@ -330,5 +330,41 @@ function extractThemesHeuristically(text: string): string[] {
   return potentialTitles.length > 0 ? potentialTitles : ['Contenu principal']
 }
 
+async function _DELETE(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
+  try {
+    const userId = context.user.id
+    const body = await request.json()
+    const { ids } = body as { ids?: string[] }
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'Liste d\'identifiants vide ou manquante' }, { status: 400 })
+    }
+
+    // Soft-delete: set deletedAt to now for all matching documents owned by the user
+    const result = await db.document.updateMany({
+      where: {
+        id: { in: ids },
+        ownerId: userId,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    })
+
+    return NextResponse.json({
+      message: `${result.count} document(s) déplacé(s) vers la corbeille`,
+      count: result.count,
+    })
+  } catch (error) {
+    console.error('Bulk delete documents error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression des documents' },
+      { status: 500 }
+    )
+  }
+}
+
 export const POST = withAuth(_POST, ['ENSEIGNANT', 'ADMIN'])
 export const GET = withAuth(_GET, ['ENSEIGNANT', 'ADMIN'])
+export const DELETE = withAuth(_DELETE, ['ENSEIGNANT', 'ADMIN'])
