@@ -279,12 +279,15 @@ export function EtudiantsPage() {
   const [directEmail, setDirectEmail] = useState('')
   const [directFiliereId, setDirectFiliereId] = useState('')
   const [directMatricule, setDirectMatricule] = useState('')
+  const [directNiveau, setDirectNiveau] = useState('')
   const [directResult, setDirectResult] = useState<{ email: string; temporaryPassword: string; name: string } | null>(null)
 
   // ─── Edit form state ───
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editFiliereId, setEditFiliereId] = useState('')
+  const [editMatricule, setEditMatricule] = useState('')
+  const [editNiveau, setEditNiveau] = useState('')
   const [editActif, setEditActif] = useState(true)
 
   // ─── Import state ───
@@ -435,6 +438,7 @@ export function EtudiantsPage() {
     setDirectEmail('')
     setDirectFiliereId('')
     setDirectMatricule('')
+    setDirectNiveau('')
     setDirectResult(null)
     setAddDialogOpen(true)
   }
@@ -500,6 +504,7 @@ export function EtudiantsPage() {
       if (directFiliereId) body.filiereId = directFiliereId
       if (etablissementId) body.etablissementId = etablissementId
       if (directMatricule) body.matricule = directMatricule
+      if (directNiveau) body.niveau = directNiveau
 
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -589,6 +594,8 @@ export function EtudiantsPage() {
     setEditName(etudiant.name)
     setEditEmail(etudiant.email)
     setEditFiliereId(etudiant.filiereId ?? '')
+    setEditMatricule(etudiant.matricule ?? '')
+    setEditNiveau(etudiant.niveau ?? '')
     setEditActif(etudiant.actif)
     setEditDialogOpen(true)
   }
@@ -607,6 +614,8 @@ export function EtudiantsPage() {
         name: editName,
         email: editEmail,
         filiereId: editFiliereId && editFiliereId !== '__none__' ? editFiliereId : null,
+        matricule: editMatricule || null,
+        niveau: editNiveau || null,
         actif: editActif,
       }
 
@@ -1575,6 +1584,20 @@ export function EtudiantsPage() {
                 <Label htmlFor="direct-matricule">Matricule (auto-généré si vide)</Label>
                 <Input id="direct-matricule" placeholder="Laissez vide pour auto-génération" value={directMatricule} onChange={(e) => setDirectMatricule(e.target.value)} />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="direct-niveau">Niveau d&apos;études</Label>
+                <Select value={directNiveau || '__none__'} onValueChange={setDirectNiveau}>
+                  <SelectTrigger id="direct-niveau">
+                    <SelectValue placeholder="Sélectionner un niveau" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Aucun niveau</SelectItem>
+                    {niveauOptions.map((n) => (
+                      <SelectItem key={n} value={n}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
@@ -1657,6 +1680,35 @@ export function EtudiantsPage() {
                     <SelectItem key={f.id} value={f.id}>
                       {f.nom}{f.code ? ` (${f.code})` : ''}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-matricule">Matricule</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="edit-matricule"
+                  placeholder="Laissez vide pour auto-génération"
+                  value={editMatricule}
+                  onChange={(e) => setEditMatricule(e.target.value)}
+                  className="font-mono"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Identifiant unique de l&apos;étudiant. Laissez vide pour utiliser l&apos;auto-génération.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-niveau">Niveau d&apos;études</Label>
+              <Select value={editNiveau || '__none__'} onValueChange={setEditNiveau}>
+                <SelectTrigger id="edit-niveau">
+                  <SelectValue placeholder="Sélectionner un niveau" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Aucun niveau</SelectItem>
+                  {niveauOptions.map((n) => (
+                    <SelectItem key={n} value={n}>{n}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -53,6 +53,8 @@ async function _GET(
         filiereId: true,
         image: true,
         actif: true,
+        matricule: true,
+        niveau: true,
         derniereConnexion: true,
         createdAt: true,
         updatedAt: true,
@@ -114,6 +116,27 @@ async function _PATCH(
       data.password = await bcrypt.hash(body.password, 10)
     }
 
+    // Handle matricule update with uniqueness check
+    if (body.matricule !== undefined) {
+      const newMatricule = body.matricule || null
+      // Check uniqueness if a non-null matricule is being set or changed
+      if (newMatricule) {
+        const existingMatricule = await db.user.findUnique({ where: { matricule: newMatricule } })
+        if (existingMatricule && existingMatricule.id !== id) {
+          return NextResponse.json(
+            { error: 'Ce matricule est déjà utilisé par un autre étudiant.' },
+            { status: 409 }
+          )
+        }
+      }
+      data.matricule = newMatricule
+    }
+
+    // Handle niveau update
+    if (body.niveau !== undefined) {
+      data.niveau = body.niveau || null
+    }
+
     const user = await db.user.update({
       where: { id },
       data,
@@ -125,8 +148,10 @@ async function _PATCH(
         etablissementId: true,
         filiereId: true,
         actif: true,
+        matricule: true,
+        niveau: true,
         etablissement: { select: { id: true, nom: true } },
-        filiere: { select: { id: true, nom: true } },
+        filiere: { select: { id: true, nom: true, code: true } },
       },
     })
 
