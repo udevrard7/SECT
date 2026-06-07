@@ -17,6 +17,9 @@ import {
   ArrowDownRight,
   Minus,
   CalendarDays,
+  Eye,
+  UserX,
+  BookOpen,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -51,7 +54,7 @@ import {
   Legend,
 } from 'recharts'
 
-// ─── Types ───
+// ─── Types (aligned with API response) ───
 
 interface StatsData {
   nbEtudiants: number
@@ -76,19 +79,25 @@ interface StatsData {
     tauxReussite: number
   }>
   alertes: Array<{ type: string; titre: string; description: string; severity: string }>
+  topEtudiants: Array<{
+    id: string
+    nom: string
+    email: string
+    moyenne: number
+    filiere: string
+  }>
+  etudiantsEnDifficulte: Array<{
+    id: string
+    nom: string
+    email: string
+    moyenne: number
+    filiere: string
+  }>
 }
 
 interface FiliereOption {
   id: string
   nom: string
-}
-
-interface StudentData {
-  id: string
-  name: string
-  email: string
-  moyenne: number
-  filiere: string
 }
 
 // ─── Chart colors (emerald/teal scheme, no indigo/blue) ───
@@ -165,6 +174,45 @@ function getTrendIcon(trend: 'up' | 'down' | 'stable') {
   return <Minus className="h-4 w-4 text-amber-500" />
 }
 
+// ─── KPI Card ───
+
+interface KPICardProps {
+  title: string
+  value: string | number
+  subtitle?: string
+  icon: React.ReactNode
+  iconBg: string
+  borderColor: string
+}
+
+function KPICard({ title, value, subtitle, icon, iconBg, borderColor }: KPICardProps) {
+  return (
+    <Card className={`border-l-4 ${borderColor}`}>
+      <CardContent className="flex items-center gap-3 p-4">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground truncate">{title}</p>
+          <p className="text-xl font-bold">{value}</p>
+          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Empty chart placeholder ───
+
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-[260px] text-sm text-muted-foreground gap-2">
+      <BarChart3 className="h-8 w-8 text-muted-foreground/30" />
+      {message}
+    </div>
+  )
+}
+
 // ─── Main Component ───
 
 export function RapportsPage() {
@@ -180,16 +228,14 @@ export function RapportsPage() {
   const [dateDebut, setDateDebut] = useState<string>('')
   const [dateFin, setDateFin] = useState<string>('')
 
-  // ─── Simulated student data (for top/bottom) ───
-  const [studentsData, setStudentsData] = useState<StudentData[]>([])
-
   // ─── Fetch stats ───
   const fetchStats = useCallback(async () => {
     setIsLoading(true)
     try {
-      const filiereParam = selectedFiliere !== 'all' ? selectedFiliere : (user?.filiereId || '')
       const params = new URLSearchParams()
-      if (filiereParam) params.set('filiereId', filiereParam)
+      if (selectedFiliere && selectedFiliere !== 'all') {
+        params.set('filiereId', selectedFiliere)
+      }
       if (dateDebut) params.set('dateDebut', dateDebut)
       if (dateFin) params.set('dateFin', dateFin)
       const qs = params.toString()
@@ -197,40 +243,18 @@ export function RapportsPage() {
       if (res.ok) {
         const data = await res.json()
         setStats(data)
-        // Generate simulated student data from stats
-        generateStudentData(data)
       } else {
+        const errorData = await res.json().catch(() => ({}))
+        console.error('Stats API error:', errorData)
         setStats(null)
       }
-    } catch {
+    } catch (err) {
+      console.error('Fetch stats error:', err)
       setStats(null)
     } finally {
       setIsLoading(false)
     }
-  }, [selectedFiliere, user?.filiereId, dateDebut, dateFin])
-
-  // ─── Generate simulated student data ───
-  const generateStudentData = (statsData: StatsData) => {
-    const students: StudentData[] = []
-    const nbEtudiants = Math.min(statsData.nbEtudiants || 20, 20)
-    const avg = statsData.moyenneGenerale || 10
-
-    const firstNames = ['Ahmed', 'Fatima', 'Mohamed', 'Sara', 'Youssef', 'Amina', 'Omar', 'Lina', 'Karim', 'Nadia', 'Ali', 'Houda', 'Rachid', 'Meriem', 'Hassan', 'Zineb', 'Amine', 'Khadija', 'Nour', 'Imane']
-    const lastNames = ['Benali', 'Mansouri', 'El Amrani', 'Cherkaoui', 'Berrada', 'Tazi', 'Fassi', 'Alaoui', 'Bennani', 'Idrissi', 'Lahlou', 'Senhaji', 'Bouzidi', 'Kettani', 'Rahmouni', 'Chraibi', 'Belhaj', 'Ziani', 'Tahiri', 'Moussaoui']
-
-    for (let i = 0; i < nbEtudiants; i++) {
-      const variance = Math.random() * 12 - 4
-      const score = Math.max(0, Math.min(20, Math.round((avg + variance) * 10) / 10))
-      students.push({
-        id: `stu-${i}`,
-        name: `${firstNames[i % firstNames.length]} ${lastNames[i % lastNames.length]}`,
-        email: `${firstNames[i % firstNames.length].toLowerCase()}.${lastNames[i % lastNames.length].toLowerCase()}@etu.ma`,
-        moyenne: score,
-        filiere: statsData.etudiantsParFiliere?.[0]?.filiere || 'Générale',
-      })
-    }
-    setStudentsData(students.sort((a, b) => b.moyenne - a.moyenne))
-  }
+  }, [selectedFiliere, dateDebut, dateFin])
 
   // ─── Fetch filieres ───
   const fetchFilieres = useCallback(async () => {
@@ -253,9 +277,12 @@ export function RapportsPage() {
     fetchFilieres()
   }, [fetchFilieres])
 
-  // ─── Top & bottom students ───
-  const topStudents = studentsData.slice(0, 5)
-  const studentsNeedingAttention = studentsData.filter((s) => s.moyenne < 10)
+  // ─── Derived data ───
+  const hasData = stats && (
+    stats.nbEvaluations > 0 ||
+    stats.nbEtudiants > 0 ||
+    stats.moyenneGenerale > 0
+  )
 
   // ─── Export CSV ───
   const handleExportCSV = () => {
@@ -263,58 +290,72 @@ export function RapportsPage() {
     try {
       const rows: string[][] = []
 
-      // Header: Filière, Niveau, Nb étudiants, Nb évaluations, Note moyenne, Taux de réussite
-      rows.push(['Filière', 'Niveau', 'Nb étudiants', 'Nb évaluations', 'Note moyenne', 'Taux de réussite'])
+      // Section 1: KPIs globaux
+      rows.push(['=== INDICATEURS CLÉS ==='])
+      rows.push(['Indicateur', 'Valeur'])
+      rows.push(['Moyenne générale', `${stats.moyenneGenerale}/20`])
+      rows.push(['Taux de réussite global', `${stats.tauxReussiteGlobal}%`])
+      rows.push(["Nombre d'évaluations", stats.nbEvaluations.toString()])
+      rows.push(["Nombre d'étudiants", stats.nbEtudiants.toString()])
+      rows.push(["Nombre d'enseignants", stats.nbEnseignants.toString()])
 
-      // Per-filiere data
+      // Section 2: Par filière
       if (stats.etudiantsParFiliere.length > 0) {
+        rows.push([])
+        rows.push(['=== ÉTUDIANTS PAR FILIÈRE ==='])
+        rows.push(['Filière', "Nombre d'étudiants"])
         stats.etudiantsParFiliere.forEach((f) => {
-          const filiereStats = stats.resultatsParMatiere.filter((r) =>
-            stats.topEnseignants.some((e) => e.nom === r.enseignant)
-          )
-          const filiereEvals = filiereStats.length || stats.nbEvaluations
-          const filiereMoyenne = filiereStats.length > 0
-            ? Math.round(filiereStats.reduce((sum, r) => sum + r.moyenne, 0) / filiereStats.length * 10) / 10
-            : stats.moyenneGenerale
-          const filiereTaux = filiereStats.length > 0
-            ? Math.round(filiereStats.reduce((sum, r) => sum + r.tauxReussite, 0) / filiereStats.length)
-            : stats.tauxReussiteGlobal
-
-          rows.push([
-            f.filiere,
-            '',
-            f.count.toString(),
-            filiereEvals.toString(),
-            filiereMoyenne.toString(),
-            `${filiereTaux}%`,
-          ])
+          rows.push([f.filiere, f.count.toString()])
         })
-      } else {
-        rows.push([
-          selectedFiliere === 'all' ? 'Toutes' : selectedFiliere,
-          '',
-          stats.nbEtudiants.toString(),
-          stats.nbEvaluations.toString(),
-          stats.moyenneGenerale.toString(),
-          `${stats.tauxReussiteGlobal}%`,
-        ])
       }
 
-      // Add a summary section
-      rows.push([])
-      rows.push(['Indicateur', 'Valeur'])
-      rows.push(['Moyenne générale', stats.moyenneGenerale.toString()])
-      rows.push(['Taux de réussite global', `${stats.tauxReussiteGlobal}%`])
-      rows.push(['Nombre d\'évaluations', stats.nbEvaluations.toString()])
-      rows.push(['Nombre d\'étudiants', stats.nbEtudiants.toString()])
-      rows.push(['Nombre d\'enseignants', stats.nbEnseignants.toString()])
-
-      // Add results per subject
+      // Section 3: Résultats par matière
       if (stats.resultatsParMatiere.length > 0) {
         rows.push([])
+        rows.push(['=== RÉSULTATS PAR MATIÈRE ==='])
         rows.push(['Matière', 'Enseignant', 'Moyenne', 'Taux de réussite', 'Participants'])
         stats.resultatsParMatiere.forEach((r) => {
-          rows.push([r.titre, r.enseignant, r.moyenne.toString(), `${r.tauxReussite}%`, r.nbParticipants.toString()])
+          rows.push([r.titre, r.enseignant, `${r.moyenne}/20`, `${r.tauxReussite}%`, r.nbParticipants.toString()])
+        })
+      }
+
+      // Section 4: Répartition des notes
+      if (stats.repartitionNotes.some(r => r.count > 0)) {
+        rows.push([])
+        rows.push(['=== RÉPARTITION DES NOTES ==='])
+        rows.push(['Tranche', "Nombre d'étudiants"])
+        stats.repartitionNotes.forEach((r) => {
+          rows.push([r.label, r.count.toString()])
+        })
+      }
+
+      // Section 5: Top enseignants
+      if (stats.topEnseignants.length > 0) {
+        rows.push([])
+        rows.push(['=== TOP ENSEIGNANTS ==='])
+        rows.push(['Enseignant', "Nb épreuves", 'Moyenne', 'Taux réussite'])
+        stats.topEnseignants.forEach((e) => {
+          rows.push([e.nom, e.nbEpreuves.toString(), `${e.moyenne}/20`, `${e.tauxReussite}%`])
+        })
+      }
+
+      // Section 6: Top étudiants
+      if (stats.topEtudiants.length > 0) {
+        rows.push([])
+        rows.push(['=== TOP 5 ÉTUDIANTS ==='])
+        rows.push(['Nom', 'Email', 'Filière', 'Moyenne'])
+        stats.topEtudiants.forEach((e) => {
+          rows.push([e.nom, e.email, e.filiere, `${e.moyenne}/20`])
+        })
+      }
+
+      // Section 7: Étudiants en difficulté
+      if (stats.etudiantsEnDifficulte.length > 0) {
+        rows.push([])
+        rows.push(['=== ÉTUDIANTS EN DIFFICULTÉ (< 10/20) ==='])
+        rows.push(['Nom', 'Email', 'Filière', 'Moyenne'])
+        stats.etudiantsEnDifficulte.forEach((e) => {
+          rows.push([e.nom, e.email, e.filiere, `${e.moyenne}/20`])
         })
       }
 
@@ -332,12 +373,12 @@ export function RapportsPage() {
       URL.revokeObjectURL(url)
       toast.success('Rapport exporté en CSV')
     } catch {
-      toast.error('Erreur', { description: 'Impossible d\'exporter le rapport.' })
+      toast.error('Erreur', { description: "Impossible d'exporter le rapport." })
     }
   }
 
   const handleExportPDF = () => {
-    toast.info('Export PDF', { description: 'L\'export PDF sera disponible prochainement.' })
+    toast.info('Export PDF', { description: "L'export PDF sera disponible prochainement." })
   }
 
   return (
@@ -350,15 +391,27 @@ export function RapportsPage() {
             Rapports et Statistiques
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Analysez les performances de vos filières
+            Analysez les performances de vos filières et le suivi pédagogique
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportCSV} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={!hasData}
+            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+          >
             <Download className="h-4 w-4 mr-1" />
-            Exporter
+            Exporter CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPDF}
+            disabled={!hasData}
+            className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+          >
             <FileText className="h-4 w-4 mr-1" />
             Exporter PDF
           </Button>
@@ -421,7 +474,6 @@ export function RapportsPage() {
       {/* ─── Loading skeleton ─── */}
       {isLoading && (
         <div className="space-y-6">
-          {/* Stats skeleton */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="animate-pulse">
@@ -432,7 +484,6 @@ export function RapportsPage() {
               </Card>
             ))}
           </div>
-          {/* Charts skeleton */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="animate-pulse">
@@ -447,72 +498,92 @@ export function RapportsPage() {
       )}
 
       {/* ─── Empty state ─── */}
-      {!isLoading && !stats && (
+      {!isLoading && !hasData && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
             <BarChart3 className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucune donnée disponible</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-            Les statistiques apparaîtront une fois que des évaluations auront été réalisées.
+            Les statistiques apparaîtront une fois que des évaluations auront été réalisées par les enseignants de vos filières.
           </p>
+          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <BookOpen className="h-3.5 w-3.5" />
+            <span>{stats?.nbEnseignants ?? 0} enseignant(s) actif(s) · {stats?.nbEtudiants ?? 0} étudiant(s) inscrit(s)</span>
+          </div>
         </div>
       )}
 
       {/* ─── Stats content ─── */}
-      {!isLoading && stats && (
+      {!isLoading && hasData && stats && (
         <>
-          {/* ─── Overview stats (4 cards) ─── */}
+          {/* ─── Overview stats (4 KPI cards) ─── */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card className="border-l-4 border-l-emerald-500">
-              <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                  <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <KPICard
+              title="Moyenne générale"
+              value={`${stats.moyenneGenerale}/20`}
+              subtitle="Toutes évaluations confondues"
+              icon={<TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+              iconBg="bg-emerald-100 dark:bg-emerald-900/40"
+              borderColor="border-l-emerald-500"
+            />
+            <KPICard
+              title="Taux de réussite"
+              value={`${stats.tauxReussiteGlobal}%`}
+              subtitle="Notes ≥ 10/20"
+              icon={<Trophy className="h-5 w-5 text-teal-600 dark:text-teal-400" />}
+              iconBg="bg-teal-100 dark:bg-teal-900/40"
+              borderColor="border-l-teal-500"
+            />
+            <KPICard
+              title="Évaluations"
+              value={stats.nbEvaluations}
+              subtitle="Épreuves terminées"
+              icon={<ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+              iconBg="bg-amber-100 dark:bg-amber-900/40"
+              borderColor="border-l-amber-500"
+            />
+            <KPICard
+              title="Étudiants"
+              value={stats.nbEtudiants}
+              subtitle={`${stats.etudiantsEnDifficulte.length} en difficulté`}
+              icon={<Users className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
+              iconBg="bg-rose-100 dark:bg-rose-900/40"
+              borderColor="border-l-rose-500"
+            />
+          </div>
+
+          {/* ─── Secondary KPIs (3 mini cards) ─── */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Card className="border-l-4 border-l-emerald-400">
+              <CardContent className="flex items-center justify-between p-3">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm text-muted-foreground">Enseignants actifs</span>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Moyenne générale</p>
-                  <p className={`text-xl font-bold ${getScoreColor(stats.moyenneGenerale)}`}>
-                    {stats.moyenneGenerale}/20
-                  </p>
-                </div>
+                <span className="text-lg font-bold">{stats.nbEnseignants}</span>
               </CardContent>
             </Card>
-
-            <Card className="border-l-4 border-l-teal-500">
-              <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                  <Trophy className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <Card className="border-l-4 border-l-teal-400">
+              <CardContent className="flex items-center justify-between p-3">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-teal-600" />
+                  <span className="text-sm text-muted-foreground">Participants aux épreuves</span>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Taux de réussite</p>
-                  <p className={`text-xl font-bold ${stats.tauxReussiteGlobal >= 50 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {stats.tauxReussiteGlobal}%
-                  </p>
-                </div>
+                <span className="text-lg font-bold">
+                  {stats.resultatsParMatiere.reduce((acc, r) => acc + r.nbParticipants, 0)}
+                </span>
               </CardContent>
             </Card>
-
-            <Card className="border-l-4 border-l-amber-500">
-              <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                  <ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <Card className="border-l-4 border-l-amber-400">
+              <CardContent className="flex items-center justify-between p-3">
+                <div className="flex items-center gap-2">
+                  <UserX className="h-4 w-4 text-amber-600" />
+                  <span className="text-sm text-muted-foreground">Étudiants en difficulté</span>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Évaluations</p>
-                  <p className="text-xl font-bold">{stats.nbEvaluations}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-rose-500">
-              <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900/40">
-                  <Users className="h-5 w-5 text-rose-600 dark:text-rose-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Étudiants</p>
-                  <p className="text-xl font-bold">{stats.nbEtudiants}</p>
-                </div>
+                <span className="text-lg font-bold text-red-600 dark:text-red-400">
+                  {stats.etudiantsEnDifficulte.length}
+                </span>
               </CardContent>
             </Card>
           </div>
@@ -559,9 +630,7 @@ export function RapportsPage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-[260px] text-sm text-muted-foreground">
-                    Aucune donnée disponible
-                  </div>
+                  <EmptyChart message="Aucune donnée mensuelle disponible" />
                 )}
               </CardContent>
             </Card>
@@ -593,9 +662,7 @@ export function RapportsPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-[260px] text-sm text-muted-foreground">
-                    Aucune donnée disponible
-                  </div>
+                  <EmptyChart message="Aucune note enregistrée" />
                 )}
               </CardContent>
             </Card>
@@ -608,12 +675,12 @@ export function RapportsPage() {
                   Résultats par matière
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Moyenne par épreuve
+                  Moyenne et taux de réussite par épreuve
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
                 {stats.resultatsParMatiere.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
+                  <ResponsiveContainer width="100%" height={Math.max(260, stats.resultatsParMatiere.length * 45)}>
                     <BarChart
                       data={stats.resultatsParMatiere}
                       layout="vertical"
@@ -624,7 +691,7 @@ export function RapportsPage() {
                       <YAxis
                         type="category"
                         dataKey="titre"
-                        width={100}
+                        width={120}
                         tick={{ fontSize: 10 }}
                         stroke="#9ca3af"
                       />
@@ -640,9 +707,7 @@ export function RapportsPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-[260px] text-sm text-muted-foreground">
-                    Aucune évaluation terminée
-                  </div>
+                  <EmptyChart message="Aucune évaluation terminée" />
                 )}
               </CardContent>
             </Card>
@@ -659,11 +724,11 @@ export function RapportsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
-                {stats.etudiantsParFiliere.length > 0 ? (
+                {stats.etudiantsParFiliere.length > 0 && stats.etudiantsParFiliere.some(f => f.count > 0) ? (
                   <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
                       <Pie
-                        data={stats.etudiantsParFiliere}
+                        data={stats.etudiantsParFiliere.filter(f => f.count > 0)}
                         dataKey="count"
                         nameKey="filiere"
                         cx="50%"
@@ -676,7 +741,7 @@ export function RapportsPage() {
                         }
                         labelLine={{ stroke: '#9ca3af' }}
                       >
-                        {stats.etudiantsParFiliere.map((_entry, index) => (
+                        {stats.etudiantsParFiliere.filter(f => f.count > 0).map((_entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Pie>
@@ -689,15 +754,13 @@ export function RapportsPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-[260px] text-sm text-muted-foreground">
-                    Aucune filière avec des étudiants
-                  </div>
+                  <EmptyChart message="Aucune filière avec des étudiants" />
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* ─── Top/Bottom students section ─── */}
+          {/* ─── Top/Bottom students section (REAL DATA) ─── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
             {/* ─── Top 5 performers ─── */}
@@ -708,13 +771,13 @@ export function RapportsPage() {
                   Top 5 — Meilleurs étudiants
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Les étudiants les plus performants
+                  Classement par moyenne aux évaluations
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
-                {topStudents.length > 0 ? (
+                {stats.topEtudiants.length > 0 ? (
                   <div className="space-y-3">
-                    {topStudents.map((student, index) => (
+                    {stats.topEtudiants.map((student, index) => (
                       <div
                         key={student.id}
                         className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
@@ -731,7 +794,7 @@ export function RapportsPage() {
 
                         {/* Student info */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{student.name}</p>
+                          <p className="text-sm font-medium truncate">{student.nom}</p>
                           <p className="text-xs text-muted-foreground">{student.filiere}</p>
                         </div>
 
@@ -752,13 +815,13 @@ export function RapportsPage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                    Aucun étudiant inscrit
+                    Aucun résultat d&apos;étudiant disponible
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            {/* ─── Students needing attention ─── */}
+            {/* ─── Students needing attention (REAL DATA) ─── */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -770,9 +833,9 @@ export function RapportsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
-                {studentsNeedingAttention.length > 0 ? (
+                {stats.etudiantsEnDifficulte.length > 0 ? (
                   <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-                    {studentsNeedingAttention.map((student) => (
+                    {stats.etudiantsEnDifficulte.map((student) => (
                       <div
                         key={student.id}
                         className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
@@ -781,7 +844,7 @@ export function RapportsPage() {
                           <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{student.name}</p>
+                          <p className="text-sm font-medium truncate">{student.nom}</p>
                           <p className="text-xs text-muted-foreground">{student.filiere}</p>
                         </div>
                         <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[52px] justify-center`}>
@@ -793,7 +856,10 @@ export function RapportsPage() {
                 ) : (
                   <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
                     <Trophy className="h-6 w-6 mr-2 text-emerald-500" />
-                    Tous les étudiants ont la moyenne !
+                    {stats.topEtudiants.length > 0
+                      ? 'Tous les participants ont la moyenne !'
+                      : 'Aucun résultat d\'étudiant disponible'
+                    }
                   </div>
                 )}
               </CardContent>
@@ -806,10 +872,10 @@ export function RapportsPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Users className="h-4 w-4 text-teal-600" />
-                  Top Enseignants
+                  Performance des enseignants
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Enseignants les plus performants par taux de réussite
+                  Classement par taux de réussite de leurs épreuves
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
@@ -840,6 +906,55 @@ export function RapportsPage() {
             </Card>
           )}
 
+          {/* ─── Résultats détaillés par matière (table) ─── */}
+          {stats.resultatsParMatiere.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-amber-600" />
+                  Détail des résultats par épreuve
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Vue tabulaire complète des performances
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="pb-2 font-medium text-muted-foreground">Épreuve</th>
+                        <th className="pb-2 font-medium text-muted-foreground">Enseignant</th>
+                        <th className="pb-2 font-medium text-muted-foreground text-center">Participants</th>
+                        <th className="pb-2 font-medium text-muted-foreground text-center">Moyenne</th>
+                        <th className="pb-2 font-medium text-muted-foreground text-center">Taux réussite</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.resultatsParMatiere.map((r, i) => (
+                        <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-2 font-medium">{r.titre}</td>
+                          <td className="py-2 text-muted-foreground">{r.enseignant}</td>
+                          <td className="py-2 text-center">{r.nbParticipants}</td>
+                          <td className="py-2 text-center">
+                            <Badge className={`${getScoreBg(r.moyenne)} text-xs`}>
+                              {r.moyenne}/20
+                            </Badge>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span className={r.tauxReussite >= 50 ? 'text-emerald-600 font-semibold' : 'text-red-500 font-semibold'}>
+                              {r.tauxReussite}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* ─── Alertes summary ─── */}
           {stats.alertes.length > 0 && (
             <Card className="border-l-4 border-l-amber-500">
@@ -849,7 +964,7 @@ export function RapportsPage() {
                   Alertes détectées ({stats.alertes.length})
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Problèmes identifiés dans les données
+                  Problèmes identifiés nécessitant votre attention
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
@@ -859,7 +974,7 @@ export function RapportsPage() {
                       <AlertTriangle className={`h-4 w-4 mt-0.5 ${
                         alerte.severity === 'critical' ? 'text-red-500' :
                         alerte.severity === 'warning' ? 'text-amber-500' :
-                        'text-sky-500'
+                        'text-teal-500'
                       }`} />
                       <div>
                         <p className="text-sm font-medium">{alerte.titre}</p>
