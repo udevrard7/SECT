@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 
-// Helper function to check if a user has permission to access an alert
+// Helper function to check if a user has permission to access an alert (RBAC)
 async function canUserAccessAlerte(
   user: AuthenticatedUser,
   alerte: { id: string, filiereId: string | null, epreuveId: string | null, userId: string | null }
@@ -18,7 +18,12 @@ async function canUserAccessAlerte(
     return true;
   }
 
-  // Rule 3: Responsables can access alerts linked to filières in their etablissement.
+  // Rule 3: Only broadcast alertes (userId === null) can be seen by non-recipients
+  if (alerte.userId !== null) {
+    return false; // The alerte is assigned to someone else — deny
+  }
+
+  // Rule 4: Responsables can access broadcast alerts linked to filières in their etablissement.
   if (user.role === 'RESPONSABLE' && user.etablissementId) {
     if (alerte.filiereId) {
       const filiere = await db.filiere.findUnique({
@@ -27,10 +32,12 @@ async function canUserAccessAlerte(
       });
       return filiere?.etablissementId === user.etablissementId;
     }
+    // Broadcast alerte (no filiere, no epreuve) is accessible to any RESPONSABLE
+    return true;
   }
 
-  // Rule 4: Enseignants can access alerts linked to their own epreuves.
-  if (user.role === 'ENSEIGNANT') {
+  // Rule 5: Enseignants can access broadcast alerts linked to their own epreuves or establishment filieres.
+  if (user.role === 'ENSEIGNANT' && user.etablissementId) {
     if (alerte.epreuveId) {
       const epreuve = await db.epreuve.findUnique({
         where: { id: alerte.epreuveId },
@@ -38,6 +45,16 @@ async function canUserAccessAlerte(
       });
       return epreuve?.enseignantId === user.id;
     }
+    // Broadcast alerte for enseignant's establishment filiere
+    if (alerte.filiereId) {
+      const filiere = await db.filiere.findUnique({
+        where: { id: alerte.filiereId },
+        select: { etablissementId: true },
+      });
+      return filiere?.etablissementId === user.etablissementId;
+    }
+    // Broadcast alerte with no filiere/epreuve
+    return true;
   }
   
   // Default to deny access if no rule matches.
@@ -119,6 +136,7 @@ export const PATCH = withAuth(async (
   try {
     const { id } = params
     const body = await request.json()
+    const { action, ...rest } = body
 
     const existing = await db.alerte.findUnique({ where: { id } })
     if (!existing) {
@@ -131,9 +149,23 @@ export const PATCH = withAuth(async (
         return NextResponse.json({ error: 'Accès refusé. Vous n\'avez pas la permission de modifier cette alerte.' }, { status: 403 });
     }
 
+    // --- Handle action-based updates ---
+    let updateData: Record<string, unknown> = {}
+
+    if (action === 'marquer_lue') {
+      updateData = { lue: true }
+    } else if (action === 'marquer_non_lue') {
+      updateData = { lue: false }
+    } else if (action === 'resoudre') {
+      updateData = { resolu: true, lue: true }
+    } else {
+      // General update: use remaining fields (excluding 'action')
+      updateData = { ...rest }
+    }
+
     const updatedAlerte = await db.alerte.update({
         where: { id },
-        data: { ...body },
+        data: updateData,
         include: {
             filiere: { select: { id: true, nom: true } },
             epreuve: { select: { id: true, titre: true } },
@@ -148,7 +180,7 @@ export const PATCH = withAuth(async (
         action: 'UPDATE',
         entite: 'Alerte',
         entiteId: id,
-        details: JSON.stringify({ changes: body }),
+        details: JSON.stringify({ action: action || 'update', changes: updateData }),
       },
     });
 

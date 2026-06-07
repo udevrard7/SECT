@@ -15,6 +15,12 @@ import {
   Shield,
   Zap,
   ExternalLink,
+  Sparkles,
+  CreditCard,
+  Lock,
+  UserCheck,
+  FileText,
+  Settings,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -50,6 +56,39 @@ interface AlerteItem {
   filiere: { id: string; nom: string } | null
   epreuve: { id: string; titre: string } | null
   user: { id: string; name: string; email: string } | null
+}
+
+interface NotificationAdminItem {
+  id: string
+  type: string
+  titre: string
+  message: string
+  lu: boolean
+  destinataireId: string | null
+  destinataireRole: string | null
+  actionUrl: string | null
+  actionLabel: string | null
+  priorite: string
+  categorie: string
+  icone: string | null
+  expireLe: string | null
+  createdAt: string
+  destinataire: { id: string; name: string; email: string; role: string } | null
+}
+
+// Unified notification item for display
+interface UnifiedNotification {
+  id: string
+  titre: string
+  description: string
+  severity: 'CRITICAL' | 'WARNING' | 'INFO'
+  type: string
+  lue: boolean
+  createdAt: string
+  categorie?: string
+  source: 'alerte' | 'notification-admin'
+  filiere?: { id: string; nom: string } | null
+  epreuve?: { id: string; titre: string } | null
 }
 
 // ─── Utility functions ───
@@ -98,6 +137,11 @@ function getTypeLabel(type: string): string {
     case 'SYSTEME': return 'Système'
     case 'RAPPEL': return 'Rappel'
     case 'CUSTOM': return 'Alerte'
+    case 'INFO': return 'Info'
+    case 'WARNING': return 'Attention'
+    case 'ERROR': return 'Erreur'
+    case 'SUCCESS': return 'Succès'
+    case 'BROADCAST': return 'Diffusion'
     default: return type
   }
 }
@@ -109,7 +153,20 @@ function getTypeIcon(type: string) {
     case 'SYSTEME': return <Info className="h-3 w-3" />
     case 'RAPPEL': return <Clock className="h-3 w-3" />
     case 'CUSTOM': return <Bell className="h-3 w-3" />
+    case 'ABONNEMENT': return <CreditCard className="h-3 w-3" />
+    case 'SECURITE': return <Lock className="h-3 w-3" />
+    case 'EVALUATION': return <ClipboardList className="h-3 w-3" />
+    case 'COMPTE': return <UserCheck className="h-3 w-3" />
+    case 'BROADCAST': return <Sparkles className="h-3 w-3" />
     default: return <Bell className="h-3 w-3" />
+  }
+}
+
+function getPrioriteSeverity(priorite: string): 'CRITICAL' | 'WARNING' | 'INFO' {
+  switch (priorite) {
+    case 'URGENTE': return 'CRITICAL'
+    case 'HAUTE': return 'WARNING'
+    default: return 'INFO'
   }
 }
 
@@ -181,43 +238,106 @@ function generateDynamicAlerts(stats: Record<string, unknown>): AlerteItem[] {
   return alerts
 }
 
+// ─── Convert NotificationAdmin to UnifiedNotification ───
+
+function notificationAdminToUnified(n: NotificationAdminItem): UnifiedNotification {
+  return {
+    id: n.id,
+    titre: n.titre,
+    description: n.message,
+    severity: getPrioriteSeverity(n.priorite),
+    type: n.categorie || n.type,
+    lue: n.lu,
+    createdAt: n.createdAt,
+    categorie: n.categorie,
+    source: 'notification-admin',
+  }
+}
+
+// ─── Convert AlerteItem to UnifiedNotification ───
+
+function alerteToUnified(a: AlerteItem): UnifiedNotification {
+  return {
+    id: a.id,
+    titre: a.titre,
+    description: a.description,
+    severity: a.severity,
+    type: a.type,
+    lue: a.lue,
+    createdAt: a.createdAt,
+    source: 'alerte',
+    filiere: a.filiere,
+    epreuve: a.epreuve,
+  }
+}
+
 // ─── Main Component ───
 
 export function NotificationBell() {
   const { user } = useAuthStore()
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [alertes, setAlertes] = useState<AlerteItem[]>([])
+  const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUsingFallback, setIsUsingFallback] = useState(false)
 
-  const unreadCount = alertes.filter((a) => !a.lue).length
-  const criticalCount = alertes.filter((a) => a.severity === 'CRITICAL' && !a.resolu).length
+  const unreadCount = notifications.filter((n) => !n.lue).length
+  const criticalCount = notifications.filter((n) => n.severity === 'CRITICAL').length
 
-  // ─── Fetch alertes ───
-  const fetchAlertes = useCallback(async () => {
+  // Determine which API to use based on role
+  const isAdmin = user?.role === 'ADMIN'
+
+  // ─── Fetch notifications ───
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return
     setIsLoading(true)
     try {
-      const params = new URLSearchParams({ lue: 'false', limit: '20' })
-      const res = await fetch(`/api/alertes?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        const items = data.alertes ?? []
-        if (items.length > 0 || data.total > 0) {
-          setAlertes(items)
+      if (isAdmin) {
+        // ADMIN: fetch from NotificationAdmin API with RBAC filtering
+        const params = new URLSearchParams({ lu: 'false', limit: '20' })
+        const res = await fetch(`/api/notifications/admin?${params.toString()}`)
+        if (res.ok) {
+          const data = await res.json()
+          const items: NotificationAdminItem[] = data.notifications ?? []
+          if (items.length > 0 || data.total > 0) {
+            setNotifications(items.map(notificationAdminToUnified))
+            setIsUsingFallback(false)
+          } else {
+            setNotifications([])
+            setIsUsingFallback(false)
+          }
+        } else {
+          setNotifications([])
           setIsUsingFallback(false)
+        }
+      } else {
+        // RESPONSABLE/ENSEIGNANT/ETUDIANT: fetch from Alerte API with RBAC filtering
+        const params = new URLSearchParams({ lue: 'false', limit: '20' })
+        const res = await fetch(`/api/alertes?${params.toString()}`)
+        if (res.ok) {
+          const data = await res.json()
+          const items: AlerteItem[] = data.alertes ?? []
+          if (items.length > 0 || data.total > 0) {
+            setNotifications(items.map(alerteToUnified))
+            setIsUsingFallback(false)
+          } else {
+            await loadFallbackAlerts()
+          }
         } else {
           await loadFallbackAlerts()
         }
-      } else {
-        await loadFallbackAlerts()
       }
     } catch {
-      await loadFallbackAlerts()
+      if (!isAdmin) {
+        await loadFallbackAlerts()
+      } else {
+        setNotifications([])
+        setIsUsingFallback(false)
+      }
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [user, isAdmin])
 
   const loadFallbackAlerts = async () => {
     try {
@@ -225,48 +345,57 @@ export function NotificationBell() {
       const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
       if (res.ok) {
         const stats = await res.json()
-        setAlertes(generateDynamicAlerts(stats))
+        setNotifications(generateDynamicAlerts(stats).map(alerteToUnified))
         setIsUsingFallback(true)
       } else {
-        setAlertes([])
+        setNotifications([])
         setIsUsingFallback(true)
       }
     } catch {
-      setAlertes([])
+      setNotifications([])
       setIsUsingFallback(true)
     }
   }
 
   // Fetch on mount and when popover opens
   useEffect(() => {
-    fetchAlertes()
-  }, [fetchAlertes])
+    fetchNotifications()
+  }, [fetchNotifications])
 
   useEffect(() => {
     if (open) {
-      fetchAlertes()
+      fetchNotifications()
     }
-  }, [open, fetchAlertes])
+  }, [open, fetchNotifications])
 
   // Auto-refresh every 60 seconds
   useEffect(() => {
-    const interval = setInterval(fetchAlertes, 60000)
+    const interval = setInterval(fetchNotifications, 60000)
     return () => clearInterval(interval)
-  }, [fetchAlertes])
+  }, [fetchNotifications])
 
   // ─── Mark single as read ───
-  const handleMarkAsRead = async (alerte: AlerteItem) => {
+  const handleMarkAsRead = async (notification: UnifiedNotification) => {
     if (isUsingFallback) {
-      setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
+      setNotifications((prev) => prev.map((n) => n.id === notification.id ? { ...n, lue: true } : n))
       return
     }
     try {
-      await fetch(`/api/alertes/${alerte.id}`, {
+      const apiPath = notification.source === 'notification-admin'
+        ? `/api/notifications/admin/${notification.id}`
+        : `/api/alertes/${notification.id}`
+
+      const res = await fetch(apiPath, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'marquer_lue' }),
+        body: JSON.stringify({ action: 'marquer_lu' }),
       })
-      setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
+
+      if (res.ok) {
+        setNotifications((prev) => prev.map((n) => n.id === notification.id ? { ...n, lue: true } : n))
+      } else {
+        toast.error('Impossible de marquer comme lu')
+      }
     } catch {
       toast.error('Impossible de marquer comme lu')
     }
@@ -274,36 +403,49 @@ export function NotificationBell() {
 
   // ─── Mark all as read ───
   const handleMarkAllAsRead = async () => {
-    const unreadAlertes = alertes.filter((a) => !a.lue)
-    if (unreadAlertes.length === 0) return
+    const unreadNotifs = notifications.filter((n) => !n.lue)
+    if (unreadNotifs.length === 0) return
 
     if (isUsingFallback) {
-      setAlertes((prev) => prev.map((a) => ({ ...a, lue: true })))
+      setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
       toast.success('Toutes les notifications marquées comme lues')
       return
     }
 
     try {
-      await Promise.all(
-        unreadAlertes.map((a) =>
-          fetch(`/api/alertes/${a.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'marquer_lue' }),
-          })
+      if (isAdmin) {
+        // Use the markAllRead query param for admin notifications
+        const res = await fetch('/api/notifications/admin?markAllRead=true&lu=false', { method: 'GET' })
+        if (res.ok) {
+          setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
+          toast.success('Toutes les notifications marquées comme lues')
+        }
+      } else {
+        await Promise.all(
+          unreadNotifs.map((n) =>
+            fetch(`/api/alertes/${n.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'marquer_lu' }),
+            })
+          )
         )
-      )
-      setAlertes((prev) => prev.map((a) => ({ ...a, lue: true })))
-      toast.success('Toutes les notifications marquées comme lues')
+        setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
+        toast.success('Toutes les notifications marquées comme lues')
+      }
     } catch {
       toast.error('Erreur lors de la mise à jour')
     }
   }
 
-  // ─── Navigate to alertes page ───
+  // ─── Navigate to notifications page ───
   const handleViewAll = () => {
     setOpen(false)
-    router.push(PAGE_ROUTES.alertes)
+    if (isAdmin) {
+      router.push(PAGE_ROUTES.notifications)
+    } else {
+      router.push(PAGE_ROUTES.alertes)
+    }
   }
 
   return (
@@ -368,69 +510,69 @@ export function NotificationBell() {
         )}
 
         {/* ─── Empty state ─── */}
-        {!isLoading && alertes.length === 0 && (
+        {!isLoading && notifications.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 px-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
               <CheckCircle2 className="h-6 w-6 text-emerald-500" />
             </div>
             <p className="mt-3 text-sm font-medium">Aucune notification</p>
             <p className="mt-1 text-xs text-muted-foreground text-center">
-              Vous êtes à jour ! Toutes les alertes ont été lues.
+              Vous êtes à jour ! Toutes les notifications ont été lues.
             </p>
           </div>
         )}
 
         {/* ─── Notification list ─── */}
-        {!isLoading && alertes.length > 0 && (
+        {!isLoading && notifications.length > 0 && (
           <ScrollArea className="max-h-96">
             <div className="divide-y">
-              {alertes.map((alerte) => (
+              {notifications.map((notification) => (
                 <div
-                  key={alerte.id}
+                  key={notification.id}
                   className={`flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50 cursor-pointer ${
-                    !alerte.lue ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''
+                    !notification.lue ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''
                   }`}
                   onClick={() => {
-                    if (!alerte.lue) handleMarkAsRead(alerte)
+                    if (!notification.lue) handleMarkAsRead(notification)
                   }}
                 >
                   {/* Icon */}
-                  <div className={`flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg ${getSeverityBg(alerte.severity)}`}>
-                    {getSeverityIcon(alerte.severity)}
+                  <div className={`flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg ${getSeverityBg(notification.severity)}`}>
+                    {getSeverityIcon(notification.severity)}
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-1.5">
-                      <p className={`text-sm leading-tight ${!alerte.lue ? 'font-semibold' : 'font-medium text-muted-foreground'}`}>
-                        {alerte.titre}
+                      <p className={`text-sm leading-tight ${!notification.lue ? 'font-semibold' : 'font-medium text-muted-foreground'}`}>
+                        {notification.titre}
                       </p>
-                      {!alerte.lue && (
+                      {!notification.lue && (
                         <span className="flex-shrink-0 mt-1 h-2 w-2 rounded-full bg-emerald-500" />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                      {alerte.description}
+                      {notification.description}
                     </p>
                     <div className="flex flex-wrap items-center gap-2 mt-1.5">
                       <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        {getTypeIcon(alerte.type)}
-                        {getTypeLabel(alerte.type)}
+                        {getTypeIcon(notification.type)}
+                        {getTypeLabel(notification.type)}
                       </span>
-                      {alerte.filiere && (
+                      {notification.filiere && (
                         <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
                           <GraduationCap className="h-2.5 w-2.5" />
-                          {alerte.filiere.nom}
+                          {notification.filiere.nom}
                         </span>
                       )}
-                      {alerte.epreuve && (
+                      {notification.epreuve && (
                         <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
                           <ClipboardList className="h-2.5 w-2.5" />
-                          {alerte.epreuve.titre}
+                          {notification.epreuve.titre}
                         </span>
                       )}
                       <span className="text-[10px] text-muted-foreground">
-                        {formatRelativeDate(alerte.createdAt)}
+                        {formatRelativeDate(notification.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -441,7 +583,7 @@ export function NotificationBell() {
         )}
 
         {/* ─── Footer ─── */}
-        {alertes.length > 0 && (
+        {notifications.length > 0 && (
           <>
             <Separator />
             <div className="p-2">

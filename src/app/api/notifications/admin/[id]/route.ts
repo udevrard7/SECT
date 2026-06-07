@@ -1,13 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+
+// Helper: check if user can access a notification (RBAC)
+async function canUserAccessNotification(
+  user: AuthenticatedUser,
+  notification: { destinataireId: string | null; destinataireRole: string | null }
+): Promise<boolean> {
+  // Admin can access everything
+  if (user.role === 'ADMIN') return true
+  // Direct recipient
+  if (notification.destinataireId === user.id) return true
+  // Role-based group
+  if (notification.destinataireRole === user.role) return true
+  // Broadcast (no specific recipient)
+  if (!notification.destinataireId && !notification.destinataireRole) return true
+  return false
+}
 
 // PATCH /api/notifications/admin/[id] — Mark as read/unread, update statut
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }>; user: AuthenticatedUser }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { action, lu, priorite, categorie, actionUrl, actionLabel, icone, expireLe } = body
 
@@ -17,6 +34,15 @@ export async function PATCH(
       return NextResponse.json(
         { error: 'Notification non trouvée' },
         { status: 404 }
+      )
+    }
+
+    // --- RBAC Check ---
+    const hasAccess = await canUserAccessNotification(context.user, existing)
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'Accès refusé. Vous n\'avez pas la permission de modifier cette notification.' },
+        { status: 403 }
       )
     }
 
@@ -34,6 +60,8 @@ export async function PATCH(
 
       await db.auditLog.create({
         data: {
+          userId: context.user.id,
+          userEmail: context.user.email,
           action: 'UPDATE_NOTIFICATION',
           entite: 'NotificationAdmin',
           entiteId: id,
@@ -60,6 +88,8 @@ export async function PATCH(
 
       await db.auditLog.create({
         data: {
+          userId: context.user.id,
+          userEmail: context.user.email,
           action: 'UPDATE_NOTIFICATION',
           entite: 'NotificationAdmin',
           entiteId: id,
@@ -73,7 +103,14 @@ export async function PATCH(
       })
     }
 
-    // General update
+    // General update (admin only for non-action updates)
+    if (context.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Accès refusé. Seul un administrateur peut modifier les notifications.' },
+        { status: 403 }
+      )
+    }
+
     const updateData: Record<string, unknown> = {}
 
     if (lu !== undefined) updateData.lu = lu
@@ -118,6 +155,8 @@ export async function PATCH(
     // Log audit
     await db.auditLog.create({
       data: {
+        userId: context.user.id,
+        userEmail: context.user.email,
         action: 'UPDATE_NOTIFICATION',
         entite: 'NotificationAdmin',
         entiteId: id,
@@ -142,12 +181,12 @@ export async function PATCH(
 }
 
 // DELETE /api/notifications/admin/[id] — Delete a notification
-export async function DELETE(
+async function _DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }>; user: AuthenticatedUser }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     // Verify notification exists
     const existing = await db.notificationAdmin.findUnique({
@@ -174,6 +213,8 @@ export async function DELETE(
     // Log audit
     await db.auditLog.create({
       data: {
+        userId: context.user.id,
+        userEmail: context.user.email,
         action: 'DELETE_NOTIFICATION',
         entite: 'NotificationAdmin',
         entiteId: id,
@@ -202,3 +243,6 @@ export async function DELETE(
     )
   }
 }
+
+export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
+export const DELETE = withAuth(_DELETE, ['ADMIN'])
