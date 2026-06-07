@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireRole, isAuthError } from '@/lib/auth-session'
 
 // GET /api/factures — List factures with filters
 export async function GET(request: NextRequest) {
+  const authResult = await requireRole(request, ['ADMIN'])
+  if (isAuthError(authResult)) return authResult
+
   try {
     const { searchParams } = new URL(request.url)
     const statut = searchParams.get('statut') || ''
@@ -88,6 +92,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/factures — Create a new facture
 export async function POST(request: NextRequest) {
+  const authResult = await requireRole(request, ['ADMIN'])
+  if (isAuthError(authResult)) return authResult
+
   try {
     const body = await request.json()
     const {

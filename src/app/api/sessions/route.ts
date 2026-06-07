@@ -7,17 +7,64 @@ import {
   serializePropositionMappings,
   AUTO_GRADABLE_TYPES,
 } from '@/lib/grading'
-import { withAuth } from '@/lib/auth-session'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { verifySelfAccess, resolveTenantFilter, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
 // Get sessions (for resume/check existing)
-async function _GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const etudiantId = searchParams.get('etudiantId')
     const epreuveId = searchParams.get('epreuveId')
 
     const where: Record<string, unknown> = {}
-    if (etudiantId) where.etudiantId = etudiantId
+
+    // ─── Tenant isolation ───
+    if (user.role === 'ETUDIANT') {
+      // ETUDIANT: must query with their own etudiantId
+      if (etudiantId) {
+        const selfCheck = verifySelfAccess(user, etudiantId)
+        if (selfCheck) return selfCheck
+      }
+      where.etudiantId = user.id
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can only see sessions for epreuves they own or in their establishment
+      where.epreuve = { enseignant: { etablissementId: user.etablissementId } }
+      if (etudiantId) where.etudiantId = etudiantId
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can see sessions in their establishment
+      where.epreuve = { enseignant: { etablissementId: user.etablissementId } }
+      if (etudiantId) where.etudiantId = etudiantId
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the relevant establishment
+      // If epreuveId is provided, look up the epreuve's establishment
+      if (epreuveId) {
+        const epreuve = await db.epreuve.findUnique({
+          where: { id: epreuveId },
+          select: { enseignant: { select: { etablissementId: true } } },
+        })
+        if (epreuve?.enseignant?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, epreuve.enseignant.etablissementId)
+          if (accessError) return accessError
+        }
+      } else if (etudiantId) {
+        // Look up the student's establishment
+        const student = await db.user.findUnique({
+          where: { id: etudiantId },
+          select: { etablissementId: true },
+        })
+        if (student?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+      if (etudiantId) where.etudiantId = etudiantId
+    }
+
     if (epreuveId) where.epreuveId = epreuveId
 
     const sessions = await db.sessionPassation.findMany({
@@ -50,8 +97,12 @@ async function _GET(request: NextRequest) {
 }
 
 // Start a session (student begins an exam)
-async function _POST(request: NextRequest) {
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const { etudiantId, epreuveId } = body
 
@@ -60,6 +111,47 @@ async function _POST(request: NextRequest) {
         { error: 'Étudiant et épreuve requis' },
         { status: 400 }
       )
+    }
+
+    // ─── Tenant isolation for POST ───
+    if (user.role === 'ETUDIANT') {
+      // ETUDIANT: etudiantId must be their own ID
+      const selfCheck = verifySelfAccess(user, etudiantId)
+      if (selfCheck) return selfCheck
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can start sessions for students in their establishment
+      const student = await db.user.findUnique({
+        where: { id: etudiantId },
+        select: { etablissementId: true },
+      })
+      if (student?.etablissementId && student.etablissementId !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez démarrer une session que pour les étudiants de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can start sessions for students in their establishment
+      const student = await db.user.findUnique({
+        where: { id: etudiantId },
+        select: { etablissementId: true },
+      })
+      if (student?.etablissementId && student.etablissementId !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez démarrer une session que pour les étudiants de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the student's establishment
+      const student = await db.user.findUnique({
+        where: { id: etudiantId },
+        select: { etablissementId: true },
+      })
+      if (student?.etablissementId) {
+        const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
+        if (accessError) return accessError
+      }
     }
 
     const epreuve = await db.epreuve.findUnique({
@@ -247,8 +339,12 @@ async function _POST(request: NextRequest) {
 }
 
 // Save answer (auto-save during exam)
-async function _PUT(request: NextRequest) {
+async function _PUT(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const { sessionId, questionId, contenu, alerte } = body
 
@@ -261,6 +357,7 @@ async function _PUT(request: NextRequest) {
 
     const session = await db.sessionPassation.findUnique({
       where: { id: sessionId },
+      include: { epreuve: { select: { enseignantId: true, enseignant: { select: { etablissementId: true } } } } },
     })
 
     if (!session || session.statut !== 'EN_COURS') {
@@ -268,6 +365,32 @@ async function _PUT(request: NextRequest) {
         { error: 'Session non active' },
         { status: 400 }
       )
+    }
+
+    // ─── Tenant isolation for PUT ───
+    if (user.role === 'ETUDIANT') {
+      // ETUDIANT: can only save answers for their own sessions
+      if (session.etudiantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez sauvegarder que vos propres sessions.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can only save for sessions on their own epreuves
+      if (session.epreuve.enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez intervenir que sur les sessions de vos épreuves.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess
+      const epreuveEtabId = session.epreuve.enseignant?.etablissementId
+      if (epreuveEtabId) {
+        const accessError = await requireAdminEtablissementAccess(user, epreuveEtabId)
+        if (accessError) return accessError
+      }
     }
 
     if (contenu !== undefined) {
@@ -483,6 +606,6 @@ function buildQuestionsFromRelations(
   })
 }
 
-export const GET = withAuth(_GET)
-export const POST = withAuth(_POST)
-export const PUT = withAuth(_PUT)
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
+export const POST = withAuth(_POST, ['ETUDIANT', 'RESPONSABLE', 'ENSEIGNANT', 'ADMIN'])
+export const PUT = withAuth(_PUT, ['ETUDIANT', 'ENSEIGNANT', 'ADMIN'])

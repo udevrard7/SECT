@@ -1,12 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { withAuth } from '@/lib/auth-session'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { verifySelfAccess, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
-async function _GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const etudiantId = searchParams.get('etudiantId')
     const epreuveId = searchParams.get('epreuveId')
+
+    // ─── Tenant scoping ───
+    if (etudiantId) {
+      // ETUDIANT: must be their own ID
+      if (user.role === 'ETUDIANT') {
+        const selfCheck = verifySelfAccess(user, etudiantId)
+        if (selfCheck) return selfCheck
+      }
+      // ADMIN: must have EtablissementAccess for the student's establishment
+      if (user.role === 'ADMIN') {
+        const student = await db.user.findUnique({
+          where: { id: etudiantId },
+          select: { etablissementId: true },
+        })
+        if (student?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+    }
+
+    if (epreuveId) {
+      // ENSEIGNANT: can only see results for their own epreuves
+      if (user.role === 'ENSEIGNANT') {
+        const epreuve = await db.epreuve.findUnique({
+          where: { id: epreuveId },
+          select: { enseignantId: true },
+        })
+        if (epreuve && epreuve.enseignantId !== user.id) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez voir les résultats que de vos propres épreuves.' },
+            { status: 403 }
+          )
+        }
+      }
+      // RESPONSABLE: can see results in their establishment
+      if (user.role === 'RESPONSABLE') {
+        const epreuve = await db.epreuve.findUnique({
+          where: { id: epreuveId },
+          include: { enseignant: { select: { etablissementId: true } } },
+        })
+        if (epreuve?.enseignant?.etablissementId && epreuve.enseignant.etablissementId !== user.etablissementId) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez voir les résultats que dans votre établissement.' },
+            { status: 403 }
+          )
+        }
+      }
+      // ADMIN: must have EtablissementAccess
+      if (user.role === 'ADMIN') {
+        const epreuve = await db.epreuve.findUnique({
+          where: { id: epreuveId },
+          include: { enseignant: { select: { etablissementId: true } } },
+        })
+        if (epreuve?.enseignant?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, epreuve.enseignant.etablissementId)
+          if (accessError) return accessError
+        }
+      }
+    }
 
     if (etudiantId) {
       // Student: get own results

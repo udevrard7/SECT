@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 
 // GET /api/etablissement-access/check — Check if an admin has active access to a specific establishment
-export async function GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const adminId = searchParams.get('adminId') || ''
     const etablissementId = searchParams.get('etablissementId') || ''
@@ -12,6 +17,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: 'Les paramètres adminId et etablissementId sont obligatoires' },
         { status: 400 }
+      )
+    }
+
+    // Verify that the requested adminId matches the authenticated user's ID
+    if (adminId !== user.id) {
+      return NextResponse.json(
+        { error: 'Accès refusé. Vous ne pouvez vérifier que vos propres autorisations d\'accès.' },
+        { status: 403 }
       )
     }
 
@@ -60,3 +73,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN'])

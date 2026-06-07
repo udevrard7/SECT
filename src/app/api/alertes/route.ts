@@ -2,14 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { resolveTenantFilter, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
 // GET /api/alertes — List alertes with filters
-// Protected by withAuth: requires a valid session.
-export const GET = withAuth(async (
+// Protected by withAuth: requires ADMIN, RESPONSABLE, or ENSEIGNANT role.
+async function _GET(
   request: NextRequest,
-  { user }: { user: AuthenticatedUser }
-) => {
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const filiereId = searchParams.get('filiereId') || ''
     const severity = searchParams.get('severity') || ''
@@ -32,6 +34,37 @@ export const GET = withAuth(async (
         { titre: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
       ]
+    }
+
+    // ─── Tenant scoping ───
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can only see alertes for filieres in their establishment
+      where.filiere = { etablissementId: user.etablissementId }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can only see alertes for filieres in their establishment
+      where.filiere = { etablissementId: user.etablissementId }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the filiere's establishment
+      if (filiereId) {
+        // Specific filiere requested — verify access
+        const filiere = await db.filiere.findUnique({
+          where: { id: filiereId },
+          select: { etablissementId: true },
+        })
+        if (filiere?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, filiere.etablissementId)
+          if (accessError) return accessError
+        }
+      } else {
+        // No specific filiere — scope to authorized establishments
+        const tenantFilter = await resolveTenantFilter(user)
+        if ('error' in tenantFilter) return tenantFilter.error
+        if ('etablissementIds' in tenantFilter) {
+          where.filiere = { etablissementId: { in: tenantFilter.etablissementIds } }
+        } else if ('etablissementId' in tenantFilter) {
+          where.filiere = { etablissementId: tenantFilter.etablissementId }
+        }
+      }
     }
 
     const [alertes, total] = await Promise.all([
@@ -57,15 +90,16 @@ export const GET = withAuth(async (
       { status: 500 }
     )
   }
-});
+}
 
 // POST /api/alertes — Create a new alerte
 // Protected by withAuth: requires ADMIN or RESPONSABLE role.
-export const POST = withAuth(async (
+async function _POST(
   request: NextRequest,
-  { user }: { user: AuthenticatedUser }
-) => {
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const { titre, description, severity, type, filiereId, epreuveId, userId: targetUserId } = body
 
@@ -84,6 +118,18 @@ export const POST = withAuth(async (
                 return NextResponse.json({ error: 'Vous pouvez uniquement créer des alertes pour les filières de votre établissement.' }, { status: 403 });
             }
         }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the filiere's establishment
+      if (filiereId) {
+        const filiere = await db.filiere.findUnique({
+          where: { id: filiereId },
+          select: { etablissementId: true },
+        })
+        if (filiere?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, filiere.etablissementId)
+          if (accessError) return accessError
+        }
+      }
     }
 
     const alerte = await db.alerte.create({
@@ -123,4 +169,7 @@ export const POST = withAuth(async (
       { status: 500 }
     )
   }
-}, ['ADMIN', 'RESPONSABLE']); // Only ADMIN and RESPONSABLE can create alerts
+}
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE'])

@@ -1,14 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { getAuthorizedEtablissementIds } from '@/lib/tenant-access'
 
 // ─── GET /api/corbeille — List all soft-deleted items for a user ───
-export async function GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
 
     if (!userId) {
-      return NextResponse.json({ error: 'Utilisateur non identifié' }, { status: 401 })
+      return NextResponse.json({ error: 'Utilisateur non identifié' }, { status: 400 })
+    }
+
+    // Role-based access control for corbeille
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: can only see their own deleted items
+      if (userId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez consulter que votre propre corbeille.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can see items from any user in their establishment
+      const targetUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { etablissementId: true },
+      })
+      if (!targetUser || targetUser.etablissementId !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez consulter que la corbeille des utilisateurs de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: can see items from any user in their authorized establishments
+      const targetUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { etablissementId: true },
+      })
+      if (!targetUser || !targetUser.etablissementId) {
+        return NextResponse.json(
+          { error: 'Utilisateur non trouvé ou sans établissement associé.' },
+          { status: 404 }
+        )
+      }
+      const authorizedIds = await getAuthorizedEtablissementIds(user.id)
+      if (!authorizedIds.has(targetUser.etablissementId)) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous n\'êtes pas autorisé à accéder aux données de cet établissement.' },
+          { status: 403 }
+        )
+      }
     }
 
     // Fetch soft-deleted items belonging to this user
@@ -126,3 +174,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

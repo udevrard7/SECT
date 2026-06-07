@@ -1,10 +1,15 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { withAuth } from '@/lib/auth-session'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { resolveTenantFilter, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
 // GET /api/filieres — List filieres
-async function _GET(request: Request) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const etablissementId = searchParams.get('etablissementId') || ''
     const search = searchParams.get('search') || ''
@@ -13,7 +18,22 @@ async function _GET(request: Request) {
 
     const where: Record<string, unknown> = {}
 
-    if (etablissementId) where.etablissementId = etablissementId
+    // ─── Tenant scoping ───
+    if (user.role === 'ADMIN') {
+      // ADMIN: Use resolveTenantFilter to check access
+      const tenantFilter = await resolveTenantFilter(user, etablissementId || null)
+      if ('error' in tenantFilter) return tenantFilter.error
+      if ('etablissementId' in tenantFilter) {
+        where.etablissementId = tenantFilter.etablissementId
+      } else if ('etablissementIds' in tenantFilter) {
+        where.etablissementId = { in: tenantFilter.etablissementIds }
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: auto-scope to their own etablissement (override query param)
+      where.etablissementId = user.etablissementId
+    }
+
+    // Non-role filter params
     if (responsableId) where.responsableId = responsableId
     if (actif !== '') where.actif = actif === 'true'
     if (search) {
@@ -41,13 +61,27 @@ async function _GET(request: Request) {
 }
 
 // POST /api/filieres — Create a filiere
-async function _POST(request: Request) {
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
-    const { nom, code, etablissementId, responsableId, description, nbEtudiants, actif } = body
+    let { nom, code, etablissementId, responsableId, description, nbEtudiants, actif } = body
 
     if (!nom || !etablissementId) {
       return NextResponse.json({ error: 'Le nom et l\'établissement sont obligatoires' }, { status: 400 })
+    }
+
+    // ─── Tenant scoping ───
+    if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: auto-scope to their own establishment (override the body param)
+      etablissementId = user.etablissementId
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the target establishment
+      const accessError = await requireAdminEtablissementAccess(user, etablissementId)
+      if (accessError) return accessError
     }
 
     // Check unique constraint

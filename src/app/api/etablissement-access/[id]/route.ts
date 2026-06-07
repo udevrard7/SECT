@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 
 const accessInclude = {
   admin: {
@@ -11,12 +12,13 @@ const accessInclude = {
 }
 
 // PATCH /api/etablissement-access/[id] — Update access record (approve, refuse, revoke)
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: AuthenticatedUser }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
+    const { user } = context
     const body = await request.json()
     const { statut, approuvePar, commentaire, dateDebut, dateFin } = body
 
@@ -37,11 +39,22 @@ export async function PATCH(
       )
     }
 
+    // RESPONSABLE: must belong to the etablissement of the access record
+    if (user.role === 'RESPONSABLE') {
+      if (user.etablissementId !== existing.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez approuver/refuser que les accès de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    }
+    // ADMIN: can approve/refuse any access record (no additional check needed)
+
     const updated = await db.etablissementAccess.update({
       where: { id },
       data: {
         statut,
-        approuvePar: approuvePar || null,
+        approuvePar: approuvePar || user.id,
         commentaire: commentaire || existing.commentaire,
         dateDebut: dateDebut ? new Date(dateDebut) : existing.dateDebut,
         dateFin: dateFin ? new Date(dateFin) : existing.dateFin,
@@ -55,7 +68,9 @@ export async function PATCH(
         action: 'UPDATE',
         entite: 'EtablissementAccess',
         entiteId: id,
-        details: JSON.stringify({ statut, approuvePar }),
+        userId: user.id,
+        userEmail: user.email,
+        details: JSON.stringify({ statut, approuvePar: approuvePar || user.id }),
       },
     })
 
@@ -68,3 +83,5 @@ export async function PATCH(
     )
   }
 }
+
+export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE'])

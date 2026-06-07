@@ -2,19 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { checkAdminEtablissementAccess } from '@/lib/tenant-access'
 
 /**
- * Check if a RESPONSABLE user is authorized to manage a given target user.
- * A RESPONSABLE can only manage users who belong to the same establishment.
+ * Check if the authenticated user is authorized to manage a given target user.
+ * - ADMIN: Must have EtablissementAccess for the target's establishment (unless target has no etablissementId)
+ * - RESPONSABLE: Can only manage users who belong to the same establishment
  *
  * Returns an error response (403) if unauthorized, or null if authorized.
  */
-function checkUserOwnership(
+async function checkUserOwnership(
   user: AuthenticatedUser,
   target: { etablissementId: string | null }
-): NextResponse | null {
+): Promise<NextResponse | null> {
   if (user.role === 'ADMIN') {
-    return null // ADMIN always has access
+    // ADMIN with no target etablissementId (e.g. viewing other ADMIN-level users) is allowed
+    if (!target.etablissementId) return null
+    // ADMIN must have explicit EtablissementAccess for the target's establishment
+    const hasAccess = await checkAdminEtablissementAccess(user.id, target.etablissementId)
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'Accès refusé. Vous n\'êtes pas autorisé à accéder aux données de cet établissement.' },
+        { status: 403 }
+      )
+    }
+    return null
   }
 
   if (user.role === 'RESPONSABLE') {
@@ -67,6 +79,10 @@ async function _GET(
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 })
     }
 
+    // Ownership check: ADMIN needs EtablissementAccess; RESPONSABLE scoped to their establishment
+    const ownershipError = await checkUserOwnership(context.user, user)
+    if (ownershipError) return ownershipError
+
     return NextResponse.json({ user })
   } catch (error) {
     console.error('Error fetching user:', error)
@@ -93,8 +109,8 @@ async function _PATCH(
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 })
     }
 
-    // Ownership check: RESPONSABLE can only modify users in their establishment
-    const ownershipError = checkUserOwnership(context.user, existing)
+    // Ownership check: RESPONSABLE can only modify users in their establishment; ADMIN needs EtablissementAccess
+    const ownershipError = await checkUserOwnership(context.user, existing)
     if (ownershipError) return ownershipError
 
     // A RESPONSABLE cannot change a user's role to ADMIN
@@ -212,8 +228,8 @@ async function _DELETE(
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 })
     }
 
-    // Ownership check: RESPONSABLE can only delete users in their establishment
-    const ownershipError = checkUserOwnership(context.user, existing)
+    // Ownership check: RESPONSABLE can only delete users in their establishment; ADMIN needs EtablissementAccess
+    const ownershipError = await checkUserOwnership(context.user, existing)
     if (ownershipError) return ownershipError
 
     // Count dependencies BEFORE deletion for the audit log and response

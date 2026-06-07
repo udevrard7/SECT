@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
@@ -12,14 +13,51 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
-async function _GET(request: NextRequest) {
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
     const epreuveId = searchParams.get('epreuveId')
 
     if (!enseignantId) {
       return NextResponse.json({ error: 'Enseignant requis' }, { status: 400 })
+    }
+
+    // ─── Tenant isolation ───
+    if (user.role === 'ENSEIGNANT') {
+      // ENSEIGNANT: enseignantId must be their own ID
+      if (enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez accéder qu\'à vos propres corrections.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'RESPONSABLE') {
+      // RESPONSABLE: can see corrections for teachers in their establishment
+      const teacher = await db.user.findUnique({
+        where: { id: enseignantId },
+        select: { etablissementId: true },
+      })
+      if (teacher?.etablissementId && teacher.etablissementId !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez voir les corrections que des enseignants de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    } else if (user.role === 'ADMIN') {
+      // ADMIN: must have EtablissementAccess for the enseignant's establishment
+      const teacher = await db.user.findUnique({
+        where: { id: enseignantId },
+        select: { etablissementId: true },
+      })
+      if (teacher?.etablissementId) {
+        const accessError = await requireAdminEtablissementAccess(user, teacher.etablissementId)
+        if (accessError) return accessError
+      }
     }
 
     const where: Record<string, unknown> = {
