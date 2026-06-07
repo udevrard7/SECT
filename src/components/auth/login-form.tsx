@@ -51,7 +51,7 @@ const personnelSchema = z.object({
 })
 
 const etudiantSchema = z.object({
-  identifier: z.string().min(3, 'Veuillez entrer un matricule valide'),
+  identifier: z.string().min(3, 'Veuillez entrer votre matricule ou email'),
   password: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
 })
 
@@ -472,7 +472,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
       } else {
         // 401 or other — wrong credentials
         const errorMsg = loginMode === 'etudiant'
-          ? 'Matricule ou mot de passe incorrect.'
+          ? 'Matricule, email ou mot de passe incorrect.'
           : 'Identifiants incorrects. Veuillez réessayer.'
         setLoginError(errorMsg)
         toast.error('Échec de la connexion', {
@@ -557,8 +557,8 @@ export function LoginForm({ onBack }: LoginFormProps) {
   }
 
   const isPersonnel = loginMode === 'personnel'
-  const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule'
-  const identifierPlaceholder = isPersonnel ? 'votre.email@universite.fr' : 'Ex: 2024-INFO-001'
+  const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule ou Email'
+  const identifierPlaceholder = isPersonnel ? 'votre.email@universite.fr' : 'Ex: 2024-INFO-001 ou email'
   const IdentifierIcon = isPersonnel ? Mail : Hash
 
   return (
@@ -983,7 +983,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 {loginMode === 'personnel' ? (
                   <>Connexion réservée au personnel administratif et enseignant</>
                 ) : (
-                  <>Connexion réservée aux étudiants via leur matricule</>
+                  <>Connexion réservée aux étudiants via leur matricule ou email</>
                 )}
               </p>
             </motion.div>

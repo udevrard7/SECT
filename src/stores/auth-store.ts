@@ -57,7 +57,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         const error: LoginError = {
           status: 401,
           message: result.error === 'CredentialsSignin'
-            ? 'Matricule ou mot de passe incorrect'
+            ? 'Matricule, email ou mot de passe incorrect'
             : result.error,
         }
         throw error

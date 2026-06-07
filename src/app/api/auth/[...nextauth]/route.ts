@@ -78,22 +78,26 @@ export const authOptions: NextAuthOptions = {
       },
     }),
 
-    // ─── Student login (matricule + password) ───
+    // ─── Student login (matricule or email + password) ───
     CredentialsProvider({
       id: 'credentials-matricule',
       name: 'Étudiant',
       credentials: {
-        matricule: { label: 'Matricule', type: 'text' },
+        matricule: { label: 'Matricule ou Email', type: 'text' },
         password: { label: 'Mot de passe', type: 'password' },
       },
       async authorize(credentials) {
         if (!credentials?.matricule || !credentials?.password) {
-          throw new Error('Matricule et mot de passe requis')
+          throw new Error('Matricule/Email et mot de passe requis')
         }
 
+        const identifier = credentials.matricule.trim()
+        const isEmail = identifier.includes('@')
+
+        // Look up by email or matricule
         const user = await withRetry(() =>
           db.user.findUnique({
-            where: { matricule: credentials.matricule },
+            where: isEmail ? { email: identifier } : { matricule: identifier },
             include: {
               etablissement: { select: { id: true, nom: true } },
               filiere: { select: { id: true, nom: true } },
@@ -102,16 +106,20 @@ export const authOptions: NextAuthOptions = {
         )
 
         if (!user) {
-          throw new Error('Matricule ou mot de passe incorrect')
+          throw new Error(isEmail
+            ? 'Email ou mot de passe incorrect'
+            : 'Matricule ou mot de passe incorrect')
         }
 
         if (user.role !== 'ETUDIANT') {
-          throw new Error("Ce matricule n'est pas associé à un compte étudiant")
+          throw new Error("Ce compte n'est pas associé à un compte étudiant")
         }
 
         const passwordMatch = await bcrypt.compare(credentials.password, user.password)
         if (!passwordMatch) {
-          throw new Error('Matricule ou mot de passe incorrect')
+          throw new Error(isEmail
+            ? 'Email ou mot de passe incorrect'
+            : 'Matricule ou mot de passe incorrect')
         }
 
         if (!user.actif) {
@@ -131,10 +139,15 @@ export const authOptions: NextAuthOptions = {
           data: {
             userId: user.id,
             userEmail: user.email,
-            action: 'LOGIN_MATRICULE',
+            action: isEmail ? 'LOGIN_EMAIL_ETUDIANT' : 'LOGIN_MATRICULE',
             entite: 'User',
             entiteId: user.id,
-            details: JSON.stringify({ name: user.name, role: user.role, matricule: user.matricule }),
+            details: JSON.stringify({
+              name: user.name,
+              role: user.role,
+              matricule: user.matricule,
+              loginMethod: isEmail ? 'email' : 'matricule',
+            }),
           },
         }).catch(() => {})
 
