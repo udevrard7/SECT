@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 
 // ─── Dashboard imports ───
@@ -141,7 +142,11 @@ export function PageContent({ pageId }: { pageId: PageId }) {
   // Check main page component registry
   const PageComponent = PAGE_COMPONENTS[pageId]
   if (PageComponent) {
-    return <PageComponent />
+    return (
+      <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
+        <PageComponent />
+      </Suspense>
+    )
   }
 
   // All other pages: placeholder

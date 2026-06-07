@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import {
   FileUp,
   FileText,
@@ -24,9 +24,17 @@ import {
   LayoutGrid,
   List,
   BookOpen,
+  Search,
+  Filter,
+  ChevronDown,
+  CheckSquare,
+  Square,
+  Brain,
+  MessageSquareText,
+  FileWarning,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
@@ -34,6 +42,7 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -78,6 +87,21 @@ import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -117,7 +141,40 @@ interface DocumentDetail extends Document {
   erreurAnalyse?: string | null
 }
 
-type ViewMode = 'folders' | 'list'
+type ViewMode = 'folders' | 'grid' | 'list'
+
+type FileType = 'pdf' | 'docx' | 'pptx' | 'txt' | 'md' | 'unknown'
+
+type AnalysisStatus = Document['statutAnalyse']
+
+interface UploadFileEntry {
+  file: File
+  progress: number
+  status: 'pending' | 'uploading' | 'done' | 'error'
+  error?: string
+}
+
+// ─── Constants ───
+
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.txt', '.md', '.markdown']
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+const MAX_UPLOAD_FILES = 5
+const DEBOUNCE_DELAY = 300
+
+const FILE_TYPE_OPTIONS: { value: FileType; label: string }[] = [
+  { value: 'pdf', label: 'PDF' },
+  { value: 'docx', label: 'DOCX' },
+  { value: 'pptx', label: 'PPTX' },
+  { value: 'txt', label: 'TXT' },
+  { value: 'md', label: 'MD' },
+]
+
+const STATUS_OPTIONS: { value: AnalysisStatus; label: string }[] = [
+  { value: 'EN_ATTENTE', label: 'En attente' },
+  { value: 'EN_COURS', label: 'En cours' },
+  { value: 'ANALYSE', label: 'Analysé' },
+  { value: 'ERREUR', label: 'Erreur' },
+]
 
 // ─── Utility functions ───
 
@@ -161,6 +218,19 @@ function getFileTypeFromName(name: string): string {
   }
 }
 
+function getFileTypeFromFile(file: File): FileType {
+  if (file.type) {
+    const fromMime = getFileTypeFromMime(file.type)
+    if (fromMime !== 'unknown') return fromMime as FileType
+  }
+  return getFileTypeFromName(file.name) as FileType
+}
+
+function isFileExtensionAllowed(fileName: string): boolean {
+  const ext = '.' + (fileName.split('.').pop()?.toLowerCase() ?? '')
+  return ALLOWED_EXTENSIONS.includes(ext)
+}
+
 function getFileIcon(doc: Document): ReactNode {
   const type = doc.typeMime ? getFileTypeFromMime(doc.typeMime) : getFileTypeFromName(doc.nomFichier)
 
@@ -196,6 +266,23 @@ function getFileIcon(doc: Document): ReactNode {
           <File className="h-5 w-5 text-gray-500 dark:text-gray-400" />
         </div>
       )
+  }
+}
+
+function getSmallFileIcon(doc: Document | { nomFichier: string; typeMime: string | null }): ReactNode {
+  const type = doc.typeMime ? getFileTypeFromMime(doc.typeMime) : getFileTypeFromName(doc.nomFichier)
+  switch (type) {
+    case 'pdf':
+      return <FileText className="h-4 w-4 text-red-500 dark:text-red-400" />
+    case 'docx':
+      return <FileText className="h-4 w-4 text-sky-500 dark:text-sky-400" />
+    case 'pptx':
+      return <Presentation className="h-4 w-4 text-orange-500 dark:text-orange-400" />
+    case 'txt':
+    case 'md':
+      return <File className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    default:
+      return <File className="h-4 w-4 text-gray-400 dark:text-gray-500" />
   }
 }
 
@@ -264,7 +351,6 @@ function truncateFileName(name: string, maxLen: number = 32): string {
 export function DocumentsPage() {
   const user = useAuthStore((s) => s.user)
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [documents, setDocuments] = useState<Document[]>([])
   const [ues, setUes] = useState<UE[]>([])
@@ -275,15 +361,78 @@ export function DocumentsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('folders')
 
-  // Upload dialog state
+  // ─── Search & Filters ───
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterUE, setFilterUE] = useState<string>('__all__')
+  const [filterFileType, setFilterFileType] = useState<string>('__all__')
+  const [filterStatus, setFilterStatus] = useState<string>('__all__')
+  const [showFilters, setShowFilters] = useState(false)
+
+  // ─── Bulk selection ───
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+
+  // ─── Upload dialog state ───
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadFiles, setUploadFiles] = useState<UploadFileEntry[]>([])
   const [selectedUEId, setSelectedUEId] = useState<string>('__none__')
-  const [isUploading, setIsUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ─── Debounced search ───
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+    }, DEBOUNCE_DELAY)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [searchQuery])
+
+  // ─── Filtered documents ───
+  const filteredDocuments = useMemo(() => {
+    let result = documents
+
+    // Search filter
+    if (debouncedSearch.trim()) {
+      const query = debouncedSearch.toLowerCase().trim()
+      result = result.filter((doc) =>
+        doc.nomFichier.toLowerCase().includes(query)
+      )
+    }
+
+    // UE filter
+    if (filterUE !== '__all__') {
+      if (filterUE === '__none__') {
+        result = result.filter((doc) => !doc.uniteEnseignementId)
+      } else {
+        result = result.filter((doc) => doc.uniteEnseignementId === filterUE)
+      }
+    }
+
+    // File type filter
+    if (filterFileType !== '__all__') {
+      result = result.filter((doc) => {
+        const type = doc.typeMime ? getFileTypeFromMime(doc.typeMime) : getFileTypeFromName(doc.nomFichier)
+        return type === filterFileType
+      })
+    }
+
+    // Status filter
+    if (filterStatus !== '__all__') {
+      result = result.filter((doc) => doc.statutAnalyse === filterStatus)
+    }
+
+    return result
+  }, [documents, debouncedSearch, filterUE, filterFileType, filterStatus])
+
+  const hasActiveFilters = debouncedSearch.trim() !== '' || filterUE !== '__all__' || filterFileType !== '__all__' || filterStatus !== '__all__'
 
   // ─── Fetch documents ───
   const fetchDocuments = useCallback(async () => {
@@ -344,52 +493,151 @@ export function DocumentsPage() {
     }
   }, [documents, fetchDocuments])
 
-  // ─── Upload handler ───
-  const handleUpload = async () => {
-    if (!selectedFile || !user?.id) return
-    setIsUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('userId', user.id)
-      if (selectedUEId && selectedUEId !== '__none__') {
-        formData.append('uniteEnseignementId', selectedUEId)
-      }
+  // ─── Upload handlers ───
+  const validateAndAddFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files)
+    const currentCount = uploadFiles.length
+    const availableSlots = MAX_UPLOAD_FILES - currentCount
 
-      const res = await fetch('/api/documents', {
-        method: 'POST',
-        body: formData,
-        headers: { },
+    if (availableSlots <= 0) {
+      toast.error('Limite atteinte', {
+        description: `Vous ne pouvez importer que ${MAX_UPLOAD_FILES} fichiers à la fois.`,
       })
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de l\'import')
-      }
-
-      const data = await res.json()
-
-      if (data.document?.statutAnalyse === 'ERREUR') {
-        toast.warning('Document importé avec avertissement', {
-          description: data.message || 'L\'extraction du texte a échoué. Vous pourrez relancer l\'analyse.',
-        })
-      } else {
-        toast.success('Document importé', {
-          description: `${selectedFile.name} a été importé avec succès.`,
-        })
-      }
-
-      setSelectedFile(null)
-      setSelectedUEId('__none__')
-      setUploadDialogOpen(false)
-      await fetchDocuments()
-    } catch (err) {
-      toast.error('Erreur d\'import', {
-        description: err instanceof Error ? err.message : 'Une erreur est survenue lors de l\'import.',
-      })
-    } finally {
-      setIsUploading(false)
+      return
     }
+
+    const toAdd: UploadFileEntry[] = []
+    const rejected: string[] = []
+
+    for (let i = 0; i < Math.min(fileArray.length, availableSlots); i++) {
+      const file = fileArray[i]
+
+      if (!isFileExtensionAllowed(file.name)) {
+        rejected.push(`${file.name} (format non supporté)`)
+        continue
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        rejected.push(`${file.name} (fichier trop volumineux, max 50 Mo)`)
+        continue
+      }
+
+      // Check for duplicates in current upload list
+      const isDuplicate = uploadFiles.some((f) => f.file.name === file.name && f.file.size === file.size)
+        || toAdd.some((f) => f.file.name === file.name && f.file.size === file.size)
+      if (isDuplicate) {
+        rejected.push(`${file.name} (déjà ajouté)`)
+        continue
+      }
+
+      toAdd.push({ file, progress: 0, status: 'pending' })
+    }
+
+    if (fileArray.length > availableSlots) {
+      toast.warning('Limite de fichiers', {
+        description: `Seuls ${availableSlots} fichier(s) supplémentaire(s) peuvent être ajoutés (max ${MAX_UPLOAD_FILES}).`,
+      })
+    }
+
+    if (rejected.length > 0) {
+      toast.error('Fichiers rejetés', {
+        description: rejected.join(', '),
+      })
+    }
+
+    if (toAdd.length > 0) {
+      setUploadFiles((prev) => [...prev, ...toAdd])
+    }
+  }
+
+  const handleUploadAll = async () => {
+    if (!user?.id) return
+    const pendingFiles = uploadFiles.filter((f) => f.status === 'pending' || f.status === 'error')
+    if (pendingFiles.length === 0) return
+
+    for (const entry of pendingFiles) {
+      setUploadFiles((prev) =>
+        prev.map((f) => f.file === entry.file ? { ...f, status: 'uploading', progress: 10 } : f)
+      )
+
+      try {
+        const formData = new FormData()
+        formData.append('file', entry.file)
+        formData.append('userId', user.id)
+        if (selectedUEId && selectedUEId !== '__none__') {
+          formData.append('uniteEnseignementId', selectedUEId)
+        }
+
+        // Simulate progress updates
+        setUploadFiles((prev) =>
+          prev.map((f) => f.file === entry.file ? { ...f, progress: 30 } : f)
+        )
+
+        const res = await fetch('/api/documents', {
+          method: 'POST',
+          body: formData,
+        })
+
+        setUploadFiles((prev) =>
+          prev.map((f) => f.file === entry.file ? { ...f, progress: 80 } : f)
+        )
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Erreur lors de l\'import')
+        }
+
+        const data = await res.json()
+
+        setUploadFiles((prev) =>
+          prev.map((f) => f.file === entry.file ? { ...f, progress: 100, status: 'done' } : f)
+        )
+
+        if (data.document?.statutAnalyse === 'ERREUR') {
+          toast.warning(`${entry.file.name} — Avertissement`, {
+            description: data.message || 'L\'extraction du texte a échoué.',
+          })
+        } else {
+          toast.success(`${entry.file.name} importé`, {
+            description: 'Le document a été importé avec succès.',
+          })
+        }
+      } catch (err) {
+        setUploadFiles((prev) =>
+          prev.map((f) => f.file === entry.file ? {
+            ...f,
+            status: 'error',
+            progress: 0,
+            error: err instanceof Error ? err.message : 'Erreur inconnue',
+          } : f)
+        )
+        toast.error(`Erreur — ${entry.file.name}`, {
+          description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+        })
+      }
+    }
+
+    await fetchDocuments()
+
+    // Check if all are done
+    setTimeout(() => {
+      setUploadFiles((prev) => {
+        const allDone = prev.every((f) => f.status === 'done')
+        if (allDone) {
+          // Close dialog after a brief delay
+          setTimeout(() => {
+            setUploadDialogOpen(false)
+            setUploadFiles([])
+            setSelectedUEId('__none__')
+          }, 800)
+        }
+        return prev
+      })
+    }, 300)
+  }
+
+  const removeUploadFile = (index: number) => {
+    setUploadFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   // ─── Drag & drop handlers ───
@@ -411,15 +659,17 @@ export function DocumentsPage() {
     setIsDragging(false)
     const files = e.dataTransfer.files
     if (files.length > 0) {
-      setSelectedFile(files[0])
+      validateAndAddFiles(files)
     }
   }
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
-      setSelectedFile(files[0])
+      validateAndAddFiles(files)
     }
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   // ─── Select document -> open sheet ───
@@ -455,6 +705,11 @@ export function DocumentsPage() {
       setSheetOpen(false)
       setSelectedDocument(null)
       setDeleteTarget(null)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
       await fetchDocuments()
     } catch (err) {
       toast.error('Erreur', {
@@ -465,13 +720,43 @@ export function DocumentsPage() {
     }
   }
 
+  // ─── Bulk delete ───
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    setIsBulkDeleting(true)
+    try {
+      const res = await fetch('/api/documents', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la suppression')
+      }
+      const data = await res.json().catch(() => ({}))
+      toast.success(`${selectedIds.size} document(s) supprimé(s)`, {
+        description: data.message || 'Les documents ont été déplacés vers la corbeille.',
+      })
+      setSelectedIds(new Set())
+      setBulkDeleteOpen(false)
+      await fetchDocuments()
+    } catch (err) {
+      toast.error('Erreur de suppression', {
+        description: err instanceof Error ? err.message : 'Impossible de supprimer les documents.',
+      })
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
   // ─── Re-analyze / Analyze ───
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const handleReAnalyze = async () => {
     if (!selectedDocument) return
     setIsAnalyzing(true)
     try {
-      const res = await fetch(`/api/documents/${selectedDocument.id}/analyze`, { method: 'POST', headers: { } })
+      const res = await fetch(`/api/documents/${selectedDocument.id}/analyze`, { method: 'POST', headers: {} })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Erreur lors de l\'analyse')
@@ -481,7 +766,6 @@ export function DocumentsPage() {
         description: data.analysis?.resumeCourt || 'Le document a été analysé avec succès.',
       })
       await fetchDocuments()
-      // Refresh the selected doc
       const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
       if (detailRes.ok) {
         const detailData = await detailRes.json()
@@ -491,7 +775,6 @@ export function DocumentsPage() {
       toast.error('Erreur d\'analyse', {
         description: err instanceof Error ? err.message : 'Impossible d\'analyser le document.',
       })
-      // Refresh to get updated error status
       await fetchDocuments()
       const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
       if (detailRes.ok) {
@@ -512,7 +795,7 @@ export function DocumentsPage() {
   // ─── Parsed analysis data ───
   const themes = parseJsonSafe<string[]>(selectedDocument?.themesDetectes ?? null, [])
   const concepts = parseJsonSafe<string[]>(selectedDocument?.conceptsCles ?? null, [])
-  const volume = parseJsonSafe<Record<string, number>>(selectedDocument?.volumeEstime ?? null)
+  const volume = parseJsonSafe<Record<string, number>>(selectedDocument?.volumeEstime ?? null, {})
 
   const volumeEntries = Object.entries(volume).map(([key, value]) => {
     const label = (() => {
@@ -529,15 +812,15 @@ export function DocumentsPage() {
 
   const maxVolume = Math.max(...volumeEntries.map((v) => v.value), 1)
 
-  // ─── Group documents by UE ───
-  const documentsByUE = useCallback(() => {
+  // ─── Group documents by UE (useMemo instead of useCallback) ───
+  const documentsByUE = useMemo(() => {
     const groups: { ueId: string | null; ue: UE | null; docs: Document[] }[] = []
     const ueMap = new Map<string, UE>()
     ues.forEach((ue) => ueMap.set(ue.id, ue))
 
     // Group by UE
     const docMap = new Map<string | null, Document[]>()
-    documents.forEach((doc) => {
+    filteredDocuments.forEach((doc) => {
       const key = doc.uniteEnseignementId ?? null
       if (!docMap.has(key)) {
         docMap.set(key, [])
@@ -560,90 +843,181 @@ export function DocumentsPage() {
     }
 
     return groups
-  }, [documents, ues])
-
-  const grouped = documentsByUE()
+  }, [filteredDocuments, ues])
 
   // Stats
   const totalDocs = documents.length
   const totalUEs = ues.length
+  const filteredCount = filteredDocuments.length
 
-  // ─── Document Card (reusable) ───
-  const renderDocumentCard = (doc: Document) => (
-    <Card
-      key={doc.id}
-      className={`group relative transition-shadow hover:shadow-md ${
-        doc.statutAnalyse !== 'EN_COURS'
-          ? 'cursor-pointer'
-          : ''
-      }`}
-      onClick={() => handleSelectDocument(doc)}
-    >
-      <CardContent className="flex flex-col gap-3 pt-0">
-        {/* File info row */}
-        <div className="flex items-start gap-3">
-          {getFileIcon(doc)}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium" title={doc.nomFichier}>
-              {truncateFileName(doc.nomFichier)}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {doc.tailleFichier ? formatFileSize(doc.tailleFichier) : 'Taille inconnue'}
-            </p>
+  // ─── Selection helpers ───
+  const toggleSelect = (id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredDocuments.length && filteredDocuments.length > 0) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredDocuments.map((d) => d.id)))
+    }
+  }
+
+  const isAllSelected = filteredDocuments.length > 0 && selectedIds.size === filteredDocuments.length
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setFilterUE('__all__')
+    setFilterFileType('__all__')
+    setFilterStatus('__all__')
+  }
+
+  // ─── Document Card (reusable for grid/folder views) ───
+  const renderDocumentCard = (doc: Document) => {
+    const isSelected = selectedIds.has(doc.id)
+    return (
+      <Card
+        key={doc.id}
+        className={`group relative transition-shadow hover:shadow-md ${
+          doc.statutAnalyse !== 'EN_COURS' ? 'cursor-pointer' : ''
+        } ${isSelected ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background' : ''}`}
+        onClick={() => handleSelectDocument(doc)}
+      >
+        {/* Checkbox overlay */}
+        <div
+          className="absolute top-2 left-2 z-10"
+          onClick={(e) => toggleSelect(doc.id, e)}
+        >
+          <div className={`rounded-md p-0.5 transition-colors ${
+            isSelected
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-muted-foreground'
+          }`}>
+            {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
           </div>
         </div>
 
-        {/* UE badge + Date + status */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {doc.uniteEnseignement && (
-              <Badge
-                variant="outline"
-                className="gap-1 text-[9px] px-1 py-0 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300 shrink-0"
-              >
-                <BookOpen className="h-2.5 w-2.5" />
-                {doc.uniteEnseignement.code}
-              </Badge>
-            )}
-            <span className="text-xs text-muted-foreground truncate">
-              {formatDate(doc.dateUpload)}
-            </span>
+        <CardContent className="flex flex-col gap-3 pt-0">
+          {/* File info row */}
+          <div className="flex items-start gap-3">
+            {getFileIcon(doc)}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium" title={doc.nomFichier}>
+                {truncateFileName(doc.nomFichier)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {doc.tailleFichier ? formatFileSize(doc.tailleFichier) : 'Taille inconnue'}
+              </p>
+            </div>
           </div>
-          <Badge
-            variant="outline"
-            className={`gap-1 text-[10px] px-1.5 py-0 shrink-0 ${getStatusBadgeClasses(doc.statutAnalyse)}`}
-          >
-            {getStatusIcon(doc.statutAnalyse)}
-            {getStatusLabel(doc.statutAnalyse)}
-          </Badge>
-        </div>
 
-        {/* Quick preview for analyzed docs */}
-        {doc.statutAnalyse === 'ANALYSE' && (
-          <div className="flex flex-wrap gap-1">
-            {parseJsonSafe<string[]>(doc.themesDetectes, [])
-              .slice(0, 3)
-              .map((theme, i) => (
+          {/* UE badge + Date + status */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {doc.uniteEnseignement && (
                 <Badge
-                  key={i}
-                  variant="secondary"
-                  className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  variant="outline"
+                  className="gap-1 text-[9px] px-1 py-0 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300 shrink-0"
                 >
-                  {theme}
+                  <BookOpen className="h-2.5 w-2.5" />
+                  {doc.uniteEnseignement.code}
                 </Badge>
-              ))}
-            {parseJsonSafe<string[]>(doc.themesDetectes, []).length > 3 && (
-              <Badge
-                variant="secondary"
-                className="text-[10px]"
-              >
-                +{parseJsonSafe<string[]>(doc.themesDetectes, []).length - 3}
-              </Badge>
-            )}
+              )}
+              <span className="text-xs text-muted-foreground truncate">
+                {formatDate(doc.dateUpload)}
+              </span>
+            </div>
+            <Badge
+              variant="outline"
+              className={`gap-1 text-[10px] px-1.5 py-0 shrink-0 ${getStatusBadgeClasses(doc.statutAnalyse)}`}
+            >
+              {getStatusIcon(doc.statutAnalyse)}
+              {getStatusLabel(doc.statutAnalyse)}
+            </Badge>
           </div>
+
+          {/* Quick preview for analyzed docs */}
+          {doc.statutAnalyse === 'ANALYSE' && (
+            <div className="flex flex-wrap gap-1">
+              {parseJsonSafe<string[]>(doc.themesDetectes, [])
+                .slice(0, 3)
+                .map((theme, i) => (
+                  <Badge
+                    key={i}
+                    variant="secondary"
+                    className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  >
+                    {theme}
+                  </Badge>
+                ))}
+              {parseJsonSafe<string[]>(doc.themesDetectes, []).length > 3 && (
+                <Badge variant="secondary" className="text-[10px]">
+                  +{parseJsonSafe<string[]>(doc.themesDetectes, []).length - 3}
+                </Badge>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // ─── Upload file entry ───
+  const renderUploadFileEntry = (entry: UploadFileEntry, index: number) => (
+    <div key={`${entry.file.name}-${index}`} className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+      {getSmallFileIcon({ nomFichier: entry.file.name, typeMime: entry.file.type || null })}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{entry.file.name}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-xs text-muted-foreground">{formatFileSize(entry.file.size)}</p>
+          {entry.status === 'uploading' && (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+              {entry.progress}%
+            </span>
+          )}
+          {entry.status === 'done' && (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" /> Importé
+            </span>
+          )}
+          {entry.status === 'error' && (
+            <span className="text-xs text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" /> {entry.error || 'Erreur'}
+            </span>
+          )}
+        </div>
+        {(entry.status === 'uploading' || entry.status === 'done') && (
+          <Progress value={entry.progress} className="mt-1.5 h-1.5" />
         )}
-      </CardContent>
-    </Card>
+      </div>
+      {entry.status === 'pending' || entry.status === 'error' ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            removeUploadFile(index)
+          }}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      ) : (
+        <div className="h-8 w-8 shrink-0" />
+      )}
+    </div>
   )
 
   return (
@@ -657,39 +1031,70 @@ export function DocumentsPage() {
             {!isLoading && (
               <span className="ml-1">
                 — {totalDocs} document{totalDocs !== 1 ? 's' : ''} dans {totalUEs} UE{totalUEs !== 1 ? 's' : ''}
+                {hasActiveFilters && filteredCount !== totalDocs && (
+                  <span className="text-emerald-600 dark:text-emerald-400">
+                    {' '}({filteredCount} affiché{filteredCount !== 1 ? 's' : ''})
+                  </span>
+                )}
               </span>
             )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* View toggle */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* View toggle — 3 buttons */}
           {documents.length > 0 && (
             <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
-              <Button
-                variant={viewMode === 'folders' ? 'default' : 'ghost'}
-                size="sm"
-                className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'folders' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
-                onClick={() => setViewMode('folders')}
-              >
-                <Folder className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Dossiers UE</span>
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'list' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
-                onClick={() => setViewMode('list')}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Liste</span>
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={viewMode === 'folders' ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'folders' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                      onClick={() => setViewMode('folders')}
+                    >
+                      <Folder className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Dossiers UE</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Dossiers UE</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'grid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                      onClick={() => setViewMode('grid')}
+                    >
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Grille</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Vue grille</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={viewMode === 'list' ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'list' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                      onClick={() => setViewMode('list')}
+                    >
+                      <List className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Liste</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Vue liste</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           )}
 
           <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
             setUploadDialogOpen(open)
             if (!open) {
-              setSelectedFile(null)
+              setUploadFiles([])
               setSelectedUEId('__none__')
             }
           }}>
@@ -699,11 +1104,11 @@ export function DocumentsPage() {
                 Nouveau document
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Importer un document</DialogTitle>
+                <DialogTitle>Importer des documents</DialogTitle>
                 <DialogDescription>
-                  Sélectionnez un fichier à analyser pour générer des questions.
+                  Sélectionnez jusqu&apos;à {MAX_UPLOAD_FILES} fichiers à analyser pour générer des questions.
                 </DialogDescription>
               </DialogHeader>
 
@@ -725,7 +1130,7 @@ export function DocumentsPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Associez ce document à une UE pour le retrouver facilement.
+                    Associez ces documents à une UE pour les retrouver facilement.
                   </p>
                 </div>
 
@@ -748,56 +1153,28 @@ export function DocumentsPage() {
                     <FileUp className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <p className="mt-3 text-sm font-medium">
-                    Glissez-déposez votre fichier ici
+                    Glissez-déposez vos fichiers ici
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     ou cliquez pour parcourir
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    PDF, DOCX, PPTX, TXT, MD — Max 50 Mo
+                    PDF, DOCX, PPTX, TXT, MD — Max 50 Mo — Jusqu&apos;à {MAX_UPLOAD_FILES} fichiers
                   </p>
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept=".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.markdown"
+                    multiple
                     className="hidden"
                     onChange={handleFileInputChange}
                   />
                 </div>
 
-                {/* File preview */}
-                {selectedFile && (
-                  <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
-                    {getFileIcon({
-                      id: '',
-                      nomFichier: selectedFile.name,
-                      tailleFichier: selectedFile.size,
-                      typeMime: selectedFile.type,
-                      statutAnalyse: 'EN_ATTENTE',
-                      themesDetectes: null,
-                      conceptsCles: null,
-                      volumeEstime: null,
-                      dateUpload: new Date().toISOString(),
-                      uniteEnseignementId: null,
-                    })}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{selectedFile.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatFileSize(selectedFile.size)}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setSelectedFile(null)
-                        if (fileInputRef.current) fileInputRef.current.value = ''
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                {/* Upload file list */}
+                {uploadFiles.length > 0 && (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {uploadFiles.map((entry, index) => renderUploadFileEntry(entry, index))}
                   </div>
                 )}
               </div>
@@ -807,19 +1184,19 @@ export function DocumentsPage() {
                   variant="outline"
                   onClick={() => {
                     setUploadDialogOpen(false)
-                    setSelectedFile(null)
+                    setUploadFiles([])
                     setSelectedUEId('__none__')
                   }}
-                  disabled={isUploading}
+                  disabled={uploadFiles.some((f) => f.status === 'uploading')}
                 >
                   Annuler
                 </Button>
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={handleUpload}
-                  disabled={!selectedFile || isUploading}
+                  onClick={handleUploadAll}
+                  disabled={!uploadFiles.some((f) => f.status === 'pending' || f.status === 'error') || uploadFiles.some((f) => f.status === 'uploading')}
                 >
-                  {isUploading ? (
+                  {uploadFiles.some((f) => f.status === 'uploading') ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Import en cours...
@@ -827,7 +1204,7 @@ export function DocumentsPage() {
                   ) : (
                     <>
                       <Upload className="h-4 w-4" />
-                      Importer
+                      Importer{uploadFiles.filter((f) => f.status === 'pending' || f.status === 'error').length > 1 ? ` (${uploadFiles.filter((f) => f.status === 'pending' || f.status === 'error').length})` : ''}
                     </>
                   )}
                 </Button>
@@ -836,6 +1213,144 @@ export function DocumentsPage() {
           </Dialog>
         </div>
       </div>
+
+      {/* ─── Search & Filters ─── */}
+      {!isLoading && documents.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher un document..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+            <Button
+              variant={showFilters ? 'default' : 'outline'}
+              size="sm"
+              className={`gap-1.5 ${showFilters ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Filtres</span>
+              {hasActiveFilters && (
+                <Badge className="ml-1 h-5 w-5 rounded-full p-0 text-[10px] flex items-center justify-center bg-emerald-500 text-white">
+                  {[debouncedSearch.trim() !== '', filterUE !== '__all__', filterFileType !== '__all__', filterStatus !== '__all__'].filter(Boolean).length}
+                </Badge>
+              )}
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-muted-foreground">
+                Effacer les filtres
+              </Button>
+            )}
+          </div>
+
+          {/* Advanced filters panel */}
+          {showFilters && (
+            <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
+              {/* UE filter */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Unité d&apos;enseignement</Label>
+                <Select value={filterUE} onValueChange={setFilterUE}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Toutes les UE" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Toutes les UE</SelectItem>
+                    <SelectItem value="__none__">Sans UE</SelectItem>
+                    {ues.map((ue) => (
+                      <SelectItem key={ue.id} value={ue.id}>
+                        {ue.code} — {ue.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* File type filter */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Type de fichier</Label>
+                <Select value={filterFileType} onValueChange={setFilterFileType}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Tous les types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Tous les types</SelectItem>
+                    {FILE_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status filter */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Statut d&apos;analyse</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Tous les statuts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Tous les statuts</SelectItem>
+                    {STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Bulk action bar ─── */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+          <Checkbox
+            checked={isAllSelected}
+            onCheckedChange={toggleSelectAll}
+            className="border-emerald-400 dark:border-emerald-600"
+          />
+          <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+            {selectedIds.size} document{selectedIds.size !== 1 ? 's' : ''} sélectionné{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs"
+          >
+            Tout désélectionner
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setBulkDeleteOpen(true)}
+            className="gap-1.5"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Supprimer ({selectedIds.size})
+          </Button>
+        </div>
+      )}
 
       {/* ─── Loading state ─── */}
       {isLoading && (
@@ -877,12 +1392,26 @@ export function DocumentsPage() {
         </div>
       )}
 
-      {/* ─── Folder view ─── */}
-      {!isLoading && documents.length > 0 && viewMode === 'folders' && (
+      {/* ─── No results after filtering ─── */}
+      {!isLoading && documents.length > 0 && filteredDocuments.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
+          <Search className="h-10 w-10 text-muted-foreground/50" />
+          <h3 className="mt-4 text-base font-semibold">Aucun résultat</h3>
+          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+            Aucun document ne correspond à vos critères de recherche.
+          </p>
+          <Button variant="outline" className="mt-4" onClick={clearFilters}>
+            Effacer les filtres
+          </Button>
+        </div>
+      )}
+
+      {/* ─── Folder view (Dossiers UE) ─── */}
+      {!isLoading && filteredDocuments.length > 0 && viewMode === 'folders' && (
         <div className="space-y-2">
-          {grouped.length > 0 ? (
-            <Accordion type="multiple" defaultValue={grouped.map((g) => g.ueId ?? '__unassigned__')} className="space-y-3">
-              {grouped.map((group) => {
+          {documentsByUE.length > 0 ? (
+            <Accordion type="multiple" defaultValue={documentsByUE.map((g) => g.ueId ?? '__unassigned__')} className="space-y-3">
+              {documentsByUE.map((group) => {
                 const groupKey = group.ueId ?? '__unassigned__'
                 const isUnassigned = group.ueId === null
                 const ue = group.ue
@@ -953,10 +1482,107 @@ export function DocumentsPage() {
         </div>
       )}
 
-      {/* ─── Flat list view ─── */}
-      {!isLoading && documents.length > 0 && viewMode === 'list' && (
+      {/* ─── Grid view (Grille) ─── */}
+      {!isLoading && filteredDocuments.length > 0 && viewMode === 'grid' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {documents.map((doc) => renderDocumentCard(doc))}
+          {filteredDocuments.map((doc) => renderDocumentCard(doc))}
+        </div>
+      )}
+
+      {/* ─── List view (Liste — table) ─── */}
+      {!isLoading && filteredDocuments.length > 0 && viewMode === 'list' && (
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={isAllSelected}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
+                <TableHead>Fichier</TableHead>
+                <TableHead className="hidden md:table-cell">UE</TableHead>
+                <TableHead className="hidden sm:table-cell">Taille</TableHead>
+                <TableHead className="hidden lg:table-cell">Date</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredDocuments.map((doc) => {
+                const isSelected = selectedIds.has(doc.id)
+                return (
+                  <TableRow
+                    key={doc.id}
+                    className={`cursor-pointer ${isSelected ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}
+                    onClick={() => handleSelectDocument(doc)}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(doc.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {getSmallFileIcon(doc)}
+                        <span className="truncate text-sm font-medium max-w-[200px]" title={doc.nomFichier}>
+                          {truncateFileName(doc.nomFichier, 40)}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {doc.uniteEnseignement ? (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 text-[10px] px-1 py-0 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300"
+                        >
+                          <BookOpen className="h-2.5 w-2.5" />
+                          {doc.uniteEnseignement.code}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <span className="text-xs text-muted-foreground">
+                        {doc.tailleFichier ? formatFileSize(doc.tailleFichier) : '—'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(doc.dateUpload)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={`gap-1 text-[10px] px-1.5 py-0 ${getStatusBadgeClasses(doc.statutAnalyse)}`}
+                      >
+                        {getStatusIcon(doc.statutAnalyse)}
+                        {getStatusLabel(doc.statutAnalyse)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteTarget(doc as DocumentDetail)
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -1003,6 +1629,51 @@ export function DocumentsPage() {
                   {getStatusLabel(selectedDocument.statutAnalyse)}
                 </Badge>
               </div>
+
+              {/* Error detail */}
+              {selectedDocument.statutAnalyse === 'ERREUR' && selectedDocument.erreurAnalyse && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-800 dark:text-red-300">{selectedDocument.erreurAnalyse}</p>
+                </div>
+              )}
+
+              {/* ─── Actions IA ─── */}
+              <section className="space-y-3">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Brain className="h-4 w-4 text-emerald-600" />
+                  Actions IA
+                </h3>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    variant="outline"
+                    className="justify-start gap-2"
+                    onClick={handleReAnalyze}
+                    disabled={isAnalyzing || selectedDocument.statutAnalyse === 'EN_COURS'}
+                  >
+                    {isAnalyzing ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 text-emerald-600" />
+                    )}
+                    Résumer avec l&apos;IA
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="justify-start gap-2"
+                    onClick={handleGenerateQuestions}
+                    disabled={selectedDocument.statutAnalyse !== 'ANALYSE'}
+                  >
+                    <MessageSquareText className="h-4 w-4 text-teal-600" />
+                    Générer des questions
+                  </Button>
+                </div>
+                {selectedDocument.statutAnalyse !== 'ANALYSE' && selectedDocument.statutAnalyse !== 'ERREUR' && (
+                  <p className="text-xs text-muted-foreground">
+                    L&apos;analyse doit être terminée pour générer des questions.
+                  </p>
+                )}
+              </section>
 
               <Separator />
 
@@ -1091,14 +1762,12 @@ export function DocumentsPage() {
                       return (
                         <div key={key} className="space-y-1">
                           <div className="flex items-center justify-between text-xs">
-                            <span className={`font-medium ${textColorMap[key] ?? 'text-foreground'}`}>
-                              {label}
-                            </span>
-                            <span className="text-muted-foreground">{value} question{value > 1 ? 's' : ''}</span>
+                            <span className={`font-medium ${textColorMap[key] ?? 'text-foreground'}`}>{label}</span>
+                            <span className="text-muted-foreground">{value} question{value !== 1 ? 's' : ''}</span>
                           </div>
-                          <div className={`h-2 w-full overflow-hidden rounded-full ${bgMap[key] ?? 'bg-muted'}`}>
+                          <div className={`h-2 rounded-full ${bgMap[key] ?? 'bg-muted'}`}>
                             <div
-                              className={`h-full rounded-full transition-all ${colorMap[key] ?? 'bg-emerald-500'}`}
+                              className={`h-full rounded-full ${colorMap[key] ?? 'bg-primary'} transition-all`}
                               style={{ width: `${pct}%` }}
                             />
                           </div>
@@ -1106,110 +1775,35 @@ export function DocumentsPage() {
                       )
                     })}
                   </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Total estimé : {volumeEntries.reduce((sum, v) => sum + v.value, 0)} questions possibles
-                  </p>
                 </section>
               )}
-
-              {/* EN_ATTENTE status message - with analyze button */}
-              {selectedDocument.statutAnalyse === 'EN_ATTENTE' && (
-                <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-                  <div className="flex items-start gap-3">
-                    <Clock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                        Analyse en attente
-                      </p>
-                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                        L&apos;analyse de ce document n&apos;a pas encore été lancée. Cliquez sur le bouton ci-dessous pour lancer l&apos;analyse IA.
-                      </p>
-                      <Button
-                        className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white"
-                        size="sm"
-                        onClick={handleReAnalyze}
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        Lancer l&apos;analyse
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* No analysis data */}
-              {selectedDocument.statutAnalyse === 'ERREUR' && (
-                <section className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-red-800 dark:text-red-300">
-                        Erreur lors de l&apos;analyse
-                      </p>
-                      {selectedDocument.erreurAnalyse && (
-                        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                          {selectedDocument.erreurAnalyse}
-                        </p>
-                      )}
-                      <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                        Vous pouvez relancer l&apos;analyse ci-dessous.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {selectedDocument.statutAnalyse === 'ANALYSE' && themes.length === 0 && concepts.length === 0 && volumeEntries.length === 0 && !selectedDocument.resumeAnalyse && (
-                <section className="rounded-lg border border-muted bg-muted/30 p-4 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Aucune donnée d&apos;analyse disponible.
-                  </p>
-                </section>
-              )}
-
-              <Separator />
 
               {/* Actions */}
-              <div className="flex flex-col gap-3">
+              <Separator />
+              <div className="flex items-center gap-2">
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 w-full"
-                  onClick={handleGenerateQuestions}
-                  disabled={selectedDocument.statutAnalyse !== 'ANALYSE'}
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setDeleteTarget(selectedDocument)
+                  }}
                 >
-                  <Sparkles className="h-4 w-4" />
-                  Générer des questions
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Supprimer
                 </Button>
                 <Button
                   variant="outline"
-                  className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                  onClick={handleReAnalyze}
-                  disabled={selectedDocument.statutAnalyse === 'EN_COURS' || isAnalyzing}
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setSheetOpen(false)
+                    handleReAnalyze()
+                  }}
+                  disabled={isAnalyzing}
                 >
-                  {selectedDocument.statutAnalyse === 'EN_COURS' || isAnalyzing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Analyse en cours...
-                    </>
-                  ) : selectedDocument.statutAnalyse === 'EN_ATTENTE' ? (
-                    <>
-                      <Sparkles className="h-4 w-4" />
-                      Lancer l&apos;analyse IA
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4" />
-                      Relancer l&apos;analyse
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                  onClick={() => setDeleteTarget(selectedDocument)}
-                  disabled={isDeleting}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Supprimer le document
+                  <RefreshCw className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                  Relancer l&apos;analyse
                 </Button>
               </div>
             </div>
@@ -1217,14 +1811,14 @@ export function DocumentsPage() {
         </SheetContent>
       </Sheet>
 
-      {/* ─── Delete Confirmation AlertDialog ─── */}
+      {/* ─── Delete confirm dialog (single) ─── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer le document</AlertDialogTitle>
+            <AlertDialogTitle>Supprimer ce document ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nomFichier}</strong> ?
-              Le document sera déplacé vers la corbeille. Vous pourrez le restaurer dans les 30 jours suivant sa suppression. Les questions associées seront également déplacées.
+              Le document <strong>{deleteTarget?.nomFichier}</strong> sera déplacé vers la corbeille.
+              Vous pourrez le restaurer dans les 30 jours.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1236,14 +1830,41 @@ export function DocumentsPage() {
             >
               {isDeleting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Suppression...
                 </>
               ) : (
+                'Supprimer'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Bulk delete confirm dialog ─── */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer {selectedIds.size} document{selectedIds.size !== 1 ? 's' : ''} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Les documents sélectionnés seront déplacés vers la corbeille.
+              Vous pourrez les restaurer dans les 30 jours.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isBulkDeleting ? (
                 <>
-                  <Trash2 className="h-4 w-4" />
-                  Supprimer
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Suppression...
                 </>
+              ) : (
+                `Supprimer (${selectedIds.size})`
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
