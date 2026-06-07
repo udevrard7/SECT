@@ -27,8 +27,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -184,7 +185,7 @@ function generateDynamicAlerts(stats: Record<string, unknown>): AlerteItem[] {
 
 export function NotificationBell() {
   const { user } = useAuthStore()
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [alertes, setAlertes] = useState<AlerteItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -198,7 +199,7 @@ export function NotificationBell() {
     setIsLoading(true)
     try {
       const params = new URLSearchParams({ lue: 'false', limit: '20' })
-      const res = await fetch(`/api/alertes?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/alertes?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const items = data.alertes ?? []
@@ -221,7 +222,7 @@ export function NotificationBell() {
   const loadFallbackAlerts = async () => {
     try {
       const filiereParam = user?.filiereId || ''
-      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
       if (res.ok) {
         const stats = await res.json()
         setAlertes(generateDynamicAlerts(stats))
@@ -262,7 +263,7 @@ export function NotificationBell() {
     try {
       await fetch(`/api/alertes/${alerte.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'marquer_lue' }),
       })
       setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
@@ -287,7 +288,7 @@ export function NotificationBell() {
         unreadAlertes.map((a) =>
           fetch(`/api/alertes/${a.id}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'marquer_lue' }),
           })
         )
@@ -302,7 +303,7 @@ export function NotificationBell() {
   // ─── Navigate to alertes page ───
   const handleViewAll = () => {
     setOpen(false)
-    setCurrentPage('alertes')
+    router.push(PAGE_ROUTES.alertes)
   }
 
   return (

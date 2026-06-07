@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigationStore } from '@/stores/navigation-store'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -165,17 +165,18 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function PassationPage() {
-  const { currentPageParams, setCurrentPage } = useNavigationStore()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuthStore()
 
-  const epreuveId = currentPageParams?.epreuveId || ''
+  const epreuveId = searchParams.get('epreuveId') || ''
 
-  // If no epreuveId, redirect to mes-epreuves (the sidebar link without params is confusing)
+  // If no epreuveId, redirect to mes-epreuves
   useEffect(() => {
     if (!epreuveId) {
-      setCurrentPage('mes-epreuves')
+      router.push('/mes-epreuves')
     }
-  }, [epreuveId, setCurrentPage])
+  }, [epreuveId, router])
 
   // ─── Core state ────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<ExamPhase>('pre-exam')
@@ -266,7 +267,7 @@ export function PassationPage() {
     async function fetchEpreuveData() {
       try {
         // Fetch epreuve info (studentView=true strips correct answers for security)
-        const epreuveRes = await fetch(`/api/epreuves/${epreuveId}?studentView=true`, { headers: getAuthHeaders() })
+        const epreuveRes = await fetch(`/api/epreuves/${epreuveId}?studentView=true`)
         if (!epreuveRes.ok) throw new Error('Épreuve introuvable')
         const epreuveData = await epreuveRes.json()
         const epreuveInfo = epreuveData.epreuve || epreuveData
@@ -276,7 +277,7 @@ export function PassationPage() {
         const etabId = user?.etablissementId || user?.etablissement?.id
         if (etabId) {
           try {
-            const secRes = await fetch(`/api/security-settings/etablissement/${etabId}`, { headers: getAuthHeaders() })
+            const secRes = await fetch(`/api/security-settings/etablissement/${etabId}`)
             if (secRes.ok) {
               const secData = await secRes.json()
               if (secData.securitySettings) {
@@ -310,7 +311,7 @@ export function PassationPage() {
         // Check for existing session first (to get sessionId for consistent proposition ordering)
         let activeSessionId: string | null = null
         if (user?.id) {
-          const sessionRes = await fetch(`/api/sessions?etudiantId=${user.id}&epreuveId=${epreuveId}`, { headers: getAuthHeaders() })
+          const sessionRes = await fetch(`/api/sessions?etudiantId=${user.id}&epreuveId=${epreuveId}`)
           if (sessionRes.ok) {
             const sessionsData = await sessionRes.json()
             const activeSession = sessionsData.find(
@@ -330,7 +331,7 @@ export function PassationPage() {
         const questionsUrl = activeSessionId
           ? `/api/epreuves/${epreuveId}/questions?sessionId=${activeSessionId}`
           : `/api/epreuves/${epreuveId}/questions`
-        const questionsRes = await fetch(questionsUrl, { headers: getAuthHeaders() })
+        const questionsRes = await fetch(questionsUrl)
         if (!questionsRes.ok) throw new Error('Questions introuvables')
         const questionsData = await questionsRes.json()
         // Sort by ordre
@@ -347,7 +348,7 @@ export function PassationPage() {
             setTimeRemaining(remaining)
 
             // Load existing answers
-            const answersRes = await fetch(`/api/sessions/${activeSessionId}`, { headers: getAuthHeaders() })
+            const answersRes = await fetch(`/api/sessions/${activeSessionId}`)
             if (answersRes.ok) {
               const answersData = await answersRes.json()
               const sessionData = answersData.session || answersData
@@ -395,7 +396,7 @@ export function PassationPage() {
     try {
       const res = await fetch('/api/sessions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ etudiantId: user.id, epreuveId }),
       })
 
@@ -461,7 +462,7 @@ export function PassationPage() {
       // Batch save all answers
       const res = await fetch(`/api/sessions/${sessionRef.current.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reponses: currentReponses }),
       })
 
@@ -487,7 +488,7 @@ export function PassationPage() {
 
       const res = await fetch(`/api/sessions/${sessionRef.current.id}/submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ autoSubmit, reponses: reponsesRef.current }),
       })
 
@@ -550,7 +551,7 @@ export function PassationPage() {
     try {
       await fetch(`/api/sessions/${sessionRef.current.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           alerte: {
             type,
@@ -607,7 +608,7 @@ export function PassationPage() {
       // Upload to server
       await fetch(`/api/sessions/${sessionRef.current.id}/capture`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image }),
       })
 
@@ -898,7 +899,7 @@ export function PassationPage() {
 
     const checkClosure = async () => {
       try {
-        const res = await fetch(`/api/epreuves/auto-close?epreuveId=${epreuveId}`, { headers: getAuthHeaders() })
+        const res = await fetch(`/api/epreuves/auto-close?epreuveId=${epreuveId}`)
         if (res.ok) {
           const data = await res.json()
           
@@ -1085,7 +1086,7 @@ export function PassationPage() {
             <Button
               variant="outline"
               className="border-emerald-600 text-emerald-600 hover:bg-emerald-50"
-              onClick={() => useNavigationStore.getState().setCurrentPage('mes-epreuves')}
+              onClick={() => router.push('/mes-epreuves')}
             >
               <Home className="h-4 w-4 mr-2" />
               Mes épreuves
@@ -1358,7 +1359,7 @@ export function PassationPage() {
 
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => useNavigationStore.getState().setCurrentPage('mes-epreuves')}
+              onClick={() => router.push('/mes-epreuves')}
             >
               <Home className="h-4 w-4 mr-2" />
               Retour au tableau de bord
@@ -1501,7 +1502,7 @@ export function PassationPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setShowClosureDialog(false)
-              useNavigationStore.getState().setCurrentPage('mes-epreuves')
+              router.push('/mes-epreuves')
             }}>
               <Home className="h-4 w-4 mr-2" />
               Retour aux épreuves

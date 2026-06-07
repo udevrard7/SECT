@@ -19,7 +19,7 @@ import {
   ClipboardList,
   Zap,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -298,7 +298,7 @@ export function AlertesPage() {
       if (lueFilter === 'true') params.set('lue', 'true')
       else if (lueFilter === 'false') params.set('lue', 'false')
 
-      const res = await fetch(`/api/alertes?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/alertes?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const items = data.alertes ?? []
@@ -323,7 +323,7 @@ export function AlertesPage() {
   const loadFallbackAlerts = async () => {
     try {
       const filiereParam = user?.filiereId || ''
-      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
       if (res.ok) {
         const stats = await res.json()
         const dynamicAlerts = generateDynamicAlerts(stats)
@@ -342,7 +342,7 @@ export function AlertesPage() {
   // ─── Fetch filieres ───
   const fetchFilieres = useCallback(async () => {
     try {
-      const res = await fetch('/api/filieres', { headers: getAuthHeaders() })
+      const res = await fetch('/api/filieres')
       if (res.ok) {
         const data = await res.json()
         setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
@@ -388,7 +388,7 @@ export function AlertesPage() {
     try {
       const res = await fetch(`/api/alertes/${alerte.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lue: true }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -409,7 +409,7 @@ export function AlertesPage() {
     try {
       const res = await fetch(`/api/alertes/${alerte.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolu: true, lue: true }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -434,7 +434,7 @@ export function AlertesPage() {
         unreadAlertes.map((a) =>
           fetch(`/api/alertes/${a.id}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lue: true }),
           })
         )
@@ -462,7 +462,7 @@ export function AlertesPage() {
         unresolvedAlertes.map((a) =>
           fetch(`/api/alertes/${a.id}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ resolu: true, lue: true }),
           })
         )
@@ -517,7 +517,7 @@ export function AlertesPage() {
       } else {
         const res = await fetch('/api/alertes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             titre: formTitre,
             description: formDescription,

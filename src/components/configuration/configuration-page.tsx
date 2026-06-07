@@ -14,8 +14,8 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react'
-import { useNavigationStore } from '@/stores/navigation-store'
-import { getAuthHeaders } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -143,6 +143,7 @@ function mapConfigToApi(config: AppConfig): Record<string, unknown> {
 // ─── Main Component ───
 
 export function ConfigurationPage() {
+  const router = useRouter()
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [savingTab, setSavingTab] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -154,7 +155,7 @@ export function ConfigurationPage() {
     setIsLoading(true)
     setLoadError(null)
     try {
-      const res = await fetch('/api/platform-settings', { headers: getAuthHeaders() })
+      const res = await fetch('/api/platform-settings')
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       const settings = data.settings ?? {}
@@ -181,7 +182,7 @@ export function ConfigurationPage() {
       const flatSettings = mapConfigToApi(config)
       const res = await fetch('/api/platform-settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(flatSettings),
       })
       if (!res.ok) {
@@ -644,7 +645,7 @@ export function ConfigurationPage() {
                     variant="outline"
                     size="sm"
                     className="border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950/50"
-                    onClick={() => useNavigationStore.getState().setCurrentPage('ai-providers')}
+                    onClick={() => router.push(PAGE_ROUTES['ai-providers'])}
                   >
                     <Sparkles className="h-4 w-4 mr-1" />
                     Configurer

@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Loader2,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -189,7 +189,7 @@ export function LogsPage() {
       params.set('page', page.toString())
       params.set('limit', limit.toString())
 
-      const res = await fetch(`/api/logs?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/logs?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setLogs(data.logs ?? [])

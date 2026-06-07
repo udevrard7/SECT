@@ -25,8 +25,9 @@ import {
   Ban,
   AlertTriangle,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
@@ -282,7 +283,8 @@ function getQuestionTypeBadgeClasses(type: string): string {
 
 export function MesEpreuvesPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [epreuves, setEpreuves] = useState<StudentEpreuve[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -299,7 +301,7 @@ export function MesEpreuvesPage() {
   const fetchEpreuves = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/epreuves?etudiantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves?etudiantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])
@@ -338,11 +340,11 @@ export function MesEpreuvesPage() {
 
   // ─── Navigation handlers ───
   const handleCommencer = (epreuveId: string) => {
-    setCurrentPage('passation', { epreuveId })
+    router.push(PAGE_ROUTES.passation + '?epreuveId=' + epreuveId)
   }
 
   const handleReprendre = (epreuveId: string) => {
-    setCurrentPage('passation', { epreuveId })
+    router.push(PAGE_ROUTES.passation + '?epreuveId=' + epreuveId)
   }
 
   const handleVoirDetail = (epreuve: StudentEpreuve, session: StudentEpreuve['sessions'][0]) => {

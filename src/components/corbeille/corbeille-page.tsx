@@ -27,7 +27,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -463,7 +463,7 @@ export function CorbeillePage() {
   const fetchCorbeille = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/corbeille?userId=${user.id}&type=all`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/corbeille?userId=${user.id}&type=all`)
       if (res.ok) {
         const json = await res.json()
         setData({
@@ -606,7 +606,7 @@ export function CorbeillePage() {
 
       const res = await fetch('/api/corbeille/restore', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: mappedItems }),
       })
 
@@ -646,7 +646,7 @@ export function CorbeillePage() {
 
       const res = await fetch('/api/corbeille/purge', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: mappedItems }),
       })
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
-import { getUserFromRequest } from '@/lib/auth-helpers'
+import { getAuthenticatedUser } from '@/lib/auth-session'
 import { validateCreationPermission } from '@/lib/role-permissions'
 
 // Generate a random password of given length
@@ -44,7 +44,7 @@ interface ImportResultUser {
 export async function POST(request: NextRequest) {
   try {
     // Role-based permission check
-    const creator = getUserFromRequest(request)
+    const creator = await getAuthenticatedUser()
     if (!creator) {
       return NextResponse.json(
         { error: 'Vous n\'avez pas les permissions pour importer des utilisateurs' },
@@ -84,12 +84,8 @@ export async function POST(request: NextRequest) {
     // For RESPONSABLE creators: auto-set etablissementId from their own establishment
     let resolvedEtablissementId = etablissementId || null
     if (creator.role === 'RESPONSABLE') {
-      const creatorUser = await db.user.findUnique({
-        where: { id: creator.userId },
-        select: { etablissementId: true },
-      })
-      if (creatorUser?.etablissementId) {
-        resolvedEtablissementId = creatorUser.etablissementId
+      if (creator.etablissementId) {
+        resolvedEtablissementId = creator.etablissementId
       }
     }
 

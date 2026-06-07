@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
-import { requireRole, isAuthError } from '@/lib/auth-middleware'
-import { getUserFromRequest } from '@/lib/auth-helpers'
+import { requireRole, isAuthError, getAuthenticatedUser } from '@/lib/auth-session'
 
 // GET /api/etablissements — List etablissements
 // ADMIN: Sees all establishments (platform owner), but only metadata — no user/filiere data without authorization
 // RESPONSABLE: Sees only their own establishment with full details
 export async function GET(request: NextRequest) {
   try {
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
@@ -61,7 +60,7 @@ export async function GET(request: NextRequest) {
     if (authUser.role === 'ADMIN') {
       const adminAccesses = await db.etablissementAccess.findMany({
         where: {
-          adminId: authUser.userId,
+          adminId: authUser.id,
           statut: 'APPROUVE',
         },
         select: { etablissementId: true },

@@ -24,8 +24,9 @@ import {
   Hash,
   AlertTriangle,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
@@ -145,7 +146,7 @@ function formatDate(date: string | Date): string {
 
 export function BanqueEpreuvesPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
 
   // Data state
   const [epreuves, setEpreuves] = useState<BanqueEpreuve[]>([])
@@ -182,7 +183,7 @@ export function BanqueEpreuvesPage() {
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (modeFilter !== 'TOUS') params.set('generationMode', modeFilter)
 
-      const res = await fetch(`/api/epreuves/banque?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/banque?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])
@@ -219,7 +220,7 @@ export function BanqueEpreuvesPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Erreur')
@@ -257,7 +258,7 @@ export function BanqueEpreuvesPage() {
 
       const res = await fetch('/api/epreuves', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -345,7 +346,7 @@ export function BanqueEpreuvesPage() {
           <Button
             variant="outline"
             className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-            onClick={() => setCurrentPage('questions-ia')}
+            onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
           >
             <Sparkles className="h-4 w-4" />
             Générer par IA
@@ -461,7 +462,7 @@ export function BanqueEpreuvesPage() {
               <Button
                 variant="outline"
                 className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                onClick={() => setCurrentPage('questions-ia')}
+                onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
               >
                 <Sparkles className="h-4 w-4" />
                 Générer par IA
@@ -469,7 +470,7 @@ export function BanqueEpreuvesPage() {
             )}
             <Button
               className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => setCurrentPage('epreuves')}
+              onClick={() => router.push(PAGE_ROUTES.epreuves)}
             >
               <BookOpen className="h-4 w-4" />
               Créer une épreuve

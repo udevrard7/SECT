@@ -30,8 +30,9 @@ import {
   Layers,
   Hash,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
@@ -215,7 +216,7 @@ function StepIndicator({ steps, currentStep, onStepClick }: {
 
 export function GenerationIAPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
 
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select-docs')
@@ -326,7 +327,7 @@ export function GenerationIAPage() {
     }
     setIsLoadingDocs(true)
     try {
-      const res = await fetch(`/api/documents?userId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/documents?userId=${user.id}`)
       if (!res.ok) return
       const data = await res.json()
       const docs: DocumentInfo[] = (data.documents ?? []).map((doc: Record<string, unknown>) => ({
@@ -358,7 +359,7 @@ export function GenerationIAPage() {
     if (!user?.id) return
     setIsLoadingFilieres(true)
     try {
-      const res = await fetch(`/api/enseignant/context?enseignantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/enseignant/context?enseignantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         const filieresData: EnseignantFiliereContext[] = data.filieres ?? []
@@ -456,7 +457,7 @@ export function GenerationIAPage() {
 
       const res = await fetch('/api/epreuves/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           documentIds: Array.from(selectedDocIds),
           enseignantId: user.id,
@@ -627,7 +628,7 @@ export function GenerationIAPage() {
 
       const res = await fetch('/api/epreuves', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -639,7 +640,7 @@ export function GenerationIAPage() {
       toast.success('Épreuve enregistrée', {
         description: 'L\'épreuve a été ajoutée à la Banque d\'épreuves.',
       })
-      setCurrentPage('banque-epreuves')
+      router.push(PAGE_ROUTES['banque-epreuves'])
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'enregistrer l\'épreuve.',
@@ -967,7 +968,7 @@ export function GenerationIAPage() {
                     variant="outline"
                     size="sm"
                     className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                    onClick={() => setCurrentPage('documents')}
+                    onClick={() => router.push(PAGE_ROUTES.documents)}
                   >
                     <FileText className="h-3 w-3 mr-1" />
                     Aller aux Documents
@@ -1605,7 +1606,7 @@ export function GenerationIAPage() {
               <Button
                 variant="outline"
                 className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                onClick={() => setCurrentPage('banque-epreuves')}
+                onClick={() => router.push(PAGE_ROUTES['banque-epreuves'])}
               >
                 <Library className="h-4 w-4" />
                 Voir la Banque

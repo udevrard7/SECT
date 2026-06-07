@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getUserFromRequest } from '@/lib/auth-helpers'
+import { getAuthenticatedUser } from '@/lib/auth-session'
 
 // GET /api/ip-whitelist — List IP whitelist entries
 // RESPONSABLE: Only sees entries for their own establishment
 // ADMIN: Sees all or filtered by etablissementId
 export async function GET(request: NextRequest) {
   try {
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 // RESPONSABLE: Can add for their own establishment only
 export async function POST(request: NextRequest) {
   try {
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         adresseIp,
         description: description || null,
         etablissementId: targetEtablissementId || null,
-        creePar: creePar || authUser.userId || null,
+        creePar: creePar || authUser.id || null,
         actif: true,
       },
       include: {

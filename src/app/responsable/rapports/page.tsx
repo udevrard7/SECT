@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { BarChart3, Users, ClipboardCheck, Percent, BookOpen, ServerCrash, RefreshCw, Trophy } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { getAuthHeaders } from '@/stores/auth-store'
+
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -69,7 +69,7 @@ export default function RapportsPage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch('/api/responsable/rapports/filieres', { headers: getAuthHeaders() });
+      const res = await fetch('/api/responsable/rapports/filieres');
       if (!res.ok) throw new Error('Failed to fetch');
       const data: RapportFiliere[] = await res.json();
       setRapports(data);

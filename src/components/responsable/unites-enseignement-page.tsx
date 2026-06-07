@@ -18,7 +18,7 @@ import {
   Hash,
   Share2,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -207,7 +207,7 @@ export function UnitesEnseignementPage() {
       const params = new URLSearchParams()
       params.set('etablissementId', etablissementId)
       params.set('actif', 'true')
-      const res = await fetch(`/api/filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const filieresData = (data.filieres ?? []).map((f: FiliereOption) => ({
@@ -236,7 +236,7 @@ export function UnitesEnseignementPage() {
       if (semestreFilter && semestreFilter !== 'all') params.set('semestre', semestreFilter)
       params.set('actif', 'true')
 
-      const res = await fetch(`/api/unites-enseignement?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setUes((data.unitesEnseignement ?? []) as UEItem[])
@@ -275,7 +275,7 @@ export function UnitesEnseignementPage() {
       // Fetch affectations if not already loaded
       if (!ue.affectations) {
         try {
-          const res = await fetch(`/api/unites-enseignement/${ue.id}`, { headers: getAuthHeaders() })
+          const res = await fetch(`/api/unites-enseignement/${ue.id}`)
           if (res.ok) {
             const data = await res.json()
             setUes((prev) =>
@@ -345,7 +345,7 @@ export function UnitesEnseignementPage() {
 
       const res = await fetch('/api/unites-enseignement', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -433,7 +433,7 @@ export function UnitesEnseignementPage() {
 
       const res = await fetch(`/api/unites-enseignement/${editingUE.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -463,7 +463,6 @@ export function UnitesEnseignementPage() {
     try {
       const res = await fetch(`/api/unites-enseignement/${target.id}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -483,7 +482,7 @@ export function UnitesEnseignementPage() {
   // ─── View affectations ───
   const handleViewAffectations = async (ue: UEItem) => {
     try {
-      const res = await fetch(`/api/unites-enseignement/${ue.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement/${ue.id}`)
       if (res.ok) {
         const data = await res.json()
         setViewingUE({ ...ue, affectations: data.uniteEnseignement.affectations })

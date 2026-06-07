@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import crypto from 'crypto'
-import { getUserFromRequest } from '@/lib/auth-helpers'
+import { getAuthenticatedUser } from '@/lib/auth-session'
 import { validateCreationPermission } from '@/lib/role-permissions'
 
 const VALID_ROLES = ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT']
@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
 // POST /api/invitations — Create an invitation
 export async function POST(request: NextRequest) {
   try {
-    // Role-based permission check from request headers
-    const creatorContext = getUserFromRequest(request)
+    // Role-based permission check from session
+    const creatorContext = await getAuthenticatedUser()
     if (!creatorContext) {
       return NextResponse.json(
         { error: 'Vous n\'avez pas les permissions pour créer des invitations' },
@@ -85,18 +85,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: permissionError }, { status: 403 })
     }
 
-    // Use the authenticated user's ID as createdById (from headers, not from body)
-    const effectiveCreatedById = creatorContext.userId
+    // Use the authenticated user's ID as createdById (from session, not from body)
+    const effectiveCreatedById = creatorContext.id
 
     // For RESPONSABLE creators: auto-set etablissementId from their own establishment
     let resolvedEtablissementId = etablissementId || null
     if (creatorContext.role === 'RESPONSABLE') {
-      const creatorUser = await db.user.findUnique({
-        where: { id: creatorContext.userId },
-        select: { etablissementId: true },
-      })
-      if (creatorUser?.etablissementId) {
-        resolvedEtablissementId = creatorUser.etablissementId
+      if (creatorContext.etablissementId) {
+        resolvedEtablissementId = creatorContext.etablissementId
       }
     }
 

@@ -54,7 +54,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 
 // ─── Types ───
 
@@ -250,7 +250,7 @@ export function SecuritePage() {
     async function fetchEtablissements() {
       try {
         setLoadingEtablissements(true)
-        const res = await fetch('/api/etablissements', { headers: getAuthHeaders() })
+        const res = await fetch('/api/etablissements')
         if (!res.ok) throw new Error('Failed to fetch')
         const data = await res.json()
         setEtablissements(data.etablissements || [])
@@ -267,7 +267,7 @@ export function SecuritePage() {
 
   const fetchAllSettings = useCallback(async () => {
     try {
-      const res = await fetch('/api/security-settings', { headers: getAuthHeaders() })
+      const res = await fetch('/api/security-settings')
       if (!res.ok) return
       const data = await res.json()
       setAllSettings(data.securitySettings || [])
@@ -329,7 +329,7 @@ export function SecuritePage() {
       setSaving(true)
       const res = await fetch(`/api/security-settings/${settings.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           proctoringActif: settings.proctoringActif,
           detectionCopie: settings.detectionCopie,

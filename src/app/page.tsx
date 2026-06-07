@@ -1,28 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '@/stores/auth-store'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { LandingPage } from '@/components/landing/landing-page'
 import { LoginForm } from '@/components/auth/login-form'
-import { AcceptInvitationPage } from '@/components/auth/accept-invitation-page'
-import { AppLayout } from '@/components/layout/app-layout'
 import { Loader2 } from 'lucide-react'
 
-type ViewState = 'landing' | 'login' | 'invitation'
-
-function getInitialInvitationState(): { view: ViewState; token: string | null } {
-  if (typeof window === 'undefined') return { view: 'landing', token: null }
-  const params = new URLSearchParams(window.location.search)
-  const token = params.get('token')
-  if (token) return { view: 'invitation', token }
-  return { view: 'landing', token: null }
-}
-
 export default function Home() {
-  const { isAuthenticated } = useAuthStore()
-  const initialState = getInitialInvitationState()
-  const [view, setView] = useState<ViewState>(initialState.view)
-  const [invitationToken, setInvitationToken] = useState<string | null>(initialState.token)
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [initializing, setInitializing] = useState(true)
 
   // Seed the database in background (non-blocking)
@@ -32,8 +19,15 @@ export default function Home() {
       .finally(() => setInitializing(false))
   }, [])
 
+  // Redirect to dashboard if authenticated
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.push('/dashboard')
+    }
+  }, [status, router])
+
   // Show loading while initializing the database
-  if (initializing) {
+  if (initializing || status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950 dark:via-teal-950 dark:to-emerald-900">
         <div className="flex flex-col items-center gap-4">
@@ -46,36 +40,16 @@ export default function Home() {
     )
   }
 
-  // Show app directly if authenticated (derived state, no useEffect needed)
-  if (isAuthenticated) {
-    return <AppLayout />
+  // If authenticated, redirecting (show nothing while redirect happens)
+  if (status === 'authenticated') {
+    return null
   }
 
-  // Show invitation acceptance page
-  if (view === 'invitation' && invitationToken) {
-    return (
-      <AcceptInvitationPage
-        token={invitationToken}
-        onComplete={() => {
-          setInvitationToken(null)
-          setView('login')
-          // Clean the URL query params
-          window.history.replaceState({}, '', '/')
-        }}
-      />
-    )
-  }
-
-  // Show login form
-  if (view === 'login') {
-    return <LoginForm onBack={() => setView('landing')} />
-  }
-
-  // Show landing page by default
+  // Show landing page for unauthenticated users
   return (
     <LandingPage
-      onLogin={() => setView('login')}
-      onDemo={() => setView('login')}
+      onLogin={() => router.push('/login')}
+      onDemo={() => router.push('/login')}
     />
   )
 }

@@ -16,8 +16,8 @@ import {
   ChevronRight,
   MessageSquareWarning
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
 import {
   Card,
   CardHeader,
@@ -41,7 +41,6 @@ import {
 } from 'recharts'
 import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
-
 
 // --- Animation Variants ---
 const containerVariants = {
@@ -138,12 +137,12 @@ function DashboardSkeleton() {
   )
 }
 
-
 // --- NEW & MODERNIZED COMPONENTS ---
 
 // 1. Quick Actions Card
 function QuickActions() {
-  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+  const router = useRouter()
+  const setCurrentPage = (page: string) => router.push(`/${page}`)
   const actions = [
     { title: 'Nouvelle Épreuve', icon: ClipboardPen, color: 'text-emerald-600', page: 'epreuves' },
     { title: 'Générer par IA', icon: Sparkles, color: 'text-teal-500', page: 'questions-ia' },
@@ -170,7 +169,8 @@ function QuickActions() {
 
 // 2. Activity Feed
 function ActivityFeed({ corrections }: { corrections: PendingCorrection[] }) {
-    const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+    const router = useRouter()
+    const setCurrentPage = (page: string) => router.push(`/${page}`)
 
     if (corrections.length === 0) {
         return (
@@ -253,7 +253,6 @@ function PerformanceChart({ data }: { data: PerformanceData[] }) {
     )
 }
 
-
 // ─── Main Component ───
 export function EnseignantDashboard() {
   const user = useAuthStore((s) => s.user)
@@ -268,7 +267,7 @@ export function EnseignantDashboard() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/stats/enseignant?userId=${userId}`, { headers: getAuthHeaders() })
+        const res = await fetch(`/api/stats/enseignant?userId=${userId}`)
         if (!res.ok) throw new Error('Erreur API')
         const json = await res.json()
         setData(json)

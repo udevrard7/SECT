@@ -25,8 +25,9 @@ import {
   Lock,
   ArrowRight,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -152,7 +153,7 @@ function getRoleBadge(role: string) {
 // ─── Main Component ───
 
 export function EtablissementsPage() {
-  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+  const router = useRouter()
 
   // ─── Data state ───
   const [etablissements, setEtablissements] = useState<EtablissementItem[]>([])
@@ -195,7 +196,7 @@ export function EtablissementsPage() {
       if (search) params.set('search', search)
       if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter)
 
-      const res = await fetch(`/api/etablissements?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/etablissements?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEtablissements(data.etablissements ?? [])
@@ -259,7 +260,7 @@ export function EtablissementsPage() {
 
       const res = await fetch(`/api/etablissements/${editingEtab.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -281,7 +282,7 @@ export function EtablissementsPage() {
     try {
       const res = await fetch(`/api/etablissements/${etab.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !etab.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -296,7 +297,7 @@ export function EtablissementsPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/etablissements/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/etablissements/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Établissement supprimé')
       setDeleteTarget(null)
@@ -312,7 +313,7 @@ export function EtablissementsPage() {
     setDetailOpen(true)
     setDetailAdminAccess(null)
     try {
-      const res = await fetch(`/api/etablissements/${etab.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/etablissements/${etab.id}`)
       if (res.ok) {
         const data = await res.json()
         setDetailEtab(data.etablissement)
@@ -340,7 +341,7 @@ export function EtablissementsPage() {
             Consulter et administrer les établissements partenaires
           </p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setCurrentPage('abonnements')}>
+        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => router.push(PAGE_ROUTES.abonnements)}>
           <CreditCard className="h-4 w-4" />
           Nouvelle souscription
           <ArrowRight className="h-3.5 w-3.5 ml-1" />
@@ -451,7 +452,7 @@ export function EtablissementsPage() {
               : 'Aucun établissement enregistré. Créez-en un via la page Abonnements.'}
           </p>
           {!search && typeFilter === 'all' && (
-            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={() => setCurrentPage('abonnements')}>
+            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={() => router.push(PAGE_ROUTES.abonnements)}>
               <CreditCard className="h-4 w-4" />
               Nouvelle souscription
               <ArrowRight className="h-3.5 w-3.5 ml-1" />

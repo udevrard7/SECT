@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getUserFromRequest } from '@/lib/auth-helpers'
+import { getAuthenticatedUser } from '@/lib/auth-session'
 
 // PATCH /api/ip-whitelist/[id] — Toggle active status
 // ADMIN: Can update any entry
@@ -11,7 +11,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
 
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
@@ -102,7 +102,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
 
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })

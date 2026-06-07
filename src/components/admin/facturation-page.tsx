@@ -29,7 +29,7 @@ import {
   Trash2,
   Info,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -291,9 +291,9 @@ export function FacturationPage() {
     setIsLoading(true)
     try {
       const [facturesRes, aboRes, etabRes] = await Promise.all([
-        fetch('/api/factures?limit=200', { headers: getAuthHeaders() }),
-        fetch('/api/abonnements', { headers: getAuthHeaders() }),
-        fetch('/api/etablissements', { headers: getAuthHeaders() }),
+        fetch('/api/factures?limit=200'),
+        fetch('/api/abonnements'),
+        fetch('/api/etablissements'),
       ])
 
       if (facturesRes.ok) {
@@ -651,7 +651,7 @@ export function FacturationPage() {
     try {
       const res = await fetch('/api/factures', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           abonnementId: formAbonnementId,
           etablissementId: abo.etablissementId,
@@ -721,7 +721,7 @@ export function FacturationPage() {
     try {
       const res = await fetch(`/api/factures/${payTarget.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           statut: 'PAYEE',
           modePaiement: formModePaiement,

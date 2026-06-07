@@ -28,7 +28,7 @@ import {
   RefreshCw,
   Ban,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -296,14 +296,14 @@ export function EnseignantsPage() {
     if (!acc[a.enseignantId]) acc[a.enseignantId] = []
     acc[a.enseignantId].push(a)
     return acc
-  }, {})
+  })
 
   // ─── Fetch filieres for this responsable ───
   const fetchFilieres = useCallback(async () => {
     try {
       const params = new URLSearchParams()
       if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
-      const res = await fetch(`/api/filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null }) => ({
@@ -329,7 +329,7 @@ export function EnseignantsPage() {
       if (search) params.set('search', search)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
 
-      const res = await fetch(`/api/users?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/users?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const users = (data.users ?? []) as EnseignantItem[]
@@ -348,7 +348,7 @@ export function EnseignantsPage() {
     try {
       const params = new URLSearchParams()
       params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
-      const res = await fetch(`/api/enseignant-filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/enseignant-filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setAssignments(data.assignments ?? [])
@@ -366,7 +366,7 @@ export function EnseignantsPage() {
       params.set('createdById', user.id)
       params.set('used', 'false')
       params.set('limit', '50')
-      const res = await fetch(`/api/invitations?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/invitations?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         // Filter to only ENSEIGNANT invitations
@@ -467,8 +467,7 @@ export function EnseignantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -517,8 +516,7 @@ export function EnseignantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -544,8 +542,7 @@ export function EnseignantsPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...getAuthHeaders(),
-          },
+            },
           body: JSON.stringify(assignmentBody),
         })
         if (!assignRes.ok) {
@@ -598,8 +595,7 @@ export function EnseignantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -625,8 +621,7 @@ export function EnseignantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify({ actif: !enseignant.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -671,8 +666,7 @@ export function EnseignantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify({
           assignments: [{
             enseignantId: assignmentEnseignant.id,
@@ -696,7 +690,7 @@ export function EnseignantsPage() {
       const updatedAssigns = await (async () => {
         const params = new URLSearchParams()
         params.set('enseignantId', assignmentEnseignant.id)
-        const res2 = await fetch(`/api/enseignant-filieres?${params.toString()}`, { headers: getAuthHeaders() })
+        const res2 = await fetch(`/api/enseignant-filieres?${params.toString()}`)
         if (res2.ok) {
           const d = await res2.json()
           return (d.assignments ?? []).filter((a: EnseignantFiliereItem) => filiereIds.includes(a.filiereId))
@@ -721,8 +715,7 @@ export function EnseignantsPage() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify({ id: deleteAssignmentTarget.id }),
       })
       if (!res.ok) {
@@ -738,7 +731,7 @@ export function EnseignantsPage() {
       // Refresh teacher assignments
       const params = new URLSearchParams()
       params.set('enseignantId', assignmentEnseignant.id)
-      const res2 = await fetch(`/api/enseignant-filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res2 = await fetch(`/api/enseignant-filieres?${params.toString()}`)
       if (res2.ok) {
         const d = await res2.json()
         setTeacherAssignments((d.assignments ?? []).filter((a: EnseignantFiliereItem) => filiereIds.includes(a.filiereId)))
@@ -785,8 +778,7 @@ export function EnseignantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -861,8 +853,7 @@ export function EnseignantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -895,8 +886,7 @@ export function EnseignantsPage() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

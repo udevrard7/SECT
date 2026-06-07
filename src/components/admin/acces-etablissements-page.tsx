@@ -22,7 +22,7 @@ import {
   AlertCircle,
   FileText,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -204,7 +204,7 @@ export function AccesEtablissementsPage() {
       const [accessRes, authorizedRes, etabRes] = await Promise.all([
         fetch(`/api/etablissement-access?adminId=${user.id}`),
         fetch(`/api/etablissement-access/authorized-etablissements?adminId=${user.id}`),
-        fetch('/api/etablissements', { headers: getAuthHeaders() }),
+        fetch('/api/etablissements'),
       ])
 
       if (accessRes.ok) {
@@ -292,7 +292,7 @@ export function AccesEtablissementsPage() {
     try {
       const res = await fetch('/api/etablissement-access', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adminId: user.id,
           etablissementId: formEtablissementId,

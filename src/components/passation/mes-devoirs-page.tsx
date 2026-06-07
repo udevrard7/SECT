@@ -19,7 +19,7 @@ import {
   Timer,
   Type,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import {
   Card,
   CardContent,
@@ -197,7 +197,7 @@ export function MesDevoirsPage() {
   const fetchDevoirs = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/devoirs?etudiantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/devoirs?etudiantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setDevoirs(data.devoirs ?? [])
@@ -263,7 +263,7 @@ export function MesDevoirsPage() {
     try {
       const res = await fetch('/api/soumissions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           devoirId: selectedDevoir.id,
           etudiantId: user.id,

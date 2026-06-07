@@ -22,7 +22,7 @@ import {
   ChevronUp,
   User,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -274,7 +274,7 @@ export function EvaluationsPage() {
       // First get the filières managed by this responsable
       let filiereIds: string[] = []
       if (user?.id) {
-        const filRes = await fetch(`/api/filieres?responsableId=${user.id}`, { headers: getAuthHeaders() })
+        const filRes = await fetch(`/api/filieres?responsableId=${user.id}`)
         if (filRes.ok) {
           const filData = await filRes.json()
           filiereIds = (filData.filieres ?? []).map((f: { id: string }) => f.id)
@@ -297,7 +297,7 @@ export function EvaluationsPage() {
       }
       if (statutFilter !== 'all') params.set('statut', statutFilter)
 
-      const res = await fetch(`/api/epreuves?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])
@@ -312,7 +312,7 @@ export function EvaluationsPage() {
   // ─── Fetch filieres ───
   const fetchFilieres = useCallback(async () => {
     try {
-      const res = await fetch('/api/filieres', { headers: getAuthHeaders() })
+      const res = await fetch('/api/filieres')
       if (res.ok) {
         const data = await res.json()
         setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
@@ -357,7 +357,7 @@ export function EvaluationsPage() {
     setDetailLoading(true)
 
     try {
-      const res = await fetch(`/api/epreuves/${epreuve.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/${epreuve.id}`)
       if (res.ok) {
         const data = await res.json()
         setDetailEpreuve(data.epreuve ?? epreuve)

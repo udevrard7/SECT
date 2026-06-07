@@ -27,8 +27,9 @@ import {
   CheckSquare,
   Square,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
@@ -152,7 +153,7 @@ function formatDate(date: string | Date): string {
 
 export function BanqueQuestionsPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
 
   // ─── Data state ───
   const [questions, setQuestions] = useState<Question[]>([])
@@ -219,7 +220,7 @@ export function BanqueQuestionsPage() {
     if (!user?.id) return
     const fetchDocs = async () => {
       try {
-        const res = await fetch(`/api/documents?userId=${user.id}`, { headers: getAuthHeaders() })
+        const res = await fetch(`/api/documents?userId=${user.id}`)
         if (res.ok) {
           const data = await res.json()
           const docs = (data.documents ?? []).map((d: { id: string; nomFichier: string }) => ({
@@ -251,7 +252,7 @@ export function BanqueQuestionsPage() {
       if (valideeFilter !== 'TOUS') params.set('validee', valideeFilter === 'VALIDEES' ? 'true' : 'false')
       if (documentFilter !== 'TOUS') params.set('documentId', documentFilter)
 
-      const res = await fetch(`/api/questions?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/questions?${params.toString()}`)
       if (res.ok) {
         const data: QuestionsResponse = await res.json()
         setQuestions(data.questions ?? [])
@@ -335,7 +336,7 @@ export function BanqueQuestionsPage() {
   const handleDelete = async () => {
     if (!deletingQuestion) return
     try {
-      const res = await fetch(`/api/questions/${deletingQuestion.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/questions/${deletingQuestion.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Question déplacée vers la corbeille', {
         description: 'La question a été déplacée vers la corbeille. Vous pouvez la restaurer dans les 30 jours.',
@@ -377,7 +378,7 @@ export function BanqueQuestionsPage() {
     try {
       const res = await fetch('/api/questions', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       })
       if (!res.ok) {
@@ -459,7 +460,7 @@ export function BanqueQuestionsPage() {
 
       const res = await fetch('/api/questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -511,7 +512,7 @@ export function BanqueQuestionsPage() {
 
       const res = await fetch(`/api/questions/${editingQuestion.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -1025,7 +1026,7 @@ export function BanqueQuestionsPage() {
               <Button
                 variant="outline"
                 className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                onClick={() => setCurrentPage('questions-ia')}
+                onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
               >
                 <Sparkles className="h-4 w-4" />
                 Générer via l&apos;IA

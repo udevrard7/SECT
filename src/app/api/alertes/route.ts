@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { withAuth, AuthenticatedUser } from '@/lib/auth-middleware'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 
 // GET /api/alertes — List alertes with filters
 // Protected by withAuth: requires a valid session.

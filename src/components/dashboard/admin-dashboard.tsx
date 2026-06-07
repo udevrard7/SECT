@@ -49,8 +49,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   PieChart,
@@ -260,7 +260,7 @@ export function AdminDashboard() {
         const url = user?.id
           ? `/api/stats/admin?adminId=${user.id}`
           : '/api/stats/admin'
-        const res = await fetch(url, { headers: getAuthHeaders() })
+        const res = await fetch(url)
         if (!res.ok) throw new Error('Erreur réseau')
         const data: AdminStats = await res.json()
         setStats(data)
@@ -277,7 +277,7 @@ export function AdminDashboard() {
   const fetchAccessRecords = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/etablissement-access?adminId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/etablissement-access?adminId=${user.id}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setAccessRecords(data.accessRecords || [])
@@ -301,7 +301,7 @@ export function AdminDashboard() {
     try {
       const res = await fetch('/api/etablissement-access', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adminId: user.id,
           etablissementId: selectedEtablissement.id,
@@ -362,7 +362,7 @@ export function AdminDashboard() {
   const avgSecurityScore = Math.min(100, Math.round(securityRatio * 0.6 + (stats?.nbVerificationIdentite ?? 0) / totalEtablissements * 100 * 0.4))
 
   // Navigation helper
-  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+  const router = useRouter()
 
   return (
     <div className="space-y-6">
@@ -665,7 +665,7 @@ export function AdminDashboard() {
                             variant="outline"
                             className="h-7 text-xs"
                             onClick={() => {
-                              setCurrentPage('etablissements')
+                              router.push('/etablissements')
                             }}
                           >
                             <ExternalLink className="mr-1 h-3 w-3" />
@@ -716,7 +716,7 @@ export function AdminDashboard() {
             <Button
               variant="outline"
               className="h-auto flex-col gap-2 py-4"
-              onClick={() => setCurrentPage('abonnements')}
+              onClick={() => router.push('/abonnements')}
             >
               <Plus className="h-5 w-5 text-amber-600" />
               <span className="text-sm font-medium">Nouvelle souscription</span>
@@ -725,7 +725,7 @@ export function AdminDashboard() {
             <Button
               variant="outline"
               className="h-auto flex-col gap-2 py-4"
-              onClick={() => setCurrentPage('utilisateurs')}
+              onClick={() => router.push('/utilisateurs')}
             >
               <Users className="h-5 w-5 text-teal-600" />
               <span className="text-sm font-medium">Voir les responsables</span>
@@ -734,7 +734,7 @@ export function AdminDashboard() {
             <Button
               variant="outline"
               className="h-auto flex-col gap-2 py-4"
-              onClick={() => setCurrentPage('acces-etablissements')}
+              onClick={() => router.push('/acces-etablissements')}
             >
               <KeyRound className="h-5 w-5 text-red-600" />
               <span className="text-sm font-medium">Accès & autorisations</span>

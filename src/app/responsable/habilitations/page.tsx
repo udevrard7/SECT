@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getAuthHeaders } from '@/stores/auth-store'
+
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -83,7 +83,7 @@ export default function HabilitationsPage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch('/api/responsable/habilitations', { headers: getAuthHeaders() });
+      const res = await fetch('/api/responsable/habilitations');
       if (!res.ok) throw new Error('Failed to fetch');
       const fetchedData: HabilitationsData = await res.json();
       setData(fetchedData);
@@ -117,7 +117,6 @@ export default function HabilitationsPage() {
     setSaving(true);
     const promise = fetch('/api/responsable/habilitations', {
         method: 'POST',
-        headers: getAuthHeaders(),
         body: JSON.stringify({ changes: pendingChanges })
     });
 

@@ -26,7 +26,7 @@ import {
   KeyRound,
   FileText,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -286,7 +286,7 @@ export function EtudiantsPage() {
     try {
       const params = new URLSearchParams()
       if (etablissementId) params.set('etablissementId', etablissementId)
-      const res = await fetch(`/api/filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null }) => ({
@@ -319,7 +319,7 @@ export function EtudiantsPage() {
       if (filiereFilter && filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
 
-      const res = await fetch(`/api/users?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/users?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         // API now returns only students from the RESPONSABLE's establishment
@@ -356,7 +356,7 @@ export function EtudiantsPage() {
       params.set('used', 'false')
       params.set('limit', '50')
 
-      const res = await fetch(`/api/invitations?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/invitations?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         const etuInvitations = (data.invitations ?? []).filter(
@@ -437,8 +437,7 @@ export function EtudiantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -482,8 +481,7 @@ export function EtudiantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -515,8 +513,7 @@ export function EtudiantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -538,8 +535,7 @@ export function EtudiantsPage() {
       const res = await fetch(`/api/invitations/${target.id}`, {
         method: 'DELETE',
         headers: {
-          ...getAuthHeaders(),
-        },
+          },
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -594,8 +590,7 @@ export function EtudiantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -621,8 +616,7 @@ export function EtudiantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify({ actif: !etudiant.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -645,8 +639,7 @@ export function EtudiantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify({ filiereId: null }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -701,8 +694,7 @@ export function EtudiantsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify(body),
       })
       if (!res.ok) {

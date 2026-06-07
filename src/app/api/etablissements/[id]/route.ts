@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getUserFromRequest } from '@/lib/auth-helpers'
+import { getAuthenticatedUser } from '@/lib/auth-session'
 
 // GET /api/etablissements/[id] — Get single etablissement with details
 // ADMIN: Only sees basic info unless they have an APPROUVE EtablissementAccess
@@ -11,7 +11,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
 
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
@@ -65,7 +65,7 @@ export async function GET(
     if (authUser.role === 'ADMIN') {
       const accessRecord = await db.etablissementAccess.findFirst({
         where: {
-          adminId: authUser.userId,
+          adminId: authUser.id,
           etablissementId: id,
           statut: 'APPROUVE',
         },
@@ -143,7 +143,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
 
     if (!authUser) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
@@ -190,7 +190,7 @@ export async function PATCH(
     // Log audit
     await db.auditLog.create({
       data: {
-        userId: authUser.userId,
+        userId: authUser.id,
         action: 'UPDATE',
         entite: 'Etablissement',
         entiteId: id,
@@ -211,7 +211,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = getUserFromRequest(request)
+    const authUser = await getAuthenticatedUser()
 
     if (!authUser || authUser.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Seul un administrateur peut supprimer un établissement' }, { status: 403 })
