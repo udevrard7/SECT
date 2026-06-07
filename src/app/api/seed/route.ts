@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { withAuth } from '@/lib/auth-session'
 
 /**
  * POST /api/seed
@@ -8,8 +9,9 @@ import bcrypt from 'bcryptjs'
  * - Crée les plans d'abonnement par défaut en Franc CFA (XOF)
  * - Crée un compte Admin SaaS par défaut si aucun admin n'existe
  * - Crée un établissement de démonstration avec un Responsable si demandé
+ * 🔒 ADMIN only (after initial setup)
  */
-export async function POST(request: NextRequest) {
+const _postHandler = async (request: NextRequest) => {
   try {
     // Allow unauthenticated seeding when database is completely empty
     const existingUsers = await db.user.count()
@@ -196,3 +198,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withAuth(_postHandler, ['ADMIN'])

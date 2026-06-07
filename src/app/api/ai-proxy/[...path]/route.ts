@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withAuth } from '@/lib/auth-session'
 
 /**
  * AI API Proxy Route
- * 
+ *
  * Proxies AI requests from Vercel to the Z-AI API.
+ * 🔒 ADMIN, ENSEIGNANT, RESPONSABLE only
  * 
  * Architecture for Vercel production:
  * - SDK (on Vercel) → ZAI_BASE_URL=https://sect-app.vercel.app/api/ai-proxy/v1
@@ -18,18 +20,18 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const PUBLIC_API_URL = 'https://z.ai/api/v1'
 
-export async function POST(
+const _postHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  return proxyRequest(request, params)
+  context: { params: any; user: any }
+) => {
+  return proxyRequest(request, context.params)
 }
 
-export async function GET(
+const _getHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  return proxyRequest(request, params)
+  context: { params: any; user: any }
+) => {
+  return proxyRequest(request, context.params)
 }
 
 async function proxyRequest(
@@ -191,7 +193,7 @@ async function proxyRequest(
   }
 }
 
-// Handle CORS preflight
+// Handle CORS preflight (public — no auth needed for OPTIONS)
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
@@ -202,3 +204,6 @@ export async function OPTIONS() {
     },
   })
 }
+
+export const POST = withAuth(_postHandler, ['ADMIN', 'ENSEIGNANT', 'RESPONSABLE'])
+export const GET = withAuth(_getHandler, ['ADMIN', 'ENSEIGNANT', 'RESPONSABLE'])

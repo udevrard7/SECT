@@ -6,22 +6,21 @@ import {
   gradeQCU,
   gradeQCM,
   detectGradingScenario,
+  areAllAnswersGraded,
   AUTO_GRADABLE_TYPES,
   MANUAL_CORRECTION_TYPES,
 } from '@/lib/grading'
+import { withAuth } from '@/lib/auth-session'
 
-// Submit exam (duplicate route — delegates to /api/sessions/[id]/submit for the main flow)
-// This POST handler exists for backward compatibility
-export async function POST(
+async function _POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { autoSubmit } = body
 
-    // Get session
     const session = await db.sessionPassation.findUnique({
       where: { id },
       include: {
@@ -46,10 +45,8 @@ export async function POST(
       return NextResponse.json({ error: 'Session déjà soumise' }, { status: 400 })
     }
 
-    // Load proposition mappings
     const propositionMappings = parsePropositionMappings(session.propositionMappings)
 
-    // Mark session as submitted
     const now = new Date()
     const updatedSession = await db.sessionPassation.update({
       where: { id },
@@ -65,7 +62,6 @@ export async function POST(
       },
     })
 
-    // Build unified question list
     type QuestionForGrading = {
       id: string
       questionId: string
@@ -103,10 +99,8 @@ export async function POST(
       }
     }
 
-    // Detect grading scenario
     const scenario = detectGradingScenario(questionsForGrading)
 
-    // Grade each question using shared grading utilities
     let autoGradedScore = 0
     const detailParQuestion: Record<string, unknown>[] = []
 
@@ -127,7 +121,6 @@ export async function POST(
         questionScore = result.score
         isAutoGraded = true
       }
-      // QRC, TRS, REFLEXION: score stays null (pending manual correction)
 
       if (reponse && isAutoGraded) {
         await db.reponse.update({
@@ -150,25 +143,21 @@ export async function POST(
       })
     }
 
-    // Apply penalty
     const penalite = session.penalite || 0
     const finalScore = Math.max(0, autoGradedScore - penalite)
 
-    // Determine session status based on scenario
     let newStatut: string
     if (scenario.type === 'A') {
-      newStatut = 'CORRIGEE' // All auto-graded
+      newStatut = 'CORRIGEE'
     } else {
-      newStatut = 'SOUMISE' // Needs manual correction
+      newStatut = 'SOUMISE'
     }
 
-    // Update session status
     await db.sessionPassation.update({
       where: { id },
       data: { statut: newStatut, score: finalScore },
     })
 
-    // Create or update result
     const totalPossible = questionsForGrading.reduce((sum, q) => sum + q.bareme, 0)
     const autoGradableTotal = questionsForGrading
       .filter((q) => AUTO_GRADABLE_TYPES.includes(q.type))
@@ -222,17 +211,15 @@ export async function POST(
   }
 }
 
-// Save answers / Log alerts (auto-save during exam)
-export async function PUT(
+async function _PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { reponses, alerte } = body
 
-    // Check session is still active
     const session = await db.sessionPassation.findUnique({
       where: { id },
       include: { epreuve: { select: { statut: true, dateFin: true, delaiGrace: true } } },
@@ -245,7 +232,6 @@ export async function PUT(
       )
     }
 
-    // Check if epreuve is closed
     if (session.epreuve.statut === 'CLOTUREE') {
       return NextResponse.json(
         { error: 'Cette épreuve est clôturée', code: 'EPREUVE_CLOTUREE' },
@@ -253,7 +239,6 @@ export async function PUT(
       )
     }
 
-    // Check if grace period has expired
     const now = new Date()
     const gracePeriodEnd = new Date(session.epreuve.dateFin.getTime() + (session.epreuve.delaiGrace || 3) * 60 * 1000)
     if (now >= gracePeriodEnd) {
@@ -263,7 +248,6 @@ export async function PUT(
       )
     }
 
-    // Handle batch answer save
     if (reponses && typeof reponses === 'object') {
       const entries = Object.entries(reponses as Record<string, string>)
       for (const [questionId, contenu] of entries) {
@@ -285,7 +269,6 @@ export async function PUT(
       }
     }
 
-    // Handle alert (anti-cheat event)
     if (alerte) {
       const currentLogs = session.logEvents ? JSON.parse(session.logEvents) : []
       currentLogs.push({
@@ -300,7 +283,6 @@ export async function PUT(
         alertes: { increment: 1 },
       }
 
-      // If the alert includes a penalty, accumulate it
       if (alerte.penalite && alerte.penalite > 0) {
         updateData.penalite = { increment: alerte.penalite }
       }
@@ -321,17 +303,15 @@ export async function PUT(
   }
 }
 
-// PATCH: Force submit / Force grade / Update session status (admin/teacher actions)
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { action } = body
 
-    // ─── Action: Force submit a stuck session (EN_COURS → SOUMISE/CORRIGEE) ───
     if (action === 'soumettre') {
       const session = await db.sessionPassation.findUnique({
         where: { id },
@@ -358,10 +338,8 @@ export async function PATCH(
         return NextResponse.json({ error: 'Seules les sessions en cours peuvent être forcées' }, { status: 400 })
       }
 
-      // Load proposition mappings
       const propositionMappings = parsePropositionMappings(session.propositionMappings)
 
-      // Mark session as submitted
       const now = new Date()
       const updatedSession = await db.sessionPassation.update({
         where: { id },
@@ -377,7 +355,6 @@ export async function PATCH(
         },
       })
 
-      // Build question list
       type QuestionForGrading = {
         id: string
         questionId: string
@@ -415,10 +392,8 @@ export async function PATCH(
         }
       }
 
-      // Detect grading scenario
       const scenario = detectGradingScenario(questionsForGrading)
 
-      // Grade using shared utilities with mapping support
       let autoGradedScore = 0
       const detailParQuestion: Record<string, unknown>[] = []
 
@@ -461,17 +436,14 @@ export async function PATCH(
         })
       }
 
-      // Determine final status
       const newStatut = scenario.type === 'A' ? 'CORRIGEE' : 'SOUMISE'
       const totalPossible = questionsForGrading.reduce((sum, q) => sum + q.bareme, 0)
 
-      // Update session status
       await db.sessionPassation.update({
         where: { id },
         data: { statut: newStatut, score: autoGradedScore },
       })
 
-      // Create or update result
       if (session.resultat) {
         await db.resultat.update({
           where: { id: session.resultat.id },
@@ -495,7 +467,6 @@ export async function PATCH(
         })
       }
 
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -506,10 +477,6 @@ export async function PATCH(
           details: `Soumission forcée par l'enseignant — score ${autoGradedScore}/${totalPossible}`,
         },
       })
-
-      // NOTE: Auto-closure is handled by the closure-watcher mini-service.
-      // Not triggered on force-submit to avoid premature epreuve closure.
-      // See submit route for detailed explanation.
 
       return NextResponse.json({
         session: updatedSession,
@@ -524,7 +491,6 @@ export async function PATCH(
       })
     }
 
-    // ─── Action: Force grade all answers and mark as CORRIGEE ───
     if (action === 'corriger') {
       const session = await db.sessionPassation.findUnique({
         where: { id },
@@ -551,10 +517,8 @@ export async function PATCH(
         return NextResponse.json({ error: 'La session doit être soumise ou en cours pour être corrigée' }, { status: 400 })
       }
 
-      // Load proposition mappings
       const propositionMappings = parsePropositionMappings(session.propositionMappings)
 
-      // Build unified questions list
       type UnifiedQ = {
         questionId: string
         bareme: number
@@ -588,7 +552,6 @@ export async function PATCH(
         }
       }
 
-      // Auto-grade QCU/QCM if not already done (using mapping-aware grading)
       for (const q of allQuestions) {
         const reponse = session.reponses.find((r) => r.questionId === q.questionId)
         if (reponse && reponse.score === null && AUTO_GRADABLE_TYPES.includes(q.type)) {
@@ -611,7 +574,6 @@ export async function PATCH(
         }
       }
 
-      // Recalculate total score from all graded answers
       const updatedReponses = await db.reponse.findMany({ where: { sessionId: id } })
       const totalScore = updatedReponses.reduce((sum, r) => sum + (r.score || 0), 0)
       const totalPossible = allQuestions.reduce((sum, q) => sum + q.bareme, 0)
@@ -629,7 +591,6 @@ export async function PATCH(
         }
       })
 
-      // Create or update resultat
       if (session.resultat) {
         await db.resultat.update({
           where: { id: session.resultat.id },
@@ -653,7 +614,6 @@ export async function PATCH(
         })
       }
 
-      // Update session status to CORRIGEE
       const now = new Date()
       await db.sessionPassation.update({
         where: { id },
@@ -664,7 +624,6 @@ export async function PATCH(
         },
       })
 
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -694,13 +653,12 @@ export async function PATCH(
   }
 }
 
-// Get session details
-export async function GET(
+async function _GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const session = await db.sessionPassation.findUnique({
       where: { id },
@@ -738,3 +696,8 @@ export async function GET(
     )
   }
 }
+
+export const POST = withAuth(_POST)
+export const PUT = withAuth(_PUT)
+export const PATCH = withAuth(_PATCH)
+export const GET = withAuth(_GET)

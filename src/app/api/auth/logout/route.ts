@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getAuthSession } from '@/lib/auth-session'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => ({}))
-    const { userId } = body
+    // Get userId from the session, NOT from the request body
+    const session = await getAuthSession()
+    const userId = session?.user?.id
 
     if (userId) {
       // Update derniereConnexion

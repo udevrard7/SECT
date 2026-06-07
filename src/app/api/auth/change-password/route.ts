@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { getAuthenticatedUser } from '@/lib/auth-session'
 
 // POST /api/auth/change-password — Change user password
 export async function POST(request: NextRequest) {
   try {
-    const { userId, currentPassword, newPassword } = await request.json()
-
-    if (!userId || !currentPassword || !newPassword) {
+    // Get userId from the session, NOT from the request body
+    const authUser = await getAuthenticatedUser()
+    if (!authUser) {
       return NextResponse.json(
-        { error: 'userId, currentPassword et newPassword sont requis' },
+        { error: 'Non authentifié. Session invalide ou expirée.' },
+        { status: 401 }
+      )
+    }
+
+    const userId = authUser.id
+
+    const { currentPassword, newPassword } = await request.json()
+
+    if (!currentPassword || !newPassword) {
+      return NextResponse.json(
+        { error: 'currentPassword et newPassword sont requis' },
         { status: 400 }
       )
     }

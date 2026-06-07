@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId requis' }, { status: 400 })
-    }
+    // Use authenticated user ID from session to prevent IDOR
+    const userId = context.user.id
 
     const now = new Date()
 
@@ -291,3 +288,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ETUDIANT', 'RESPONSABLE', 'ADMIN'])

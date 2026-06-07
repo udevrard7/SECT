@@ -78,7 +78,6 @@ function getPasswordStrength(password: string) {
 // ─── Props ───
 interface ForceChangePasswordPageProps {
   userId: string
-  currentPassword: string
   user: AuthUser
   onSuccess: (user: AuthUser) => void
 }
@@ -86,11 +85,10 @@ interface ForceChangePasswordPageProps {
 // ─── Component ───
 export function ForceChangePasswordPage({
   userId,
-  currentPassword,
   user,
   onSuccess,
 }: ForceChangePasswordPageProps) {
-  const [currentPwd, setCurrentPwd] = useState(currentPassword)
+  const [currentPwd, setCurrentPwd] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showCurrentPwd, setShowCurrentPwd] = useState(false)
@@ -103,7 +101,7 @@ export function ForceChangePasswordPage({
 
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword
   const allRequirementsMet = Object.values(strength.checks).every(Boolean)
-  const canSubmit = allRequirementsMet && passwordsMatch && !isSubmitting && !isSuccess
+  const canSubmit = currentPwd.length > 0 && allRequirementsMet && passwordsMatch && !isSubmitting && !isSuccess
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return
@@ -114,7 +112,6 @@ export function ForceChangePasswordPage({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
           currentPassword: currentPwd,
           newPassword,
         }),
@@ -145,7 +142,7 @@ export function ForceChangePasswordPage({
     } finally {
       setIsSubmitting(false)
     }
-  }, [canSubmit, userId, currentPwd, newPassword, onSuccess])
+  }, [canSubmit, currentPwd, newPassword, onSuccess])
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-gray-950 dark:via-gray-900 dark:to-emerald-950">

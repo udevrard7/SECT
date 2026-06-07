@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
 const VALID_TYPES_SEANCE = ['CM', 'TD', 'TP']
 const VALID_STATUTS = ['PROVISOIRE', 'VALIDEE', 'PUBLIEE']
 
-// ─── GET /api/affectations ───
-// List affectations with optional filters
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
@@ -147,9 +146,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ─── POST /api/affectations ───
-// Create a new affectation
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     const body = await request.json()
     const {
@@ -324,3 +321,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE'])
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE'])

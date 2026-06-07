@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-export async function GET(
+async function _GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
-    // Check if the request is from a student (studentView param)
     const { searchParams } = new URL(request.url)
     const studentView = searchParams.get('studentView') === 'true'
 
@@ -26,14 +26,12 @@ export async function GET(
                 propositions: true,
                 difficulte: true,
                 themes: true,
-                // SECURITY: Never send correct answers or explanations to students
                 ...(studentView ? {} : { reponseCorrecte: true, explication: true }),
               },
             },
           },
           orderBy: { ordre: 'asc' },
         },
-        // SECURITY: Don't include sessions/reponses for student view
         ...(studentView ? {} : {
           sessions: {
             include: {
@@ -65,7 +63,6 @@ export async function GET(
       return NextResponse.json({ error: 'Épreuve non trouvée' }, { status: 404 })
     }
 
-    // Parse JSON fields
     const parsed = {
       ...epreuve,
       groupesCibles: epreuve.groupesCibles ? JSON.parse(epreuve.groupesCibles) : null,
@@ -75,13 +72,11 @@ export async function GET(
           ...eq.question,
           propositions: eq.question.propositions ? JSON.parse(eq.question.propositions) : null,
           themes: eq.question.themes ? JSON.parse(eq.question.themes) : null,
-          // Only include reponseCorrecte for non-student views
           ...(studentView ? {} : {
             reponseCorrecte: eq.question.reponseCorrecte ? JSON.parse(eq.question.reponseCorrecte) : null,
           }),
         },
       })),
-      // Only include sessions for non-student views
       ...(studentView ? {} : {
         sessions: (epreuve.sessions as Array<Record<string, unknown>> | undefined)?.map((sRaw) => {
           const s = sRaw as Record<string, unknown> & { logEvents: string | null; reponses: Array<Record<string, unknown>> }
@@ -106,29 +101,25 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { action, ...data } = body
 
-    // Check epreuve exists
     const existing = await db.epreuve.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'Épreuve non trouvée' }, { status: 404 })
     }
 
-    // Action: change status
     if (action === 'publier') {
       const epreuve = await db.epreuve.update({
         where: { id },
         data: { statut: 'PLANIFIEE' },
       })
-
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -139,7 +130,6 @@ export async function PATCH(
           details: `Épreuve publiée — ${existing.titre}`,
         },
       })
-
       return NextResponse.json({ epreuve, message: 'Épreuve publiée' })
     }
 
@@ -148,8 +138,6 @@ export async function PATCH(
         where: { id },
         data: { statut: 'EN_COURS' },
       })
-
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -160,7 +148,6 @@ export async function PATCH(
           details: `Épreuve lancée — ${existing.titre}`,
         },
       })
-
       return NextResponse.json({ epreuve, message: 'Épreuve lancée' })
     }
 
@@ -169,8 +156,6 @@ export async function PATCH(
         where: { id },
         data: { statut: 'TERMINEE' },
       })
-
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -181,7 +166,6 @@ export async function PATCH(
           details: `Épreuve terminée — ${existing.titre}`,
         },
       })
-
       return NextResponse.json({ epreuve, message: 'Épreuve terminée' })
     }
 
@@ -195,8 +179,6 @@ export async function PATCH(
           clotureePar: body.userId || null,
         },
       })
-
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -207,7 +189,6 @@ export async function PATCH(
           details: `Épreuve clôturée — ${existing.titre}`,
         },
       })
-
       return NextResponse.json({ epreuve, message: 'Épreuve clôturée' })
     }
 
@@ -229,7 +210,6 @@ export async function PATCH(
       data: updateData,
     })
 
-    // Audit log — general update
     const changedFields = Object.keys(updateData)
     await db.auditLog.create({
       data: {
@@ -258,12 +238,12 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const existing = await db.epreuve.findUnique({ where: { id } })
     if (!existing) {
@@ -277,13 +257,11 @@ export async function DELETE(
       )
     }
 
-    // Soft delete — move to Corbeille instead of permanent deletion
     await db.epreuve.update({
       where: { id },
       data: { deletedAt: new Date() },
     })
 
-    // Audit log
     await db.auditLog.create({
       data: {
         userId: 'system',
@@ -304,3 +282,7 @@ export async function DELETE(
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const DELETE = withAuth(_DELETE, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

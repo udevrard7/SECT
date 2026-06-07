@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-// GET /api/monitoring — List monitoring events with filters
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || ''
@@ -103,8 +103,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/monitoring — Create a monitoring event (for system events)
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     const body = await request.json()
     const {
@@ -186,3 +185,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN'])
+export const POST = withAuth(_POST, ['ADMIN'])

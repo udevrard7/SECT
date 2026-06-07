@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-export async function GET(
+async function _GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const document = await db.document.findUnique({
       where: { id },
@@ -61,12 +62,12 @@ export async function GET(
   }
 }
 
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     // Check if document exists
     const document = await db.document.findUnique({
@@ -107,3 +108,6 @@ export async function DELETE(
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ENSEIGNANT', 'ADMIN'])
+export const DELETE = withAuth(_DELETE, ['ENSEIGNANT', 'ADMIN'])

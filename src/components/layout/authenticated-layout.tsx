@@ -16,7 +16,7 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   const { data: session, status } = useSession()
   const router = useRouter()
   const pathname = usePathname()
-  const { user, mustChangePassword, loginPassword, clearMustChangePassword, syncFromSession, setUser } = useAuthStore()
+  const { user, mustChangePassword, clearMustChangePassword, syncFromSession, setUser } = useAuthStore()
 
   // Sync session data to auth store
   useEffect(() => {
@@ -51,7 +51,6 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
     return (
       <ForceChangePasswordPage
         userId={user.id}
-        currentPassword={loginPassword}
         user={user}
         onSuccess={(updatedUser: AuthUser) => {
           if (updatedUser?.id) {

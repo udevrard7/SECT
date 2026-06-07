@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
 // POST /api/sessions/[id]/capture — Save a periodic screenshot capture
-export async function POST(
+// 🔒 ETUDIANT only (must be the student assigned to this session)
+const _postHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  context: { params: Promise<{ id: string }>; user: AuthenticatedUser }
+) => {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { image } = body // base64 data URL of the screenshot
 
@@ -22,6 +24,14 @@ export async function POST(
 
     if (!session || session.statut !== 'EN_COURS') {
       return NextResponse.json({ error: 'Session non active' }, { status: 400 })
+    }
+
+    // Verify the authenticated user is the student assigned to this session
+    if (session.etudiantId !== context.user.id) {
+      return NextResponse.json(
+        { error: 'Vous n\'êtes pas autorisé à capturer pour cette session' },
+        { status: 403 }
+      )
     }
 
     // Store a compressed thumbnail alongside the capture event
@@ -55,3 +65,5 @@ export async function POST(
     )
   }
 }
+
+export const POST = withAuth(_postHandler, ['ETUDIANT'])

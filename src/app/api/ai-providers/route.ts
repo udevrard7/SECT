@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { configToProviderInfo } from '@/lib/ai-providers'
+import { withAuth } from '@/lib/auth-session'
 
 // GET /api/ai-providers — List all AI provider configurations
-export async function GET() {
+// 🔒 ADMIN only
+const _getHandler = async () => {
   try {
     const providers = await db.aIProviderConfig.findMany({
       orderBy: [{ priority: 'asc' }, { isActive: 'desc' }, { name: 'asc' }],
@@ -25,7 +27,8 @@ export async function GET() {
 }
 
 // POST /api/ai-providers — Create a new AI provider configuration
-export async function POST(request: NextRequest) {
+// 🔒 ADMIN only
+const _postHandler = async (request: NextRequest) => {
   try {
     const body = await request.json()
 
@@ -106,3 +109,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_getHandler, ['ADMIN'])
+export const POST = withAuth(_postHandler, ['ADMIN'])

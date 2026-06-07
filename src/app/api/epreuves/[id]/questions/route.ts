@@ -6,8 +6,8 @@ import {
   parsePropositionMappings,
   AUTO_GRADABLE_TYPES,
 } from '@/lib/grading'
+import { withAuth } from '@/lib/auth-session'
 
-// Helper: shuffle array
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -17,31 +17,23 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled
 }
 
-// Helper: convert contenu propositions to string array
 function normalizePropositions(propositions: unknown): string[] | null {
   if (!propositions) return null
   if (Array.isArray(propositions)) {
-    // If propositions are objects [{id, text}], extract text values
     if (propositions.length > 0 && typeof propositions[0] === 'object' && propositions[0] !== null) {
       return propositions.map((p: Record<string, unknown>) => String(p.text || p.id || ''))
     }
-    // If propositions are already strings
     return propositions.map((p: unknown) => String(p))
   }
   return null
 }
 
-// GET /api/epreuves/[id]/questions
-// Returns questions for an epreuve in the ExamQuestion format expected by the passation page.
-// Handles BOTH formats: contenu JSONB and EpreuveQuestion relation.
-// NEVER sends reponseCorrecte or explication to the student client.
-// Accepts optional ?sessionId= parameter to use stored proposition mappings for consistent display.
-export async function GET(
+async function _GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const { searchParams } = new URL(request.url)
     const sessionId = searchParams.get('sessionId')
 
@@ -74,7 +66,6 @@ export async function GET(
       return NextResponse.json({ error: 'Épreuve non trouvée' }, { status: 404 })
     }
 
-    // Load stored proposition mappings if sessionId is provided
     let storedMappings: Record<string, number[]> = {}
     if (sessionId) {
       const session = await db.sessionPassation.findUnique({
@@ -86,7 +77,6 @@ export async function GET(
       }
     }
 
-    // Check if epreuve uses contenu JSONB format
     const contenu = epreuve.contenu as Record<string, unknown> | null
     const hasContenuQuestions = contenu &&
       typeof contenu === 'object' &&
@@ -94,7 +84,6 @@ export async function GET(
       contenu.questions.length > 0
 
     if (hasContenuQuestions) {
-      // ── New format: contenu JSONB ──
       const contenuQuestions = contenu.questions as Array<Record<string, unknown>>
 
       let questionsForStudent = contenuQuestions.map((q, idx) => {
@@ -102,12 +91,10 @@ export async function GET(
         const qType = String(q.type || 'QRC')
         const propositions = normalizePropositions(q.propositions)
 
-        // Determine proposition order using stored mappings if available
         let displayPropositions = propositions
         if (propositions && AUTO_GRADABLE_TYPES.includes(qType)) {
           const mapping = storedMappings[qId]
           if (mapping && mapping.length === propositions.length) {
-            // Use stored mapping to reproduce the same shuffle order
             displayPropositions = applyMapping(propositions, mapping)
           } else if (epreuve.melangePropositions && propositions.length > 1) {
             displayPropositions = shuffleArray([...propositions])
@@ -130,12 +117,10 @@ export async function GET(
         }
       })
 
-      // Shuffle questions if enabled
       if (epreuve.melangeQuestions) {
         questionsForStudent = shuffleArray(questionsForStudent)
       }
 
-      // Re-assign ordre after shuffle
       questionsForStudent = questionsForStudent.map((q, idx) => ({
         ...q,
         ordre: idx,
@@ -144,17 +129,15 @@ export async function GET(
       return NextResponse.json(questionsForStudent)
     }
 
-    // ── Old format: EpreuveQuestion relation ──
     let questionsForStudent = epreuve.questions.map((eq) => {
       const questionObj: Record<string, unknown> = {
         ...eq.question,
         propositions: eq.question.propositions ? JSON.parse(eq.question.propositions as string) : null,
-        reponseCorrecte: undefined, // Never send correct answers to client!
-        explication: undefined, // Never send explanations to client!
+        reponseCorrecte: undefined,
+        explication: undefined,
         themes: eq.question.themes ? JSON.parse(eq.question.themes as string) : null,
       }
 
-      // Determine proposition order for QCU/QCM using stored mappings
       if (
         AUTO_GRADABLE_TYPES.includes(eq.question.type) &&
         eq.question.propositions
@@ -162,7 +145,6 @@ export async function GET(
         const originalProps = JSON.parse(eq.question.propositions) as string[]
         const mapping = storedMappings[eq.questionId]
         if (mapping && mapping.length === originalProps.length) {
-          // Use stored mapping to reproduce the same shuffle order
           questionObj.propositions = applyMapping(originalProps, mapping)
         } else if (epreuve.melangePropositions && originalProps.length > 1) {
           questionObj.propositions = shuffleArray([...originalProps])
@@ -178,10 +160,8 @@ export async function GET(
       }
     })
 
-    // Shuffle questions if enabled
     if (epreuve.melangeQuestions) {
       questionsForStudent = shuffleArray(questionsForStudent)
-      // Re-assign ordre after shuffle
       questionsForStudent = questionsForStudent.map((q, idx) => ({
         ...q,
         ordre: idx,
@@ -197,3 +177,5 @@ export async function GET(
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
