@@ -283,6 +283,6 @@ async function _DELETE(
   }
 }
 
-export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
 export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
 export const DELETE = withAuth(_DELETE, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
