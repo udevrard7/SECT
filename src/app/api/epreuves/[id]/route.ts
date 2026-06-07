@@ -63,9 +63,23 @@ async function _GET(
       return NextResponse.json({ error: 'Épreuve non trouvée' }, { status: 404 })
     }
 
+    // Compute questionCount and totalPoints from both relation and contenu JSONB formats
+    const contenuData = epreuve.contenu as Record<string, unknown> | null
+    const contenuQuestions = contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)
+      ? contenuData.questions as Array<Record<string, unknown>>
+      : []
+    const relationCount = epreuve.questions.length
+    const contenuCount = contenuQuestions.length
+    const questionCount = relationCount > 0 ? relationCount : contenuCount
+    const totalPoints = relationCount > 0
+      ? epreuve.questions.reduce((sum, q) => sum + q.bareme, 0)
+      : contenuQuestions.reduce((sum, q) => sum + (typeof q.bareme === 'number' ? q.bareme : 1), 0)
+
     const parsed = {
       ...epreuve,
       groupesCibles: epreuve.groupesCibles ? JSON.parse(epreuve.groupesCibles) : null,
+      questionCount,
+      totalPoints,
       questions: epreuve.questions.map((eq) => ({
         ...eq,
         question: {
