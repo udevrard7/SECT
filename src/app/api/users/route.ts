@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, email, password, role, etablissementId, filiereId, actif, mode, matricule } = body
+    const { name, email, password, role, etablissementId, filiereId, actif, mode, matricule, niveau } = body
 
     if (!name || !email || !role) {
       return NextResponse.json({ error: 'Champs obligatoires manquants (name, email, role)' }, { status: 400 })
@@ -243,6 +243,7 @@ export async function POST(request: NextRequest) {
         actif: actif !== undefined ? actif : true,
         mustChangePwd,
         matricule: finalMatricule,
+        niveau: niveau || null,
       },
       select: {
         id: true,
@@ -254,6 +255,7 @@ export async function POST(request: NextRequest) {
         actif: true,
         mustChangePwd: true,
         matricule: true,
+        niveau: true,
         createdAt: true,
         etablissement: { select: { id: true, nom: true } },
         filiere: { select: { id: true, nom: true } },
