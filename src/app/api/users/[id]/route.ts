@@ -234,7 +234,7 @@ async function _PATCH(
           data: {
             type: 'WARNING',
             titre: 'Changement de votre matricule',
-            message: `Votre matricule a été modifié par un responsable de votre établissement.\n\nAncien matricule : ${oldMatricule || '(aucun)'}\nNouveau matricule : ${data.matricule || '(supprimé)'}\n\n⚠️ Important : Vous devez utiliser votre NOUVEAU matricule pour vous connecter à votre prochaine session. Votre mot de passe reste inchangé.`,
+            message: `Votre matricule a été modifié par un responsable de votre établissement.\n\nAncien matricule : ${oldMatricule || '(aucun)'}\nNouveau matricule : ${data.matricule || '(supprimé)'}\n\n⚠️ Important : Pour vous connecter, vous pouvez utiliser soit votre NOUVEAU matricule, soit votre adresse email (${existingUser.email}). Votre mot de passe reste inchangé.`,
             destinataireId: id,
             destinataireRole: 'ETUDIANT',
             priorite: 'HAUTE',
