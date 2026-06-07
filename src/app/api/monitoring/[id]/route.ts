@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
 // PATCH /api/monitoring/[id] — Resolve a monitoring event
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { action, resoluPar, message, severite, source, duree } = body
 
@@ -112,12 +113,12 @@ export async function PATCH(
 }
 
 // DELETE /api/monitoring/[id] — Ignore a monitoring event (set statut=IGNORE)
-export async function DELETE(
+async function _DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     // Verify event exists
     const existing = await db.monitoringEvent.findUnique({ where: { id } })
@@ -157,11 +158,11 @@ export async function DELETE(
     })
 
     return NextResponse.json({
-      message: 'Événement ignoré',
       event: {
         ...event,
         details: event.details ? JSON.parse(event.details) : null,
       },
+      message: 'Événement ignoré',
     })
   } catch (error) {
     console.error('Error ignoring monitoring event:', error)
@@ -171,3 +172,6 @@ export async function DELETE(
     )
   }
 }
+
+export const PATCH = withAuth(_PATCH, ['ADMIN'])
+export const DELETE = withAuth(_DELETE, ['ADMIN'])

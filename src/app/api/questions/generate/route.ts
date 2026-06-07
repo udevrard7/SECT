@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
-// Extend Vercel function timeout to 60s for AI generation
 export const maxDuration = 60
 
 interface GenerateRequest {
@@ -21,17 +21,19 @@ interface GenerateRequest {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   const startTime = Date.now()
   try {
     const body: GenerateRequest = await request.json()
-    const { documentId, userId, config } = body
+    const { documentId, config } = body
+    // Use authenticated user ID from session instead of body to prevent IDOR
+    const userId = context.user.id
 
     console.log('[Questions Generate] Request received:', { documentId, userId, totalQuestions: config.qcu + config.qcm + config.qrc + config.trs })
 
-    if (!documentId || !userId) {
+    if (!documentId) {
       return NextResponse.json(
-        { error: 'Document et utilisateur requis' },
+        { error: 'Document requis' },
         { status: 400 }
       )
     }
@@ -55,7 +57,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get extracted text from database (Vercel-compatible: no filesystem reads)
     const extractedText = document.contenuTexte
 
     if (!extractedText || extractedText.length < 100) {
@@ -65,10 +66,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Prepare text for AI (truncate to ~8000 chars to stay within reasonable prompt size)
     const textForAI = extractedText.slice(0, 8000)
 
-    // Build generation prompt
     const totalQuestions = config.qcu + config.qcm + config.qrc + config.trs
 
     if (totalQuestions === 0) {
@@ -78,7 +77,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate questions using the active AI provider
     console.log('[Questions Generate] Getting AI provider...')
     let aiProvider
     try {
@@ -106,7 +104,6 @@ export async function POST(request: NextRequest) {
       ? `\nTon pédagogique: ${config.tonPedagogique}`
       : ''
 
-    // Build the list of requested types (only include types with count > 0)
     const requestedTypes: string[] = []
     if (config.qcu > 0) requestedTypes.push(`- ${config.qcu} question(s) à Choix Unique (QCU): 3 à 5 propositions, une seule bonne réponse`)
     if (config.qcm > 0) requestedTypes.push(`- ${config.qcm} question(s) à Choix Multiple (QCM): 3 à 5 propositions, plusieurs bonnes réponses possibles`)
@@ -173,7 +170,6 @@ Important:
       const aiErrorMsg = aiError instanceof Error ? aiError.message : String(aiError)
       console.error('[Questions Generate] AI API call failed:', aiErrorMsg)
 
-      // Provide user-friendly error messages based on the error
       if (aiErrorMsg.includes('身份验证失败') || aiErrorMsg.includes('Authentication') || aiErrorMsg.includes('auth')) {
         return NextResponse.json(
           { error: 'Erreur d\'authentification du service IA. Veuillez contacter l\'administrateur pour vérifier la configuration ZAI (ZAI_BASE_URL et clés API).' },
@@ -199,7 +195,6 @@ Important:
       )
     }
 
-    // Validate the response has the expected structure
     if (!completion || !completion.choices || !Array.isArray(completion.choices) || completion.choices.length === 0) {
       console.error('[Questions Generate] Invalid completion response:', JSON.stringify(completion).slice(0, 500))
       return NextResponse.json(
@@ -220,16 +215,13 @@ Important:
       )
     }
 
-    // Parse the JSON response - try multiple strategies
     let generatedQuestions
     try {
-      // Strategy 1: Extract JSON from markdown code blocks
       const codeBlockMatch = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
       if (codeBlockMatch) {
         generatedQuestions = JSON.parse(codeBlockMatch[1].trim())
         console.log('[Questions Generate] Parsed from code block')
       } else {
-        // Strategy 2: Find the outermost JSON object
         const jsonMatch = responseText.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           generatedQuestions = JSON.parse(jsonMatch[0])
@@ -247,7 +239,6 @@ Important:
       )
     }
 
-    // Validate the structure
     if (!generatedQuestions.questions || !Array.isArray(generatedQuestions.questions)) {
       console.error('[Questions Generate] Invalid structure:', JSON.stringify(generatedQuestions).slice(0, 500))
       return NextResponse.json(
@@ -256,12 +247,10 @@ Important:
       )
     }
 
-    // Save generated questions to database
     const savedQuestions: Record<string, unknown>[] = []
     const validTypes = ['QCU', 'QCM', 'QRC', 'TRS']
     const validDifficultes = ['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT']
 
-    // Build allowed types set based on teacher configuration
     const allowedTypes = new Set<string>()
     if (config.qcu > 0) allowedTypes.add('QCU')
     if (config.qcm > 0) allowedTypes.add('QCM')
@@ -270,9 +259,7 @@ Important:
 
     for (const q of generatedQuestions.questions || []) {
       try {
-        // Validate and sanitize each question
         const rawType = q.type
-        // Filter out questions of types the teacher did NOT request
         if (!allowedTypes.has(rawType)) {
           console.warn(`[Questions Generate] Filtering out question of unauthorized type "${rawType}" (teacher only requested: ${Array.from(allowedTypes).join(', ')})`)
           continue
@@ -286,7 +273,6 @@ Important:
           continue
         }
 
-        // Handle propositions: convert to string array for JSON storage
         let propositionsStr: string | null = null
         if (qType === 'QCU' || qType === 'QCM') {
           if (Array.isArray(q.propositions) && q.propositions.length > 0) {
@@ -294,16 +280,11 @@ Important:
           }
         }
 
-        // Handle reponseCorrecte: ALWAYS store as JSON string for consistency
-        // This ensures JSON.parse() works for all types when reading back
         let reponseStr: string | null = null
         if (q.reponseCorrecte !== null && q.reponseCorrecte !== undefined) {
           if (Array.isArray(q.reponseCorrecte)) {
             reponseStr = JSON.stringify(q.reponseCorrecte)
           } else if (typeof q.reponseCorrecte === 'string') {
-            // For QCU: store letter like "B" as JSON string → '"B"'
-            // For QRC/TRS: store text as JSON string → '"réponse..."'
-            // This ensures JSON.parse() always works when reading back
             reponseStr = JSON.stringify(q.reponseCorrecte)
           } else {
             reponseStr = JSON.stringify(q.reponseCorrecte)
@@ -333,7 +314,6 @@ Important:
       }
     }
 
-    // Audit log for AI generation
     try {
       await db.auditLog.create({
         data: {
@@ -360,7 +340,6 @@ Important:
     const elapsed = Date.now() - startTime
     console.error('[Questions Generate] Unhandled error after', elapsed, 'ms:', error)
 
-    // Check for common production errors
     const errorMsg = error instanceof Error ? error.message : String(error)
 
     if (errorMsg.includes('Prisma') || errorMsg.includes('database')) {
@@ -376,3 +355,5 @@ Important:
     )
   }
 }
+
+export const POST = withAuth(_POST, ['ENSEIGNANT', 'ADMIN'])

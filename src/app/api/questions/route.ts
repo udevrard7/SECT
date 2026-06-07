@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
@@ -24,7 +25,6 @@ export async function GET(request: NextRequest) {
       where.enonce = { contains: search }
     }
 
-    // If userId provided, only get questions from user's documents or manually created
     if (userId) {
       where.OR = [
         { auteurId: userId },
@@ -47,7 +47,6 @@ export async function GET(request: NextRequest) {
       db.question.count({ where }),
     ])
 
-    // Parse JSON fields safely (some fields like reponseCorrecte may not be valid JSON)
     const parseJsonSafe = (val: string | null) => {
       if (!val) return null
       try { return JSON.parse(val) } catch { return val }
@@ -77,7 +76,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function _DELETE(request: NextRequest) {
   try {
     const body = await request.json()
     const { ids } = body as { ids: string[] }
@@ -89,14 +88,12 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Hard delete questions in a transaction (soft delete not supported)
     const result = await db.$transaction(
       ids.map((id) =>
         db.question.delete({ where: { id } })
       )
     )
 
-    // Audit log
     await db.auditLog.create({
       data: {
         userId: 'system',
@@ -121,7 +118,7 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { type, enonce, propositions, reponseCorrecte, explication, difficulte, themes, documentId, auteurId } = body
@@ -144,11 +141,10 @@ export async function POST(request: NextRequest) {
         explication: explication || null,
         difficulte: difficulte || 'MOYEN',
         themes: themes ? JSON.stringify(themes) : null,
-        validee: true, // Manually created questions are auto-validated
+        validee: true,
       },
     })
 
-    // Audit log
     await db.auditLog.create({
       data: {
         userId: auteurId || 'system',
@@ -177,3 +173,7 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const DELETE = withAuth(_DELETE, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

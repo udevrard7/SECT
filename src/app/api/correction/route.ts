@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
-/** Safe JSON.parse that returns fallback instead of throwing */
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
   try {
@@ -12,8 +12,7 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
-// Get sessions needing correction for a teacher
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
@@ -23,13 +22,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Enseignant requis' }, { status: 400 })
     }
 
-    // Find all submitted sessions for this teacher's exams
-    // IMPORTANT: Must include deletedAt: null on epreuve relation to match
-    // the epreuves list filter (which uses deletedAt: null). Without this,
-    // sessions for soft-deleted epreuves could appear.
     const where: Record<string, unknown> = {
       epreuve: { enseignantId, deletedAt: null },
-      // Only show students who have SUBMITTED their exam — NON_SOUMIS and NON_COMMENCEE must NOT appear
       statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE'] },
     }
     if (epreuveId) where.epreuveId = epreuveId
@@ -69,13 +63,11 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Parse JSON fields and identify which need manual correction
     const parsedSessions = sessions.map((session) => {
       const reponses = session.reponses.map((r) => ({
         ...r,
       }))
 
-      // Build unified questions list from EpreuveQuestion + contenu JSONB
       type UnifiedQuestion = {
         id: string
         questionId: string
@@ -94,7 +86,6 @@ export async function GET(request: NextRequest) {
 
       const unifiedQuestions: UnifiedQuestion[] = []
 
-      // From EpreuveQuestion relations
       for (const eq of session.epreuve.questions) {
         unifiedQuestions.push({
           id: eq.id,
@@ -113,7 +104,6 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      // From contenu JSONB if no EpreuveQuestion relations
       if (unifiedQuestions.length === 0 && session.epreuve.contenu) {
         const contenuData = session.epreuve.contenu as Record<string, unknown> | null
         if (contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)) {
@@ -127,8 +117,7 @@ export async function GET(request: NextRequest) {
               : null
             let reponseCorrecte: string | string[] | null = null
             if (q.reponseCorrecte) {
-              reponseCorrecte = q.reponseCorrecte
-              // Normalize: if it's a string like "A", keep as-is; if array, keep as array
+              reponseCorrecte = q.reponseCorrecte as string | string[]
             }
 
             unifiedQuestions.push({
@@ -150,7 +139,6 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Calculate auto-graded score (QCU/QCM) for display purposes
       const autoTypes = ['QCU', 'QCM']
       const autoGradedQuestions = unifiedQuestions.filter((q) => autoTypes.includes(q.question.type))
       const autoGradedScore = autoGradedQuestions.reduce((sum, q) => {
@@ -159,13 +147,10 @@ export async function GET(request: NextRequest) {
       }, 0)
       const autoGradedTotal = autoGradedQuestions.reduce((sum, q) => sum + q.bareme, 0)
 
-      // Filter to ONLY show manual correction questions (QRC, TRS, REFLEXION)
-      // QCU/QCM are auto-graded and don't need teacher review
       const manualQuestions = unifiedQuestions.filter((q) =>
         ['QRC', 'TRS', 'REFLEXION'].includes(q.question.type)
       )
 
-      // Find manual questions that still need correction
       const needsCorrection = manualQuestions.filter((q) => {
         const reponse = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
         return !reponse || reponse.score === null
@@ -202,3 +187,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

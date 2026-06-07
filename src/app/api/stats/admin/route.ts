@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   try {
-    // Get admin ID from query params for access checks
-    const { searchParams } = new URL(request.url)
-    const adminId = searchParams.get('adminId')
+    // Use authenticated user ID from session to prevent IDOR
+    const adminId = context.user.id
 
     // ─── Basic platform counts ───
     const nbEtablissements = await db.etablissement.count()
@@ -139,3 +139,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN'])

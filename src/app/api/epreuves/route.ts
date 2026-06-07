@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     const body = await request.json()
     const {
@@ -73,7 +74,6 @@ export async function POST(request: NextRequest) {
 
     // Handle contenu (new JSONB format)
     if (hasContenu) {
-      // Validate contenu structure
       const contenuQuestions = contenu.questions as Array<Record<string, unknown>>
       const validTypes = ['QCU', 'QCM', 'QRC', 'TRS', 'REFLEXION', 'CODE']
       const validDifficultes = ['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT']
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const enseignantId = searchParams.get('enseignantId')
@@ -198,7 +198,6 @@ export async function GET(request: NextRequest) {
     const statut = searchParams.get('statut')
 
     if (enseignantId) {
-      // Get teacher's exams
       const where: Record<string, unknown> = { enseignantId, deletedAt: null }
       if (statut) where.statut = statut
 
@@ -251,13 +250,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (filiereId) {
-      // Get exams for a filiere (responsable view)
       const filiere = await db.filiere.findUnique({
         where: { id: filiereId },
         select: { etablissementId: true },
       })
 
-      // If the filiere doesn't exist (data inconsistency), return empty array
       if (!filiere) {
         return NextResponse.json({ epreuves: [] })
       }
@@ -266,9 +263,7 @@ export async function GET(request: NextRequest) {
       if (statut) whereFiliere.statut = statut
 
       whereFiliere.OR = [
-        // Epreuves with sessions from students in the filiere
         { sessions: { some: { etudiant: { filiereId } } } },
-        // Epreuves by enseignants in the same etablissement
         { enseignant: { etablissementId: filiere.etablissementId } },
       ]
 
@@ -286,7 +281,6 @@ export async function GET(request: NextRequest) {
         },
       })
 
-      // Deduplicate (an epreuve can match both OR conditions)
       const seen = new Set<string>()
       const dedupedEpreuves = epreuves.filter((e) => {
         if (seen.has(e.id)) return false
@@ -295,7 +289,6 @@ export async function GET(request: NextRequest) {
       })
 
       const parsedEpreuves = dedupedEpreuves.map((e) => {
-        // Compute questionCount and totalPoints from BOTH EpreuveQuestion relations and contenu JSONB
         const contenuData = e.contenu as Record<string, unknown> | null
         const contenuQuestions = contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)
           ? contenuData.questions as Array<Record<string, unknown>>
@@ -318,10 +311,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (etudiantId) {
-      // Get exams available to student — filtered by filiere and niveau
       const now = new Date()
 
-      // Fetch student's filiereId and niveau
       const student = await db.user.findUnique({
         where: { id: etudiantId },
         select: { filiereId: true, niveau: true },
@@ -329,7 +320,6 @@ export async function GET(request: NextRequest) {
       const studentFiliereId = student?.filiereId || null
       const studentNiveau = student?.niveau || null
 
-      // Build filiere/niveau filter conditions
       const filiereFilter = studentFiliereId
         ? {
             OR: [
@@ -339,9 +329,7 @@ export async function GET(request: NextRequest) {
           }
         : {}
 
-      // Run all 3 epreuve queries in parallel
       const [epreuves, completedEpreuves, absentEpreuves] = await Promise.all([
-        // Active/planned exams
         db.epreuve.findMany({
           where: {
             deletedAt: null,
@@ -359,8 +347,6 @@ export async function GET(request: NextRequest) {
             },
           },
         }),
-
-        // Completed exams with student's results
         db.epreuve.findMany({
           where: {
             deletedAt: null,
@@ -377,8 +363,6 @@ export async function GET(request: NextRequest) {
             },
           },
         }),
-
-        // CLOTUREE epreuves where the student has NO session (Absent)
         db.epreuve.findMany({
           where: {
             deletedAt: null,
@@ -394,17 +378,14 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
-      // Filter by niveau (stored in groupesCibles JSON)
       const filterByNiveau = (epreuve: { groupesCibles: string | null }) => {
-        if (!studentNiveau) return true // If student has no niveau, show all
-        if (!epreuve.groupesCibles) return true // If epreuve has no target, show to all
+        if (!studentNiveau) return true
+        if (!epreuve.groupesCibles) return true
         try {
           const parsed = JSON.parse(epreuve.groupesCibles as string)
-          // Old format: array of strings (groupes)
           if (Array.isArray(parsed)) return true
-          // New format: { groupes: string[], niveau: string | null }
           if (parsed && typeof parsed === 'object' && 'niveau' in parsed) {
-            if (!parsed.niveau) return true // No niveau restriction
+            if (!parsed.niveau) return true
             return parsed.niveau === studentNiveau
           }
           return true
@@ -416,13 +397,11 @@ export async function GET(request: NextRequest) {
       const allEpreuves = [
         ...epreuves.filter(filterByNiveau),
         ...completedEpreuves,
-        // Absent epreuves: add a synthetic "ABSENT" session so the UI can display it
         ...absentEpreuves.filter(filterByNiveau).map(ep => ({
           ...ep,
           sessions: [{ id: `absent-${ep.id}`, statut: 'ABSENT', score: null, dateDebut: null, dateFin: null, resultat: null }],
         })),
       ].map((e) => {
-        // Compute questionCount and totalPoints from BOTH EpreuveQuestion relations and contenu JSONB
         const contenuData = e.contenu as Record<string, unknown> | null
         const contenuQuestions = contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)
           ? contenuData.questions as Array<Record<string, unknown>>
@@ -454,3 +433,6 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

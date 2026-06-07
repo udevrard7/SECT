@@ -1,13 +1,15 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { withAuth } from '@/lib/auth-session'
 
 /**
  * POST /api/db/reset
  * Supprime TOUTES les données de démonstration et crée le compte admin.
  * ⚠️ USAGE UNIQUE — Détruit toutes les données existantes.
+ * 🔒 ADMIN only
  */
-export async function POST(request: Request) {
+const _postHandler = async (request: NextRequest) => {
   try {
     // Delete all data in correct order (respect foreign keys)
     await db.aIFailoverEvent.deleteMany()
@@ -137,3 +139,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withAuth(_postHandler, ['ADMIN'])

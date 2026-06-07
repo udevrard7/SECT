@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAIProvider } from '@/lib/ai-providers';
+import { withAuth } from '@/lib/auth-session';
 
 export const maxDuration = 60;
 
@@ -8,7 +9,7 @@ export const maxDuration = 60;
  * Batch analyze all documents with EN_ATTENTE or ERREUR status.
  * Processes documents synchronously (one by one, awaited) for Vercel serverless compatibility.
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     // Find all documents that need processing
     const pendingDocs = await db.document.findMany({
@@ -173,3 +174,5 @@ function extractThemesHeuristically(text: string): string[] {
 
   return potentialTitles.length > 0 ? potentialTitles : ['Contenu principal']
 }
+
+export const POST = withAuth(_POST, ['ENSEIGNANT', 'ADMIN'])

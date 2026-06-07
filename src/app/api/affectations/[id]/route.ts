@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
 // Valid statut transitions: PROVISOIRE → VALIDEE → PUBLIEE
 const VALID_STATUTS = ['PROVISOIRE', 'VALIDEE', 'PUBLIEE']
@@ -15,12 +16,12 @@ function isValidStatutTransition(current: string, next: string): boolean {
 
 // ─── PATCH /api/affectations/[id] ───
 // Update affectation (statut, volumeHeures, groupe, commentaire)
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const existing = await db.affectation.findUnique({
       where: { id },
@@ -126,12 +127,12 @@ export async function PATCH(
 
 // ─── DELETE /api/affectations/[id] ───
 // Delete affectation — only PROVISOIRE affectations can be deleted
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const existing = await db.affectation.findUnique({
       where: { id },
@@ -188,3 +189,6 @@ export async function DELETE(
     )
   }
 }
+
+export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE'])
+export const DELETE = withAuth(_DELETE, ['ADMIN', 'RESPONSABLE'])

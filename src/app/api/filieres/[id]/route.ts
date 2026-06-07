@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-export async function GET(
+async function _GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const filiere = await db.filiere.findUnique({
       where: { id },
@@ -50,12 +51,12 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { nom, code, etablissementId, responsableId, description, nbEtudiants, actif } = body
 
@@ -122,12 +123,12 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function _DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const existing = await db.filiere.findUnique({ where: { id } })
     if (!existing) {
@@ -165,3 +166,7 @@ export async function DELETE(
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE'])
+export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE'])
+export const DELETE = withAuth(_DELETE, ['ADMIN', 'RESPONSABLE'])

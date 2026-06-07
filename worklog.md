@@ -1,95 +1,82 @@
-# SECT Project — Worklog
+# SECT Project - Technical Refactoring Worklog
 
 ---
-Task ID: 1
-Agent: Main Orchestrator
-Task: Clone SECT project from GitHub, configure environment, and analyze architecture
+Task ID: 3a
+Agent: main
+Task: Create src/middleware.ts for edge-level auth protection
 
 Work Log:
-- Cloned repository from https://github.com/udevrard7/SECT to /home/z/sect-project
-- Configured git user identity (udevrard7 / ulrichdouh@gmail.com)
-- Analyzed project structure: 236 TypeScript files, ~87,000 lines of code
-- Reviewed Prisma schema (PostgreSQL/Supabase): 25+ models including User, Etablissement, Filiere, Epreuve, SessionPassation, etc.
-- Verified .env configuration with Supabase connection strings
-- Identified complete tech stack: Next.js 16, React 19, TypeScript 5, Tailwind CSS 4, Shadcn/ui, Prisma, Zustand, TanStack Query
+- Created `/home/z/sect-project/src/middleware.ts` (90 lines)
+- Uses `getToken()` from `next-auth/jwt` (edge-compatible, no DB access)
+- Public path whitelist: /login, /invitation, /api/auth, /api/seed, /api/invitations/verify, /api/invitations/accept
+- Unauthenticated API routes → 401 JSON response
+- Unauthenticated page routes → redirect to /login with callbackUrl
+- Inactive account check (token.actif === false) → 403 for API, redirect for pages
+- Matcher excludes _next/static and _next/image
+- Lint passes clean
 
 Stage Summary:
-- Project successfully cloned and configured
-- Git remote properly set to GitHub with authentication token
-- Database connection configured (Supabase PostgreSQL with PgBouncer pooling)
-- Project is a comprehensive educational platform (SECT = Système d'Évaluation Casse-Tête)
-- Multi-role system: ADMIN, RESPONSABLE, ENSEIGNANT, ETUDIANT
-- Features: exam management, AI question generation, proctoring, correction, SaaS subscriptions
-- 38+ API routes, 24 component directories, complete UI component library
-- Application deployed at https://sect-app.vercel.app
+- Edge-level auth protection now active for ALL routes
+- No more unprotected API access without valid JWT
 
 ---
-Task ID: 2
-Agent: Main Orchestrator
-Task: Fix Vercel deployment failure for commit 2c98656
+Task ID: 3b-3e
+Agent: main
+Task: Fix auth security vulnerabilities
 
 Work Log:
-- Analyzed commit 2c98656 (feat: add dual responsable creation mode)
-- Discovered deployment blocked by Vercel with error COMMIT_AUTHOR_REQUIRED
-- Root cause: Commit was authored by "Z User <z@container>" instead of "udevrard7 <ulrichdouh@gmail.com>"
-- Also found a code bug: `telephone: responsableTelephone || null` in User creation (User model has no telephone field)
-- Fixed route.ts: removed invalid `telephone` field from User.create() call
-- Created new commit (5d7d7f9) with correct author identity
-- Pushed to GitHub, which triggered new Vercel deployment
-- Verified deployment status changed from BLOCKED → BUILDING → READY
+- Fixed `/api/auth/change-password` - userId now derived from session via `getAuthenticatedUser()`, no longer from request body (IDOR vulnerability fixed)
+- Fixed `/api/auth/logout` - userId now derived from session via `getAuthSession()`, no longer from request body
+- Removed `loginPassword` from auth store - no more plaintext password stored in Zustand state
+- Updated `ForceChangePasswordPage` - currentPassword field now starts empty, user must type it manually
+- Updated `AuthenticatedLayout` - removed loginPassword from store destructuring and ForceChangePasswordPage props
+- Deleted deprecated `src/lib/auth-middleware.ts` (vulnerable x-user-id/x-user-role header pattern)
+- Deleted deprecated `src/lib/auth-helpers.ts` (vulnerable x-user-id/x-user-role header pattern)
+- Deleted legacy `/api/auth/login/route.ts` (bypasses NextAuth session creation)
+- Deleted legacy `/api/auth/login-student/route.ts` (bypasses NextAuth session creation)
+- Lint passes clean
 
 Stage Summary:
-- Vercel deployment is now READY and live at https://sect-app.vercel.app
-- Commit 5d7d7f9 successfully deployed with correct author
-- Code bug (invalid telephone field) fixed in src/app/api/etablissements/route.ts
-- Key lesson: All future commits MUST use author "udevrard7 <ulrichdouh@gmail.com>" for Vercel deployments
+- IDOR vulnerability on password change fixed
+- Plaintext password no longer stored in client-side state
+- Vulnerable header-based auth code removed
+- Legacy login routes removed
 
 ---
-Task ID: 3
-Agent: Main Orchestrator
-Task: Fix UE delete button not working
+Task ID: 4a-4b
+Agent: main
+Task: Delete dead code and fix orphan routes
 
 Work Log:
-- Investigated programme-academique-page.tsx (the active UE management component)
-- Identified root cause: AlertDialogAction from shadcn/ui closes the dialog automatically
-- When dialog closes, onOpenChange(false) → setDeleteTarget(null) runs BEFORE handleDelete executes
-- handleDelete checks `if (!deleteTarget) return` and exits without doing anything
-- Applied fix: capture target in local variable BEFORE clearing state
-- Fixed 3 files with the same bug pattern:
-  1. programme-academique-page.tsx - handleDelete (UE suppression)
-  2. unites-enseignement-page.tsx - handleDelete (UE suppression, legacy page)
-  3. etudiants-page.tsx - handleCancelInvitation + handleRemoveFromFiliere
+- Verified `app-layout.tsx` only imported by `page.tsx.bak` → deleted both
+- Verified `navigation-store.ts` only imported by deleted `app-layout.tsx` → deleted
+- Verified `responsable/rapports/page.tsx` duplicates `/rapports` route → deleted
+- Verified `responsable/alertes/page.tsx` duplicates `/alertes` route → deleted
+- Verified `responsable/habilitations/page.tsx` duplicates `/affectations` route → deleted
+- Removed empty `responsable/` directory tree
+- Lint passes clean
 
 Stage Summary:
-- Bug fix: AlertDialogAction race condition - state cleared before async handler could read it
-- Solution: capture target in local const BEFORE setDeleteTarget(null)
-- 3 components fixed, same pattern applied everywhere
-- Ready to commit and push to GitHub
+- 5 dead/orphan files removed
+- All active routing uses URL-based App Router via catch-all `[...slug]` route
+- No more standalone pages bypassing authenticated layout
 
 ---
 Task ID: 5
-Agent: frontend-auth-migration
-Task: Remove getAuthHeaders from all frontend components
+Agent: main
+Task: Setup Vitest + React Testing Library with basic unit tests
 
 Work Log:
-- Searched all files under src/components/ and src/app/ for getAuthHeaders usage — found 47 files
-- Identified 4 import patterns: (A) `getAuthHeaders` only, (B) `useAuthStore, getAuthHeaders`, (C) `useAuthStore, getAuthHeaders, type LoginError`, (D) local function definition in profil-page.tsx
-- Ran Python script to remove `getAuthHeaders` from all import statements while preserving other imports (useAuthStore, UserRole, LoginError, AuthUser)
-- Ran Python script to remove all `...getAuthHeaders()` spread usages from headers objects
-- Ran Python script to remove all direct `headers: getAuthHeaders()` usages (GET and DELETE requests)
-- Fixed trailing commas in headers objects: `{ 'Content-Type': 'application/json', }` → `{ 'Content-Type': 'application/json' }`
-- Fixed trailing commas in method-only objects: `{ method: 'DELETE', }` → `{ method: 'DELETE' }`
-- Fixed fetch calls with empty options: `fetch(url, {})` → `fetch(url)`
-- Removed local getAuthHeaders() function definition from profil-page.tsx (which used localStorage and returned x-user-id/x-user-role headers)
-- Checked for direct x-user-id/x-user-role header usage in frontend files — none found (only in server-side lib files)
-- Fixed false-positive in generation-ia-page.tsx where `, {}` in reduce() initializer was accidentally removed by cleanup script
-- Verified zero remaining getAuthHeaders references in src/ directory
-- Lint check passes with zero errors
+- Installed `@testing-library/user-event` (other test deps already present in package.json)
+- Verified existing `vitest.config.ts` and `vitest.setup.ts` are correctly configured
+- Verified `test` and `test:watch` scripts already exist in package.json
+- Created `src/lib/__tests__/auth-session.test.ts` — 5 tests for `getAuthSession` and `isAuthError` helpers with mocks for next-auth, auth options, and db
+- Created `src/lib/__tests__/routes.test.ts` — 9 tests for `getPageIdFromSlug`, `PAGE_ROUTES`, `ROUTE_TO_PAGE`, and `getDefaultRoute`
+- Created `src/stores/__tests__/auth-store.test.ts` — 6 tests for auth store initial state, setUser, clearMustChangePassword, syncFromSession
+- Fixed ROUTE_TO_PAGE inverse test: changed from asserting ROUTE_TO_PAGE is a perfect inverse of PAGE_ROUTES (which fails due to duplicate route mappings like niveaux/unites-enseignement → /programme-academique) to testing round-trip consistency (ROUTE_TO_PAGE[route] → pageId → PAGE_ROUTES[pageId] === route)
+- All 37 tests pass across 6 test files (3 new + 3 pre-existing)
 
 Stage Summary:
-- Modified 47 frontend files to remove all getAuthHeaders() usage
-- 5 files had import entirely removed (only imported getAuthHeaders): configuration-page.tsx, ai-providers-page.tsx, responsable/rapports/page.tsx, responsable/habilitations/page.tsx, and force-change-password-page.tsx (still has AuthUser type import)
-- 42 files had getAuthHeaders removed from imports while keeping useAuthStore and other imports
-- profil-page.tsx had its local getAuthHeaders function definition removed
-- All fetch calls now rely on automatic cookie-based auth via NextAuth session
-- Lint passes clean
+- Vitest + React Testing Library fully configured and operational
+- 20 new unit tests added covering auth-session helpers, route utilities, and auth store
+- Test command: `bun run test` (single run) or `bun run test:watch` (watch mode)

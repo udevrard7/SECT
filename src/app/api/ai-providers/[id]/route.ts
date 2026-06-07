@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { configToProviderInfo, createProviderFromConfig, invalidateProviderCache } from '@/lib/ai-providers'
+import { configToProviderInfo, invalidateProviderCache } from '@/lib/ai-providers'
+import { withAuth } from '@/lib/auth-session'
 
 // GET /api/ai-providers/[id] — Get a single AI provider configuration
-export async function GET(
+// 🔒 ADMIN only
+const _getHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  context: { params: any; user: any }
+) => {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const provider = await db.aIProviderConfig.findUnique({
       where: { id },
     })
@@ -33,12 +35,13 @@ export async function GET(
 }
 
 // PATCH /api/ai-providers/[id] — Update an AI provider configuration
-export async function PATCH(
+// 🔒 ADMIN only
+const _patchHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  context: { params: any; user: any }
+) => {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
 
     const existing = await db.aIProviderConfig.findUnique({
@@ -112,12 +115,13 @@ export async function PATCH(
 }
 
 // DELETE /api/ai-providers/[id] — Delete an AI provider configuration
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// 🔒 ADMIN only
+const _deleteHandler = async (
+  _request: NextRequest,
+  context: { params: any; user: any }
+) => {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const existing = await db.aIProviderConfig.findUnique({
       where: { id },
@@ -159,3 +163,7 @@ export async function DELETE(
     )
   }
 }
+
+export const GET = withAuth(_getHandler, ['ADMIN'])
+export const PATCH = withAuth(_patchHandler, ['ADMIN'])
+export const DELETE = withAuth(_deleteHandler, ['ADMIN'])

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   try {
     const { searchParams } = new URL(request.url)
     const responsableId = searchParams.get('responsableId')
@@ -83,3 +84,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['RESPONSABLE', 'ADMIN'])

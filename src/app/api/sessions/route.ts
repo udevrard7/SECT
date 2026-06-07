@@ -7,9 +7,10 @@ import {
   serializePropositionMappings,
   AUTO_GRADABLE_TYPES,
 } from '@/lib/grading'
+import { withAuth } from '@/lib/auth-session'
 
 // Get sessions (for resume/check existing)
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const etudiantId = searchParams.get('etudiantId')
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
 }
 
 // Start a session (student begins an exam)
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { etudiantId, epreuveId } = body
@@ -61,7 +62,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check epreuve exists and is active
     const epreuve = await db.epreuve.findUnique({
       where: { id: epreuveId },
       include: {
@@ -85,7 +85,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if epreuve is closed (auto-closure)
     if (epreuve.statut === 'CLOTUREE') {
       return NextResponse.json(
         { error: 'Cette épreuve est clôturée, les soumissions ne sont plus acceptées', code: 'EPREUVE_CLOTUREE' },
@@ -93,7 +92,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check student eligibility (filiere and niveau)
     const etudiant = await db.user.findUnique({
       where: { id: etudiantId },
       select: { filiereId: true, niveau: true, role: true },
@@ -102,7 +100,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Étudiant non trouvé' }, { status: 404 })
     }
 
-    // Check filiere match
     if (epreuve.filiereId && etudiant.filiereId && epreuve.filiereId !== etudiant.filiereId) {
       return NextResponse.json(
         { error: 'Vous n\'êtes pas autorisé à passer cette épreuve (filière non correspondante)', code: 'NOT_AUTHORIZED' },
@@ -110,7 +107,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check niveau match (stored in groupesCibles JSON)
     if (etudiant.niveau && epreuve.groupesCibles) {
       try {
         const parsed = JSON.parse(epreuve.groupesCibles as string)
@@ -123,11 +119,10 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch {
-        // Ignore parse errors — allow access
+        // Ignore parse errors
       }
     }
 
-    // Check if the exam period has ended (including grace period)
     const currentTime = new Date()
     const gracePeriodEnd = new Date(epreuve.dateFin.getTime() + (epreuve.delaiGrace || 3) * 60 * 1000)
     if (currentTime >= gracePeriodEnd) {
@@ -137,7 +132,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if student already has a session for this exam
     const existingSession = await db.sessionPassation.findFirst({
       where: { etudiantId, epreuveId },
     })
@@ -150,7 +144,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Resume existing session — use stored proposition mappings for consistent display
       const storedMappings = parsePropositionMappings(existingSession.propositionMappings)
 
       let epreuveQuestions: Record<string, unknown>[]
@@ -171,7 +164,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Get existing answers
       const reponses = await db.reponse.findMany({
         where: { sessionId: existingSession.id },
         select: { questionId: true, contenu: true },
@@ -189,10 +181,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ─── Create new session ──────────────────────────────────────────────────
     const now = new Date()
 
-    // Build proposition mappings for this session
     const { mappings, shuffledPropositions } = buildMappingsForNewSession(
       epreuve.questions,
       epreuve.contenu,
@@ -211,7 +201,6 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Prepare questions for student using the stored mappings
     let epreuveQuestions: Record<string, unknown>[]
 
     const contenuQuestions = buildQuestionsFromContenu(
@@ -231,7 +220,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update epreuve status to EN_COURS if it was PLANIFIEE
     if (epreuve.statut === 'PLANIFIEE') {
       await db.epreuve.update({
         where: { id: epreuveId },
@@ -259,7 +247,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Save answer (auto-save during exam)
-export async function PUT(request: NextRequest) {
+async function _PUT(request: NextRequest) {
   try {
     const body = await request.json()
     const { sessionId, questionId, contenu, alerte } = body
@@ -271,7 +259,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Check session is still active
     const session = await db.sessionPassation.findUnique({
       where: { id: sessionId },
     })
@@ -283,7 +270,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Upsert the answer
     if (contenu !== undefined) {
       await db.reponse.upsert({
         where: {
@@ -300,11 +286,10 @@ export async function PUT(request: NextRequest) {
       })
     }
 
-    // Handle alert (anti-cheat event)
     if (alerte) {
       const currentLogs = session.logEvents ? JSON.parse(session.logEvents) : []
       currentLogs.push({
-        type: alerte.type, // 'TAB_SWITCH', 'FULLSCREEN_EXIT', 'PASTE_ATTEMPT'
+        type: alerte.type,
         timestamp: new Date().toISOString(),
         details: alerte.details || '',
       })
@@ -341,10 +326,6 @@ function normalizePropositions(propositions: unknown): string[] | null {
   return null
 }
 
-/**
- * Build proposition mappings for a new session.
- * Returns the mappings (questionId → shuffledIndex→originalIndex array) and the shuffled propositions.
- */
 function buildMappingsForNewSession(
   epreuveQuestions: Array<{
     questionId: string
@@ -359,7 +340,6 @@ function buildMappingsForNewSession(
   const mappings: Record<string, number[]> = {}
   const shuffledProps: Record<string, string[]> = {}
 
-  // Process EpreuveQuestion relations
   for (const eq of epreuveQuestions) {
     if (AUTO_GRADABLE_TYPES.includes(eq.question.type) && eq.question.propositions) {
       const originalProps = JSON.parse(eq.question.propositions) as string[]
@@ -374,7 +354,6 @@ function buildMappingsForNewSession(
     }
   }
 
-  // Process contenu JSONB if no EpreuveQuestion relations
   if (epreuveQuestions.length === 0 && contenu) {
     const contenuData = contenu as Record<string, unknown> | null
     if (contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)) {
@@ -402,11 +381,6 @@ function buildMappingsForNewSession(
   return { mappings, shuffledPropositions: shuffledProps }
 }
 
-/**
- * Build exam questions from contenu JSONB format.
- * If storedMappings is provided, use them to reproduce the same shuffle order.
- * Otherwise, shuffle randomly (for new sessions, the mapping will be stored separately).
- */
 function buildQuestionsFromContenu(
   contenu: unknown,
   melangeQuestions: boolean,
@@ -423,15 +397,12 @@ function buildQuestionsFromContenu(
     const qType = String(q.type || 'QRC')
     const propositions = normalizePropositions(q.propositions)
 
-    // Determine the proposition order
     let displayPropositions = propositions
     if (propositions && AUTO_GRADABLE_TYPES.includes(qType)) {
       const mapping = storedMappings?.[qId]
       if (mapping && mapping.length === propositions.length) {
-        // Resume: use stored mapping to reproduce the same shuffle order
         displayPropositions = applyMapping(propositions, mapping)
       } else if (melangePropositions && propositions.length > 1) {
-        // New session: shuffle randomly (mapping will be stored by the caller)
         const result = shuffleArrayWithMapping(propositions)
         displayPropositions = result.shuffled
       }
@@ -449,7 +420,6 @@ function buildQuestionsFromContenu(
         propositions: displayPropositions,
         difficulte: String(q.difficulte || 'MOYEN'),
         themes: null,
-        // NEVER send reponseCorrecte or explication to client!
         reponseCorrecte: undefined,
         explication: undefined,
       },
@@ -464,10 +434,6 @@ function buildQuestionsFromContenu(
   return questions
 }
 
-/**
- * Build exam questions from EpreuveQuestion relations.
- * If storedMappings is provided, use them to reproduce the same shuffle order.
- */
 function buildQuestionsFromRelations(
   epreuveQuestions: Array<{
     id: string
@@ -498,20 +464,17 @@ function buildQuestionsFromRelations(
     const questionObj: Record<string, unknown> = {
       ...eq.question,
       propositions: eq.question.propositions ? JSON.parse(eq.question.propositions) : null,
-      reponseCorrecte: undefined, // Never send correct answers to client!
+      reponseCorrecte: undefined,
       explication: undefined,
       themes: eq.question.themes ? JSON.parse(eq.question.themes) : null,
     }
 
-    // Determine proposition order for QCU/QCM questions
     if (AUTO_GRADABLE_TYPES.includes(eq.question.type) && eq.question.propositions) {
       const originalProps = JSON.parse(eq.question.propositions) as string[]
       const mapping = storedMappings?.[eq.questionId]
       if (mapping && mapping.length === originalProps.length) {
-        // Resume: use stored mapping to reproduce the same shuffle order
         questionObj.propositions = applyMapping(originalProps, mapping)
       } else if (melangePropositions && originalProps.length > 1) {
-        // New session: shuffle randomly (mapping will be stored by the caller)
         questionObj.propositions = shuffleArrayWithMapping(originalProps).shuffled
       }
     }
@@ -519,3 +482,7 @@ function buildQuestionsFromRelations(
     return { ...eq, ordre: idx, question: questionObj }
   })
 }
+
+export const GET = withAuth(_GET)
+export const POST = withAuth(_POST)
+export const PUT = withAuth(_PUT)

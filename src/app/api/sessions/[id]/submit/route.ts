@@ -6,25 +6,20 @@ import {
   gradeQCU,
   gradeQCM,
   detectGradingScenario,
-  areAllAnswersGraded,
   AUTO_GRADABLE_TYPES,
   MANUAL_CORRECTION_TYPES,
 } from '@/lib/grading'
+import { withAuth } from '@/lib/auth-session'
 
-// Submit exam — mark session as SOUMISE and auto-grade QCU/QCM
-// Implements hybrid grading:
-//   Scenario A: 100% QCM/QCU → auto-grade all, move to CORRIGEE, show final result
-//   Scenario B: Mixed → auto-grade QCU/QCM only, keep SOUMISE, show partial result
-export async function POST(
+async function _POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { autoSubmit, reponses } = body
 
-    // Get session with epreuve and answers
     const session = await db.sessionPassation.findUnique({
       where: { id },
       include: {
@@ -49,7 +44,6 @@ export async function POST(
       return NextResponse.json({ error: 'Session déjà soumise' }, { status: 400 })
     }
 
-    // Check if epreuve is already closed
     if (session.epreuve.statut === 'CLOTUREE') {
       return NextResponse.json(
         { error: 'Cette épreuve est clôturée, les soumissions ne sont plus acceptées', code: 'EPREUVE_CLOTUREE' },
@@ -57,7 +51,6 @@ export async function POST(
       )
     }
 
-    // Check if grace period has expired
     const currentTime = new Date()
     const gracePeriodEnd = new Date(session.epreuve.dateFin.getTime() + (session.epreuve.delaiGrace || 3) * 60 * 1000)
     if (currentTime >= gracePeriodEnd && !autoSubmit) {
@@ -67,7 +60,6 @@ export async function POST(
       )
     }
 
-    // Save any remaining answers before submitting
     if (reponses && typeof reponses === 'object') {
       for (const [questionId, contenu] of Object.entries(reponses as Record<string, string>)) {
         if (contenu !== undefined && contenu !== null && contenu !== '') {
@@ -86,27 +78,23 @@ export async function POST(
           })
         }
       }
-      // Refresh reponses after saving
       const updatedReponses = await db.reponse.findMany({ where: { sessionId: id } })
       session.reponses = updatedReponses
     }
 
-    // ─── Load proposition mappings for this session ──────────────────────────
     const propositionMappings = parsePropositionMappings(session.propositionMappings)
 
-    // ─── Build unified question list from both formats ───────────────────────
     type QuestionForGrading = {
       id: string
       questionId: string
       bareme: number
       type: string
       reponseCorrecte: string | null
-      propositions: string | null // Original propositions (for mapping)
+      propositions: string | null
     }
 
     const questionsForGrading: QuestionForGrading[] = []
 
-    // From EpreuveQuestion relations
     for (const eq of session.epreuve.questions) {
       questionsForGrading.push({
         id: eq.id,
@@ -118,7 +106,6 @@ export async function POST(
       })
     }
 
-    // From contenu JSONB if no EpreuveQuestion relations
     if (questionsForGrading.length === 0 && session.epreuve.contenu) {
       const contenuData = session.epreuve.contenu as Record<string, unknown> | null
       if (contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)) {
@@ -131,16 +118,14 @@ export async function POST(
             bareme: typeof q.bareme === 'number' ? q.bareme : 1,
             type: String(q.type || 'QRC'),
             reponseCorrecte: q.reponseCorrecte ? JSON.stringify(q.reponseCorrecte) : null,
-            propositions: null, // contenu format stores propositions differently
+            propositions: null,
           })
         }
       }
     }
 
-    // ─── Detect grading scenario ─────────────────────────────────────────────
     const scenario = detectGradingScenario(questionsForGrading)
 
-    // ─── Grade each question ─────────────────────────────────────────────────
     let autoGradedScore = 0
     const detailParQuestion: Record<string, unknown>[] = []
 
@@ -161,27 +146,22 @@ export async function POST(
         questionScore = result.score
         isAutoGraded = true
       }
-      // QRC, TRS, REFLEXION: score stays null (pending manual correction)
 
-      // Update the response with score (only for auto-graded questions)
       if (reponse && isAutoGraded) {
         await db.reponse.update({
           where: { id: reponse.id },
           data: { score: questionScore },
         })
       } else if (!reponse && isAutoGraded) {
-        // Create a Reponse record with score=0 for unanswered auto-graded questions
-        // This ensures the correction view sees all questions as graded
         await db.reponse.create({
           data: {
             sessionId: id,
             questionId: qg.questionId,
             contenu: null,
-            score: questionScore, // will be 0 for unanswered questions
+            score: questionScore,
           },
         })
       }
-      // For manual correction questions without a response, leave as-is (no Reponse record = pending)
 
       if (isAutoGraded && questionScore !== null) {
         autoGradedScore += questionScore
@@ -197,26 +177,19 @@ export async function POST(
       })
     }
 
-    // ─── Apply penalty ───────────────────────────────────────────────────────
     const penalite = session.penalite || 0
     const scoreAfterPenalty = Math.max(0, autoGradedScore - penalite)
 
-    // ─── Determine session status ────────────────────────────────────────────
-    // Scenario A: All questions are auto-gradable → move to CORRIGEE immediately
-    // Scenario B: Some questions need manual correction → stay SOUMISE
     let newStatut: string
     let correctionMessage: string | null = null
 
     if (scenario.type === 'A') {
-      // All questions auto-graded
       newStatut = 'CORRIGEE'
     } else {
-      // Mixed: some questions still need manual correction
       newStatut = 'SOUMISE'
       correctionMessage = 'En attente de la correction manuelle de l\'enseignant pour les questions ouvertes'
     }
 
-    // ─── Create or update result ─────────────────────────────────────────────
     const totalPossible = questionsForGrading.reduce((sum, q) => sum + q.bareme, 0)
     const autoGradableTotal = questionsForGrading
       .filter((q) => AUTO_GRADABLE_TYPES.includes(q.type))
@@ -250,7 +223,6 @@ export async function POST(
       })
     }
 
-    // ─── Update session ──────────────────────────────────────────────────────
     const now = new Date()
     const updatedSession = await db.sessionPassation.update({
       where: { id },
@@ -267,14 +239,6 @@ export async function POST(
       },
     })
 
-    // NOTE: Auto-closure is handled by the closure-watcher mini-service,
-    // NOT on every student submission. Calling checkAndAutoCloseEpreuve here
-    // was causing a critical bug: epreuves were closed when a single student
-    // submitted because getEligibleStudentCount fell back to existingSessionCount
-    // (which equals 1 when only 1 student has started the exam).
-    // The closure-watcher polls every 30s and correctly handles both conditions.
-
-    // ─── Build response ──────────────────────────────────────────────────────
     const response: Record<string, unknown> = {
       session: updatedSession,
       resultat: {
@@ -297,7 +261,6 @@ export async function POST(
       autoCloseRaison: null,
     }
 
-    // Add scenario-specific information
     if (scenario.type === 'A') {
       response.scenarioMessage = 'Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.'
     } else {
@@ -313,3 +276,5 @@ export async function POST(
     )
   }
 }
+
+export const POST = withAuth(_POST)

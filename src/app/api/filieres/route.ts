@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
 // GET /api/filieres — List filieres
-export async function GET(request: Request) {
+async function _GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const etablissementId = searchParams.get('etablissementId') || ''
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
 }
 
 // POST /api/filieres — Create a filiere
-export async function POST(request: Request) {
+async function _POST(request: Request) {
   try {
     const body = await request.json()
     const { nom, code, etablissementId, responsableId, description, nbEtudiants, actif } = body
@@ -90,3 +91,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Erreur lors de la création de la filière' }, { status: 500 })
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE'])
+export const POST = withAuth(_POST, ['ADMIN', 'RESPONSABLE'])

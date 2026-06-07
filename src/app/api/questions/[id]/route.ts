@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth } from '@/lib/auth-session'
 
-// Safe JSON parse that handles non-JSON strings (e.g. plain "B" for QCU answers)
 const parseJsonSafe = (val: string | null) => {
   if (!val) return null
   try { return JSON.parse(val) } catch { return val }
 }
 
-export async function GET(
+async function _GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
     const question = await db.question.findUnique({
       where: { id },
@@ -48,23 +48,21 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
     const { action, ...data } = body
 
-    // Handle specific actions
     if (action === 'valider') {
       const question = await db.question.update({
         where: { id },
         data: { validee: true },
       })
 
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -93,7 +91,6 @@ export async function PATCH(
         data: { validee: false },
       })
 
-      // Audit log
       await db.auditLog.create({
         data: {
           userId: 'system',
@@ -132,7 +129,6 @@ export async function PATCH(
       data: updateData,
     })
 
-    // Audit log — describe what changed
     const changedFields = Object.keys(updateData)
     await db.auditLog.create({
       data: {
@@ -164,20 +160,18 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: any }
 ) {
   try {
-    const { id } = await params
+    const { id } = await context.params
 
-    // Soft delete — move to Corbeille
     await db.question.update({
       where: { id },
       data: { deletedAt: new Date() },
     })
 
-    // Audit log
     await db.auditLog.create({
       data: {
         userId: 'system',
@@ -198,3 +192,7 @@ export async function DELETE(
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const PATCH = withAuth(_PATCH, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])
+export const DELETE = withAuth(_DELETE, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT'])

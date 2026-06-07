@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { extractTextFromBuffer, getMimeType, isSupportedFileType, isWithinSizeLimit } from '@/lib/text-extraction'
 import { getAIProvider } from '@/lib/ai-providers'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
-    const userId = formData.get('userId') as string | null
+    // Use authenticated user ID from session to prevent IDOR
+    const userId = context.user.id
     const uniteEnseignementId = formData.get('uniteEnseignementId') as string | null
 
     if (!file) {
@@ -164,14 +166,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   try {
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-
-    if (!userId) {
-      return NextResponse.json({ error: 'Utilisateur non identifié' }, { status: 401 })
-    }
+    // Use authenticated user ID from session to prevent IDOR
+    const userId = context.user.id
 
     const documents = await db.document.findMany({
       where: { ownerId: userId, deletedAt: null },
@@ -321,7 +320,6 @@ Réponds en JSON avec la structure suivante:
  * Heuristic theme extraction as fallback when AI analysis fails
  */
 function extractThemesHeuristically(text: string): string[] {
-  // Simple keyword-based extraction
   const lines = text.split('\n').filter(l => l.trim().length > 0)
   const potentialTitles = lines
     .filter(l => l.trim().length < 100 && l.trim().length > 3)
@@ -331,3 +329,6 @@ function extractThemesHeuristically(text: string): string[] {
 
   return potentialTitles.length > 0 ? potentialTitles : ['Contenu principal']
 }
+
+export const POST = withAuth(_POST, ['ENSEIGNANT', 'ADMIN'])
+export const GET = withAuth(_GET, ['ENSEIGNANT', 'ADMIN'])

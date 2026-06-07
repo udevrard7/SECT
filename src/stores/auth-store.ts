@@ -29,7 +29,6 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   mustChangePassword: boolean
-  loginPassword: string
   login: (email: string, password: string) => Promise<boolean>
   loginStudent: (matricule: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
@@ -43,7 +42,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   isAuthenticated: false,
   isLoading: false,
   mustChangePassword: false,
-  loginPassword: '',
 
   loginStudent: async (matricule: string, password: string) => {
     set({ isLoading: true })
@@ -96,7 +94,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             isAuthenticated: true,
             isLoading: false,
             mustChangePassword: true,
-            loginPassword: password,
           })
           return true
         }
@@ -167,7 +164,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             isAuthenticated: true,
             isLoading: false,
             mustChangePassword: true,
-            loginPassword: password,
           })
           return true
         }
@@ -197,7 +193,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
 
-  clearMustChangePassword: () => set({ mustChangePassword: false, loginPassword: '' }),
+  clearMustChangePassword: () => set({ mustChangePassword: false }),
 
   syncFromSession: (session) => {
     if (!session?.user?.id) {
