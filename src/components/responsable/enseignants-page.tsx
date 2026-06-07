@@ -972,7 +972,7 @@ export function EnseignantsPage() {
     })
   }
 
-  // ─── Delete enseignant (soft delete) ───
+  // ─── Delete enseignant (hard delete or remove from establishment) ───
   const handleDeleteEnseignant = async () => {
     if (!deleteTarget) return
     setIsDeleting(true)
@@ -983,12 +983,18 @@ export function EnseignantsPage() {
         throw new Error(err.error || 'Erreur lors de la suppression')
       }
       const data = await res.json()
+      const mode = data.mode
       const deps = data.dependencies
-      toast.success('Enseignant supprimé', {
-        description: deps
-          ? `${deleteTarget.name} a été désactivé (${deps.sessions ?? 0} session(s), ${deps.reponses ?? 0} réponse(s) affectée(s)).`
-          : `${deleteTarget.name} a été désactivé.`,
-      })
+
+      if (mode === 'permanent') {
+        toast.success('Enseignant supprimé définitivement', {
+          description: `${deleteTarget.name} a été supprimé définitivement de la base de données.`,
+        })
+      } else {
+        toast.success('Enseignant retiré de l\'établissement', {
+          description: `${deleteTarget.name} a été retiré de l\'établissement. Les données historiques (${deps?.epreuves ?? 0} épreuve(s), ${deps?.sessions ?? 0} session(s)) ont été conservées.`,
+        })
+      }
       setDeleteTarget(null)
       setSelectedIds((prev) => {
         const next = new Set(prev)
@@ -1046,7 +1052,7 @@ export function EnseignantsPage() {
       const succeeded = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected').length
       if (bulkActionDialog === 'delete') {
-        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) désactivé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) supprimé(s) de l'établissement${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
       } else if (bulkActionDialog === 'activate') {
         toast.success('Activation en masse', { description: `${succeeded} enseignant(s) activé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
       } else {
@@ -2383,9 +2389,32 @@ export function EnseignantsPage() {
               <Trash2 className="h-5 w-5 text-red-600" />
               Supprimer l&apos;enseignant
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> ?
-              L&apos;enseignant sera désactivé (suppression douce). Ses données seront préservées mais il ne pourra plus se connecter.
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> de l&apos;établissement ?
+                </p>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    Comportement de la suppression :
+                  </p>
+                  <ul className="mt-1.5 space-y-1 text-sm text-amber-700 dark:text-amber-400">
+                    <li className="flex items-start gap-1.5">
+                      <span className="mt-0.5">•</span>
+                      <span><strong>Si l&apos;enseignant n&apos;a pas d&apos;historique</strong> (aucune épreuve, session) → suppression définitive de la base de données.</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="mt-0.5">•</span>
+                      <span><strong>Si l&apos;enseignant a un historique</strong> (épreuves, sessions) → il sera retiré de l&apos;établissement mais ses données historiques seront conservées.</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
+                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                    💡 <strong>Astuce :</strong> Pour simplement désactiver le compte sans retirer l&apos;enseignant de l&apos;établissement, utilisez le bouton <em>« Désactiver »</em> dans le menu d&apos;actions.
+                  </p>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2401,7 +2430,7 @@ export function EnseignantsPage() {
                   Suppression...
                 </>
               ) : (
-                'Supprimer'
+              'Supprimer de l&apos;établissement'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2421,7 +2450,7 @@ export function EnseignantsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {bulkActionDialog === 'delete'
-                ? `Êtes-vous sûr de vouloir désactiver ${selectedIds.size} enseignant(s) sélectionné(s) ? Cette action est réversible via l'activation.`
+                ? `Êtes-vous sûr de vouloir supprimer ${selectedIds.size} enseignant(s) de l'établissement ? Les enseignants sans historique seront définitivement supprimés. Ceux avec un historique seront retirés de l'établissement avec conservation de leurs données.`
                 : bulkActionDialog === 'activate'
                   ? `Êtes-vous sûr de vouloir activer ${selectedIds.size} enseignant(s) sélectionné(s) ?`
                   : `Êtes-vous sûr de vouloir désactiver ${selectedIds.size} enseignant(s) sélectionné(s) ? Ils ne pourront plus se connecter.`}

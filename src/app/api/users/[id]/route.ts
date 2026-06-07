@@ -174,7 +174,14 @@ async function _PATCH(
   }
 }
 
-// DELETE /api/users/[id] — Soft delete a user
+// DELETE /api/users/[id] — Delete a user
+// Strategy:
+//   • If the user has NO blocking dependencies → hard delete (permanent removal from DB)
+//   • If the user HAS blocking dependencies (sessions, soumissions, etc.) →
+//     remove from establishment (clear etablissementId, filiereId, matricule, set actif: false)
+//     This preserves historical data while removing the student from the responsable's view.
+//   • This is distinct from the "deactivate" action (PATCH { actif: false }) which only
+//     disables the account but keeps the student linked to the establishment.
 async function _DELETE(
   _request: NextRequest,
   context: { params: any; user: AuthenticatedUser }
@@ -196,22 +203,69 @@ async function _DELETE(
     const ownershipError = checkUserOwnership(context.user, existing)
     if (ownershipError) return ownershipError
 
-    // Count dependencies before deletion so the frontend can warn the user
-    const [sessionsCount, reponsesCount, epreuvesCount, soumissionsCount] = await Promise.all([
+    // Count blocking dependencies before deletion
+    const [sessionsCount, reponsesCount, epreuvesCount, soumissionsCount, devoirsCount, alertesCount, invitationsCount, notificationsCount] = await Promise.all([
       db.sessionPassation.count({ where: { etudiantId: id } }),
       db.reponse.count({ where: { session: { etudiantId: id } } }),
       db.epreuve.count({ where: { enseignantId: id, deletedAt: null } }),
       db.soumission.count({ where: { etudiantId: id } }),
+      db.devoir.count({ where: { enseignantId: id } }),
+      db.alerte.count({ where: { userId: id } }),
+      db.invitation.count({ where: { createdById: id } }),
+      db.notificationAdmin.count({ where: { destinataireId: id } }),
     ])
 
-    // Soft delete — set actif to false instead of permanently removing
+    const hasBlockingDeps =
+      sessionsCount > 0 || soumissionsCount > 0 || epreuvesCount > 0 ||
+      devoirsCount > 0 || alertesCount > 0 || invitationsCount > 0 || notificationsCount > 0
+
+    if (!hasBlockingDeps) {
+      // ─── Hard delete: no dependencies, safe to permanently remove ───
+      // Cascade-deleted automatically: EnseignantFiliere, Affectation, Document (+ EpreuveDocument), EtablissementAccess, PasswordReset
+      await db.user.delete({ where: { id } })
+
+      await db.auditLog.create({
+        data: {
+          action: 'DELETE',
+          entite: 'User',
+          entiteId: id,
+          userId: context.user.id,
+          userEmail: context.user.email,
+          details: JSON.stringify({
+            name: existing.name,
+            email: existing.email,
+            permanent: true,
+            reason: 'Aucune dépendance bloquante — suppression définitive',
+          }),
+        },
+      })
+
+      return NextResponse.json({
+        mode: 'permanent',
+        message: 'Utilisateur supprimé définitivement',
+        dependencies: {
+          sessions: sessionsCount,
+          reponses: reponsesCount,
+          epreuves: epreuvesCount,
+          soumissions: soumissionsCount,
+        },
+      })
+    }
+
+    // ─── Soft removal from establishment: has dependencies, preserve historical data ───
+    // Clear etablissementId + filiereId so the student disappears from the responsable's view,
+    // but keep the user record so existing sessions/reponses/soumissions remain intact.
     const user = await db.user.update({
       where: { id },
-      data: { actif: false },
+      data: {
+        actif: false,
+        etablissementId: null,
+        filiereId: null,
+        matricule: null,
+      },
       select: { id: true, name: true, email: true, actif: true },
     })
 
-    // Create audit log with dependency information
     await db.auditLog.create({
       data: {
         action: 'DELETE',
@@ -223,13 +277,16 @@ async function _DELETE(
           name: existing.name,
           email: existing.email,
           permanent: false,
-          dependencies: { sessionsCount, reponsesCount, epreuvesCount, soumissionsCount },
+          mode: 'remove_from_establishment',
+          reason: 'Dépendances existantes — retrait de l\'établissement avec conservation des données',
+          dependencies: { sessionsCount, reponsesCount, epreuvesCount, soumissionsCount, devoirsCount, alertesCount, invitationsCount, notificationsCount },
         }),
       },
     })
 
     return NextResponse.json({
-      message: 'Utilisateur désactivé (suppression logique)',
+      mode: 'removed_from_establishment',
+      message: 'Étudiant retiré de l\'établissement (données historiques conservées)',
       user,
       dependencies: {
         sessions: sessionsCount,
