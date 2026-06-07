@@ -259,7 +259,7 @@ export function EnseignantsPage() {
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [filiereFilter, setFiliereFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('actif')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   // ─── Dialog state ───
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -685,10 +685,10 @@ export function EnseignantsPage() {
         body: JSON.stringify({ actif: !enseignant.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast.success(enseignant.actif ? 'Enseignant désactivé (archivé)' : 'Enseignant réactivé', {
+      toast.success(enseignant.actif ? 'Enseignant archivé' : 'Enseignant réactivé', {
         description: enseignant.actif
-          ? `${enseignant.name} est maintenant archivé. Ses données sont préservées mais il n'est plus visible par défaut.`
-          : `${enseignant.name} est de nouveau actif et visible.`,
+          ? `${enseignant.name} est maintenant archivé. Ses données sont préservées, il reste dans l'établissement mais est marqué comme inactif.`
+          : `${enseignant.name} est de nouveau actif.`,
       })
       await fetchEnseignants()
     } catch {
@@ -976,10 +976,12 @@ export function EnseignantsPage() {
 
   // ─── Delete enseignant (permanent hard delete) ───
   const handleDeleteEnseignant = async () => {
-    if (!deleteTarget) return
+    // Capture target info IMMEDIATELY before dialog close can null it out
+    const target = deleteTarget
+    if (!target) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/users/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/users/${target.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur lors de la suppression')
@@ -994,12 +996,12 @@ export function EnseignantsPage() {
       const depsText = parts.length > 0 ? ` Données supprimées : ${parts.join(', ')}.` : ''
 
       toast.success('Enseignant supprimé définitivement', {
-        description: `${deleteTarget.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
+        description: `${target.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
       })
       setDeleteTarget(null)
       setSelectedIds((prev) => {
         const next = new Set(prev)
-        next.delete(deleteTarget.id)
+        next.delete(target.id)
         return next
       })
       await fetchEnseignants()
@@ -1018,7 +1020,7 @@ export function EnseignantsPage() {
       const filieresStr = teacherAssigns.length > 0
         ? teacherAssigns.map((a) => `${a.niveau}-${a.filiere.nom}`).join(' | ')
         : 'Sans affectation'
-      const status = e.actif ? 'Actif' : 'Inactif'
+      const status = e.actif ? 'Actif' : 'Archivé'
       const date = formatDateFR(e.createdAt)
       return `"${e.name}","${e.email}","${filieresStr}","${status}","${date}"`
     })
@@ -1192,7 +1194,7 @@ export function EnseignantsPage() {
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
             <SelectItem value="actif">Actifs</SelectItem>
-            <SelectItem value="inactif">Archivés (inactifs)</SelectItem>
+            <SelectItem value="inactif">Archivés</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -1377,7 +1379,7 @@ export function EnseignantsPage() {
                     {enseignant.actif ? (
                       <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
                     ) : (
-                      <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                      <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
                     )}
                   </div>
 
@@ -1462,7 +1464,7 @@ export function EnseignantsPage() {
                           {enseignant.actif ? (
                             <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
                           ) : (
-                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
@@ -2052,7 +2054,7 @@ export function EnseignantsPage() {
                 ) : (
                   <>
                     <PowerOff className="h-3.5 w-3.5 mr-1" />
-                    Inactif
+                    Archivé
                   </>
                 )}
               </Button>
@@ -2405,7 +2407,7 @@ export function EnseignantsPage() {
                 </div>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
                   <p className="text-sm text-blue-700 dark:text-blue-400">
-                    💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;enseignant sera invisible par défaut, mais pourra être réactivé à tout moment.
+                    💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;enseignant restera visible dans la liste mais marqué comme inactif, et pourra être réactivé à tout moment.
                   </p>
                 </div>
               </div>

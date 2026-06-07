@@ -236,7 +236,7 @@ export function EtudiantsPage() {
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [filiereFilter, setFiliereFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('actif')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [niveauFilter, setNiveauFilter] = useState('all')
 
   // ─── Pagination ───
@@ -653,10 +653,10 @@ export function EtudiantsPage() {
         body: JSON.stringify({ actif: !etudiant.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast.success(etudiant.actif ? 'Étudiant désactivé (archivé)' : 'Étudiant réactivé', {
+      toast.success(etudiant.actif ? 'Étudiant archivé' : 'Étudiant réactivé', {
         description: etudiant.actif
-          ? `${etudiant.name} est maintenant archivé. Ses données sont préservées mais il n'est plus visible par défaut.`
-          : `${etudiant.name} est de nouveau actif et visible.`,
+          ? `${etudiant.name} est maintenant archivé. Ses données sont préservées, il reste dans l'établissement mais est marqué comme inactif.`
+          : `${etudiant.name} est de nouveau actif.`,
       })
       await fetchEtudiants()
     } catch {
@@ -689,10 +689,12 @@ export function EtudiantsPage() {
 
   // ─── Delete student (permanent hard delete) ───
   const handleDeleteStudent = async () => {
-    if (!deleteTarget) return
+    // Capture target info IMMEDIATELY before dialog close can null it out
+    const target = deleteTarget
+    if (!target) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/users/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/users/${target.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur lors de la suppression')
@@ -707,7 +709,7 @@ export function EtudiantsPage() {
       const depsText = parts.length > 0 ? ` Données supprimées : ${parts.join(', ')}.` : ''
 
       toast.success('Étudiant supprimé définitivement', {
-        description: `${deleteTarget.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
+        description: `${target.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
       })
       setDeleteTarget(null)
       await fetchEtudiants()
@@ -862,7 +864,7 @@ export function EtudiantsPage() {
     }
     const header = 'Matricule,Nom,Email,Filiere,Niveau,Statut,DateCreation'
     const rows = etudiants.map((e) =>
-      `${e.matricule || ''},${e.name},${e.email},${e.filiere?.nom || ''},${e.niveau || ''},${e.actif ? 'Actif' : 'Inactif'},${formatDateFR(e.createdAt)}`
+      `${e.matricule || ''},${e.name},${e.email},${e.filiere?.nom || ''},${e.niveau || ''},${e.actif ? 'Actif' : 'Archivé'},${formatDateFR(e.createdAt)}`
     )
     const csv = [header, ...rows].join('\n')
     downloadCSV(csv, `etudiants-${new Date().toISOString().split('T')[0]}.csv`)
@@ -1018,7 +1020,7 @@ export function EtudiantsPage() {
             <SelectContent>
               <SelectItem value="all">Tous les statuts</SelectItem>
               <SelectItem value="actif">Actifs</SelectItem>
-              <SelectItem value="inactif">Archivés (inactifs)</SelectItem>
+              <SelectItem value="inactif">Archivés</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1189,7 +1191,7 @@ export function EtudiantsPage() {
                   {etudiant.actif ? (
                     <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
                   ) : (
-                    <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                    <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
                   )}
                 </div>
 
@@ -1276,7 +1278,7 @@ export function EtudiantsPage() {
               </TableHeader>
               <TableBody>
                 {etudiants.map((etudiant) => (
-                  <TableRow key={etudiant.id} className={!etudiant.actif ? 'opacity-60' : ''}>
+                  <TableRow key={etudiant.id}>
                     <TableCell>
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                         {getInitials(etudiant.name)}
@@ -1305,7 +1307,7 @@ export function EtudiantsPage() {
                       {etudiant.actif ? (
                         <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                        <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -1728,7 +1730,7 @@ export function EtudiantsPage() {
                 className={editActif ? 'bg-teal-600 hover:bg-teal-700' : ''}
                 onClick={() => setEditActif(!editActif)}
               >
-                {editActif ? 'Actif' : 'Inactif'}
+                {editActif ? 'Actif' : 'Archivé'}
               </Button>
             </div>
           </div>
@@ -1775,8 +1777,8 @@ export function EtudiantsPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Statut</p>
-                  <Badge className={detailEtudiant.actif ? 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800' : 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'}>
-                    {detailEtudiant.actif ? 'Actif' : 'Inactif'}
+                  <Badge className={detailEtudiant.actif ? 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800' : 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800'}>
+                    {detailEtudiant.actif ? 'Actif' : 'Archivé'}
                   </Badge>
                 </div>
                 <div>
@@ -1906,7 +1908,7 @@ export function EtudiantsPage() {
                 </div>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
                   <p className="text-sm text-blue-700 dark:text-blue-400">
-                    💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;étudiant sera invisible par défaut, mais pourra être réactivé à tout moment.
+                    💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;étudiant restera visible dans la liste mais marqué comme inactif, et pourra être réactivé à tout moment.
                   </p>
                 </div>
               </div>
