@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   BookOpen,
   Users,
@@ -27,6 +27,9 @@ import {
   ShieldAlert,
   RefreshCw,
   Ban,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -71,6 +74,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // ─── Types ───
 
@@ -132,6 +144,7 @@ interface InvitationItem {
 }
 
 type RegistrationMode = 'invitation' | 'direct'
+type ViewMode = 'cards' | 'table'
 
 const NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2'] as const
 
@@ -288,6 +301,22 @@ export function EnseignantsPage() {
   const [cancelInvitationTarget, setCancelInvitationTarget] = useState<InvitationItem | null>(null)
   const [isResending, setIsResending] = useState<string | null>(null)
 
+  // ─── Debounced search state ───
+  const [searchDebounced, setSearchDebounced] = useState('')
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ─── View mode state ───
+  const [viewMode, setViewMode] = useState<ViewMode>('cards')
+
+  // ─── Bulk operations state ───
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActionDialog, setBulkActionDialog] = useState<'activate' | 'deactivate' | 'delete' | null>(null)
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+
+  // ─── Delete enseignant state ───
+  const [deleteTarget, setDeleteTarget] = useState<EnseignantItem | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   // ─── Get filiere IDs managed by this responsable ───
   const filiereIds = filieres.map((f) => f.id)
 
@@ -296,13 +325,14 @@ export function EnseignantsPage() {
     if (!acc[a.enseignantId]) acc[a.enseignantId] = []
     acc[a.enseignantId].push(a)
     return acc
-  })
+  }, {})
 
   // ─── Fetch filieres for this responsable ───
   const fetchFilieres = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
@@ -325,8 +355,9 @@ export function EnseignantsPage() {
       const params = new URLSearchParams()
       params.set('role', 'ENSEIGNANT')
       params.set('limit', '200')
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
-      if (search) params.set('search', search)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
+      if (searchDebounced) params.set('search', searchDebounced)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
 
       const res = await fetch(`/api/users?${params.toString()}`)
@@ -340,14 +371,15 @@ export function EnseignantsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user?.etablissementId, user?.etablissement?.id, search, statusFilter])
+  }, [user?.etablissementId, user?.etablissement?.id, searchDebounced, statusFilter])
 
   // ─── Fetch assignments ───
   const fetchAssignments = useCallback(async () => {
     if (!user?.etablissementId && !user?.etablissement?.id) return
     try {
       const params = new URLSearchParams()
-      params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/enseignant-filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
@@ -428,6 +460,34 @@ export function EnseignantsPage() {
     const teacherAssigns = (assignmentMap[e.id] || []).filter((a) => filiereIds.includes(a.filiereId))
     return sum + teacherAssigns.length
   }, 0)
+
+  // ─── Debounced search handler ───
+  const handleSearchChange = (value: string) => {
+    setSearch(value)
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => {
+      setSearchDebounced(value)
+    }, 300)
+  }
+
+  // ─── Toggle selection ───
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // ─── Toggle select all ───
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredEnseignants.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredEnseignants.map((e) => e.id)))
+    }
+  }
 
   // ─── Open add dialog ───
   const handleOpenAdd = () => {
@@ -912,6 +972,96 @@ export function EnseignantsPage() {
     })
   }
 
+  // ─── Delete enseignant (soft delete) ───
+  const handleDeleteEnseignant = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/users/${deleteTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la suppression')
+      }
+      const data = await res.json()
+      const deps = data.dependencies
+      toast.success('Enseignant supprimé', {
+        description: deps
+          ? `${deleteTarget.name} a été désactivé (${deps.sessions ?? 0} session(s), ${deps.reponses ?? 0} réponse(s) affectée(s)).`
+          : `${deleteTarget.name} a été désactivé.`,
+      })
+      setDeleteTarget(null)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
+      await fetchEnseignants()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'enseignant.' })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // ─── Export enseignants as CSV ───
+  const handleExportEnseignants = () => {
+    const header = 'Nom,Email,Filières/Niveaux,Statut,DateCreation'
+    const rows = filteredEnseignants.map((e) => {
+      const teacherAssigns = (assignmentMap[e.id] || []).filter((a) => filiereIds.includes(a.filiereId))
+      const filieresStr = teacherAssigns.length > 0
+        ? teacherAssigns.map((a) => `${a.niveau}-${a.filiere.nom}`).join(' | ')
+        : 'Sans affectation'
+      const status = e.actif ? 'Actif' : 'Inactif'
+      const date = formatDateFR(e.createdAt)
+      return `"${e.name}","${e.email}","${filieresStr}","${status}","${date}"`
+    })
+    const csv = [header, ...rows].join('\n')
+    downloadCSV(csv, 'enseignants-export.csv')
+    toast.success('Export réussi', { description: `${filteredEnseignants.length} enseignant(s) exporté(s).` })
+  }
+
+  // ─── Bulk action handler ───
+  const handleBulkAction = async () => {
+    if (!bulkActionDialog || selectedIds.size === 0) return
+    setIsBulkProcessing(true)
+    try {
+      const ids = Array.from(selectedIds)
+      const results = await Promise.allSettled(
+        ids.map(async (id) => {
+          if (bulkActionDialog === 'delete') {
+            const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error('Erreur')
+            return res.json()
+          } else {
+            const actif = bulkActionDialog === 'activate'
+            const res = await fetch(`/api/users/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ actif }),
+            })
+            if (!res.ok) throw new Error('Erreur')
+          }
+        })
+      )
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.filter((r) => r.status === 'rejected').length
+      if (bulkActionDialog === 'delete') {
+        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) désactivé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+      } else if (bulkActionDialog === 'activate') {
+        toast.success('Activation en masse', { description: `${succeeded} enseignant(s) activé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+      } else {
+        toast.success('Désactivation en masse', { description: `${succeeded} enseignant(s) désactivé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+      }
+      setBulkActionDialog(null)
+      setSelectedIds(new Set())
+      await fetchEnseignants()
+    } catch {
+      toast.error('Erreur', { description: 'Impossible d\'exécuter l\'action en masse.' })
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
@@ -925,7 +1075,21 @@ export function EnseignantsPage() {
             Gérez les enseignants et leurs affectations aux filières et niveaux
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+            <TabsList className="h-9">
+              <TabsTrigger value="cards" className="px-3 py-1">
+                <LayoutGrid className="h-4 w-4" />
+              </TabsTrigger>
+              <TabsTrigger value="table" className="px-3 py-1">
+                <List className="h-4 w-4" />
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button variant="outline" onClick={handleExportEnseignants} disabled={filteredEnseignants.length === 0}>
+            <Download className="h-4 w-4" />
+            Exporter CSV
+          </Button>
           <Button variant="outline" onClick={handleDownloadTemplate}>
             <Download className="h-4 w-4" />
             Template CSV
@@ -996,7 +1160,7 @@ export function EnseignantsPage() {
           <Input
             placeholder="Rechercher par nom ou email..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -1025,6 +1189,53 @@ export function EnseignantsPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* ─── Bulk action toolbar ─── */}
+      {selectedIds.size > 0 && !isLoading && (
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3">
+          <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+              onClick={() => setBulkActionDialog('activate')}
+            >
+              <Power className="h-3.5 w-3.5 mr-1" />
+              Activer
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setBulkActionDialog('deactivate')}
+            >
+              <PowerOff className="h-3.5 w-3.5 mr-1" />
+              Désactiver
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+              onClick={() => setBulkActionDialog('delete')}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              Supprimer
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs ml-auto"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="h-3.5 w-3.5 mr-1" />
+            Tout déselectionner
+          </Button>
+        </div>
+      )}
 
       {/* ─── Loading state ─── */}
       {isLoading && (
@@ -1088,23 +1299,70 @@ export function EnseignantsPage() {
       )}
 
       {/* ─── Teacher card grid ─── */}
-      {!isLoading && filteredEnseignants.length > 0 && (
+      {!isLoading && filteredEnseignants.length > 0 && viewMode === 'cards' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredEnseignants.map((enseignant) => {
             const teacherAssigns = (assignmentMap[enseignant.id] || []).filter((a) => filiereIds.includes(a.filiereId))
 
             return (
-              <Card key={enseignant.id} className="group transition-shadow hover:shadow-md">
+              <Card key={enseignant.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(enseignant.id) ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}>
                 <CardContent className="flex flex-col gap-4 p-6">
-                  {/* Header */}
+                  {/* Header with checkbox */}
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                      {getInitials(enseignant.name)}
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <Checkbox
+                        checked={selectedIds.has(enseignant.id)}
+                        onCheckedChange={() => toggleSelect(enseignant.id)}
+                        aria-label={`Sélectionner ${enseignant.name}`}
+                      />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                        {getInitials(enseignant.name)}
+                      </div>
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="text-base font-semibold leading-tight truncate">{enseignant.name}</h3>
                       <p className="text-sm text-muted-foreground truncate">{enseignant.email}</p>
                     </div>
+                    {/* Dropdown menu */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleOpenEdit(enseignant)}>
+                          <Edit3 className="h-4 w-4 mr-2" />
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleOpenAssignments(enseignant)}>
+                          <Settings2 className="h-4 w-4 mr-2" />
+                          Affectations
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleActive(enseignant)}>
+                          {enseignant.actif ? (
+                            <>
+                              <PowerOff className="h-4 w-4 mr-2" />
+                              Désactiver
+                            </>
+                          ) : (
+                            <>
+                              <Power className="h-4 w-4 mr-2" />
+                              Activer
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
+                          onClick={() => setDeleteTarget(enseignant)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   {/* Status badge */}
@@ -1130,52 +1388,125 @@ export function EnseignantsPage() {
                       Sans affectation
                     </Badge>
                   )}
-
-                  <Separator />
-
-                  {/* Actions */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenEdit(enseignant)}
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                      Modifier
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenAssignments(enseignant)}
-                      className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                      Affectations
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleToggleActive(enseignant)}
-                    >
-                      {enseignant.actif ? (
-                        <>
-                          <PowerOff className="h-3.5 w-3.5" />
-                          Désactiver
-                        </>
-                      ) : (
-                        <>
-                          <Power className="h-3.5 w-3.5" />
-                          Activer
-                        </>
-                      )}
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             )
           })}
         </div>
+      )}
+
+      {/* ─── Teacher table view ─── */}
+      {!isLoading && filteredEnseignants.length > 0 && viewMode === 'table' && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="max-h-[600px] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedIds.size === filteredEnseignants.length && filteredEnseignants.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Tout sélectionner"
+                      />
+                    </TableHead>
+                    <TableHead>Nom</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Filière / Niveau</TableHead>
+                    <TableHead>Statut</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredEnseignants.map((enseignant) => {
+                    const teacherAssigns = (assignmentMap[enseignant.id] || []).filter((a) => filiereIds.includes(a.filiereId))
+                    return (
+                      <TableRow key={enseignant.id} className={selectedIds.has(enseignant.id) ? 'bg-emerald-50 dark:bg-emerald-950/20' : ''}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(enseignant.id)}
+                            onCheckedChange={() => toggleSelect(enseignant.id)}
+                            aria-label={`Sélectionner ${enseignant.name}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                              {getInitials(enseignant.name)}
+                            </div>
+                            <span className="truncate">{enseignant.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground truncate max-w-[200px]">{enseignant.email}</TableCell>
+                        <TableCell>
+                          {teacherAssigns.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {teacherAssigns.map((a) => (
+                                <Badge key={a.id} className={`${getNiveauBadgeColor(a.niveau)} text-xs`}>
+                                  {a.niveau}-{a.filiere.nom}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Sans affectation</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {enseignant.actif ? (
+                            <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
+                          ) : (
+                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleOpenEdit(enseignant)}>
+                                <Edit3 className="h-4 w-4 mr-2" />
+                                Modifier
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenAssignments(enseignant)}>
+                                <Settings2 className="h-4 w-4 mr-2" />
+                                Affectations
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleActive(enseignant)}>
+                                {enseignant.actif ? (
+                                  <>
+                                    <PowerOff className="h-4 w-4 mr-2" />
+                                    Désactiver
+                                  </>
+                                ) : (
+                                  <>
+                                    <Power className="h-4 w-4 mr-2" />
+                                    Activer
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
+                                onClick={() => setDeleteTarget(enseignant)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Supprimer
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* ─── Pending Invitations Section ─── */}
@@ -2039,6 +2370,80 @@ export function EnseignantsPage() {
               className="bg-red-600 hover:bg-red-700"
             >
               Confirmer l&apos;annulation
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Delete Enseignant Confirmation ─── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              Supprimer l&apos;enseignant
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> ?
+              L&apos;enseignant sera désactivé (suppression douce). Ses données seront préservées mais il ne pourra plus se connecter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEnseignant}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Suppression...
+                </>
+              ) : (
+                'Supprimer'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Bulk Action Confirmation ─── */}
+      <AlertDialog open={!!bulkActionDialog} onOpenChange={(open) => { if (!open) setBulkActionDialog(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulkActionDialog === 'delete'
+                ? 'Suppression en masse'
+                : bulkActionDialog === 'activate'
+                  ? 'Activation en masse'
+                  : 'Désactivation en masse'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkActionDialog === 'delete'
+                ? `Êtes-vous sûr de vouloir désactiver ${selectedIds.size} enseignant(s) sélectionné(s) ? Cette action est réversible via l'activation.`
+                : bulkActionDialog === 'activate'
+                  ? `Êtes-vous sûr de vouloir activer ${selectedIds.size} enseignant(s) sélectionné(s) ?`
+                  : `Êtes-vous sûr de vouloir désactiver ${selectedIds.size} enseignant(s) sélectionné(s) ? Ils ne pourront plus se connecter.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkProcessing}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkAction}
+              disabled={isBulkProcessing}
+              className={bulkActionDialog === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+            >
+              {isBulkProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Traitement...
+                </>
+              ) : bulkActionDialog === 'delete'
+                ? 'Supprimer'
+                : bulkActionDialog === 'activate'
+                  ? 'Activer'
+                  : 'Désactiver'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
