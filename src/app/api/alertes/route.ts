@@ -22,27 +22,57 @@ async function _GET(
     const offset = parseInt(searchParams.get('offset') || '0')
 
     // --- Authorization Logic ---
-    const where: Record<string, unknown> = {};
-
-    if (filiereId) where.filiereId = filiereId
-    if (severity) where.severity = severity
-    if (type) where.type = type
-    if (lue === 'true') where.lue = true
-    else if (lue === 'false') where.lue = false
+    // Base filters from query params
+    const baseFilters: Record<string, unknown>[] = []
+    if (filiereId) baseFilters.push({ filiereId })
+    if (severity) baseFilters.push({ severity })
+    if (type) baseFilters.push({ type })
+    if (lue === 'true') baseFilters.push({ lue: true })
+    else if (lue === 'false') baseFilters.push({ lue: false })
     if (search) {
-      where.OR = [
-        { titre: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ]
+      baseFilters.push({
+        OR: [
+          { titre: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      })
     }
 
-    // ─── Tenant scoping ───
+    // ─── RBAC scoping: user sees only their own notifications or role-group ones ───
+    // Rule: userId === user.id (direct recipient) OR userId is null + establishment scoping (broadcast)
+    const rbacConditions: Record<string, unknown>[] = [
+      { userId: user.id }, // Direct recipient always sees the alerte
+    ]
+
     if (user.role === 'ENSEIGNANT') {
-      // ENSEIGNANT: can only see alertes for filieres in their establishment
-      where.filiere = { etablissementId: user.etablissementId }
+      // ENSEIGNANT: broadcast alertes for filieres in their establishment + own epreuves
+      const enseignantConditions: Record<string, unknown>[] = [
+        { userId: null, filiere: { etablissementId: user.etablissementId } },
+      ]
+      // Also include alertes for epreuves created by this enseignant
+      const ownEpreuveIds = await db.epreuve.findMany({
+        where: { enseignantId: user.id },
+        select: { id: true },
+      })
+      if (ownEpreuveIds.length > 0) {
+        enseignantConditions.push({
+          userId: null,
+          epreuveId: { in: ownEpreuveIds.map((e) => e.id) },
+        })
+      }
+      rbacConditions.push(...enseignantConditions)
     } else if (user.role === 'RESPONSABLE') {
-      // RESPONSABLE: can only see alertes for filieres in their establishment
-      where.filiere = { etablissementId: user.etablissementId }
+      // RESPONSABLE: broadcast alertes for filieres in their establishment
+      rbacConditions.push({
+        userId: null,
+        filiere: { etablissementId: user.etablissementId },
+      })
+      // Also include broadcast alertes without filiere (global alerts for the establishment)
+      rbacConditions.push({
+        userId: null,
+        filiereId: null,
+        epreuveId: null,
+      })
     } else if (user.role === 'ADMIN') {
       // ADMIN: must have EtablissementAccess for the filiere's establishment
       if (filiereId) {
@@ -55,16 +85,38 @@ async function _GET(
           const accessError = await requireAdminEtablissementAccess(user, filiere.etablissementId)
           if (accessError) return accessError
         }
-      } else {
-        // No specific filiere — scope to authorized establishments
-        const tenantFilter = await resolveTenantFilter(user)
-        if ('error' in tenantFilter) return tenantFilter.error
-        if ('etablissementIds' in tenantFilter) {
-          where.filiere = { etablissementId: { in: tenantFilter.etablissementIds } }
-        } else if ('etablissementId' in tenantFilter) {
-          where.filiere = { etablissementId: tenantFilter.etablissementId }
-        }
       }
+      // Admin-specific broadcast conditions
+      const tenantFilter = await resolveTenantFilter(user)
+      if ('error' in tenantFilter) return tenantFilter.error
+      if ('etablissementIds' in tenantFilter) {
+        rbacConditions.push({
+          userId: null,
+          filiere: { etablissementId: { in: tenantFilter.etablissementIds } },
+        })
+      } else if ('etablissementId' in tenantFilter) {
+        rbacConditions.push({
+          userId: null,
+          filiere: { etablissementId: tenantFilter.etablissementId },
+        })
+      }
+      // Also include broadcast alertes without filiere for admin
+      rbacConditions.push({
+        userId: null,
+        filiereId: null,
+        epreuveId: null,
+      })
+    }
+
+    // Build final where clause: RBAC OR conditions combined with base filters
+    const where: Record<string, unknown> = {}
+    if (baseFilters.length > 0) {
+      where.AND = [
+        { OR: rbacConditions },
+        ...baseFilters,
+      ]
+    } else {
+      where.OR = rbacConditions
     }
 
     const [alertes, total] = await Promise.all([

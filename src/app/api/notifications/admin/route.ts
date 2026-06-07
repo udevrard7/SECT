@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 
-// GET /api/notifications/admin — List notifications with filters
-export async function GET(request: NextRequest) {
+// GET /api/notifications/admin — List notifications with RBAC filtering
+// Protected by withAuth: requires authenticated user.
+// RBAC: Users see notifications where destinataireId === user.id OR destinataireRole === user.role
+async function _GET(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || ''
     const lu = searchParams.get('lu') || ''
@@ -14,14 +21,35 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
+    // --- RBAC scoping ---
+    // Admin can see all notifications (for the admin page management)
+    // Other roles see only their own: destinataireId === user.id OR destinataireRole === user.role
+    const rbacConditions: Record<string, unknown>[] = []
+
+    if (user.role === 'ADMIN') {
+      // Admin sees everything (they manage notifications from the admin page)
+      // No RBAC filtering needed
+    } else {
+      // Non-admin: only see notifications destined for them
+      rbacConditions.push({ destinataireId: user.id }) // Direct recipient
+      rbacConditions.push({ destinataireRole: user.role }) // Role-based group
+      rbacConditions.push({ destinataireId: null, destinataireRole: null }) // Broadcast
+    }
+
     const where: Record<string, unknown> = {}
 
+    // Apply RBAC conditions
+    if (rbacConditions.length > 0) {
+      where.OR = rbacConditions
+    }
+
+    // Apply additional filters on top of RBAC
     if (type) where.type = type
     if (lu === 'true') where.lu = true
     else if (lu === 'false') where.lu = false
-    if (destinataireRole) where.destinataireRole = destinataireRole
+    if (destinataireRole && user.role === 'ADMIN') where.destinataireRole = destinataireRole
     if (categorie) where.categorie = categorie
-    if (destinataireId) where.destinataireId = destinataireId
+    if (destinataireId && user.role === 'ADMIN') where.destinataireId = destinataireId
 
     // If markAllRead is requested, update all matching notifications
     if (markAllRead) {
@@ -66,8 +94,13 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/notifications/admin — Create a notification (broadcast or targeted)
-export async function POST(request: NextRequest) {
+// Protected by withAuth: requires ADMIN role.
+async function _POST(
+  request: NextRequest,
+  context: { params: any; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
     const body = await request.json()
     const {
       type,
@@ -137,8 +170,8 @@ export async function POST(request: NextRequest) {
 
     // If destinataireId is provided, verify user exists
     if (destinataireId) {
-      const user = await db.user.findUnique({ where: { id: destinataireId } })
-      if (!user) {
+      const targetUser = await db.user.findUnique({ where: { id: destinataireId } })
+      if (!targetUser) {
         return NextResponse.json(
           { error: 'Utilisateur destinataire non trouvé' },
           { status: 404 }
@@ -179,6 +212,8 @@ export async function POST(request: NextRequest) {
     // Log audit
     await db.auditLog.create({
       data: {
+        userId: user.id,
+        userEmail: user.email,
         action: 'CREATE_NOTIFICATION',
         entite: 'NotificationAdmin',
         entiteId: notification.id,
@@ -202,3 +237,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
+export const POST = withAuth(_POST, ['ADMIN'])

@@ -279,7 +279,6 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'evaluations', label: 'Évaluations', icon: 'ClipboardCheck' },
       { id: 'rapports', label: 'Rapports & Statistiques', icon: 'BarChart3' },
-      { id: 'alertes', label: 'Alertes', icon: 'Bell' },
     ],
   },
   {
