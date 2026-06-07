@@ -919,19 +919,17 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     </AnimatePresence>
                   </div>
 
-                  {/* Forgot password (only for personnel) */}
-                  {loginMode === 'personnel' && (
-                    <div className="flex justify-end">
-                      <motion.button
-                        type="button"
-                        onClick={openResetDialog}
-                        className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
-                        whileHover={{ x: 2 }}
-                      >
-                        Mot de passe oublié ?
-                      </motion.button>
-                    </div>
-                  )}
+                  {/* Forgot password (available for all modes) */}
+                  <div className="flex justify-end">
+                    <motion.button
+                      type="button"
+                      onClick={openResetDialog}
+                      className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
+                      whileHover={{ x: 2 }}
+                    >
+                      Mot de passe oublié ?
+                    </motion.button>
+                  </div>
 
                   {/* Error message */}
                   <AnimatePresence>
