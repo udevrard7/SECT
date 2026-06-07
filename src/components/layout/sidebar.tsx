@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   Users,
@@ -39,16 +40,12 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
   SidebarRail,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
 import {
   Collapsible,
@@ -57,8 +54,8 @@ import {
 } from '@/components/ui/collapsible'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { useNavigationStore, NAV_CATEGORIES } from '@/stores/navigation-store'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
+import { NAV_CATEGORIES, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
 
 // ─── Icon mapping ───
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -189,11 +186,14 @@ const ROLE_LABELS: Record<UserRole, string> = {
 }
 
 export function AppSidebar() {
-  const { currentPage, setCurrentPage } = useNavigationStore()
+  const router = useRouter()
+  const pathname = usePathname()
   const { user } = useAuthStore()
 
   if (!user) return null
 
+  // Determine current page ID from URL
+  const currentPageId = ROUTE_TO_PAGE[pathname] ?? 'dashboard'
   const categories = NAV_CATEGORIES[user.role] ?? []
   const colors = ROLE_COLORS[user.role]
 
@@ -204,6 +204,12 @@ export function AppSidebar() {
     .join('')
     .toUpperCase()
     .slice(0, 2)
+
+  // Navigate to a page using Next.js router
+  const navigateTo = (pageId: PageId) => {
+    const route = PAGE_ROUTES[pageId]
+    if (route) router.push(route)
+  }
 
   return (
     <Sidebar collapsible="icon" className={`${colors.sidebarBg} ${colors.sidebarBorder} border-r`}>
@@ -236,8 +242,8 @@ export function AppSidebar() {
           <NavCategoryGroup
             key={category.id}
             category={category}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
+            currentPageId={currentPageId}
+            onNavigate={navigateTo}
             colors={colors}
           />
         ))}
@@ -271,8 +277,8 @@ export function AppSidebar() {
 // ─── Category group component with collapsible behavior ───
 function NavCategoryGroup({
   category,
-  currentPage,
-  onPageChange,
+  currentPageId,
+  onNavigate,
   colors,
 }: {
   category: {
@@ -282,12 +288,12 @@ function NavCategoryGroup({
     items: { id: string; label: string; icon: string; badge?: string | number }[]
     defaultOpen?: boolean
   }
-  currentPage: string
-  onPageChange: (page: import('@/stores/navigation-store').PageId) => void
+  currentPageId: string
+  onNavigate: (pageId: PageId) => void
   colors: typeof ROLE_COLORS[UserRole]
 }) {
   // Auto-expand if the category contains the current page
-  const hasActiveItem = category.items.some((item) => item.id === currentPage)
+  const hasActiveItem = category.items.some((item) => item.id === currentPageId)
   const [isOpen, setIsOpen] = useState(category.defaultOpen ?? true)
   const shouldForceOpen = hasActiveItem
 
@@ -298,7 +304,7 @@ function NavCategoryGroup({
   if (isOverview && category.items.length === 1) {
     const item = category.items[0]
     const ItemIcon = ICON_MAP[item.icon]
-    const isActive = currentPage === item.id
+    const isActive = currentPageId === item.id
 
     return (
       <SidebarGroup className="py-1">
@@ -308,7 +314,7 @@ function NavCategoryGroup({
               <SidebarMenuButton
                 isActive={isActive}
                 tooltip={item.label}
-                onClick={() => onPageChange(item.id as import('@/stores/navigation-store').PageId)}
+                onClick={() => onNavigate(item.id as PageId)}
                 className={`rounded-lg transition-all duration-200 ${
                   isActive
                     ? `${colors.activeBg} shadow-sm`
@@ -351,14 +357,14 @@ function NavCategoryGroup({
             <SidebarMenu className="gap-0.5">
               {category.items.map((item) => {
                 const ItemIcon = ICON_MAP[item.icon]
-                const isActive = currentPage === item.id
+                const isActive = currentPageId === item.id
 
                 return (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       isActive={isActive}
                       tooltip={item.label}
-                      onClick={() => onPageChange(item.id as import('@/stores/navigation-store').PageId)}
+                      onClick={() => onNavigate(item.id as PageId)}
                       className={`pl-7 rounded-lg transition-all duration-200 group-data-[collapsible=icon]:pl-0 ${
                         isActive
                           ? `${colors.activeBg} shadow-sm`

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -93,7 +93,6 @@ interface ActionCardProps {
     )
   }
 
-
 // ─── Loading Skeleton ───
 
 function DashboardSkeleton() {
@@ -136,7 +135,7 @@ export function ResponsableDashboard() {
       if (user?.id) params.set('responsableId', user.id)
       const url = `/api/stats/responsable?${params.toString()}`
 
-      const res = await fetch(url, { headers: getAuthHeaders() })
+      const res = await fetch(url)
       if (!res.ok) throw new Error('Erreur réseau')
       const json: ResponsableStatsData = await res.json()
       setData(json)

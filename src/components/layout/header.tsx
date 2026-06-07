@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter, usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { Moon, Sun, LogOut, User, Settings, ChevronRight } from 'lucide-react'
 
@@ -16,7 +17,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
-import { useNavigationStore, NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE } from '@/stores/navigation-store'
+import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
 import { NotificationBell } from '@/components/layout/notification-bell'
 
 // ─── Role display names ───
@@ -63,25 +64,29 @@ const ROLE_HEADER_COLORS: Record<UserRole, {
 export function AppHeader() {
   const { theme, setTheme } = useTheme()
   const { user, logout } = useAuthStore()
-  const { currentPage, setCurrentPage } = useNavigationStore()
+  const router = useRouter()
+  const pathname = usePathname()
 
   if (!user) return null
 
   const colors = ROLE_HEADER_COLORS[user.role]
 
+  // Determine current page ID from URL
+  const currentPageId = ROUTE_TO_PAGE[pathname] ?? 'dashboard'
+
   // Find the current page label and breadcrumb
   const categories = NAV_CATEGORIES[user.role] ?? []
   let parentCategory = ''
   for (const cat of categories) {
-    if (cat.items.some((item) => item.id === currentPage)) {
+    if (cat.items.some((item) => item.id === currentPageId)) {
       parentCategory = cat.label
       break
     }
   }
 
   const navItems = NAV_ITEMS[user.role] ?? []
-  const currentNavItem = navItems.find((item) => item.id === currentPage)
-  const pageTitle = currentPage === 'profil'
+  const currentNavItem = navItems.find((item) => item.id === currentPageId)
+  const pageTitle = currentPageId === 'profil'
     ? PROFILE_PAGE.label
     : (currentNavItem?.label ?? 'Tableau de bord')
 
@@ -92,6 +97,12 @@ export function AppHeader() {
     .join('')
     .toUpperCase()
     .slice(0, 2)
+
+  // Navigate to a page using Next.js router
+  const navigateTo = (pageId: PageId) => {
+    const route = PAGE_ROUTES[pageId]
+    if (route) router.push(route)
+  }
 
   return (
     <header className="flex flex-col shrink-0">
@@ -106,7 +117,7 @@ export function AppHeader() {
 
         {/* Breadcrumb / Page title */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          {parentCategory && currentPage !== 'dashboard' && (
+          {parentCategory && currentPageId !== 'dashboard' && (
             <>
               <span className="text-xs text-muted-foreground hidden sm:inline truncate">
                 {parentCategory}
@@ -168,15 +179,14 @@ export function AppHeader() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => setCurrentPage('profil')} className="cursor-pointer rounded-md">
+                <DropdownMenuItem onClick={() => navigateTo('profil')} className="cursor-pointer rounded-md">
                   <User className="mr-2 h-4 w-4" />
                   <span>Mon profil</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
-                    // Route to role-specific settings page
                     const settingsPage = user.role === 'ADMIN' ? 'configuration' : user.role === 'RESPONSABLE' ? 'parametres' : 'profil'
-                    setCurrentPage(settingsPage as import('@/stores/navigation-store').PageId)
+                    navigateTo(settingsPage)
                   }}
                   className="cursor-pointer rounded-md"
                 >
@@ -185,7 +195,7 @@ export function AppHeader() {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 rounded-md">
+              <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus-text-red-400 rounded-md">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Déconnexion</span>
               </DropdownMenuItem>

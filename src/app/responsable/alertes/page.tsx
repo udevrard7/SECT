@@ -4,7 +4,7 @@ import { AlertTriangle, User, BookOpen, ChevronRight, Inbox, RefreshCw, ServerCr
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -79,7 +79,7 @@ export default function CentreAlertesPage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch('/api/responsable/alertes', { headers: getAuthHeaders() });
+      const res = await fetch('/api/responsable/alertes');
       if (!res.ok) throw new Error('Failed to fetch');
       const data: Alerte[] = await res.json();
       setAlertes(data);

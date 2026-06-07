@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireRole, isAuthError } from '@/lib/auth-middleware'
+import { requireRole, isAuthError } from '@/lib/auth-session'
 
 interface RapportFiliere {
   id: string;

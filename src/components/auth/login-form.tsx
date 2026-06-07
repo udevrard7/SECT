@@ -26,7 +26,7 @@ import {
   Hash,
   Briefcase,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders, type LoginError } from '@/stores/auth-store'
+import { useAuthStore, type LoginError } from '@/stores/auth-store'
 import { toast } from 'sonner'
 
 import { Input } from '@/components/ui/input'
@@ -495,7 +495,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
     try {
       const res = await fetch('/api/auth/password-reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail.trim() }),
       })
       const data = await res.json()
@@ -524,7 +524,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
     try {
       const res = await fetch('/api/auth/password-reset/confirm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: confirmToken.trim(), password: confirmPassword }),
       })
       const data = await res.json()

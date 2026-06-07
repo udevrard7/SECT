@@ -23,8 +23,9 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
@@ -157,7 +158,8 @@ function getQualityColor(score: number | null): string {
 
 export function QuestionsIAPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage, currentPageParams } = useNavigationStore()
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   // ─── State ───
   const [documents, setDocuments] = useState<DocumentInfo[]>([])
@@ -202,7 +204,7 @@ export function QuestionsIAPage() {
     setIsLoadingDocs(true)
     try {
       console.log('[QuestionsIA] Fetching documents for user:', user.id)
-      const res = await fetch(`/api/documents?userId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/documents?userId=${user.id}`)
       if (!res.ok) {
         console.error('[QuestionsIA] Failed to fetch documents, status:', res.status)
         return
@@ -232,13 +234,14 @@ export function QuestionsIAPage() {
 
   // Auto-select document from navigation params
   useEffect(() => {
-    if (currentPageParams?.documentId && !selectedDocumentId && documents.length > 0) {
-      const paramDoc = documents.find((d) => d.id === currentPageParams.documentId)
+    const docId = searchParams.get('documentId')
+    if (docId && !selectedDocumentId && documents.length > 0) {
+      const paramDoc = documents.find((d) => d.id === docId)
       if (paramDoc && paramDoc.statutAnalyse === 'ANALYSE') {
         setSelectedDocumentId(paramDoc.id)
       }
     }
-  }, [currentPageParams?.documentId, documents, selectedDocumentId])
+  }, [searchParams, documents, selectedDocumentId])
 
   // ─── Toggle theme selection ───
   const toggleTheme = (theme: string) => {
@@ -305,7 +308,7 @@ export function QuestionsIAPage() {
     try {
       const res = await fetch('/api/questions/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       })
 
@@ -384,7 +387,7 @@ export function QuestionsIAPage() {
     try {
       const res = await fetch(`/api/questions/${questionId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'valider' }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -407,7 +410,7 @@ export function QuestionsIAPage() {
   const handleDelete = async (questionId: string) => {
     setActionLoadingIds((prev) => new Set(prev).add(questionId))
     try {
-      const res = await fetch(`/api/questions/${questionId}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/questions/${questionId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       setQuestions((prev) => prev.filter((q) => q.id !== questionId))
       toast.success('Question supprimée')
@@ -428,7 +431,7 @@ export function QuestionsIAPage() {
     try {
       const res = await fetch(`/api/questions/${question.id}/regenerate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           documentId: question.documentId ?? selectedDocumentId,
           type: question.type,
@@ -491,7 +494,7 @@ export function QuestionsIAPage() {
 
       const res = await fetch(`/api/questions/${questionId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -533,7 +536,7 @@ export function QuestionsIAPage() {
       try {
         const res = await fetch(`/api/questions/${q.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'valider' }),
         })
         if (res.ok) successCount++
@@ -554,7 +557,7 @@ export function QuestionsIAPage() {
     let successCount = 0
     for (const q of nonValidated) {
       try {
-        const res = await fetch(`/api/questions/${q.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+        const res = await fetch(`/api/questions/${q.id}`, { method: 'DELETE' })
         if (res.ok) successCount++
       } catch {
         // Continue
@@ -890,7 +893,7 @@ export function QuestionsIAPage() {
                   variant="outline"
                   size="sm"
                   className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                  onClick={() => setCurrentPage('documents')}
+                  onClick={() => router.push(PAGE_ROUTES.documents)}
                 >
                   <FileText className="h-3 w-3 mr-1" />
                   Aller aux Documents
@@ -1083,7 +1086,7 @@ export function QuestionsIAPage() {
               setIsTestingZAI(true)
               setZaiTestResult(null)
               try {
-                const res = await fetch('/api/questions/test-zai', { headers: getAuthHeaders() })
+                const res = await fetch('/api/questions/test-zai')
                 const data = await res.json()
                 setZaiTestResult(data)
                 if (data.status === 'ok') {

@@ -26,7 +26,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import type { AuthUser } from '@/stores/auth-store'
-import { getAuthHeaders } from '@/stores/auth-store'
 
 // ─── Password strength calculation ───
 function getPasswordStrength(password: string) {
@@ -113,7 +112,7 @@ export function ForceChangePasswordPage({
     try {
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
           currentPassword: currentPwd,

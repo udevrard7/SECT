@@ -78,7 +78,6 @@ import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { AIProviderInfo, AIProviderType } from '@/lib/ai-providers/types'
 import { PROVIDER_TYPES } from '@/lib/ai-providers/types'
-import { getAuthHeaders } from '@/stores/auth-store'
 
 // ─── Provider type config ───
 const PROVIDER_META: Record<AIProviderType, {
@@ -287,7 +286,7 @@ export function AIProvidersPage() {
   // Fetch providers
   const fetchProviders = useCallback(async () => {
     try {
-      const res = await fetch('/api/ai-providers', { headers: getAuthHeaders() })
+      const res = await fetch('/api/ai-providers')
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       const fetched = data.providers || []
@@ -298,7 +297,7 @@ export function AIProvidersPage() {
         try {
           const seedRes = await fetch('/api/ai-providers', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: 'Z-AI (par défaut)',
               provider: 'ZAI',
@@ -311,7 +310,7 @@ export function AIProvidersPage() {
             toast.success('Fournisseur par défaut créé', {
               description: 'Z-AI (par défaut) a été ajouté automatiquement',
             })
-            const refetch = await fetch('/api/ai-providers', { headers: getAuthHeaders() })
+            const refetch = await fetch('/api/ai-providers')
             if (refetch.ok) {
               const reData = await refetch.json()
               setProviders(reData.providers || [])
@@ -331,7 +330,7 @@ export function AIProvidersPage() {
   // Fetch failover status
   const fetchFailoverStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/ai-providers/failover/status', { headers: getAuthHeaders() })
+      const res = await fetch('/api/ai-providers/failover/status')
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setFailoverStatus(data)
@@ -374,7 +373,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch(`/api/ai-providers/${activeProvider.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model }),
       })
       if (!res.ok) throw new Error('Erreur lors du changement de modèle')
@@ -412,7 +411,7 @@ export function AIProvidersPage() {
 
       const res = await fetch('/api/ai-providers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name,
           provider: formData.provider,
@@ -457,7 +456,7 @@ export function AIProvidersPage() {
 
       const res = await fetch(`/api/ai-providers/${selectedProvider.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name,
           provider: formData.provider,
@@ -510,7 +509,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch('/api/ai-providers/activate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerId }),
       })
       if (!res.ok) throw new Error('Erreur lors de l\'activation')
@@ -535,7 +534,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch('/api/ai-providers/activate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerId }),
       })
       if (!res.ok) throw new Error('Erreur lors du changement')
@@ -664,7 +663,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch('/api/ai-providers/failover/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -690,7 +689,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch('/api/ai-providers/failover/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -724,7 +723,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch('/api/ai-providers/priority', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priorities: newPriorities }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -747,7 +746,7 @@ export function AIProvidersPage() {
     try {
       const res = await fetch('/api/ai-providers/failover/health', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resetAll: true }),
       })
       if (!res.ok) throw new Error('Erreur')

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
-import { requireRole, isAuthError } from '@/lib/auth-middleware'
+import { requireRole, isAuthError } from '@/lib/auth-session'
 
 // Extend Vercel function timeout to 300s for large AI generation (50+ questions can take several minutes)
 export const maxDuration = 300

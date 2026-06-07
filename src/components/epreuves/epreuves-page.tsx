@@ -38,8 +38,9 @@ import {
   Layers,
   SendHorizonal,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -274,7 +275,7 @@ function getStatutBadge(statut: string) {
 
 export function EpreuvesPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabId>('modeles')
@@ -295,7 +296,7 @@ export function EpreuvesPage() {
               <Button
                 variant="outline"
                 className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                onClick={() => setCurrentPage('questions-ia')}
+                onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
               >
                 <Sparkles className="h-4 w-4" />
                 Générer par IA
@@ -350,7 +351,7 @@ export function EpreuvesPage() {
 
 function ModelesTab() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
 
   const [epreuves, setEpreuves] = useState<ModeleEpreuve[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -381,7 +382,7 @@ function ModelesTab() {
       const params = new URLSearchParams({ enseignantId: user.id })
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (modeFilter !== 'TOUS') params.set('generationMode', modeFilter)
-      const res = await fetch(`/api/epreuves/banque?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/banque?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])
@@ -412,7 +413,7 @@ function ModelesTab() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Modèle supprimé', { description: `"${deleteTarget.titre}" a été déplacé vers la corbeille.` })
       setDeleteTarget(null)
@@ -440,7 +441,7 @@ function ModelesTab() {
 
       const res = await fetch('/api/epreuves', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -574,7 +575,7 @@ function ModelesTab() {
             <Button
               variant="outline"
               className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-              onClick={() => setCurrentPage('questions-ia')}
+              onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
             >
               <Sparkles className="h-4 w-4" />
               Générer par IA
@@ -802,7 +803,7 @@ function ModelesTab() {
 
 function SessionsTab() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
 
   const [epreuves, setEpreuves] = useState<SessionEpreuve[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -860,7 +861,7 @@ function SessionsTab() {
     try {
       const params = new URLSearchParams({ enseignantId: user.id })
       if (statutFilter !== 'TOUS') params.set('statut', statutFilter)
-      const res = await fetch(`/api/epreuves?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])
@@ -879,7 +880,7 @@ function SessionsTab() {
     if (!user?.id) return
     setIsLoadingModeles(true)
     try {
-      const res = await fetch(`/api/epreuves/banque?enseignantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/banque?enseignantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setModeles(data.epreuves ?? [])
@@ -902,7 +903,7 @@ function SessionsTab() {
     if (!user?.id) return
     setIsLoadingPlanFilieres(true)
     try {
-      const res = await fetch(`/api/enseignant/context?enseignantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/enseignant/context?enseignantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         const filieres: EnseignantFiliereContext[] = data.filieres ?? []
@@ -1006,7 +1007,7 @@ function SessionsTab() {
 
       const res = await fetch('/api/epreuves', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -1031,7 +1032,7 @@ function SessionsTab() {
     try {
       const res = await fetch(`/api/epreuves/${epreuveId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -1056,7 +1057,7 @@ function SessionsTab() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Session déplacée vers la corbeille')
       setDeleteTarget(null)
@@ -1068,7 +1069,7 @@ function SessionsTab() {
 
   const handleOpenMonitoring = async (epreuve: SessionEpreuve) => {
     try {
-      const res = await fetch(`/api/epreuves/${epreuve.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/${epreuve.id}`)
       if (res.ok) {
         const data = await res.json()
         setMonitoringEpreuve(data.epreuve ?? epreuve)
@@ -1086,7 +1087,7 @@ function SessionsTab() {
     if (!monitoringDialogOpen || !monitoringEpreuve || monitoringEpreuve.statut !== 'EN_COURS') return
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/epreuves/${monitoringEpreuve.id}`, { headers: getAuthHeaders() })
+        const res = await fetch(`/api/epreuves/${monitoringEpreuve.id}`)
         if (res.ok) {
           const data = await res.json()
           setMonitoringEpreuve(data.epreuve ?? monitoringEpreuve)
@@ -1111,7 +1112,7 @@ function SessionsTab() {
       try {
         const res = await fetch(`/api/epreuves/${dateEditTarget.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dateDebut: dateEditDebut, dateFin: dateEditFin }),
         })
         if (!res.ok) throw new Error('Erreur')
@@ -1136,7 +1137,7 @@ function SessionsTab() {
     try {
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'soumettre' }),
       })
       if (!res.ok) {
@@ -1442,7 +1443,7 @@ function SessionsTab() {
               ) : modeles.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-center">
                   <p className="text-sm text-muted-foreground">Aucun modèle disponible.</p>
-                  <Button variant="outline" size="sm" className="mt-2 border-emerald-300 text-emerald-700" onClick={() => { setPlanifierDialogOpen(false); setCurrentPage('questions-ia') }}>
+                  <Button variant="outline" size="sm" className="mt-2 border-emerald-300 text-emerald-700" onClick={() => { setPlanifierDialogOpen(false); router.push(PAGE_ROUTES['questions-ia']) }}>
                     <Sparkles className="h-3 w-3" /> Générer par IA
                   </Button>
                 </div>
@@ -1844,5 +1845,4 @@ function SessionsTab() {
     </div>
   )
 }
-
 

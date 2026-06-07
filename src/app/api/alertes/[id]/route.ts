@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { withAuth, AuthenticatedUser } from '@/lib/auth-middleware'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 
 // Helper function to check if a user has permission to access an alert
 async function canUserAccessAlerte(

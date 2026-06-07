@@ -21,7 +21,7 @@ import {
   Share2,
   Clock,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -249,7 +249,7 @@ export function AffectationsPage() {
     try {
       const params = new URLSearchParams()
       if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
-      const res = await fetch(`/api/filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setFilieres((data.filieres ?? []).map((f: FiliereOption) => ({
@@ -275,7 +275,7 @@ export function AffectationsPage() {
       if (statutFilter !== 'all') params.set('statut', statutFilter)
       if (anneeFilter) params.set('anneeUniversitaire', anneeFilter)
 
-      const res = await fetch(`/api/affectations?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/affectations?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setAffectations(data.affectations ?? [])
@@ -295,7 +295,7 @@ export function AffectationsPage() {
       params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
       params.set('actif', 'true')
 
-      const res = await fetch(`/api/unites-enseignement?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setUnitesEnseignement(data.unitesEnseignement ?? [])
@@ -315,7 +315,7 @@ export function AffectationsPage() {
       params.set('actif', 'true')
       if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
 
-      const res = await fetch(`/api/users?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/users?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setEnseignants((data.users ?? []).map((u: { id: string; name: string; email: string }) => ({
@@ -450,7 +450,7 @@ export function AffectationsPage() {
         acc[sharedKey].push(ue)
       }
       return acc
-    }, {})
+    })
 
     // Build matrix rows
     const rows = ues.map((ue) => {
@@ -561,7 +561,7 @@ export function AffectationsPage() {
 
           const res = await fetch('/api/affectations', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               enseignantId: addEnseignantId,
               uniteEnseignementId: addUEId,
@@ -622,7 +622,7 @@ export function AffectationsPage() {
     try {
       const res = await fetch(`/api/affectations/${editingAffectation.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           typeSeance: editTypeSeance,
           groupe: editGroupe || null,
@@ -653,7 +653,7 @@ export function AffectationsPage() {
     try {
       const res = await fetch(`/api/affectations/${confirmAction.affectation.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut: 'VALIDEE' }),
       })
       if (!res.ok) {
@@ -676,7 +676,7 @@ export function AffectationsPage() {
     try {
       const res = await fetch(`/api/affectations/${confirmAction.affectation.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut: 'PUBLIEE' }),
       })
       if (!res.ok) {
@@ -699,8 +699,7 @@ export function AffectationsPage() {
     try {
       const res = await fetch(`/api/affectations/${confirmAction.affectation.id}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
-      })
+        })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur lors de la suppression')
@@ -725,7 +724,7 @@ export function AffectationsPage() {
         provisoires.map(a =>
           fetch(`/api/affectations/${a.id}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ statut: 'VALIDEE' }),
           })
         )

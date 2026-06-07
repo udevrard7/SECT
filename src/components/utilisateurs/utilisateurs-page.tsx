@@ -34,7 +34,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -337,7 +337,7 @@ export function UtilisateursPage() {
       params.set('page', page.toString())
       params.set('limit', limit.toString())
 
-      const res = await fetch(`/api/users?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/users?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setUsers(data.users ?? [])
@@ -354,8 +354,8 @@ export function UtilisateursPage() {
   const fetchOptions = useCallback(async () => {
     try {
       const [etabRes, filRes] = await Promise.all([
-        fetch('/api/etablissements', { headers: getAuthHeaders() }),
-        fetch('/api/filieres', { headers: getAuthHeaders() }),
+        fetch('/api/etablissements'),
+        fetch('/api/filieres'),
       ])
       if (etabRes.ok) {
         const data = await etabRes.json()
@@ -374,7 +374,7 @@ export function UtilisateursPage() {
   const fetchInvitations = useCallback(async () => {
     setInvitationsLoading(true)
     try {
-      const res = await fetch('/api/invitations?limit=50', { headers: getAuthHeaders() })
+      const res = await fetch('/api/invitations?limit=50')
       if (res.ok) {
         const data = await res.json()
         setInvitations(data.invitations ?? [])
@@ -482,7 +482,7 @@ export function UtilisateursPage() {
         if (formPassword) body.password = formPassword
         const res = await fetch(`/api/users/${editingUser.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
         if (!res.ok) {
@@ -528,7 +528,7 @@ export function UtilisateursPage() {
 
         const res = await fetch('/api/invitations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
         const data = await res.json()
@@ -584,7 +584,7 @@ export function UtilisateursPage() {
 
         const res = await fetch('/api/users', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
         const data = await res.json()
@@ -615,7 +615,7 @@ export function UtilisateursPage() {
     try {
       const res = await fetch(`/api/users/${target.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !target.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -634,7 +634,7 @@ export function UtilisateursPage() {
     try {
       const res = await fetch(`/api/users/${deleteTarget.id}`, {
         method: 'DELETE',
-        headers: { ...getAuthHeaders() },
+        headers: { },
       })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Utilisateur supprimé', { description: `${deleteTarget.name} a été supprimé.` })
@@ -651,7 +651,7 @@ export function UtilisateursPage() {
     try {
       const res = await fetch(`/api/invitations/${cancelInviteTarget.id}`, {
         method: 'DELETE',
-        headers: { ...getAuthHeaders() },
+        headers: { },
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -674,7 +674,7 @@ export function UtilisateursPage() {
     try {
       const res = await fetch(`/api/invitations/${renvoyerTarget.id}/renvoyer`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
       })
       const data = await res.json()
       if (!res.ok) {
@@ -729,7 +729,7 @@ export function UtilisateursPage() {
     try {
       const res = await fetch('/api/users/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           users: usersToImport,
           role: importRole,

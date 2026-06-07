@@ -40,7 +40,7 @@ import {
   ArrowRight,
   Lock,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -397,10 +397,10 @@ export function AbonnementsPage() {
     setIsLoading(true)
     try {
       const [plansRes, aboRes, etabRes, respRes] = await Promise.all([
-        fetch('/api/plans', { headers: getAuthHeaders() }),
-        fetch('/api/abonnements', { headers: getAuthHeaders() }),
-        fetch('/api/etablissements', { headers: getAuthHeaders() }),
-        fetch('/api/users?role=RESPONSABLE&limit=100', { headers: getAuthHeaders() }),
+        fetch('/api/plans'),
+        fetch('/api/abonnements'),
+        fetch('/api/etablissements'),
+        fetch('/api/users?role=RESPONSABLE&limit=100'),
       ])
 
       if (plansRes.ok) {
@@ -566,7 +566,7 @@ export function AbonnementsPage() {
 
       const res = await fetch('/api/etablissements', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -680,7 +680,7 @@ export function AbonnementsPage() {
       if (editingAbo) {
         const res = await fetch(`/api/abonnements/${editingAbo.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             planId: formAboPlanId,
             statut: formAboStatut,
@@ -701,7 +701,7 @@ export function AbonnementsPage() {
       } else {
         const res = await fetch('/api/abonnements', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             etablissementId: formAboEtabId,
             planId: formAboPlanId,
@@ -739,7 +739,7 @@ export function AbonnementsPage() {
     try {
       const res = await fetch(`/api/abonnements/${suspendTarget.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut: 'SUSPENDU' }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -847,13 +847,13 @@ export function AbonnementsPage() {
       if (editingPlan) {
         res = await fetch(`/api/plans/${editingPlan.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
       } else {
         res = await fetch('/api/plans', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
       }
@@ -892,7 +892,7 @@ export function AbonnementsPage() {
     try {
       const res = await fetch('/api/invitations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: formRespInvitEmail,
           role: 'RESPONSABLE',
@@ -927,7 +927,7 @@ export function AbonnementsPage() {
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formRespName,
           email: formRespEmail,

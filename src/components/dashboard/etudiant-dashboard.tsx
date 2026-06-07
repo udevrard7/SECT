@@ -17,8 +17,8 @@ import {
   RefreshCw,
   AlertTriangle,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter } from 'next/navigation'
 import {
   Card,
   CardHeader,
@@ -227,7 +227,7 @@ function ObjectiveCard() {
 
 // --- Timeline for Upcoming Exams ---
 function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
-  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+  const router = useRouter()
   return (
     <Card>
       <CardHeader>
@@ -254,7 +254,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
                   <Clock className="h-3.5 w-3.5" />
                   Limite : {formatDateFR(exam.dateFin)}
                 </p>
-                <Button size="sm" className="mt-2" onClick={() => setCurrentPage('passation', { epreuveId: exam.id })}>
+                <Button size="sm" className="mt-2" onClick={() => router.push(`/passation?epreuveId=${exam.id}`)}>
                   <Play className="mr-2 h-4 w-4" /> Commencer
                 </Button>
               </motion.div>
@@ -312,7 +312,7 @@ function BadgesCarousel({ userBadges }: { userBadges: Omit<BadgeDeReussite, 'ico
 
 // --- Empty Dashboard (no data yet) ---
 function EmptyDashboard({ name }: { name: string }) {
-  const setCurrentPage = useNavigationStore((s) => s.setCurrentPage)
+  const router = useRouter()
   return (
     <motion.div
       className="space-y-6"
@@ -337,7 +337,7 @@ function EmptyDashboard({ name }: { name: string }) {
           </p>
           <Button
             className="mt-4 bg-emerald-600 hover:bg-emerald-700"
-            onClick={() => setCurrentPage('mes-epreuves')}
+            onClick={() => router.push('/mes-epreuves')}
           >
             <CalendarDays className="mr-2 h-4 w-4" />
             Voir mes épreuves
@@ -350,6 +350,7 @@ function EmptyDashboard({ name }: { name: string }) {
 
 // ─── Main Component ───
 export function EtudiantDashboard() {
+  const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const name = user?.name ?? 'Étudiant'
 
@@ -366,7 +367,6 @@ export function EtudiantDashboard() {
       const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
 
       const res = await fetch(`/api/stats/etudiant?userId=${user.id}`, {
-        headers: getAuthHeaders(),
         signal: controller.signal,
       })
       clearTimeout(timeoutId)
@@ -491,7 +491,7 @@ export function EtudiantDashboard() {
                 </div>
                 <Button
                   className="bg-amber-600 hover:bg-amber-700"
-                  onClick={() => useNavigationStore.getState().setCurrentPage('passation', { epreuveId: data.sessionEnCours!.epreuveId })}
+                  onClick={() => router.push(`/passation?epreuveId=${data.sessionEnCours!.epreuveId}`)}
                 >
                   <Play className="mr-2 h-4 w-4" /> Reprendre
                 </Button>
@@ -606,7 +606,7 @@ export function EtudiantDashboard() {
                                             <p className="font-semibold truncate">{result.titre}</p>
                                             <p className="text-sm text-muted-foreground">{formatDateFR(result.date)}</p>
                                         </div>
-                                        <Button variant="ghost" size="sm" onClick={() => useNavigationStore.getState().setCurrentPage('mes-resultats')}>
+                                        <Button variant="ghost" size="sm" onClick={() => router.push('/mes-resultats')}>
                                             <Eye className="h-4 w-4" />
                                         </Button>
                                     </div>

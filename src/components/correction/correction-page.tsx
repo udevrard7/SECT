@@ -21,7 +21,7 @@ import {
   Send,
   Zap,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -182,7 +182,7 @@ export function CorrectionPage() {
     if (!user?.id) return
     setIsLoadingEpreuves(true)
     try {
-      const res = await fetch(`/api/epreuves?enseignantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves?enseignantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         const allEpreuves: EpreuveOption[] = data.epreuves ?? []
@@ -211,8 +211,7 @@ export function CorrectionPage() {
     setIsLoadingSessions(true)
     try {
       const res = await fetch(
-        `/api/correction?enseignantId=${user.id}&epreuveId=${selectedEpreuveId}`,
-        { headers: getAuthHeaders() }
+        `/api/correction?enseignantId=${user.id}&epreuveId=${selectedEpreuveId}`
       )
       if (res.ok) {
         const data = await res.json()
@@ -304,7 +303,7 @@ export function CorrectionPage() {
         `/api/correction/${selectedSessionId}/ai-grade`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ questionId: currentQuestion.questionId }),
         }
       )
@@ -348,7 +347,7 @@ export function CorrectionPage() {
     try {
       const res = await fetch(`/api/correction/${selectedSessionId}/ai-grade`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionId: currentQuestion.questionId,
           score,
@@ -379,7 +378,7 @@ export function CorrectionPage() {
     try {
       const res = await fetch(`/api/correction/${selectedSessionId}/ai-grade`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ finalizeAll: true }),
       })
       if (!res.ok) {
@@ -408,7 +407,7 @@ export function CorrectionPage() {
         `/api/correction/${selectedSessionId}/ai-grade-batch`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
         }
       )
       if (!res.ok) {
@@ -438,7 +437,7 @@ export function CorrectionPage() {
     try {
       const res = await fetch('/api/correction/retourner-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ epreuveId: selectedEpreuveId }),
       })
       if (!res.ok) {

@@ -17,7 +17,7 @@ import {
   BarChart3,
   Send,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import {
   Card,
   CardContent,
@@ -195,7 +195,7 @@ export function MesResultatsPage() {
     if (!user?.id) return
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/resultats?etudiantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/resultats?etudiantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setResultats(data.resultats ?? [])

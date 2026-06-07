@@ -5,8 +5,8 @@ import { db } from '@/lib/db'
 // This should be called once after deploying schema changes
 export async function POST(request: NextRequest) {
   // Auth check: only ADMIN can push schema changes
-  const { getUserFromRequest } = await import('@/lib/auth-helpers')
-  const authUser = getUserFromRequest(request)
+  const { getAuthenticatedUser } = await import('@/lib/auth-session')
+  const authUser = await getAuthenticatedUser()
   if (!authUser || authUser.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
   }

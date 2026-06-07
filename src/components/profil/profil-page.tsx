@@ -88,8 +88,7 @@ export function ProfilPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
+          },
         body: JSON.stringify({ name: editName.trim() }),
       })
       if (!res.ok) {
@@ -123,7 +122,7 @@ export function ProfilPage() {
     try {
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
           currentPassword,
@@ -470,19 +469,4 @@ function InfoRow({
       </div>
     </div>
   )
-}
-
-// ─── Auth headers helper ───
-function getAuthHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {}
-  try {
-    const stored = localStorage.getItem('sect-auth')
-    if (!stored) return {}
-    const parsed = JSON.parse(stored)
-    const user = parsed?.state?.user
-    if (!user?.id || !user?.role) return {}
-    return { 'x-user-id': user.id, 'x-user-role': user.role }
-  } catch {
-    return {}
-  }
 }

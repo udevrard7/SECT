@@ -65,3 +65,31 @@ Stage Summary:
 - Solution: capture target in local const BEFORE setDeleteTarget(null)
 - 3 components fixed, same pattern applied everywhere
 - Ready to commit and push to GitHub
+
+---
+Task ID: 5
+Agent: frontend-auth-migration
+Task: Remove getAuthHeaders from all frontend components
+
+Work Log:
+- Searched all files under src/components/ and src/app/ for getAuthHeaders usage — found 47 files
+- Identified 4 import patterns: (A) `getAuthHeaders` only, (B) `useAuthStore, getAuthHeaders`, (C) `useAuthStore, getAuthHeaders, type LoginError`, (D) local function definition in profil-page.tsx
+- Ran Python script to remove `getAuthHeaders` from all import statements while preserving other imports (useAuthStore, UserRole, LoginError, AuthUser)
+- Ran Python script to remove all `...getAuthHeaders()` spread usages from headers objects
+- Ran Python script to remove all direct `headers: getAuthHeaders()` usages (GET and DELETE requests)
+- Fixed trailing commas in headers objects: `{ 'Content-Type': 'application/json', }` → `{ 'Content-Type': 'application/json' }`
+- Fixed trailing commas in method-only objects: `{ method: 'DELETE', }` → `{ method: 'DELETE' }`
+- Fixed fetch calls with empty options: `fetch(url, {})` → `fetch(url)`
+- Removed local getAuthHeaders() function definition from profil-page.tsx (which used localStorage and returned x-user-id/x-user-role headers)
+- Checked for direct x-user-id/x-user-role header usage in frontend files — none found (only in server-side lib files)
+- Fixed false-positive in generation-ia-page.tsx where `, {}` in reduce() initializer was accidentally removed by cleanup script
+- Verified zero remaining getAuthHeaders references in src/ directory
+- Lint check passes with zero errors
+
+Stage Summary:
+- Modified 47 frontend files to remove all getAuthHeaders() usage
+- 5 files had import entirely removed (only imported getAuthHeaders): configuration-page.tsx, ai-providers-page.tsx, responsable/rapports/page.tsx, responsable/habilitations/page.tsx, and force-change-password-page.tsx (still has AuthUser type import)
+- 42 files had getAuthHeaders removed from imports while keeping useAuthStore and other imports
+- profil-page.tsx had its local getAuthHeaders function definition removed
+- All fetch calls now rely on automatic cookie-based auth via NextAuth session
+- Lint passes clean

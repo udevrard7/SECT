@@ -32,7 +32,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import {
   Card,
   CardContent,
@@ -182,12 +182,12 @@ export function ResultatsPage() {
     if (!user?.id) return
     setIsLoadingEpreuves(true)
     try {
-      const res = await fetch(`/api/epreuves?enseignantId=${user.id}&statut=TERMINEE`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves?enseignantId=${user.id}&statut=TERMINEE`)
       if (res.ok) {
         const data = await res.json()
         const termineeEpreuves: EpreuveOption[] = data.epreuves ?? []
         // Also fetch CLOTUREE
-        const res2 = await fetch(`/api/epreuves?enseignantId=${user.id}&statut=CLOTUREE`, { headers: getAuthHeaders() })
+        const res2 = await fetch(`/api/epreuves?enseignantId=${user.id}&statut=CLOTUREE`)
         let clotureeEpreuves: EpreuveOption[] = []
         if (res2.ok) {
           const data2 = await res2.json()
@@ -212,7 +212,7 @@ export function ResultatsPage() {
   const fetchResults = useCallback(async (epreuveId: string) => {
     setIsLoadingResults(true)
     try {
-      const res = await fetch(`/api/resultats?epreuveId=${epreuveId}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/resultats?epreuveId=${epreuveId}`)
       if (res.ok) {
         const data = await res.json()
         setSessions(data.sessions ?? [])
@@ -318,7 +318,7 @@ export function ResultatsPage() {
     if (!selectedEpreuveId) return
     setIsExporting(true)
     try {
-      const res = await fetch(`/api/epreuves/${selectedEpreuveId}/export?format=${format}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/epreuves/${selectedEpreuveId}/export?format=${format}`)
       if (!res.ok) throw new Error('Export échoué')
 
       const blob = await res.blob()

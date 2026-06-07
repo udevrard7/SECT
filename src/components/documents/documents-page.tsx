@@ -25,8 +25,9 @@ import {
   List,
   BookOpen,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useAuthStore } from '@/stores/auth-store'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
@@ -262,7 +263,8 @@ function truncateFileName(name: string, maxLen: number = 32): string {
 
 export function DocumentsPage() {
   const user = useAuthStore((s) => s.user)
-  const { setCurrentPage } = useNavigationStore()
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [documents, setDocuments] = useState<Document[]>([])
   const [ues, setUes] = useState<UE[]>([])
@@ -287,7 +289,7 @@ export function DocumentsPage() {
   const fetchDocuments = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/documents?userId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/documents?userId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setDocuments(data.documents ?? [])
@@ -301,7 +303,7 @@ export function DocumentsPage() {
   const fetchUEs = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/unites-enseignement?enseignantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement?enseignantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setUes(data.unitesEnseignement ?? [])
@@ -357,7 +359,7 @@ export function DocumentsPage() {
       const res = await fetch('/api/documents', {
         method: 'POST',
         body: formData,
-        headers: { ...getAuthHeaders() },
+        headers: { },
       })
 
       if (!res.ok) {
@@ -424,7 +426,7 @@ export function DocumentsPage() {
   const handleSelectDocument = async (doc: Document) => {
     if (doc.statutAnalyse === 'EN_COURS') return
     try {
-      const res = await fetch(`/api/documents/${doc.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/documents/${doc.id}`)
       if (res.ok) {
         const data = await res.json()
         setSelectedDocument(data.document ?? doc)
@@ -442,7 +444,7 @@ export function DocumentsPage() {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/documents/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/documents/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur lors de la suppression')
@@ -469,7 +471,7 @@ export function DocumentsPage() {
     if (!selectedDocument) return
     setIsAnalyzing(true)
     try {
-      const res = await fetch(`/api/documents/${selectedDocument.id}/analyze`, { method: 'POST', headers: { ...getAuthHeaders() } })
+      const res = await fetch(`/api/documents/${selectedDocument.id}/analyze`, { method: 'POST', headers: { } })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Erreur lors de l\'analyse')
@@ -480,7 +482,7 @@ export function DocumentsPage() {
       })
       await fetchDocuments()
       // Refresh the selected doc
-      const detailRes = await fetch(`/api/documents/${selectedDocument.id}`, { headers: getAuthHeaders() })
+      const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
       if (detailRes.ok) {
         const detailData = await detailRes.json()
         setSelectedDocument(detailData.document ?? selectedDocument)
@@ -491,7 +493,7 @@ export function DocumentsPage() {
       })
       // Refresh to get updated error status
       await fetchDocuments()
-      const detailRes = await fetch(`/api/documents/${selectedDocument.id}`, { headers: getAuthHeaders() })
+      const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
       if (detailRes.ok) {
         const detailData = await detailRes.json()
         setSelectedDocument(detailData.document ?? selectedDocument)
@@ -503,14 +505,14 @@ export function DocumentsPage() {
 
   // ─── Navigate to questions-ia ───
   const handleGenerateQuestions = () => {
-    setCurrentPage('questions-ia', { documentId: selectedDocument?.id ?? '' })
+    router.push(PAGE_ROUTES['questions-ia'] + '?documentId=' + (selectedDocument?.id ?? ''))
     setSheetOpen(false)
   }
 
   // ─── Parsed analysis data ───
   const themes = parseJsonSafe<string[]>(selectedDocument?.themesDetectes ?? null, [])
   const concepts = parseJsonSafe<string[]>(selectedDocument?.conceptsCles ?? null, [])
-  const volume = parseJsonSafe<Record<string, number>>(selectedDocument?.volumeEstime ?? null, {})
+  const volume = parseJsonSafe<Record<string, number>>(selectedDocument?.volumeEstime ?? null)
 
   const volumeEntries = Object.entries(volume).map(([key, value]) => {
     const label = (() => {

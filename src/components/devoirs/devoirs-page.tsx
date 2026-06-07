@@ -37,7 +37,7 @@ import {
   Paperclip,
   UsersRound,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -362,7 +362,7 @@ export function DevoirsPage() {
   const fetchDevoirs = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`/api/devoirs?enseignantId=${user.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/devoirs?enseignantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
         setDevoirs(data.devoirs ?? [])
@@ -385,7 +385,7 @@ export function DevoirsPage() {
   useEffect(() => {
     const fetchUE = async () => {
       try {
-        const res = await fetch('/api/unites-enseignement?actif=true', { headers: getAuthHeaders() })
+        const res = await fetch('/api/unites-enseignement?actif=true')
         if (res.ok) {
           const data = await res.json()
           setUnitesEnseignement(data.unitesEnseignement ?? [])
@@ -505,7 +505,7 @@ export function DevoirsPage() {
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -522,7 +522,7 @@ export function DevoirsPage() {
       if (validCriteres.length > 0 && devoirId) {
         try {
           // Check if grille exists
-          const grilleRes = await fetch(`/api/grilles-evaluation?devoirId=${devoirId}`, { headers: getAuthHeaders() })
+          const grilleRes = await fetch(`/api/grilles-evaluation?devoirId=${devoirId}`)
           const grilleData = await grilleRes.json()
           const existingGrille = grilleData.grilles?.[0]
 
@@ -530,14 +530,14 @@ export function DevoirsPage() {
             // Update existing grille
             await fetch(`/api/grilles-evaluation/${existingGrille.id}`, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ criteres: validCriteres }),
             })
           } else {
             // Create new grille
             await fetch('/api/grilles-evaluation', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ devoirId, criteres: validCriteres }),
             })
           }
@@ -567,7 +567,7 @@ export function DevoirsPage() {
     try {
       const res = await fetch(`/api/devoirs/${devoirId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
 
@@ -589,7 +589,7 @@ export function DevoirsPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/devoirs/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/devoirs/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Erreur lors de la suppression')
@@ -627,7 +627,7 @@ export function DevoirsPage() {
 
       const res = await fetch('/api/devoirs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -643,7 +643,7 @@ export function DevoirsPage() {
         try {
           await fetch('/api/grilles-evaluation', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               devoirId: result.devoir.id,
               criteres: duplicateTarget.GrilleEvaluation.criteres,
@@ -672,14 +672,14 @@ export function DevoirsPage() {
     setSoumissionsDialogOpen(true)
     setIsLoadingSoumissions(true)
     try {
-      const res = await fetch(`/api/devoirs/${devoir.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/devoirs/${devoir.id}`)
       if (res.ok) {
         const data = await res.json()
         setSoumissions(data.devoir?.Soumission ?? [])
       }
     } catch {
       try {
-        const res = await fetch(`/api/soumissions?devoirId=${devoir.id}`, { headers: getAuthHeaders() })
+        const res = await fetch(`/api/soumissions?devoirId=${devoir.id}`)
         if (res.ok) {
           const data = await res.json()
           setSoumissions(data.soumissions ?? [])
@@ -724,7 +724,7 @@ export function DevoirsPage() {
     try {
       const res = await fetch(`/api/soumissions/${gradingSoumission.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           note: noteValue,
           commentaireEnseignant: gradeCommentaire || null,
@@ -760,7 +760,7 @@ export function DevoirsPage() {
     try {
       const res = await fetch(`/api/soumissions/${gradingSoumission.id}/ai-grade`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))

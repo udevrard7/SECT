@@ -33,7 +33,7 @@ import {
   Calendar,
   Tag,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -463,7 +463,7 @@ export function NotificationsAdminPage() {
     try {
       const res = await fetch(`/api/notifications/admin/${notification.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -567,7 +567,7 @@ export function NotificationsAdminPage() {
 
       const res = await fetch('/api/notifications/admin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 

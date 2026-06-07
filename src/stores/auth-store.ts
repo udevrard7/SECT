@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { signIn, signOut } from 'next-auth/react'
 
 export type UserRole = 'ADMIN' | 'RESPONSABLE' | 'ENSEIGNANT' | 'ETUDIANT'
 
@@ -35,156 +35,189 @@ interface AuthState {
   logout: () => Promise<void>
   setUser: (user: AuthUser | null) => void
   clearMustChangePassword: () => void
+  syncFromSession: (session: any) => void
 }
 
-/**
- * Get authentication headers for API requests.
- * Reads user context from the persisted Zustand store via localStorage.
- * This is used to send x-user-id and x-user-role headers to protected API routes.
- */
-export function getAuthHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {}
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  mustChangePassword: false,
+  loginPassword: '',
 
-  try {
-    const stored = localStorage.getItem('sect-auth')
-    if (!stored) return {}
+  loginStudent: async (matricule: string, password: string) => {
+    set({ isLoading: true })
+    try {
+      const result = await signIn('credentials-matricule', {
+        matricule,
+        password,
+        redirect: false,
+      })
 
-    const parsed = JSON.parse(stored)
-    const user = parsed?.state?.user
-    if (!user?.id || !user?.role) return {}
+      if (result?.error) {
+        set({ isLoading: false })
+        const error: LoginError = {
+          status: 401,
+          message: result.error === 'CredentialsSignin'
+            ? 'Matricule ou mot de passe incorrect'
+            : result.error,
+        }
+        throw error
+      }
 
-    return {
-      'x-user-id': user.id,
-      'x-user-role': user.role,
-    }
-  } catch {
-    return {}
-  }
-}
+      if (!result?.ok) {
+        set({ isLoading: false })
+        throw { status: 0, message: 'Erreur de connexion' } as LoginError
+      }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-      mustChangePassword: false,
-      loginPassword: '',
+      // Fetch session to get user data
+      const sessionRes = await fetch('/api/auth/session')
+      const session = await sessionRes.json()
 
-      loginStudent: async (matricule: string, password: string) => {
-        set({ isLoading: true })
-        try {
-          const res = await fetch('/api/auth/login-student', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matricule, password }),
+      if (session?.user) {
+        const user: AuthUser = {
+          id: session.user.id,
+          email: session.user.email ?? '',
+          name: session.user.name ?? '',
+          role: session.user.role as UserRole,
+          etablissementId: session.user.etablissementId,
+          filiereId: session.user.filiereId,
+          etablissement: session.user.etablissement,
+          filiere: session.user.filiere,
+          image: session.user.image,
+          actif: session.user.actif,
+          matricule: session.user.matricule,
+          mustChangePwd: session.user.mustChangePwd,
+        }
+
+        if (user.mustChangePwd) {
+          set({
+            user,
+            isAuthenticated: true,
+            isLoading: false,
+            mustChangePassword: true,
+            loginPassword: password,
           })
-          if (!res.ok) {
-            set({ isLoading: false })
-            const data = await res.json().catch(() => ({}))
-            const error: LoginError = {
-              status: res.status,
-              message: data.error || 'Erreur serveur',
-            }
-            throw error
-          }
-          const data = await res.json()
-
-          if (data.mustChangePassword) {
-            set({
-              user: data.user,
-              isAuthenticated: true,
-              isLoading: false,
-              mustChangePassword: true,
-              loginPassword: password,
-            })
-            return true
-          }
-
-          set({ user: data.user, isAuthenticated: true, isLoading: false })
           return true
-        } catch (err) {
-          set({ isLoading: false })
-          // Re-throw LoginError objects so the UI can distinguish error types
-          if (err && typeof err === 'object' && 'status' in err) {
-            throw err
-          }
-          // Network errors etc.
-          throw { status: 0, message: 'Erreur réseau' } as LoginError
         }
-      },
 
-      login: async (email: string, password: string) => {
-        set({ isLoading: true })
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          })
-          if (!res.ok) {
-            set({ isLoading: false })
-            const data = await res.json().catch(() => ({}))
-            const error: LoginError = {
-              status: res.status,
-              message: data.error || 'Erreur serveur',
-            }
-            throw error
-          }
-          const data = await res.json()
+        set({ user, isAuthenticated: true, isLoading: false })
+        return true
+      }
 
-          // Check if user must change password on first login
-          if (data.mustChangePassword) {
-            set({
-              user: data.user,
-              isAuthenticated: true,
-              isLoading: false,
-              mustChangePassword: true,
-              loginPassword: password,
-            })
-            return true
-          }
-
-          set({ user: data.user, isAuthenticated: true, isLoading: false })
-          return true
-        } catch (err) {
-          set({ isLoading: false })
-          // Re-throw LoginError objects so the UI can distinguish error types
-          if (err && typeof err === 'object' && 'status' in err) {
-            throw err
-          }
-          // Network errors etc.
-          throw { status: 0, message: 'Erreur réseau' } as LoginError
-        }
-      },
-
-      logout: async () => {
-        const currentUser = get().user
-        try {
-          await fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...getAuthHeaders(),
-            },
-            body: JSON.stringify({ userId: currentUser?.id }),
-          })
-        } finally {
-          set({ user: null, isAuthenticated: false })
-        }
-      },
-
-      setUser: (user) => set({ user, isAuthenticated: !!user }),
-
-      clearMustChangePassword: () => set({ mustChangePassword: false, loginPassword: '' }),
-    }),
-    {
-      name: 'sect-auth',
-      partialize: (state) => ({
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-        // mustChangePassword and loginPassword are NOT persisted for security
-      }),
+      set({ isLoading: false })
+      throw { status: 0, message: 'Session non disponible' } as LoginError
+    } catch (err) {
+      set({ isLoading: false })
+      if (err && typeof err === 'object' && 'status' in err) {
+        throw err
+      }
+      throw { status: 0, message: 'Erreur réseau' } as LoginError
     }
-  )
-)
+  },
+
+  login: async (email: string, password: string) => {
+    set({ isLoading: true })
+    try {
+      const result = await signIn('credentials-email', {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        set({ isLoading: false })
+        const error: LoginError = {
+          status: 401,
+          message: result.error === 'CredentialsSignin'
+            ? 'Identifiants incorrects'
+            : result.error,
+        }
+        throw error
+      }
+
+      if (!result?.ok) {
+        set({ isLoading: false })
+        throw { status: 0, message: 'Erreur de connexion' } as LoginError
+      }
+
+      // Fetch session to get user data
+      const sessionRes = await fetch('/api/auth/session')
+      const session = await sessionRes.json()
+
+      if (session?.user) {
+        const user: AuthUser = {
+          id: session.user.id,
+          email: session.user.email ?? '',
+          name: session.user.name ?? '',
+          role: session.user.role as UserRole,
+          etablissementId: session.user.etablissementId,
+          filiereId: session.user.filiereId,
+          etablissement: session.user.etablissement,
+          filiere: session.user.filiere,
+          image: session.user.image,
+          actif: session.user.actif,
+          matricule: session.user.matricule,
+          mustChangePwd: session.user.mustChangePwd,
+        }
+
+        if (user.mustChangePwd) {
+          set({
+            user,
+            isAuthenticated: true,
+            isLoading: false,
+            mustChangePassword: true,
+            loginPassword: password,
+          })
+          return true
+        }
+
+        set({ user, isAuthenticated: true, isLoading: false })
+        return true
+      }
+
+      set({ isLoading: false })
+      throw { status: 0, message: 'Session non disponible' } as LoginError
+    } catch (err) {
+      set({ isLoading: false })
+      if (err && typeof err === 'object' && 'status' in err) {
+        throw err
+      }
+      throw { status: 0, message: 'Erreur réseau' } as LoginError
+    }
+  },
+
+  logout: async () => {
+    try {
+      await signOut({ redirect: false })
+    } finally {
+      set({ user: null, isAuthenticated: false })
+    }
+  },
+
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+
+  clearMustChangePassword: () => set({ mustChangePassword: false, loginPassword: '' }),
+
+  syncFromSession: (session) => {
+    if (!session?.user?.id) {
+      set({ user: null, isAuthenticated: false })
+      return
+    }
+    const user: AuthUser = {
+      id: session.user.id,
+      email: session.user.email ?? '',
+      name: session.user.name ?? '',
+      role: session.user.role as UserRole,
+      etablissementId: session.user.etablissementId,
+      filiereId: session.user.filiereId,
+      etablissement: session.user.etablissement,
+      filiere: session.user.filiere,
+      image: session.user.image,
+      actif: session.user.actif,
+      matricule: session.user.matricule,
+      mustChangePwd: session.user.mustChangePwd,
+    }
+    set({ user, isAuthenticated: true })
+  },
+}))

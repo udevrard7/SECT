@@ -65,7 +65,7 @@ import {
 } from '@/components/ui/tooltip'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 
 // ─── Types ───
 
@@ -254,7 +254,7 @@ export function ResponsableParametresPage() {
     if (!user?.etablissementId) return
     setLoadingEtab(true)
     try {
-      const res = await fetch(`/api/etablissements/${user.etablissementId}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/etablissements/${user.etablissementId}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setEtablissement(data.etablissement)
@@ -271,7 +271,7 @@ export function ResponsableParametresPage() {
     if (!user?.etablissementId) return
     setLoadingSecurity(true)
     try {
-      const res = await fetch(`/api/security-settings/etablissement/${user.etablissementId}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/security-settings/etablissement/${user.etablissementId}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setSecuritySettings(data.securitySettings)
@@ -288,7 +288,7 @@ export function ResponsableParametresPage() {
     if (!user?.etablissementId) return
     setLoadingIp(true)
     try {
-      const res = await fetch(`/api/ip-whitelist?etablissementId=${user.etablissementId}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/ip-whitelist?etablissementId=${user.etablissementId}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setIpEntries(data.entries || [])
@@ -311,7 +311,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch(`/api/etablissements/${user.etablissementId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nom: etablissement.nom,
           type: etablissement.type,
@@ -346,7 +346,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch(`/api/etablissements/${user.etablissementId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           formatMatricule: etablissement.formatMatricule,
           exempleMatricule: etablissement.exempleMatricule,
@@ -384,7 +384,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch(`/api/security-settings/${securitySettings.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           proctoringActif: securitySettings.proctoringActif,
           detectionCopie: securitySettings.detectionCopie,
@@ -430,7 +430,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch('/api/ip-whitelist', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adresseIp: newIp.trim(),
           description: newIpDesc.trim() || null,
@@ -462,7 +462,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch(`/api/ip-whitelist/${entryId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !currentActif }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -479,8 +479,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch(`/api/ip-whitelist/${entryId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
-      })
+        })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Adresse IP retirée', { description: `${ip} a été supprimé de la liste blanche.` })
       fetchIpWhitelist()

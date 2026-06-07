@@ -18,7 +18,7 @@ import {
   Loader2,
   UserCircle,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -94,8 +94,6 @@ interface ResponsableOption {
 }
 
 // ─── Utility functions ───
-
-
 
 function formatDateFR(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -178,7 +176,7 @@ export function FilieresPage() {
         params.set('responsableId', user.id)
       }
 
-      const res = await fetch(`/api/filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setFilieres(data.filieres ?? [])
@@ -194,8 +192,8 @@ export function FilieresPage() {
   const fetchOptions = useCallback(async () => {
     try {
       const [etabRes, respRes] = await Promise.all([
-        fetch('/api/etablissements', { headers: getAuthHeaders() }),
-        fetch('/api/users?role=RESPONSABLE&limit=100', { headers: getAuthHeaders() }),
+        fetch('/api/etablissements'),
+        fetch('/api/users?role=RESPONSABLE&limit=100'),
       ])
       if (etabRes.ok) {
         const data = await etabRes.json()
@@ -278,7 +276,7 @@ export function FilieresPage() {
       if (editingFiliere) {
         const res = await fetch(`/api/filieres/${editingFiliere.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
         if (!res.ok) {
@@ -289,7 +287,7 @@ export function FilieresPage() {
       } else {
         const res = await fetch('/api/filieres', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
         if (!res.ok) {
@@ -313,7 +311,7 @@ export function FilieresPage() {
     try {
       const res = await fetch(`/api/filieres/${filiere.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !filiere.actif }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -330,7 +328,7 @@ export function FilieresPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/filieres/${deleteTarget.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Filière supprimée', { description: `${deleteTarget.nom} a été désactivée.` })
       setDeleteTarget(null)
@@ -345,7 +343,7 @@ export function FilieresPage() {
     setDetailLoading(true)
     setDetailOpen(true)
     try {
-      const res = await fetch(`/api/filieres/${filiere.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres/${filiere.id}`)
       if (res.ok) {
         const data = await res.json()
         setDetailFiliere(data)

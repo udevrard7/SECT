@@ -25,7 +25,7 @@ import {
   LogOut,
   ExternalLink,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -226,7 +226,7 @@ export function SurveillancePage() {
       const url = selectedEpreuveId
         ? `/api/surveillance?enseignantId=${user.id}&epreuveId=${selectedEpreuveId}`
         : `/api/surveillance?enseignantId=${user.id}`
-      const res = await fetch(url, { headers: getAuthHeaders() })
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setEpreuves(data.epreuves ?? [])

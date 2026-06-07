@@ -18,7 +18,7 @@ import {
   Minus,
   CalendarDays,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -193,7 +193,7 @@ export function RapportsPage() {
       if (dateDebut) params.set('dateDebut', dateDebut)
       if (dateFin) params.set('dateFin', dateFin)
       const qs = params.toString()
-      const res = await fetch(`/api/stats/responsable${qs ? `?${qs}` : ''}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/stats/responsable${qs ? `?${qs}` : ''}`)
       if (res.ok) {
         const data = await res.json()
         setStats(data)
@@ -235,7 +235,7 @@ export function RapportsPage() {
   // ─── Fetch filieres ───
   const fetchFilieres = useCallback(async () => {
     try {
-      const res = await fetch('/api/filieres', { headers: getAuthHeaders() })
+      const res = await fetch('/api/filieres')
       if (res.ok) {
         const data = await res.json()
         setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))

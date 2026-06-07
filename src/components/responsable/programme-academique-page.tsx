@@ -22,7 +22,7 @@ import {
   List,
   Share2,
 } from 'lucide-react'
-import { useAuthStore, getAuthHeaders } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -300,7 +300,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       const params = new URLSearchParams()
       if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
       params.set('actif', 'true')
-      const res = await fetch(`/api/filieres?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setFilieres((data.filieres ?? []).map((f: FiliereItem) => ({ id: f.id, nom: f.nom, code: f.code ?? null })))
@@ -313,7 +313,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       const params = new URLSearchParams()
       if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
       params.set('actif', 'true')
-      const res = await fetch(`/api/unites-enseignement?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setUEs(data.unitesEnseignement ?? [])
@@ -325,7 +325,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
     try {
       const params = new URLSearchParams()
       if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
-      const res = await fetch(`/api/affectations?${params.toString()}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/affectations?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setAffectations(data.affectations ?? [])
@@ -486,7 +486,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         obligatoire: addObligatoire,
         filiereIdsSuppl: Array.from(addFiliereIdsSuppl).filter(id => id !== addFiliereId),
       }
-      const res = await fetch('/api/unites-enseignement', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) })
+      const res = await fetch('/api/unites-enseignement', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la création') }
       toast.success('UE créée', { description: `${addNom} a été ajoutée au niveau ${NIVEAU_LABELS[addNiveau] ?? addNiveau}.` })
       setAddDialogOpen(false)
@@ -535,7 +535,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         obligatoire: editObligatoire,
         filiereIdsSuppl: Array.from(editFiliereIdsSuppl).filter(id => id !== editFiliereId),
       }
-      const res = await fetch(`/api/unites-enseignement/${editingUE.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) })
+      const res = await fetch(`/api/unites-enseignement/${editingUE.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la modification') }
       toast.success('UE modifiée', { description: `${editNom} a été mise à jour.` })
       setEditDialogOpen(false)
@@ -554,7 +554,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
     setDeleteTarget(null)
     if (!target) return
     try {
-      const res = await fetch(`/api/unites-enseignement/${target.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement/${target.id}`, { method: 'DELETE' })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la suppression') }
       toast.success('UE désactivée', { description: `${target.nom} a été désactivée avec succès.` })
       await fetchAllData()
@@ -567,7 +567,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
 
   const handleViewAffectations = async (ue: UEItem) => {
     try {
-      const res = await fetch(`/api/unites-enseignement/${ue.id}`, { headers: getAuthHeaders() })
+      const res = await fetch(`/api/unites-enseignement/${ue.id}`)
       if (res.ok) {
         const data = await res.json()
         setViewingUE({ ...ue, affectations: data.uniteEnseignement.affectations })
@@ -588,7 +588,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       newExpanded.add(ue.id)
       if (!ue.affectations) {
         try {
-          const res = await fetch(`/api/unites-enseignement/${ue.id}`, { headers: getAuthHeaders() })
+          const res = await fetch(`/api/unites-enseignement/${ue.id}`)
           if (res.ok) {
             const data = await res.json()
             setUEs((prev) => prev.map((u) => u.id === ue.id ? { ...u, affectations: data.uniteEnseignement.affectations } : u))
