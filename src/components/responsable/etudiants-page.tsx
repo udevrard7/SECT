@@ -290,6 +290,10 @@ export function EtudiantsPage() {
   const [editNiveau, setEditNiveau] = useState('')
   const [editActif, setEditActif] = useState(true)
 
+  // ─── Matricule change confirmation state ───
+  const [matriculeChangeDialog, setMatriculeChangeDialog] = useState(false)
+  const [matriculeChangeInfo, setMatriculeChangeInfo] = useState<{ oldMatricule: string; newMatricule: string } | null>(null)
+
   // ─── Import state ───
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importParsedData, setImportParsedData] = useState<Array<{ name: string; email: string }>>([])
@@ -600,7 +604,7 @@ export function EtudiantsPage() {
     setEditDialogOpen(true)
   }
 
-  // ─── Submit edit ───
+  // ─── Submit edit (with matricule change detection) ───
   const handleEditSubmit = async () => {
     if (!editingEtudiant) return
     if (!editName || !editEmail) {
@@ -608,6 +612,23 @@ export function EtudiantsPage() {
       return
     }
 
+    // Detect matricule change
+    const oldMatricule = editingEtudiant.matricule ?? ''
+    const newMatricule = editMatricule || ''
+    if (oldMatricule !== newMatricule) {
+      // Show confirmation dialog before proceeding
+      setMatriculeChangeInfo({ oldMatricule, newMatricule })
+      setMatriculeChangeDialog(true)
+      return
+    }
+
+    // No matricule change — proceed directly
+    await doEditSubmit()
+  }
+
+  // ─── Actual edit submission (called after matricule confirmation or directly) ───
+  const doEditSubmit = async () => {
+    if (!editingEtudiant) return
     setIsSubmitting(true)
     try {
       const body: Record<string, unknown> = {
@@ -623,7 +644,7 @@ export function EtudiantsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          },
+        },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -631,9 +652,15 @@ export function EtudiantsPage() {
         throw new Error(err.error || 'Erreur lors de la modification')
       }
 
-      toast.success('Étudiant modifié', { description: `${editName} a été mis à jour.` })
+      const wasMatriculeChanged = matriculeChangeInfo !== null
+      toast.success('Étudiant modifié', {
+        description: wasMatriculeChanged
+          ? `${editName} a été mis à jour. Une notification a été envoyée à l'étudiant concernant le changement de matricule.`
+          : `${editName} a été mis à jour.`,
+      })
       setEditDialogOpen(false)
       setEditingEtudiant(null)
+      setMatriculeChangeInfo(null)
       await fetchEtudiants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
@@ -1701,9 +1728,19 @@ export function EtudiantsPage() {
                   placeholder="Laissez vide pour auto-génération"
                   value={editMatricule}
                   onChange={(e) => setEditMatricule(e.target.value)}
-                  className="font-mono"
+                  className={`font-mono ${editingEtudiant && editingEtudiant.matricule !== (editMatricule || null) && editingEtudiant.matricule !== editMatricule ? 'border-amber-400 focus-visible:ring-amber-400' : ''}`}
                 />
               </div>
+              {editingEtudiant && editingEtudiant.matricule !== (editMatricule || null) && editingEtudiant.matricule !== editMatricule && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <div className="text-xs text-amber-800 dark:text-amber-300">
+                    <p className="font-semibold">Attention : changement de matricule détecté</p>
+                    <p className="mt-1">Ancien : <span className="font-mono">{editingEtudiant.matricule || '(aucun)'}</span> → Nouveau : <span className="font-mono">{editMatricule || '(supprimé)'}</span></p>
+                    <p className="mt-1">L&apos;étudiant devra utiliser son nouveau matricule pour se connecter. Une notification lui sera envoyée.</p>
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 Identifiant unique de l&apos;étudiant. Laissez vide pour utiliser l&apos;auto-génération.
               </p>
@@ -1923,6 +1960,70 @@ export function EtudiantsPage() {
             >
               {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Matricule Change Confirmation Dialog ─── */}
+      <AlertDialog open={matriculeChangeDialog} onOpenChange={setMatriculeChangeDialog}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmer le changement de matricule
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Vous êtes sur le point de modifier le matricule de connexion de cet étudiant.
+                  Cette action a des conséquences importantes :
+                </p>
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Ancien matricule :</span>
+                      <span className="font-mono font-semibold">{matriculeChangeInfo?.oldMatricule || '(aucun)'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nouveau matricule :</span>
+                      <span className="font-mono font-semibold text-amber-700 dark:text-amber-400">{matriculeChangeInfo?.newMatricule || '(supprimé)'}</span>
+                    </div>
+                  </div>
+                </div>
+                <ul className="space-y-1.5 text-sm">
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-600 mt-0.5">⚠️</span>
+                    <span>L&apos;étudiant ne pourra <strong>plus se connecter</strong> avec l&apos;ancien matricule</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-600 mt-0.5">✅</span>
+                    <span>Le <strong>mot de passe reste inchangé</strong></span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-600 mt-0.5">✅</span>
+                    <span>Toutes les <strong>données sont conservées</strong> (notes, sessions, soumissions)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">📬</span>
+                    <span>Une <strong>notification sera envoyée</strong> à l&apos;étudiant avec son nouveau matricule</span>
+                  </li>
+                </ul>
+                <p className="text-sm font-medium">
+                  Vérifiez que l&apos;étudiant est informé de ce changement avant de confirmer.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setMatriculeChangeDialog(false); setMatriculeChangeInfo(null); }}>
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => { setMatriculeChangeDialog(false); doEditSubmit(); }}
+            >
+              Confirmer le changement
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

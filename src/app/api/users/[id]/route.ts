@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 import { checkAdminEtablissementAccess } from '@/lib/tenant-access'
+import { validateMatricule } from '@/lib/matricule-generator'
 
 /**
  * Check if the authenticated user is authorized to manage a given target user.
@@ -132,9 +133,44 @@ async function _PATCH(
       data.password = await bcrypt.hash(body.password, 10)
     }
 
-    // Handle matricule update with uniqueness check
+    // Handle matricule update with uniqueness check and format validation
+    let matriculeChanged = false
+    let oldMatricule: string | null = null
     if (body.matricule !== undefined) {
       const newMatricule = body.matricule || null
+
+      // Get the old matricule for change detection and notification
+      const currentMatricule = await db.user.findUnique({
+        where: { id },
+        select: { matricule: true },
+      })
+      oldMatricule = currentMatricule?.matricule ?? null
+      matriculeChanged = newMatricule !== oldMatricule
+
+      // Validate format against etablissement regex if matricule is being set/changed
+      if (newMatricule && matriculeChanged) {
+        // Fetch the etablissement's regex pattern for validation
+        const etabId = existing.etablissementId || body.etablissementId
+        if (etabId) {
+          const etab = await db.etablissement.findUnique({
+            where: { id: etabId },
+            select: { regexMatricule: true, exempleMatricule: true },
+          })
+          if (etab?.regexMatricule) {
+            const validation = validateMatricule(newMatricule, etab.regexMatricule)
+            if (!validation.valid) {
+              const errorMsg = etab.exempleMatricule
+                ? `Format de matricule invalide. Format attendu : ${etab.exempleMatricule}`
+                : `Format de matricule invalide. ${validation.error}`
+              return NextResponse.json(
+                { error: errorMsg },
+                { status: 422 }
+              )
+            }
+          }
+        }
+      }
+
       // Check uniqueness if a non-null matricule is being set or changed
       if (newMatricule) {
         const existingMatricule = await db.user.findUnique({ where: { matricule: newMatricule } })
@@ -171,7 +207,15 @@ async function _PATCH(
       },
     })
 
-    // Create audit log
+    // Create audit log (include old/new matricule if changed)
+    const auditDetails: Record<string, unknown> = { updatedFields: Object.keys(data) }
+    if (matriculeChanged) {
+      auditDetails.matriculeChange = {
+        old: oldMatricule,
+        new: data.matricule,
+        changedBy: context.user.email,
+      }
+    }
     await db.auditLog.create({
       data: {
         action: 'UPDATE',
@@ -179,9 +223,31 @@ async function _PATCH(
         entiteId: id,
         userId: context.user.id,
         userEmail: context.user.email,
-        details: JSON.stringify({ updatedFields: Object.keys(data) }),
+        details: JSON.stringify(auditDetails),
       },
     })
+
+    // ─── Send in-app notification to the student if their matricule changed ───
+    if (matriculeChanged && user.role === 'ETUDIANT') {
+      try {
+        await db.notificationAdmin.create({
+          data: {
+            type: 'WARNING',
+            titre: 'Changement de votre matricule',
+            message: `Votre matricule a été modifié par un responsable de votre établissement.\n\nAncien matricule : ${oldMatricule || '(aucun)'}\nNouveau matricule : ${data.matricule || '(supprimé)'}\n\n⚠️ Important : Vous devez utiliser votre NOUVEAU matricule pour vous connecter à votre prochaine session. Votre mot de passe reste inchangé.`,
+            destinataireId: id,
+            destinataireRole: 'ETUDIANT',
+            priorite: 'HAUTE',
+            categorie: 'COMPTE',
+            icone: 'KeyRound',
+            expireLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          },
+        })
+      } catch (notifError) {
+        // Don't fail the update if notification creation fails
+        console.error('Failed to create matricule change notification:', notifError)
+      }
+    }
 
     return NextResponse.json({ user })
   } catch (error) {
