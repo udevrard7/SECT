@@ -43,6 +43,8 @@ import {
   MinusCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { CodingQuestionStudent } from '@/components/coding/code-editor'
+import { type CodingLanguage, type CodingAnswer, serializeCodingAnswer, parseCodingAnswer } from '@/lib/coding-types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -65,11 +67,16 @@ interface ExamQuestion {
   ordre: number
   question: {
     id: string
-    type: 'QCU' | 'QCM' | 'QRC' | 'TRS' | 'REFLEXION'
+    type: 'QCU' | 'QCM' | 'QRC' | 'TRS' | 'REFLEXION' | 'CODE'
     enonce: string
     propositions: string[] | null
     difficulte: string
     themes: string[] | null
+    // CODE-specific fields (present when type is 'CODE')
+    langage?: string
+    codeInitial?: string
+    fonctionSignature?: string
+    testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
   }
 }
 
@@ -1837,7 +1844,9 @@ export function PassationPage() {
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                                 : currentQuestion.question.type === 'REFLEXION'
                                   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border-purple-200 dark:border-purple-800'
-                                  : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                  : currentQuestion.question.type === 'CODE'
+                                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300 border-violet-200 dark:border-violet-800'
+                                    : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                         }
                       >
                         {currentQuestion.question.type}
@@ -2100,6 +2109,40 @@ export function PassationPage() {
                         )
                       })()}
                     </div>
+                  )}
+
+                  {/* CODE - Programming question with Monaco Editor */}
+                  {currentQuestion.question.type === 'CODE' && (
+                    <CodingQuestionStudent
+                      questionId={currentQuestion.questionId}
+                      enonce={currentQuestion.question.enonce}
+                      langage={(currentQuestion.question.langage || 'javascript') as CodingLanguage}
+                      codeInitial={currentQuestion.question.codeInitial || '// Écrivez votre code ici\n'}
+                      fonctionSignature={currentQuestion.question.fonctionSignature || ''}
+                      testsPublics={currentQuestion.question.testsPublics || []}
+                      bareme={currentQuestion.bareme}
+                      currentCode={(() => {
+                        const answer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
+                        return answer?.code || currentQuestion.question.codeInitial || ''
+                      })()}
+                      onCodeChange={(code) => {
+                        const existingAnswer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
+                        const answer: CodingAnswer = {
+                          code,
+                          language: (currentQuestion.question.langage || 'javascript') as CodingLanguage,
+                          testResultsPublics: existingAnswer?.testResultsPublics,
+                          lastSaved: existingAnswer?.lastSaved,
+                        }
+                        handleAnswerChange(currentQuestion.questionId, serializeCodingAnswer(answer))
+                      }}
+                      onSubmit={() => {
+                        // Submit final code — run all tests and save
+                        toast.success('Code soumis', {
+                          description: 'Votre code a été sauvegardé. N\'oubliez pas de soumettre l\'épreuve complète.',
+                        })
+                      }}
+                      securityConfig={securityConfig}
+                    />
                   )}
                 </div>
 

@@ -18,6 +18,9 @@ export const MANUAL_CORRECTION_TYPES = ['QRC', 'TRS', 'REFLEXION']
 // Types of questions that can be auto-graded
 export const AUTO_GRADABLE_TYPES = ['QCU', 'QCM']
 
+// Types of questions that are semi-auto-graded (auto-calculated but teacher can override)
+export const SEMI_AUTO_GRADABLE_TYPES = ['CODE']
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /** Maps each questionId to an array where mapping[shuffledIndex] = originalIndex */
@@ -314,4 +317,47 @@ export function buildPropositionMappingsForSession(
   }
 
   return { mappings, shuffledPropositions }
+}
+
+// ─── CODE Question Grading ──────────────────────────────────────────────────
+
+/**
+ * Grade a CODE question based on test case results.
+ *
+ * The score is proportional: (passedTests / totalTests) * bareme
+ * This is a "semi-auto" grade - the teacher can override it manually.
+ *
+ * @param testResultsPublics - Results from public tests (student ran them)
+ * @param testResultsAll - Results from all tests (public + private, run on submit)
+ * @param bareme - Points for this question
+ * @returns The auto-calculated score
+ */
+export function gradeCODE(
+  testResultsPublics: Array<{ passed: boolean }>,
+  testResultsAll: Array<{ passed: boolean }>,
+  bareme: number
+): GradeResult {
+  // Use all tests (public + private) for final scoring
+  const totalTests = testResultsAll.length
+  const passedTests = testResultsAll.filter(r => r.passed).length
+
+  if (totalTests === 0) {
+    // If no test results at all, score 0
+    return { score: 0, isAutoGraded: false }
+  }
+
+  const score = Math.round((passedTests / totalTests) * bareme * 100) / 100
+
+  return {
+    score,
+    isAutoGraded: true, // Auto-graded but teacher can override
+  }
+}
+
+/**
+ * Detect if a question type is semi-auto-gradable (CODE).
+ * These are auto-calculated but the teacher has the option to override.
+ */
+export function isSemiAutoGradable(type: string): boolean {
+  return SEMI_AUTO_GRADABLE_TYPES.includes(type)
 }

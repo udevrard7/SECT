@@ -74,7 +74,7 @@ import { toast } from 'sonner'
 
 interface ContenuQuestion {
   id: string
-  type: 'QCU' | 'QCM' | 'QRC' | 'REFLEXION'
+  type: 'QCU' | 'QCM' | 'QRC' | 'REFLEXION' | 'CODE'
   enonce: string
   propositions: Array<{ id: string; text: string }> | null
   reponseCorrecte: string | string[] | null
@@ -83,6 +83,12 @@ interface ContenuQuestion {
   bareme: number
   ueCode?: string | null
   ueNom?: string | null
+  // CODE-specific fields
+  langage?: string
+  codeInitial?: string
+  fonctionSignature?: string
+  testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+  testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
 }
 
 interface GeneratedContenu {
@@ -159,6 +165,7 @@ const TYPE_COLORS: Record<string, string> = {
   QCM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
   QRC: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
   REFLEXION: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
+  CODE: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800',
 }
 
 const TYPE_BORDER_COLORS: Record<string, string> = {
@@ -166,6 +173,7 @@ const TYPE_BORDER_COLORS: Record<string, string> = {
   QCM: 'border-l-amber-500',
   QRC: 'border-l-emerald-500',
   REFLEXION: 'border-l-purple-500',
+  CODE: 'border-l-violet-500',
 }
 
 // ─── Animation Variants ───
@@ -306,7 +314,7 @@ function QuestionTypeCounter({
     <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
       <div className="flex items-center gap-2">
         <Badge variant="outline" className={`h-6 px-2 text-[10px] ${badgeClass}`}>
-          {label === 'Choix unique' ? 'QCU' : label === 'Choix multiple' ? 'QCM' : label === 'Réponse courte' ? 'QRC' : 'RÉFL'}
+          {label === 'Choix unique' ? 'QCU' : label === 'Choix multiple' ? 'QCM' : label === 'Réponse courte' ? 'QRC' : label === 'Sujet de réflexion' ? 'RÉFL' : 'CODE'}
         </Badge>
         <span className="text-sm text-muted-foreground">{label}</span>
       </div>
@@ -356,6 +364,7 @@ export function GenerationIAPage() {
   const [qcmCount, setQcmCount] = useState(3)
   const [qrcCount, setQrcCount] = useState(2)
   const [reflexionCount, setReflexionCount] = useState(1)
+  const [codeCount, setCodeCount] = useState(0)
   const [difficulte, setDifficulte] = useState<string>('MOYEN')
   const [langue, setLangue] = useState<string>('fr')
   const [titreEpreuve, setTitreEpreuve] = useState('')
@@ -554,7 +563,7 @@ export function GenerationIAPage() {
       return
     }
 
-    const total = qcuCount + qcmCount + qrcCount + reflexionCount
+    const total = qcuCount + qcmCount + qrcCount + reflexionCount + codeCount
     if (total === 0) {
       toast.error('Aucune question', { description: 'Spécifiez au moins un type de question.' })
       return
@@ -599,6 +608,7 @@ export function GenerationIAPage() {
               qcm: qcmCount,
               qrc: qrcCount,
               reflexion: reflexionCount,
+              code: codeCount,
             },
             consignes: consignes || undefined,
             noteTotal,
@@ -630,7 +640,7 @@ export function GenerationIAPage() {
       const contenu: GeneratedContenu = {
         questions: (data.contenu?.questions ?? []).map((q: Record<string, unknown>, idx: number) => ({
           id: q.id || `q${idx + 1}`,
-          type: (['QCU', 'QCM', 'QRC', 'REFLEXION'].includes(q.type as string) ? q.type : 'QRC') as ContenuQuestion['type'],
+          type: (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(q.type as string) ? q.type : 'QRC') as ContenuQuestion['type'],
           enonce: String(q.enonce || ''),
           propositions: q.propositions || null,
           reponseCorrecte: q.reponseCorrecte || null,
@@ -762,7 +772,7 @@ export function GenerationIAPage() {
       const data = await res.json()
       const newQ: ContenuQuestion = {
         id: q.id,
-        type: (['QCU', 'QCM', 'QRC', 'REFLEXION'].includes(data.type as string) ? data.type : q.type) as ContenuQuestion['type'],
+        type: (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(data.type as string) ? data.type : q.type) as ContenuQuestion['type'],
         enonce: String(data.enonce || q.enonce),
         propositions: data.propositions || q.propositions,
         reponseCorrecte: data.reponseCorrecte || q.reponseCorrecte,
@@ -847,7 +857,7 @@ export function GenerationIAPage() {
   const isStepValid = (step: Step): boolean => {
     switch (step) {
       case 'select-docs': return selectedDocIds.size > 0
-      case 'configure': return (qcuCount + qcmCount + qrcCount + reflexionCount) > 0
+      case 'configure': return (qcuCount + qcmCount + qrcCount + reflexionCount + codeCount) > 0
       case 'preview': return !!generatedContenu && generatedContenu.questions.length > 0
       case 'save': return !!generatedContenu && generatedContenu.questions.length > 0
       default: return false
@@ -1147,7 +1157,7 @@ export function GenerationIAPage() {
     )
   }
 
-  const totalQuestions = qcuCount + qcmCount + qrcCount + reflexionCount
+  const totalQuestions = qcuCount + qcmCount + qrcCount + reflexionCount + codeCount
 
   // ─── Compute total themes for summary bar ───
   const selectedDocumentsTotalThemes = useMemo(() => {
@@ -1539,6 +1549,12 @@ export function GenerationIAPage() {
                       badgeClass="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800"
                       value={reflexionCount}
                       onChange={setReflexionCount}
+                    />
+                    <QuestionTypeCounter
+                      label="Programmation / Code"
+                      badgeClass="bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800"
+                      value={codeCount}
+                      onChange={setCodeCount}
                     />
 
                     <div className={`rounded-lg border p-3 ${totalQuestions > 50 ? 'bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800' : 'bg-muted/30'}`}>

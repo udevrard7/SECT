@@ -113,6 +113,13 @@ async function _GET(
             propositions: displayPropositions,
             difficulte: String(q.difficulte || 'MOYEN'),
             themes: null,
+            // CODE-specific fields
+            ...(qType === 'CODE' ? {
+              langage: String(q.langage || 'javascript'),
+              codeInitial: String(q.codeInitial || ''),
+              fonctionSignature: String(q.fonctionSignature || ''),
+              testsPublics: Array.isArray(q.testsPublics) ? q.testsPublics : [],
+            } : {}),
           },
         }
       })

@@ -127,13 +127,19 @@ async function handler(
       if (contenu.questions && Array.isArray(contenu.questions)) {
         questions = contenu.questions.map((q) => ({
           id: q.id,
-          type: (['QCU', 'QCM', 'QRC', 'REFLEXION'].includes(q.type) ? q.type : 'QRC') as PDFQuestion['type'],
+          type: (['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE'].includes(q.type) ? q.type : 'QRC') as PDFQuestion['type'],
           enonce: q.enonce || '',
           propositions: q.propositions || null,
           reponseCorrecte: q.reponseCorrecte || null,
           explication: q.explication || null,
           difficulte: q.difficulte || 'MOYEN',
           bareme: q.bareme || 1,
+          // CODE-specific fields
+          langage: q.langage || undefined,
+          codeInitial: q.codeInitial || undefined,
+          fonctionSignature: q.fonctionSignature || undefined,
+          testsPublics: q.testsPublics || undefined,
+          testsPrives: q.testsPrives || undefined,
         }))
 
         if (baremeTotal === 0) {
