@@ -68,3 +68,47 @@ Stage Summary:
 - Dashboard Responsable : +874 lignes avec tous les éléments du style étudiant adaptés au rôle responsable
 - API Enseignant enrichie avec 4 nouveaux champs pour supporter les nouvelles fonctionnalités
 - Les 3 dashboards (Étudiant, Enseignant, Responsable) partagent maintenant le même design system
+
+---
+Task ID: 1
+Agent: main
+Task: Fix overflow/z-index issues on Génération IA d'Épreuves page
+
+Work Log:
+- Analyzed two uploaded screenshots (sd.jpg, sc.jpg) using VLM to identify UI issues
+- VLM confirmed: bottom bar overlapping document list, UE field text overflow, Difficulté field overflow
+- Read the full generation-ia-page.tsx component (~1700+ lines)
+- Identified root causes: SelectTrigger uses `w-fit` (expands to content), no `min-w-0` on grid columns, no sticky/z-index on summary bar
+
+Fixes applied:
+1. **Step 1 - Document list & summary bar**:
+   - Changed summary bar to `sticky bottom-0 z-20` with `bg-background/95 backdrop-blur-sm shadow-sm`
+   - Added `shrink-0` to Checkbox, Button, and Separator elements to prevent shrinking
+   - Added `min-w-0 flex-1` on text container for proper truncation
+   - Added `pb-2` inside ScrollArea content div
+   - Added `truncate` + `title` attribute on document filename
+   - Added `max-w-[140px] truncate` on UE badge in document list
+
+2. **Step 1 - UE filter Select**:
+   - Added `overflow-hidden` on SelectTrigger
+   - Added `max-w-[360px]` on SelectContent
+   - Added `title` tooltip on SelectItem and SelectTrigger
+
+3. **Step 2 - Contexte section grid**:
+   - Added `min-w-0` on all 4 grid columns (Filière, Niveau, UE, Langue)
+   - Added `w-full overflow-hidden` on all SelectTriggers
+   - Added `max-w-[360px]` on UE SelectContent
+   - Added `title` tooltip on UE SelectTrigger and SelectItem
+
+4. **Step 2 - Épreuve section (Note/Durée/Difficulté)**:
+   - Changed grid from `grid-cols-3` to `grid-cols-1 sm:grid-cols-3` for responsive
+   - Added `min-w-0` on all 3 grid columns
+   - Added `w-full overflow-hidden` on Difficulté SelectTrigger
+   - Added `max-w-[280px]` on Difficulté SelectContent
+   - Added `title` tooltip on Difficulté SelectTrigger
+
+Stage Summary:
+- All overflow and z-index issues fixed
+- Lint passes cleanly
+- Dev server running without errors
+- Pushed to GitHub (commit 27781c7)
