@@ -1020,7 +1020,7 @@ export function CorrectionPage() {
             {getQuestionTypeLabel(q.type)}
           </Badge>
           <Badge variant="outline" className={correctionBadge.classes}>
-            {isAutoGraged ? <Zap className="h-3 w-3 mr-0.5" /> : <PenTool className="h-3 w-3 mr-0.5" />}
+            {isAutoGraded ? <Zap className="h-3 w-3 mr-0.5" /> : <PenTool className="h-3 w-3 mr-0.5" />}
             {correctionBadge.label}
           </Badge>
           <Badge variant="outline" className={getDifficulteBadgeClasses(q.difficulte)}>
