@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles,
   Loader2,
@@ -18,17 +19,18 @@ import {
   Brain,
   ClipboardList,
   ArrowRight,
-  Eye,
-  Copy,
   ArrowLeft,
-  Library,
-  Trophy,
+  Eye,
   Clock,
-  HelpCircle,
-  Send,
   BookOpen,
   Layers,
   Hash,
+  Settings,
+  Plus,
+  Minus,
+  RotateCw,
+  Wand2,
+  Send,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -159,9 +161,37 @@ const TYPE_COLORS: Record<string, string> = {
   REFLEXION: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
 }
 
-// ─── Step Indicator ───
+const TYPE_BORDER_COLORS: Record<string, string> = {
+  QCU: 'border-l-sky-500',
+  QCM: 'border-l-amber-500',
+  QRC: 'border-l-emerald-500',
+  REFLEXION: 'border-l-purple-500',
+}
 
-function StepIndicator({ steps, currentStep, onStepClick }: {
+// ─── Animation Variants ───
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
+}
+
+const itemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  visible: { y: 0, opacity: 1, transition: { type: 'spring' as const, stiffness: 100 } },
+}
+
+// ─── Step Icons ───
+
+const STEP_ICONS: Record<Step, React.ElementType> = {
+  'select-docs': FileText,
+  'configure': Settings,
+  'preview': Eye,
+  'save': Save,
+}
+
+// ─── Modern Stepper ───
+
+function ModernStepper({ steps, currentStep, onStepClick }: {
   steps: { id: Step; label: string }[]
   currentStep: Step
   onStepClick: (step: Step) => void
@@ -169,45 +199,140 @@ function StepIndicator({ steps, currentStep, onStepClick }: {
   const currentIndex = steps.findIndex((s) => s.id === currentStep)
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {steps.map((step, index) => {
-        const isActive = step.id === currentStep
-        const isCompleted = index < currentIndex
+    <div className="w-full">
+      {/* Progress bar background */}
+      <div className="relative flex items-center justify-between">
+        {/* Background progress track */}
+        <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 rounded-full bg-muted" />
+        {/* Active progress fill */}
+        <motion.div
+          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-emerald-500"
+          initial={false}
+          animate={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }}
+          transition={{ duration: 0.4, ease: 'easeInOut' }}
+        />
 
-        return (
-          <div key={step.id} className="flex items-center">
-            {index > 0 && (
-              <div className={`h-0.5 w-4 sm:w-8 ${isCompleted ? 'bg-emerald-500' : 'bg-muted'}`} />
-            )}
-            <button
-              type="button"
-              onClick={() => onStepClick(step.id)}
-              className={`
-                flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors
-                ${isActive
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                  : isCompleted
-                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
-                    : 'bg-muted text-muted-foreground'
-                }
-              `}
-            >
-              <span className={`
-                flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold
-                ${isActive
-                  ? 'bg-emerald-600 text-white'
-                  : isCompleted
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-muted-foreground/20 text-muted-foreground'
-                }
-              `}>
-                {isCompleted ? <Check className="h-3 w-3" /> : index + 1}
+        {/* Step nodes */}
+        {steps.map((step, index) => {
+          const isActive = step.id === currentStep
+          const isCompleted = index < currentIndex
+          const Icon = STEP_ICONS[step.id]
+
+          return (
+            <div key={step.id} className="relative z-10 flex flex-col items-center">
+              <motion.button
+                type="button"
+                onClick={() => onStepClick(step.id)}
+                whileTap={{ scale: 0.95 }}
+                className={`
+                  relative flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300
+                  ${isActive
+                    ? 'border-emerald-500 bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-500/20'
+                    : isCompleted
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : 'border-muted-foreground/30 bg-background text-muted-foreground'
+                  }
+                `}
+              >
+                <AnimatePresence mode="wait">
+                  {isCompleted ? (
+                    <motion.div
+                      key="check"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    >
+                      <Check className="h-5 w-5" />
+                    </motion.div>
+                  ) : isActive ? (
+                    <motion.div
+                      key="icon"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="number"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                    >
+                      <span className="text-sm font-bold">{index + 1}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+              {/* Step label - always visible */}
+              <span
+                className={`mt-2 text-xs font-medium transition-colors duration-300 ${
+                  isActive
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : isCompleted
+                      ? 'text-emerald-500'
+                      : 'text-muted-foreground'
+                }`}
+              >
+                {step.label}
               </span>
-              <span className="hidden sm:inline">{step.label}</span>
-            </button>
-          </div>
-        )
-      })}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Question Type Counter ───
+
+function QuestionTypeCounter({
+  label,
+  badgeClass,
+  value,
+  onChange,
+  max = 50,
+}: {
+  label: string
+  badgeClass: string
+  value: number
+  onChange: (val: number) => void
+  max?: number
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className={`h-6 px-2 text-[10px] ${badgeClass}`}>
+          {label === 'Choix unique' ? 'QCU' : label === 'Choix multiple' ? 'QCM' : label === 'Réponse courte' ? 'QRC' : 'RÉFL'}
+        </Badge>
+        <span className="text-sm text-muted-foreground">{label}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          disabled={value <= 0}
+        >
+          <Minus className="h-3 w-3" />
+        </Button>
+        <span className="w-8 text-center text-sm font-semibold tabular-nums">{value}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
     </div>
   )
 }
@@ -258,6 +383,9 @@ export function GenerationIAPage() {
   const [typeControle, setTypeControle] = useState<string>('')
   const [isTitleManuallyEdited, setIsTitleManuallyEdited] = useState(false)
   const [selectedUEIdForDocs, setSelectedUEIdForDocs] = useState<string>('')
+
+  // Regenerate single question state
+  const [regeneratingQuestionId, setRegeneratingQuestionId] = useState<string | null>(null)
 
   const analyzedDocuments = documents.filter((d) => {
     if (d.statutAnalyse !== 'ANALYSE') return false
@@ -556,12 +684,15 @@ export function GenerationIAPage() {
     }
   }
 
-  // ─── Edit question ───
+  // ─── Edit question (enhanced) ───
   const startEditing = (q: ContenuQuestion) => {
     setEditingQuestionId(q.id)
     setEditData({
       enonce: q.enonce,
       bareme: q.bareme,
+      propositions: q.propositions ? q.propositions.map(p => ({ ...p })) : null,
+      reponseCorrecte: q.reponseCorrecte,
+      explication: q.explication,
     })
   }
 
@@ -576,7 +707,14 @@ export function GenerationIAPage() {
       ...generatedContenu,
       questions: generatedContenu.questions.map((q) =>
         q.id === editingQuestionId
-          ? { ...q, enonce: editData.enonce ?? q.enonce, bareme: editData.bareme ?? q.bareme }
+          ? {
+              ...q,
+              enonce: editData.enonce ?? q.enonce,
+              bareme: editData.bareme ?? q.bareme,
+              propositions: editData.propositions !== undefined ? editData.propositions : q.propositions,
+              reponseCorrecte: editData.reponseCorrecte !== undefined ? editData.reponseCorrecte : q.reponseCorrecte,
+              explication: editData.explication !== undefined ? editData.explication : q.explication,
+            }
           : q
       ),
       baremeTotal: generatedContenu.questions.reduce((sum, q) =>
@@ -598,7 +736,62 @@ export function GenerationIAPage() {
     toast.success('Question supprimée')
   }
 
-  // ─── Regenerate ───
+  // ─── Regenerate single question ───
+  const handleRegenerateSingleQuestion = async (q: ContenuQuestion) => {
+    if (!user?.id || !generatedContenu) return
+    setRegeneratingQuestionId(q.id)
+
+    try {
+      const res = await fetch(`/api/questions/${q.id}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documentIds: Array.from(selectedDocIds),
+          type: q.type,
+          difficulte,
+          langue,
+          enseignantId: user.id,
+        }),
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Erreur lors de la régénération')
+      }
+
+      const data = await res.json()
+      const newQ: ContenuQuestion = {
+        id: q.id,
+        type: (['QCU', 'QCM', 'QRC', 'REFLEXION'].includes(data.type as string) ? data.type : q.type) as ContenuQuestion['type'],
+        enonce: String(data.enonce || q.enonce),
+        propositions: data.propositions || q.propositions,
+        reponseCorrecte: data.reponseCorrecte || q.reponseCorrecte,
+        explication: (data.explication as string | null) ?? q.explication,
+        difficulte: (['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT'].includes(data.difficulte as string)
+          ? data.difficulte : q.difficulte) as ContenuQuestion['difficulte'],
+        bareme: typeof data.bareme === 'number' ? data.bareme : q.bareme,
+        ueCode: (data.ueCode as string | null) ?? q.ueCode,
+        ueNom: (data.ueNom as string | null) ?? q.ueNom,
+      }
+
+      setGeneratedContenu({
+        ...generatedContenu,
+        questions: generatedContenu.questions.map((existingQ) =>
+          existingQ.id === q.id ? newQ : existingQ
+        ),
+      })
+
+      toast.success('Question régénérée')
+    } catch (err) {
+      toast.error('Erreur de régénération', {
+        description: err instanceof Error ? err.message : 'Impossible de régénérer cette question.',
+      })
+    } finally {
+      setRegeneratingQuestionId(null)
+    }
+  }
+
+  // ─── Regenerate all ───
   const handleRegenerate = () => {
     setGeneratedContenu(null)
     setCurrentStep('configure')
@@ -670,17 +863,42 @@ export function GenerationIAPage() {
     }
   }
 
-  // ─── Render: Question Card in Preview ───
+  // ─── Navigate to next/previous step ───
+  const goNextStep = () => {
+    const currentIdx = wizardSteps.findIndex((s) => s.id === currentStep)
+    if (currentIdx < wizardSteps.length - 1 && isStepValid(currentStep)) {
+      setCurrentStep(wizardSteps[currentIdx + 1].id)
+    }
+  }
+
+  const goPrevStep = () => {
+    const currentIdx = wizardSteps.findIndex((s) => s.id === currentStep)
+    if (currentIdx > 0) {
+      setCurrentStep(wizardSteps[currentIdx - 1].id)
+    }
+  }
+
+  // ─── Render: Question Card in Preview (Enhanced) ───
   const renderQuestionCard = (q: ContenuQuestion, idx: number) => {
     const isEditing = editingQuestionId === q.id
     const isExpanded = expandedExplanations.has(q.id)
+    const isRegenerating = regeneratingQuestionId === q.id
+    const borderColor = TYPE_BORDER_COLORS[q.type] || 'border-l-emerald-500'
 
     return (
-      <Card key={q.id} className="overflow-hidden">
-        <CardContent className="p-4">
+      <motion.div
+        key={q.id}
+        variants={itemVariants}
+        whileHover={{ y: -2 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className={`rounded-xl border border-l-4 ${borderColor} bg-card shadow-sm overflow-hidden ${
+          isRegenerating ? 'opacity-60 pointer-events-none' : ''
+        }`}
+      >
+        <div className="p-5">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
               {idx + 1}
             </span>
             <Badge variant="outline" className={`gap-1 ${TYPE_COLORS[q.type] || ''}`}>
@@ -702,15 +920,17 @@ export function GenerationIAPage() {
 
           {/* Énoncé */}
           {isEditing ? (
-            <div className="space-y-2">
-              <Label className="text-xs">Énoncé</Label>
-              <Textarea
-                value={editData.enonce ?? ''}
-                onChange={(e) => setEditData((prev) => ({ ...prev, enonce: e.target.value }))}
-                className="min-h-[80px] text-sm"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Énoncé</Label>
+                <Textarea
+                  value={editData.enonce ?? ''}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, enonce: e.target.value }))}
+                  className="min-h-[80px] text-sm"
+                />
+              </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs">Barème</Label>
+                <Label className="text-xs font-medium">Barème</Label>
                 <Input
                   type="number"
                   min={0.5}
@@ -721,13 +941,65 @@ export function GenerationIAPage() {
                   className="w-20 h-8 text-sm"
                 />
               </div>
+
+              {/* Edit propositions for QCU/QCM */}
+              {(q.type === 'QCU' || q.type === 'QCM') && editData.propositions && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Propositions</Label>
+                  {editData.propositions.map((prop, pIdx) => (
+                    <div key={prop.id} className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs font-bold bg-muted text-muted-foreground">
+                        {String.fromCharCode(65 + pIdx)}
+                      </span>
+                      <Input
+                        value={prop.text}
+                        onChange={(e) => {
+                          const newProps = [...(editData.propositions ?? [])]
+                          newProps[pIdx] = { ...newProps[pIdx], text: e.target.value }
+                          setEditData((prev) => ({ ...prev, propositions: newProps }))
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Edit reponseCorrecte for QRC/REFLEXION */}
+              {(q.type === 'QRC' || q.type === 'REFLEXION') && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">
+                    {q.type === 'QRC' ? 'Réponse modèle' : 'Guide de correction'}
+                  </Label>
+                  <Textarea
+                    value={
+                      editData.reponseCorrecte
+                        ? (Array.isArray(editData.reponseCorrecte) ? editData.reponseCorrecte.join('\n') : String(editData.reponseCorrecte))
+                        : ''
+                    }
+                    onChange={(e) => setEditData((prev) => ({ ...prev, reponseCorrecte: e.target.value }))}
+                    className="min-h-[60px] text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Edit explication */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Explication de l&apos;IA</Label>
+                <Textarea
+                  value={editData.explication ?? ''}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, explication: e.target.value }))}
+                  placeholder="Explication optionnelle..."
+                  className="min-h-[60px] text-sm"
+                />
+              </div>
             </div>
           ) : (
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{q.enonce}</p>
           )}
 
-          {/* Propositions */}
-          {(q.type === 'QCU' || q.type === 'QCM') && q.propositions && (
+          {/* Propositions (read mode) */}
+          {!isEditing && (q.type === 'QCU' || q.type === 'QCM') && q.propositions && (
             <div className="space-y-1.5 mt-3">
               <Label className="text-xs font-medium text-muted-foreground">Propositions</Label>
               {q.propositions.map((prop, pIdx) => {
@@ -759,8 +1031,8 @@ export function GenerationIAPage() {
             </div>
           )}
 
-          {/* Réponse for QRC/TRS */}
-          {(q.type === 'QRC' || q.type === 'REFLEXION') && q.reponseCorrecte && (
+          {/* Réponse for QRC/TRS (read mode) */}
+          {!isEditing && (q.type === 'QRC' || q.type === 'REFLEXION') && q.reponseCorrecte && (
             <div className="mt-3">
               <button
                 type="button"
@@ -789,8 +1061,8 @@ export function GenerationIAPage() {
             </div>
           )}
 
-          {/* Explication */}
-          {q.explication && (
+          {/* Explication (read mode) */}
+          {!isEditing && q.explication && (
             <Collapsible open={expandedExplanations.has(`exp-${q.id}`)} onOpenChange={() => {
               setExpandedExplanations((prev) => {
                 const next = new Set(prev)
@@ -832,6 +1104,20 @@ export function GenerationIAPage() {
                 <Pencil className="h-3 w-3" />
                 Modifier
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                onClick={() => handleRegenerateSingleQuestion(q)}
+                disabled={isRegenerating}
+              >
+                {isRegenerating ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RotateCw className="h-3 w-3" />
+                )}
+                Régénérer
+              </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button size="sm" variant="outline" className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30">
@@ -856,18 +1142,29 @@ export function GenerationIAPage() {
               </AlertDialog>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </motion.div>
     )
   }
 
   const totalQuestions = qcuCount + qcmCount + qrcCount + reflexionCount
 
+  // ─── Compute total themes for summary bar ───
+  const selectedDocumentsTotalThemes = useMemo(() => {
+    return analyzedDocuments
+      .filter(d => selectedDocIds.has(d.id))
+      .reduce((sum, d) => sum + (d.themesDetectes?.length ?? 0), 0)
+  }, [analyzedDocuments, selectedDocIds])
+
   // ─── Main Render ───
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
           <Sparkles className="h-7 w-7 text-emerald-600" />
           Génération IA d&apos;Épreuves
@@ -875,754 +1172,879 @@ export function GenerationIAPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Sélectionnez des documents, configurez les paramètres et laissez l&apos;IA générer une épreuve complète
         </p>
-      </div>
+      </motion.div>
 
-      {/* Step indicator */}
-      <StepIndicator steps={wizardSteps} currentStep={currentStep} onStepClick={goToStep} />
+      {/* Modern Stepper */}
+      <ModernStepper steps={wizardSteps} currentStep={currentStep} onStepClick={goToStep} />
 
       <Separator />
 
-      {/* ─── Step 1: Select Documents ─── */}
-      {currentStep === 'select-docs' && (
-        <div className="space-y-4">
-          {/* UE Filter */}
-          {analyzedDocuments.length > 0 && (() => {
-            const ueMap = new Map<string, { id: string; code: string; nom: string }>()
-            for (const doc of documents.filter((d) => d.statutAnalyse === 'ANALYSE')) {
-              if (doc.uniteEnseignementId && doc.uniteEnseignementCode) {
-                ueMap.set(doc.uniteEnseignementId, {
-                  id: doc.uniteEnseignementId,
-                  code: doc.uniteEnseignementCode,
-                  nom: doc.uniteEnseignementNom || doc.uniteEnseignementCode,
-                })
+      {/* ─── Step Content with AnimatePresence ─── */}
+      <AnimatePresence mode="wait">
+        {/* ─── Step 1: Select Documents ─── */}
+        {currentStep === 'select-docs' && (
+          <motion.div
+            key="select-docs"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-4"
+          >
+            {/* UE Filter */}
+            {analyzedDocuments.length > 0 && (() => {
+              const ueMap = new Map<string, { id: string; code: string; nom: string }>()
+              for (const doc of documents.filter((d) => d.statutAnalyse === 'ANALYSE')) {
+                if (doc.uniteEnseignementId && doc.uniteEnseignementCode) {
+                  ueMap.set(doc.uniteEnseignementId, {
+                    id: doc.uniteEnseignementId,
+                    code: doc.uniteEnseignementCode,
+                    nom: doc.uniteEnseignementNom || doc.uniteEnseignementCode,
+                  })
+                }
               }
-            }
-            return ueMap.size > 0 ? (
+              return ueMap.size > 0 ? (
+                <motion.div variants={itemVariants}>
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-emerald-600" />
+                        Sélectionnez l&apos;Unité d&apos;Enseignement
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Select value={selectedUEIdForDocs} onValueChange={(val) => {
+                        setSelectedUEIdForDocs(val)
+                        if (val && val !== '__all__') {
+                          setSelectedDocIds(prev => {
+                            const next = new Set<string>()
+                            for (const docId of prev) {
+                              const doc = documents.find(d => d.id === docId)
+                              if (doc && (doc.uniteEnseignementId === val || !doc.uniteEnseignementId)) {
+                                next.add(docId)
+                              }
+                            }
+                            return next
+                          })
+                        }
+                        setSelectedUEId(val)
+                      }}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Toutes les UE" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Toutes les UE</SelectItem>
+                          {Array.from(ueMap.values()).map(ue => (
+                            <SelectItem key={ue.id} value={ue.id}>
+                              {ue.code} — {ue.nom}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedUEIdForDocs && selectedUEIdForDocs !== '__all__' && (
+                        <p className="text-[10px] text-muted-foreground mt-2">
+                          Filtrage actif : seuls les documents de cette UE sont affichés
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ) : null
+            })()}
+
+            <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-emerald-600" />
-                    Sélectionnez l&apos;Unité d&apos;Enseignement
+                    <FileText className="h-4 w-4 text-emerald-600" />
+                    Sélectionnez les documents sources
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Select value={selectedUEIdForDocs} onValueChange={(val) => {
-                    setSelectedUEIdForDocs(val)
-                    if (val && val !== '__all__') {
-                      setSelectedDocIds(prev => {
-                        const next = new Set<string>()
-                        for (const docId of prev) {
-                          const doc = documents.find(d => d.id === docId)
-                          if (doc && (doc.uniteEnseignementId === val || !doc.uniteEnseignementId)) {
-                            next.add(docId)
-                          }
-                        }
-                        return next
-                      })
-                    }
-                    setSelectedUEId(val)
-                  }}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Toutes les UE" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">Toutes les UE</SelectItem>
-                      {Array.from(ueMap.values()).map(ue => (
-                        <SelectItem key={ue.id} value={ue.id}>
-                          {ue.code} — {ue.nom}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedUEIdForDocs && selectedUEIdForDocs !== '__all__' && (
-                    <p className="text-[10px] text-muted-foreground mt-2">
-                      Filtrage actif : seuls les documents de cette UE sont affichés
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ) : null
-          })()}
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <FileText className="h-4 w-4 text-emerald-600" />
-                Sélectionnez les documents sources
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoadingDocs ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Chargement des documents...
-                </div>
-              ) : analyzedDocuments.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-6 text-center">
-                  <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
-                  <p className="text-sm font-medium">Aucun document analysé</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Importez et analysez au moins un document avant de générer une épreuve.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                    onClick={() => router.push(PAGE_ROUTES.documents)}
-                  >
-                    <FileText className="h-3 w-3 mr-1" />
-                    Aller aux Documents
-                  </Button>
-                </div>
-              ) : (
-                <ScrollArea className="max-h-96">
-                  <div className="space-y-2">
-                    {analyzedDocuments.map((doc) => {
-                      const isSelected = selectedDocIds.has(doc.id)
-                      const themeCount = doc.themesDetectes?.length ?? 0
-                      return (
-                        <div
-                          key={doc.id}
-                          className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
-                              : 'border-muted hover:border-emerald-200 dark:hover:border-emerald-900'
-                          }`}
-                          onClick={() => toggleDocSelection(doc.id)}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleDocSelection(doc.id)}
-                            className="pointer-events-none"
-                          />
-                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{doc.nomFichier}</p>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                              {doc.uniteEnseignementCode && (
-                                <Badge variant="outline" className="h-4 px-1 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
-                                  {doc.uniteEnseignementCode}
-                                </Badge>
-                              )}
-                              {themeCount > 0 && (
-                                <span className="text-xs text-muted-foreground">{themeCount} thème{themeCount > 1 ? 's' : ''}</span>
-                              )}
-                            </div>
-                          </div>
-                          {isSelected && <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {selectedDocIds.size} document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}
-            </p>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={!isStepValid('select-docs')}
-              onClick={() => setCurrentStep('configure')}
-            >
-              Suivant
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Step 2: Configure Parameters ─── */}
-      {currentStep === 'configure' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Left: Question types */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-emerald-600" />
-                  Types de questions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs flex items-center gap-1.5">
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">QCU</Badge>
-                      Choix unique
-                    </Label>
-                    <Input type="number" min={0} max={50} value={qcuCount} onChange={(e) => setQcuCount(Math.max(0, Math.min(50, parseInt(e.target.value) || 0)))} className="h-8 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs flex items-center gap-1.5">
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">QCM</Badge>
-                      Choix multiple
-                    </Label>
-                    <Input type="number" min={0} max={50} value={qcmCount} onChange={(e) => setQcmCount(Math.max(0, Math.min(50, parseInt(e.target.value) || 0)))} className="h-8 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs flex items-center gap-1.5">
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">QRC</Badge>
-                      Réponse courte
-                    </Label>
-                    <Input type="number" min={0} max={50} value={qrcCount} onChange={(e) => setQrcCount(Math.max(0, Math.min(50, parseInt(e.target.value) || 0)))} className="h-8 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs flex items-center gap-1.5">
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800">REFLEXION</Badge>
-                      Sujet de réflexion
-                    </Label>
-                    <Input type="number" min={0} max={50} value={reflexionCount} onChange={(e) => setReflexionCount(Math.max(0, Math.min(50, parseInt(e.target.value) || 0)))} className="h-8 text-sm" />
-                  </div>
-                </div>
-
-                <div className={`rounded-lg border p-3 ${totalQuestions > 50 ? 'bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800' : totalQuestions > 30 ? 'bg-muted/30' : 'bg-muted/30'}`}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      Total : {totalQuestions} question{totalQuestions > 1 ? 's' : ''}
-                    </p>
-                    {totalQuestions > 0 && (
-                      <Badge variant="outline" className="text-[10px] gap-1">
-                        <Clock className="h-3 w-3" />
-                        ~{Math.max(30, Math.round(totalQuestions * 2.5))} min
-                      </Badge>
-                    )}
-                  </div>
-                  {totalQuestions > 50 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      Grand nombre de questions — la génération peut prendre plusieurs minutes
-                    </p>
-                  )}
-                  {totalQuestions > 100 && (
-                    <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      Maximum 100 questions autorisées
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Right: Other parameters */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Brain className="h-4 w-4 text-emerald-600" />
-                  Paramètres avancés
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium flex items-center gap-1.5">
-                    <ClipboardList className="h-3 w-3 text-teal-500" />
-                    Type de contrôle
-                  </Label>
-                  <Select value={typeControle} onValueChange={(val) => {
-                    setTypeControle(val)
-                    if (!isTitleManuallyEdited) {
-                      const typeLabel = TYPE_CONTROLE_OPTIONS.find(o => o.value === val)?.label || val
-                      let ueName = ''
-                      if (selectedUEId && selectedUEId !== '__none__') {
-                        for (const f of filieres) {
-                          const ue = f.unitesEnseignement.find(u => u.id === selectedUEId)
-                          if (ue) { ueName = ue.nom; break }
-                        }
-                      }
-                      if (ueName) {
-                        setTitreEpreuve(val === 'COMP' ? `Composition - ${ueName}` : `${typeLabel} - ${ueName}`)
-                      } else {
-                        setTitreEpreuve(typeLabel)
-                      }
-                    }
-                  }}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Sélectionnez un type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TYPE_CONTROLE_OPTIONS.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium">Titre de l&apos;épreuve</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={titreEpreuve}
-                      onChange={(e) => {
-                        setTitreEpreuve(e.target.value)
-                        setIsTitleManuallyEdited(true)
-                      }}
-                      placeholder={getAutoGeneratedTitle() || "Ex: Contrôle - Algorithmique L2"}
-                      className="h-8 text-sm flex-1"
-                    />
-                    {isTitleManuallyEdited && getAutoGeneratedTitle() && (
+                  {isLoadingDocs ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Chargement des documents...
+                    </div>
+                  ) : analyzedDocuments.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-6 text-center">
+                      <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                      <p className="text-sm font-medium">Aucun document analysé</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Importez et analysez au moins un document avant de générer une épreuve.
+                      </p>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 text-xs shrink-0"
-                        onClick={() => {
-                          setTitreEpreuve(getAutoGeneratedTitle())
-                          setIsTitleManuallyEdited(false)
-                        }}
+                        className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        onClick={() => router.push(PAGE_ROUTES.documents)}
                       >
-                        Auto
+                        <FileText className="h-3 w-3 mr-1" />
+                        Aller aux Documents
                       </Button>
-                    )}
-                  </div>
-                  {getAutoGeneratedTitle() && !isTitleManuallyEdited && (
-                    <p className="text-[10px] text-muted-foreground">Titre généré automatiquement — modifiable</p>
+                    </div>
+                  ) : (
+                    <ScrollArea className="max-h-96">
+                      <div className="space-y-2">
+                        {analyzedDocuments.map((doc) => {
+                          const isSelected = selectedDocIds.has(doc.id)
+                          const themeCount = doc.themesDetectes?.length ?? 0
+                          return (
+                            <motion.div
+                              key={doc.id}
+                              variants={itemVariants}
+                              className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
+                                  : 'border-muted hover:border-emerald-200 dark:hover:border-emerald-900'
+                              }`}
+                              onClick={() => toggleDocSelection(doc.id)}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleDocSelection(doc.id)}
+                                className="pointer-events-none"
+                              />
+                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">{doc.nomFichier}</p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                  {doc.uniteEnseignementCode && (
+                                    <Badge variant="outline" className="h-4 px-1 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+                                      {doc.uniteEnseignementCode}
+                                    </Badge>
+                                  )}
+                                  {themeCount > 0 && (
+                                    <span className="text-xs text-muted-foreground">{themeCount} thème{themeCount > 1 ? 's' : ''}</span>
+                                  )}
+                                </div>
+                              </div>
+                              {isSelected && <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                            </motion.div>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
                   )}
-                </div>
+                </CardContent>
+              </Card>
+            </motion.div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium flex items-center gap-1.5">
-                      <Trophy className="h-3 w-3 text-amber-500" />
-                      Note totale
-                    </Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      step={1}
-                      value={noteTotal}
-                      onChange={(e) => setNoteTotal(Math.max(1, parseFloat(e.target.value) || 20))}
-                      className="h-8 text-sm"
-                    />
-                    <p className="text-[10px] text-muted-foreground">L&apos;IA répartira le barème pour atteindre ce total</p>
+            {/* Summary bar at bottom */}
+            <motion.div variants={itemVariants}>
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <FileText className="h-4 w-4 text-emerald-600" />
+                    <span className="font-semibold">{selectedDocIds.size}</span>
+                    <span className="text-muted-foreground">document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}</span>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium flex items-center gap-1.5">
-                      <Clock className="h-3 w-3 text-emerald-500" />
-                      Durée (minutes)
-                    </Label>
-                    <Input
-                      type="number"
-                      min={10}
-                      max={480}
-                      step={5}
-                      value={duree}
-                      onChange={(e) => setDuree(Math.max(10, Math.min(480, parseInt(e.target.value) || 60)))}
-                      className="h-8 text-sm"
-                    />
-                    <p className="text-[10px] text-muted-foreground">{formatDuree(duree)}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">Difficulté</Label>
-                    <Select value={difficulte} onValueChange={setDifficulte}>
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="FACILE">Facile — 60% faciles, 25% moyennes</SelectItem>
-                        <SelectItem value="MOYEN">Moyen — 50% moyennes, 25% difficiles</SelectItem>
-                        <SelectItem value="DIFFICILE">Difficile — 50% difficiles, 30% expertes</SelectItem>
-                        <SelectItem value="EXPERT">Expert — 60% expertes, 25% difficiles</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[10px] text-muted-foreground">La majorité des questions sera de ce niveau</p>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium flex items-center gap-1.5">
-                    <BookOpen className="h-3 w-3 text-emerald-500" />
-                    Filière cible
-                    {filieres.length === 1 && (
-                      <Badge variant="outline" className="text-[10px] py-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800">Auto</Badge>
-                    )}
-                  </Label>
-                  <Select
-                    value={selectedFiliereId}
-                    onValueChange={(val) => {
-                      setSelectedFiliereId(val)
-                      setSelectedNiveau('')
-                      setSelectedUEId('')
-                      const sel = filieres.find((f) => f.id === val)
-                      if (sel) {
-                        if (sel.niveaux.length === 1) setSelectedNiveau(sel.niveaux[0])
-                        if (sel.unitesEnseignement.length === 1) setSelectedUEId(sel.unitesEnseignement[0].id)
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Sélectionnez une filière" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filieres.length > 1 && <SelectItem value="__all__">Toutes les filières</SelectItem>}
-                      {filieres.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.nom} {f.code ? `(${f.code})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium flex items-center gap-1.5">
-                      <Layers className="h-3 w-3 text-sky-500" />
-                      Niveau cible
-                      {selectedFiliereId && filieres.find((f) => f.id === selectedFiliereId)?.niveaux.length === 1 && (
-                        <Badge variant="outline" className="text-[10px] py-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800">Auto</Badge>
-                      )}
-                    </Label>
-                    <Select value={selectedNiveau} onValueChange={(val) => { setSelectedNiveau(val); setSelectedUEId('') }}>
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue placeholder="Sélectionnez un niveau" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(() => {
-                          const sel = filieres.find((f) => f.id === selectedFiliereId)
-                          const avail = sel ? sel.niveaux : [...new Set(filieres.flatMap((f) => f.niveaux))].sort()
-                          if (avail.length === 0) return <SelectItem value="__none__" disabled>Aucun niveau</SelectItem>
-                          return (
-                            <>
-                              {avail.length > 1 && <SelectItem value="__all__">Tous les niveaux</SelectItem>}
-                              {avail.map((n) => (
-                                <SelectItem key={n} value={n}>
-                                  {NIVEAU_OPTIONS.find((o) => o.value === n)?.label || n}
-                                </SelectItem>
-                              ))}
-                            </>
-                          )
-                        })()}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium flex items-center gap-1.5">
-                      <Hash className="h-3 w-3 text-teal-500" />
-                      UE
-                    </Label>
-                    <Select value={selectedUEId} onValueChange={(val) => {
-                      setSelectedUEId(val)
-                      if (typeControle && !isTitleManuallyEdited) {
-                        const typeLabel = TYPE_CONTROLE_OPTIONS.find(o => o.value === typeControle)?.label || typeControle
-                        let ueName = ''
-                        if (val && val !== '__none__') {
-                          for (const f of filieres) {
-                            const ue = f.unitesEnseignement.find(u => u.id === val)
-                            if (ue) { ueName = ue.nom; break }
-                          }
-                        }
-                        if (ueName) {
-                          setTitreEpreuve(typeControle === 'COMP' ? `Composition - ${ueName}` : `${typeLabel} - ${ueName}`)
-                        } else {
-                          setTitreEpreuve(typeLabel)
-                        }
-                      }
-                    }}>
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue placeholder="Sélectionnez une UE" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(() => {
-                          const sel = filieres.find((f) => f.id === selectedFiliereId)
-                          if (!sel) return <SelectItem value="__none__" disabled>Sélectionnez une filière</SelectItem>
-                          let ues = sel.unitesEnseignement
-                          if (selectedNiveau && selectedNiveau !== '__all__') {
-                            ues = ues.filter((ue) => {
-                              if (ue.niveau === selectedNiveau) return true
-                              if (ue.niveaux) { try { if ((JSON.parse(ue.niveaux) as string[]).includes(selectedNiveau)) return true } catch { /* */ } }
-                              return false
-                            })
-                          }
-                          if (ues.length === 0) return <SelectItem value="__none__" disabled>Aucune UE</SelectItem>
-                          return (
-                            <>
-                              <SelectItem value="__none__">Aucune UE spécifique</SelectItem>
-                              {ues.map((ue) => (
-                                <SelectItem key={ue.id} value={ue.id}>
-                                  {ue.code} — {ue.nom} ({ue.typeSeances.join('/')})
-                                </SelectItem>
-                              ))}
-                            </>
-                          )
-                        })()}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium">Langue</Label>
-                  <Select value={langue} onValueChange={setLangue}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fr">Français</SelectItem>
-                      <SelectItem value="en">English</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium">Consignes (optionnel)</Label>
-                  <Textarea
-                    value={consignes}
-                    onChange={(e) => setConsignes(e.target.value)}
-                    placeholder="Instructions spéciales pour les étudiants..."
-                    rows={3}
-                    className="text-sm"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={() => setCurrentStep('select-docs')}>
-              <ArrowLeft className="h-4 w-4" />
-              Précédent
-            </Button>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={totalQuestions === 0 || isGenerating}
-              onClick={handleGenerate}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Génération en cours...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Générer l&apos;épreuve
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Step 3: Preview ─── */}
-      {currentStep === 'preview' && generatedContenu && (
-        <div className="space-y-4">
-          {/* Summary bar */}
-          <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
-            <CardContent className="flex flex-wrap items-center gap-4 p-4">
-              <div className="flex items-center gap-2">
-                <HelpCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-sm font-semibold">{generatedContenu.questions.length} question(s)</span>
-              </div>
-              <Separator orientation="vertical" className="hidden h-5 sm:block" />
-              <div className="flex items-center gap-2">
-                <Trophy className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                <span className="text-sm font-semibold">{generatedContenu.baremeTotal} pts / {noteTotal}</span>
-              </div>
-              <Separator orientation="vertical" className="hidden h-5 sm:block" />
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(
-                  generatedContenu.questions.reduce((acc, q) => {
-                    acc[q.type] = (acc[q.type] || 0) + 1
-                    return acc
-                  }, {} as Record<string, number>)
-                ).map(([type, count]) => (
-                  <Badge key={type} variant="outline" className={`text-[10px] ${TYPE_COLORS[type] || ''}`}>
-                    {type}: {count}
-                  </Badge>
-                ))}
-              </div>
-              <Separator orientation="vertical" className="hidden h-5 sm:block" />
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(
-                  generatedContenu.questions.reduce((acc, q) => {
-                    acc[q.difficulte] = (acc[q.difficulte] || 0) + 1
-                    return acc
-                  }, {} as Record<string, number>)
-                ).map(([diff, count]) => (
-                  <Badge key={diff} variant="outline" className={`text-[10px] ${DIFFICULTE_COLORS[diff] || ''}`}>
-                    {DIFFICULTE_LABELS[diff] || diff}: {count}
-                  </Badge>
-                ))}
-              </div>
-              {/* UE groups summary */}
-              {(() => {
-                const ueSet = new Set(generatedContenu.questions.filter(q => q.ueCode).map(q => q.ueCode))
-                if (ueSet.size > 0) {
-                  return (
+                  {selectedDocumentsTotalThemes > 0 && (
                     <>
-                      <Separator orientation="vertical" className="hidden h-5 sm:block" />
-                      <div className="flex flex-wrap gap-1.5">
-                        {Array.from(ueSet).map(ueCode => (
-                          <Badge key={ueCode} variant="outline" className="text-[10px] gap-1 bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
-                            <Layers className="h-3 w-3" />
-                            {ueCode}
-                          </Badge>
-                        ))}
+                      <Separator orientation="vertical" className="h-4" />
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <BookOpen className="h-4 w-4 text-teal-600" />
+                        <span className="font-semibold">{selectedDocumentsTotalThemes}</span>
+                        <span className="text-muted-foreground">thème{selectedDocumentsTotalThemes > 1 ? 's' : ''}</span>
                       </div>
                     </>
-                  )
-                }
-                return null
-              })()}
-              <div className="ml-auto">
-                <Button variant="outline" size="sm" onClick={handleRegenerate}>
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Régénérer
+                  )}
+                </div>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={!isStepValid('select-docs')}
+                  onClick={goNextStep}
+                >
+                  Suivant
+                  <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </motion.div>
+          </motion.div>
+        )}
 
-          {/* Consignes */}
-          {generatedContenu.consignes && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Consignes</p>
-              <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{generatedContenu.consignes}</p>
+        {/* ─── Step 2: Configure Parameters ─── */}
+        {currentStep === 'configure' && (
+          <motion.div
+            key="configure"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {/* Left: Épreuve group */}
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4 text-emerald-600" />
+                      Épreuve
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium flex items-center gap-1.5">
+                        <ClipboardList className="h-3 w-3 text-teal-500" />
+                        Type de contrôle
+                      </Label>
+                      <Select value={typeControle} onValueChange={(val) => {
+                        setTypeControle(val)
+                        if (!isTitleManuallyEdited) {
+                          const typeLabel = TYPE_CONTROLE_OPTIONS.find(o => o.value === val)?.label || val
+                          let ueName = ''
+                          if (selectedUEId && selectedUEId !== '__none__') {
+                            for (const f of filieres) {
+                              const ue = f.unitesEnseignement.find(u => u.id === selectedUEId)
+                              if (ue) { ueName = ue.nom; break }
+                            }
+                          }
+                          if (ueName) {
+                            setTitreEpreuve(val === 'COMP' ? `Composition - ${ueName}` : `${typeLabel} - ${ueName}`)
+                          } else {
+                            setTitreEpreuve(typeLabel)
+                          }
+                        }
+                      }}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Sélectionnez un type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TYPE_CONTROLE_OPTIONS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium">Titre de l&apos;épreuve</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={titreEpreuve}
+                          onChange={(e) => {
+                            setTitreEpreuve(e.target.value)
+                            setIsTitleManuallyEdited(true)
+                          }}
+                          placeholder={getAutoGeneratedTitle() || "Ex: Contrôle - Algorithmique L2"}
+                          className="h-8 text-sm flex-1"
+                        />
+                        {isTitleManuallyEdited && getAutoGeneratedTitle() && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs shrink-0"
+                            onClick={() => {
+                              setTitreEpreuve(getAutoGeneratedTitle())
+                              setIsTitleManuallyEdited(false)
+                            }}
+                          >
+                            Auto
+                          </Button>
+                        )}
+                      </div>
+                      {getAutoGeneratedTitle() && !isTitleManuallyEdited && (
+                        <p className="text-[10px] text-muted-foreground">Titre généré automatiquement — modifiable</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium flex items-center gap-1.5">
+                          <Send className="h-3 w-3 text-amber-500" />
+                          Note totale
+                        </Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={1000}
+                          step={1}
+                          value={noteTotal}
+                          onChange={(e) => setNoteTotal(Math.max(1, parseFloat(e.target.value) || 20))}
+                          className="h-8 text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground">L&apos;IA répartira le barème pour atteindre ce total</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium flex items-center gap-1.5">
+                          <Clock className="h-3 w-3 text-emerald-500" />
+                          Durée (minutes)
+                        </Label>
+                        <Input
+                          type="number"
+                          min={10}
+                          max={480}
+                          step={5}
+                          value={duree}
+                          onChange={(e) => setDuree(Math.max(10, Math.min(480, parseInt(e.target.value) || 60)))}
+                          className="h-8 text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground">{formatDuree(duree)}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium">Difficulté</Label>
+                        <Select value={difficulte} onValueChange={setDifficulte}>
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="FACILE">Facile — 60% faciles, 25% moyennes</SelectItem>
+                            <SelectItem value="MOYEN">Moyen — 50% moyennes, 25% difficiles</SelectItem>
+                            <SelectItem value="DIFFICILE">Difficile — 50% difficiles, 30% expertes</SelectItem>
+                            <SelectItem value="EXPERT">Expert — 60% expertes, 25% difficiles</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[10px] text-muted-foreground">La majorité des questions sera de ce niveau</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              {/* Right: Questions group */}
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-emerald-600" />
+                      Questions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <QuestionTypeCounter
+                      label="Choix unique"
+                      badgeClass="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800"
+                      value={qcuCount}
+                      onChange={setQcuCount}
+                    />
+                    <QuestionTypeCounter
+                      label="Choix multiple"
+                      badgeClass="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800"
+                      value={qcmCount}
+                      onChange={setQcmCount}
+                    />
+                    <QuestionTypeCounter
+                      label="Réponse courte"
+                      badgeClass="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800"
+                      value={qrcCount}
+                      onChange={setQrcCount}
+                    />
+                    <QuestionTypeCounter
+                      label="Sujet de réflexion"
+                      badgeClass="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800"
+                      value={reflexionCount}
+                      onChange={setReflexionCount}
+                    />
+
+                    <div className={`rounded-lg border p-3 ${totalQuestions > 50 ? 'bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800' : 'bg-muted/30'}`}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">
+                          Total : {totalQuestions} question{totalQuestions > 1 ? 's' : ''}
+                        </p>
+                        {totalQuestions > 0 && (
+                          <Badge variant="outline" className="text-[10px] gap-1">
+                            <Clock className="h-3 w-3" />
+                            ~{Math.max(30, Math.round(totalQuestions * 2.5))} min
+                          </Badge>
+                        )}
+                      </div>
+                      {totalQuestions > 50 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          Grand nombre de questions — la génération peut prendre plusieurs minutes
+                        </p>
+                      )}
+                      {totalQuestions > 100 && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          Maximum 100 questions autorisées
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
             </div>
-          )}
 
-          {/* Question list — grouped by UE */}
-          <div className="space-y-4">
-            {(() => {
-              // Group questions by UE
-              const ueGroups = new Map<string, { code: string; nom: string; questions: ContenuQuestion[] }>()
-              const noUEKey = '__no_ue__'
-              for (const q of generatedContenu.questions) {
-                const ueKey = q.ueCode || noUEKey
-                if (!ueGroups.has(ueKey)) {
-                  ueGroups.set(ueKey, {
-                    code: q.ueCode || '',
-                    nom: q.ueNom || 'Non classé',
-                    questions: [],
-                  })
-                }
-                ueGroups.get(ueKey)!.questions.push(q)
-              }
-
-              const ueGroupArray = Array.from(ueGroups.entries())
-              // If only one group (or all without UE), don't show group headers
-              if (ueGroupArray.length <= 1) {
-                return generatedContenu.questions.map((q, idx) => renderQuestionCard(q, idx))
-              }
-
-              // Multiple UE groups — show headers and grouped questions
-              let globalIdx = 0
-              return ueGroupArray.map(([ueKey, group]) => (
-                <div key={ueKey}>
-                  <div className="flex items-center gap-2 mb-2 mt-2">
-                    <Layers className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-                      {group.code ? `${group.code} — ` : ''}{group.nom}
-                    </span>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {group.questions.length} question{group.questions.length > 1 ? 's' : ''}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px]">
-                      {group.questions.reduce((s, q) => s + q.bareme, 0)} pts
-                    </Badge>
+            {/* Context group */}
+            <motion.div variants={itemVariants}>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Settings className="h-4 w-4 text-emerald-600" />
+                    Contexte
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium flex items-center gap-1.5">
+                        <BookOpen className="h-3 w-3 text-emerald-500" />
+                        Filière cible
+                        {filieres.length === 1 && (
+                          <Badge variant="outline" className="text-[10px] py-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800">Auto</Badge>
+                        )}
+                      </Label>
+                      <Select
+                        value={selectedFiliereId}
+                        onValueChange={(val) => {
+                          setSelectedFiliereId(val)
+                          setSelectedNiveau('')
+                          setSelectedUEId('')
+                          const sel = filieres.find((f) => f.id === val)
+                          if (sel) {
+                            if (sel.niveaux.length === 1) setSelectedNiveau(sel.niveaux[0])
+                            if (sel.unitesEnseignement.length === 1) setSelectedUEId(sel.unitesEnseignement[0].id)
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Sélectionnez une filière" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filieres.length > 1 && <SelectItem value="__all__">Toutes les filières</SelectItem>}
+                          {filieres.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.nom} {f.code ? `(${f.code})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium flex items-center gap-1.5">
+                        <Layers className="h-3 w-3 text-sky-500" />
+                        Niveau cible
+                        {selectedFiliereId && filieres.find((f) => f.id === selectedFiliereId)?.niveaux.length === 1 && (
+                          <Badge variant="outline" className="text-[10px] py-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800">Auto</Badge>
+                        )}
+                      </Label>
+                      <Select value={selectedNiveau} onValueChange={(val) => { setSelectedNiveau(val); setSelectedUEId('') }}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Sélectionnez un niveau" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(() => {
+                            const sel = filieres.find((f) => f.id === selectedFiliereId)
+                            const avail = sel ? sel.niveaux : [...new Set(filieres.flatMap((f) => f.niveaux))].sort()
+                            if (avail.length === 0) return <SelectItem value="__none__" disabled>Aucun niveau</SelectItem>
+                            return (
+                              <>
+                                {avail.length > 1 && <SelectItem value="__all__">Tous les niveaux</SelectItem>}
+                                {avail.map((n) => (
+                                  <SelectItem key={n} value={n}>
+                                    {NIVEAU_OPTIONS.find((o) => o.value === n)?.label || n}
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )
+                          })()}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium flex items-center gap-1.5">
+                        <Hash className="h-3 w-3 text-teal-500" />
+                        UE
+                      </Label>
+                      <Select value={selectedUEId} onValueChange={(val) => {
+                        setSelectedUEId(val)
+                        if (typeControle && !isTitleManuallyEdited) {
+                          const typeLabel = TYPE_CONTROLE_OPTIONS.find(o => o.value === typeControle)?.label || typeControle
+                          let ueName = ''
+                          if (val && val !== '__none__') {
+                            for (const f of filieres) {
+                              const ue = f.unitesEnseignement.find(u => u.id === val)
+                              if (ue) { ueName = ue.nom; break }
+                            }
+                          }
+                          if (ueName) {
+                            setTitreEpreuve(typeControle === 'COMP' ? `Composition - ${ueName}` : `${typeLabel} - ${ueName}`)
+                          } else {
+                            setTitreEpreuve(typeLabel)
+                          }
+                        }
+                      }}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Sélectionnez une UE" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(() => {
+                            const sel = filieres.find((f) => f.id === selectedFiliereId)
+                            if (!sel) return <SelectItem value="__none__" disabled>Sélectionnez une filière</SelectItem>
+                            let ues = sel.unitesEnseignement
+                            if (selectedNiveau && selectedNiveau !== '__all__') {
+                              ues = ues.filter((ue) => {
+                                if (ue.niveau === selectedNiveau) return true
+                                if (ue.niveaux) { try { if ((JSON.parse(ue.niveaux) as string[]).includes(selectedNiveau)) return true } catch { /* */ } }
+                                return false
+                              })
+                            }
+                            if (ues.length === 0) return <SelectItem value="__none__" disabled>Aucune UE</SelectItem>
+                            return (
+                              <>
+                                <SelectItem value="__none__">Aucune UE spécifique</SelectItem>
+                                {ues.map((ue) => (
+                                  <SelectItem key={ue.id} value={ue.id}>
+                                    {ue.code} — {ue.nom} ({ue.typeSeances.join('/')})
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )
+                          })()}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium">Langue</Label>
+                      <Select value={langue} onValueChange={setLangue}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fr">Français</SelectItem>
+                          <SelectItem value="en">English</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-3 ml-0 sm:ml-4">
-                    {group.questions.map((q) => {
-                      const idx = globalIdx++
-                      return renderQuestionCard(q, idx)
-                    })}
+
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Consignes (optionnel)</Label>
+                    <Textarea
+                      value={consignes}
+                      onChange={(e) => setConsignes(e.target.value)}
+                      placeholder="Instructions spéciales pour les étudiants..."
+                      rows={3}
+                      className="text-sm"
+                    />
                   </div>
-                </div>
-              ))
-            })()}
-          </div>
+                </CardContent>
+              </Card>
+            </motion.div>
 
-          <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={() => setCurrentStep('configure')}>
-              <ArrowLeft className="h-4 w-4" />
-              Modifier les paramètres
-            </Button>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => setCurrentStep('save')}
-            >
-              Suivant : Enregistrer
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Step 4: Save ─── */}
-      {currentStep === 'save' && generatedContenu && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Library className="h-4 w-4 text-emerald-600" />
-                Enregistrer dans la Banque d&apos;Épreuves
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-emerald-600" />
-                  <span className="font-semibold">{titreEpreuve || `Épreuve IA - ${new Date().toLocaleDateString('fr-FR')}`}</span>
-                </div>
-                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <HelpCircle className="h-3.5 w-3.5" />
-                    {generatedContenu.questions.length} question(s)
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Trophy className="h-3.5 w-3.5" />
-                    {generatedContenu.baremeTotal} / {noteTotal} points
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5" />
-                    {formatDuree(duree)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5" />
-                    {selectedDocIds.size} document(s) source
-                  </span>
-                </div>
-                <Badge variant="outline" className="gap-1 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800">
-                  <Sparkles className="h-3 w-3" />
-                  Générée par IA
-                </Badge>
+            {/* Navigation */}
+            <motion.div variants={itemVariants}>
+              <div className="flex items-center justify-between">
+                <Button variant="outline" onClick={goPrevStep}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Précédent
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={totalQuestions === 0 || isGenerating}
+                  onClick={handleGenerate}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Génération en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Générer l&apos;épreuve
+                    </>
+                  )}
+                </Button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
 
-              <p className="text-sm text-muted-foreground">
-                L&apos;épreuve sera enregistrée comme brouillon dans la Banque d&apos;Épreuves.
-                Vous pourrez ensuite la planifier et l&apos;attribuer à des groupes d&apos;étudiants.
-              </p>
-            </CardContent>
-          </Card>
+        {/* ─── Step 3: Preview ─── */}
+        {currentStep === 'preview' && generatedContenu && (
+          <motion.div
+            key="preview"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-4"
+          >
+            {/* Summary bar at top */}
+            <motion.div variants={itemVariants}>
+              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 p-4 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-sm font-semibold">{generatedContenu.questions.length} question(s)</span>
+                </div>
+                <Separator orientation="vertical" className="hidden h-5 sm:block" />
+                <div className="flex items-center gap-2">
+                  <Send className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                  <span className="text-sm font-semibold">{generatedContenu.baremeTotal} pts / {noteTotal}</span>
+                </div>
+                <Separator orientation="vertical" className="hidden h-5 sm:block" />
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-sm font-semibold">{formatDuree(duree)}</span>
+                </div>
+                <Separator orientation="vertical" className="hidden h-5 sm:block" />
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(
+                    generatedContenu.questions.reduce((acc, q) => {
+                      acc[q.type] = (acc[q.type] || 0) + 1
+                      return acc
+                    }, {} as Record<string, number>)
+                  ).map(([type, count]) => (
+                    <Badge key={type} variant="outline" className={`text-[10px] ${TYPE_COLORS[type] || ''}`}>
+                      {type}: {count}
+                    </Badge>
+                  ))}
+                </div>
+                <Separator orientation="vertical" className="hidden h-5 sm:block" />
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(
+                    generatedContenu.questions.reduce((acc, q) => {
+                      acc[q.difficulte] = (acc[q.difficulte] || 0) + 1
+                      return acc
+                    }, {} as Record<string, number>)
+                  ).map(([diff, count]) => (
+                    <Badge key={diff} variant="outline" className={`text-[10px] ${DIFFICULTE_COLORS[diff] || ''}`}>
+                      {DIFFICULTE_LABELS[diff] || diff}: {count}
+                    </Badge>
+                  ))}
+                </div>
+                {/* UE groups summary */}
+                {(() => {
+                  const ueSet = new Set(generatedContenu.questions.filter(q => q.ueCode).map(q => q.ueCode))
+                  if (ueSet.size > 0) {
+                    return (
+                      <>
+                        <Separator orientation="vertical" className="hidden h-5 sm:block" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {Array.from(ueSet).map(ueCode => (
+                            <Badge key={ueCode} variant="outline" className="text-[10px] gap-1 bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+                              <Layers className="h-3 w-3" />
+                              {ueCode}
+                            </Badge>
+                          ))}
+                        </div>
+                      </>
+                    )
+                  }
+                  return null
+                })()}
+                <div className="ml-auto">
+                  <Button variant="outline" size="sm" onClick={handleRegenerate}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Régénérer tout
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
 
-          <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={() => setCurrentStep('preview')}>
-              <ArrowLeft className="h-4 w-4" />
-              Retour à l&apos;aperçu
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                onClick={() => router.push(PAGE_ROUTES['banque-epreuves'])}
-              >
-                <Library className="h-4 w-4" />
-                Voir la Banque
-              </Button>
-              <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
-                disabled={isSaving}
-                onClick={handleSave}
-              >
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enregistrer
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            {/* Consignes */}
+            {generatedContenu.consignes && (
+              <motion.div variants={itemVariants} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Consignes</p>
+                <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{generatedContenu.consignes}</p>
+              </motion.div>
+            )}
+
+            {/* Question list — grouped by UE */}
+            <motion.div variants={containerVariants} className="space-y-4">
+              {(() => {
+                // Group questions by UE
+                const ueGroups = new Map<string, { code: string; nom: string; questions: ContenuQuestion[] }>()
+                const noUEKey = '__no_ue__'
+                for (const q of generatedContenu.questions) {
+                  const ueKey = q.ueCode || noUEKey
+                  if (!ueGroups.has(ueKey)) {
+                    ueGroups.set(ueKey, {
+                      code: q.ueCode || '',
+                      nom: q.ueNom || 'Non classé',
+                      questions: [],
+                    })
+                  }
+                  ueGroups.get(ueKey)!.questions.push(q)
+                }
+
+                const ueGroupArray = Array.from(ueGroups.entries())
+                // If only one group (or all without UE), don't show group headers
+                if (ueGroupArray.length <= 1) {
+                  return generatedContenu.questions.map((q, idx) => renderQuestionCard(q, idx))
+                }
+
+                // Multiple UE groups — show headers and grouped questions
+                let globalIdx = 0
+                return ueGroupArray.map(([ueKey, group]) => (
+                  <motion.div key={ueKey} variants={itemVariants}>
+                    <div className="flex items-center gap-2 mb-2 mt-2">
+                      <Layers className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                        {group.code ? `${group.code} — ` : ''}{group.nom}
+                      </span>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {group.questions.length} question{group.questions.length > 1 ? 's' : ''}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {group.questions.reduce((s, q) => s + q.bareme, 0)} pts
+                      </Badge>
+                    </div>
+                    <motion.div
+                      variants={containerVariants}
+                      className="space-y-3 ml-0 sm:ml-4"
+                    >
+                      {group.questions.map((q) => {
+                        const idx = globalIdx++
+                        return renderQuestionCard(q, idx)
+                      })}
+                    </motion.div>
+                  </motion.div>
+                ))
+              })()}
+            </motion.div>
+
+            {/* Navigation */}
+            <motion.div variants={itemVariants}>
+              <div className="flex items-center justify-between">
+                <Button variant="outline" onClick={() => setCurrentStep('configure')}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Modifier les paramètres
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => setCurrentStep('save')}
+                >
+                  Suivant : Enregistrer
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ─── Step 4: Save ─── */}
+        {currentStep === 'save' && generatedContenu && (
+          <motion.div
+            key="save"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-4"
+          >
+            <motion.div variants={itemVariants}>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Save className="h-4 w-4 text-emerald-600" />
+                    Enregistrer dans la Banque d&apos;Épreuves
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Clean summary grid */}
+                  <div className="rounded-xl border bg-muted/20 p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Wand2 className="h-5 w-5 text-emerald-600" />
+                      <span className="font-semibold text-base">{titreEpreuve || `Épreuve IA - ${new Date().toLocaleDateString('fr-FR')}`}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="rounded-lg border bg-background p-3 text-center">
+                        <Eye className="h-4 w-4 mx-auto text-emerald-600 mb-1" />
+                        <p className="text-lg font-bold">{generatedContenu.questions.length}</p>
+                        <p className="text-[10px] text-muted-foreground">Questions</p>
+                      </div>
+                      <div className="rounded-lg border bg-background p-3 text-center">
+                        <Send className="h-4 w-4 mx-auto text-teal-600 mb-1" />
+                        <p className="text-lg font-bold">{generatedContenu.baremeTotal}/{noteTotal}</p>
+                        <p className="text-[10px] text-muted-foreground">Points</p>
+                      </div>
+                      <div className="rounded-lg border bg-background p-3 text-center">
+                        <Clock className="h-4 w-4 mx-auto text-amber-600 mb-1" />
+                        <p className="text-lg font-bold">{formatDuree(duree)}</p>
+                        <p className="text-[10px] text-muted-foreground">Durée</p>
+                      </div>
+                      <div className="rounded-lg border bg-background p-3 text-center">
+                        <FileText className="h-4 w-4 mx-auto text-sky-600 mb-1" />
+                        <p className="text-lg font-bold">{selectedDocIds.size}</p>
+                        <p className="text-[10px] text-muted-foreground">Documents</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="gap-1 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800">
+                        <Sparkles className="h-3 w-3" />
+                        Générée par IA
+                      </Badge>
+                      {typeControle && (
+                        <Badge variant="outline" className="gap-1">
+                          {TYPE_CONTROLE_OPTIONS.find(o => o.value === typeControle)?.label || typeControle}
+                        </Badge>
+                      )}
+                      {difficulte && (
+                        <Badge variant="outline" className={DIFFICULTE_COLORS[difficulte] || ''}>
+                          {DIFFICULTE_LABELS[difficulte] || difficulte}
+                        </Badge>
+                      )}
+                      {selectedFiliereId && (() => {
+                        const f = filieres.find(fi => fi.id === selectedFiliereId)
+                        return f ? (
+                          <Badge variant="outline" className="gap-1">
+                            <BookOpen className="h-3 w-3" />
+                            {f.nom}
+                          </Badge>
+                        ) : null
+                      })()}
+                      {selectedUEId && selectedUEId !== '__none__' && (() => {
+                        for (const f of filieres) {
+                          const ue = f.unitesEnseignement.find(u => u.id === selectedUEId)
+                          if (ue) return (
+                            <Badge variant="outline" className="gap-1" key={ue.id}>
+                              <Layers className="h-3 w-3" />
+                              {ue.code}
+                            </Badge>
+                          )
+                        }
+                        return null
+                      })()}
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground">
+                    L&apos;épreuve sera enregistrée comme brouillon dans la Banque d&apos;Épreuves.
+                    Vous pourrez ensuite la planifier et l&apos;attribuer à des groupes d&apos;étudiants.
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Navigation */}
+            <motion.div variants={itemVariants}>
+              <div className="flex items-center justify-between">
+                <Button variant="outline" onClick={() => setCurrentStep('preview')}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Retour à l&apos;aperçu
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    onClick={() => router.push(PAGE_ROUTES['banque-epreuves'])}
+                  >
+                    <Layers className="h-4 w-4" />
+                    Voir la Banque
+                  </Button>
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 min-w-[140px]"
+                      disabled={isSaving}
+                      onClick={handleSave}
+                    >
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Enregistrer
+                    </Button>
+                  </motion.div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
