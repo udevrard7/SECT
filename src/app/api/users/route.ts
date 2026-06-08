@@ -134,8 +134,8 @@ export async function POST(request: NextRequest) {
     if (!creator) {
       console.error('[POST /api/users] No authenticated user found — session may be invalid')
       return NextResponse.json(
-        { error: 'Vous n\'avez pas les permissions pour créer des utilisateurs' },
-        { status: 403 }
+        { error: 'Session expirée ou invalide. Veuillez vous reconnecter.' },
+        { status: 401 }
       )
     }
 
@@ -284,6 +284,8 @@ export async function POST(request: NextRequest) {
         action: auditAction,
         entite: 'User',
         entiteId: user.id,
+        userId: creator.id,
+        userEmail: creator.email,
         details: JSON.stringify(auditDetails),
       },
     })
