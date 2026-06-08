@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
     // Role-based permission check
     const creator = await getAuthenticatedUser()
     if (!creator) {
+      console.error('[POST /api/users] No authenticated user found — session may be invalid')
       return NextResponse.json(
         { error: 'Vous n\'avez pas les permissions pour créer des utilisateurs' },
         { status: 403 }
@@ -294,7 +295,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response, { status: 201 })
   } catch (error) {
-    console.error('Error creating user:', error)
-    return NextResponse.json({ error: 'Erreur lors de la création de l\'utilisateur' }, { status: 500 })
+    console.error('[POST /api/users] Error creating user:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    return NextResponse.json({ error: 'Erreur lors de la création de l\'utilisateur', details: errorMessage }, { status: 500 })
   }
 }
