@@ -37,6 +37,9 @@ import {
   ChevronUp,
   Layers,
   SendHorizonal,
+  FileDown,
+  FileCheck2,
+  ClipboardList,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -75,6 +78,14 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -460,6 +471,41 @@ function ModelesTab() {
     setDuplicateTitre(`${epreuve.titre} (copie)`)
   }
 
+  // PDF export
+  const [exportingPdfId, setExportingPdfId] = useState<string | null>(null)
+
+  const handleExportPDF = async (epreuveId: string, type: 'sujet' | 'corrige' | 'feuille-reponses') => {
+    setExportingPdfId(epreuveId)
+    try {
+      const res = await fetch(`/api/epreuves/${epreuveId}/export-pdf?type=${type}`)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Erreur lors de la génération du PDF')
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      // Extract filename from Content-Disposition header
+      const disposition = res.headers.get('Content-Disposition')
+      let filename = `SECT_${type}.pdf`
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+?)"?$/)
+        if (match) filename = match[1]
+      }
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('PDF téléchargé', { description: `Le document a été généré avec succès.` })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de générer le PDF.' })
+    } finally {
+      setExportingPdfId(null)
+    }
+  }
+
   const renderPropositions = (q: EpreuveContenu['questions'][0]) => {
     if (!q.propositions || q.propositions.length === 0) return null
     const correctAnswers = Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte : q.reponseCorrecte ? [q.reponseCorrecte] : []
@@ -653,6 +699,39 @@ function ModelesTab() {
                     <Button variant="outline" size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => handlePreview(epreuve)}>
                       <Eye className="h-3.5 w-3.5" /> Aperçu
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950" disabled={exportingPdfId === epreuve.id}>
+                          {exportingPdfId === epreuve.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+                          PDF
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id, 'sujet')} disabled={exportingPdfId === epreuve.id}>
+                          <FileDown className="h-4 w-4 mr-2 text-emerald-600" />
+                          <div>
+                            <p className="font-medium">Sujet</p>
+                            <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+                          </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id, 'corrige')} disabled={exportingPdfId === epreuve.id}>
+                          <FileCheck2 className="h-4 w-4 mr-2 text-amber-600" />
+                          <div>
+                            <p className="font-medium">Corrigé type</p>
+                            <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+                          </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id, 'feuille-reponses')} disabled={exportingPdfId === epreuve.id}>
+                          <ClipboardList className="h-4 w-4 mr-2 text-sky-600" />
+                          <div>
+                            <p className="font-medium">Feuille de réponses</p>
+                            <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+                          </div>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button variant="outline" size="sm" onClick={() => openDuplicate(epreuve)}>
                       <Copy className="h-3.5 w-3.5" /> Dupliquer
                     </Button>
@@ -744,7 +823,43 @@ function ModelesTab() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-wrap gap-2">
+            {previewEpreuve && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950" disabled={exportingPdfId === previewEpreuve.id}>
+                    {exportingPdfId === previewEpreuve.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                    Télécharger PDF
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id, 'sujet')} disabled={exportingPdfId === previewEpreuve.id}>
+                    <FileDown className="h-4 w-4 mr-2 text-emerald-600" />
+                    <div>
+                      <p className="font-medium">Sujet</p>
+                      <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id, 'corrige')} disabled={exportingPdfId === previewEpreuve.id}>
+                    <FileCheck2 className="h-4 w-4 mr-2 text-amber-600" />
+                    <div>
+                      <p className="font-medium">Corrigé type</p>
+                      <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id, 'feuille-reponses')} disabled={exportingPdfId === previewEpreuve.id}>
+                    <ClipboardList className="h-4 w-4 mr-2 text-sky-600" />
+                    <div>
+                      <p className="font-medium">Feuille de réponses</p>
+                      <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <div className="flex-1" />
             <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>Fermer</Button>
             {previewEpreuve && (
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setPreviewDialogOpen(false); openDuplicate(previewEpreuve) }}>
@@ -1130,6 +1245,40 @@ function SessionsTab() {
     toast.success('Export lancé', { description: `Résultats de "${epreuve.titre}" en cours d'export.` })
   }
 
+  // PDF export for SessionsTab
+  const [exportingPdfId, setExportingPdfId] = useState<string | null>(null)
+
+  const handleExportPDF = async (epreuveId: string, type: 'sujet' | 'corrige' | 'feuille-reponses') => {
+    setExportingPdfId(epreuveId)
+    try {
+      const res = await fetch(`/api/epreuves/${epreuveId}/export-pdf?type=${type}`)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Erreur lors de la génération du PDF')
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const disposition = res.headers.get('Content-Disposition')
+      let filename = `SECT_${type}.pdf`
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+?)"?$/)
+        if (match) filename = match[1]
+      }
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('PDF téléchargé', { description: 'Le document a été généré avec succès.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de générer le PDF.' })
+    } finally {
+      setExportingPdfId(null)
+    }
+  }
+
   const [forcingSessionId, setForcingSessionId] = useState<string | null>(null)
 
   const handleForceSubmission = async (sessionId: string) => {
@@ -1158,6 +1307,42 @@ function SessionsTab() {
 
   // Render actions
   const renderActions = (epreuve: SessionEpreuve) => {
+    const pdfDropdown = (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950" disabled={exportingPdfId === epreuve.id}>
+            {exportingPdfId === epreuve.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+            PDF
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id, 'sujet')} disabled={exportingPdfId === epreuve.id}>
+            <FileDown className="h-4 w-4 mr-2 text-emerald-600" />
+            <div>
+              <p className="font-medium">Sujet</p>
+              <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id, 'corrige')} disabled={exportingPdfId === epreuve.id}>
+            <FileCheck2 className="h-4 w-4 mr-2 text-amber-600" />
+            <div>
+              <p className="font-medium">Corrigé type</p>
+              <p className="text-xs text-muted-foreground">Pour l'enseignant</p>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id, 'feuille-reponses')} disabled={exportingPdfId === epreuve.id}>
+            <ClipboardList className="h-4 w-4 mr-2 text-sky-600" />
+            <div>
+              <p className="font-medium">Feuille de réponses</p>
+              <p className="text-xs text-muted-foreground">QCM / QCU dépouillement</p>
+            </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+
     switch (epreuve.statut) {
       case 'BROUILLON':
         return (
@@ -1165,6 +1350,7 @@ function SessionsTab() {
             <Button variant="outline" size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => handleStatusAction(epreuve.id, 'publier', 'Épreuve publiée')}>
               <Send className="h-3.5 w-3.5" /> Publier
             </Button>
+            {pdfDropdown}
             <Button variant="outline" size="sm" className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950" onClick={() => setDeleteTarget(epreuve)}>
               <Trash2 className="h-3.5 w-3.5" /> Supprimer
             </Button>
@@ -1179,6 +1365,7 @@ function SessionsTab() {
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action: 'lancer', label: 'Lancer l\'épreuve', description: 'Les étudiants pourront commencer cette épreuve. Voulez-vous continuer ?' })}>
               <Play className="h-3.5 w-3.5" /> Lancer
             </Button>
+            {pdfDropdown}
             <Button variant="outline" size="sm" onClick={() => openDateEdit(epreuve)}>
               <CalendarDays className="h-3.5 w-3.5" /> Dates
             </Button>
@@ -1190,6 +1377,7 @@ function SessionsTab() {
             <Button variant="outline" size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => handleOpenMonitoring(epreuve)}>
               <Activity className="h-3.5 w-3.5" /> Suivi
             </Button>
+            {pdfDropdown}
             <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action: 'terminer', label: 'Terminer l\'épreuve', description: 'Toutes les sessions en cours seront terminées. Les étudiants non soumis seront marqués comme tels. Voulez-vous continuer ?' })}>
               <Square className="h-3.5 w-3.5" /> Terminer
             </Button>
@@ -1201,6 +1389,7 @@ function SessionsTab() {
             <Button variant="outline" size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => handleOpenMonitoring(epreuve)}>
               <BarChart3 className="h-3.5 w-3.5" /> Résultats
             </Button>
+            {pdfDropdown}
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action: 'cloturer', label: 'Clôturer l\'épreuve', description: 'Cette action est irréversible. Plus aucune modification ne sera possible. Voulez-vous continuer ?' })}>
               <Lock className="h-3.5 w-3.5" /> Clôturer
             </Button>
@@ -1212,6 +1401,7 @@ function SessionsTab() {
             <Button variant="outline" size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => handleOpenMonitoring(epreuve)}>
               <Trophy className="h-3.5 w-3.5" /> Résultats
             </Button>
+            {pdfDropdown}
             <Button variant="outline" size="sm" onClick={() => handleExport(epreuve)}>
               <Download className="h-3.5 w-3.5" /> Exporter
             </Button>
