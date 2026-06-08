@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Play,
   Send,
   CheckCircle2,
@@ -25,7 +32,9 @@ import {
   type TestCase,
   type TestResult,
   type CodeExecutionResult,
+  CODING_LANGUAGES,
   getCodingLanguageConfig,
+  getDefaultStarterCode,
   EXECUTION_CONFIG,
 } from '@/lib/coding-types'
 
@@ -85,10 +94,17 @@ export function CodeEditor({
             {langConfig.fileExtension}
           </Badge>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-          <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
+        <div className="flex items-center gap-2">
+          {readOnly && (
+            <Badge variant="secondary" className="text-[10px] h-4 bg-slate-700 text-slate-300">
+              Lecture seule
+            </Badge>
+          )}
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
+          </div>
         </div>
       </div>
       {/* Monaco Editor */}
@@ -254,6 +270,7 @@ interface CodingQuestionStudentProps {
   bareme: number
   currentCode: string
   onCodeChange: (code: string) => void
+  onLanguageChange?: (language: CodingLanguage) => void
   onSubmit: () => void
   isSubmitting?: boolean
   readOnly?: boolean
@@ -263,18 +280,21 @@ interface CodingQuestionStudentProps {
 export function CodingQuestionStudent({
   questionId,
   enonce,
-  langage,
+  langage: initialLangage,
   codeInitial,
   fonctionSignature,
   testsPublics,
   bareme,
   currentCode,
   onCodeChange,
+  onLanguageChange,
   onSubmit,
   isSubmitting = false,
   readOnly = false,
   securityConfig,
 }: CodingQuestionStudentProps) {
+  // Active language state — student can switch between languages
+  const [activeLanguage, setActiveLanguage] = useState<CodingLanguage>(initialLangage)
   const [isRunning, setIsRunning] = useState(false)
   const [testResults, setTestResults] = useState<TestResult[]>([])
   const [executionOutput, setExecutionOutput] = useState<string>('')
@@ -283,6 +303,31 @@ export function CodingQuestionStudent({
   const [showOutput, setShowOutput] = useState(false)
   const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastSavedCodeRef = useRef<string>(currentCode)
+  const prevLangRef = useRef<CodingLanguage>(initialLangage)
+
+  // Sync with prop changes (e.g., when navigating between questions)
+  useEffect(() => {
+    if (initialLangage !== prevLangRef.current) {
+      setActiveLanguage(initialLangage)
+      prevLangRef.current = initialLangage
+    }
+  }, [initialLangage])
+
+  // Handle language change
+  const handleLanguageChange = useCallback((newLang: CodingLanguage) => {
+    setActiveLanguage(newLang)
+    prevLangRef.current = newLang
+    // Reset test results when language changes
+    setTestResults([])
+    setExecutionOutput('')
+    setExecutionError('')
+    setShowOutput(false)
+    // Regenerate starter code for the new language
+    const newStarterCode = getDefaultStarterCode(newLang, fonctionSignature || undefined)
+    onCodeChange(newStarterCode)
+    // Notify parent of language change
+    onLanguageChange?.(newLang)
+  }, [fonctionSignature, onCodeChange, onLanguageChange])
 
   // Auto-save every 10 seconds
   useEffect(() => {
@@ -310,12 +355,12 @@ export function CodingQuestionStudent({
 
     try {
       // For JS/TS: use client-side execution
-      if (langage === 'javascript' || langage === 'typescript') {
+      if (activeLanguage === 'javascript' || activeLanguage === 'typescript') {
         const results = executeClientSideJS(currentCode, testsPublics, fonctionSignature)
         setTestResults(results.testResults)
         setExecutionOutput(results.output)
         if (results.error) setExecutionError(results.error)
-      } else if (langage === 'python') {
+      } else if (activeLanguage === 'python') {
         // For Python: attempt to use Pyodide if available, otherwise server-side
         const results = await executePythonClient(currentCode, testsPublics, fonctionSignature)
         setTestResults(results.testResults)
@@ -328,7 +373,7 @@ export function CodingQuestionStudent({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: currentCode,
-            language: langage,
+            language: activeLanguage,
             testCases: testsPublics,
             functionSignature: fonctionSignature,
           }),
@@ -344,18 +389,19 @@ export function CodingQuestionStudent({
     } finally {
       setIsRunning(false)
     }
-  }, [currentCode, langage, testsPublics, fonctionSignature])
+  }, [currentCode, activeLanguage, testsPublics, fonctionSignature])
 
-  // Handle reset code to initial template
+  // Handle reset code to initial template for current language
   const handleReset = useCallback(() => {
-    onCodeChange(codeInitial)
+    const newStarterCode = getDefaultStarterCode(activeLanguage, fonctionSignature || undefined)
+    onCodeChange(newStarterCode)
     setTestResults([])
     setExecutionOutput('')
     setExecutionError('')
     setShowOutput(false)
-  }, [codeInitial, onCodeChange])
+  }, [activeLanguage, fonctionSignature, onCodeChange])
 
-  const langConfig = getCodingLanguageConfig(langage)
+  const langConfig = getCodingLanguageConfig(activeLanguage)
 
   return (
     <div className="space-y-4">
@@ -388,11 +434,33 @@ export function CodingQuestionStudent({
         </CardContent>
       </Card>
 
-      {/* Code Editor */}
+      {/* Code Editor with Language Selector */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-muted-foreground">Éditeur de code</span>
+            {/* Language Selector */}
+            <Select
+              value={activeLanguage}
+              onValueChange={(val) => handleLanguageChange(val as CodingLanguage)}
+              disabled={readOnly}
+            >
+              <SelectTrigger className="h-7 w-auto gap-1.5 text-xs border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
+                <span className="text-sm">{langConfig.icon}</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CODING_LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.value} value={lang.value}>
+                    <span className="flex items-center gap-2">
+                      <span>{lang.icon}</span>
+                      <span>{lang.label}</span>
+                      <span className="text-muted-foreground text-[10px]">({lang.fileExtension})</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {lastSaved && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Save className="h-2.5 w-2.5" />
@@ -413,7 +481,8 @@ export function CodingQuestionStudent({
         </div>
 
         <CodeEditor
-          language={langage}
+          key={`${questionId}-${activeLanguage}`}
+          language={activeLanguage}
           initialCode={currentCode}
           onChange={onCodeChange}
           readOnly={readOnly}
