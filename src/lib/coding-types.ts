@@ -106,10 +106,14 @@ export interface GradedCodingAnswer extends CodingAnswer {
 // ─── Execution Config ───
 
 export const EXECUTION_CONFIG = {
-  timeout: 5000,       // 5 seconds max execution
-  maxMemory: 128 * 1024, // 128 MB in KB
-  maxOutputLength: 10000, // Max output characters
+  timeout: 5000,           // 5 seconds max execution per test
+  maxMemory: 128 * 1024,   // 128 MB in KB
+  maxOutputLength: 10000,  // Max output characters
+  maxCodeLength: 50000,    // Max code length in characters
   autoSaveInterval: 10000, // Auto-save every 10 seconds
+  maxTestsPerExecution: 20, // Max test cases per execution
+  maxExecutionsPerMinute: 15, // Rate limit: max executions per minute per user
+  sandboxVersion: 2,       // Sandbox version for cache busting
 } as const
 
 // ─── Helper: Parse a function signature from any supported language ───

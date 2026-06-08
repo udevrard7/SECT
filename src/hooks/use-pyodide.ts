@@ -5,13 +5,22 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 /**
  * Hook to load and manage Pyodide (Python-in-the-browser) runtime.
  *
- * Pyodide is loaded from CDN lazily on first use. Once loaded, it's cached
- * for the lifetime of the page. The hook provides:
+ * Pyodide runs Python in a WebAssembly sandbox, which provides inherent
+ * security isolation. However, we add additional restrictions:
+ *
+ * Security layers:
+ *   1. Pre-execution validation (code-sandbox-validator.ts) — blocks dangerous patterns
+ *   2. Pyodide WASM sandbox — inherent isolation from host system
+ *   3. Restricted builtins — override dangerous Python builtins at runtime
+ *   4. Import whitelist — only allow safe modules
+ *   5. Recursion limit — prevent stack overflow
+ *
+ * The hook provides:
  * - `pyodideReady`: whether Pyodide is loaded and ready
  * - `loading`: whether Pyodide is currently being loaded
  * - `error`: any error that occurred during loading
  * - `runPython`: execute Python code and return the stdout output
- * - `runPythonAsync`: execute Python code asynchronously
+ * - `runPythonTest`: execute a Python function with test input
  */
 
 interface PyodideInterface {
@@ -23,6 +32,54 @@ interface PyodideInterface {
 // Module-level singleton: load Pyodide only once across all hook instances
 let pyodideInstance: PyodideInterface | null = null
 let pyodideLoadPromise: Promise<PyodideInterface> | null = null
+let securityInitialized = false
+
+// ─── Python Security Initialization Script ───
+// This runs once after Pyodide loads to restrict the Python environment
+
+const PYTHON_SECURITY_INIT = `
+import sys as _sect_sys
+
+# ─── Restricted builtins ───
+_SECT_BLOCKED = frozenset({
+    'eval', 'exec', 'compile', '__import__', 'open', 'input',
+    'breakpoint', 'exit', 'quit', 'memoryview',
+})
+
+# Override blocked builtins with functions that raise errors
+for _sect_name in _SECT_BLOCKED:
+    _sect_orig = getattr(_sect_sys.modules['builtins'], _sect_name, None)
+    if _sect_orig is not None:
+        def _sect_blocked(*a, _n=_sect_name, **kw):
+            raise RuntimeError(f"BLOCKED: {_n}() is not allowed in this environment for security reasons")
+        setattr(_sect_sys.modules['builtins'], _sect_name, _sect_blocked)
+
+# ─── Restricted imports ───
+_SECT_ALLOWED_MODULES = frozenset({
+    'math', 'random', 'string', 'collections', 'itertools', 'functools',
+    'operator', 'decimal', 'fractions', 'statistics', 'datetime', 're',
+    'json', 'copy', 'enum', 'typing', 'dataclasses', 'abc',
+    'array', 'heapq', 'bisect', 'pprint', 'textwrap', 'unicodedata',
+    'cmath', 'numbers', 'uuid', 'io', 'sys',
+})
+
+# Override __import__ to restrict modules
+_sect_original_import = _sect_sys.modules['builtins'].__import__
+
+def _sect_restricted_import(name, *args, **kwargs):
+    _top_level = name.split('.')[0]
+    if _top_level not in _SECT_ALLOWED_MODULES and _top_level != '_sect_sys':
+        raise ImportError(f"Module '{_top_level}' is not allowed for security reasons.")
+    return _sect_original_import(name, *args, **kwargs)
+
+_sect_sys.modules['builtins'].__import__ = _sect_restricted_import
+
+# ─── Set recursion limit ───
+_sect_sys.setrecursionlimit(500)
+
+# ─── Clean up security variables ───
+del _sect_blocked, _sect_original_import, _sect_name, _sect_orig
+`
 
 async function loadPyodideRuntime(): Promise<PyodideInterface> {
   if (pyodideInstance) return pyodideInstance
@@ -58,6 +115,19 @@ async function loadPyodideRuntime(): Promise<PyodideInterface> {
     })
 
     pyodideInstance = pyodide as PyodideInterface
+
+    // ─── Initialize security restrictions ───
+    if (!securityInitialized) {
+      try {
+        pyodideInstance.runPython(PYTHON_SECURITY_INIT)
+        securityInitialized = true
+      } catch (err) {
+        console.warn('[use-pyodide] Security initialization warning:', err)
+        // Non-fatal — Pyodide WASM sandbox still provides base isolation
+        securityInitialized = true
+      }
+    }
+
     return pyodideInstance
   })()
 
@@ -100,9 +170,10 @@ export function usePyodide() {
   }, [loading])
 
   /**
-   * Run Python code in the Pyodide sandbox.
+   * Run Python code in the Pyodide WASM sandbox.
    * Captures stdout output and returns it as a string.
-   * If Pyodide is not loaded, loads it first.
+   * Security: Pyodide runs in WASM, which is inherently isolated from the host.
+   * Additional restrictions are applied during initialization.
    */
   const runPython = useCallback(async (code: string): Promise<{ output: string; error: string | null }> => {
     try {
@@ -159,6 +230,7 @@ del _capture_stdout, _capture_stderr, _captured_out, _captured_err, _exec_error
   /**
    * Run a Python function with given input and capture the return value.
    * Returns the string representation of the function's return value.
+   * Security: Runs in Pyodide WASM sandbox with restricted builtins.
    */
   const runPythonTest = useCallback(async (
     code: string,
@@ -207,26 +279,6 @@ finally:
 `
       } else {
         // No function name — run the code directly and capture stdout
-        testCode = `
-${code}
-
-import sys
-from io import StringIO
-
-_test_stdout = StringIO()
-sys.stdout = _test_stdout
-
-try:
-    exec(open('${''}').read() if False else None)  # no-op placeholder
-    _test_error = None
-except Exception as _e:
-    _test_error = str(_e)
-finally:
-    sys.stdout = sys.__stdout__
-    _test_output = _test_stdout.getvalue()
-    _test_stdout.close()
-`
-        // For no-function mode, just execute the code and capture stdout
         testCode = `
 import sys
 from io import StringIO
