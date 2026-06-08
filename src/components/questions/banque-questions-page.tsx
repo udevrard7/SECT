@@ -71,13 +71,14 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
+import { CODING_LANGUAGES, getDefaultStarterCode, type CodingLanguage } from '@/lib/coding-types'
 
 // ─── Types ───
 
 interface Question {
   id: string
   documentId: string | null
-  type: 'QCU' | 'QCM' | 'QRC' | 'TRS'
+  type: 'QCU' | 'QCM' | 'QRC' | 'TRS' | 'CODE'
   enonce: string
   propositions: string[] | null
   reponseCorrecte: string | string[] | null
@@ -90,6 +91,10 @@ interface Question {
   langue: string
   createdAt: string
   document?: { id: string; nomFichier: string } | null
+  // CODE-specific fields (parsed from reponseCorrecte JSON when type=CODE)
+  langage?: string
+  codeInitial?: string
+  fonctionSignature?: string
 }
 
 interface QuestionsResponse {
@@ -117,6 +122,8 @@ function getTypeBadgeConfig(type: Question['type']) {
       return { label: 'QRC', className: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800' }
     case 'TRS':
       return { label: 'TRS', className: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800' }
+    case 'CODE':
+      return { label: 'CODE', className: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800' }
   }
 }
 
@@ -182,7 +189,7 @@ export function BanqueQuestionsPage() {
   const [deletingQuestion, setDeletingQuestion] = useState<Question | null>(null)
 
   // ─── Form state for creation ───
-  const [formType, setFormType] = useState<'QCU' | 'QCM' | 'QRC' | 'TRS'>('QCU')
+  const [formType, setFormType] = useState<'QCU' | 'QCM' | 'QRC' | 'TRS' | 'CODE'>('QCU')
   const [formEnonce, setFormEnonce] = useState('')
   const [formPropositions, setFormPropositions] = useState<string[]>(['', '', ''])
   const [formReponseCorrecte, setFormReponseCorrecte] = useState<string[]>([])
@@ -192,6 +199,11 @@ export function BanqueQuestionsPage() {
   const [formDifficulte, setFormDifficulte] = useState<'FACILE' | 'MOYEN' | 'DIFFICILE' | 'EXPERT'>('MOYEN')
   const [formThemes, setFormThemes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // CODE-specific form fields
+  const [formLangage, setFormLangage] = useState<CodingLanguage>('python')
+  const [formFonctionSignature, setFormFonctionSignature] = useState('')
+  const [formCodeInitial, setFormCodeInitial] = useState('')
+  const [formSolutionCode, setFormSolutionCode] = useState('')
 
   // ─── Expanded questions ───
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set())
@@ -327,6 +339,25 @@ export function BanqueQuestionsPage() {
       setFormPropositions(['', '', ''])
       setFormReponseCorrecte([])
       setFormReponseQRC('')
+    } else if (q.type === 'CODE') {
+      // Parse CODE-specific fields from reponseCorrecte JSON
+      const codeData = (() => {
+        if (!q.reponseCorrecte) return null
+        try {
+          const parsed = typeof q.reponseCorrecte === 'string' ? JSON.parse(q.reponseCorrecte) : q.reponseCorrecte
+          if (parsed && typeof parsed === 'object' && parsed.type === 'CODE') return parsed
+        } catch { /* not JSON */ }
+        return null
+      })()
+      setFormLangage((codeData?.langage as CodingLanguage) || 'python')
+      setFormFonctionSignature(codeData?.fonctionSignature || '')
+      setFormCodeInitial(codeData?.codeInitial || '')
+      setFormSolutionCode(codeData?.solution || '')
+      setFormPropositions(['', '', ''])
+      setFormReponseCorrecte([])
+      setFormReponseQRC('')
+      setFormConsigneTRS('')
+      setFormGrilleTRS('')
     }
 
     setEditDialogOpen(true)
@@ -410,6 +441,10 @@ export function BanqueQuestionsPage() {
     setFormGrilleTRS('')
     setFormDifficulte('MOYEN')
     setFormThemes('')
+    setFormLangage('python')
+    setFormFonctionSignature('')
+    setFormCodeInitial('')
+    setFormSolutionCode('')
   }
 
   // ─── Create question ───
@@ -456,6 +491,16 @@ export function BanqueQuestionsPage() {
       } else if (formType === 'TRS') {
         body.enonce = formConsigneTRS
         body.reponseCorrecte = formGrilleTRS || null
+      } else if (formType === 'CODE') {
+        body.enonce = formEnonce
+        body.propositions = null
+        body.reponseCorrecte = {
+          type: 'CODE',
+          langage: formLangage,
+          codeInitial: formCodeInitial || getDefaultStarterCode(formLangage, formFonctionSignature || undefined),
+          fonctionSignature: formFonctionSignature || null,
+          solution: formSolutionCode || null,
+        }
       }
 
       const res = await fetch('/api/questions', {
@@ -508,6 +553,16 @@ export function BanqueQuestionsPage() {
       } else if (formType === 'TRS') {
         body.enonce = formConsigneTRS
         body.reponseCorrecte = formGrilleTRS || null
+      } else if (formType === 'CODE') {
+        body.enonce = formEnonce
+        body.propositions = null
+        body.reponseCorrecte = {
+          type: 'CODE',
+          langage: formLangage,
+          codeInitial: formCodeInitial || getDefaultStarterCode(formLangage, formFonctionSignature || undefined),
+          fonctionSignature: formFonctionSignature || null,
+          solution: formSolutionCode || null,
+        }
       }
 
       const res = await fetch(`/api/questions/${editingQuestion.id}`, {
@@ -571,6 +626,7 @@ export function BanqueQuestionsPage() {
       QCM: questions.filter((q) => q.type === 'QCM').length,
       QRC: questions.filter((q) => q.type === 'QRC').length,
       TRS: questions.filter((q) => q.type === 'TRS').length,
+      CODE: questions.filter((q) => q.type === 'CODE').length,
     },
     validees: questions.filter((q) => q.validee).length,
     nonValidees: questions.filter((q) => !q.validee).length,
@@ -701,6 +757,81 @@ export function BanqueQuestionsPage() {
             ? 'Cliquez sur la lettre pour sélectionner la bonne réponse (1 seule).'
             : 'Cliquez sur les lettres pour sélectionner les bonnes réponses (plusieurs possibles).'}
         </p>
+      </div>
+    </div>
+  )
+
+  // ─── Form for CODE ───
+  const renderCODEForm = () => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Énoncé *</Label>
+        <Textarea
+          value={formEnonce}
+          onChange={(e) => setFormEnonce(e.target.value)}
+          placeholder="Entrez l'énoncé du problème de programmation..."
+          rows={4}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Langage de programmation *</Label>
+        <Select
+          value={formLangage}
+          onValueChange={(val) => {
+            const newLang = val as CodingLanguage
+            setFormLangage(newLang)
+            // Update starter code when language changes
+            if (!formCodeInitial || formCodeInitial === getDefaultStarterCode(formLangage, formFonctionSignature || undefined)) {
+              setFormCodeInitial(getDefaultStarterCode(newLang, formFonctionSignature || undefined))
+            }
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Sélectionner un langage" />
+          </SelectTrigger>
+          <SelectContent>
+            {CODING_LANGUAGES.map((lang) => (
+              <SelectItem key={lang.value} value={lang.value}>
+                <span className="flex items-center gap-2">
+                  <span>{lang.icon}</span>
+                  <span>{lang.label}</span>
+                  <span className="text-muted-foreground text-xs">({lang.fileExtension})</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Signature de la fonction</Label>
+        <Input
+          value={formFonctionSignature}
+          onChange={(e) => setFormFonctionSignature(e.target.value)}
+          placeholder="ex: def calculer_moyenne(nombres):"
+          className="font-mono"
+        />
+        <p className="text-xs text-muted-foreground">La signature attendue pour la fonction que l'étudiant doit implémenter.</p>
+      </div>
+      <div className="space-y-2">
+        <Label>Code initial (template)</Label>
+        <Textarea
+          value={formCodeInitial}
+          onChange={(e) => setFormCodeInitial(e.target.value)}
+          placeholder="Code de départ fourni à l'étudiant..."
+          rows={6}
+          className="font-mono text-sm"
+        />
+        <p className="text-xs text-muted-foreground">Code fourni comme point de départ à l'étudiant.</p>
+      </div>
+      <div className="space-y-2">
+        <Label>Solution modèle</Label>
+        <Textarea
+          value={formSolutionCode}
+          onChange={(e) => setFormSolutionCode(e.target.value)}
+          placeholder="Code de la solution correcte..."
+          rows={8}
+          className="font-mono text-sm"
+        />
       </div>
     </div>
   )
@@ -839,6 +970,9 @@ export function BanqueQuestionsPage() {
               <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800">
                 TRS: {stats.byType.TRS}
               </Badge>
+              <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800">
+                CODE: {stats.byType.CODE}
+              </Badge>
             </div>
 
             <Separator orientation="vertical" className="hidden h-8 sm:block" />
@@ -910,6 +1044,7 @@ export function BanqueQuestionsPage() {
                   <SelectItem value="QCM">QCM</SelectItem>
                   <SelectItem value="QRC">QRC</SelectItem>
                   <SelectItem value="TRS">TRS</SelectItem>
+                  <SelectItem value="CODE">CODE</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -1373,6 +1508,59 @@ export function BanqueQuestionsPage() {
                   </section>
                 )}
 
+                {/* CODE question details */}
+                {detailQuestion.type === 'CODE' && (() => {
+                  const codeData = (() => {
+                    if (!detailQuestion.reponseCorrecte) return null
+                    try {
+                      const parsed = typeof detailQuestion.reponseCorrecte === 'string'
+                        ? JSON.parse(detailQuestion.reponseCorrecte)
+                        : detailQuestion.reponseCorrecte
+                      if (parsed && typeof parsed === 'object') return parsed
+                    } catch { /* not JSON */ }
+                    return null
+                  })()
+                  return (
+                    <div className="space-y-3">
+                      {codeData?.langage && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="gap-1 bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800">
+                            <Hash className="h-3 w-3" />
+                            {(() => { const cfg = CODING_LANGUAGES.find(l => l.value === codeData.langage); return cfg ? `${cfg.icon} ${cfg.label}` : codeData.langage; })()}
+                          </Badge>
+                          {codeData.fonctionSignature && (
+                            <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono truncate max-w-xs" title={codeData.fonctionSignature}>
+                              {codeData.fonctionSignature}
+                            </code>
+                          )}
+                        </div>
+                      )}
+                      {codeData?.codeInitial && (
+                        <section>
+                          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                            <FileText className="h-4 w-4 text-violet-600" />
+                            Code initial
+                          </h3>
+                          <pre className="rounded-lg bg-zinc-900 text-zinc-100 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+                            {codeData.codeInitial}
+                          </pre>
+                        </section>
+                      )}
+                      {codeData?.solution && (
+                        <section>
+                          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                            <BookOpen className="h-4 w-4 text-emerald-600" />
+                            Solution modèle
+                          </h3>
+                          <pre className="rounded-lg bg-emerald-950 text-emerald-100 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+                            {codeData.solution}
+                          </pre>
+                        </section>
+                      )}
+                    </div>
+                  )
+                })()}
+
                 {/* Explication */}
                 {detailQuestion.explication && (
                   <section>
@@ -1472,8 +1660,8 @@ export function BanqueQuestionsPage() {
               {/* Type selector */}
               <div className="space-y-2">
                 <Label>Type de question *</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(['QCU', 'QCM', 'QRC', 'TRS'] as const).map((t) => {
+                <div className="grid grid-cols-5 gap-2">
+                  {(['QCU', 'QCM', 'QRC', 'TRS', 'CODE'] as const).map((t) => {
                     const config = getTypeBadgeConfig(t)
                     return (
                       <button
@@ -1487,6 +1675,12 @@ export function BanqueQuestionsPage() {
                           setFormConsigneTRS('')
                           setFormGrilleTRS('')
                           setFormEnonce('')
+                          if (t === 'CODE') {
+                            setFormLangage('python')
+                            setFormCodeInitial(getDefaultStarterCode('python'))
+                            setFormFonctionSignature('')
+                            setFormSolutionCode('')
+                          }
                         }}
                         className={`rounded-lg border-2 p-2.5 text-center text-sm font-medium transition-colors ${
                           formType === t
@@ -1508,7 +1702,9 @@ export function BanqueQuestionsPage() {
                 ? renderQCUQCMForm()
                 : formType === 'QRC'
                   ? renderQRCForm()
-                  : renderTRSForm()}
+                  : formType === 'CODE'
+                    ? renderCODEForm()
+                    : renderTRSForm()}
 
               <Separator />
 
@@ -1579,7 +1775,9 @@ export function BanqueQuestionsPage() {
                 ? renderQCUQCMForm()
                 : formType === 'QRC'
                   ? renderQRCForm()
-                  : renderTRSForm()}
+                  : formType === 'CODE'
+                    ? renderCODEForm()
+                    : renderTRSForm()}
 
               <Separator />
 

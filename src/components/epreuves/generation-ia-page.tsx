@@ -74,6 +74,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
+import { CODING_LANGUAGES, getCodingLanguageConfig, type CodingLanguage } from '@/lib/coding-types'
 
 // ─── Types ───
 
@@ -781,6 +782,10 @@ export function GenerationIAPage() {
       propositions: q.propositions ? q.propositions.map(p => ({ ...p })) : null,
       reponseCorrecte: q.reponseCorrecte,
       explication: q.explication,
+      // CODE-specific fields
+      langage: q.langage,
+      codeInitial: q.codeInitial,
+      fonctionSignature: q.fonctionSignature,
     })
   }
 
@@ -802,6 +807,10 @@ export function GenerationIAPage() {
               propositions: editData.propositions !== undefined ? editData.propositions : q.propositions,
               reponseCorrecte: editData.reponseCorrecte !== undefined ? editData.reponseCorrecte : q.reponseCorrecte,
               explication: editData.explication !== undefined ? editData.explication : q.explication,
+              // CODE-specific fields
+              langage: editData.langage !== undefined ? editData.langage : q.langage,
+              codeInitial: editData.codeInitial !== undefined ? editData.codeInitial : q.codeInitial,
+              fonctionSignature: editData.fonctionSignature !== undefined ? editData.fonctionSignature : q.fonctionSignature,
             }
           : q
       ),
@@ -1071,6 +1080,72 @@ export function GenerationIAPage() {
                 </div>
               )}
 
+              {/* Edit CODE-specific fields */}
+              {q.type === 'CODE' && (
+                <div className="space-y-3">
+                  {/* Language selector */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Langage de programmation</Label>
+                    <Select
+                      value={editData.langage ?? 'python'}
+                      onValueChange={(val) => setEditData((prev) => ({ ...prev, langage: val as CodingLanguage }))}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Sélectionner un langage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CODING_LANGUAGES.map((lang) => (
+                          <SelectItem key={lang.value} value={lang.value}>
+                            <span className="flex items-center gap-2">
+                              <span>{lang.icon}</span>
+                              <span>{lang.label}</span>
+                              <span className="text-muted-foreground text-xs">({lang.fileExtension})</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Function signature */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Signature de la fonction</Label>
+                    <Input
+                      value={editData.fonctionSignature ?? ''}
+                      onChange={(e) => setEditData((prev) => ({ ...prev, fonctionSignature: e.target.value }))}
+                      placeholder="ex: def calculer_moyenne(nombres):"
+                      className="h-8 text-sm font-mono"
+                    />
+                  </div>
+
+                  {/* Starter code */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Code initial (template)</Label>
+                    <Textarea
+                      value={editData.codeInitial ?? ''}
+                      onChange={(e) => setEditData((prev) => ({ ...prev, codeInitial: e.target.value }))}
+                      placeholder="Code de départ fourni à l'étudiant..."
+                      className="min-h-[100px] text-sm font-mono"
+                    />
+                  </div>
+
+                  {/* Model solution */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Solution modèle</Label>
+                    <Textarea
+                      value={
+                        editData.reponseCorrecte
+                          ? (Array.isArray(editData.reponseCorrecte) ? editData.reponseCorrecte.join('\n') : String(editData.reponseCorrecte))
+                          : ''
+                      }
+                      onChange={(e) => setEditData((prev) => ({ ...prev, reponseCorrecte: e.target.value }))}
+                      placeholder="Code de la solution correcte..."
+                      className="min-h-[100px] text-sm font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Edit explication */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Explication de l&apos;IA</Label>
@@ -1157,7 +1232,7 @@ export function GenerationIAPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="gap-1 bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800">
                     <Hash className="h-3 w-3" />
-                    {q.langage}
+                    {(() => { const cfg = getCodingLanguageConfig(q.langage as CodingLanguage); return `${cfg.icon} ${cfg.label}`; })()}
                   </Badge>
                   {q.fonctionSignature && (
                     <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono truncate max-w-xs" title={q.fonctionSignature}>
