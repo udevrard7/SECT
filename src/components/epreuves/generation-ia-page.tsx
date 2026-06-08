@@ -722,6 +722,12 @@ export function GenerationIAPage() {
           bareme: typeof q.bareme === 'number' ? q.bareme : 1,
           ueCode: (q.ueCode as string | null) ?? null,
           ueNom: (q.ueNom as string | null) ?? null,
+          // CODE-specific fields
+          langage: (q.langage as string | undefined) ?? undefined,
+          codeInitial: (q.codeInitial as string | undefined) ?? undefined,
+          fonctionSignature: (q.fonctionSignature as string | undefined) ?? undefined,
+          testsPublics: Array.isArray(q.testsPublics) ? q.testsPublics as Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }> : undefined,
+          testsPrives: Array.isArray(q.testsPrives) ? q.testsPrives as Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }> : undefined,
         })),
         consignes: data.contenu?.consignes || '',
         baremeTotal: data.contenu?.baremeTotal || 0,
@@ -1139,6 +1145,140 @@ export function GenerationIAPage() {
                 }`}>
                   {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* CODE-specific info (read mode) */}
+          {!isEditing && q.type === 'CODE' && (
+            <div className="mt-3 space-y-2.5">
+              {/* Language badge */}
+              {q.langage && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="gap-1 bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800">
+                    <Hash className="h-3 w-3" />
+                    {q.langage}
+                  </Badge>
+                  {q.fonctionSignature && (
+                    <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono truncate max-w-xs" title={q.fonctionSignature}>
+                      {q.fonctionSignature}
+                    </code>
+                  )}
+                </div>
+              )}
+
+              {/* Starter code */}
+              {q.codeInitial && (
+                <Collapsible open={expandedExplanations.has(`code-${q.id}`)} onOpenChange={() => {
+                  setExpandedExplanations((prev) => {
+                    const next = new Set(prev)
+                    const key = `code-${q.id}`
+                    if (next.has(key)) next.delete(key)
+                    else next.add(key)
+                    return next
+                  })
+                }}>
+                  <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    {expandedExplanations.has(`code-${q.id}`) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    Code initial
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2">
+                    <pre className="rounded-md bg-zinc-900 text-zinc-100 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+                      {q.codeInitial}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              {/* Solution */}
+              {q.reponseCorrecte && (
+                <Collapsible open={expandedExplanations.has(`sol-${q.id}`)} onOpenChange={() => {
+                  setExpandedExplanations((prev) => {
+                    const next = new Set(prev)
+                    const key = `sol-${q.id}`
+                    if (next.has(key)) next.delete(key)
+                    else next.add(key)
+                    return next
+                  })
+                }}>
+                  <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    {expandedExplanations.has(`sol-${q.id}`) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    Solution
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2">
+                    <pre className="rounded-md bg-emerald-950 text-emerald-100 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+                      {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              {/* Public tests */}
+              {q.testsPublics && q.testsPublics.length > 0 && (
+                <Collapsible open={expandedExplanations.has(`pub-${q.id}`)} onOpenChange={() => {
+                  setExpandedExplanations((prev) => {
+                    const next = new Set(prev)
+                    const key = `pub-${q.id}`
+                    if (next.has(key)) next.delete(key)
+                    else next.add(key)
+                    return next
+                  })
+                }}>
+                  <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    {expandedExplanations.has(`pub-${q.id}`) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    Tests publics ({q.testsPublics.length})
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2">
+                    <div className="space-y-1.5">
+                      {q.testsPublics.map((test, tIdx) => (
+                        <div key={tIdx} className="rounded-md border bg-muted/30 p-2 text-xs">
+                          <div className="font-medium text-muted-foreground">{test.nom}</div>
+                          <div className="mt-1 font-mono">
+                            <span className="text-sky-600 dark:text-sky-400">Entrée:</span> <span className="text-foreground">{test.entree}</span>
+                          </div>
+                          <div className="font-mono">
+                            <span className="text-emerald-600 dark:text-emerald-400">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
+                          </div>
+                          {test.description && <div className="text-muted-foreground mt-0.5 italic">{test.description}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              {/* Private tests */}
+              {q.testsPrives && q.testsPrives.length > 0 && (
+                <Collapsible open={expandedExplanations.has(`priv-${q.id}`)} onOpenChange={() => {
+                  setExpandedExplanations((prev) => {
+                    const next = new Set(prev)
+                    const key = `priv-${q.id}`
+                    if (next.has(key)) next.delete(key)
+                    else next.add(key)
+                    return next
+                  })
+                }}>
+                  <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    {expandedExplanations.has(`priv-${q.id}`) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    Tests privés ({q.testsPrives.length})
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2">
+                    <div className="space-y-1.5">
+                      {q.testsPrives.map((test, tIdx) => (
+                        <div key={tIdx} className="rounded-md border bg-muted/30 p-2 text-xs">
+                          <div className="font-medium text-muted-foreground">{test.nom}</div>
+                          <div className="mt-1 font-mono">
+                            <span className="text-sky-600 dark:text-sky-400">Entrée:</span> <span className="text-foreground">{test.entree}</span>
+                          </div>
+                          <div className="font-mono">
+                            <span className="text-emerald-600 dark:text-emerald-400">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
+                          </div>
+                          {test.description && <div className="text-muted-foreground mt-0.5 italic">{test.description}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </div>
           )}
