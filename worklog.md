@@ -24,3 +24,32 @@ Stage Summary:
 - "Submit" button in coding editor now runs tests before saving
 - Grading scenario detection correctly identifies CODE as semi-auto-gradable
 - Files modified: src/hooks/use-pyodide.ts (new), src/components/coding/code-editor.tsx, src/app/api/coding/execute/route.ts, src/app/api/sessions/[id]/submit/route.ts, src/lib/grading.ts, src/components/passation/passation-page.tsx
+
+---
+Task ID: 2
+Agent: Main
+Task: Fix correction page scroll issues, CODE question crashes, and redesign CODE question correction
+
+Work Log:
+- Fixed scroll issue: changed h-[calc(100vh-8rem)] to h-[calc(100vh-10rem)] and style attribute for proper height calculation
+- Fixed ScrollArea scrollTo: now targets the Radix viewport via querySelector('[data-slot="scroll-area-viewport"]')
+- Fixed parseAnswerContent: properly handles CodingAnswer JSON objects instead of crashing with JSON.stringify
+- Added isCodingAnswer() helper to detect coding answers
+- Integrated CodingCorrection component into "par copie" mode for CODE questions
+- Added CODE-specific rendering in "par question" mode (code preview with language badge, test results, line count)
+- Added semi-auto grading UI for CODE questions in "par question" mode (Auto+ badge, override score)
+- Added semi-auto notice for CODE questions in "par copie" mode
+- Updated correction API to include CODE fields (langage, fonctionSignature, testsPublics, testsPrives)
+- Updated correction API to count CODE in auto-graded total
+- Fixed CODE questions not requiring manual correction when auto-scored
+- Added CODE to getQuestionTypeLabel()
+- Separated isAutoGradedType() and isSemiAutoGradedType() in all conditional rendering
+- Build compiles cleanly, lint passes
+
+Stage Summary:
+- Scroll fixed: proper viewport height calculation and ScrollArea viewport targeting
+- CODE questions no longer crash: proper JSON parsing for CodingAnswer objects
+- CodingCorrection component now integrated for rich CODE correction UI
+- "Par question" mode shows compact code preview for CODE questions
+- Correction API now provides CODE-specific fields
+- CODE questions treated as semi-auto-gradable throughout
