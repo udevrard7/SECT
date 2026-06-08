@@ -225,3 +225,32 @@ Stage Summary:
 - Users can search, filter by UE, select all/deselect all, and scroll through all documents
 - Each document card shows rich metadata: file type, UE, size, date, and theme tags
 - Commit: d996bd6
+---
+Task ID: 2
+Agent: main
+Task: Fix CODE/programming questions not being generated during AI exam generation
+
+Work Log:
+- Investigated /api/epreuves/generate/route.ts
+- Found 8 bugs preventing CODE questions from being generated:
+  1. validTypes array (line 880) was ['QCU', 'QCM', 'QRC', 'REFLEXION'] — missing 'CODE'
+  2. allowedTypes Set (lines 884-888) never added 'CODE' even when finalCODE > 0
+  3. Single-shot prompt didn't include CODE in authorized/forbidden types section
+  4. Single-shot prompt didn't include CODE count in exact question count list
+  5. Single-shot prompt JSON structure didn't include CODE-specific fields (langage, codeInitial, etc.)
+  6. Single-shot prompt format rules didn't include CODE formatting rules
+  7. Sanitized question object didn't preserve CODE-specific fields
+  8. Frontend response mapping didn't include CODE-specific fields
+- Fixed all 8 bugs in the backend API route
+- Added CODE-specific fields preservation in sanitizer (langage, codeInitial, fonctionSignature, testsPublics, testsPrives)
+- Added CODE question card preview in frontend with:
+  - Language badge and function signature display
+  - Collapsible starter code section (dark code block)
+  - Collapsible solution section (green code block)
+  - Collapsible public tests section with input/expected output
+  - Collapsible private tests section with input/expected output
+- Lint passes, pushed commit 13b12d3 to GitHub
+
+Stage Summary:
+- CODE questions are now properly generated and displayed in AI exam generation
+- Commit: 13b12d3
