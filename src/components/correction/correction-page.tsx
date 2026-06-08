@@ -2060,7 +2060,12 @@ export function CorrectionPage() {
               variant="outline"
               size="sm"
               onClick={() => {
-                if (gradingMode === 'par-copie') setSelectedSessionId(null)
+                if (gradingMode === 'par-copie') {
+                  setSelectedSessionId(null)
+                } else {
+                  setGradingMode('par-copie')
+                  setSelectedSessionId(null)
+                }
               }}
               className="mb-2"
             >
