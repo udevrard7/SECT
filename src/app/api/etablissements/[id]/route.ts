@@ -169,6 +169,7 @@ export async function PATCH(
     if (body.telephone !== undefined) data.telephone = body.telephone || null
     if (body.email !== undefined) data.email = body.email || null
     if (body.siteWeb !== undefined) data.siteWeb = body.siteWeb || null
+    if (body.logo !== undefined) data.logo = body.logo || null
     if (body.formatMatricule !== undefined) data.formatMatricule = body.formatMatricule || null
     if (body.exempleMatricule !== undefined) data.exempleMatricule = body.exempleMatricule || null
     if (body.regexMatricule !== undefined) data.regexMatricule = body.regexMatricule || null

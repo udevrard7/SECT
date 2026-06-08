@@ -53,6 +53,7 @@ model Etablissement {
   telephone        String?
   email            String?
   siteWeb          String?
+  logo             String?
   actif            Boolean               @default(true)
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt

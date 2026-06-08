@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Settings,
   Save,
@@ -32,7 +32,12 @@ import {
   Plus,
   Trash2,
   Wifi,
+  Upload,
+  ImageIcon,
+  X,
+  ChevronDown,
 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -79,6 +84,7 @@ interface EtablissementInfo {
   telephone: string | null
   email: string | null
   siteWeb: string | null
+  logo: string | null
   formatMatricule: string | null
   exempleMatricule: string | null
   regexMatricule: string | null
@@ -118,6 +124,57 @@ interface IpWhitelistEntry {
   createdAt: string
 }
 
+interface EtablissementOption {
+  id: string
+  nom: string
+}
+
+// ─── Accent color helper ───
+
+function getAccent(isAdmin: boolean) {
+  return isAdmin
+    ? {
+        color: 'emerald',
+        text: 'text-emerald-600 dark:text-emerald-400',
+        bg100: 'bg-emerald-100 dark:bg-emerald-900/50',
+        bg50: 'bg-emerald-50/50 dark:bg-emerald-950/20',
+        border200: 'border-emerald-200 dark:border-emerald-800',
+        text700: 'text-emerald-700 dark:text-emerald-400',
+        text800: 'text-emerald-800 dark:text-emerald-300',
+        btn: 'bg-emerald-600 hover:bg-emerald-700',
+        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300',
+        activeBorder: 'border-emerald-200 dark:border-emerald-800',
+        activeBg: 'bg-emerald-50/50 dark:bg-emerald-950/20',
+        activeIconBg: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400',
+        codeBg: 'bg-emerald-100 dark:bg-emerald-900/50',
+        infoBorder: 'border-emerald-200 dark:border-emerald-800',
+        infoBg: 'bg-emerald-50 dark:bg-emerald-950/30',
+        infoText: 'text-emerald-800 dark:text-emerald-300',
+        infoSubtext: 'text-emerald-700 dark:text-emerald-400',
+        infoSmall: 'text-emerald-600 dark:text-emerald-500',
+      }
+    : {
+        color: 'amber',
+        text: 'text-amber-600 dark:text-amber-400',
+        bg100: 'bg-amber-100 dark:bg-amber-900/50',
+        bg50: 'bg-amber-50/50 dark:bg-amber-950/20',
+        border200: 'border-amber-200 dark:border-amber-800',
+        text700: 'text-amber-700 dark:text-amber-400',
+        text800: 'text-amber-800 dark:text-amber-300',
+        btn: 'bg-amber-600 hover:bg-amber-700',
+        badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
+        activeBorder: 'border-amber-200 dark:border-amber-800',
+        activeBg: 'bg-amber-50/50 dark:bg-amber-950/20',
+        activeIconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400',
+        codeBg: 'bg-amber-100 dark:bg-amber-900/50',
+        infoBorder: 'border-amber-200 dark:border-amber-800',
+        infoBg: 'bg-amber-50 dark:bg-amber-950/30',
+        infoText: 'text-amber-800 dark:text-amber-300',
+        infoSubtext: 'text-amber-700 dark:text-amber-400',
+        infoSmall: 'text-amber-600 dark:text-amber-500',
+      }
+}
+
 // ─── Toggle Row Component ───
 
 function ToggleRow({
@@ -128,6 +185,7 @@ function ToggleRow({
   onCheckedChange,
   disabled = false,
   icon: Icon,
+  accent,
 }: {
   id: string
   label: string
@@ -136,11 +194,12 @@ function ToggleRow({
   onCheckedChange: (checked: boolean) => void
   disabled?: boolean
   icon: React.ComponentType<{ className?: string }>
+  accent: ReturnType<typeof getAccent>
 }) {
   return (
-    <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors ${checked ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : 'border-border'} ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors ${checked ? `${accent.activeBorder} ${accent.activeBg}` : 'border-border'} ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400' : 'bg-muted text-muted-foreground'}`}>
+        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? accent.activeIconBg : 'bg-muted text-muted-foreground'}`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="space-y-0.5 min-w-0">
@@ -175,6 +234,7 @@ function SliderRow({
   step = 1,
   formatValue,
   icon: Icon,
+  accent,
 }: {
   id: string
   label: string
@@ -186,13 +246,14 @@ function SliderRow({
   step?: number
   formatValue?: (value: number) => string
   icon: React.ComponentType<{ className?: string }>
+  accent: ReturnType<typeof getAccent>
 }) {
   const displayValue = formatValue ? formatValue(value) : String(value)
 
   return (
     <div className="rounded-lg border p-4 space-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${accent.bg100} ${accent.text}`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
@@ -200,7 +261,7 @@ function SliderRow({
             <Label htmlFor={id} className="text-sm font-medium">
               {label}
             </Label>
-            <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 font-mono text-xs">
+            <Badge variant="secondary" className={`${accent.badge} font-mono text-xs`}>
               {displayValue}
             </Badge>
           </div>
@@ -226,10 +287,176 @@ function SliderRow({
   )
 }
 
+// ─── Logo Upload Component ───
+
+function LogoUpload({
+  logo,
+  etablissementId,
+  accent,
+  onLogoUpdate,
+}: {
+  logo: string | null
+  etablissementId: string
+  accent: ReturnType<typeof getAccent>
+  onLogoUpdate: (logo: string | null) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+
+  const handleFileSelect = async (file: File) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Format non supporté', { description: 'Utilisez PNG, JPG, WEBP ou SVG.' })
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Fichier trop volumineux', { description: 'La taille maximale est de 2 Mo.' })
+      return
+    }
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('etablissementId', etablissementId)
+      const res = await fetch('/api/etablissements/upload-logo', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de l\'upload')
+      }
+      const data = await res.json()
+      onLogoUpdate(data.logo || data.etablissement?.logo || null)
+      toast.success('Logo mis à jour', { description: 'Le logo a été téléchargé avec succès.' })
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de télécharger le logo.',
+      })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFileSelect(file)
+  }
+
+  const handleDelete = async () => {
+    setUploading(true)
+    try {
+      const res = await fetch(`/api/etablissements/${etablissementId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logo: null }),
+      })
+      if (!res.ok) throw new Error('Erreur')
+      onLogoUpdate(null)
+      toast.success('Logo supprimé', { description: 'Le logo a été retiré.' })
+    } catch {
+      toast.error('Erreur', { description: 'Impossible de supprimer le logo.' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Label className="flex items-center gap-1.5">
+        <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+        Logo de l&apos;établissement
+      </Label>
+      <div className="flex items-start gap-4">
+        {/* Preview */}
+        <div
+          className={`relative flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed transition-colors cursor-pointer overflow-hidden ${
+            dragOver ? `${accent.activeBorder} ${accent.activeBg}` : 'border-muted-foreground/25 hover:border-muted-foreground/50'
+          }`}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+        >
+          {logo ? (
+            <img src={logo} alt="Logo" className="h-full w-full object-cover rounded-xl" />
+          ) : (
+            <div className="flex flex-col items-center gap-1 text-muted-foreground/50">
+              <Upload className="h-5 w-5" />
+              <span className="text-[10px]">Clic/Glisser</span>
+            </div>
+          )}
+          {uploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-xl">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </div>
+        <div className="flex-1 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Cliquez ou glissez-déposez une image. Formats acceptés : PNG, JPG, WEBP, SVG (max 2 Mo).
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              Parcourir
+            </Button>
+            {logo && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDelete}
+                disabled={uploading}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Supprimer
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) handleFileSelect(file)
+          e.target.value = ''
+        }}
+      />
+    </div>
+  )
+}
+
 // ─── Main Component ───
 
 export function ResponsableParametresPage() {
   const { user } = useAuthStore()
+  const isAdmin = user?.role === 'ADMIN'
+
+  // Accent colors
+  const accent = getAccent(isAdmin)
+
+  // Active etablissement ID (for ADMIN selector)
+  const [activeEtabId, setActiveEtabId] = useState<string | null>(
+    user?.etablissementId || null
+  )
+
+  // Admin establishment list
+  const [etabOptions, setEtabOptions] = useState<EtablissementOption[]>([])
+  const [loadingEtabOptions, setLoadingEtabOptions] = useState(false)
 
   // Data state
   const [etablissement, setEtablissement] = useState<EtablissementInfo | null>(null)
@@ -248,13 +475,38 @@ export function ResponsableParametresPage() {
   const [newIpDesc, setNewIpDesc] = useState('')
   const [addingIp, setAddingIp] = useState(false)
 
+  // Tab tracking for auto-loading
+  const [activeTab, setActiveTab] = useState('etablissement')
+  const securityLoadedRef = useRef(false)
+  const ipLoadedRef = useRef(false)
+
+  // ─── Fetch establishment list (ADMIN) ───
+
+  useEffect(() => {
+    if (!isAdmin) return
+    setLoadingEtabOptions(true)
+    fetch('/api/etablissements')
+      .then((res) => res.json())
+      .then((data) => {
+        const list = data.etablissements || data || []
+        setEtabOptions(Array.isArray(list) ? list.map((e: EtablissementInfo) => ({ id: e.id, nom: e.nom })) : [])
+      })
+      .catch(() => {
+        toast.error('Erreur', { description: 'Impossible de charger la liste des établissements' })
+      })
+      .finally(() => setLoadingEtabOptions(false))
+  }, [isAdmin])
+
   // ─── Fetch etablissement info ───
 
   const fetchEtablissement = useCallback(async () => {
-    if (!user?.etablissementId) return
+    if (!activeEtabId) {
+      setLoadingEtab(false)
+      return
+    }
     setLoadingEtab(true)
     try {
-      const res = await fetch(`/api/etablissements/${user.etablissementId}`)
+      const res = await fetch(`/api/etablissements/${activeEtabId}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setEtablissement(data.etablissement)
@@ -263,64 +515,91 @@ export function ResponsableParametresPage() {
     } finally {
       setLoadingEtab(false)
     }
-  }, [user?.etablissementId])
+  }, [activeEtabId])
 
   // ─── Fetch security settings ───
 
-  const fetchSecuritySettings = useCallback(async () => {
-    if (!user?.etablissementId) return
+  const fetchSecuritySettings = useCallback(async (etabId?: string) => {
+    const targetId = etabId || activeEtabId
+    if (!targetId) return
     setLoadingSecurity(true)
     try {
-      const res = await fetch(`/api/security-settings/etablissement/${user.etablissementId}`)
+      const res = await fetch(`/api/security-settings/etablissement/${targetId}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setSecuritySettings(data.securitySettings)
+      securityLoadedRef.current = true
     } catch {
       toast.error('Erreur', { description: 'Impossible de charger les paramètres de sécurité' })
     } finally {
       setLoadingSecurity(false)
     }
-  }, [user?.etablissementId])
+  }, [activeEtabId])
 
   // ─── Fetch IP whitelist ───
 
-  const fetchIpWhitelist = useCallback(async () => {
-    if (!user?.etablissementId) return
+  const fetchIpWhitelist = useCallback(async (etabId?: string) => {
+    const targetId = etabId || activeEtabId
+    if (!targetId) return
     setLoadingIp(true)
     try {
-      const res = await fetch(`/api/ip-whitelist?etablissementId=${user.etablissementId}`)
+      const res = await fetch(`/api/ip-whitelist?etablissementId=${targetId}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
       setIpEntries(data.entries || [])
+      ipLoadedRef.current = true
     } catch {
       toast.error('Erreur', { description: 'Impossible de charger la liste blanche IP' })
     } finally {
       setLoadingIp(false)
     }
-  }, [user?.etablissementId])
+  }, [activeEtabId])
 
+  // Fetch establishment on ID change
   useEffect(() => {
     fetchEtablissement()
+    // Reset loaded refs when establishment changes
+    securityLoadedRef.current = false
+    ipLoadedRef.current = false
+    setSecuritySettings(null)
+    setIpEntries([])
   }, [fetchEtablissement])
+
+  // Auto-load data on tab switch
+  useEffect(() => {
+    if (!activeEtabId) return
+    if (activeTab === 'securite' && !securityLoadedRef.current) {
+      fetchSecuritySettings()
+    }
+    if (activeTab === 'ip-whitelist' && !ipLoadedRef.current) {
+      fetchIpWhitelist()
+    }
+  }, [activeTab, activeEtabId, fetchSecuritySettings, fetchIpWhitelist])
 
   // ─── Save etablissement info ───
 
   const handleSaveEtablissement = async () => {
-    if (!etablissement || !user?.etablissementId) return
+    if (!etablissement || !activeEtabId) return
     setSavingEtab(true)
     try {
-      const res = await fetch(`/api/etablissements/${user.etablissementId}`, {
+      const body: Record<string, unknown> = {
+        nom: etablissement.nom,
+        type: etablissement.type,
+        ville: etablissement.ville,
+        adresse: etablissement.adresse,
+        telephone: etablissement.telephone,
+        email: etablissement.email,
+        siteWeb: etablissement.siteWeb,
+      }
+      // Admin-only fields
+      if (isAdmin) {
+        body.pays = etablissement.pays
+        body.actif = etablissement.actif
+      }
+      const res = await fetch(`/api/etablissements/${activeEtabId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nom: etablissement.nom,
-          type: etablissement.type,
-          ville: etablissement.ville,
-          adresse: etablissement.adresse,
-          telephone: etablissement.telephone,
-          email: etablissement.email,
-          siteWeb: etablissement.siteWeb,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -341,10 +620,10 @@ export function ResponsableParametresPage() {
   // ─── Save matricule format ───
 
   const handleSaveMatricule = async () => {
-    if (!etablissement || !user?.etablissementId) return
+    if (!etablissement || !activeEtabId) return
     setSavingEtab(true)
     try {
-      const res = await fetch(`/api/etablissements/${user.etablissementId}`, {
+      const res = await fetch(`/api/etablissements/${activeEtabId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -425,7 +704,7 @@ export function ResponsableParametresPage() {
   // ─── Add IP to whitelist ───
 
   const handleAddIp = async () => {
-    if (!newIp.trim() || !user?.etablissementId) return
+    if (!newIp.trim() || !activeEtabId) return
     setAddingIp(true)
     try {
       const res = await fetch('/api/ip-whitelist', {
@@ -434,7 +713,7 @@ export function ResponsableParametresPage() {
         body: JSON.stringify({
           adresseIp: newIp.trim(),
           description: newIpDesc.trim() || null,
-          etablissementId: user.etablissementId,
+          etablissementId: activeEtabId,
         }),
       })
       if (!res.ok) {
@@ -479,7 +758,7 @@ export function ResponsableParametresPage() {
     try {
       const res = await fetch(`/api/ip-whitelist/${entryId}`, {
         method: 'DELETE',
-        })
+      })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Adresse IP retirée', { description: `${ip} a été supprimé de la liste blanche.` })
       fetchIpWhitelist()
@@ -488,9 +767,14 @@ export function ResponsableParametresPage() {
     }
   }
 
+  // Helper: update etablissement field while preserving _count
+  const updateEtab = (updates: Partial<EtablissementInfo>) => {
+    setEtablissement((prev) => prev ? { ...prev, ...updates } : prev)
+  }
+
   // ─── Loading state ───
 
-  if (loadingEtab) {
+  if (loadingEtab && !etablissement) {
     return (
       <div className="space-y-6">
         <div>
@@ -516,6 +800,79 @@ export function ResponsableParametresPage() {
     )
   }
 
+  // ─── ADMIN with no establishment selected ───
+
+  if (isAdmin && !activeEtabId) {
+    return (
+      <TooltipProvider>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+              <Settings className={`h-7 w-7 ${accent.text}`} />
+              Paramètres des établissements
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sélectionnez un établissement pour configurer ses paramètres
+            </p>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className={`h-5 w-5 ${accent.text}`} />
+                  Sélectionner un établissement
+                </CardTitle>
+                <CardDescription>
+                  Choisissez l&apos;établissement dont vous souhaitez modifier les paramètres
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {loadingEtabOptions ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className={`h-6 w-6 animate-spin ${accent.text}`} />
+                    <span className="ml-2 text-sm text-muted-foreground">Chargement des établissements...</span>
+                  </div>
+                ) : etabOptions.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Building2 className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                    <p className="text-sm text-muted-foreground">Aucun établissement trouvé.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {etabOptions.map((etab) => (
+                      <motion.button
+                        key={etab.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={() => setActiveEtabId(etab.id)}
+                        className={`flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:${accent.activeBg} hover:${accent.activeBorder} group`}
+                      >
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${accent.bg100} ${accent.text} group-hover:scale-110 transition-transform`}>
+                          <Building2 className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{etab.nom}</p>
+                          <p className="text-xs text-muted-foreground truncate">{etab.id}</p>
+                        </div>
+                        <ChevronDown className="h-4 w-4 text-muted-foreground/50 -rotate-90" />
+                      </motion.button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </TooltipProvider>
+    )
+  }
+
   if (!etablissement) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -536,17 +893,57 @@ export function ResponsableParametresPage() {
       <div className="space-y-6">
         {/* ─── Header ─── */}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Settings className="h-7 w-7 text-amber-600" />
-            Paramètres de l&apos;établissement
-          </h1>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+              <Settings className={`h-7 w-7 ${accent.text}`} />
+              Paramètres de l&apos;établissement
+            </h1>
+            {isAdmin && (
+              <Badge className={`${accent.bg100} ${accent.text700} w-fit text-xs`}>
+                Mode Admin
+              </Badge>
+            )}
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Configurez les informations, la sécurité et les préférences de <span className="font-medium text-foreground">{etablissement.nom}</span>
           </p>
         </div>
 
+        {/* ─── Admin establishment selector ─── */}
+        {isAdmin && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="border-dashed">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Building2 className={`h-4 w-4 ${accent.text}`} />
+                  <Label className="text-sm whitespace-nowrap">Établissement actif :</Label>
+                  <Select
+                    value={activeEtabId || ''}
+                    onValueChange={(val) => setActiveEtabId(val)}
+                  >
+                    <SelectTrigger className="w-full max-w-sm">
+                      <SelectValue placeholder="Sélectionner un établissement..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {etabOptions.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.nom}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {/* ─── Tabs ─── */}
-        <Tabs defaultValue="etablissement" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="etablissement" className="gap-1.5">
               <Building2 className="h-4 w-4 hidden sm:block" />
@@ -571,7 +968,7 @@ export function ResponsableParametresPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-amber-600" />
+                  <Building2 className={`h-5 w-5 ${accent.text}`} />
                   Informations de l&apos;établissement
                 </CardTitle>
                 <CardDescription>
@@ -579,6 +976,16 @@ export function ResponsableParametresPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Logo Upload */}
+                <LogoUpload
+                  logo={etablissement.logo}
+                  etablissementId={etablissement.id}
+                  accent={accent}
+                  onLogoUpdate={(logo) => updateEtab({ logo })}
+                />
+
+                <Separator />
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="etab-nom" className="flex items-center gap-1.5">
@@ -588,7 +995,7 @@ export function ResponsableParametresPage() {
                     <Input
                       id="etab-nom"
                       value={etablissement.nom}
-                      onChange={(e) => setEtablissement({ ...etablissement, nom: e.target.value })}
+                      onChange={(e) => updateEtab({ nom: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
@@ -598,7 +1005,7 @@ export function ResponsableParametresPage() {
                     </Label>
                     <Select
                       value={etablissement.type || ''}
-                      onValueChange={(val) => setEtablissement({ ...etablissement, type: val })}
+                      onValueChange={(val) => updateEtab({ type: val })}
                     >
                       <SelectTrigger id="etab-type">
                         <SelectValue placeholder="Sélectionner un type..." />
@@ -627,25 +1034,56 @@ export function ResponsableParametresPage() {
                     <Input
                       id="etab-ville"
                       value={etablissement.ville || ''}
-                      onChange={(e) => setEtablissement({ ...etablissement, ville: e.target.value })}
+                      onChange={(e) => updateEtab({ ville: e.target.value })}
                       placeholder="Ex: Paris"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="etab-adresse" className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                      Adresse
-                    </Label>
-                    <Input
-                      id="etab-adresse"
-                      value={etablissement.adresse || ''}
-                      onChange={(e) => setEtablissement({ ...etablissement, adresse: e.target.value })}
-                      placeholder="12 rue Exemple, 75001 Paris"
-                    />
-                  </div>
+                  {/* Pays field — ADMIN only */}
+                  {isAdmin ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="etab-pays" className="flex items-center gap-1.5">
+                        <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                        Pays
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Admin</Badge>
+                      </Label>
+                      <Input
+                        id="etab-pays"
+                        value={etablissement.pays || ''}
+                        onChange={(e) => updateEtab({ pays: e.target.value })}
+                        placeholder="Ex: France"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="etab-adresse" className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                        Adresse
+                      </Label>
+                      <Input
+                        id="etab-adresse"
+                        value={etablissement.adresse || ''}
+                        onChange={(e) => updateEtab({ adresse: e.target.value })}
+                        placeholder="12 rue Exemple, 75001 Paris"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {isAdmin && (
+                    <div className="space-y-2">
+                      <Label htmlFor="etab-adresse" className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                        Adresse
+                      </Label>
+                      <Input
+                        id="etab-adresse"
+                        value={etablissement.adresse || ''}
+                        onChange={(e) => updateEtab({ adresse: e.target.value })}
+                        placeholder="12 rue Exemple, 75001 Paris"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="etab-telephone" className="flex items-center gap-1.5">
                       <Phone className="h-3.5 w-3.5 text-muted-foreground" />
@@ -654,7 +1092,7 @@ export function ResponsableParametresPage() {
                     <Input
                       id="etab-telephone"
                       value={etablissement.telephone || ''}
-                      onChange={(e) => setEtablissement({ ...etablissement, telephone: e.target.value })}
+                      onChange={(e) => updateEtab({ telephone: e.target.value })}
                       placeholder="+33 1 23 45 67 89"
                     />
                   </div>
@@ -667,7 +1105,7 @@ export function ResponsableParametresPage() {
                       id="etab-email"
                       type="email"
                       value={etablissement.email || ''}
-                      onChange={(e) => setEtablissement({ ...etablissement, email: e.target.value })}
+                      onChange={(e) => updateEtab({ email: e.target.value })}
                       placeholder="contact@etablissement.fr"
                     />
                   </div>
@@ -681,23 +1119,50 @@ export function ResponsableParametresPage() {
                   <Input
                     id="etab-site"
                     value={etablissement.siteWeb || ''}
-                    onChange={(e) => setEtablissement({ ...etablissement, siteWeb: e.target.value })}
+                    onChange={(e) => updateEtab({ siteWeb: e.target.value })}
                     placeholder="https://www.etablissement.fr"
                   />
                 </div>
+
+                {/* Actif toggle — ADMIN only */}
+                {isAdmin && (
+                  <>
+                    <Separator />
+                    <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 ${etablissement.actif ? accent.activeBorder + ' ' + accent.activeBg : 'border-border'}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${etablissement.actif ? accent.activeIconBg : 'bg-muted text-muted-foreground'}`}>
+                          <CheckCircle2 className="h-4 w-4" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <Label className="text-sm font-medium flex items-center gap-1.5">
+                            Établissement actif
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">Admin</Badge>
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Désactivez l&apos;établissement pour suspendre l&apos;accès de tous ses utilisateurs
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={etablissement.actif}
+                        onCheckedChange={(v) => updateEtab({ actif: v })}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <Separator />
 
                 {/* Stats summary */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg border p-4 bg-amber-50/50 dark:bg-amber-950/20">
-                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                  <div className={`rounded-lg border p-4 ${accent.bg50}`}>
+                    <p className={`text-2xl font-bold ${accent.text700}`}>
                       {etablissement._count?.filieres ?? 0}
                     </p>
                     <p className="text-xs text-muted-foreground">Filières</p>
                   </div>
-                  <div className="rounded-lg border p-4 bg-amber-50/50 dark:bg-amber-950/20">
-                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                  <div className={`rounded-lg border p-4 ${accent.bg50}`}>
+                    <p className={`text-2xl font-bold ${accent.text700}`}>
                       {etablissement._count?.users ?? 0}
                     </p>
                     <p className="text-xs text-muted-foreground">Utilisateurs</p>
@@ -708,7 +1173,7 @@ export function ResponsableParametresPage() {
 
                 <div className="flex justify-end">
                   <Button
-                    className="bg-amber-600 hover:bg-amber-700"
+                    className={accent.btn}
                     onClick={handleSaveEtablissement}
                     disabled={savingEtab}
                   >
@@ -723,297 +1188,336 @@ export function ResponsableParametresPage() {
 
           {/* ═══════════ Tab: Sécurité & Surveillance ═══════════ */}
           <TabsContent value="securite">
-            {loadingSecurity ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
-                <span className="ml-3 text-sm text-muted-foreground">Chargement des paramètres de sécurité...</span>
-              </div>
-            ) : !securitySettings ? (
-              <div className="flex justify-center py-4">
-                <Button
-                  onClick={fetchSecuritySettings}
-                  className="bg-amber-600 hover:bg-amber-700"
+            <AnimatePresence mode="wait">
+              {loadingSecurity ? (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center justify-center py-12"
                 >
-                  Charger les paramètres de sécurité
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Section A: Surveillance & Détection */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
-                        <Eye className="h-4 w-4" />
-                      </div>
-                      Surveillance & Détection
-                    </CardTitle>
-                    <CardDescription>
-                      Activez les mécanismes de surveillance et de détection de comportement suspect
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <ToggleRow
-                      id="proctoring-actif"
-                      label="Proctoring actif"
-                      description="Active la surveillance vidéo et le suivi en temps réel des candidats pendant les évaluations"
-                      checked={securitySettings.proctoringActif}
-                      onCheckedChange={(v) => updateSecurityField('proctoringActif', v)}
-                      icon={MonitorSmartphone}
-                    />
-                    <ToggleRow
-                      id="detection-copie"
-                      label="Détection de copier/coller"
-                      description="Détecte les tentatives de copier/coller pendant l'évaluation et les signale comme alerte"
-                      checked={securitySettings.detectionCopie}
-                      onCheckedChange={(v) => updateSecurityField('detectionCopie', v)}
-                      icon={ClipboardCheck}
-                    />
-                    <ToggleRow
-                      id="detection-onglet"
-                      label="Détection de changement d'onglet"
-                      description="Surveille les changements d'onglet ou de fenêtre du navigateur pendant l'évaluation"
-                      checked={securitySettings.detectionOnglet}
-                      onCheckedChange={(v) => updateSecurityField('detectionOnglet', v)}
-                      icon={AppWindow}
-                    />
-                    <ToggleRow
-                      id="detection-fullscreen"
-                      label="Détection de sortie plein écran"
-                      description="Détecte si le candidat quitte le mode plein écran imposé pendant l'évaluation"
-                      checked={securitySettings.detectionFullscreen}
-                      onCheckedChange={(v) => updateSecurityField('detectionFullscreen', v)}
-                      icon={MonitorSmartphone}
-                    />
-                    {securitySettings.detectionFullscreen && (
-                      <>
-                        <ToggleRow
-                          id="fullscreen-obligatoire"
-                          label="Plein écran obligatoire"
-                          description="Bloque l'épreuve si l'étudiant n'est pas en plein écran"
-                          checked={securitySettings.fullscreenObligatoire}
-                          onCheckedChange={(v) => updateSecurityField('fullscreenObligatoire', v)}
-                          icon={MonitorSmartphone}
-                        />
+                  <Loader2 className={`h-8 w-8 animate-spin ${accent.text}`} />
+                  <span className="ml-3 text-sm text-muted-foreground">Chargement des paramètres de sécurité...</span>
+                </motion.div>
+              ) : !securitySettings ? (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex justify-center py-4"
+                >
+                  <Button
+                    onClick={() => fetchSecuritySettings()}
+                    className={accent.btn}
+                  >
+                    Charger les paramètres de sécurité
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="content"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-6"
+                >
+                  {/* Section A: Surveillance & Détection */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent.bg100} ${accent.text}`}>
+                          <Eye className="h-4 w-4" />
+                        </div>
+                        Surveillance & Détection
+                      </CardTitle>
+                      <CardDescription>
+                        Activez les mécanismes de surveillance et de détection de comportement suspect
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <ToggleRow
+                        id="proctoring-actif"
+                        label="Proctoring actif"
+                        description="Active la surveillance vidéo et le suivi en temps réel des candidats pendant les évaluations"
+                        checked={securitySettings.proctoringActif}
+                        onCheckedChange={(v) => updateSecurityField('proctoringActif', v)}
+                        icon={MonitorSmartphone}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="detection-copie"
+                        label="Détection de copier/coller"
+                        description="Détecte les tentatives de copier/coller pendant l'évaluation et les signale comme alerte"
+                        checked={securitySettings.detectionCopie}
+                        onCheckedChange={(v) => updateSecurityField('detectionCopie', v)}
+                        icon={ClipboardCheck}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="detection-onglet"
+                        label="Détection de changement d'onglet"
+                        description="Surveille les changements d'onglet ou de fenêtre du navigateur pendant l'évaluation"
+                        checked={securitySettings.detectionOnglet}
+                        onCheckedChange={(v) => updateSecurityField('detectionOnglet', v)}
+                        icon={AppWindow}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="detection-fullscreen"
+                        label="Détection de sortie plein écran"
+                        description="Détecte si le candidat quitte le mode plein écran imposé pendant l'évaluation"
+                        checked={securitySettings.detectionFullscreen}
+                        onCheckedChange={(v) => updateSecurityField('detectionFullscreen', v)}
+                        icon={MonitorSmartphone}
+                        accent={accent}
+                      />
+                      {securitySettings.detectionFullscreen && (
+                        <>
+                          <ToggleRow
+                            id="fullscreen-obligatoire"
+                            label="Plein écran obligatoire"
+                            description="Bloque l'épreuve si l'étudiant n'est pas en plein écran"
+                            checked={securitySettings.fullscreenObligatoire}
+                            onCheckedChange={(v) => updateSecurityField('fullscreenObligatoire', v)}
+                            icon={MonitorSmartphone}
+                            accent={accent}
+                          />
+                          <SliderRow
+                            id="penalite-fullscreen-exit"
+                            label="Pénalité par sortie plein écran"
+                            description="Points retirés à la note de l'étudiant à chaque sortie du plein écran"
+                            value={securitySettings.penaliteFullscreenExit}
+                            onValueChange={(v) => updateSecurityField('penaliteFullscreenExit', v)}
+                            min={0}
+                            max={10}
+                            step={1}
+                            formatValue={(v) => `-${v} pts`}
+                            icon={AlertTriangle}
+                            accent={accent}
+                          />
+                        </>
+                      )}
+                      <ToggleRow
+                        id="capture-ecran"
+                        label="Capture d'écran périodique"
+                        description="Effectue des captures d'écran automatiques à intervalle régulier pendant l'évaluation"
+                        checked={securitySettings.captureEcran}
+                        onCheckedChange={(v) => updateSecurityField('captureEcran', v)}
+                        icon={Camera}
+                        accent={accent}
+                      />
+                      {securitySettings.captureEcran && (
                         <SliderRow
-                          id="penalite-fullscreen-exit"
-                          label="Pénalité par sortie plein écran"
-                          description="Points retirés à la note de l'étudiant à chaque sortie du plein écran"
-                          value={securitySettings.penaliteFullscreenExit}
-                          onValueChange={(v) => updateSecurityField('penaliteFullscreenExit', v)}
-                          min={0}
-                          max={10}
-                          step={1}
-                          formatValue={(v) => `-${v} pts`}
-                          icon={AlertTriangle}
+                          id="intervalle-capture-ecran"
+                          label="Intervalle des captures"
+                          description="Fréquence des captures d'écran automatiques en secondes"
+                          value={securitySettings.intervalleCaptureEcran}
+                          onValueChange={(v) => updateSecurityField('intervalleCaptureEcran', v)}
+                          min={30}
+                          max={300}
+                          step={10}
+                          formatValue={(v) => `${v}s`}
+                          icon={Timer}
+                          accent={accent}
                         />
-                      </>
-                    )}
-                    <ToggleRow
-                      id="capture-ecran"
-                      label="Capture d'écran périodique"
-                      description="Effectue des captures d'écran automatiques à intervalle régulier pendant l'évaluation"
-                      checked={securitySettings.captureEcran}
-                      onCheckedChange={(v) => updateSecurityField('captureEcran', v)}
-                      icon={Camera}
-                    />
-                    {securitySettings.captureEcran && (
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Section B: Blocage & Protection */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400">
+                          <Lock className="h-4 w-4" />
+                        </div>
+                        Blocage & Protection
+                      </CardTitle>
+                      <CardDescription>
+                        Bloquez les actions non autorisées pour sécuriser le déroulement des évaluations
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <ToggleRow
+                        id="blocage-copie"
+                        label="Blocage du copier/coller"
+                        description="Empêche complètement les opérations de copier, couper et coller dans la page d'évaluation"
+                        checked={securitySettings.blocageCopie}
+                        onCheckedChange={(v) => updateSecurityField('blocageCopie', v)}
+                        icon={ClipboardCheck}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="blocage-clic-droit"
+                        label="Blocage du clic droit"
+                        description="Désactive le menu contextuel du clic droit pour empêcher l'inspection et la copie"
+                        checked={securitySettings.blocageClicDroit}
+                        onCheckedChange={(v) => updateSecurityField('blocageClicDroit', v)}
+                        icon={MousePointerClick}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="blocage-impression"
+                        label="Blocage de l'impression écran"
+                        description="Bloque les touches d'impression écran (PrtScn) et les raccourcis de capture système"
+                        checked={securitySettings.blocageImpression}
+                        onCheckedChange={(v) => updateSecurityField('blocageImpression', v)}
+                        icon={Printer}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="verification-identite"
+                        label="Vérification d'identité"
+                        description="Exige une vérification d'identité (photo ou pièce d'identité) avant le début de l'évaluation"
+                        checked={securitySettings.verificationIdentite}
+                        onCheckedChange={(v) => updateSecurityField('verificationIdentite', v)}
+                        icon={UserCheck}
+                        accent={accent}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Section C: Seuils & Alertes */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400">
+                          <BellRing className="h-4 w-4" />
+                        </div>
+                        Seuils & Alertes
+                      </CardTitle>
+                      <CardDescription>
+                        Configurez les seuils de tolérance et les actions automatiques en cas de violation
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                       <SliderRow
-                        id="intervalle-capture-ecran"
-                        label="Intervalle des captures"
-                        description="Fréquence des captures d'écran automatiques en secondes"
-                        value={securitySettings.intervalleCaptureEcran}
-                        onValueChange={(v) => updateSecurityField('intervalleCaptureEcran', v)}
+                        id="temps-inactivite-max"
+                        label="Temps d'inactivité max"
+                        description="Durée maximale d'inactivité avant déclenchement d'une alerte (en secondes)"
+                        value={securitySettings.tempsInactiviteMax}
+                        onValueChange={(v) => updateSecurityField('tempsInactiviteMax', v)}
                         min={30}
                         max={300}
                         step={10}
                         formatValue={(v) => `${v}s`}
                         icon={Timer}
+                        accent={accent}
                       />
-                    )}
-                  </CardContent>
-                </Card>
+                      <SliderRow
+                        id="nb-onglets-max"
+                        label="Nb changements onglet max"
+                        description="Nombre maximal de changements d'onglet autorisés avant déclenchement d'une alerte"
+                        value={securitySettings.nbOngletsMax}
+                        onValueChange={(v) => updateSecurityField('nbOngletsMax', v)}
+                        min={1}
+                        max={10}
+                        step={1}
+                        icon={AppWindow}
+                        accent={accent}
+                      />
+                      <SliderRow
+                        id="nb-alertes-max"
+                        label="Nb alertes max avant soumission auto"
+                        description="Nombre d'alertes cumulées déclenchant la soumission automatique de l'évaluation"
+                        value={securitySettings.nbAlertesMax}
+                        onValueChange={(v) => updateSecurityField('nbAlertesMax', v)}
+                        min={1}
+                        max={15}
+                        step={1}
+                        icon={AlertTriangle}
+                        accent={accent}
+                      />
+                      <ToggleRow
+                        id="auto-submit-violation"
+                        label="Soumission automatique en cas de violation"
+                        description="Soumet automatiquement l'évaluation lorsque le nombre maximal d'alertes est atteint"
+                        checked={securitySettings.autoSubmitOnViolation}
+                        onCheckedChange={(v) => updateSecurityField('autoSubmitOnViolation', v)}
+                        icon={Send}
+                        accent={accent}
+                      />
+                    </CardContent>
+                  </Card>
 
-                {/* Section B: Blocage & Protection */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400">
-                        <Lock className="h-4 w-4" />
+                  {/* Section D: Analyse & Rapports */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600 dark:bg-cyan-900/50 dark:text-cyan-400">
+                          <BarChart3 className="h-4 w-4" />
+                        </div>
+                        Analyse & Rapports
+                      </CardTitle>
+                      <CardDescription>
+                        Paramètres d&apos;analyse de similarité et de génération de rapports de fraude
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <ToggleRow
+                        id="rapport-fraude"
+                        label="Rapport de fraude"
+                        description="Génère un rapport détaillé des comportements suspects pour chaque session d'évaluation"
+                        checked={securitySettings.rapportFraude}
+                        onCheckedChange={(v) => updateSecurityField('rapportFraude', v)}
+                        icon={FileSearch}
+                        accent={accent}
+                      />
+                      <SliderRow
+                        id="seuil-similarite"
+                        label="Seuil de similarité"
+                        description="Seuil de similarité pour la détection de copie entre les réponses des étudiants"
+                        value={securitySettings.seuilSimilarite}
+                        onValueChange={(v) => updateSecurityField('seuilSimilarite', v)}
+                        min={0.5}
+                        max={1.0}
+                        step={0.05}
+                        formatValue={(v) => v.toFixed(2)}
+                        icon={ClipboardCheck}
+                        accent={accent}
+                      />
+                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-800 dark:bg-cyan-950/30">
+                        <h4 className="text-sm font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-2">
+                          <FileSearch className="h-4 w-4" />
+                          Interprétation du seuil
+                        </h4>
+                        <ul className="text-sm text-cyan-700 dark:text-cyan-400 space-y-1">
+                          <li>&#8226; <strong>0.50 – 0.65</strong> : Tolérant — détecte les similarités évidentes uniquement</li>
+                          <li>&#8226; <strong>0.70 – 0.85</strong> : Équilibré — bon compromis entre faux positifs et détection</li>
+                          <li>&#8226; <strong>0.90 – 1.00</strong> : Strict — signale les réponses très similaires uniquement</li>
+                        </ul>
+                        <p className="mt-2 text-xs text-cyan-600 dark:text-cyan-500">
+                          Seuil actuel : <strong>{securitySettings.seuilSimilarite.toFixed(2)}</strong> — {
+                            securitySettings.seuilSimilarite < 0.7 ? 'Tolérant' :
+                            securitySettings.seuilSimilarite < 0.9 ? 'Équilibré' : 'Strict'
+                          }
+                        </p>
                       </div>
-                      Blocage & Protection
-                    </CardTitle>
-                    <CardDescription>
-                      Bloquez les actions non autorisées pour sécuriser le déroulement des évaluations
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <ToggleRow
-                      id="blocage-copie"
-                      label="Blocage du copier/coller"
-                      description="Empêche complètement les opérations de copier, couper et coller dans la page d'évaluation"
-                      checked={securitySettings.blocageCopie}
-                      onCheckedChange={(v) => updateSecurityField('blocageCopie', v)}
-                      icon={ClipboardCheck}
-                    />
-                    <ToggleRow
-                      id="blocage-clic-droit"
-                      label="Blocage du clic droit"
-                      description="Désactive le menu contextuel du clic droit pour empêcher l'inspection et la copie"
-                      checked={securitySettings.blocageClicDroit}
-                      onCheckedChange={(v) => updateSecurityField('blocageClicDroit', v)}
-                      icon={MousePointerClick}
-                    />
-                    <ToggleRow
-                      id="blocage-impression"
-                      label="Blocage de l'impression écran"
-                      description="Bloque les touches d'impression écran (PrtScn) et les raccourcis de capture système"
-                      checked={securitySettings.blocageImpression}
-                      onCheckedChange={(v) => updateSecurityField('blocageImpression', v)}
-                      icon={Printer}
-                    />
-                    <ToggleRow
-                      id="verification-identite"
-                      label="Vérification d'identité"
-                      description="Exige une vérification d'identité (photo ou pièce d'identité) avant le début de l'évaluation"
-                      checked={securitySettings.verificationIdentite}
-                      onCheckedChange={(v) => updateSecurityField('verificationIdentite', v)}
-                      icon={UserCheck}
-                    />
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                {/* Section C: Seuils & Alertes */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400">
-                        <BellRing className="h-4 w-4" />
-                      </div>
-                      Seuils & Alertes
-                    </CardTitle>
-                    <CardDescription>
-                      Configurez les seuils de tolérance et les actions automatiques en cas de violation
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <SliderRow
-                      id="temps-inactivite-max"
-                      label="Temps d'inactivité max"
-                      description="Durée maximale d'inactivité avant déclenchement d'une alerte (en secondes)"
-                      value={securitySettings.tempsInactiviteMax}
-                      onValueChange={(v) => updateSecurityField('tempsInactiviteMax', v)}
-                      min={30}
-                      max={300}
-                      step={10}
-                      formatValue={(v) => `${v}s`}
-                      icon={Timer}
-                    />
-                    <SliderRow
-                      id="nb-onglets-max"
-                      label="Nb changements onglet max"
-                      description="Nombre maximal de changements d'onglet autorisés avant déclenchement d'une alerte"
-                      value={securitySettings.nbOngletsMax}
-                      onValueChange={(v) => updateSecurityField('nbOngletsMax', v)}
-                      min={1}
-                      max={10}
-                      step={1}
-                      icon={AppWindow}
-                    />
-                    <SliderRow
-                      id="nb-alertes-max"
-                      label="Nb alertes max avant soumission auto"
-                      description="Nombre d'alertes cumulées déclenchant la soumission automatique de l'évaluation"
-                      value={securitySettings.nbAlertesMax}
-                      onValueChange={(v) => updateSecurityField('nbAlertesMax', v)}
-                      min={1}
-                      max={15}
-                      step={1}
-                      icon={AlertTriangle}
-                    />
-                    <ToggleRow
-                      id="auto-submit-violation"
-                      label="Soumission automatique en cas de violation"
-                      description="Soumet automatiquement l'évaluation lorsque le nombre maximal d'alertes est atteint"
-                      checked={securitySettings.autoSubmitOnViolation}
-                      onCheckedChange={(v) => updateSecurityField('autoSubmitOnViolation', v)}
-                      icon={Send}
-                    />
-                  </CardContent>
-                </Card>
-
-                {/* Section D: Analyse & Rapports */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600 dark:bg-cyan-900/50 dark:text-cyan-400">
-                        <BarChart3 className="h-4 w-4" />
-                      </div>
-                      Analyse & Rapports
-                    </CardTitle>
-                    <CardDescription>
-                      Paramètres d&apos;analyse de similarité et de génération de rapports de fraude
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <ToggleRow
-                      id="rapport-fraude"
-                      label="Rapport de fraude"
-                      description="Génère un rapport détaillé des comportements suspects pour chaque session d'évaluation"
-                      checked={securitySettings.rapportFraude}
-                      onCheckedChange={(v) => updateSecurityField('rapportFraude', v)}
-                      icon={FileSearch}
-                    />
-                    <SliderRow
-                      id="seuil-similarite"
-                      label="Seuil de similarité"
-                      description="Seuil de similarité pour la détection de copie entre les réponses des étudiants"
-                      value={securitySettings.seuilSimilarite}
-                      onValueChange={(v) => updateSecurityField('seuilSimilarite', v)}
-                      min={0.5}
-                      max={1.0}
-                      step={0.05}
-                      formatValue={(v) => v.toFixed(2)}
-                      icon={ClipboardCheck}
-                    />
-                    <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-800 dark:bg-cyan-950/30">
-                      <h4 className="text-sm font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-2">
-                        <FileSearch className="h-4 w-4" />
-                        Interprétation du seuil
-                      </h4>
-                      <ul className="text-sm text-cyan-700 dark:text-cyan-400 space-y-1">
-                        <li>• <strong>0.50 – 0.65</strong> : Tolérant — détecte les similarités évidentes uniquement</li>
-                        <li>• <strong>0.70 – 0.85</strong> : Équilibré — bon compromis entre faux positifs et détection</li>
-                        <li>• <strong>0.90 – 1.00</strong> : Strict — signale les réponses très similaires uniquement</li>
-                      </ul>
-                      <p className="mt-2 text-xs text-cyan-600 dark:text-cyan-500">
-                        Seuil actuel : <strong>{securitySettings.seuilSimilarite.toFixed(2)}</strong> — {
-                          securitySettings.seuilSimilarite < 0.7 ? 'Tolérant' :
-                          securitySettings.seuilSimilarite < 0.9 ? 'Équilibré' : 'Strict'
-                        }
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Save Button */}
-                <div className="flex justify-end">
-                  <Button
-                    className="bg-amber-600 hover:bg-amber-700 min-w-[180px]"
-                    onClick={handleSaveSecurity}
-                    disabled={savingSecurity}
-                    size="lg"
-                  >
-                    {savingSecurity ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4 mr-2" />
-                    )}
-                    Sauvegarder
-                  </Button>
-                </div>
-              </div>
-            )}
+                  {/* Save Button */}
+                  <div className="flex justify-end">
+                    <Button
+                      className={`${accent.btn} min-w-[180px]`}
+                      onClick={handleSaveSecurity}
+                      disabled={savingSecurity}
+                      size="lg"
+                    >
+                      {savingSecurity ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-2" />
+                      )}
+                      Sauvegarder
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </TabsContent>
 
           {/* ═══════════ Tab: Format Matricule ═══════════ */}
@@ -1021,7 +1525,7 @@ export function ResponsableParametresPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Hash className="h-5 w-5 text-amber-600" />
+                  <Hash className={`h-5 w-5 ${accent.text}`} />
                   Format des matricules étudiants
                 </CardTitle>
                 <CardDescription>
@@ -1034,7 +1538,7 @@ export function ResponsableParametresPage() {
                   <Input
                     id="mat-format"
                     value={etablissement.formatMatricule || ''}
-                    onChange={(e) => setEtablissement({ ...etablissement, formatMatricule: e.target.value })}
+                    onChange={(e) => updateEtab({ formatMatricule: e.target.value })}
                     placeholder="Ex: AAAA-NNNN (Année-Numéro)"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -1047,7 +1551,7 @@ export function ResponsableParametresPage() {
                   <Input
                     id="mat-exemple"
                     value={etablissement.exempleMatricule || ''}
-                    onChange={(e) => setEtablissement({ ...etablissement, exempleMatricule: e.target.value })}
+                    onChange={(e) => updateEtab({ exempleMatricule: e.target.value })}
                     placeholder="Ex: 2024-0001"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -1060,7 +1564,7 @@ export function ResponsableParametresPage() {
                   <Input
                     id="mat-regex"
                     value={etablissement.regexMatricule || ''}
-                    onChange={(e) => setEtablissement({ ...etablissement, regexMatricule: e.target.value })}
+                    onChange={(e) => updateEtab({ regexMatricule: e.target.value })}
                     placeholder="Ex: ^\d{4}-\d{4}$"
                     className="font-mono"
                   />
@@ -1070,15 +1574,15 @@ export function ResponsableParametresPage() {
                 </div>
 
                 {/* Preview */}
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-                  <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-2">
+                <div className={`rounded-lg border p-4 ${accent.infoBorder} ${accent.infoBg}`}>
+                  <h4 className={`text-sm font-semibold mb-2 flex items-center gap-2 ${accent.infoText}`}>
                     <Hash className="h-4 w-4" />
                     Aperçu de la configuration
                   </h4>
-                  <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1">
-                    <li>• Format : <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-xs">{etablissement.formatMatricule || 'Non défini'}</code></li>
-                    <li>• Exemple : <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-xs">{etablissement.exempleMatricule || 'Non défini'}</code></li>
-                    <li>• Regex : <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded text-xs">{etablissement.regexMatricule || 'Non définie'}</code></li>
+                  <ul className={`text-sm space-y-1 ${accent.infoSubtext}`}>
+                    <li>&#8226; Format : <code className={`font-mono px-1.5 py-0.5 rounded text-xs ${accent.codeBg}`}>{etablissement.formatMatricule || 'Non défini'}</code></li>
+                    <li>&#8226; Exemple : <code className={`font-mono px-1.5 py-0.5 rounded text-xs ${accent.codeBg}`}>{etablissement.exempleMatricule || 'Non défini'}</code></li>
+                    <li>&#8226; Regex : <code className={`font-mono px-1.5 py-0.5 rounded text-xs ${accent.codeBg}`}>{etablissement.regexMatricule || 'Non définie'}</code></li>
                   </ul>
                 </div>
 
@@ -1086,7 +1590,7 @@ export function ResponsableParametresPage() {
 
                 <div className="flex justify-end">
                   <Button
-                    className="bg-amber-600 hover:bg-amber-700"
+                    className={accent.btn}
                     onClick={handleSaveMatricule}
                     disabled={savingEtab}
                   >
@@ -1105,7 +1609,7 @@ export function ResponsableParametresPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Wifi className="h-5 w-5 text-amber-600" />
+                    <Wifi className={`h-5 w-5 ${accent.text}`} />
                     Liste blanche IP
                   </CardTitle>
                   <CardDescription>
@@ -1135,7 +1639,7 @@ export function ResponsableParametresPage() {
                       />
                     </div>
                     <Button
-                      className="bg-amber-600 hover:bg-amber-700 shrink-0"
+                      className={`${accent.btn} shrink-0`}
                       onClick={handleAddIp}
                       disabled={addingIp || !newIp.trim()}
                     >
@@ -1154,7 +1658,7 @@ export function ResponsableParametresPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <Wifi className="h-5 w-5 text-amber-600" />
+                    <Wifi className={`h-5 w-5 ${accent.text}`} />
                     Adresses autorisées
                     <Badge variant="secondary" className="ml-2">{ipEntries.length}</Badge>
                   </CardTitle>
@@ -1162,7 +1666,7 @@ export function ResponsableParametresPage() {
                 <CardContent>
                   {loadingIp ? (
                     <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
+                      <Loader2 className={`h-6 w-6 animate-spin ${accent.text}`} />
                       <span className="ml-2 text-sm text-muted-foreground">Chargement...</span>
                     </div>
                   ) : ipEntries.length === 0 ? (
