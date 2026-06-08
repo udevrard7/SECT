@@ -317,7 +317,7 @@ export function EtudiantsPage() {
     try {
       const params = new URLSearchParams()
       if (etablissementId) params.set('etablissementId', etablissementId)
-      const res = await fetch(`/api/filieres?${params.toString()}`)
+      const res = await fetch(`/api/filieres?${params.toString()}`, { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json()
         const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null }) => ({
@@ -350,7 +350,7 @@ export function EtudiantsPage() {
       if (filiereFilter && filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
 
-      const res = await fetch(`/api/users?${params.toString()}`)
+      const res = await fetch(`/api/users?${params.toString()}`, { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json()
         // API now returns only students from the RESPONSABLE's establishment
@@ -470,6 +470,7 @@ export function EtudiantsPage() {
         headers: {
           'Content-Type': 'application/json',
           },
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -505,7 +506,7 @@ export function EtudiantsPage() {
         mode: 'direct',
         actif: true,
       }
-      if (directFiliereId) body.filiereId = directFiliereId
+      if (directFiliereId && directFiliereId !== '__none__') body.filiereId = directFiliereId
       if (etablissementId) body.etablissementId = etablissementId
       if (directMatricule) body.matricule = directMatricule
       if (directNiveau && directNiveau !== '__none__') body.niveau = directNiveau
@@ -515,11 +516,20 @@ export function EtudiantsPage() {
         headers: {
           'Content-Type': 'application/json',
           },
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Erreur lors de la création')
+        let errorMsg = 'Erreur lors de la création'
+        try {
+          const errData = await res.json()
+          errorMsg = errData.error || errData.details || `Erreur ${res.status}`
+        } catch {
+          if (res.status === 401) errorMsg = 'Session expirée. Veuillez vous reconnecter.'
+          else if (res.status === 403) errorMsg = 'Permissions insuffisantes pour créer un étudiant.'
+          else errorMsg = `Erreur serveur (${res.status})`
+        }
+        throw new Error(errorMsg)
       }
 
       const data = await res.json()
@@ -533,7 +543,11 @@ export function EtudiantsPage() {
       toast.success('Étudiant créé', { description: `${directName} a été ajouté avec succès.` })
       await fetchEtudiants()
     } catch (err) {
-      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
+      console.error('[EtudiantsPage] Erreur création directe:', err)
+      toast.error('Erreur de création', {
+        description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+        duration: 8000,
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -645,6 +659,7 @@ export function EtudiantsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -843,6 +858,7 @@ export function EtudiantsPage() {
         headers: {
           'Content-Type': 'application/json',
           },
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -1603,11 +1619,12 @@ export function EtudiantsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="direct-filiere">Filière</Label>
-                <Select value={directFiliereId} onValueChange={setDirectFiliereId}>
+                <Select value={directFiliereId || '__none__'} onValueChange={setDirectFiliereId}>
                   <SelectTrigger id="direct-filiere">
                     <SelectValue placeholder="Sélectionner une filière" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">Aucune filière</SelectItem>
                     {filieres.map((f) => (
                       <SelectItem key={f.id} value={f.id}>
                         {f.nom}{f.code ? ` (${f.code})` : ''}
