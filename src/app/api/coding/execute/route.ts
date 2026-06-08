@@ -98,7 +98,8 @@ function executeJavaScript(
     const startTime = Date.now()
     try {
       // Try to extract the function name from the code
-      const funcMatch = code.match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\(|\()/)
+      const funcNameRegex = new RegExp('(?:function\\s+(\\w+)|(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:function|\\())', 'm')
+      const funcMatch = code.match(funcNameRegex)
       const funcName = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
 
       let fullCode: string
