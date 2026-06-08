@@ -1229,13 +1229,17 @@ export function GenerationIAPage() {
                         }
                         setSelectedUEId(val)
                       }}>
-                        <SelectTrigger className="h-8 text-sm">
+                        <SelectTrigger className="h-8 text-sm w-full overflow-hidden" title={(() => {
+                          if (!selectedUEIdForDocs || selectedUEIdForDocs === '__all__') return ''
+                          const ue = ueMap.get(selectedUEIdForDocs)
+                          return ue ? `${ue.code} — ${ue.nom}` : ''
+                        })()}>
                           <SelectValue placeholder="Toutes les UE" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-w-[360px]">
                           <SelectItem value="__all__">Toutes les UE</SelectItem>
                           {Array.from(ueMap.values()).map(ue => (
-                            <SelectItem key={ue.id} value={ue.id}>
+                            <SelectItem key={ue.id} value={ue.id} title={`${ue.code} — ${ue.nom}`}>
                               {ue.code} — {ue.nom}
                             </SelectItem>
                           ))}
@@ -1285,7 +1289,7 @@ export function GenerationIAPage() {
                     </div>
                   ) : (
                     <ScrollArea className="max-h-96">
-                      <div className="space-y-2">
+                      <div className="space-y-2 pb-2">
                         {analyzedDocuments.map((doc) => {
                           const isSelected = selectedDocIds.has(doc.id)
                           const themeCount = doc.themesDetectes?.length ?? 0
@@ -1303,14 +1307,14 @@ export function GenerationIAPage() {
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={() => toggleDocSelection(doc.id)}
-                                className="pointer-events-none"
+                                className="pointer-events-none shrink-0"
                               />
                               <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{doc.nomFichier}</p>
+                                <p className="text-sm font-medium truncate" title={doc.nomFichier}>{doc.nomFichier}</p>
                                 <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                   {doc.uniteEnseignementCode && (
-                                    <Badge variant="outline" className="h-4 px-1 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+                                    <Badge variant="outline" className="h-4 max-w-[140px] px-1 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 truncate">
                                       {doc.uniteEnseignementCode}
                                     </Badge>
                                   )}
@@ -1330,19 +1334,19 @@ export function GenerationIAPage() {
               </Card>
             </motion.div>
 
-            {/* Summary bar at bottom */}
+            {/* Summary bar at bottom — sticky */}
             <motion.div variants={itemVariants}>
-              <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 text-sm">
+              <div className="sticky bottom-0 z-20 flex items-center justify-between rounded-lg border bg-background/95 backdrop-blur-sm p-3 shadow-sm">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-sm shrink-0">
                     <FileText className="h-4 w-4 text-emerald-600" />
                     <span className="font-semibold">{selectedDocIds.size}</span>
                     <span className="text-muted-foreground">document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}</span>
                   </div>
                   {selectedDocumentsTotalThemes > 0 && (
                     <>
-                      <Separator orientation="vertical" className="h-4" />
-                      <div className="flex items-center gap-1.5 text-sm">
+                      <Separator orientation="vertical" className="h-4 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-sm shrink-0">
                         <BookOpen className="h-4 w-4 text-teal-600" />
                         <span className="font-semibold">{selectedDocumentsTotalThemes}</span>
                         <span className="text-muted-foreground">thème{selectedDocumentsTotalThemes > 1 ? 's' : ''}</span>
@@ -1351,7 +1355,7 @@ export function GenerationIAPage() {
                   )}
                 </div>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
                   disabled={!isStepValid('select-docs')}
                   onClick={goNextStep}
                 >
@@ -1449,8 +1453,8 @@ export function GenerationIAPage() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="space-y-1">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div className="space-y-1 min-w-0">
                         <Label className="text-xs font-medium flex items-center gap-1.5">
                           <Send className="h-3 w-3 text-amber-500" />
                           Note totale
@@ -1466,7 +1470,7 @@ export function GenerationIAPage() {
                         />
                         <p className="text-[10px] text-muted-foreground">L&apos;IA répartira le barème pour atteindre ce total</p>
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1 min-w-0">
                         <Label className="text-xs font-medium flex items-center gap-1.5">
                           <Clock className="h-3 w-3 text-emerald-500" />
                           Durée (minutes)
@@ -1482,13 +1486,13 @@ export function GenerationIAPage() {
                         />
                         <p className="text-[10px] text-muted-foreground">{formatDuree(duree)}</p>
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1 min-w-0">
                         <Label className="text-xs font-medium">Difficulté</Label>
                         <Select value={difficulte} onValueChange={setDifficulte}>
-                          <SelectTrigger className="h-8 text-sm">
+                          <SelectTrigger className="h-8 text-sm w-full overflow-hidden" title={DIFFICULTE_LABELS[difficulte] || difficulte}>
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-w-[280px]">
                             <SelectItem value="FACILE">Facile — 60% faciles, 25% moyennes</SelectItem>
                             <SelectItem value="MOYEN">Moyen — 50% moyennes, 25% difficiles</SelectItem>
                             <SelectItem value="DIFFICILE">Difficile — 50% difficiles, 30% expertes</SelectItem>
@@ -1578,7 +1582,7 @@ export function GenerationIAPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
                         <BookOpen className="h-3 w-3 text-emerald-500" />
                         Filière cible
@@ -1599,7 +1603,7 @@ export function GenerationIAPage() {
                           }
                         }}
                       >
-                        <SelectTrigger className="h-8 text-sm">
+                        <SelectTrigger className="h-8 text-sm w-full">
                           <SelectValue placeholder="Sélectionnez une filière" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1612,7 +1616,7 @@ export function GenerationIAPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
                         <Layers className="h-3 w-3 text-sky-500" />
                         Niveau cible
@@ -1621,7 +1625,7 @@ export function GenerationIAPage() {
                         )}
                       </Label>
                       <Select value={selectedNiveau} onValueChange={(val) => { setSelectedNiveau(val); setSelectedUEId('') }}>
-                        <SelectTrigger className="h-8 text-sm">
+                        <SelectTrigger className="h-8 text-sm w-full">
                           <SelectValue placeholder="Sélectionnez un niveau" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1643,7 +1647,7 @@ export function GenerationIAPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
                         <Hash className="h-3 w-3 text-teal-500" />
                         UE
@@ -1666,10 +1670,15 @@ export function GenerationIAPage() {
                           }
                         }
                       }}>
-                        <SelectTrigger className="h-8 text-sm">
+                        <SelectTrigger className="h-8 text-sm w-full overflow-hidden" title={(() => {
+                          if (!selectedUEId || selectedUEId === '__none__') return ''
+                          const sel = filieres.find((f) => f.id === selectedFiliereId)
+                          const ue = sel?.unitesEnseignement.find(u => u.id === selectedUEId)
+                          return ue ? `${ue.code} — ${ue.nom} (${ue.typeSeances.join('/')})` : ''
+                        })()}>
                           <SelectValue placeholder="Sélectionnez une UE" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-w-[360px]">
                           {(() => {
                             const sel = filieres.find((f) => f.id === selectedFiliereId)
                             if (!sel) return <SelectItem value="__none__" disabled>Sélectionnez une filière</SelectItem>
@@ -1686,7 +1695,7 @@ export function GenerationIAPage() {
                               <>
                                 <SelectItem value="__none__">Aucune UE spécifique</SelectItem>
                                 {ues.map((ue) => (
-                                  <SelectItem key={ue.id} value={ue.id}>
+                                  <SelectItem key={ue.id} value={ue.id} title={`${ue.code} — ${ue.nom} (${ue.typeSeances.join('/')})`}>
                                     {ue.code} — {ue.nom} ({ue.typeSeances.join('/')})
                                   </SelectItem>
                                 ))}
@@ -1696,10 +1705,10 @@ export function GenerationIAPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium">Langue</Label>
                       <Select value={langue} onValueChange={setLangue}>
-                        <SelectTrigger className="h-8 text-sm">
+                        <SelectTrigger className="h-8 text-sm w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
