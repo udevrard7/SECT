@@ -31,6 +31,11 @@ import {
   RotateCw,
   Wand2,
   Send,
+  Search,
+  FolderOpen,
+  File,
+  Calendar,
+  HardDrive,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -396,6 +401,9 @@ export function GenerationIAPage() {
   // Regenerate single question state
   const [regeneratingQuestionId, setRegeneratingQuestionId] = useState<string | null>(null)
 
+  // Document search state for Step 1
+  const [docSearchQuery, setDocSearchQuery] = useState('')
+
   const analyzedDocuments = documents.filter((d) => {
     if (d.statutAnalyse !== 'ANALYSE') return false
     if (selectedUEIdForDocs && selectedUEIdForDocs !== '__all__') {
@@ -403,6 +411,70 @@ export function GenerationIAPage() {
     }
     return true
   })
+
+  // Search-filtered documents for Step 1
+  const filteredDocuments = useMemo(() => {
+    if (!docSearchQuery.trim()) return analyzedDocuments
+    const q = docSearchQuery.toLowerCase().trim()
+    return analyzedDocuments.filter((d) => {
+      const nameMatch = d.nomFichier.toLowerCase().includes(q)
+      const ueMatch = (d.uniteEnseignementCode ?? '').toLowerCase().includes(q) || (d.uniteEnseignementNom ?? '').toLowerCase().includes(q)
+      const themeMatch = d.themesDetectes?.some((t) => t.toLowerCase().includes(q)) ?? false
+      return nameMatch || ueMatch || themeMatch
+    })
+  }, [analyzedDocuments, docSearchQuery])
+
+  // Select all / Deselect all
+  const selectAllFiltered = useCallback(() => {
+    setSelectedDocIds((prev) => {
+      const next = new Set(prev)
+      for (const doc of filteredDocuments) {
+        next.add(doc.id)
+      }
+      return next
+    })
+  }, [filteredDocuments])
+
+  const deselectAllFiltered = useCallback(() => {
+    setSelectedDocIds((prev) => {
+      const next = new Set(prev)
+      for (const doc of filteredDocuments) {
+        next.delete(doc.id)
+      }
+      return next
+    })
+  }, [filteredDocuments])
+
+  const allFilteredSelected = filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedDocIds.has(d.id))
+  const someFilteredSelected = filteredDocuments.some((d) => selectedDocIds.has(d.id)) && !allFilteredSelected
+
+  // Helper: format file size
+  function formatFileSize(bytes: number | null): string {
+    if (bytes === null || bytes === 0) return ''
+    if (bytes < 1024) return `${bytes} o`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+  }
+
+  // Helper: format date
+  function formatDate(dateStr: string): string {
+    try {
+      return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+    } catch {
+      return ''
+    }
+  }
+
+  // Helper: file type icon/label
+  function getFileTypeLabel(mime: string | null): { label: string; color: string } {
+    if (!mime) return { label: 'Fichier', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-700' }
+    if (mime.includes('pdf')) return { label: 'PDF', color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800' }
+    if (mime.includes('word') || mime.includes('document')) return { label: 'DOC', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-800' }
+    if (mime.includes('powerpoint') || mime.includes('presentation')) return { label: 'PPT', color: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-800' }
+    if (mime.includes('text')) return { label: 'TXT', color: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-800' }
+    if (mime.includes('image')) return { label: 'IMG', color: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/40 dark:text-violet-400 dark:border-violet-800' }
+    return { label: 'Fichier', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-700' }
+  }
 
   const NIVEAU_OPTIONS = [
     { value: 'L1', label: 'L1 — Licence 1' },
@@ -1201,179 +1273,329 @@ export function GenerationIAPage() {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-4"
           >
-            {/* UE Filter */}
-            {analyzedDocuments.length > 0 && (() => {
-              const ueMap = new Map<string, { id: string; code: string; nom: string }>()
-              for (const doc of documents.filter((d) => d.statutAnalyse === 'ANALYSE')) {
-                if (doc.uniteEnseignementId && doc.uniteEnseignementCode) {
-                  ueMap.set(doc.uniteEnseignementId, {
-                    id: doc.uniteEnseignementId,
-                    code: doc.uniteEnseignementCode,
-                    nom: doc.uniteEnseignementNom || doc.uniteEnseignementCode,
-                  })
-                }
-              }
-              return ueMap.size > 0 ? (
-                <motion.div variants={itemVariants}>
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <Layers className="h-4 w-4 text-emerald-600" />
-                        Sélectionnez l&apos;Unité d&apos;Enseignement
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Select value={selectedUEIdForDocs} onValueChange={(val) => {
-                        setSelectedUEIdForDocs(val)
-                        if (val && val !== '__all__') {
-                          setSelectedDocIds(prev => {
-                            const next = new Set<string>()
-                            for (const docId of prev) {
-                              const doc = documents.find(d => d.id === docId)
-                              if (doc && (doc.uniteEnseignementId === val || !doc.uniteEnseignementId)) {
-                                next.add(docId)
-                              }
-                            }
-                            return next
-                          })
-                        }
-                        setSelectedUEId(val)
-                      }}>
-                        <SelectTrigger className="h-8 text-sm w-full overflow-hidden" title={(() => {
-                          if (!selectedUEIdForDocs || selectedUEIdForDocs === '__all__') return ''
-                          const ue = ueMap.get(selectedUEIdForDocs)
-                          return ue ? `${ue.code} — ${ue.nom}` : ''
-                        })()}>
-                          <SelectValue placeholder="Toutes les UE" />
-                        </SelectTrigger>
-                        <SelectContent className="max-w-[360px]">
-                          <SelectItem value="__all__">Toutes les UE</SelectItem>
-                          {Array.from(ueMap.values()).map(ue => (
-                            <SelectItem key={ue.id} value={ue.id} title={`${ue.code} — ${ue.nom}`}>
-                              {ue.code} — {ue.nom}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {selectedUEIdForDocs && selectedUEIdForDocs !== '__all__' && (
-                        <p className="text-[10px] text-muted-foreground mt-2">
-                          Filtrage actif : seuls les documents de cette UE sont affichés
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ) : null
-            })()}
-
-            <motion.div variants={itemVariants}>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-emerald-600" />
-                    Sélectionnez les documents sources
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {isLoadingDocs ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Chargement des documents...
+            {isLoadingDocs ? (
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardContent className="py-16">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                      <p className="text-sm font-medium">Chargement des documents...</p>
                     </div>
-                  ) : analyzedDocuments.length === 0 ? (
-                    <div className="rounded-lg border border-dashed p-6 text-center">
-                      <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
-                      <p className="text-sm font-medium">Aucun document analysé</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Importez et analysez au moins un document avant de générer une épreuve.
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ) : analyzedDocuments.length === 0 ? (
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="rounded-full bg-amber-100 p-4 dark:bg-amber-900/30">
+                        <AlertTriangle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <p className="text-sm font-semibold">Aucun document analysé</p>
+                      <p className="text-xs text-muted-foreground text-center max-w-sm">
+                        Importez et analysez au moins un document avant de générer une épreuve par IA.
                       </p>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        className="mt-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
                         onClick={() => router.push(PAGE_ROUTES.documents)}
                       >
                         <FileText className="h-3 w-3 mr-1" />
                         Aller aux Documents
                       </Button>
                     </div>
-                  ) : (
-                    <ScrollArea className="max-h-96">
-                      <div className="space-y-2 pb-2">
-                        {analyzedDocuments.map((doc) => {
-                          const isSelected = selectedDocIds.has(doc.id)
-                          const themeCount = doc.themesDetectes?.length ?? 0
-                          return (
-                            <motion.div
-                              key={doc.id}
-                              variants={itemVariants}
-                              className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                                isSelected
-                                  ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
-                                  : 'border-muted hover:border-emerald-200 dark:hover:border-emerald-900'
-                              }`}
-                              onClick={() => toggleDocSelection(doc.id)}
-                            >
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleDocSelection(doc.id)}
-                                className="pointer-events-none shrink-0"
-                              />
-                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate" title={doc.nomFichier}>{doc.nomFichier}</p>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                  {doc.uniteEnseignementCode && (
-                                    <Badge variant="outline" className="h-4 max-w-[140px] px-1 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 truncate">
-                                      {doc.uniteEnseignementCode}
-                                    </Badge>
-                                  )}
-                                  {themeCount > 0 && (
-                                    <span className="text-xs text-muted-foreground">{themeCount} thème{themeCount > 1 ? 's' : ''}</span>
-                                  )}
-                                </div>
-                              </div>
-                              {isSelected && <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />}
-                            </motion.div>
-                          )
-                        })}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ) : (
+              <>
+                {/* ─── Toolbar: UE Filter + Search + Select All ─── */}
+                <motion.div variants={itemVariants}>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+                        {/* UE Filter */}
+                        {(() => {
+                          const ueMap = new Map<string, { id: string; code: string; nom: string }>()
+                          for (const doc of documents.filter((d) => d.statutAnalyse === 'ANALYSE')) {
+                            if (doc.uniteEnseignementId && doc.uniteEnseignementCode) {
+                              ueMap.set(doc.uniteEnseignementId, {
+                                id: doc.uniteEnseignementId,
+                                code: doc.uniteEnseignementCode,
+                                nom: doc.uniteEnseignementNom || doc.uniteEnseignementCode,
+                              })
+                            }
+                          }
+                          return ueMap.size > 0 ? (
+                            <div className="shrink-0">
+                              <Select value={selectedUEIdForDocs} onValueChange={(val) => {
+                                setSelectedUEIdForDocs(val)
+                                if (val && val !== '__all__') {
+                                  setSelectedDocIds(prev => {
+                                    const next = new Set<string>()
+                                    for (const docId of prev) {
+                                      const doc = documents.find(d => d.id === docId)
+                                      if (doc && (doc.uniteEnseignementId === val || !doc.uniteEnseignementId)) {
+                                        next.add(docId)
+                                      }
+                                    }
+                                    return next
+                                  })
+                                }
+                                setSelectedUEId(val)
+                              }}>
+                                <SelectTrigger className="h-9 text-sm w-full sm:w-[200px]">
+                                  <Layers className="h-3.5 w-3.5 mr-1.5 text-emerald-600 shrink-0" />
+                                  <SelectValue placeholder="Toutes les UE" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__all__">Toutes les UE</SelectItem>
+                                  {Array.from(ueMap.values()).map(ue => (
+                                    <SelectItem key={ue.id} value={ue.id}>
+                                      {ue.code} — {ue.nom}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : null
+                        })()}
 
-            {/* Summary bar at bottom — sticky */}
-            <motion.div variants={itemVariants}>
-              <div className="sticky bottom-0 z-20 flex items-center justify-between rounded-lg border bg-background/95 backdrop-blur-sm p-3 shadow-sm">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-sm shrink-0">
-                    <FileText className="h-4 w-4 text-emerald-600" />
-                    <span className="font-semibold">{selectedDocIds.size}</span>
-                    <span className="text-muted-foreground">document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}</span>
-                  </div>
-                  {selectedDocumentsTotalThemes > 0 && (
-                    <>
-                      <Separator orientation="vertical" className="h-4 shrink-0" />
-                      <div className="flex items-center gap-1.5 text-sm shrink-0">
-                        <BookOpen className="h-4 w-4 text-teal-600" />
-                        <span className="font-semibold">{selectedDocumentsTotalThemes}</span>
-                        <span className="text-muted-foreground">thème{selectedDocumentsTotalThemes > 1 ? 's' : ''}</span>
+                        {/* Search */}
+                        <div className="relative flex-1 min-w-0">
+                          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder="Rechercher un document, UE ou thème..."
+                            value={docSearchQuery}
+                            onChange={(e) => setDocSearchQuery(e.target.value)}
+                            className="h-9 pl-8 text-sm"
+                          />
+                          {docSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setDocSearchQuery('')}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Select All / Deselect All */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 text-xs"
+                            onClick={allFilteredSelected ? deselectAllFiltered : selectAllFiltered}
+                            disabled={filteredDocuments.length === 0}
+                          >
+                            {allFilteredSelected ? (
+                              <>
+                                <X className="h-3 w-3 mr-1" />
+                                Tout désélectionner
+                              </>
+                            ) : (
+                              <>
+                                <Check className="h-3 w-3 mr-1" />
+                                Tout sélectionner
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
-                    </>
-                  )}
-                </div>
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
-                  disabled={!isStepValid('select-docs')}
-                  onClick={goNextStep}
-                >
-                  Suivant
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </motion.div>
+
+                      {/* Results count & active filter */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} analysé{filteredDocuments.length > 1 ? 's' : ''}
+                          {docSearchQuery && ` trouvé${filteredDocuments.length > 1 ? 's' : ''}`}
+                          {analyzedDocuments.length !== filteredDocuments.length && ` sur ${analyzedDocuments.length}`}
+                        </span>
+                        {selectedDocIds.size > 0 && (
+                          <>
+                            <Separator orientation="vertical" className="h-3" />
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                              {selectedDocIds.size} sélectionné{selectedDocIds.size > 1 ? 's' : ''}
+                            </span>
+                          </>
+                        )}
+                        {selectedUEIdForDocs && selectedUEIdForDocs !== '__all__' && (
+                          <>
+                            <Separator orientation="vertical" className="h-3" />
+                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] gap-1 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800">
+                              <Layers className="h-2.5 w-2.5" />
+                              UE filtrée
+                            </Badge>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* ─── Scrollable Document List ─── */}
+                <motion.div variants={itemVariants}>
+                  <Card className="overflow-hidden">
+                    <CardHeader className="pb-2 pt-4 px-4">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <FolderOpen className="h-4 w-4 text-emerald-600" />
+                        Sélectionnez les documents sources
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      {filteredDocuments.length === 0 ? (
+                        <div className="rounded-lg border border-dashed p-8 text-center">
+                          <Search className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                          <p className="text-sm font-medium text-muted-foreground">Aucun document trouvé</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {docSearchQuery ? 'Essayez un autre terme de recherche.' : 'Aucun document analysé disponible.'}
+                          </p>
+                          {docSearchQuery && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mt-2 text-xs"
+                              onClick={() => setDocSearchQuery('')}
+                            >
+                              Effacer la recherche
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <ScrollArea className="h-[min(500px,50vh)]">
+                          <div className="space-y-2 pr-1 pb-2">
+                            {filteredDocuments.map((doc) => {
+                              const isSelected = selectedDocIds.has(doc.id)
+                              const themeCount = doc.themesDetectes?.length ?? 0
+                              const fileType = getFileTypeLabel(doc.typeMime)
+                              const fileSize = formatFileSize(doc.tailleFichier)
+                              const fileDate = formatDate(doc.dateUpload)
+                              return (
+                                <motion.div
+                                  key={doc.id}
+                                  initial={{ opacity: 0, y: 8 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className={`group flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all duration-200 ${
+                                    isSelected
+                                      ? 'border-emerald-400 bg-emerald-50/80 shadow-sm shadow-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:shadow-none'
+                                      : 'border-muted hover:border-emerald-300 hover:bg-muted/30 dark:hover:border-emerald-900 dark:hover:bg-muted/20'
+                                  }`}
+                                  onClick={() => toggleDocSelection(doc.id)}
+                                >
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => toggleDocSelection(doc.id)}
+                                    className="pointer-events-none shrink-0 mt-0.5"
+                                  />
+
+                                  {/* File type icon */}
+                                  <div className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg ${isSelected ? 'bg-emerald-200 dark:bg-emerald-800' : 'bg-muted'}`}>
+                                    {doc.typeMime?.includes('pdf') ? (
+                                      <FileText className="h-4.5 w-4.5 text-red-500" />
+                                    ) : (
+                                      <File className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                  </div>
+
+                                  {/* Document info */}
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`text-sm font-medium truncate ${isSelected ? 'text-emerald-800 dark:text-emerald-200' : ''}`} title={doc.nomFichier}>
+                                      {doc.nomFichier}
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                      <Badge variant="outline" className={`h-4.5 px-1.5 text-[9px] ${fileType.color}`}>
+                                        {fileType.label}
+                                      </Badge>
+                                      {doc.uniteEnseignementCode && (
+                                        <Badge variant="outline" className="h-4.5 max-w-[140px] px-1.5 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 truncate gap-0.5">
+                                          <Layers className="h-2.5 w-2.5" />
+                                          {doc.uniteEnseignementCode}
+                                        </Badge>
+                                      )}
+                                      {fileSize && (
+                                        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                                          <HardDrive className="h-2.5 w-2.5" />
+                                          {fileSize}
+                                        </span>
+                                      )}
+                                      {fileDate && (
+                                        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                                          <Calendar className="h-2.5 w-2.5" />
+                                          {fileDate}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {/* Themes */}
+                                    {themeCount > 0 && doc.themesDetectes && doc.themesDetectes.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {doc.themesDetectes.slice(0, 4).map((theme, tIdx) => (
+                                          <span
+                                            key={tIdx}
+                                            className="inline-flex items-center rounded-md bg-emerald-100/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                          >
+                                            {theme}
+                                          </span>
+                                        ))}
+                                        {doc.themesDetectes.length > 4 && (
+                                          <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                            +{doc.themesDetectes.length - 4}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Selection indicator */}
+                                  {isSelected && (
+                                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                  )}
+                                </motion.div>
+                              )
+                            })}
+                          </div>
+                        </ScrollArea>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* ─── Summary bar at bottom ─── */}
+                <motion.div variants={itemVariants}>
+                  <div className="flex items-center justify-between rounded-xl border bg-background/95 backdrop-blur-sm p-3 shadow-sm">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-sm shrink-0">
+                        <FileText className="h-4 w-4 text-emerald-600" />
+                        <span className="font-semibold">{selectedDocIds.size}</span>
+                        <span className="text-muted-foreground">document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}</span>
+                      </div>
+                      {selectedDocumentsTotalThemes > 0 && (
+                        <>
+                          <Separator orientation="vertical" className="h-4 shrink-0" />
+                          <div className="flex items-center gap-1.5 text-sm shrink-0">
+                            <BookOpen className="h-4 w-4 text-teal-600" />
+                            <span className="font-semibold">{selectedDocumentsTotalThemes}</span>
+                            <span className="text-muted-foreground">thème{selectedDocumentsTotalThemes > 1 ? 's' : ''}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                      disabled={!isStepValid('select-docs')}
+                      onClick={goNextStep}
+                    >
+                      Suivant
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </motion.div>
+              </>
+            )}
           </motion.div>
         )}
 
