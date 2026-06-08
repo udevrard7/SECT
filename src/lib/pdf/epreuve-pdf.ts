@@ -113,21 +113,48 @@ function getTextHeight(doc: jsPDF, text: string, maxWidth: number, fontSize: num
 function addHeader(doc: jsPDF, data: EpreuvePDFData, isCorrige: boolean = false): void {
   const y = MARGIN_TOP
 
+  // Logo (if available)
+  let textOffsetX = MARGIN_LEFT
+  if (data.etablissement.logo) {
+    try {
+      const logoData = data.etablissement.logo
+      // SVG is not supported by jsPDF - skip it
+      if (logoData.includes('image/svg+xml')) {
+        console.warn('[PDF] SVG logos are not supported in PDF generation, skipping')
+      } else {
+        // Detect format from data URL
+        let format = 'PNG'
+        if (logoData.includes('image/jpeg') || logoData.includes('image/jpg')) {
+          format = 'JPEG'
+        } else if (logoData.includes('image/webp')) {
+          format = 'PNG' // jsPDF may not support WEBP; will try as PNG fallback
+        }
+        const logoWidth = 18  // mm
+        const logoHeight = 18 // mm
+        doc.addImage(logoData, format, MARGIN_LEFT, y, logoWidth, logoHeight)
+        textOffsetX = MARGIN_LEFT + logoWidth + 4
+      }
+    } catch (e) {
+      // If logo fails to render, just skip it
+      console.warn('[PDF] Failed to render logo:', e)
+    }
+  }
+
   // Left side: Etablissement info
   doc.setFontSize(12)
   doc.setFont('helvetica', 'bold')
-  doc.text(data.etablissement.nom, MARGIN_LEFT, y + 5)
+  doc.text(data.etablissement.nom, textOffsetX, y + 5)
 
   doc.setFontSize(FONT_SMALL)
   doc.setFont('helvetica', 'normal')
   let infoY = y + 10
   if (data.etablissement.ville) {
-    doc.text(`${data.etablissement.ville}${data.etablissement.pays ? `, ${data.etablissement.pays}` : ''}`, MARGIN_LEFT, infoY)
+    doc.text(`${data.etablissement.ville}${data.etablissement.pays ? `, ${data.etablissement.pays}` : ''}`, textOffsetX, infoY)
     infoY += 4
   }
 
   // Academic year
-  doc.text(`Année universitaire : ${getAcademicYear()}`, MARGIN_LEFT, infoY)
+  doc.text(`Année universitaire : ${getAcademicYear()}`, textOffsetX, infoY)
 
   // Right side: UE & Filière info
   const rightX = PAGE_WIDTH - MARGIN_RIGHT
@@ -731,7 +758,7 @@ export function generateFeuilleReponsesPDF(data: EpreuvePDFData): jsPDF {
         q.type,
       ]
       for (let c = 0; c < maxProps; c++) {
-        cells.push(q.propositions && c < q.propositions.length ? '○' : '')
+        cells.push(q.propositions && c < q.propositions.length ? '__CIRCLE__' : '')
       }
       return cells
     })
@@ -761,6 +788,26 @@ export function generateFeuilleReponsesPDF(data: EpreuvePDFData): jsPDF {
       },
       alternateRowStyles: {
         fillColor: [245, 250, 248],
+      },
+      didParseCell: (hookData) => {
+        // Replace __CIRCLE__ with empty string so it doesn't render as text
+        if (hookData.cell.raw === '__CIRCLE__') {
+          hookData.cell.raw = ''
+          hookData.cell.text = ''  // Clear text content to prevent any rendering
+          ;(hookData.cell as any)._isCircle = true
+        }
+      },
+      didDrawCell: (hookData) => {
+        // Draw a circle in cells that had __CIRCLE__
+        if ((hookData.cell as any)._isCircle) {
+          const { x, y: cellY, width, height } = hookData.cell
+          const cx = x + width / 2
+          const cy = cellY + height / 2
+          const radius = Math.min(width, height) / 2 - 1.5
+          doc.setDrawColor(60, 60, 60)
+          doc.setLineWidth(0.5)
+          doc.circle(cx, cy, radius)
+        }
       },
     })
 
