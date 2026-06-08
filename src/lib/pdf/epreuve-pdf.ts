@@ -315,16 +315,17 @@ function estimateQuestionHeightSujet(doc: jsPDF, q: PDFQuestion): number {
 function renderQuestionSujet(doc: jsPDF, q: PDFQuestion, index: number, startY: number): number {
   let y = startY
 
-  // Question header
+  // Question header — measure width at the SAME font size before switching
   doc.setFontSize(FONT_HEADING)
   doc.setFont('helvetica', 'bold')
   doc.text(`Question ${index + 1}`, MARGIN_LEFT, y)
+  const questionLabelWidth = doc.getTextWidth(`Question ${index + 1}  `) // Measure at size 11 bold
 
   // Type and bareme
   doc.setFontSize(FONT_SMALL)
   doc.setFont('helvetica', 'normal')
   const typeLabel = getTypeLabel(q.type)
-  doc.text(typeLabel, MARGIN_LEFT + doc.getTextWidth(`Question ${index + 1}  `), y)
+  doc.text(typeLabel, MARGIN_LEFT + questionLabelWidth, y)
 
   // Bareme on the right
   doc.setFont('helvetica', 'bold')
@@ -507,16 +508,16 @@ function estimateQuestionHeightCorrige(doc: jsPDF, q: PDFQuestion): number {
 
   // Additional height for correct answers / model response
   if ((q.type === 'QCU' || q.type === 'QCM') && q.reponseCorrecte) {
-    height += 12
+    height += LINE_HEIGHT_BODY + 12  // Label line + answer content + spacing
   }
 
   if ((q.type === 'QRC' || q.type === 'REFLEXION') && q.reponseCorrecte) {
     const text = Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte
-    height += getTextHeight(doc, text, CONTENT_WIDTH - 15, FONT_BODY) + 10
+    height += getTextHeight(doc, text, CONTENT_WIDTH - 15, FONT_BODY) + LINE_HEIGHT_BODY + 8
   }
 
   if (q.explication) {
-    height += getTextHeight(doc, q.explication, CONTENT_WIDTH - 15, FONT_BODY) + 10
+    height += getTextHeight(doc, q.explication, CONTENT_WIDTH - 15, FONT_BODY) + LINE_HEIGHT_BODY + 8
   }
 
   return height
@@ -540,6 +541,7 @@ function renderQuestionCorrige(doc: jsPDF, q: PDFQuestion, index: number, startY
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 130, 60)
     doc.text('Réponse correcte :', MARGIN_LEFT, y)
+    y += LINE_HEIGHT_BODY  // Advance past the label to avoid overlap
 
     const correctLabels = q.propositions
       .filter((p) => correctIds.includes(p.id))
@@ -571,7 +573,7 @@ function renderQuestionCorrige(doc: jsPDF, q: PDFQuestion, index: number, startY
     doc.setTextColor(0, 100, 50)
     doc.text(label, MARGIN_LEFT, y)
     doc.setTextColor(0, 0, 0)
-    y += 5
+    y += LINE_HEIGHT_BODY  // Advance past the label to avoid overlap
 
     doc.setFontSize(FONT_BODY)
     doc.setFont('helvetica', 'normal')
@@ -598,7 +600,7 @@ function renderQuestionCorrige(doc: jsPDF, q: PDFQuestion, index: number, startY
     doc.setTextColor(80, 80, 140)
     doc.text('Explication :', MARGIN_LEFT, y)
     doc.setTextColor(0, 0, 0)
-    y += 4
+    y += LINE_HEIGHT_BODY  // Advance past the label to avoid overlap
 
     doc.setFontSize(FONT_BODY)
     doc.setFont('helvetica', 'normal')
