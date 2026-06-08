@@ -36,6 +36,8 @@ import {
   CODING_LANGUAGES,
   getCodingLanguageConfig,
   getDefaultStarterCode,
+  convertSignatureToLanguage,
+  parseFunctionSignature,
   EXECUTION_CONFIG,
 } from '@/lib/coding-types'
 import { usePyodide } from '@/hooks/use-pyodide'
@@ -271,7 +273,7 @@ interface CodingQuestionStudentProps {
   testsPublics: TestCase[]
   bareme: number
   currentCode: string
-  onCodeChange: (code: string, testResultsPublics?: TestResult[]) => void
+  onCodeChange: (code: string, testResultsPublics?: TestResult[], language?: CodingLanguage) => void
   onLanguageChange?: (language: CodingLanguage) => void
   onSubmit: () => void
   isSubmitting?: boolean
@@ -334,11 +336,12 @@ export function CodingQuestionStudent({
     setExecutionOutput('')
     setExecutionError('')
     setShowOutput(false)
-    // Regenerate starter code for the new language
+    // Regenerate starter code for the new language with proper signature conversion
     const newStarterCode = getDefaultStarterCode(newLang, fonctionSignature || undefined)
-    onCodeChange(newStarterCode)
-    // Notify parent of language change
+    // Notify parent of language change first
     onLanguageChange?.(newLang)
+    // Pass the new language explicitly to avoid race condition with parent's activeCodeLanguages state
+    onCodeChange(newStarterCode, undefined, newLang)
   }, [fonctionSignature, onCodeChange, onLanguageChange])
 
   // Auto-save every 10 seconds
@@ -485,10 +488,14 @@ export function CodingQuestionStudent({
         <CardContent>
           <div className="prose prose-sm max-w-none text-sm whitespace-pre-wrap">{enonce}</div>
 
-          {/* Function signature */}
+          {/* Function signature — adapted to the currently selected language */}
           <div className="mt-3 rounded-md bg-slate-100 dark:bg-slate-900 p-3 font-mono text-xs border border-slate-200 dark:border-slate-800">
             <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Signature attendue</span>
-            <pre className="mt-1 text-violet-700 dark:text-violet-300">{fonctionSignature}</pre>
+            <pre className="mt-1 text-violet-700 dark:text-violet-300">{
+              fonctionSignature
+                ? convertSignatureToLanguage(fonctionSignature, activeLanguage)
+                : ''
+            }</pre>
           </div>
         </CardContent>
       </Card>
@@ -659,11 +666,16 @@ function executeClientSideJS(
   const results: TestResult[] = []
   let allOutput = ''
 
+  // Try to extract function name from signature first, then from code
+  const sigParsed = parseFunctionSignature(functionSignature || '')
+  const funcNameFromSig = sigParsed?.funcName || null
+  const funcMatch = code.match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\())/m)
+  const funcNameFromCode = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
+  const funcName = funcNameFromSig || funcNameFromCode
+
   for (const tc of testCases) {
     const startTime = Date.now()
     try {
-      const funcMatch = code.match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\())/m)
-      const funcName = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
 
       let fullCode = code
 
@@ -787,9 +799,9 @@ async function executePythonInBrowser(
     }
   }
 
-  // Extract function name from signature
-  const funcMatch = functionSignature?.match(/def\s+(\w+)/)
-  const funcName = funcMatch?.[1]
+  // Extract function name from signature using our cross-language parser
+  const sigParsed = parseFunctionSignature(functionSignature || '')
+  const funcName = sigParsed?.funcName || null
 
   for (const tc of testCases) {
     const startTime = Date.now()

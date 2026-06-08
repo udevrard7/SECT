@@ -171,8 +171,11 @@ del _capture_stdout, _capture_stderr, _captured_out, _captured_err, _exec_error
         return { output: '', error: 'Pyodide non disponible' }
       }
 
-      // Define the function code first, then call it with test input
-      const testCode = `
+      let testCode: string
+
+      if (funcName) {
+        // Define the function code first, then call it with test input
+        testCode = `
 ${code}
 
 import json
@@ -202,15 +205,59 @@ finally:
     _test_output = _test_stdout.getvalue()
     _test_stdout.close()
 `
+      } else {
+        // No function name — run the code directly and capture stdout
+        testCode = `
+${code}
+
+import sys
+from io import StringIO
+
+_test_stdout = StringIO()
+sys.stdout = _test_stdout
+
+try:
+    exec(open('${''}').read() if False else None)  # no-op placeholder
+    _test_error = None
+except Exception as _e:
+    _test_error = str(_e)
+finally:
+    sys.stdout = sys.__stdout__
+    _test_output = _test_stdout.getvalue()
+    _test_stdout.close()
+`
+        // For no-function mode, just execute the code and capture stdout
+        testCode = `
+import sys
+from io import StringIO
+
+_test_stdout = StringIO()
+sys.stdout = _test_stdout
+
+try:
+${code.split('\n').map((line: string) => '    ' + line).join('\n')}
+    _test_error = None
+except Exception as _e:
+    _test_error = str(_e)
+finally:
+    sys.stdout = sys.__stdout__
+    _test_output = _test_stdout.getvalue()
+    _test_stdout.close()
+`
+      }
+
       pyodide.runPython(testCode)
 
       const output = String(pyodide.globals.get('_test_output') || '')
       const testError = pyodide.globals.get('_test_error')
       const errorMsg = testError && testError !== 'None' ? String(testError) : null
 
-      // Clean up
+      // Clean up — use try/except to avoid errors if variables don't exist
       pyodide.runPython(`
-del _test_stdout, _test_input, _test_result, _test_error, _test_output
+try:
+    del _test_stdout, _test_input, _test_result, _test_error, _test_output
+except:
+    pass
 `)
 
       return { output: output.trim(), error: errorMsg }

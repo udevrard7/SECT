@@ -2143,33 +2143,29 @@ export function PassationPage() {
                       bareme={currentQuestion.bareme}
                       currentCode={(() => {
                         const answer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
-                        return answer?.code || currentQuestion.question.codeInitial || ''
+                        return answer?.code || currentQuestion.question.codeInitial || getDefaultStarterCode(
+                          activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage,
+                          currentQuestion.question.fonctionSignature || undefined
+                        )
                       })()}
-                      onCodeChange={(code, testResultsPublics) => {
+                      onCodeChange={(code, testResultsPublics, language) => {
+                        // Use the explicitly passed language if available, otherwise fall back to tracked language
+                        const activeLang = language || activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage
                         const existingAnswer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
-                        const activeLang = activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage
                         const answer: CodingAnswer = {
                           code,
                           language: activeLang,
                           testResultsPublics: testResultsPublics || existingAnswer?.testResultsPublics,
-                          lastSaved: existingAnswer?.lastSaved,
+                          lastSaved: new Date().toISOString(),
                         }
                         handleAnswerChange(currentQuestion.questionId, serializeCodingAnswer(answer))
                       }}
                       onLanguageChange={(newLang) => {
+                        // Update the active language tracking FIRST so onCodeChange can use it
                         setActiveCodeLanguages((prev) => ({
                           ...prev,
                           [currentQuestion.questionId]: newLang,
                         }))
-                        // Update the saved answer with the new language and starter code
-                        const newStarterCode = getDefaultStarterCode(newLang, currentQuestion.question.fonctionSignature || undefined)
-                        const answer: CodingAnswer = {
-                          code: newStarterCode,
-                          language: newLang,
-                          testResultsPublics: undefined,
-                          lastSaved: new Date().toISOString(),
-                        }
-                        handleAnswerChange(currentQuestion.questionId, serializeCodingAnswer(answer))
                       }}
                       onSubmit={() => {
                         // Submit final code — run all tests and save

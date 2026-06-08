@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { withAuth, AuthenticatedHandler } from '@/lib/auth-session'
-import { EXECUTION_CONFIG, type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult } from '@/lib/coding-types'
+import { EXECUTION_CONFIG, type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult, parseFunctionSignature } from '@/lib/coding-types'
 
 /**
  * POST /api/coding/execute
@@ -100,10 +100,13 @@ function executeJavaScript(
   for (const tc of testCases) {
     const startTime = Date.now()
     try {
-      // Try to extract the function name from the code
+      // Try to extract function name from signature first, then from code
+      const sigParsed = parseFunctionSignature(functionSignature || '')
+      const funcNameFromSig = sigParsed?.funcName || null
       const funcNameRegex = new RegExp('(?:function\\s+(\\w+)|(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:function|\\())', 'm')
       const funcMatch = code.match(funcNameRegex)
-      const funcName = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
+      const funcNameFromCode = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
+      const funcName = funcNameFromSig || funcNameFromCode
 
       let fullCode: string
       if (funcName) {
@@ -191,9 +194,9 @@ function executePythonSandboxed(
   const results: TestResult[] = []
   let allOutput = ''
 
-  // Extract function name from signature
-  const funcMatch = functionSignature?.match(/def\s+(\w+)/)
-  const funcName = funcMatch?.[1]
+  // Extract function name from signature using cross-language parser
+  const sigParsed = parseFunctionSignature(functionSignature || '')
+  const funcName = sigParsed?.funcName || null
 
   // Create a temporary directory for execution
   const tmpDir = join(tmpdir(), `sect_python_${Date.now()}_${Math.random().toString(36).slice(2)}`)

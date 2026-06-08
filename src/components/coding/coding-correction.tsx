@@ -30,6 +30,8 @@ import {
   type CodingAnswer,
   type GradedCodingAnswer,
   getCodingLanguageConfig,
+  convertSignatureToLanguage,
+  parseFunctionSignature,
   parseCodingAnswer,
   EXECUTION_CONFIG,
 } from '@/lib/coding-types'
@@ -81,7 +83,9 @@ export function CodingCorrection({
   const [showPrivateTests, setShowPrivateTests] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
 
-  const langConfig = getCodingLanguageConfig(langage)
+  // Use the student's chosen language from their answer, falling back to the question's language
+  const studentLang = studentAnswer?.language || langage
+  const langConfig = getCodingLanguageConfig(studentLang)
 
   // Run all tests (public + private) against student code
   const handleRunAllTests = useCallback(async () => {
@@ -95,7 +99,7 @@ export function CodingCorrection({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: studentAnswer.code,
-          language: langage,
+          language: studentLang,
           testCases: allTests,
           functionSignature: fonctionSignature,
         }),
@@ -108,7 +112,7 @@ export function CodingCorrection({
     } finally {
       setIsRunning(false)
     }
-  }, [studentAnswer, testsPublics, testsPrives, langage, fonctionSignature])
+  }, [studentAnswer, testsPublics, testsPrives, studentLang, fonctionSignature])
 
   // Save manual score override
   const handleSaveScore = useCallback(async () => {
@@ -152,6 +156,11 @@ export function CodingCorrection({
           <Badge variant="outline" className="text-[10px] border-violet-300 text-violet-600">
             CODE — {langConfig.icon} {langConfig.label}
           </Badge>
+          {studentAnswer?.language && studentAnswer.language !== langage && (
+            <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              Langue étudiant: {getCodingLanguageConfig(studentAnswer.language).icon} {getCodingLanguageConfig(studentAnswer.language).label}
+            </Badge>
+          )}
           <Badge variant="secondary" className="text-[10px]">
             {bareme} pts
           </Badge>
@@ -173,7 +182,11 @@ export function CodingCorrection({
           <p className="text-sm whitespace-pre-wrap">{enonce}</p>
           <div className="mt-2 rounded-md bg-slate-100 dark:bg-slate-900 p-2 font-mono text-xs">
             <span className="text-muted-foreground text-[10px]">Signature :</span>
-            <pre className="text-violet-700 dark:text-violet-300">{fonctionSignature}</pre>
+            <pre className="text-violet-700 dark:text-violet-300">{
+              fonctionSignature
+                ? convertSignatureToLanguage(fonctionSignature, studentLang)
+                : ''
+            }</pre>
           </div>
         </CardContent>
       </Card>
@@ -189,7 +202,7 @@ export function CodingCorrection({
           )}
         </div>
         <CodeEditor
-          language={langage}
+          language={studentLang}
           initialCode={studentAnswer?.code || '// Aucun code soumis'}
           onChange={() => {}}
           readOnly={true}
