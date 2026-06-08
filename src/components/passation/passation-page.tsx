@@ -44,7 +44,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CodingQuestionStudent } from '@/components/coding/code-editor'
-import { type CodingLanguage, type CodingAnswer, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
+import { type CodingLanguage, type CodingAnswer, type TestResult, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -2138,13 +2138,13 @@ export function PassationPage() {
                         const answer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
                         return answer?.code || currentQuestion.question.codeInitial || ''
                       })()}
-                      onCodeChange={(code) => {
+                      onCodeChange={(code, testResultsPublics) => {
                         const existingAnswer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
                         const activeLang = activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage
                         const answer: CodingAnswer = {
                           code,
                           language: activeLang,
-                          testResultsPublics: existingAnswer?.testResultsPublics,
+                          testResultsPublics: testResultsPublics || existingAnswer?.testResultsPublics,
                           lastSaved: existingAnswer?.lastSaved,
                         }
                         handleAnswerChange(currentQuestion.questionId, serializeCodingAnswer(answer))

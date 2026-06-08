@@ -227,14 +227,16 @@ export function gradeQCM(
 /**
  * Detect the grading scenario for an exam.
  *
- * Scenario A: 100% QCM/QCU → Full auto-grading, immediate final results
- * Scenario B: Mixed QCM/QCU + QRC/TRS/REFLEXION → Partial auto + manual correction
+ * Scenario A: 100% auto-gradable (QCU/QCM + CODE) → Full auto-grading, immediate final results
+ *   CODE questions are semi-auto: they get an auto score from test results,
+ *   but the teacher can override. They don't block the scenario from being 'A'.
+ * Scenario B: Mixed auto + manual correction (QRC/TRS/REFLEXION) → Partial auto + manual correction
  */
 export function detectGradingScenario(
   questions: Array<{ type: string }>
 ): GradingScenario {
   const autoGradableCount = questions.filter((q) =>
-    AUTO_GRADABLE_TYPES.includes(q.type)
+    AUTO_GRADABLE_TYPES.includes(q.type) || SEMI_AUTO_GRADABLE_TYPES.includes(q.type)
   ).length
   const manualCorrectionCount = questions.filter((q) =>
     MANUAL_CORRECTION_TYPES.includes(q.type)

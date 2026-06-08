@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Code2,
+  Download,
 } from 'lucide-react'
 import {
   type CodingLanguage,
@@ -37,6 +38,7 @@ import {
   getDefaultStarterCode,
   EXECUTION_CONFIG,
 } from '@/lib/coding-types'
+import { usePyodide } from '@/hooks/use-pyodide'
 
 // Dynamic import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -269,7 +271,7 @@ interface CodingQuestionStudentProps {
   testsPublics: TestCase[]
   bareme: number
   currentCode: string
-  onCodeChange: (code: string) => void
+  onCodeChange: (code: string, testResultsPublics?: TestResult[]) => void
   onLanguageChange?: (language: CodingLanguage) => void
   onSubmit: () => void
   isSubmitting?: boolean
@@ -305,6 +307,9 @@ export function CodingQuestionStudent({
   const lastSavedCodeRef = useRef<string>(currentCode)
   const prevLangRef = useRef<CodingLanguage>(initialLangage)
 
+  // Pyodide hook for Python execution
+  const { pyodideReady, loading: pyodideLoading, error: pyodideError, loadPyodide, runPythonTest } = usePyodide()
+
   // Sync with prop changes (e.g., when navigating between questions)
   useEffect(() => {
     if (initialLangage !== prevLangRef.current) {
@@ -312,6 +317,13 @@ export function CodingQuestionStudent({
       prevLangRef.current = initialLangage
     }
   }, [initialLangage])
+
+  // Pre-load Pyodide if the language is Python
+  useEffect(() => {
+    if (activeLanguage === 'python' && !pyodideReady && !pyodideLoading && !pyodideError) {
+      loadPyodide()
+    }
+  }, [activeLanguage, pyodideReady, pyodideLoading, pyodideError, loadPyodide])
 
   // Handle language change
   const handleLanguageChange = useCallback((newLang: CodingLanguage) => {
@@ -354,20 +366,13 @@ export function CodingQuestionStudent({
     setExecutionOutput('')
 
     try {
-      // For JS/TS: use client-side execution
+      let results: CodeExecutionResult
+
       if (activeLanguage === 'javascript' || activeLanguage === 'typescript') {
-        const results = executeClientSideJS(currentCode, testsPublics, fonctionSignature)
-        setTestResults(results.testResults)
-        setExecutionOutput(results.output)
-        if (results.error) setExecutionError(results.error)
+        results = executeClientSideJS(currentCode, testsPublics, fonctionSignature)
       } else if (activeLanguage === 'python') {
-        // For Python: attempt to use Pyodide if available, otherwise server-side
-        const results = await executePythonClient(currentCode, testsPublics, fonctionSignature)
-        setTestResults(results.testResults)
-        setExecutionOutput(results.output)
-        if (results.error) setExecutionError(results.error)
+        results = await executePythonInBrowser(currentCode, testsPublics, fonctionSignature, runPythonTest, pyodideReady, loadPyodide)
       } else {
-        // For C/Java: use server-side API
         const response = await fetch('/api/coding/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -378,18 +383,72 @@ export function CodingQuestionStudent({
             functionSignature: fonctionSignature,
           }),
         })
-        const data: CodeExecutionResult = await response.json()
-        setTestResults(data.testResults || [])
-        setExecutionOutput(data.output || '')
-        if (data.error) setExecutionError(data.error)
+        results = await response.json()
       }
+
+      setTestResults(results.testResults || [])
+      setExecutionOutput(results.output || '')
+      if (results.error) setExecutionError(results.error)
       setShowOutput(true)
+
+      // Save test results with the code
+      onCodeChange(currentCode, results.testResults)
+      lastSavedCodeRef.current = currentCode
+      setLastSaved(new Date())
     } catch (error) {
       setExecutionError(error instanceof Error ? error.message : 'Erreur d\'exécution')
     } finally {
       setIsRunning(false)
     }
-  }, [currentCode, activeLanguage, testsPublics, fonctionSignature])
+  }, [currentCode, activeLanguage, testsPublics, fonctionSignature, runPythonTest, pyodideReady, loadPyodide, onCodeChange])
+
+  // Handle "Submit" button — run tests first, then save and notify parent
+  const handleSubmitCode = useCallback(async () => {
+    setIsRunning(true)
+    setExecutionError('')
+    setExecutionOutput('')
+
+    try {
+      let results: CodeExecutionResult
+
+      if (activeLanguage === 'javascript' || activeLanguage === 'typescript') {
+        results = executeClientSideJS(currentCode, testsPublics, fonctionSignature)
+      } else if (activeLanguage === 'python') {
+        results = await executePythonInBrowser(currentCode, testsPublics, fonctionSignature, runPythonTest, pyodideReady, loadPyodide)
+      } else {
+        const response = await fetch('/api/coding/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: currentCode,
+            language: activeLanguage,
+            testCases: testsPublics,
+            functionSignature: fonctionSignature,
+          }),
+        })
+        results = await response.json()
+      }
+
+      setTestResults(results.testResults || [])
+      setExecutionOutput(results.output || '')
+      if (results.error) setExecutionError(results.error)
+      setShowOutput(true)
+
+      // Save code + test results
+      onCodeChange(currentCode, results.testResults)
+      lastSavedCodeRef.current = currentCode
+      setLastSaved(new Date())
+
+      // Notify parent (which will show toast / allow exam submission)
+      onSubmit()
+    } catch (error) {
+      // Even if test execution fails, still save the code and submit
+      onCodeChange(currentCode)
+      onSubmit()
+    } finally {
+      setIsRunning(false)
+    }
+  }, [currentCode, activeLanguage, testsPublics, fonctionSignature, runPythonTest, pyodideReady, loadPyodide, onCodeChange, onSubmit])
 
   // Handle reset code to initial template for current language
   const handleReset = useCallback(() => {
@@ -467,6 +526,25 @@ export function CodingQuestionStudent({
                 Sauvegardé à {lastSaved.toLocaleTimeString('fr-FR')}
               </span>
             )}
+            {/* Pyodide loading indicator */}
+            {activeLanguage === 'python' && pyodideLoading && (
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                Chargement de l'environnement Python...
+              </span>
+            )}
+            {activeLanguage === 'python' && pyodideReady && !pyodideLoading && (
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="h-2.5 w-2.5" />
+                Python prêt
+              </span>
+            )}
+            {activeLanguage === 'python' && pyodideError && (
+              <span className="text-[10px] text-red-500 flex items-center gap-1" title={pyodideError}>
+                <AlertTriangle className="h-2.5 w-2.5" />
+                Erreur Pyodide
+              </span>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -500,7 +578,7 @@ export function CodingQuestionStudent({
           <Button
             variant="outline"
             onClick={handleRun}
-            disabled={isRunning || isSubmitting || !currentCode.trim()}
+            disabled={isRunning || isSubmitting || !currentCode.trim() || (activeLanguage === 'python' && pyodideLoading)}
             className="gap-2"
           >
             {isRunning ? (
@@ -508,19 +586,19 @@ export function CodingQuestionStudent({
             ) : (
               <Play className="h-4 w-4" />
             )}
-            {isRunning ? 'Exécution...' : 'Exécuter'}
+            {isRunning ? 'Exécution...' : 'Exécuter les tests'}
           </Button>
           <Button
-            onClick={onSubmit}
-            disabled={isRunning || isSubmitting || !currentCode.trim()}
+            onClick={handleSubmitCode}
+            disabled={isRunning || isSubmitting || !currentCode.trim() || (activeLanguage === 'python' && pyodideLoading)}
             className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            {isSubmitting ? (
+            {isRunning || isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
             )}
-            {isSubmitting ? 'Soumission...' : 'Soumettre'}
+            {isRunning ? 'Exécution des tests...' : isSubmitting ? 'Sauvegarde...' : 'Sauvegarder et continuer'}
           </Button>
           <span className="text-[10px] text-muted-foreground flex items-center gap-1 ml-auto">
             <Clock className="h-3 w-3" />
@@ -571,7 +649,7 @@ export function CodingQuestionStudent({
   )
 }
 
-// ─── Client-side JavaScript Execution ───
+// ─── Client-side JavaScript Execution (Sandbox) ───
 
 function executeClientSideJS(
   code: string,
@@ -618,13 +696,15 @@ function executeClientSideJS(
         info: (...args: unknown[]) => {},
       }
 
-      const sandboxedFn = new Function('console', `"use strict"; ${fullCode}`)
+      // Sandboxed execution using Function constructor with strict mode
+      const sandboxedFn = new Function('console', 'require', 'process', 'global', 'fetch', 'XMLHttpRequest', 'eval', `"use strict"; ${fullCode}`)
 
-      // Simple timeout simulation using Promise.race
+      // Block access to Node.js globals by passing undefined
       let timedOut = false
       const timeoutId = setTimeout(() => { timedOut = true }, EXECUTION_CONFIG.timeout)
 
-      sandboxedFn(mockConsole)
+      sandboxedFn(mockConsole, undefined, undefined, undefined, undefined, undefined, undefined)
+
       clearTimeout(timeoutId)
 
       if (timedOut) {
@@ -673,92 +753,100 @@ function executeClientSideJS(
   }
 }
 
-// ─── Client-side Python Execution (Pyodide) ───
+// ─── Client-side Python Execution via Pyodide (Browser Sandbox) ───
 
-async function executePythonClient(
+async function executePythonInBrowser(
   code: string,
   testCases: TestCase[],
-  functionSignature?: string
+  functionSignature: string | undefined,
+  runPythonTest: (code: string, funcName: string, inputSerialized: string) => Promise<{ output: string; error: string | null }>,
+  pyodideReady: boolean,
+  loadPyodide: () => Promise<any>
 ): Promise<CodeExecutionResult> {
-  // Try to use Pyodide if available in the browser
-  if (typeof window !== 'undefined' && (window as any).loadPyodide) {
-    try {
-      const pyodide = await (window as any).loadPyodide()
-      const results: TestResult[] = []
+  const results: TestResult[] = []
+  let allOutput = ''
 
-      // Extract function name from signature
-      const funcMatch = functionSignature?.match(/def\s+(\w+)/)
-      const funcName = funcMatch?.[1]
-
-      for (const tc of testCases) {
-        const startTime = Date.now()
-        try {
-          let testCode = code
-          if (funcName) {
-            const inputArg = tc.entree
-            testCode = `${code}\nimport json\n_input = ${inputArg}\ntry:\n    _result = ${funcName}(_input)\n    print(_result if not isinstance(_result, (list, dict)) else json.dumps(_result))\nexcept Exception as e:\n    print(f"ERROR: {e}")`
-          }
-
-          const output = pyodide.runPython(testCode)
-          const outputStr = String(output || '').trim()
-          const expectedStr = tc.sortieAttendue.trim()
-          const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
-
-          results.push({
-            nom: tc.nom,
-            passed,
-            output: outputStr,
-            expected: expectedStr,
-            duration: Date.now() - startTime,
-          })
-        } catch (error) {
-          results.push({
-            nom: tc.nom,
-            passed: false,
-            output: '',
-            expected: tc.sortieAttendue,
-            error: error instanceof Error ? error.message : String(error),
-            duration: Date.now() - startTime,
-          })
-        }
-      }
-
-      const passedTests = results.filter(r => r.passed).length
+  // Ensure Pyodide is loaded
+  if (!pyodideReady) {
+    const pyodide = await loadPyodide()
+    if (!pyodide) {
       return {
-        success: passedTests === testCases.length,
-        output: results.map(r => r.output).join('\n'),
-        testResults: results,
+        success: false,
+        output: '',
+        error: 'Impossible de charger l\'environnement Python (Pyodide). Vérifiez votre connexion internet.',
+        testResults: testCases.map(tc => ({
+          nom: tc.nom,
+          passed: false,
+          output: '',
+          expected: tc.sortieAttendue,
+          error: 'Environnement Python non disponible',
+        })),
         totalTests: testCases.length,
-        passedTests,
+        passedTests: 0,
       }
-    } catch (error) {
-      // Pyodide failed, fall through to server-side
     }
   }
 
-  // Fallback: use server-side execution API
-  try {
-    const response = await fetch('/api/coding/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, language: 'python', testCases, functionSignature }),
-    })
-    return await response.json()
-  } catch (error) {
-    return {
-      success: false,
-      output: '',
-      error: 'Impossible d\'exécuter le code Python. Veuillez réessayer.',
-      testResults: testCases.map(tc => ({
+  // Extract function name from signature
+  const funcMatch = functionSignature?.match(/def\s+(\w+)/)
+  const funcName = funcMatch?.[1]
+
+  for (const tc of testCases) {
+    const startTime = Date.now()
+    try {
+      if (funcName) {
+        // Run the function with the test input
+        const inputArg = tc.entree
+        const result = await runPythonTest(code, funcName, inputArg)
+        const outputStr = result.output.trim()
+        const expectedStr = tc.sortieAttendue.trim()
+        const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
+
+        results.push({
+          nom: tc.nom,
+          passed,
+          output: outputStr,
+          expected: expectedStr,
+          error: result.error || undefined,
+          duration: Date.now() - startTime,
+        })
+        allOutput += (allOutput ? '\n' : '') + outputStr
+      } else {
+        // No function signature — run the code directly and capture output
+        const result = await runPythonTest(code, '', '')
+        const outputStr = result.output.trim()
+        const expectedStr = tc.sortieAttendue.trim()
+        const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
+
+        results.push({
+          nom: tc.nom,
+          passed,
+          output: outputStr,
+          expected: expectedStr,
+          error: result.error || undefined,
+          duration: Date.now() - startTime,
+        })
+        allOutput += (allOutput ? '\n' : '') + outputStr
+      }
+    } catch (error) {
+      results.push({
         nom: tc.nom,
         passed: false,
         output: '',
         expected: tc.sortieAttendue,
-        error: 'Exécution non disponible',
-      })),
-      totalTests: testCases.length,
-      passedTests: 0,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      })
     }
+  }
+
+  const passedTests = results.filter(r => r.passed).length
+  return {
+    success: passedTests === testCases.length,
+    output: allOutput,
+    testResults: results,
+    totalTests: testCases.length,
+    passedTests,
   }
 }
 
