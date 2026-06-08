@@ -186,7 +186,7 @@ async function _GET(
       const autoGradedTotal = autoGradedQuestions.reduce((sum, q) => sum + q.bareme, 0)
 
       const manualQuestions = unifiedQuestions.filter((q) =>
-        ['QRC', 'TRS', 'REFLEXION'].includes(q.question.type)
+        ['QRC', 'TRS', 'REFLEXION', 'CODE'].includes(q.question.type)
       )
 
       const needsCorrection = manualQuestions.filter((q) => {
