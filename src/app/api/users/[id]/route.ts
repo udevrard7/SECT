@@ -184,9 +184,10 @@ async function _PATCH(
       data.matricule = newMatricule
     }
 
-    // Handle niveau update
+    // Handle niveau update — validate against NiveauEtude enum
     if (body.niveau !== undefined) {
-      data.niveau = body.niveau || null
+      const VALID_NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2', 'DOCTORAT']
+      data.niveau = (body.niveau && VALID_NIVEAUX.includes(body.niveau)) ? body.niveau : null
     }
 
     const user = await db.user.update({
@@ -234,7 +235,7 @@ async function _PATCH(
           data: {
             type: 'WARNING',
             titre: 'Changement de votre matricule',
-            message: `Votre matricule a été modifié par un responsable de votre établissement.\n\nAncien matricule : ${oldMatricule || '(aucun)'}\nNouveau matricule : ${data.matricule || '(supprimé)'}\n\n⚠️ Important : Pour vous connecter, vous pouvez utiliser soit votre NOUVEAU matricule, soit votre adresse email (${existingUser.email}). Votre mot de passe reste inchangé.`,
+            message: `Votre matricule a été modifié par un responsable de votre établissement.\n\nAncien matricule : ${oldMatricule || '(aucun)'}\nNouveau matricule : ${data.matricule || '(supprimé)'}\n\n⚠️ Important : Pour vous connecter, vous pouvez utiliser soit votre NOUVEAU matricule, soit votre adresse email (${user.email}). Votre mot de passe reste inchangé.`,
             destinataireId: id,
             destinataireRole: 'ETUDIANT',
             priorite: 'HAUTE',
