@@ -164,3 +164,36 @@ Stage Summary:
 - Build error was caused by invalid regex in the new CODE question type API route
 - Fixed by using `new RegExp()` constructor instead of regex literal
 - Vercel deployment should now succeed with commit ac0de12
+
+---
+Task ID: 5
+Agent: main
+Task: Fix overlapping text in PDF Sujet and Corrigé exports
+
+Work Log:
+- User reported overlapping/illegible text in exported PDFs (Sujet + Corrigé)
+- Analyzed uploaded PDFs with VLM (converted to PNG via pdftoppm)
+- Identified 3 overlap bugs in epreuve-pdf.ts by code review:
+
+Bug 1: Question header — getTextWidth measured at wrong font size
+- "Question N" rendered at FONT_HEADING (11) bold, then font switched to FONT_SMALL (8) normal
+- doc.getTextWidth("Question N  ") called AFTER font change → measured at size 8 instead of 11
+- Result: type label "QCU (Choix unique)" positioned too close, overlapping "Question N"
+- Fix: Measure width BEFORE switching font, store in variable
+
+Bug 2: "Réponse correcte :" label overlaps answer text in Corrigé
+- Label "Réponse correcte :" rendered at (MARGIN_LEFT, y)
+- Answer text rendered at (MARGIN_LEFT + 10, y) on SAME y line
+- "Réponse correcte :" extends to ~x+48mm, answer starts at x+30mm → horizontal overlap
+- Fix: Add y += LINE_HEIGHT_BODY after label to move to next line
+
+Bug 3: "Réponse modèle :" and "Explication :" labels too close to content
+- Only 4-5mm gap after label, causing tight/potentially overlapping text
+- Fix: Changed to y += LINE_HEIGHT_BODY for consistent spacing
+
+Also updated estimateQuestionHeightCorrige() to account for additional line heights.
+
+Stage Summary:
+- All 3 overlap bugs fixed in /src/lib/pdf/epreuve-pdf.ts
+- Build and lint pass cleanly
+- Pushed to GitHub (commits c5fd124 + 45fb709 cleanup)
