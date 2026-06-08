@@ -52,12 +52,14 @@ interface ExamSession {
   id: string
   etudiantId: string
   epreuveId: string
-  statut: 'NON_COMMENCEE' | 'EN_COURS' | 'SOUMISE' | 'CORRIGEE'
+  statut: 'NON_COMMENCEE' | 'EN_COURS' | 'SOUMISE' | 'CORRIGEE' | 'RETOURNEE' | 'ABSENT' | 'NON_SOUMIS'
   dateDebut: string | null
   dateFin: string | null
   score: number | null
   alertes: number
   penalite?: number
+  logEvents?: string | null
+  propositionMappings?: string | null
 }
 
 interface ExamQuestion {
@@ -347,10 +349,10 @@ export function PassationPage() {
         setQuestions(questionsData)
 
         // Resume exam if there's an active session
-        if (activeSessionId && session) {
-          if (session.statut === 'EN_COURS' && session.dateDebut) {
+        if (activeSessionId && activeSession) {
+          if (activeSession.statut === 'EN_COURS' && activeSession.dateDebut) {
             // Resume: calculate remaining time
-            const start = new Date(session.dateDebut).getTime()
+            const start = new Date(activeSession.dateDebut).getTime()
             const end = start + epreuveInfo.duree * 60 * 1000
             const remaining = Math.max(0, Math.floor((end - Date.now()) / 1000))
             setTimeRemaining(remaining)
@@ -382,9 +384,9 @@ export function PassationPage() {
             }
 
             // Count fullscreen exits from logEvents to restore penalty count
-            if (session.logEvents) {
+            if (activeSession.logEvents) {
               try {
-                const logs = JSON.parse(session.logEvents as string)
+                const logs = JSON.parse(activeSession.logEvents as string)
                 const fsExits = logs.filter((l: { type: string }) => l.type === 'FULLSCREEN_EXIT').length
                 setFullscreenExitCount(fsExits)
               } catch {
@@ -763,11 +765,16 @@ export function PassationPage() {
     function handleKeyDown(e: KeyboardEvent) {
       const config = securityConfigRef.current
 
-      // Block Ctrl+C, Ctrl+V, Ctrl+U (if blocageCopie)
-      if (config.blocageCopie && e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'u')) {
+      // Block Ctrl+C, Ctrl+U (if blocageCopie) — always block these
+      // Block Ctrl+V (if blocageCopie) — but allow in code editors for CODE questions
+      const isInCodeEditor = !!(e.target as HTMLElement)?.closest?.('.monaco-editor, .code-editor-container')
+      if (config.blocageCopie && e.ctrlKey && (e.key === 'c' || e.key === 'u')) {
         e.preventDefault()
         if (e.key === 'c') logAlert('COPY_ATTEMPT', 'Ctrl+C')
-        if (e.key === 'v') logAlert('PASTE_ATTEMPT', 'Ctrl+V')
+      }
+      if (config.blocageCopie && e.ctrlKey && e.key === 'v' && !isInCodeEditor) {
+        e.preventDefault()
+        logAlert('PASTE_ATTEMPT', 'Ctrl+V')
       }
 
       // Always block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (DevTools)
