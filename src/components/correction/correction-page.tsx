@@ -246,6 +246,13 @@ function generateRubricCriteria(type: string, bareme: number): RubricCriterion[]
         { id: 'trs-exemples', label: `Exemples/appuis (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
         { id: 'trs-redaction', label: `Rédaction soignée (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
       ]
+    case 'CODE':
+      return [
+        { id: 'code-logique', label: `Logique correcte (+${Math.round(n * 0.4 * 10) / 10})`, points: Math.round(n * 0.4 * 10) / 10 },
+        { id: 'code-syntaxe', label: `Syntaxe correcte (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
+        { id: 'code-tests', label: `Tests passés (+${Math.round(n * 0.3 * 10) / 10})`, points: Math.round(n * 0.3 * 10) / 10 },
+        { id: 'code-style', label: `Bon style de code (+${Math.round(n * 0.1 * 10) / 10})`, points: Math.round(n * 0.1 * 10) / 10 },
+      ]
     default:
       return [
         { id: 'def-complete', label: `Réponse complète (+${n})`, points: n },
