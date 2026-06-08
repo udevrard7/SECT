@@ -40,6 +40,8 @@ import {
   parseFunctionSignature,
   EXECUTION_CONFIG,
 } from '@/lib/coding-types'
+import { validateCode } from '@/lib/code-sandbox-validator'
+import { executeInIframeSandbox } from '@/lib/iframe-sandbox'
 import { usePyodide } from '@/hooks/use-pyodide'
 
 // Dynamic import Monaco Editor to avoid SSR issues
@@ -229,9 +231,9 @@ export function TestResultsDisplay({ testResults, isPublic = true, showDetails =
               </button>
               {showDetails && expandedTests.has(test.nom + idx) && (
                 <div className="px-3 pb-2 space-y-1 border-t bg-muted/20">
-                  {test.description && (
-                    <p className="text-[10px] text-muted-foreground pt-1">{test.description}</p>
-                  )}
+                  {'description' in test && (test as Record<string, unknown>).description ? (
+                    <p className="text-[10px] text-muted-foreground pt-1">{String((test as Record<string, unknown>).description)}</p>
+                  ) : null}
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
                     <div>
                       <span className="font-medium text-muted-foreground">Attendu :</span>
@@ -371,8 +373,19 @@ export function CodingQuestionStudent({
     try {
       let results: CodeExecutionResult
 
+      // Pre-execution code validation (security layer)
+      const validation = validateCode(currentCode, activeLanguage)
+      if (!validation.safe) {
+        setExecutionError('Code non autorisé : ' + validation.errors.join('; '))
+        setTestResults([])
+        setShowOutput(true)
+        setIsRunning(false)
+        return
+      }
+
       if (activeLanguage === 'javascript' || activeLanguage === 'typescript') {
-        results = executeClientSideJS(currentCode, testsPublics, fonctionSignature)
+        // Use iframe sandbox for TRUE isolation
+        results = await executeInIframeSandbox(currentCode, testsPublics, fonctionSignature)
       } else if (activeLanguage === 'python') {
         results = await executePythonInBrowser(currentCode, testsPublics, fonctionSignature, runPythonTest, pyodideReady, loadPyodide)
       } else {
@@ -412,10 +425,24 @@ export function CodingQuestionStudent({
     setExecutionOutput('')
 
     try {
+      // Pre-execution code validation (security layer)
+      const validation = validateCode(currentCode, activeLanguage)
+      if (!validation.safe) {
+        setExecutionError('Code non autorisé : ' + validation.errors.join('; '))
+        setTestResults([])
+        setShowOutput(true)
+        // Still submit even if validation fails — the code is saved
+        onCodeChange(currentCode)
+        onSubmit()
+        setIsRunning(false)
+        return
+      }
+
       let results: CodeExecutionResult
 
       if (activeLanguage === 'javascript' || activeLanguage === 'typescript') {
-        results = executeClientSideJS(currentCode, testsPublics, fonctionSignature)
+        // Use iframe sandbox for TRUE isolation
+        results = await executeInIframeSandbox(currentCode, testsPublics, fonctionSignature)
       } else if (activeLanguage === 'python') {
         results = await executePythonInBrowser(currentCode, testsPublics, fonctionSignature, runPythonTest, pyodideReady, loadPyodide)
       } else {
@@ -656,114 +683,9 @@ export function CodingQuestionStudent({
   )
 }
 
-// ─── Client-side JavaScript Execution (Sandbox) ───
-
-function executeClientSideJS(
-  code: string,
-  testCases: TestCase[],
-  functionSignature?: string
-): CodeExecutionResult {
-  const results: TestResult[] = []
-  let allOutput = ''
-
-  // Try to extract function name from signature first, then from code
-  const sigParsed = parseFunctionSignature(functionSignature || '')
-  const funcNameFromSig = sigParsed?.funcName || null
-  const funcMatch = code.match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\())/m)
-  const funcNameFromCode = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
-  const funcName = funcNameFromSig || funcNameFromCode
-
-  for (const tc of testCases) {
-    const startTime = Date.now()
-    try {
-
-      let fullCode = code
-
-      if (funcName) {
-        let inputArg: unknown
-        try {
-          inputArg = JSON.parse(tc.entree)
-        } catch {
-          inputArg = tc.entree
-        }
-        const inputSerialized = typeof inputArg === 'string'
-          ? `"${inputArg.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
-          : JSON.stringify(inputArg)
-
-        fullCode = `${code}
-        ;try {
-          const _input = ${inputSerialized};
-          const _result = ${funcName}(Array.isArray(_input) ? ..._input : _input);
-          console.log(typeof _result === 'object' ? JSON.stringify(_result) : String(_result));
-        } catch(e) {
-          console.error('ERROR:', e.message);
-        }`
-      }
-
-      const output: string[] = []
-      const mockConsole = {
-        log: (...args: unknown[]) => output.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
-        error: (...args: unknown[]) => output.push('ERROR: ' + args.map(a => String(a)).join(' ')),
-        warn: (...args: unknown[]) => {},
-        info: (...args: unknown[]) => {},
-      }
-
-      // Sandboxed execution using Function constructor with strict mode
-      const sandboxedFn = new Function('console', 'require', 'process', 'global', 'fetch', 'XMLHttpRequest', 'eval', `"use strict"; ${fullCode}`)
-
-      // Block access to Node.js globals by passing undefined
-      let timedOut = false
-      const timeoutId = setTimeout(() => { timedOut = true }, EXECUTION_CONFIG.timeout)
-
-      sandboxedFn(mockConsole, undefined, undefined, undefined, undefined, undefined, undefined)
-
-      clearTimeout(timeoutId)
-
-      if (timedOut) {
-        results.push({
-          nom: tc.nom,
-          passed: false,
-          output: '',
-          expected: tc.sortieAttendue,
-          error: `Timeout : l'exécution a dépassé ${EXECUTION_CONFIG.timeout / 1000}s`,
-          duration: EXECUTION_CONFIG.timeout,
-        })
-        continue
-      }
-
-      const outputStr = output.join('\n').trim()
-      const expectedStr = tc.sortieAttendue.trim()
-      const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
-
-      results.push({
-        nom: tc.nom,
-        passed,
-        output: outputStr,
-        expected: expectedStr,
-        duration: Date.now() - startTime,
-      })
-      allOutput += (allOutput ? '\n' : '') + outputStr
-    } catch (error) {
-      results.push({
-        nom: tc.nom,
-        passed: false,
-        output: '',
-        expected: tc.sortieAttendue,
-        error: error instanceof Error ? error.message : String(error),
-        duration: Date.now() - startTime,
-      })
-    }
-  }
-
-  const passedTests = results.filter(r => r.passed).length
-  return {
-    success: passedTests === testCases.length,
-    output: allOutput,
-    testResults: results,
-    totalTests: testCases.length,
-    passedTests,
-  }
-}
+// NOTE: Client-side JS/TS execution now uses iframe sandbox via executeInIframeSandbox()
+// See src/lib/iframe-sandbox.ts for the secure implementation.
+// The old executeClientSideJS() using new Function() has been removed for security reasons.
 
 // ─── Client-side Python Execution via Pyodide (Browser Sandbox) ───
 
