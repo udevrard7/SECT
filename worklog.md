@@ -323,3 +323,39 @@ Stage Summary:
 - Teachers can now select/change programming language when creating or editing CODE questions
 - CODE questions are now supported in both AI generation page and question bank
 - CODE questions now appear in the correction interface with appropriate rubric criteria
+---
+Task ID: 1
+Agent: Main Agent
+Task: Refonte complète ergonomique de la page Correction
+
+Work Log:
+- Analysé la page de correction actuelle (2078 lignes) : layout split 30/70 avec sous-panneaux verticaux, 5 badges par question, navigation éparpillée, pas de raccourcis clavier
+- Conçu nouvelle architecture ergonomique : toolbar en haut + sidebar compacte (collapsible) + zone principale avec flux vertical
+- Implémenté la refonte complète (~2090 lignes) avec les améliorations suivantes :
+  1. **Toolbar consolidé** : sélecteur épreuve, mode toggle, barre de progression, recherche, actions batch, hint raccourcis clavier
+  2. **Sidebar compacte** (280px, collapsible en mode icône) : liste étudiants avec points de statut colorés + scores
+  3. **En-tête question compact** : une seule ligne avec séparateurs "Q3 · Rép. courte · 4pts · ● Moyen"
+  4. **Flux vertical naturel** : Énoncé → Réponse attendue (collapsible, ouvert par défaut) → Réponse étudiant → Suggestion IA (collapsible) → Section Notation
+  5. **Section Notation proéminente** : en-tête avec icône + bordure emerald + gradient, critères cliquables, champ Note plus grand, boutons "Suggérer une note" / "Sauvegarder" avec kbd Ctrl+S
+  6. **Navigation sticky en bas** : boutons Préc./Suiv. + points de navigation par question + barre Finaliser
+  7. **Raccourcis clavier** : ← → navigation questions, Ctrl+S sauvegarder
+  8. **Mode horizontal (Par question)** : table d'étudiants pour une question avec critères compacts, score, commentaire, bouton Appliquer IA
+  9. **Mobile responsive** : sidebar devient Sheet/drawer sur mobile
+  10. **Dark mode complet** : toutes les classes dark: incluses
+- Corrigé après test Agent Browser + analyse VLM :
+  - Changé navigation "Q0"/"Q2" → "Préc."/"Suiv." pour les deux modes
+  - Changé "Réponse attendue" ouvert par défaut (était fermé)
+  - Ajouté en-tête "Notation" proéminent avec icône PenTool et gradient
+  - Agrandi le champ Note (w-24, h-9, font-bold, text-base) et le ScoreCircle (size="md")
+  - Renommé "Suggérer" → "Suggérer une note" et "Commentaire" → "Commentaire pour l'étudiant"
+  - Ajouté `<kbd>` tag pour Ctrl+S au lieu de texte simple
+- Lint : 0 erreurs, dev server fonctionnel
+- Commit et push à faire
+
+Stage Summary:
+- Page de correction entièrement refaite avec design ergonomique moderne
+- Layout 2-panneaux + toolbar au lieu de split 30/70 avec sous-panneaux verticaux
+- Section notation beaucoup plus visible et proéminente
+- Navigation plus intuitive (Préc./Suiv. + dots + raccourcis clavier)
+- Mode horizontal fonctionnel avec critères compacts par étudiant
+- Toute la logique métier préservée (mêmes API endpoints, mêmes handlers)
