@@ -531,6 +531,15 @@ function buildQuestionsFromContenu(
       }
     }
 
+    // For CODE questions, extract CODE-specific fields before stripping reponseCorrecte
+    const codeFields: Record<string, unknown> = {}
+    if (qType === 'CODE') {
+      if (q.langage) codeFields.langage = String(q.langage)
+      if (q.codeInitial) codeFields.codeInitial = String(q.codeInitial)
+      if (q.fonctionSignature) codeFields.fonctionSignature = String(q.fonctionSignature)
+      if (Array.isArray(q.testsPublics)) codeFields.testsPublics = q.testsPublics
+    }
+
     return {
       id: qId,
       questionId: qId,
@@ -545,6 +554,7 @@ function buildQuestionsFromContenu(
         themes: null,
         reponseCorrecte: undefined,
         explication: undefined,
+        ...codeFields,
       },
     }
   })
@@ -584,12 +594,30 @@ function buildQuestionsFromRelations(
   }
 
   return questionsForStudent.map((eq, idx) => {
+    // For CODE questions, extract CODE-specific fields from reponseCorrecte JSON before stripping it
+    let codeFields: Record<string, unknown> = {}
+    if (eq.question.type === 'CODE' && eq.question.reponseCorrecte) {
+      try {
+        const parsed = JSON.parse(eq.question.reponseCorrecte)
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.langage) codeFields.langage = String(parsed.langage)
+          if (parsed.codeInitial) codeFields.codeInitial = String(parsed.codeInitial)
+          if (parsed.fonctionSignature) codeFields.fonctionSignature = String(parsed.fonctionSignature)
+          if (Array.isArray(parsed.testsPublics)) codeFields.testsPublics = parsed.testsPublics
+        }
+      } catch {
+        // reponseCorrecte is not valid JSON — ignore
+      }
+    }
+
     const questionObj: Record<string, unknown> = {
       ...eq.question,
       propositions: eq.question.propositions ? JSON.parse(eq.question.propositions) : null,
       reponseCorrecte: undefined,
       explication: undefined,
       themes: eq.question.themes ? JSON.parse(eq.question.themes) : null,
+      // Inject CODE-specific fields extracted from reponseCorrecte
+      ...codeFields,
     }
 
     if (AUTO_GRADABLE_TYPES.includes(eq.question.type) && eq.question.propositions) {
