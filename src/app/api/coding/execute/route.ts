@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { execSync } from 'child_process'
+import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { withAuth, AuthenticatedHandler } from '@/lib/auth-session'
 import { EXECUTION_CONFIG, type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult } from '@/lib/coding-types'
 
@@ -48,16 +52,15 @@ async function handler(
         result = executeJavaScript(code, testCases, functionSignature)
         break
       case 'python':
-        result = executePythonSimulated(code, testCases, functionSignature)
+        result = executePythonSandboxed(code, testCases, functionSignature)
         break
       case 'c':
       case 'java':
-        // For C/Java, we return a simulated result since we can't run these server-side
-        // In production, this would call Judge0 or Piston API
+        // C/Java require external compiler — not available in this environment
         result = {
           success: false,
           output: '',
-          error: `L'exécution ${language.toUpperCase()} nécessite un environnement externe (Judge0/Piston). Veuillez tester votre code localement.`,
+          error: `L'exécution ${language.toUpperCase()} nécessite un environnement externe. Veuillez tester votre code localement.`,
           testResults: testCases.map(tc => ({
             nom: tc.nom,
             passed: false,
@@ -137,9 +140,9 @@ function executeJavaScript(
         warn: (...args: unknown[]) => { output.push('WARN: ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')) },
       }
 
-      // Create a sandboxed function
-      const sandboxedFn = new Function('console', `"use strict"; ${fullCode}`)
-      sandboxedFn(mockConsole)
+      // Create a sandboxed function with blocked globals
+      const sandboxedFn = new Function('console', 'require', 'process', 'global', 'fetch', 'XMLHttpRequest', 'eval', `"use strict"; ${fullCode}`)
+      sandboxedFn(mockConsole, undefined, undefined, undefined, undefined, undefined, undefined)
 
       const outputStr = output.join('\n').trim()
       const expectedStr = tc.sortieAttendue.trim()
@@ -177,27 +180,166 @@ function executeJavaScript(
 }
 
 /**
- * Simulated Python execution.
- * Server-side Python execution is not available; client should use Pyodide.
+ * Execute Python code server-side in a sandboxed subprocess.
+ * Uses python3 with resource limits and a temporary file.
  */
-function executePythonSimulated(
+function executePythonSandboxed(
   code: string,
   testCases: TestCase[],
   functionSignature?: string
 ): CodeExecutionResult {
+  const results: TestResult[] = []
+  let allOutput = ''
+
+  // Extract function name from signature
+  const funcMatch = functionSignature?.match(/def\s+(\w+)/)
+  const funcName = funcMatch?.[1]
+
+  // Create a temporary directory for execution
+  const tmpDir = join(tmpdir(), `sect_python_${Date.now()}_${Math.random().toString(36).slice(2)}`)
+
+  try {
+    mkdirSync(tmpDir, { recursive: true })
+
+    for (const tc of testCases) {
+      const startTime = Date.now()
+      const scriptFile = join(tmpDir, `test_${tc.nom.replace(/[^a-zA-Z0-9]/g, '_')}.py`)
+
+      try {
+        // Build test script
+        let testScript: string
+
+        if (funcName) {
+          testScript = `${code}
+
+import json
+import sys
+
+_test_input = ${tc.entree}
+try:
+    if isinstance(_test_input, list):
+        _test_result = ${funcName}(*_test_input)
+    elif isinstance(_test_input, dict):
+        _test_result = ${funcName}(**_test_input)
+    else:
+        _test_result = ${funcName}(_test_input)
+    if isinstance(_test_result, (list, dict)):
+        print(json.dumps(_test_result, ensure_ascii=False))
+    else:
+        print(_test_result)
+except Exception as _e:
+    print(f"ERROR: {_e}", file=sys.stderr)
+    sys.exit(1)
+`
+        } else {
+          testScript = code
+        }
+
+        // Write the test script to a temp file
+        writeFileSync(scriptFile, testScript, { encoding: 'utf-8' })
+
+        // Execute with resource limits
+        const timeout = Math.min(EXECUTION_CONFIG.timeout, 10000) // Max 10s per test
+        let stdout: string
+        let stderr: string
+
+        try {
+          stdout = execSync(
+            `python3 -c "
+import resource
+resource.setrlimit(resource.RLIMIT_AS, (128 * 1024 * 1024, 128 * 1024 * 1024))
+resource.setrlimit(resource.RLIMIT_CPU, (${Math.ceil(timeout / 1000)}, ${Math.ceil(timeout / 1000) + 1}))
+exec(open('${scriptFile}').read())
+"`,
+            {
+              timeout: timeout + 2000, // Give 2s extra for process overhead
+              maxBuffer: 1024 * 1024, // 1MB max output
+              encoding: 'utf-8',
+              cwd: tmpDir,
+              env: {
+                PATH: process.env.PATH || '',
+                HOME: tmpDir,
+                PYTHONPATH: '',
+                PYTHONDONTWRITEBYTECODE: '1',
+                PYTHONUNBUFFERED: '1',
+              },
+              stdio: ['pipe', 'pipe', 'pipe'],
+            }
+          )
+          stderr = ''
+        } catch (execError: any) {
+          stdout = execError.stdout || ''
+          stderr = execError.stderr || ''
+          if (execError.killed) {
+            results.push({
+              nom: tc.nom,
+              passed: false,
+              output: '',
+              expected: tc.sortieAttendue,
+              error: `Timeout : l'exécution a dépassé ${timeout / 1000}s`,
+              duration: timeout,
+            })
+            continue
+          }
+        }
+
+        const outputStr = stdout.trim()
+        const errorStr = stderr.trim()
+        const expectedStr = tc.sortieAttendue.trim()
+
+        // Check for ERROR in stderr
+        if (errorStr && !outputStr) {
+          results.push({
+            nom: tc.nom,
+            passed: false,
+            output: '',
+            expected: expectedStr,
+            error: errorStr.split('\n').pop() || errorStr,
+            duration: Date.now() - startTime,
+          })
+          continue
+        }
+
+        const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
+
+        results.push({
+          nom: tc.nom,
+          passed,
+          output: outputStr,
+          expected: expectedStr,
+          error: passed ? undefined : (errorStr ? errorStr.split('\n').pop() : undefined),
+          duration: Date.now() - startTime,
+        })
+        allOutput += (allOutput ? '\n' : '') + outputStr
+      } catch (error) {
+        results.push({
+          nom: tc.nom,
+          passed: false,
+          output: '',
+          expected: tc.sortieAttendue,
+          error: error instanceof Error ? error.message : String(error),
+          duration: Date.now() - startTime,
+        })
+      }
+    }
+  } finally {
+    // Clean up temp directory
+    try {
+      if (existsSync(tmpDir)) {
+        rmSync(tmpDir, { recursive: true, force: true })
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+
+  const passedTests = results.filter(r => r.passed).length
   return {
-    success: false,
-    output: '',
-    error: 'L\'exécution Python côté serveur n\'est pas disponible. L\'exécution se fera côté navigateur via Pyodide.',
-    testResults: testCases.map(tc => ({
-      nom: tc.nom,
-      passed: false,
-      output: '',
-      expected: tc.sortieAttendue,
-      error: 'En attente d\'exécution côté client',
-    })),
+    success: passedTests === testCases.length,
+    output: allOutput,
+    testResults: results,
     totalTests: testCases.length,
-    passedTests: 0,
+    passedTests,
   }
 }
 
