@@ -16,7 +16,7 @@ import {
   MANUAL_CORRECTION_TYPES,
 } from '@/lib/grading'
 import { withAuth } from '@/lib/auth-session'
-import { type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult, EXECUTION_CONFIG, parseCodingAnswer } from '@/lib/coding-types'
+import { type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult, EXECUTION_CONFIG, parseCodingAnswer, parseFunctionSignature } from '@/lib/coding-types'
 
 async function _POST(
   request: NextRequest,
@@ -441,9 +441,13 @@ function executeJavaScriptServer(
   for (const tc of testCases) {
     const startTime = Date.now()
     try {
+      // Try to extract function name from signature first, then from code
+      const sigParsed = parseFunctionSignature(functionSignature || '')
+      const funcNameFromSig = sigParsed?.funcName || null
       const funcNameRegex = new RegExp('(?:function\\s+(\\w+)|(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:function|\\())', 'm')
       const funcMatch = code.match(funcNameRegex)
-      const funcName = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
+      const funcNameFromCode = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
+      const funcName = funcNameFromSig || funcNameFromCode
 
       let fullCode: string
       if (funcName) {
@@ -525,8 +529,9 @@ function executePythonServer(
   const results: TestResult[] = []
   let allOutput = ''
 
-  const funcMatch = functionSignature?.match(/def\s+(\w+)/)
-  const funcName = funcMatch?.[1]
+  // Extract function name from signature using cross-language parser
+  const sigParsed = parseFunctionSignature(functionSignature || '')
+  const funcName = sigParsed?.funcName || null
 
   const tmpDir = join(tmpdir(), `sect_grade_${Date.now()}_${Math.random().toString(36).slice(2)}`)
 
