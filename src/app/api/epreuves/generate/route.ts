@@ -676,12 +676,14 @@ ${finalQCU > 0 ? '   - "QCU" : Question à Choix Unique (Une seule bonne répons
 ${finalQCM > 0 ? '   - "QCM" : Question à Choix Multiples (Plusieurs bonnes réponses possibles dans le tableau \'reponses_correctes\').' : '   - "QCM" : INTERDIT — Ne génère PAS de questions QCM pour cette épreuve.'}
 ${finalQRC > 0 ? '   - "QRC" : Question à Réponse Courte (Pas d\'options, l\'étudiant doit formuler une réponse brève. Fournis les mots ou phrases clés attendus).' : '   - "QRC" : INTERDIT — Ne génère PAS de questions QRC pour cette épreuve.'}
 ${finalREFLEXION > 0 ? '   - "REFLEXION" : Mini sujet de réflexion ou résolution de problème (Mise en situation concrète où l\'étudiant doit analyser et rédiger une solution. Fournis un guide de correction détaillé pour l\'enseignant).' : '   - "REFLEXION" : INTERDIT — Ne génère PAS de questions REFLEXION pour cette épreuve.'}
+${finalCODE > 0 ? '   - "CODE" : Exercice de programmation avec code initial, signature de fonction, tests publics et privés. L\'étudiant doit implémenter une fonction selon la spécification donnée.' : '   - "CODE" : INTERDIT — Ne génère PAS de questions CODE pour cette épreuve.'}
 
 Génère une épreuve structurée contenant exactement:
 ${finalQCU > 0 ? `- ${finalQCU} question(s) QCU (Choix Unique)` : ''}
 ${finalQCM > 0 ? `- ${finalQCM} question(s) QCM (Choix Multiples)` : ''}
 ${finalQRC > 0 ? `- ${finalQRC} question(s) QRC (Réponse Courte)` : ''}
 ${finalREFLEXION > 0 ? `- ${finalREFLEXION} question(s) REFLEXION (Mini sujet de réflexion)` : ''}
+${finalCODE > 0 ? `- ${finalCODE} question(s) CODE (Exercice de programmation)` : ''}
 
 CRITIQUE: Tu dois UNIQUEMENT générer les types de questions demandés ci-dessus. Ne génère AUCUN autre type de question. Si seul le type QCM est demandé, génère EXCLUSIVEMENT des questions QCM.
 
@@ -702,7 +704,7 @@ Réponds UNIQUEMENT en JSON valide avec la structure suivante:
   "questions": [
     {
       "id": "q1",
-      "type": "QCU|QCM|QRC|REFLEXION",
+      "type": "QCU|QCM|QRC|REFLEXION|CODE",
       "enonce": "Énoncé complet de la question",
       "propositions": [{"id": "a", "text": "Proposition A"}, {"id": "b", "text": "Proposition B"}, {"id": "c", "text": "Proposition C"}, {"id": "d", "text": "Proposition D"}],
       "reponseCorrecte": "a" ou ["a", "c"] ou "Réponse modèle attendue",
@@ -710,7 +712,12 @@ Réponds UNIQUEMENT en JSON valide avec la structure suivante:
       "difficulte": "FACILE|MOYEN|DIFFICILE|EXPERT",
       "bareme": 2,
       "ueCode": "Code de l'UE (ex: CS101)",
-      "ueNom": "Nom de l'UE (ex: Algorithmique)"
+      "ueNom": "Nom de l'UE (ex: Algorithmique)",
+      "langage": "python|javascript|typescript|c|java (UNIQUEMENT pour type=CODE)",
+      "codeInitial": "Code de démarrage avec la signature de fonction (UNIQUEMENT pour type=CODE)",
+      "fonctionSignature": "Signature de la fonction attendue (UNIQUEMENT pour type=CODE)",
+      "testsPublics": [{"nom": "cas_normal_1", "entree": "[1,2,3]", "sortieAttendue": "2", "description": "Test avec liste standard"}] (UNIQUEMENT pour type=CODE, 3-5 tests),
+      "testsPrives": [{"nom": "cas_limite_vide", "entree": "[]", "sortieAttendue": "0", "description": "Test avec liste vide"}] (UNIQUEMENT pour type=CODE, 5-8 tests)
     }
   ],
   "baremeTotal": ${targetNoteTotal}
@@ -721,6 +728,7 @@ Règles de formatage par type:
 - QCM: propositions = [{id, text}] avec 3 à 5 options, reponseCorrecte = tableau des ids des bonnes réponses (ex: ["a", "c"])
 - QRC: propositions = null, reponseCorrecte = les mots ou phrases clés attendus en texte
 - REFLEXION: propositions = null, enonce = mise en situation concrète + consigne de résolution détaillée, reponseCorrecte = guide de correction détaillé pour l'enseignant (critères d'évaluation, éléments de réponse attendus, barème indicatif par partie)
+- CODE: propositions = null, langage = langage de programmation (python recommandé), codeInitial = code de démarrage avec TODO/commentaire, fonctionSignature = signature de la fonction, reponseCorrecte = solution complète fonctionnelle, testsPublics = 3-5 tests visibles (cas normaux), testsPrives = 5-8 tests cachés (cas limites, erreurs, robustesse). bareme plus élevé (4-8 pts car exercice complexe).
 - ueCode et ueNom: OBLIGATOIRES pour chaque question — identifient l'Unité d'Enseignement à laquelle la question se rattache. Si le contenu couvre plusieurs UE, classe chaque question dans l'UE correspondante.
 
 Règles de qualité:
@@ -731,7 +739,7 @@ Règles de qualité:
 - L'épreuve doit couvrir les principaux thèmes des documents de manière équilibrée
 - Le barème (bareme) est un nombre entier ou demi-point par question
 - IMPORTANT: La somme de tous les bareme individuels doit être EXACTEMENT égale à ${targetNoteTotal} (baremeTotal = ${targetNoteTotal})
-- Les questions REFLEXION doivent avoir un bareme plus élevé (4-6 pts), les QRC un bareme moyen (2-4 pts), les QCU/QCM un bareme plus faible (1-2 pts)
+- Les questions REFLEXION doivent avoir un bareme plus élevé (4-6 pts), les CODE un bareme élevé (4-8 pts), les QRC un bareme moyen (2-4 pts), les QCU/QCM un bareme plus faible (1-2 pts)
 - Les questions doivent progresser en difficulté (QCU faciles → REFLEXION expertes)
 - baremeTotal = somme de tous les bareme individuels = ${targetNoteTotal}${ueInstructionsSingle}${config.tonPedagogique ? `\n- Ton pédagogique: ${config.tonPedagogique}` : ''}${config.themes && config.themes.length > 0 ? `\n- Concentre-toi sur ces thèmes: ${config.themes.join(', ')}` : ''}${config.themesExclus && config.themesExclus.length > 0 ? `\n- Évite ces thèmes: ${config.themesExclus.join(', ')}` : ''}${config.niveau ? `\n- Niveau cible des étudiants: ${config.niveau}` : ''}`
 
@@ -877,7 +885,7 @@ Règles de qualité:
     }
 
     // Prepare sanitized question data in the new contenu format
-    const validTypes = ['QCU', 'QCM', 'QRC', 'REFLEXION']
+    const validTypes = ['QCU', 'QCM', 'QRC', 'REFLEXION', 'CODE']
     const validDifficultes = ['FACILE', 'MOYEN', 'DIFFICILE', 'EXPERT']
 
     // Build the set of allowed question types based on teacher's configuration
@@ -886,6 +894,7 @@ Règles de qualité:
     if (finalQCM > 0) allowedTypes.add('QCM')
     if (finalQRC > 0) allowedTypes.add('QRC')
     if (finalREFLEXION > 0) allowedTypes.add('REFLEXION')
+    if (finalCODE > 0) allowedTypes.add('CODE')
 
     const sanitizedQuestions = generatedExam.questions
       .map((q: Record<string, unknown>, idx: number) => {
@@ -903,6 +912,16 @@ Règles de qualité:
         const qUeCode = q.ueCode ? String(q.ueCode) : null
         const qUeNom = q.ueNom ? String(q.ueNom) : null
 
+        // CODE-specific fields
+        const codeFields: Record<string, unknown> = {}
+        if (qType === 'CODE') {
+          if (q.langage) codeFields.langage = String(q.langage)
+          if (q.codeInitial) codeFields.codeInitial = String(q.codeInitial)
+          if (q.fonctionSignature) codeFields.fonctionSignature = String(q.fonctionSignature)
+          if (q.testsPublics && Array.isArray(q.testsPublics)) codeFields.testsPublics = q.testsPublics
+          if (q.testsPrives && Array.isArray(q.testsPrives)) codeFields.testsPrives = q.testsPrives
+        }
+
         return {
           id: q.id || `q${idx + 1}`,
           type: qType,
@@ -914,6 +933,7 @@ Règles de qualité:
           bareme: typeof q.bareme === 'number' ? q.bareme : 1,
           ueCode: qUeCode,
           ueNom: qUeNom,
+          ...codeFields,
         }
       })
       .filter(Boolean)
