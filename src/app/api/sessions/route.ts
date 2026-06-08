@@ -170,17 +170,17 @@ async function _POST(
       return NextResponse.json({ error: 'Épreuve non trouvée' }, { status: 404 })
     }
 
-    if (!['PLANIFIEE', 'EN_COURS'].includes(epreuve.statut)) {
-      return NextResponse.json(
-        { error: 'Cette épreuve n\'est plus disponible' },
-        { status: 400 }
-      )
-    }
-
     if (epreuve.statut === 'CLOTUREE') {
       return NextResponse.json(
         { error: 'Cette épreuve est clôturée, les soumissions ne sont plus acceptées', code: 'EPREUVE_CLOTUREE' },
         { status: 403 }
+      )
+    }
+
+    if (!['PLANIFIEE', 'EN_COURS'].includes(epreuve.statut)) {
+      return NextResponse.json(
+        { error: 'Cette épreuve n\'est plus disponible' },
+        { status: 400 }
       )
     }
 

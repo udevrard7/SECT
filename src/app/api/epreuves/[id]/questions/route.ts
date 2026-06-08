@@ -114,6 +114,9 @@ async function _GET(
             propositions: displayPropositions,
             difficulte: String(q.difficulte || 'MOYEN'),
             themes: null,
+            // Strip correct answer and explanation for security
+            reponseCorrecte: undefined,
+            explication: undefined,
             // CODE-specific fields
             ...(qType === 'CODE' ? {
               langage: String(q.langage || 'javascript'),

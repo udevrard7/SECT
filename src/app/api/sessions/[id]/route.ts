@@ -8,6 +8,7 @@ import {
   detectGradingScenario,
   areAllAnswersGraded,
   AUTO_GRADABLE_TYPES,
+  SEMI_AUTO_GRADABLE_TYPES,
   MANUAL_CORRECTION_TYPES,
 } from '@/lib/grading'
 import { withAuth } from '@/lib/auth-session'
@@ -104,6 +105,8 @@ async function _POST(
     let autoGradedScore = 0
     const detailParQuestion: Record<string, unknown>[] = []
 
+    // NOTE: This POST handler is deprecated in favor of /api/sessions/[id]/submit
+    // which has full CODE question support. Kept for backward compatibility.
     for (const qg of questionsForGrading) {
       const reponse = session.reponses.find((r) => r.questionId === qg.questionId || r.questionId === qg.id)
       const correctAnswer = parseCorrectAnswer(qg.reponseCorrecte)
@@ -120,12 +123,30 @@ async function _POST(
         const result = gradeQCM(reponse?.contenu || null, correctAnswer, qg.bareme, mapping)
         questionScore = result.score
         isAutoGraded = true
+      } else if (qg.type === 'CODE') {
+        // CODE questions: if no reponse, score 0. Otherwise, pending manual correction.
+        if (!reponse?.contenu) {
+          questionScore = 0
+          isAutoGraded = true
+        } else {
+          // Semi-auto: will be graded by the dedicated submit route or manual correction
+          isAutoGraded = false
+        }
       }
 
       if (reponse && isAutoGraded) {
         await db.reponse.update({
           where: { id: reponse.id },
           data: { score: questionScore },
+        })
+      } else if (!reponse && isAutoGraded) {
+        await db.reponse.create({
+          data: {
+            sessionId: id,
+            questionId: qg.questionId,
+            contenu: null,
+            score: questionScore,
+          },
         })
       }
 
@@ -160,7 +181,7 @@ async function _POST(
 
     const totalPossible = questionsForGrading.reduce((sum, q) => sum + q.bareme, 0)
     const autoGradableTotal = questionsForGrading
-      .filter((q) => AUTO_GRADABLE_TYPES.includes(q.type))
+      .filter((q) => AUTO_GRADABLE_TYPES.includes(q.type) || SEMI_AUTO_GRADABLE_TYPES.includes(q.type))
       .reduce((sum, q) => sum + q.bareme, 0)
 
     const existingResult = await db.resultat.findUnique({ where: { sessionId: id } })
@@ -188,6 +209,10 @@ async function _POST(
       })
     }
 
+    const scenarioMessage = scenario.type === 'A'
+      ? 'Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.'
+      : `Note partielle: ${finalScore.toFixed(1)}/${autoGradableTotal} (questions auto-corrigées). En attente de la correction manuelle de l'enseignant pour ${scenario.manualCorrectionCount} question(s) ouverte(s).`
+
     return NextResponse.json({
       session: updatedSession,
       resultat: {
@@ -196,10 +221,12 @@ async function _POST(
       },
       score: finalScore,
       totalPossible,
+      autoGradableTotal,
       percentage: totalPossible > 0 ? Math.round((finalScore / totalPossible) * 100) : 0,
       autoGraded: scenario.autoGradableCount,
       pendingCorrection: scenario.manualCorrectionCount,
       scenario: scenario.type,
+      scenarioMessage,
       message: autoSubmit ? 'Épreuve soumise automatiquement (temps écoulé)' : 'Épreuve soumise avec succès',
     })
   } catch (error) {
