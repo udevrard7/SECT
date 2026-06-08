@@ -198,7 +198,7 @@ async function _GET(request: NextRequest, context: { params: any; user: Authenti
       where: {
         enseignantId: userId,
         deletedAt: null,
-        statut: { in: ['PLANIFIEE', 'EN_COURS', 'PUBLIEE'] },
+        statut: { in: ['PLANIFIEE', 'EN_COURS'] },
       },
     })
 
