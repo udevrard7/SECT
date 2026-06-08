@@ -149,11 +149,21 @@ function isAutoGradedType(type: string): boolean {
   return type === 'QCM' || type === 'QCU'
 }
 
+function isSemiAutoGradedType(type: string): boolean {
+  return type === 'CODE'
+}
+
 function getCorrectionBadge(type: string): { label: string; classes: string } {
   if (isAutoGradedType(type)) {
     return {
       label: 'Auto-corrigée',
       classes: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800',
+    }
+  }
+  if (isSemiAutoGradedType(type)) {
+    return {
+      label: 'Auto + Override',
+      classes: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800',
     }
   }
   return {
@@ -169,6 +179,7 @@ function getQuestionTypeBadgeClasses(type: string): string {
     case 'REFLEXION': return 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
     case 'QCM': return 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800'
     case 'QCU': return 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800'
+    case 'CODE': return 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800'
     default: return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'
   }
 }

@@ -5,13 +5,19 @@ import autoTable from 'jspdf-autotable'
 
 export interface PDFQuestion {
   id: string
-  type: 'QCU' | 'QCM' | 'QRC' | 'REFLEXION'
+  type: 'QCU' | 'QCM' | 'QRC' | 'REFLEXION' | 'CODE'
   enonce: string
   propositions: Array<{ id: string; text: string }> | null
   reponseCorrecte: string | string[] | null
   explication: string | null
   difficulte: string
   bareme: number
+  // CODE-specific fields
+  langage?: string
+  codeInitial?: string
+  fonctionSignature?: string
+  testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+  testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
 }
 
 export interface PDFEtablissement {
@@ -83,6 +89,7 @@ function getTypeLabel(type: string): string {
     case 'QCM': return 'QCM (Choix multiples)'
     case 'QRC': return 'QRC (Réponse courte)'
     case 'REFLEXION': return 'Réflexion'
+    case 'CODE': return 'Code (Programmation)'
     default: return type
   }
 }
@@ -277,6 +284,24 @@ function estimateQuestionHeightSujet(doc: jsPDF, q: PDFQuestion): number {
     height += 3 + 8 * ANSWER_LINE_SPACING
   }
 
+  // Code section for CODE type
+  if (q.type === 'CODE') {
+    height += 3
+    // Language badge + signature
+    height += 8
+    // Starter code box
+    if (q.codeInitial) {
+      const codeLines = q.codeInitial.split('\n').length
+      height += Math.max(codeLines * 4 + 10, 40) // 4mm per code line, min 40mm
+    } else {
+      height += 40 // Empty code area
+    }
+    // Public tests table
+    if (q.testsPublics && q.testsPublics.length > 0) {
+      height += 8 + q.testsPublics.length * 8
+    }
+  }
+
   // Bottom gap + separator
   height += QUESTION_GAP + 3
 
@@ -376,6 +401,89 @@ function renderQuestionSujet(doc: jsPDF, q: PDFQuestion, index: number, startY: 
       doc.setLineWidth(0.3)
       doc.line(MARGIN_LEFT, y, PAGE_WIDTH - MARGIN_RIGHT, y)
       y += ANSWER_LINE_SPACING
+    }
+  }
+
+  // Code section for CODE type
+  if (q.type === 'CODE') {
+    y += 2
+
+    // Language + signature info
+    doc.setFontSize(FONT_SMALL)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(100, 60, 160)
+    const langLabel = q.langage ? q.langage.toUpperCase() : 'CODE'
+    doc.text(`Langage : ${langLabel}`, MARGIN_LEFT, y)
+    if (q.fonctionSignature) {
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(80, 80, 80)
+      doc.text(`Signature : ${q.fonctionSignature}`, MARGIN_LEFT + 50, y)
+    }
+    doc.setTextColor(0, 0, 0)
+    y += 6
+
+    // Starter code box
+    doc.setFillColor(245, 245, 250)
+    doc.setDrawColor(180, 170, 210)
+    doc.setLineWidth(0.4)
+    const codeText = q.codeInitial || '// Écrire votre code ici'
+    const codeLines = codeText.split('\n')
+    const codeBoxHeight = Math.max(codeLines.length * 4 + 10, 35)
+    doc.roundedRect(MARGIN_LEFT, y - 3, CONTENT_WIDTH, codeBoxHeight, 2, 2, 'FD')
+
+    // Code text
+    doc.setFontSize(9)
+    doc.setFont('courier', 'normal')
+    doc.setTextColor(40, 40, 60)
+    let codeY = y + 2
+    for (const line of codeLines.slice(0, 20)) { // Max 20 lines to prevent overflow
+      if (codeY > y + codeBoxHeight - 5) break
+      doc.text(line.substring(0, 80), MARGIN_LEFT + 4, codeY) // Truncate long lines
+      codeY += 4
+    }
+    doc.setTextColor(0, 0, 0)
+    y += codeBoxHeight + 4
+
+    // Public tests table
+    if (q.testsPublics && q.testsPublics.length > 0) {
+      doc.setFontSize(FONT_SMALL)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Tests publics :', MARGIN_LEFT, y)
+      y += 5
+
+      const testHead = [['N°', 'Entrée', 'Sortie attendue']]
+      const testBody = q.testsPublics.map((t, i) => [
+        `${i + 1}`,
+        t.entree.substring(0, 40),
+        t.sortieAttendue.substring(0, 40),
+      ])
+
+      autoTable(doc, {
+        head: testHead,
+        body: testBody,
+        startY: y,
+        margin: { left: MARGIN_LEFT + 5, right: MARGIN_RIGHT },
+        styles: {
+          fontSize: FONT_TINY,
+          cellPadding: 2,
+          lineColor: [180, 170, 210],
+          lineWidth: 0.2,
+        },
+        headStyles: {
+          fillColor: [100, 60, 160],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7,
+        },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 60 },
+          2: { cellWidth: 60 },
+        },
+      })
+
+      y = (doc as any).lastAutoTable?.finalY ?? y + 20
+      y += 3
     }
   }
 

@@ -198,6 +198,7 @@ const TYPE_COLORS: Record<string, string> = {
   QCM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
   QRC: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
   REFLEXION: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
+  CODE: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800',
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
@@ -791,6 +792,52 @@ function ModelesTab() {
                           {isExpanded && (
                             <div className={`mt-2 rounded-md border p-3 text-sm whitespace-pre-wrap ${q.type === 'QRC' ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800' : 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800/50'}`}>
                               {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {q.type === 'CODE' && (
+                        <div className="mt-2 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
+                              {(q as any).langage || 'code'}
+                            </Badge>
+                            {(q as any).fonctionSignature && (
+                              <code className="text-[10px] font-mono text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/30 px-1.5 py-0.5 rounded">
+                                {(q as any).fonctionSignature}
+                              </code>
+                            )}
+                          </div>
+                          {(q as any).codeInitial && (
+                            <pre className="text-[10px] font-mono bg-slate-50 dark:bg-slate-900 p-2 rounded border max-h-32 overflow-y-auto">
+                              {(q as any).codeInitial}
+                            </pre>
+                          )}
+                          {(q as any).testsPublics && (q as any).testsPublics.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-medium text-muted-foreground mb-1">Tests publics ({(q as any).testsPublics.length})</p>
+                              <div className="space-y-0.5">
+                                {(q as any).testsPublics.map((t: any, ti: number) => (
+                                  <div key={ti} className="flex items-center gap-2 text-[10px] font-mono bg-muted/50 rounded px-2 py-1">
+                                    <span className="text-muted-foreground">{t.nom || `Test ${ti + 1}`}</span>
+                                    <span className="text-violet-600">→</span>
+                                    <span>{t.sortieAttendue}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {q.reponseCorrecte && (
+                            <div>
+                              <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => toggleExpand(q.id)}>
+                                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                Solution de référence
+                              </button>
+                              {isExpanded && (
+                                <pre className="mt-1 text-[10px] font-mono bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-2 rounded max-h-40 overflow-y-auto whitespace-pre-wrap">
+                                  {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
+                                </pre>
+                              )}
                             </div>
                           )}
                         </div>

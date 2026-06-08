@@ -17,6 +17,7 @@ const TOKEN_ESTIMATES = {
   QCM: 500,
   QRC: 600,
   REFLEXION: 1500,
+  CODE: 2000,  // Code questions need more tokens for starter code + tests
 }
 
 /** Maximum output tokens per batch — most modern models support 16k+ */
@@ -52,6 +53,7 @@ interface GenerateExamRequest {
       qcm?: number
       qrc?: number
       reflexion?: number
+      code?: number
     }
     langue?: string
     themes?: string[]
@@ -83,7 +85,7 @@ function getDifficulteDistribution(difficulte: string): string {
 }
 
 interface BatchSpec {
-  type: 'QCU' | 'QCM' | 'QRC' | 'REFLEXION'
+  type: 'QCU' | 'QCM' | 'QRC' | 'REFLEXION' | 'CODE'
   count: number
 }
 
@@ -100,7 +102,8 @@ function planBatches(
   nbQCU: number,
   nbQCM: number,
   nbQRC: number,
-  nbREFLEXION: number
+  nbREFLEXION: number,
+  nbCODE: number = 0
 ): BatchSpec[][] {
   const batches: BatchSpec[][] = []
 
@@ -149,6 +152,15 @@ function planBatches(
     remainingREFLEXION -= count
   }
 
+  // ─── Phase 4: CODE (programming) ───
+  // CODE questions are very token-heavy; limit to 3 per batch
+  let remainingCODE = nbCODE
+  while (remainingCODE > 0) {
+    const count = Math.min(remainingCODE, 3) // 3 max per batch for CODE
+    batches.push([{ type: 'CODE', count }])
+    remainingCODE -= count
+  }
+
   return batches
 }
 
@@ -181,6 +193,9 @@ function buildBatchSpec(batch: BatchSpec[]): string {
       case 'REFLEXION':
         parts.push(`- ${spec.count} question(s) REFLEXION (Mini sujet de réflexion avec guide de correction détaillé)`)
         break
+      case 'CODE':
+        parts.push(`- ${spec.count} question(s) CODE (Exercice de programmation avec code initial, tests publics et privés)`)
+        break
     }
   }
   return parts.join('\n')
@@ -202,7 +217,8 @@ async function generateInBatches(
   nbREFLEXION: number,
   difficulte: string,
   langue: string,
-  config: GenerateExamRequest['config']
+  config: GenerateExamRequest['config'],
+  nbCODE: number = 0
 ): Promise<{ choices: Array<{ message: { content: string } }> }> {
   // Extract the document content part from the full prompt (between """ markers)
   const docMatch = fullPrompt.match(/Documents sources:\n"""([\s\S]*?)"""/)
@@ -260,7 +276,7 @@ Réponds UNIQUEMENT en JSON valide avec la structure suivante:
   "questions": [
     {
       "id": "q${existingQuestions + 1}",
-      "type": "QCU|QCM|QRC|REFLEXION",
+      "type": "QCU|QCM|QRC|REFLEXION|CODE",
       "enonce": "Énoncé complet de la question",
       "propositions": [{"id": "a", "text": "Proposition A"}, {"id": "b", "text": "Proposition B"}],
       "reponseCorrecte": "a" ou ["a", "c"] ou "Réponse modèle",
@@ -268,7 +284,12 @@ Réponds UNIQUEMENT en JSON valide avec la structure suivante:
       "difficulte": "FACILE|MOYEN|DIFFICILE|EXPERT",
       "bareme": 2,
       "ueCode": "Code UE (ex: CS101)",
-      "ueNom": "Nom UE (ex: Algorithmique)"
+      "ueNom": "Nom UE (ex: Algorithmique)",
+      "langage": "python|javascript|typescript|c|java (UNIQUEMENT pour type=CODE)",
+      "codeInitial": "Code de démarrage avec la signature de fonction (UNIQUEMENT pour type=CODE)",
+      "fonctionSignature": "Signature de la fonction attendue (UNIQUEMENT pour type=CODE)",
+      "testsPublics": [{"nom": "cas_normal_1", "entree": "[1,2,3]", "sortieAttendue": "2", "description": "Test avec liste standard"}] (UNIQUEMENT pour type=CODE, 3-5 tests),
+      "testsPrives": [{"nom": "cas_limite_vide", "entree": "[]", "sortieAttendue": "0", "description": "Test avec liste vide"}] (UNIQUEMENT pour type=CODE, 5-8 tests)
     }
   ]${isFirstBatch ? `,
   "titre": "Titre suggéré pour l'épreuve",
@@ -281,6 +302,7 @@ Règles de formatage par type:
 - QCM: propositions = [{id, text}] avec 3 à 5 options, reponseCorrecte = tableau des ids (ex: ["a", "c"])
 - QRC: propositions = null, reponseCorrecte = mots ou phrases clés attendus
 - REFLEXION: propositions = null, enonce = mise en situation concrète + consigne de résolution détaillée, reponseCorrecte = guide de correction détaillé avec critères d'évaluation et barème indicatif par partie
+- CODE: propositions = null, langage = langage de programmation (python recommandé), codeInitial = code de démarrage avec TODO/commentaire, fonctionSignature = signature de la fonction, reponseCorrecte = solution complète fonctionnelle, testsPublics = 3-5 tests visibles (cas normaux), testsPrives = 5-8 tests cachés (cas limites, erreurs, robustesse). bareme plus élevé (4-8 pts car exercice complexe).
 - ueCode et ueNom: OBLIGATOIRES pour chaque question — identifient l'Unité d'Enseignement à laquelle la question se rattache
 
 Règles de qualité:
@@ -295,7 +317,7 @@ Règles de qualité:
   const systemPrompt = 'Tu es un ingénieur pédagogique et concepteur d\'examens universitaires de haut niveau. Tu produis des questions bien structurées, exclusivement basées sur les contenus fournis. Tu réponds UNIQUEMENT en JSON valide, sans texte avant ou après le JSON.'
 
   // Plan the batches
-  const batchPlan = planBatches(nbQCU, nbQCM, nbQRC, nbREFLEXION)
+  const batchPlan = planBatches(nbQCU, nbQCM, nbQRC, nbREFLEXION, nbCODE)
   const totalBatches = batchPlan.length
   console.log(`[Epreuve Generate] Planned ${totalBatches} batch(es):`, batchPlan.map(b => b.map(s => `${s.count}×${s.type}`).join('+')).join(', '))
 
@@ -541,15 +563,17 @@ export async function POST(request: NextRequest) {
     const nbQCM = typesQuestions.qcm ?? 0
     const nbQRC = typesQuestions.qrc ?? 0
     const nbREFLEXION = typesQuestions.reflexion ?? 0
-    const totalQuestions = nbQCU + nbQCM + nbQRC + nbREFLEXION
+    const nbCODE = typesQuestions.code ?? 0
+    const totalQuestions = nbQCU + nbQCM + nbQRC + nbREFLEXION + nbCODE
 
     // If no types specified at all, provide sensible defaults
-    const hasAnyTypeSpecified = (typesQuestions.qcu !== undefined) || (typesQuestions.qcm !== undefined) || (typesQuestions.qrc !== undefined) || (typesQuestions.reflexion !== undefined)
+    const hasAnyTypeSpecified = (typesQuestions.qcu !== undefined) || (typesQuestions.qcm !== undefined) || (typesQuestions.qrc !== undefined) || (typesQuestions.reflexion !== undefined) || (typesQuestions.code !== undefined)
     const finalQCU = hasAnyTypeSpecified ? nbQCU : 3
     const finalQCM = hasAnyTypeSpecified ? nbQCM : 2
     const finalQRC = hasAnyTypeSpecified ? nbQRC : 2
     const finalREFLEXION = hasAnyTypeSpecified ? nbREFLEXION : 1
-    const finalTotal = finalQCU + finalQCM + finalQRC + finalREFLEXION
+    const finalCODE = hasAnyTypeSpecified ? nbCODE : 0
+    const finalTotal = finalQCU + finalQCM + finalQRC + finalREFLEXION + finalCODE
 
     if (finalTotal === 0) {
       return NextResponse.json(
@@ -735,10 +759,10 @@ Règles de qualité:
 
       if (shouldBatch) {
         console.log(`[Epreuve Generate] Large exam detected (${finalTotal} questions), using smart batch generation...`)
-        completion = await generateInBatches(aiProvider, prompt, finalQCU, finalQCM, finalQRC, finalREFLEXION, difficulte, langue, config)
+        completion = await generateInBatches(aiProvider, prompt, finalQCU, finalQCM, finalQRC, finalREFLEXION, difficulte, langue, config, finalCODE)
       } else {
         // Single-shot for small exams
-        const estimatedTokens = finalQCU * 300 + finalQCM * 400 + finalQRC * 500 + finalREFLEXION * 1000 + 500
+        const estimatedTokens = finalQCU * 300 + finalQCM * 400 + finalQRC * 500 + finalREFLEXION * 1000 + finalCODE * 1500 + 500
         const maxTokens = Math.min(MAX_BATCH_TOKENS, Math.max(MIN_BATCH_TOKENS, estimatedTokens))
         console.log('[Epreuve Generate] Single-shot mode, using maxTokens:', maxTokens, '(estimated:', estimatedTokens, ')')
 
