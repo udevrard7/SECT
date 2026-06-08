@@ -297,3 +297,29 @@ Stage Summary:
 - Commit: fc70e84 — pushed to main
 - Root cause: likely missing credentials on fetch + __none__ values leaking into API + poor error messages hiding the real issue
 - All 3 API test scenarios now pass (verified with curl)
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Fix programming language selection in CODE/programming question type + CODE support in question bank and correction
+
+Work Log:
+- Identified the root cause: No programming language selector existed in any CODE question editing interface
+- Added language selector dropdown (Python, JavaScript, TypeScript, C, Java) to generation-ia-page.tsx edit form
+- Added CODE question type support to banque-questions-page.tsx:
+  - Added renderCODEForm() with language selector, function signature, starter code, model solution
+  - Added CODE to type selector grid (now 5 columns)
+  - Added CODE to type filter, stats badges, and detail dialog
+  - Added CODE-specific field handling in handleCreate and handleUpdate
+  - Added CODE question editing support in handleEdit (parse reponseCorrecte JSON)
+- Fixed read-mode language display: Shows "🐍 Python" instead of raw "python"
+- Added CODE to manual correction filter in correction API route
+- Added CODE-specific rubric criteria (logic, syntax, tests, code style) in correction page
+- All changes lint cleanly
+
+Stage Summary:
+- Commit: ee46d33 - "fix: add programming language selector for CODE questions"
+- Commit: b9869df - "fix: include CODE questions in correction API and add CODE rubric criteria"
+- Teachers can now select/change programming language when creating or editing CODE questions
+- CODE questions are now supported in both AI generation page and question bank
+- CODE questions now appear in the correction interface with appropriate rubric criteria
