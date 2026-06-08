@@ -52,6 +52,7 @@ async function _GET(
                 type: true,
                 enonce: true,
                 propositions: true,
+                reponseCorrecte: true,
                 difficulte: true,
                 themes: true,
               },
@@ -137,12 +138,30 @@ async function _GET(
     }
 
     let questionsForStudent = epreuve.questions.map((eq) => {
+      // For CODE questions, extract CODE-specific fields from reponseCorrecte JSON before stripping it
+      let codeFields: Record<string, unknown> = {}
+      if (eq.question.type === 'CODE' && eq.question.reponseCorrecte) {
+        try {
+          const parsed = JSON.parse(eq.question.reponseCorrecte as string)
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.langage) codeFields.langage = String(parsed.langage)
+            if (parsed.codeInitial) codeFields.codeInitial = String(parsed.codeInitial)
+            if (parsed.fonctionSignature) codeFields.fonctionSignature = String(parsed.fonctionSignature)
+            if (Array.isArray(parsed.testsPublics)) codeFields.testsPublics = parsed.testsPublics
+          }
+        } catch {
+          // reponseCorrecte is not valid JSON — ignore
+        }
+      }
+
       const questionObj: Record<string, unknown> = {
         ...eq.question,
         propositions: eq.question.propositions ? JSON.parse(eq.question.propositions as string) : null,
         reponseCorrecte: undefined,
         explication: undefined,
         themes: eq.question.themes ? JSON.parse(eq.question.themes as string) : null,
+        // Inject CODE-specific fields extracted from reponseCorrecte
+        ...codeFields,
       }
 
       if (
