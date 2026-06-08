@@ -44,7 +44,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CodingQuestionStudent } from '@/components/coding/code-editor'
-import { type CodingLanguage, type CodingAnswer, serializeCodingAnswer, parseCodingAnswer } from '@/lib/coding-types'
+import { type CodingLanguage, type CodingAnswer, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -195,6 +195,7 @@ export function PassationPage() {
   // ─── Exam state ────────────────────────────────────────────────────────
   const [currentIndex, setCurrentIndex] = useState(0)
   const [reponses, setReponses] = useState<Record<string, string>>({})
+  const [activeCodeLanguages, setActiveCodeLanguages] = useState<Record<string, CodingLanguage>>({})
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<string>>(new Set())
   const [timeRemaining, setTimeRemaining] = useState(0)
   const [autoSubmitted, setAutoSubmitted] = useState(false)
@@ -366,6 +367,18 @@ export function PassationPage() {
                 })
               }
               setReponses(loadedReponses)
+
+              // Restore active languages from saved coding answers
+              const loadedLanguages: Record<string, CodingLanguage> = {}
+              Object.entries(loadedReponses).forEach(([qId, contenu]) => {
+                const answer = parseCodingAnswer(contenu)
+                if (answer?.language) {
+                  loadedLanguages[qId] = answer.language
+                }
+              })
+              if (Object.keys(loadedLanguages).length > 0) {
+                setActiveCodeLanguages(loadedLanguages)
+              }
             }
 
             // Count fullscreen exits from logEvents to restore penalty count
@@ -2116,7 +2129,7 @@ export function PassationPage() {
                     <CodingQuestionStudent
                       questionId={currentQuestion.questionId}
                       enonce={currentQuestion.question.enonce}
-                      langage={(currentQuestion.question.langage || 'javascript') as CodingLanguage}
+                      langage={activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage}
                       codeInitial={currentQuestion.question.codeInitial || '// Écrivez votre code ici\n'}
                       fonctionSignature={currentQuestion.question.fonctionSignature || ''}
                       testsPublics={currentQuestion.question.testsPublics || []}
@@ -2127,11 +2140,27 @@ export function PassationPage() {
                       })()}
                       onCodeChange={(code) => {
                         const existingAnswer = parseCodingAnswer(reponses[currentQuestion.questionId] || null)
+                        const activeLang = activeCodeLanguages[currentQuestion.questionId] || (currentQuestion.question.langage || 'javascript') as CodingLanguage
                         const answer: CodingAnswer = {
                           code,
-                          language: (currentQuestion.question.langage || 'javascript') as CodingLanguage,
+                          language: activeLang,
                           testResultsPublics: existingAnswer?.testResultsPublics,
                           lastSaved: existingAnswer?.lastSaved,
+                        }
+                        handleAnswerChange(currentQuestion.questionId, serializeCodingAnswer(answer))
+                      }}
+                      onLanguageChange={(newLang) => {
+                        setActiveCodeLanguages((prev) => ({
+                          ...prev,
+                          [currentQuestion.questionId]: newLang,
+                        }))
+                        // Update the saved answer with the new language and starter code
+                        const newStarterCode = getDefaultStarterCode(newLang, currentQuestion.question.fonctionSignature || undefined)
+                        const answer: CodingAnswer = {
+                          code: newStarterCode,
+                          language: newLang,
+                          testResultsPublics: undefined,
+                          lastSaved: new Date().toISOString(),
                         }
                         handleAnswerChange(currentQuestion.questionId, serializeCodingAnswer(answer))
                       }}
