@@ -220,12 +220,9 @@ async function _GET(
       }, 0)
       const autoGradedTotal = autoGradedQuestions.reduce((sum, q) => sum + q.bareme, 0)
 
+      // Include: QRC/TRS/REFLEXION always + CODE questions (even auto-scored, so teacher can review)
       const manualQuestions = unifiedQuestions.filter((q) =>
-        ['QRC', 'TRS', 'REFLEXION'].includes(q.question.type) ||
-        (q.question.type === 'CODE' && (() => {
-          const rep = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
-          return !rep || rep.score === null
-        })())
+        ['QRC', 'TRS', 'REFLEXION', 'CODE'].includes(q.question.type)
       )
 
       const needsCorrection = manualQuestions.filter((q) => {

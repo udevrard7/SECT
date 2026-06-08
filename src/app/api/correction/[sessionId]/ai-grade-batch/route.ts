@@ -81,9 +81,9 @@ export async function POST(
       allQuestions = getQuestionsFromContenu(session.epreuve.contenu)
     }
 
-    // Filter QRC/TRS/REFLEXION questions that need AI grading
+    // Filter QRC/TRS/REFLEXION/CODE questions that need AI grading
     const questionsToGrade = allQuestions.filter((q) => {
-      if (!['QRC', 'TRS', 'REFLEXION'].includes(q.type)) return false
+      if (!['QRC', 'TRS', 'REFLEXION', 'CODE'].includes(q.type)) return false
       const reponse = session.reponses.find((r) => r.questionId === q.questionId)
       return reponse && reponse.contenu && reponse.noteIA === null
     })

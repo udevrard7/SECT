@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { execFile } from 'child_process'
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -13,10 +13,10 @@ import {
   detectGradingScenario,
   AUTO_GRADABLE_TYPES,
   SEMI_AUTO_GRADABLE_TYPES,
-  MANUAL_CORRECTION_TYPES,
 } from '@/lib/grading'
 import { withAuth } from '@/lib/auth-session'
 import { type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult, EXECUTION_CONFIG, parseCodingAnswer, parseFunctionSignature } from '@/lib/coding-types'
+import { validateCode } from '@/lib/code-sandbox-validator'
 
 async function _POST(
   request: NextRequest,
@@ -185,7 +185,7 @@ async function _POST(
         isAutoGraded = true
       } else if (qg.type === 'CODE') {
         // Grade CODE question: run all tests (public + private) server-side
-        const codeResult = gradeCODEQuestion(
+        const codeResult = await gradeCODEQuestion(
           reponse?.contenu || null,
           qg.testsPublics || [],
           qg.testsPrives || [],
@@ -343,16 +343,17 @@ async function _POST(
 
 /**
  * Grade a CODE question by executing the student's code against all test cases.
- * Runs public + private tests server-side and uses gradeCODE() for scoring.
+ * Runs public + private tests server-side with FULL sandbox security.
+ * Now async to use execFile (non-blocking) instead of execSync.
  */
-function gradeCODEQuestion(
+async function gradeCODEQuestion(
   studentAnswerContenu: string | null,
   testsPublics: TestCase[],
   testsPrives: TestCase[],
   bareme: number,
   language?: CodingLanguage,
   functionSignature?: string
-): { score: number; isAutoGraded: boolean } {
+): Promise<{ score: number; isAutoGraded: boolean }> {
   // If no tests at all, can't auto-grade
   if (testsPublics.length === 0 && testsPrives.length === 0) {
     return { score: 0, isAutoGraded: false }
@@ -368,11 +369,21 @@ function gradeCODEQuestion(
   const lang = (codingAnswer.language || language || 'python') as CodingLanguage
   const allTests = [...testsPublics, ...testsPrives]
 
-  // Execute the code server-side
+  // ─── Pre-execution validation (security layer 1) ───
+  const validation = validateCode(codingAnswer.code, lang)
+  if (!validation.safe) {
+    // Code contains dangerous patterns — refuse to execute, all tests fail
+    console.warn('[gradeCODE] Dangerous code blocked:', validation.errors)
+    const testResultsAll = allTests.map(() => ({ passed: false }))
+    const testResultsPublics = codingAnswer.testResultsPublics || []
+    return gradeCODE(testResultsPublics, testResultsAll, bareme)
+  }
+
+  // ─── Execute the code server-side with full sandbox ───
   let testResultsAll: Array<{ passed: boolean }>
 
   try {
-    const executionResult = executeCodeServerSide(
+    const executionResult = await executeCodeServerSide(
       codingAnswer.code,
       lang,
       allTests,
@@ -386,7 +397,7 @@ function gradeCODEQuestion(
     testResultsAll = allTests.map(() => ({ passed: false }))
   }
 
-  // Also include public test results from the student's saved answer (from when they ran "Execute")
+  // Also include public test results from the student's saved answer
   const testResultsPublics = codingAnswer.testResultsPublics || []
 
   return gradeCODE(testResultsPublics, testResultsAll, bareme)
@@ -394,22 +405,24 @@ function gradeCODEQuestion(
 
 /**
  * Execute code server-side for grading purposes.
- * Supports JavaScript (via Function constructor) and Python (via subprocess).
+ * Now uses the SAME security model as /api/coding/execute:
+ *   - JS/TS: nullProto this context, 17 blocked globals
+ *   - Python: execFile (async), restricted builtins, import whitelist, minimal env
  */
-function executeCodeServerSide(
+async function executeCodeServerSide(
   code: string,
   language: CodingLanguage,
   testCases: TestCase[],
   functionSignature?: string
-): CodeExecutionResult {
+): Promise<CodeExecutionResult> {
   switch (language) {
     case 'javascript':
     case 'typescript':
-      return executeJavaScriptServer(code, testCases, functionSignature)
+      return executeJavaScriptSecure(code, testCases, functionSignature)
     case 'python':
-      return executePythonServer(code, testCases, functionSignature)
+      return executePythonSecure(code, testCases, functionSignature)
     default:
-      // C/Java — can't execute, mark all tests as failed
+      // C/Java — can't execute server-side, mark all tests as failed
       return {
         success: false,
         output: '',
@@ -427,10 +440,9 @@ function executeCodeServerSide(
   }
 }
 
-/**
- * Execute JavaScript server-side (sandboxed Function constructor).
- */
-function executeJavaScriptServer(
+// ─── Secure JavaScript/TypeScript Execution (aligned with /api/coding/execute) ───
+
+function executeJavaScriptSecure(
   code: string,
   testCases: TestCase[],
   functionSignature?: string
@@ -441,7 +453,6 @@ function executeJavaScriptServer(
   for (const tc of testCases) {
     const startTime = Date.now()
     try {
-      // Try to extract function name from signature first, then from code
       const sigParsed = parseFunctionSignature(functionSignature || '')
       const funcNameFromSig = sigParsed?.funcName || null
       const funcNameRegex = new RegExp('(?:function\\s+(\\w+)|(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:function|\\())', 'm')
@@ -458,7 +469,9 @@ function executeJavaScriptServer(
           inputArg = tc.entree
         }
 
-        const inputSerialized = typeof inputArg === 'string' ? `"${inputArg.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"` : JSON.stringify(inputArg)
+        const inputSerialized = typeof inputArg === 'string'
+          ? `"${inputArg.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
+          : JSON.stringify(inputArg)
 
         fullCode = `
           ${code}
@@ -474,15 +487,53 @@ function executeJavaScriptServer(
         fullCode = code
       }
 
+      // ─── SECURE sandbox: frozen context + nullProto thisArg ───
       const output: string[] = []
       const mockConsole = {
         log: (...args: unknown[]) => { output.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')) },
-        error: (...args: unknown[]) => { output.push('ERROR: ' + args.map(a => String(a)).join(' ')) },
+        error: (...args: unknown[]) => { output.push('ERROR: ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')) },
         warn: (...args: unknown[]) => {},
       }
 
-      const sandboxedFn = new Function('console', 'require', 'process', 'global', 'fetch', 'XMLHttpRequest', 'eval', `"use strict"; ${fullCode}`)
-      sandboxedFn(mockConsole, undefined, undefined, undefined, undefined, undefined, undefined)
+      // Create a deeply frozen null-prototype context
+      const nullProto = Object.create(null)
+      const sandboxContext = Object.freeze({
+        console: Object.freeze(mockConsole),
+        require: undefined,
+        process: undefined,
+        global: undefined,
+        globalThis: undefined,
+        fetch: undefined,
+        XMLHttpRequest: undefined,
+        WebSocket: undefined,
+        eval: undefined,
+        Function: undefined,
+        setTimeout: undefined,
+        setInterval: undefined,
+        __dirname: undefined,
+        __filename: undefined,
+        module: undefined,
+        exports: undefined,
+        Buffer: undefined,
+      })
+
+      const sandboxedFn = new Function(
+        'console', 'require', 'process', 'global', 'globalThis',
+        'fetch', 'XMLHttpRequest', 'WebSocket', 'eval', 'Function',
+        'setTimeout', 'setInterval', '__dirname', '__filename',
+        'module', 'exports', 'Buffer',
+        `"use strict"; ${fullCode}`
+      )
+
+      // Call with null thisArg to prevent this.constructor escapes
+      sandboxedFn.call(
+        nullProto,
+        sandboxContext.console,
+        undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined,
+      )
 
       const outputStr = output.join('\n').trim()
       const expectedStr = tc.sortieAttendue.trim()
@@ -518,18 +569,16 @@ function executeJavaScriptServer(
   }
 }
 
-/**
- * Execute Python server-side in a sandboxed subprocess.
- */
-function executePythonServer(
+// ─── Secure Python Execution (aligned with /api/coding/execute) ───
+
+async function executePythonSecure(
   code: string,
   testCases: TestCase[],
   functionSignature?: string
-): CodeExecutionResult {
+): Promise<CodeExecutionResult> {
   const results: TestResult[] = []
   let allOutput = ''
 
-  // Extract function name from signature using cross-language parser
   const sigParsed = parseFunctionSignature(functionSignature || '')
   const funcName = sigParsed?.funcName || null
 
@@ -543,14 +592,10 @@ function executePythonServer(
       const scriptFile = join(tmpDir, `test_${tc.nom.replace(/[^a-zA-Z0-9]/g, '_')}.py`)
 
       try {
-        let testScript: string
-
-        if (funcName) {
-          testScript = `${code}
-
-import json
-import sys
-
+        // Build the secure sandboxed Python script (same as /api/coding/execute)
+        const testCode = funcName
+          ? `
+import json as _json
 _test_input = ${tc.entree}
 try:
     if isinstance(_test_input, list):
@@ -560,66 +605,49 @@ try:
     else:
         _test_result = ${funcName}(_test_input)
     if isinstance(_test_result, (list, dict)):
-        print(json.dumps(_test_result, ensure_ascii=False))
+        print(_json.dumps(_test_result, ensure_ascii=False))
     else:
         print(_test_result)
 except Exception as _e:
     print(f"ERROR: {_e}", file=sys.stderr)
     sys.exit(1)
 `
-        } else {
-          testScript = code
-        }
+          : ''
 
-        writeFileSync(scriptFile, testScript, { encoding: 'utf-8' })
+        const sandboxedScript = buildSecurePythonScript(code, testCode)
+        writeFileSync(scriptFile, sandboxedScript, { encoding: 'utf-8' })
 
+        // Execute with async execFile + minimal secure env
         const timeout = Math.min(EXECUTION_CONFIG.timeout, 10000)
-        let stdout: string
-        let stderr: string
+        const result = await executePythonProcess(scriptFile, tmpDir, timeout)
 
-        try {
-          stdout = execSync(
-            `python3 -c "
-import resource
-resource.setrlimit(resource.RLIMIT_AS, (128 * 1024 * 1024, 128 * 1024 * 1024))
-resource.setrlimit(resource.RLIMIT_CPU, (${Math.ceil(timeout / 1000)}, ${Math.ceil(timeout / 1000) + 1}))
-exec(open('${scriptFile}').read())
-"`,
-            {
-              timeout: timeout + 2000,
-              maxBuffer: 1024 * 1024,
-              encoding: 'utf-8',
-              cwd: tmpDir,
-              env: {
-                PATH: process.env.PATH || '',
-                HOME: tmpDir,
-                PYTHONPATH: '',
-                PYTHONDONTWRITEBYTECODE: '1',
-                PYTHONUNBUFFERED: '1',
-              },
-              stdio: ['pipe', 'pipe', 'pipe'],
-            }
-          )
-          stderr = ''
-        } catch (execError: any) {
-          stdout = execError.stdout || ''
-          stderr = execError.stderr || ''
-          if (execError.killed) {
-            results.push({
-              nom: tc.nom,
-              passed: false,
-              output: '',
-              expected: tc.sortieAttendue,
-              error: `Timeout : l'exécution a dépassé ${timeout / 1000}s`,
-              duration: timeout,
-            })
-            continue
-          }
+        if (result.timedOut) {
+          results.push({
+            nom: tc.nom,
+            passed: false,
+            output: '',
+            expected: tc.sortieAttendue,
+            error: `Timeout : l'exécution a dépassé ${timeout / 1000}s`,
+            duration: timeout,
+          })
+          continue
         }
 
-        const outputStr = stdout.trim()
-        const errorStr = stderr.trim()
+        const outputStr = result.stdout.trim()
+        const errorStr = result.stderr.trim()
         const expectedStr = tc.sortieAttendue.trim()
+
+        if (errorStr.includes('BLOCKED:') || errorStr.includes('ImportError:') || errorStr.includes('is not allowed')) {
+          results.push({
+            nom: tc.nom,
+            passed: false,
+            output: '',
+            expected: expectedStr,
+            error: 'Opération non autorisée',
+            duration: Date.now() - startTime,
+          })
+          continue
+        }
 
         if (errorStr && !outputStr) {
           results.push({
@@ -673,6 +701,125 @@ exec(open('${scriptFile}').read())
     totalTests: testCases.length,
     passedTests,
   }
+}
+
+// ─── Build Secure Python Script (same as /api/coding/execute) ───
+
+function buildSecurePythonScript(studentCode: string, testCode: string): string {
+  return `# ─── SECT Python Sandbox v2 (Grading) ───
+import sys as _sys
+import json as _json
+
+# ─── Block dangerous builtins ───
+_BLOCKED_BUILTINS = frozenset({
+    'eval', 'exec', 'compile', '__import__', 'open', 'input',
+    'globals', 'locals', 'vars', 'dir', 'getattr', 'setattr', 'delattr',
+    'breakpoint', 'exit', 'quit', 'memoryview',
+})
+
+_restricted_builtins = {}
+for _name in dir(_sys.modules['builtins']):
+    _value = getattr(_sys.modules['builtins'], _name)
+    if _name in _BLOCKED_BUILTINS:
+        def _blocked_func(*a, _n=_name, **kw):
+            _sys.stderr.write(f"BLOCKED: {_n}() is not allowed\\n")
+            raise RuntimeError(f"BLOCKED: {_n}() is not allowed")
+        _restricted_builtins[_name] = _blocked_func
+    else:
+        _restricted_builtins[_name] = _value
+
+# ─── Restrict imports ───
+_ALLOWED_MODULES = frozenset({
+    'math', 'random', 'string', 'collections', 'itertools', 'functools',
+    'operator', 'decimal', 'fractions', 'statistics', 'datetime', 're',
+    'json', 'copy', 'enum', 'typing', 'dataclasses', 'abc',
+    'array', 'heapq', 'bisect', 'pprint', 'textwrap', 'unicodedata',
+    'cmath', 'numbers', 'uuid',
+})
+
+_original_import = _sys.modules['builtins'].__import__
+
+def _restricted_import(name, *args, **kwargs):
+    _top_level = name.split('.')[0]
+    if _top_level not in _ALLOWED_MODULES:
+        raise ImportError(f"Module '{_top_level}' is not allowed for security reasons.")
+    return _original_import(name, *args, **kwargs)
+
+_restricted_builtins['__import__'] = _restricted_import
+
+# ─── Apply restricted builtins ───
+_sys.modules['builtins'].__dict__.update(_restricted_builtins)
+_sys.setrecursionlimit(500)
+
+# ─── Execute student code ───
+_execution_error = None
+try:
+    exec(${JSON.stringify(studentCode)}, {'__builtins__': _restricted_builtins})
+except Exception as _e:
+    _execution_error = str(_e)
+
+# ─── Execute test code if no error ───
+if _execution_error is None:
+    try:
+        exec(${JSON.stringify(testCode)}, {'__builtins__': _restricted_builtins})
+    except Exception as _e:
+        _execution_error = str(_e)
+`
+}
+
+// ─── Execute Python in subprocess (async, same as /api/coding/execute) ───
+
+function executePythonProcess(
+  scriptFile: string,
+  cwd: string,
+  timeout: number
+): Promise<{ stdout: string; stderr: string; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH || '',
+      HOME: cwd,
+      NODE_ENV: process.env.NODE_ENV || 'production',
+      PYTHONPATH: '',
+      PYTHONDONTWRITEBYTECODE: '1',
+      PYTHONUNBUFFERED: '1',
+      PYTHONNOUSERSITE: '1',
+      PYTHONDISABLEPYPREFIX: '1',
+    }
+
+    const child = execFile(
+      'python3',
+      ['-S', '-E', scriptFile],
+      {
+        timeout: timeout + 2000,
+        maxBuffer: 1024 * 1024,
+        cwd,
+        env,
+        windowsHide: true,
+      },
+      (error, stdout, stderr) => {
+        if (error && error.killed) {
+          resolve({ stdout: '', stderr: '', timedOut: true })
+          return
+        }
+        resolve({
+          stdout: stdout || '',
+          stderr: stderr || '',
+          timedOut: false,
+        })
+      }
+    )
+
+    // Kill the process if it takes too long
+    setTimeout(() => {
+      try {
+        if (child.pid) {
+          process.kill(child.pid, 'SIGKILL')
+        }
+      } catch {
+        // Process may have already exited
+      }
+    }, timeout + 3000)
+  })
 }
 
 function normalizeOutput(output: string): string {
