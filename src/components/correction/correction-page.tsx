@@ -69,6 +69,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
+import { CodingCorrection } from '@/components/coding/coding-correction'
+import {
+  type CodingLanguage,
+  type CodingAnswer,
+  parseCodingAnswer,
+} from '@/lib/coding-types'
 
 // ─── Types ───
 
@@ -97,6 +103,12 @@ interface CorrectionSession {
         propositions: string[] | null
         reponseCorrecte: string | string[] | null
         difficulte: string
+        // CODE-specific fields (extracted from reponseCorrecte JSON)
+        langage?: string
+        codeInitial?: string
+        fonctionSignature?: string
+        testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+        testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
       }
     }>
   }
@@ -160,6 +172,7 @@ function getQuestionTypeLabel(type: string): string {
     case 'REFLEXION': return 'Réflexion'
     case 'QCM': return 'QCM'
     case 'QCU': return 'QCU'
+    case 'CODE': return 'Code'
     default: return type
   }
 }
@@ -279,15 +292,33 @@ function generateRubricCriteria(type: string, bareme: number): RubricCriterion[]
 
 function parseAnswerContent(raw: string | null | undefined): string {
   if (!raw) return 'Aucune réponse fournie'
-  const parsed = parseJsonSafe<string>(raw, null)
-  if (parsed !== null) return parsed
   try {
     const obj = JSON.parse(raw)
+    // Handle CodingAnswer objects: { code, language, testResultsPublics, ... }
+    if (typeof obj === 'object' && obj !== null && typeof obj.code === 'string') {
+      const lines = obj.code.split('\n').length
+      const lang = obj.language || 'unknown'
+      const passedTests = obj.testResultsPublics?.filter?.((t: any) => t.passed)?.length ?? '?'
+      const totalTests = obj.testResultsPublics?.length ?? '?'
+      return `[${lang}] Code soumis (${lines} lignes, ${passedTests}/${totalTests} tests publics réussis)\n\n${obj.code}`
+    }
     if (Array.isArray(obj)) return obj.join(', ')
-    if (typeof obj === 'object') return JSON.stringify(obj, null, 2)
-    return String(obj)
+    if (typeof obj === 'string') return obj
+    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
+    return JSON.stringify(obj, null, 2)
   } catch {
     return raw
+  }
+}
+
+/** Check if the raw answer content is a coding answer (JSON with .code) */
+function isCodingAnswer(raw: string | null | undefined): boolean {
+  if (!raw) return false
+  try {
+    const obj = JSON.parse(raw)
+    return typeof obj === 'object' && obj !== null && typeof obj.code === 'string'
+  } catch {
+    return false
   }
 }
 
@@ -763,7 +794,9 @@ export function CorrectionPage() {
   const goToQuestion = (index: number) => {
     if (index >= 0 && index < totalQuestions) {
       setCurrentQuestionIndex(index)
-      mainContentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      // Scroll the Radix ScrollArea viewport to top
+      const viewport = mainContentRef.current?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement | null
+      viewport?.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }
 
@@ -1269,7 +1302,6 @@ export function CorrectionPage() {
     const q = currentQuestion?.question
     if (!q || !currentQuestion) return null
 
-    const isAutoGraded = isAutoGradedType(q.type)
     const answerContent = parseAnswerContent(currentReponse?.contenu)
     const expectedAnswer = typeof q.reponseCorrecte === 'string'
       ? q.reponseCorrecte
@@ -1370,22 +1402,44 @@ export function CorrectionPage() {
                 )}
 
                 {/* Réponse de l'étudiant */}
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs font-semibold text-foreground">
-                        Réponse de l&apos;étudiant
-                      </span>
+                {q.type === 'CODE' ? (
+                  <CodingCorrection
+                    questionId={currentQuestion.questionId}
+                    enonce={q.enonce}
+                    langage={(q.langage || 'python') as CodingLanguage}
+                    fonctionSignature={q.fonctionSignature || ''}
+                    testsPublics={q.testsPublics || []}
+                    testsPrives={q.testsPrives || []}
+                    bareme={currentQuestion.bareme}
+                    reponseCorrecte={typeof q.reponseCorrecte === 'string' ? q.reponseCorrecte : ''}
+                    studentAnswer={parseCodingAnswer(currentReponse?.contenu || null)}
+                    scoreAuto={currentReponse?.score ?? undefined}
+                    noteIA={currentReponse?.noteIA ?? undefined}
+                    justificationIA={currentReponse?.justificationIA ?? undefined}
+                    scoreFinal={currentReponse?.score ?? undefined}
+                    commentaireEnseignant={currentReponse?.commentaire ?? undefined}
+                    onSaveScore={async (_questionId, score, comment) => {
+                      await handleSave(selectedSessionId, _questionId, score, comment)
+                    }}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs font-semibold text-foreground">
+                          Réponse de l&apos;étudiant
+                        </span>
+                      </div>
+                      {currentReponse?.score !== null && currentReponse?.score !== undefined && (
+                        <ScoreCircle score={currentReponse.score} total={currentQuestion.bareme} size="sm" />
+                      )}
                     </div>
-                    {currentReponse?.score !== null && currentReponse?.score !== undefined && (
-                      <ScoreCircle score={currentReponse.score} total={currentQuestion.bareme} size="sm" />
-                    )}
+                    <p className="text-sm whitespace-pre-wrap text-foreground leading-relaxed">
+                      {answerContent}
+                    </p>
                   </div>
-                  <p className="text-sm whitespace-pre-wrap text-foreground leading-relaxed">
-                    {answerContent}
-                  </p>
-                </div>
+                )}
 
                 {/* Existing commentaire */}
                 {currentReponse?.commentaire && (
@@ -1403,7 +1457,7 @@ export function CorrectionPage() {
                 )}
 
                 {/* AI Suggestion (collapsible) */}
-                {showAiSuggestion && currentReponse?.noteIA !== null && currentReponse?.noteIA !== undefined && !isAutoGraded && (
+                {showAiSuggestion && currentReponse?.noteIA !== null && currentReponse?.noteIA !== undefined && !isAutoGradedType(q.type) && (
                   <Collapsible open={aiSuggestionOpen} onOpenChange={setAiSuggestionOpen}>
                     <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border-2 border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 px-3 py-2 hover:from-violet-100 hover:to-purple-100 dark:border-violet-800 dark:from-violet-950/30 dark:to-purple-950/20 dark:hover:from-violet-950/40 dark:hover:to-purple-950/30 transition-colors">
                       <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
@@ -1461,7 +1515,7 @@ export function CorrectionPage() {
                 )}
 
                 {/* Auto-graded notice */}
-                {isAutoGraded && (
+                {isAutoGradedType(q.type) && (
                   <div className="flex items-center gap-2.5 p-3 rounded-lg bg-sky-50 border border-sky-200 dark:bg-sky-950/20 dark:border-sky-800">
                     <Zap className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
                     <div>
@@ -1473,8 +1527,21 @@ export function CorrectionPage() {
                   </div>
                 )}
 
-                {/* Grading section — only for non-auto questions */}
-                {!isAutoGraded && (
+                {/* Semi-auto (CODE) notice — CodingCorrection handles the grading UI */}
+                {isSemiAutoGradedType(q.type) && currentReponse?.score !== null && currentReponse?.score !== undefined && (
+                  <div className="flex items-center gap-2.5 p-3 rounded-lg bg-violet-50 border border-violet-200 dark:bg-violet-950/20 dark:border-violet-800">
+                    <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">Question auto+corrigée</p>
+                      <p className="text-[10px] text-violet-600 dark:text-violet-300">
+                        Score auto-calculé : {currentReponse.score} / {currentQuestion.bareme} — Vous pouvez modifier la note ci-dessus
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grading section — only for non-auto, non-CODE questions */}
+                {!isAutoGradedType(q.type) && !isSemiAutoGradedType(q.type) && (
                   <div className="rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-gradient-to-b from-emerald-50/60 to-emerald-50/20 dark:from-emerald-950/20 dark:to-emerald-950/5 shadow-sm">
                     {/* Grading header */}
                     <div className="px-3 py-2 border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-900/20 rounded-t-xl flex items-center gap-2">
@@ -1687,7 +1754,6 @@ export function CorrectionPage() {
     if (!horizontalCurrentQuestion) return null
 
     const hq = horizontalCurrentQuestion.question
-    const isAutoGraded = isAutoGradedType(hq.type)
     const totalSessions = sessions.length
     const progressPct = totalSessions > 0 ? (horizontalGradedCount / totalSessions) * 100 : 0
 
@@ -1759,18 +1825,79 @@ export function CorrectionPage() {
 
                         {/* Answer */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-foreground whitespace-pre-wrap line-clamp-3">
-                            {answerContent}
-                          </p>
+                          {hq.type === 'CODE' && isCodingAnswer(rep?.contenu) ? (
+                            <div className="space-y-1">
+                              {(() => {
+                                const codingAns = parseCodingAnswer(rep?.contenu || null)
+                                if (!codingAns) return <span className="text-xs text-muted-foreground">Aucun code</span>
+                                const passedTests = codingAns.testResultsPublics?.filter?.(t => t.passed)?.length ?? '?'
+                                const totalTests = codingAns.testResultsPublics?.length ?? '?'
+                                return (
+                                  <>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                      <Badge variant="outline" className="text-[9px] h-4 border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
+                                        {(hq.langage || codingAns.language || 'python').toUpperCase()}
+                                      </Badge>
+                                      <span className="text-muted-foreground">{codingAns.code.split('\n').length} lignes</span>
+                                      <span className="text-muted-foreground">Tests: {passedTests}/{totalTests}</span>
+                                    </div>
+                                    <pre className="text-[10px] font-mono bg-slate-50 dark:bg-slate-900 rounded p-2 overflow-x-auto max-h-32 whitespace-pre-wrap border border-slate-200 dark:border-slate-800">
+                                      {codingAns.code.length > 500 ? codingAns.code.slice(0, 500) + '\n...' : codingAns.code}
+                                    </pre>
+                                  </>
+                                )
+                              })()}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-foreground whitespace-pre-wrap line-clamp-3">
+                              {answerContent}
+                            </p>
+                          )}
                         </div>
 
                         {/* Grading section */}
                         <div className="shrink-0 w-64 space-y-2">
-                          {isAutoGraded ? (
+                          {isAutoGradedType(hq.type) ? (
                             <div className="flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300">
                               <Zap className="h-3 w-3" />
                               Auto: {rep?.score ?? '—'}/{horizontalCurrentQuestion.bareme}
                             </div>
+                          ) : isSemiAutoGradedType(hq.type) ? (
+                            <>
+                              {/* Semi-auto: show auto score with override option */}
+                              <div className="flex items-center gap-1.5 text-[10px] text-violet-700 dark:text-violet-300">
+                                <Zap className="h-3 w-3" />
+                                Auto+: {rep?.score ?? '—'}/{horizontalCurrentQuestion.bareme}
+                              </div>
+                              {/* Score + comment + save */}
+                              <div className="flex items-center gap-1.5">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={horizontalCurrentQuestion.bareme}
+                                  step={0.5}
+                                  value={scoreValue}
+                                  onChange={(e) => setHorizontalScores((prev) => ({ ...prev, [session.id]: e.target.value }))}
+                                  placeholder={rep?.score != null ? String(rep.score) : '0'}
+                                  className="w-14 h-6 text-[11px] px-1.5"
+                                />
+                                <span className="text-[10px] text-muted-foreground">/{horizontalCurrentQuestion.bareme}</span>
+                                <Input
+                                  value={commentValue}
+                                  onChange={(e) => setHorizontalComments((prev) => ({ ...prev, [session.id]: e.target.value }))}
+                                  placeholder="Commentaire..."
+                                  className="flex-1 h-6 text-[11px] px-1.5 min-w-0"
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleHorizontalSave(session.id)}
+                                  disabled={isSavingRow}
+                                  className="bg-emerald-600 hover:bg-emerald-700 h-6 w-6 p-0"
+                                >
+                                  {isSavingRow ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                </Button>
+                              </div>
+                            </>
                           ) : (
                             <>
                               {/* AI hint */}
@@ -1895,7 +2022,7 @@ export function CorrectionPage() {
         </div>
 
         {/* Batch AI for this question */}
-        {!isAutoGraded && (
+        {!isAutoGradedType(hq.type) && !isSemiAutoGradedType(hq.type) && (
           <div className="border-t border-border px-4 py-2">
             <Button
               variant="outline"
@@ -1942,7 +2069,7 @@ export function CorrectionPage() {
   // ─── RENDER: Loading state ───
   if (isLoadingEpreuves) {
     return (
-      <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600 mx-auto" />
           <p className="mt-3 text-sm text-muted-foreground">Chargement des épreuves...</p>
@@ -1954,7 +2081,7 @@ export function CorrectionPage() {
   // ─── RENDER: No epreuves ───
   if (epreuves.length === 0) {
     return (
-      <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
         <div className="text-center">
           <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
             <ClipboardList className="h-8 w-8 text-muted-foreground" />
@@ -1972,7 +2099,7 @@ export function CorrectionPage() {
   const mainContent = gradingMode === 'par-copie' ? renderParCopieContent() : renderParQuestionContent()
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] rounded-xl border border-border bg-background overflow-hidden">
+    <div className="flex flex-col rounded-xl border border-border bg-background overflow-hidden" style={{ height: 'calc(100vh - 10rem)' }}>
       {/* Toolbar */}
       {renderToolbar()}
 
@@ -2082,7 +2209,7 @@ export function CorrectionPage() {
               <SheetTitle className="px-4 pt-4 text-sm">
                 {gradingMode === 'par-copie' ? 'Étudiants' : 'Questions'}
               </SheetTitle>
-              <ScrollArea className="flex-1 h-[calc(100vh-4rem)]">
+              <ScrollArea className="flex-1 h-[calc(100vh-6rem)]">
                 <div className="py-2">
                   {renderSidebar()}
                 </div>

@@ -119,26 +119,53 @@ async function _GET(
           reponseCorrecte: string | string[] | null
           explication: string | null
           difficulte: string
+          langage?: string
+          codeInitial?: string
+          fonctionSignature?: string
+          testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+          testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
         }
       }
 
       const unifiedQuestions: UnifiedQuestion[] = []
 
       for (const eq of session.epreuve.questions) {
+        const questionData: UnifiedQuestion['question'] = {
+          id: eq.question.id,
+          type: eq.question.type,
+          enonce: eq.question.enonce,
+          propositions: safeJsonParse<string[] | null>(eq.question.propositions, null),
+          reponseCorrecte: safeJsonParse<string | string[] | null>(eq.question.reponseCorrecte, null),
+          explication: eq.question.explication || null,
+          difficulte: eq.question.difficulte || 'MOYEN',
+        }
+
+        // Extract CODE-specific fields from reponseCorrecte JSON
+        if (eq.question.type === 'CODE' && eq.question.reponseCorrecte) {
+          try {
+            const parsed = JSON.parse(eq.question.reponseCorrecte)
+            if (parsed && typeof parsed === 'object') {
+              if (parsed.langage) questionData.langage = String(parsed.langage)
+              if (parsed.codeInitial) questionData.codeInitial = String(parsed.codeInitial)
+              if (parsed.fonctionSignature) questionData.fonctionSignature = String(parsed.fonctionSignature)
+              if (Array.isArray(parsed.testsPublics)) questionData.testsPublics = parsed.testsPublics
+              if (Array.isArray(parsed.testsPrives)) questionData.testsPrives = parsed.testsPrives
+              // Also extract the model solution if it's a string in reponseCorrecte
+              if (typeof parsed.reponseCorrecte === 'string') {
+                questionData.reponseCorrecte = parsed.reponseCorrecte
+              }
+            }
+          } catch {
+            // Not valid JSON — ignore
+          }
+        }
+
         unifiedQuestions.push({
           id: eq.id,
           questionId: eq.questionId,
           bareme: eq.bareme,
           ordre: eq.ordre,
-          question: {
-            id: eq.question.id,
-            type: eq.question.type,
-            enonce: eq.question.enonce,
-            propositions: safeJsonParse<string[] | null>(eq.question.propositions, null),
-            reponseCorrecte: safeJsonParse<string | string[] | null>(eq.question.reponseCorrecte, null),
-            explication: eq.question.explication || null,
-            difficulte: eq.question.difficulte || 'MOYEN',
-          },
+          question: questionData,
         })
       }
 
@@ -171,13 +198,21 @@ async function _GET(
                 reponseCorrecte,
                 explication: q.explication ? String(q.explication) : null,
                 difficulte: String(q.difficulte || 'MOYEN'),
+                // CODE-specific fields from contenu
+                ...(String(q.type) === 'CODE' ? {
+                  langage: q.langage ? String(q.langage) : undefined,
+                  codeInitial: q.codeInitial ? String(q.codeInitial) : undefined,
+                  fonctionSignature: q.fonctionSignature ? String(q.fonctionSignature) : undefined,
+                  testsPublics: Array.isArray(q.testsPublics) ? q.testsPublics as Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }> : undefined,
+                  testsPrives: Array.isArray(q.testsPrives) ? q.testsPrives as Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }> : undefined,
+                } : {}),
               },
             })
           }
         }
       }
 
-      const autoTypes = ['QCU', 'QCM']
+      const autoTypes = ['QCU', 'QCM', 'CODE']
       const autoGradedQuestions = unifiedQuestions.filter((q) => autoTypes.includes(q.question.type))
       const autoGradedScore = autoGradedQuestions.reduce((sum, q) => {
         const rep = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
@@ -186,7 +221,11 @@ async function _GET(
       const autoGradedTotal = autoGradedQuestions.reduce((sum, q) => sum + q.bareme, 0)
 
       const manualQuestions = unifiedQuestions.filter((q) =>
-        ['QRC', 'TRS', 'REFLEXION', 'CODE'].includes(q.question.type)
+        ['QRC', 'TRS', 'REFLEXION'].includes(q.question.type) ||
+        (q.question.type === 'CODE' && (() => {
+          const rep = reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
+          return !rep || rep.score === null
+        })())
       )
 
       const needsCorrection = manualQuestions.filter((q) => {
