@@ -112,3 +112,30 @@ Stage Summary:
 - Lint passes cleanly
 - Dev server running without errors
 - Pushed to GitHub (commit 27781c7)
+
+---
+Task ID: 3
+Agent: main
+Task: Complete redesign of Correction page with Split-View, Horizontal Grading, Rubric Criteria, AI Assistant
+
+Work Log:
+- Explored existing correction page (1351 lines monolithic component)
+- Explored all related API endpoints (6 routes)
+- Explored Prisma schema for Session, Reponse, Epreuve, Question models
+- Designed new architecture with extracted sub-components
+- Rewrote entire correction-page.tsx (2078 lines, +1192/-465)
+
+Key Features Implemented:
+1. Split-View Layout: Left panel (30%, session list + grading mode toggle) + Right panel (70%, vertically split: answer read-only top + grading panel bottom)
+2. Horizontal Grading Mode ("Par question"): Toggle via Tabs, shows ALL students for one question, grade consistently
+3. Interactive Rubric Criteria: Auto-generated per question type (QRC/REFLEXION/TRS), clickable toggle buttons, auto-calculates score
+4. AI Grading Assistant: "Suggérer une note" button, AiSuggestionCard with Appliquer/Ignorer, batch AI evaluation
+5. ScoreCircle component: Color-coded (green ≥50%, amber ≥40%, red <40%)
+6. Visual indicators: Auto-corrected (sky badge) vs Manual (amber badge)
+7. Dark mode support, responsive design, Framer Motion animations
+8. All existing API endpoints preserved (no backend changes)
+
+Stage Summary:
+- Lint passes cleanly
+- Dev server running without errors
+- Pushed to GitHub (commit d9fb596)
