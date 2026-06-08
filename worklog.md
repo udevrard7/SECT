@@ -197,3 +197,31 @@ Stage Summary:
 - All 3 overlap bugs fixed in /src/lib/pdf/epreuve-pdf.ts
 - Build and lint pass cleanly
 - Pushed to GitHub (commits c5fd124 + 45fb709 cleanup)
+---
+Task ID: 1
+Agent: main
+Task: Add enhanced document source selection to AI exam generation page
+
+Work Log:
+- Explored the current generation-ia-page.tsx to understand the existing document selection step
+- Found the step had a basic ScrollArea with max-h-96 and simple document list cards
+- Redesigned Step 1 (select-docs) with a comprehensive document selection experience:
+  - Added search bar to filter documents by name, UE code, or themes
+  - Added Select All / Deselect All toggle button
+  - Increased scroll area height to h-[min(500px,50vh)] for better visibility of all documents
+  - Enhanced document cards with: file type icon, file type badge (PDF/DOC/PPT/TXT/IMG), UE code badge, file size, upload date, theme tags
+  - Consolidated toolbar: UE filter + search input + select all button in one row
+  - Added results count and active filter indicators below toolbar
+  - Better empty states (no documents found, loading state)
+  - Added helper functions: formatFileSize, formatDate, getFileTypeLabel
+- Added new state: docSearchQuery
+- Added computed values: filteredDocuments, selectAllFiltered, deselectAllFiltered, allFilteredSelected, someFilteredSelected
+- Added new icon imports: Search, FolderOpen, File, Calendar, HardDrive
+- Lint passes, dev server running fine
+- Pushed commit d996bd6 to GitHub
+
+Stage Summary:
+- The "Génération IA d'Épreuves" page now has a fully redesigned document source selection step
+- Users can search, filter by UE, select all/deselect all, and scroll through all documents
+- Each document card shows rich metadata: file type, UE, size, date, and theme tags
+- Commit: d996bd6
