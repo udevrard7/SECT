@@ -101,8 +101,8 @@ export async function POST(
       return NextResponse.json({ error: 'Question non trouvée' }, { status: 404 })
     }
 
-    if (!['QRC', 'TRS', 'REFLEXION'].includes(questionData.type)) {
-      return NextResponse.json({ error: 'Seules les QRC, TRS et REFLEXION peuvent être corrigées par l\'IA' }, { status: 400 })
+    if (!['QRC', 'TRS', 'REFLEXION', 'CODE'].includes(questionData.type)) {
+      return NextResponse.json({ error: 'Seules les QRC, TRS, REFLEXION et CODE peuvent être corrigées par l\'IA' }, { status: 400 })
     }
 
     // Get the correct answer and bareme
@@ -117,10 +117,76 @@ export async function POST(
     // Use AI to grade
     const aiProvider = await getAIProvider()
 
-    const isQRC = questionData.type === 'QRC'
+    // Build the prompt based on question type
+    let prompt: string
 
-    const prompt = isQRC
-      ? `Tu es un correcteur pédagogique expert pour l'enseignement supérieur. Évalue la réponse courte d'un étudiant.
+    if (questionData.type === 'CODE') {
+      // ─── CODE-specific AI grading ───
+      // Parse student's coding answer
+      let studentCode = ''
+      let studentLanguage = ''
+      let testResultsInfo = ''
+      try {
+        const parsed = JSON.parse(reponse.contenu || '{}')
+        studentCode = parsed.code || '(Aucun code)'
+        studentLanguage = parsed.language || 'inconnu'
+        if (Array.isArray(parsed.testResultsPublics)) {
+          const passed = parsed.testResultsPublics.filter((t: any) => t.passed).length
+          const total = parsed.testResultsPublics.length
+          testResultsInfo = `Résultats des tests publics: ${passed}/${total} réussis`
+        }
+      } catch {
+        studentCode = reponse.contenu || '(Aucune réponse)'
+      }
+
+      // Extract model solution from reponseCorrecte
+      let modelSolution = ''
+      let modelLanguage = ''
+      try {
+        if (typeof correctAnswer === 'object' && correctAnswer !== null) {
+          const ca = correctAnswer as Record<string, unknown>
+          modelSolution = String(ca.reponseCorrecte || ca.codeModele || ca.codeInitial || '')
+          modelLanguage = String(ca.langage || '')
+        } else if (typeof correctAnswer === 'string') {
+          modelSolution = correctAnswer
+        }
+      } catch {
+        modelSolution = String(correctAnswer || 'Non définie')
+      }
+
+      prompt = `Tu es un correcteur pédagogique expert en programmation pour l'enseignement supérieur. Évalue le code d'un étudiant.
+
+Consigne: ${questionData.enonce}
+
+Langage: ${studentLanguage || modelLanguage || 'non spécifié'}
+${modelSolution ? `Solution modèle: ${modelSolution}` : ''}
+${testResultsInfo}
+
+Code de l'étudiant:
+\`\`\`${studentLanguage}
+${studentCode}
+\`\`\`
+
+Note auto-calculée (basée sur les tests): ${reponse.score ?? 'non définie'} / ${bareme}
+
+Évalue le code en considérant:
+1. La logique et l'approche algorithmique (même si les tests échouent partiellement)
+2. La qualité du code (lisibilité, structure, nommage)
+3. La gestion des cas limites
+4. La proximité avec la solution attendue
+5. Les résultats des tests automatiques (si disponibles)
+
+Donne:
+1. Une note sur ${bareme} (nombre décimal possible)
+2. Une justification détaillée en français avec des conseils d'amélioration
+
+Réponds UNIQUEMENT en JSON:
+{
+  "note": nombre_sur_${bareme},
+  "justification": "justification détaillée avec conseils"
+}`
+    } else if (questionData.type === 'QRC') {
+      prompt = `Tu es un correcteur pédagogique expert pour l'enseignement supérieur. Évalue la réponse courte d'un étudiant.
 
 Question: ${questionData.enonce}
 
@@ -139,7 +205,8 @@ Réponds UNIQUEMENT en JSON:
   "note": nombre_sur_${bareme},
   "justification": "justification courte"
 }`
-      : `Tu es un correcteur pédagogique expert pour l'enseignement supérieur. Évalue le devoir structuré d'un étudiant.
+    } else {
+      prompt = `Tu es un correcteur pédagogique expert pour l'enseignement supérieur. Évalue le devoir structuré d'un étudiant.
 
 Consigne: ${questionData.enonce}
 
@@ -158,6 +225,7 @@ Réponds UNIQUEMENT en JSON:
   "note": nombre_sur_${bareme},
   "justification": "justification détaillée"
 }`
+    }
 
     const completion = await aiProvider.chatCompletion({
       messages: [
