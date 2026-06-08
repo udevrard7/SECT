@@ -319,7 +319,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
         </CardTitle>
         <CardDescription>Votre planning d&apos;examens</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="max-h-96 overflow-y-auto">
         {epreuves.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">Aucune épreuve planifiée.</p>
         ) : (
@@ -330,14 +330,14 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
                 <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-emerald-500 flex items-center justify-center -translate-x-1/2 ml-0.5">
                   <CalendarDays className="h-3 w-3 text-emerald-500" />
                 </div>
-                <p className="font-semibold">{exam.titre}</p>
+                <p className="font-semibold truncate" title={exam.titre}>{exam.titre}</p>
                 <p className="text-sm text-muted-foreground">Du {formatDateFR(exam.date)}</p>
                 <p className="text-sm text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" />
-                  Limite : {formatDateFR(exam.dateFin)}
+                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Limite : {formatDateFR(exam.dateFin)}</span>
                 </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-[10px]">{exam.statut}</Badge>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <Badge variant="outline" className="text-[10px] shrink-0">{exam.statut}</Badge>
                   <span className="text-xs text-muted-foreground">{exam.nbParticipants} participant{exam.nbParticipants !== 1 ? 's' : ''}</span>
                 </div>
               </motion.div>
@@ -356,34 +356,38 @@ function RecentEpreuves({ epreuves }: { epreuves: RecentEpreuve[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Épreuves Récentes</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-emerald-600" />
+          Épreuves Récentes
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="max-h-96 overflow-y-auto">
         {epreuves.length === 0 ? (
           <p className="text-muted-foreground text-center py-4">Aucune épreuve pour le moment.</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {epreuves.map(epreuve => {
               const scoreColor = getScoreColor(epreuve.moyenne ?? 0)
               const avgDisplay = epreuve.moyenne ? epreuve.moyenne.toFixed(1) : '-'
               return (
-                <div key={epreuve.id} className="flex items-center">
+                <div key={epreuve.id} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors">
                   <div
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
                     style={{
                       backgroundColor: `${scoreColor}20`,
                       color: scoreColor,
                     }}
+                    title={epreuve.moyenne ? `Moyenne : ${epreuve.moyenne.toFixed(1)}/20` : 'Pas de moyenne'}
                   >
                     {avgDisplay}
                   </div>
-                  <div className="ml-4 flex-grow">
-                    <p className="font-semibold truncate">{epreuve.titre}</p>
-                    <p className="text-sm text-muted-foreground">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate" title={epreuve.titre}>{epreuve.titre}</p>
+                    <p className="text-xs text-muted-foreground truncate">
                       {epreuve.nbParticipants} participant{epreuve.nbParticipants !== 1 ? 's' : ''} · {formatDateFR(epreuve.date)}
                     </p>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">{epreuve.statut}</Badge>
+                  <Badge variant="outline" className="text-[10px] shrink-0">{epreuve.statut}</Badge>
                 </div>
               )
             })}
@@ -685,9 +689,9 @@ export function EnseignantDashboard() {
                         <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-amber-500 flex items-center justify-center -translate-x-1/2 ml-0.5">
                           <MessageSquareWarning className="h-3 w-3 text-amber-500" />
                         </div>
-                        <p className="text-sm">
+                        <p className="text-sm truncate">
                           Correction pour <span className="font-medium">{item.etudiantNom}</span> sur{' '}
-                          <span className="font-medium">{item.epreuveTitre}</span>
+                          <span className="font-medium" title={item.epreuveTitre}>{item.epreuveTitre}</span>
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           <time dateTime={item.submittedAt}>{timeAgo(item.submittedAt)}</time>
