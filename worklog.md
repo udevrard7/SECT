@@ -254,3 +254,24 @@ Work Log:
 Stage Summary:
 - CODE questions are now properly generated and displayed in AI exam generation
 - Commit: 13b12d3
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix student creation by responsable — "lorsque responsable cree/ajout un étudiant directement sa ne fonction plus"
+
+Work Log:
+- Investigated the student creation flow: frontend etudiants-page.tsx → POST /api/users
+- Found bug #1: When the user selects "Aucun niveau" in the Select dropdown, the `__none__` placeholder value was being sent as the `niveau` field to the API. Since `niveau` is of type `NiveauEtude` enum (L1, L2, L3, M1, M2, DOCTORAT), the value `__none__` caused a Prisma error (invalid enum value)
+- Found bug #2: Same issue in the PATCH route for editing students — `body.niveau || null` would evaluate to `"__none__"` since it's truthy
+- Found bug #3: In PATCH /api/users/[id], the notification for matricule change referenced `existingUser.email` which doesn't exist (should be `user.email`) — this would throw a ReferenceError caught by the notification's try-catch
+- Found bug #4: NextAuth cookies used `__Secure-` and `__Host-` prefixes even in development mode (HTTP), which violates cookie spec — browsers may reject these cookies without the `Secure` flag
+- Fixed frontend: Added `!== '__none__'` checks in handleDirectSubmit and doEditSubmit
+- Fixed backend POST: Added explicit niveau validation against VALID_NIVEAUX array
+- Fixed backend PATCH: Added explicit niveau validation + fixed `existingUser.email` → `user.email`
+- Fixed auth cookies: Made cookie name conditional on NODE_ENV (prefix only in production)
+- Committed as 63e59ed and pushed to GitHub
+
+Stage Summary:
+- 4 bugs fixed in student creation flow
+- Commit: 63e59ed — pushed to main
+- Root cause: `__none__` placeholder value from Select component leaking into API as invalid enum value
