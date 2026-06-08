@@ -139,7 +139,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, email, password, role, etablissementId, filiereId, actif, mode, matricule, niveau } = body
+    const { name, email, password, role, etablissementId, filiereId, actif, mode, matricule } = body
+
+    // Validate and sanitize niveau — must be a valid NiveauEtude enum value
+    const VALID_NIVEAUX = ['L1', 'L2', 'L3', 'M1', 'M2', 'DOCTORAT']
+    const rawNiveau = body.niveau
+    const niveau = (rawNiveau && VALID_NIVEAUX.includes(rawNiveau)) ? rawNiveau : null
 
     if (!name || !email || !role) {
       return NextResponse.json({ error: 'Champs obligatoires manquants (name, email, role)' }, { status: 400 })

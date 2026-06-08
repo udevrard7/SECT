@@ -508,7 +508,7 @@ export function EtudiantsPage() {
       if (directFiliereId) body.filiereId = directFiliereId
       if (etablissementId) body.etablissementId = etablissementId
       if (directMatricule) body.matricule = directMatricule
-      if (directNiveau) body.niveau = directNiveau
+      if (directNiveau && directNiveau !== '__none__') body.niveau = directNiveau
 
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -636,7 +636,7 @@ export function EtudiantsPage() {
         email: editEmail,
         filiereId: editFiliereId && editFiliereId !== '__none__' ? editFiliereId : null,
         matricule: editMatricule || null,
-        niveau: editNiveau || null,
+        niveau: editNiveau && editNiveau !== '__none__' ? editNiveau : null,
         actif: editActif,
       }
 
