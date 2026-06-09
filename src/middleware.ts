@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   '/api/auth/password-reset/confirm',
   '/api/invitations/verify',
   '/api/invitations/accept',
+  '/api/epreuves/auto-close', // Cron auto-close (has its own secret-based auth)
 ]
 
 // API routes that should return 401 instead of redirecting
