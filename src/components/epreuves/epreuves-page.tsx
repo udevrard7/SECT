@@ -82,6 +82,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import {
   DropdownMenu,
@@ -199,6 +200,8 @@ interface SessionEpreuve {
   anneeAcademique?: { id: string; libelle: string } | null
   filiere?: { id: string; nom: string; code: string | null } | null
   uniteEnseignement?: { id: string; nom: string; code: string | null } | null
+  epreuveOrigineId?: string | null
+  etudiantsAutorises?: string[] | null
 }
 
 type TabId = 'modeles' | 'sessions'
@@ -260,12 +263,16 @@ const SESSION_EXAMEN_LABELS: Record<string, string> = {
   NORMALE: 'Normale',
   RATTRAPAGE: 'Rattrapage',
   SPECIALE: 'Spéciale',
+  EXCEPTIONNELLE: 'Exceptionnelle',
+  DIFFERE: 'Différé',
 }
 
 const SESSION_EXAMEN_COLORS: Record<string, string> = {
   NORMALE: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800',
   RATTRAPAGE: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800',
   SPECIALE: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800',
+  EXCEPTIONNELLE: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800',
+  DIFFERE: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800',
 }
 
 function getStatutLabel(statut: string): string {
@@ -1122,6 +1129,25 @@ function SessionsTab() {
   const [dateEditDebut, setDateEditDebut] = useState('')
   const [dateEditFin, setDateEditFin] = useState('')
 
+  // Session spéciale dialog
+  const [sessionSpecialeDialogOpen, setSessionSpecialeDialogOpen] = useState(false)
+  const [sessionSpecialeEpreuve, setSessionSpecialeEpreuve] = useState<SessionEpreuve | null>(null)
+
+  // Special sessions traceability in monitoring dialog
+  const [specialSessions, setSpecialSessions] = useState<Array<{
+    id: string
+    type: string
+    motif: string
+    estPartielle: boolean
+    createdAt: string
+    etudiantsCibles: string[]
+    questionsSelectionnees: string[]
+    epreuveDerivee: { id: string; titre: string; statut: string; dateDebut: string; dateFin: string; duree: number; sessionExamen: string | null } | null
+    creePar: { id: string; name: string; email: string } | null
+  }>>([])
+  const [isLoadingSpecialSessions, setIsLoadingSpecialSessions] = useState(false)
+  const [specialSessionsOpen, setSpecialSessionsOpen] = useState(false)
+
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
     if (!user?.id) return
@@ -1358,6 +1384,20 @@ function SessionsTab() {
       setMonitoringEpreuve(epreuve)
     }
     setMonitoringDialogOpen(true)
+    setSpecialSessionsOpen(false)
+    // Fetch special sessions for this epreuve
+    setIsLoadingSpecialSessions(true)
+    try {
+      const ssRes = await fetch(`/api/epreuves/session-speciale?epreuveId=${epreuve.id}`)
+      if (ssRes.ok) {
+        const ssData = await ssRes.json()
+        setSpecialSessions(ssData.sessionsSpeciales ?? [])
+      }
+    } catch {
+      // Silently ignore
+    } finally {
+      setIsLoadingSpecialSessions(false)
+    }
   }
 
   // Auto-refresh monitoring data for EN_COURS epreuves
@@ -1553,6 +1593,9 @@ function SessionsTab() {
               <BarChart3 className="h-3.5 w-3.5" /> Résultats
             </Button>
             {pdfDropdown}
+            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950" onClick={() => { setSessionSpecialeEpreuve(epreuve); setSessionSpecialeDialogOpen(true) }}>
+              <RotateCcw className="h-3.5 w-3.5" /> Session spéciale
+            </Button>
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action: 'cloturer', label: 'Clôturer l\'épreuve', description: 'Cette action est irréversible. Plus aucune modification ne sera possible. Voulez-vous continuer ?' })}>
               <Lock className="h-3.5 w-3.5" /> Clôturer
             </Button>
@@ -1565,6 +1608,9 @@ function SessionsTab() {
               <Trophy className="h-3.5 w-3.5" /> Résultats
             </Button>
             {pdfDropdown}
+            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950" onClick={() => { setSessionSpecialeEpreuve(epreuve); setSessionSpecialeDialogOpen(true) }}>
+              <RotateCcw className="h-3.5 w-3.5" /> Session spéciale
+            </Button>
             <Button variant="outline" size="sm" onClick={() => handleExport(epreuve)}>
               <Download className="h-3.5 w-3.5" /> Exporter
             </Button>
@@ -1785,6 +1831,8 @@ function SessionsTab() {
                     <SelectItem value="NORMALE">Normale</SelectItem>
                     <SelectItem value="RATTRAPAGE">Rattrapage</SelectItem>
                     <SelectItem value="SPECIALE">Spéciale</SelectItem>
+                    <SelectItem value="EXCEPTIONNELLE">Exceptionnelle</SelectItem>
+                    <SelectItem value="DIFFERE">Différé</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1912,8 +1960,18 @@ function SessionsTab() {
                   </div>
 
                   {/* ─── Classification badges ─── */}
-                  {(epreuve.niveau || epreuve.sessionExamen || epreuve.anneeAcademique || epreuve.uniteEnseignement || epreuve.filiere) && (
+                  {(epreuve.niveau || epreuve.sessionExamen || epreuve.anneeAcademique || epreuve.uniteEnseignement || epreuve.filiere || epreuve.epreuveOrigineId) && (
                     <div className="flex flex-wrap gap-1.5">
+                      {epreuve.epreuveOrigineId && (
+                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800">
+                          <RotateCcw className="h-2.5 w-2.5" /> Session spéciale
+                        </Badge>
+                      )}
+                      {epreuve.etudiantsAutorises && epreuve.etudiantsAutorises.length > 0 && (
+                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+                          <Users className="h-2.5 w-2.5" /> {epreuve.etudiantsAutorises.length} étudiant(s) autorisé(s)
+                        </Badge>
+                      )}
                       {epreuve.niveau && (
                         <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800">
                           <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
@@ -2253,6 +2311,8 @@ function SessionsTab() {
                           <SelectItem value="NORMALE">📋 Normale</SelectItem>
                           <SelectItem value="RATTRAPAGE">🔄 Rattrapage</SelectItem>
                           <SelectItem value="SPECIALE">⭐ Spéciale</SelectItem>
+                          <SelectItem value="EXCEPTIONNELLE">⚡ Exceptionnelle</SelectItem>
+                          <SelectItem value="DIFFERE">⏳ Différé</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -2370,6 +2430,88 @@ function SessionsTab() {
                     </ScrollArea>
                   )}
                 </div>
+
+                {/* Special Sessions Traceability */}
+                <Separator />
+                <Collapsible open={specialSessionsOpen} onOpenChange={setSpecialSessionsOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="w-full justify-between gap-2 text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300">
+                      <span className="flex items-center gap-2">
+                        <RotateCcw className="h-4 w-4" />
+                        Sessions spéciales dérivées
+                        {specialSessions.length > 0 && (
+                          <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300">
+                            {specialSessions.length}
+                          </Badge>
+                        )}
+                      </span>
+                      {specialSessionsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-2 space-y-2">
+                      {isLoadingSpecialSessions ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
+                          <span className="ml-2 text-sm text-muted-foreground">Chargement...</span>
+                        </div>
+                      ) : specialSessions.length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic py-2">Aucune session spéciale créée à partir de cette épreuve.</p>
+                      ) : (
+                        specialSessions.map((ss) => {
+                          const typeOption = TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === ss.type)
+                          return (
+                            <div key={ss.id} className="rounded-lg border p-3 space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className={typeOption?.color || ''}>
+                                    {typeOption?.label || ss.type}
+                                  </Badge>
+                                  {ss.estPartielle && (
+                                    <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300">
+                                      Partielle
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                  {formatDateTime(ss.createdAt)}
+                                </span>
+                              </div>
+                              <p className="text-sm">{ss.motif}</p>
+                              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" /> {Array.isArray(ss.etudiantsCibles) ? ss.etudiantsCibles.length : 0} étudiant(s)
+                                </span>
+                                {ss.epreuveDerivee && (
+                                  <>
+                                    <span className="text-muted-foreground/40">·</span>
+                                    <span className="flex items-center gap-1">
+                                      Épreuve dérivée : <span className="font-medium text-foreground">{ss.epreuveDerivee.titre}</span>
+                                    </span>
+                                    <Badge variant="outline" className="text-[9px] py-0">
+                                      {getStatutLabel(ss.epreuveDerivee.statut)}
+                                    </Badge>
+                                    {ss.epreuveDerivee.sessionExamen && (
+                                      <Badge variant="outline" className={`text-[9px] py-0 ${SESSION_EXAMEN_COLORS[ss.epreuveDerivee.sessionExamen] || ''}`}>
+                                        {SESSION_EXAMEN_LABELS[ss.epreuveDerivee.sessionExamen] || ss.epreuveDerivee.sessionExamen}
+                                      </Badge>
+                                    )}
+                                  </>
+                                )}
+                                {ss.creePar && (
+                                  <>
+                                    <span className="text-muted-foreground/40">·</span>
+                                    <span>Créée par {ss.creePar.name}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
             )
           })()}
@@ -2429,7 +2571,595 @@ function SessionsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Session Spéciale Dialog */}
+      <SessionSpecialeDialog
+        open={sessionSpecialeDialogOpen}
+        onOpenChange={setSessionSpecialeDialogOpen}
+        epreuve={sessionSpecialeEpreuve}
+        onSuccess={() => { fetchSessions() }}
+      />
     </div>
   )
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SESSION SPÉCIALE DIALOG
+// ═══════════════════════════════════════════════════════════════
+
+const TYPE_SESSION_SPECIALE_OPTIONS = [
+  { value: 'RATTRAPAGE', label: 'Rattrapage', description: 'Session de rattrapage pour étudiants absents', color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800' },
+  { value: 'EXCEPTIONNELLE', label: 'Exceptionnelle', description: 'Session exceptionnelle (force majeure, catastrophe...)', color: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800' },
+  { value: 'DIFFERE', label: 'Différé', description: 'Examen différé pour étudiant(s) empêché(s)', color: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800' },
+]
+
+function SessionSpecialeDialog({
+  open,
+  onOpenChange,
+  epreuve,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  epreuve: SessionEpreuve | null
+  onSuccess: () => void
+}) {
+  const [step, setStep] = useState(1)
+  const [type, setType] = useState<string>('')
+  const [motif, setMotif] = useState('')
+  const [justificatif, setJustificatif] = useState('')
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set())
+  const [estPartielle, setEstPartielle] = useState(false)
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set())
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [duree, setDuree] = useState(60)
+  const [delaiGrace, setDelaiGrace] = useState(0)
+  const [melangeQuestions, setMelangeQuestions] = useState(false)
+  const [melangePropositions, setMelangePropositions] = useState(false)
+  const [blocageRetour, setBlocageRetour] = useState(false)
+  const [titre, setTitre] = useState('')
+  const [titreOverride, setTitreOverride] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+
+  // Reset form when dialog opens with a new epreuve
+  useEffect(() => {
+    if (open && epreuve) {
+      setStep(1)
+      setType('')
+      setMotif('')
+      setJustificatif('')
+      setEstPartielle(false)
+      setSelectedQuestions(new Set())
+      setDuree(epreuve.duree)
+      setDelaiGrace(epreuve.delaiGrace ?? 0)
+      setMelangeQuestions(epreuve.melangeQuestions)
+      setMelangePropositions(epreuve.melangePropositions)
+      setBlocageRetour(epreuve.blocageRetour)
+      setTitre(`${epreuve.titre} — Session spéciale`)
+      setTitreOverride(false)
+      // Pre-select ABSENT and NON_SOUMIS students
+      const preselected = new Set<string>()
+      ;(epreuve.sessions ?? []).forEach((s) => {
+        if (s.statut === 'ABSENT' || s.statut === 'NON_SOUMIS') {
+          preselected.add(s.etudiantId)
+        }
+      })
+      setSelectedStudents(preselected)
+
+      // Default dates: 1 week from now
+      const now = new Date()
+      const debut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const fin = new Date(debut.getTime() + epreuve.duree * 60 * 1000)
+      const toLocal = (d: Date) => {
+        const offset = d.getTimezoneOffset()
+        const local = new Date(d.getTime() - offset * 60000)
+        return local.toISOString().slice(0, 16)
+      }
+      setDateDebut(toLocal(debut))
+      setDateFin(toLocal(fin))
+    }
+  }, [open, epreuve])
+
+  const toggleStudent = (studentId: string) => {
+    setSelectedStudents((prev) => {
+      const next = new Set(prev)
+      if (next.has(studentId)) next.delete(studentId)
+      else next.add(studentId)
+      return next
+    })
+  }
+
+  const toggleAllStudents = (studentIds: string[]) => {
+    setSelectedStudents((prev) => {
+      const allSelected = studentIds.every((id) => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) {
+        studentIds.forEach((id) => next.delete(id))
+      } else {
+        studentIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const toggleQuestion = (questionId: string) => {
+    setSelectedQuestions((prev) => {
+      const next = new Set(prev)
+      if (next.has(questionId)) next.delete(questionId)
+      else next.add(questionId)
+      return next
+    })
+  }
+
+  const handleCreate = async () => {
+    if (!epreuve || !type || !motif || motif.length < 5 || selectedStudents.size === 0 || !dateDebut || !dateFin) return
+    setIsCreating(true)
+    try {
+      const body: Record<string, unknown> = {
+        epreuveOrigineId: epreuve.id,
+        type,
+        motif,
+        justificatif: justificatif || undefined,
+        etudiantsCibles: Array.from(selectedStudents),
+        estPartielle,
+        questionsSelectionnees: estPartielle && selectedQuestions.size > 0 ? Array.from(selectedQuestions) : undefined,
+        dateDebut: new Date(dateDebut).toISOString(),
+        dateFin: new Date(dateFin).toISOString(),
+        duree: duree || undefined,
+        delaiGrace: delaiGrace || undefined,
+        titre: titreOverride ? titre : undefined,
+        melangeQuestions,
+        melangePropositions,
+        blocageRetour,
+      }
+      const res = await fetch('/api/epreuves/session-speciale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Erreur lors de la création')
+      }
+      toast.success('Session spéciale créée', { description: `La session ${TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type} a été créée avec succès.` })
+      onOpenChange(false)
+      onSuccess()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de créer la session spéciale.' })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const canGoNext = () => {
+    switch (step) {
+      case 1: return type !== '' && motif.length >= 5
+      case 2: return selectedStudents.size > 0
+      case 3: return dateDebut !== '' && dateFin !== '' && (!estPartielle || selectedQuestions.size > 0)
+      default: return true
+    }
+  }
+
+  // Get sessions grouped by status for student selection
+  const sessionsByStatus = (() => {
+    if (!epreuve) return {}
+    const grouped: Record<string, Session[]> = {}
+    ;(epreuve.sessions ?? []).forEach((s) => {
+      if (!grouped[s.statut]) grouped[s.statut] = []
+      grouped[s.statut].push(s)
+    })
+    return grouped
+  })()
+
+  const statusOrder = ['ABSENT', 'NON_SOUMIS', 'EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE']
+  const statusLabels: Record<string, string> = {
+    ABSENT: 'Absents',
+    NON_SOUMIS: 'Non soumis',
+    EN_COURS: 'En cours',
+    SOUMISE: 'Soumises',
+    CORRIGEE: 'Corrigées',
+    RETOURNEE: 'Retournées',
+  }
+  const statusColors: Record<string, string> = {
+    ABSENT: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    NON_SOUMIS: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+    EN_COURS: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
+    SOUMISE: 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300',
+    CORRIGEE: 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300',
+    RETOURNEE: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
+  }
+
+  // Get questions from epreuve contenu
+  const questions = epreuve?.contenu?.questions ?? []
+
+  const stepTitles = ['Type & Motif', 'Étudiants', 'Paramètres', 'Récapitulatif']
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <RotateCcw className="h-5 w-5 text-amber-600" />
+            Session spéciale
+          </DialogTitle>
+          <DialogDescription>
+            Créer une session spéciale à partir de &laquo; {epreuve?.titre} &raquo;
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-1 px-1">
+          {stepTitles.map((title, idx) => (
+            <div key={idx} className="flex-1">
+              <div className={`h-1.5 rounded-full transition-colors ${idx + 1 <= step ? 'bg-amber-500' : 'bg-muted'}`} />
+              <p className={`text-[10px] mt-1 truncate ${idx + 1 <= step ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-muted-foreground'}`}>{title}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto pr-1">
+          {/* Step 1: Type & Motif */}
+          {step === 1 && (
+            <div className="space-y-5">
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Type de session</Label>
+                <div className="grid grid-cols-1 gap-2">
+                  {TYPE_SESSION_SPECIALE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setType(opt.value)}
+                      className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-sm ${type === opt.value ? `border-amber-400 ring-2 ring-amber-200 dark:ring-amber-800 ${opt.color}` : 'border-border hover:border-amber-200'}`}
+                    >
+                      <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${type === opt.value ? 'border-amber-500 bg-amber-500' : 'border-muted-foreground/30'}`}>
+                        {type === opt.value && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{opt.label}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{opt.description}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Motif <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={motif}
+                  onChange={(e) => setMotif(e.target.value)}
+                  placeholder="Décrivez le motif de cette session spéciale (min. 5 caractères)..."
+                  className="min-h-20 resize-none"
+                />
+                {motif.length > 0 && motif.length < 5 && (
+                  <p className="text-xs text-red-500">Le motif doit contenir au moins 5 caractères.</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Justificatif <span className="text-muted-foreground font-normal">(optionnel)</span></Label>
+                <Input
+                  value={justificatif}
+                  onChange={(e) => setJustificatif(e.target.value)}
+                  placeholder="Référence ou numéro de justificatif..."
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Select Students */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">
+                  Étudiants concernés <span className="text-red-500">*</span>
+                </Label>
+                <Badge variant="outline" className="gap-1 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300">
+                  <Users className="h-3 w-3" /> {selectedStudents.size} sélectionné{selectedStudents.size > 1 ? 's' : ''}
+                </Badge>
+              </div>
+
+              {(epreuve?.sessions ?? []).length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-8">
+                  <Users className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="mt-2 text-sm text-muted-foreground">Aucun étudiant inscrit dans cette épreuve.</p>
+                </div>
+              ) : (
+                <ScrollArea className="max-h-72">
+                  <div className="space-y-3">
+                    {statusOrder.map((status) => {
+                      const sessions = sessionsByStatus[status]
+                      if (!sessions || sessions.length === 0) return null
+                      const allSelected = sessions.every((s) => selectedStudents.has(s.etudiantId))
+                      return (
+                        <div key={status}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${statusColors[status] || ''}`}>
+                              {statusLabels[status] || status} ({sessions.length})
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="ml-auto h-6 text-[10px] text-muted-foreground hover:text-foreground"
+                              onClick={() => toggleAllStudents(sessions.map((s) => s.etudiantId))}
+                            >
+                              {allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
+                            </Button>
+                          </div>
+                          <div className="space-y-1">
+                            {sessions.map((session) => (
+                              <div
+                                key={session.id}
+                                className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors cursor-pointer ${selectedStudents.has(session.etudiantId) ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : 'hover:bg-muted/30'}`}
+                                onClick={() => toggleStudent(session.etudiantId)}
+                              >
+                                <Checkbox
+                                  checked={selectedStudents.has(session.etudiantId)}
+                                  onCheckedChange={() => toggleStudent(session.etudiantId)}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium truncate">{session.etudiant?.name || session.etudiantId}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{session.etudiant?.email}</p>
+                                </div>
+                                {session.score !== null && (
+                                  <span className="text-xs text-muted-foreground">{session.score}/{epreuve?.noteTotal || 20}</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Configure Epreuve Parameters */}
+          {step === 3 && (
+            <div className="space-y-5">
+              {/* Complete vs Partial */}
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Portée de la session</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEstPartielle(false)}
+                    className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-all ${!estPartielle ? 'border-emerald-400 ring-2 ring-emerald-200 dark:ring-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'hover:border-emerald-200'}`}
+                  >
+                    <BookOpen className={`h-5 w-5 ${!estPartielle ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                    <span className={`text-sm font-medium ${!estPartielle ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>Épreuve complète</span>
+                    <span className="text-[10px] text-muted-foreground">Relancer l&apos;épreuve complète</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEstPartielle(true)}
+                    className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-all ${estPartielle ? 'border-amber-400 ring-2 ring-amber-200 dark:ring-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'hover:border-amber-200'}`}
+                  >
+                    <Layers className={`h-5 w-5 ${estPartielle ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                    <span className={`text-sm font-medium ${estPartielle ? 'text-amber-700 dark:text-amber-300' : ''}`}>Partie seulement</span>
+                    <span className="text-[10px] text-muted-foreground">Sélectionner des questions</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Question selection for partial */}
+              {estPartielle && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Questions sélectionnées</Label>
+                    <Badge variant="outline" className="text-[10px] gap-0.5 py-0">{selectedQuestions.size} / {questions.length}</Badge>
+                  </div>
+                  {questions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">Aucune question disponible dans le contenu de l&apos;épreuve.</p>
+                  ) : (
+                    <ScrollArea className="max-h-40">
+                      <div className="space-y-1">
+                        {questions.map((q, idx) => (
+                          <div
+                            key={q.id}
+                            className={`flex items-center gap-2 rounded-md border p-2 cursor-pointer transition-colors ${selectedQuestions.has(q.id) ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : 'hover:bg-muted/30'}`}
+                            onClick={() => toggleQuestion(q.id)}
+                          >
+                            <Checkbox
+                              checked={selectedQuestions.has(q.id)}
+                              onCheckedChange={() => toggleQuestion(q.id)}
+                            />
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold">{idx + 1}</span>
+                            <Badge variant="outline" className={`text-[9px] gap-0.5 py-0 ${TYPE_COLORS[q.type] || ''}`}>{q.type}</Badge>
+                            <p className="text-xs truncate flex-1">{q.enonce}</p>
+                            <span className="text-[10px] text-muted-foreground shrink-0">{q.bareme}pts</span>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+              )}
+
+              {/* Title override */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={titreOverride}
+                    onCheckedChange={(checked) => setTitreOverride(checked === true)}
+                  />
+                  <Label className="text-sm">Personnaliser le titre</Label>
+                </div>
+                {titreOverride && (
+                  <Input value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Titre de la session spéciale..." />
+                )}
+              </div>
+
+              {/* Date & Duration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-emerald-600" /> Date début <span className="text-red-500">*</span>
+                  </Label>
+                  <Input type="datetime-local" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-red-500" /> Date fin <span className="text-red-500">*</span>
+                  </Label>
+                  <Input type="datetime-local" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-teal-600" /> Durée (min)
+                  </Label>
+                  <Input type="number" value={duree} onChange={(e) => setDuree(Number(e.target.value))} min={1} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-amber-600" /> Délai de grâce (min)
+                  </Label>
+                  <Input type="number" value={delaiGrace} onChange={(e) => setDelaiGrace(Number(e.target.value))} min={0} />
+                </div>
+              </div>
+
+              {/* Options */}
+              <div className="space-y-2.5">
+                <Label className="text-sm font-semibold">Options</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="ss-melange-q" checked={melangeQuestions} onCheckedChange={(c) => setMelangeQuestions(c === true)} />
+                    <Label htmlFor="ss-melange-q" className="text-sm font-normal cursor-pointer">Mélanger les questions</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="ss-melange-p" checked={melangePropositions} onCheckedChange={(c) => setMelangePropositions(c === true)} />
+                    <Label htmlFor="ss-melange-p" className="text-sm font-normal cursor-pointer">Mélanger les propositions</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="ss-blocage" checked={blocageRetour} onCheckedChange={(c) => setBlocageRetour(c === true)} />
+                    <Label htmlFor="ss-blocage" className="text-sm font-normal cursor-pointer">Bloquer le retour en arrière</Label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Review & Create */}
+          {step === 4 && epreuve && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                {/* Type & Motif */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Type & Motif</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Badge variant="outline" className={TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.color || ''}>
+                      {TYPE_SESSION_SPECIALE_OPTIONS.find((t) => t.value === type)?.label || type}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm">{motif}</p>
+                  {justificatif && (
+                    <p className="mt-1 text-xs text-muted-foreground">Justificatif : {justificatif}</p>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Students */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Étudiants</p>
+                  <p className="mt-1 text-sm font-medium">{selectedStudents.size} étudiant{selectedStudents.size > 1 ? 's' : ''} sélectionné{selectedStudents.size > 1 ? 's' : ''}</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {(epreuve.sessions ?? [])
+                      .filter((s) => selectedStudents.has(s.etudiantId))
+                      .slice(0, 8)
+                      .map((s) => (
+                        <Badge key={s.etudiantId} variant="secondary" className="text-[10px]">
+                          {s.etudiant?.name || s.etudiantId}
+                        </Badge>
+                      ))
+                    }
+                    {selectedStudents.size > 8 && (
+                      <Badge variant="secondary" className="text-[10px]">+{selectedStudents.size - 8} autres</Badge>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Parameters */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Paramètres</p>
+                  <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <div className="text-muted-foreground">Portée</div>
+                    <div className="font-medium">{estPartielle ? `Partielle (${selectedQuestions.size} question${selectedQuestions.size > 1 ? 's' : ''})` : 'Complète'}</div>
+                    <div className="text-muted-foreground">Date début</div>
+                    <div className="font-medium">{dateDebut ? formatDateTime(dateDebut) : '—'}</div>
+                    <div className="text-muted-foreground">Date fin</div>
+                    <div className="font-medium">{dateFin ? formatDateTime(dateFin) : '—'}</div>
+                    <div className="text-muted-foreground">Durée</div>
+                    <div className="font-medium">{duree} min</div>
+                    {delaiGrace > 0 && (
+                      <>
+                        <div className="text-muted-foreground">Délai de grâce</div>
+                        <div className="font-medium">{delaiGrace} min</div>
+                      </>
+                    )}
+                  </div>
+                  {(melangeQuestions || melangePropositions || blocageRetour) && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {melangeQuestions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Questions mélangées</Badge>}
+                      {melangePropositions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Props mélangées</Badge>}
+                      {blocageRetour && <Badge variant="outline" className="text-[10px] gap-0.5 py-0 text-red-600"><Ban className="h-2.5 w-2.5" /> Retour bloqué</Badge>}
+                    </div>
+                  )}
+                </div>
+
+                {titreOverride && titre !== epreuve.titre && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Titre personnalisé</p>
+                      <p className="mt-1 text-sm font-medium">{titre}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="flex items-center justify-between gap-2 mt-2">
+          <div className="flex gap-2">
+            {step > 1 && (
+              <Button variant="outline" onClick={() => setStep(step - 1)}>
+                Précédent
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+            {step < 4 ? (
+              <Button
+                className="bg-amber-600 hover:bg-amber-700"
+                disabled={!canGoNext()}
+                onClick={() => setStep(step + 1)}
+              >
+                Suivant
+              </Button>
+            ) : (
+              <Button
+                className="bg-amber-600 hover:bg-amber-700"
+                disabled={!canGoNext() || isCreating}
+                onClick={handleCreate}
+              >
+                {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Créer la session
+              </Button>
+            )}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

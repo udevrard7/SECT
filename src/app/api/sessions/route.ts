@@ -192,6 +192,21 @@ async function _POST(
       return NextResponse.json({ error: 'Étudiant non trouvé' }, { status: 404 })
     }
 
+    // ─── Check etudiantsAutorises (session spéciale) ───
+    if (epreuve.etudiantsAutorises) {
+      try {
+        const authorizedIds = JSON.parse(epreuve.etudiantsAutorises as string) as string[]
+        if (!authorizedIds.includes(etudiantId)) {
+          return NextResponse.json(
+            { error: 'Vous n\'êtes pas autorisé à passer cette épreuve (session réservée)', code: 'NOT_AUTHORIZED' },
+            { status: 403 }
+          )
+        }
+      } catch {
+        // Ignore parse errors — allow access if JSON is malformed
+      }
+    }
+
     if (epreuve.filiereId && etudiant.filiereId && epreuve.filiereId !== etudiant.filiereId) {
       return NextResponse.json(
         { error: 'Vous n\'êtes pas autorisé à passer cette épreuve (filière non correspondante)', code: 'NOT_AUTHORIZED' },

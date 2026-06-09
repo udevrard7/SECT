@@ -45,8 +45,19 @@ export interface ClosureResult {
 async function getEligibleStudentCount(
   filiereId: string | null,
   groupesCibles: string | null,
-  _existingSessionCount?: number
+  _existingSessionCount?: number,
+  etudiantsAutorises?: string | null
 ): Promise<number> {
+  // If etudiantsAutorises is set (session spéciale), use its length as the eligible count
+  if (etudiantsAutorises) {
+    try {
+      const ids = JSON.parse(etudiantsAutorises) as string[]
+      return Array.isArray(ids) ? ids.length : 0
+    } catch {
+      // Malformed JSON — fall through
+    }
+  }
+
   if (!filiereId) {
     // No filiere → can't determine eligible students from DB
     // Return 0 so Condition A (all submitted) cannot trigger incorrectly.
@@ -154,7 +165,7 @@ export async function checkAndAutoCloseEpreuve(epreuveId: string): Promise<Closu
       const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
       const submittedSessions = epreuve.sessions.filter(s => submittedStatuses.includes(s.statut)).length
       const activeSessions = epreuve.sessions.filter(s => s.statut === 'EN_COURS').length
-      const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions)
+      const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions, epreuve.etudiantsAutorises as string | null)
 
       // Condition A: tous les étudiants ont soumis
       if (eligibleStudentCount > 0 && submittedSessions === eligibleStudentCount && activeSessions === 0) {
@@ -204,7 +215,7 @@ export async function checkAndAutoCloseEpreuve(epreuveId: string): Promise<Closu
   // totalSessions would incorrectly close when only 1 student (who started)
   // submits. We must check against the total eligible student population.
   // SAFETY: Also ensure no sessions are still EN_COURS before closing.
-  const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions)
+  const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions, epreuve.etudiantsAutorises as string | null)
 
   if (eligibleStudentCount > 0 && submittedSessions === eligibleStudentCount && activeSessions === 0) {
     return await performClosure(epreuveId, 'TOUS_SOUMIS', epreuve.sessions, epreuve.enseignantId, epreuve.statut)

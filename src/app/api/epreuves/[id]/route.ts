@@ -87,6 +87,7 @@ async function _GET(
     const parsed = {
       ...epreuve,
       groupesCibles: epreuve.groupesCibles ? JSON.parse(epreuve.groupesCibles) : null,
+      etudiantsAutorises: epreuve.etudiantsAutorises ? JSON.parse(epreuve.etudiantsAutorises as string) : null,
       questionCount,
       totalPoints,
       questions: epreuve.questions.map((eq) => ({
@@ -232,6 +233,8 @@ async function _PATCH(
     if (data.anneeAcademiqueId !== undefined) updateData.anneeAcademiqueId = data.anneeAcademiqueId
     if (data.uniteEnseignementId !== undefined) updateData.uniteEnseignementId = data.uniteEnseignementId
     if (data.filiereId !== undefined) updateData.filiereId = data.filiereId
+    if (data.etudiantsAutorises !== undefined) updateData.etudiantsAutorises = JSON.stringify(data.etudiantsAutorises)
+    if (data.epreuveOrigineId !== undefined) updateData.epreuveOrigineId = data.epreuveOrigineId
 
     const epreuve = await db.epreuve.update({
       where: { id },
