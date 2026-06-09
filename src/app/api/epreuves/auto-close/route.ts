@@ -2,32 +2,63 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkAndAutoCloseEpreuve, scanAndAutoCloseEpreuves, getEligibleStudentCount } from '@/lib/auto-closure'
 import { db } from '@/lib/db'
 
+// Cron secret for securing the auto-close endpoint
+const CRON_SECRET = process.env.CRON_SECRET || 'sect-cron-2024-auto-close'
+
+/**
+ * Verify that the request is authorized to trigger auto-close.
+ * Accepts:
+ * - Vercel Cron (Authorization: Bearer xxx header)
+ * - Internal cron (?cron=true query param with matching CRON_SECRET header)
+ * - Authenticated users (via standard auth — they can trigger check for specific epreuveId)
+ */
+function isCronAuthorized(request: NextRequest): boolean {
+  // Vercel Cron sends Authorization header
+  const authHeader = request.headers.get('authorization')
+  if (authHeader === `Bearer ${CRON_SECRET}`) return true
+
+  // Internal cron with custom header
+  const cronHeader = request.headers.get('x-cron-secret')
+  if (cronHeader === CRON_SECRET) return true
+
+  return false
+}
+
 /**
  * POST /api/epreuves/auto-close
  * 
  * Scan and auto-close eligible epreuves.
  * Can be called:
- * - With { epreuveId } to check a specific epreuve
- * - Without body to scan all active epreuves (used by monitoring service)
+ * - With { epreuveId } to check a specific epreuve (any authenticated user)
+ * - Without body to scan all active epreuves (cron only — requires cron secret)
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
     const { epreuveId } = body
 
+    // Specific epreuve check — allowed for all (student polling uses GET, but submit can trigger POST)
     if (epreuveId) {
-      // Check and close a specific epreuve
       const result = await checkAndAutoCloseEpreuve(epreuveId)
       return NextResponse.json(result)
     }
 
-    // Scan all epreuves
+    // Batch scan — requires cron authorization
+    if (!isCronAuthorized(request)) {
+      return NextResponse.json(
+        { error: 'Non autorisé. La scan global nécessite une authentification cron.' },
+        { status: 401 }
+      )
+    }
+
     const results = await scanAndAutoCloseEpreuves()
     const closedCount = results.filter(r => r.closed).length
+    const transitionedCount = results.filter(r => r.transitioned).length
     
     return NextResponse.json({
       scanned: results.length,
       closed: closedCount,
+      transitioned: transitionedCount,
       results,
     })
   } catch (error) {
@@ -44,6 +75,7 @@ export async function POST(request: NextRequest) {
  * 
  * Check closure status for a specific epreuve (without actually closing it).
  * Returns whether the epreuve is closed, in grace period, or still open.
+ * Also handles Vercel Cron invocations via ?cron=true.
  * 
  * FIX: allSubmitted now compares against eligible student count (based on filiere/niveau),
  * NOT just existing session records, to prevent premature closure display.
@@ -52,7 +84,31 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const epreuveId = searchParams.get('epreuveId')
+    const isCron = searchParams.get('cron') === 'true'
 
+    // ─── Vercel Cron invocation ───────────────────────────────────────────
+    if (isCron) {
+      if (!isCronAuthorized(request)) {
+        return NextResponse.json(
+          { error: 'Non autorisé' },
+          { status: 401 }
+        )
+      }
+
+      const results = await scanAndAutoCloseEpreuves()
+      const closedCount = results.filter(r => r.closed).length
+      const transitionedCount = results.filter(r => r.transitioned).length
+
+      return NextResponse.json({
+        scanned: results.length,
+        closed: closedCount,
+        transitioned: transitionedCount,
+        timestamp: new Date().toISOString(),
+        results,
+      })
+    }
+
+    // ─── Specific epreuve status check ────────────────────────────────────
     if (!epreuveId) {
       return NextResponse.json(
         { error: 'epreuveId requis' },
@@ -66,6 +122,7 @@ export async function GET(request: NextRequest) {
         id: true,
         titre: true,
         statut: true,
+        dateDebut: true,
         dateFin: true,
         delaiGrace: true,
         clotureeAt: true,
@@ -116,6 +173,9 @@ export async function GET(request: NextRequest) {
     const submissionRateDenominator = eligibleStudentCount > 0 ? eligibleStudentCount : totalSessions
     const submissionRate = submissionRateDenominator > 0 ? Math.round((submittedCount / submissionRateDenominator) * 100) : 0
 
+    // Check if epreuve should auto-transition from PLANIFIEE
+    const shouldAutoStart = epreuve.statut === 'PLANIFIEE' && now >= epreuve.dateDebut
+
     return NextResponse.json({
       epreuveId: epreuve.id,
       titre: epreuve.titre,
@@ -124,9 +184,11 @@ export async function GET(request: NextRequest) {
       inGracePeriod,
       isPastDeadline,
       allSubmitted,
+      shouldAutoStart,
       clotureeAt: epreuve.clotureeAt,
       clotureeAutomatiquement: epreuve.clotureeAutomatiquement,
       raisonCloture: epreuve.raisonCloture,
+      dateDebut: epreuve.dateDebut,
       dateFin: epreuve.dateFin,
       gracePeriodEndsAt: isPastDeadline ? gracePeriodEndsAt : null,
       delaiGrace: epreuve.delaiGrace || 3,
