@@ -6,18 +6,22 @@ import { db } from '@/lib/db'
 const CRON_SECRET = process.env.CRON_SECRET || 'sect-cron-2024-auto-close'
 
 /**
- * Verify that the request is authorized to trigger auto-close.
+ * Verify that the request is authorized to trigger auto-close batch scan.
  * Accepts:
- * - Vercel Cron (Authorization: Bearer xxx header)
- * - Internal cron (?cron=true query param with matching CRON_SECRET header)
- * - Authenticated users (via standard auth — they can trigger check for specific epreuveId)
+ * - URL secret: ?secret=xxx (simplest for cron-job.org)
+ * - Authorization header: Bearer xxx (for Vercel Cron / custom clients)
+ * - Custom header: x-cron-secret: xxx
  */
-function isCronAuthorized(request: NextRequest): boolean {
-  // Vercel Cron sends Authorization header
+function isCronAuthorized(request: NextRequest, searchParams: URLSearchParams): boolean {
+  // Method 1: Secret in URL query param (easiest for external cron services like cron-job.org)
+  const urlSecret = searchParams.get('secret')
+  if (urlSecret && urlSecret === CRON_SECRET) return true
+
+  // Method 2: Vercel Cron sends Authorization header
   const authHeader = request.headers.get('authorization')
   if (authHeader === `Bearer ${CRON_SECRET}`) return true
 
-  // Internal cron with custom header
+  // Method 3: Custom header
   const cronHeader = request.headers.get('x-cron-secret')
   if (cronHeader === CRON_SECRET) return true
 
@@ -37,14 +41,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const { epreuveId } = body
 
-    // Specific epreuve check — allowed for all (student polling uses GET, but submit can trigger POST)
+    // Specific epreuve check — allowed for all
     if (epreuveId) {
       const result = await checkAndAutoCloseEpreuve(epreuveId)
       return NextResponse.json(result)
     }
 
     // Batch scan — requires cron authorization
-    if (!isCronAuthorized(request)) {
+    const { searchParams } = new URL(request.url)
+    if (!isCronAuthorized(request, searchParams)) {
       return NextResponse.json(
         { error: 'Non autorisé. La scan global nécessite une authentification cron.' },
         { status: 401 }
@@ -71,26 +76,30 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/epreuves/auto-close?epreuveId=xxx
+ * GET /api/epreuves/auto-close
  * 
- * Check closure status for a specific epreuve (without actually closing it).
- * Returns whether the epreuve is closed, in grace period, or still open.
- * Also handles Vercel Cron invocations via ?cron=true.
+ * Multiple modes:
  * 
- * FIX: allSubmitted now compares against eligible student count (based on filiere/niveau),
- * NOT just existing session records, to prevent premature closure display.
+ * 1. Cron scan: ?secret=sect-cron-2024-auto-close
+ *    Triggers batch scan of all epreuves. Used by cron-job.org (simple GET, no headers needed).
+ * 
+ * 2. Cron scan (header auth): ?cron=true + Authorization: Bearer xxx
+ *    Same as above but uses header-based auth.
+ * 
+ * 3. Status check: ?epreuveId=xxx
+ *    Check closure status for a specific epreuve (read-only, no closing).
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const epreuveId = searchParams.get('epreuveId')
-    const isCron = searchParams.get('cron') === 'true'
+    const isCron = searchParams.get('cron') === 'true' || searchParams.get('secret')
 
-    // ─── Vercel Cron invocation ───────────────────────────────────────────
+    // ─── Cron invocation (batch scan) ─────────────────────────────────────
     if (isCron) {
-      if (!isCronAuthorized(request)) {
+      if (!isCronAuthorized(request, searchParams)) {
         return NextResponse.json(
-          { error: 'Non autorisé' },
+          { error: 'Non autorisé. Fournissez ?secret=VOTRE_CRON_SECRET' },
           { status: 401 }
         )
       }
@@ -108,10 +117,10 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // ─── Specific epreuve status check ────────────────────────────────────
+    // ─── Specific epreuve status check (read-only) ────────────────────────
     if (!epreuveId) {
       return NextResponse.json(
-        { error: 'epreuveId requis' },
+        { error: 'epreuveId requis (ou ?secret=xxx pour le cron)' },
         { status: 400 }
       )
     }
@@ -152,7 +161,6 @@ export async function GET(request: NextRequest) {
     const absentCount = epreuve.sessions.filter(s => s.statut === 'ABSENT').length
     const notStartedCount = epreuve.sessions.filter(s => s.statut === 'NON_COMMENCEE').length
 
-    // FIX: Get eligible student count (based on filiere/niveau) for accurate allSubmitted check
     const eligibleStudentCount = await getEligibleStudentCount(
       epreuve.filiereId,
       epreuve.groupesCibles as string | null
@@ -163,17 +171,13 @@ export async function GET(request: NextRequest) {
     const gracePeriodEndsAt = new Date(epreuve.dateFin.getTime() + (epreuve.delaiGrace || 3) * 60 * 1000)
     const inGracePeriod = isPastDeadline && now < gracePeriodEndsAt && !isClosed
     
-    // FIX: allSubmitted uses eligible student count when available,
-    // falling back to session count only if we can't determine eligible students
     const allSubmitted = eligibleStudentCount > 0
       ? submittedCount === eligibleStudentCount
       : (totalSessions > 0 && submittedCount === totalSessions)
 
-    // Calculate submission rate based on eligible students (more accurate)
     const submissionRateDenominator = eligibleStudentCount > 0 ? eligibleStudentCount : totalSessions
     const submissionRate = submissionRateDenominator > 0 ? Math.round((submittedCount / submissionRateDenominator) * 100) : 0
 
-    // Check if epreuve should auto-transition from PLANIFIEE
     const shouldAutoStart = epreuve.statut === 'PLANIFIEE' && now >= epreuve.dateDebut
 
     return NextResponse.json({
