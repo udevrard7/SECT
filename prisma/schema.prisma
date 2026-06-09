@@ -62,6 +62,7 @@ model Etablissement {
   regexMatricule   String?
   abonnements      Abonnement[]
   adminAccess      EtablissementAccess[]
+  anneesAcademiques AnneeAcademique[]
   factures         Facture[]
   filieres         Filiere[]
   ipWhitelist      IpWhitelist[]
@@ -238,6 +239,9 @@ model Epreuve {
   contenu                  Json?              // Complete exam content as JSONB (new Banque d'Épreuves format)
   filiereId                String?            // Optional link to Filiere
   uniteEnseignementId      String?            // Optional link to UniteEnseignement
+  niveau                   NiveauEtude?       // Niveau d'étude ciblé (L1, L2, L3, M1, M2, DOCTORAT)
+  sessionExamen            SessionExamen      @default(NORMALE)  // Session d'examen (normale, rattrapage, spéciale)
+  anneeAcademiqueId        String?            // Lien vers l'année académique
   createdAt                DateTime           @default(now())
   updatedAt                DateTime           @updatedAt
   deletedAt                DateTime?          // Soft delete — null means active, set date when moved to Corbeille
@@ -258,6 +262,11 @@ model Epreuve {
   sourceDocuments          EpreuveDocument[]
   filiere                  Filiere?           @relation(fields: [filiereId], references: [id])
   uniteEnseignement        UniteEnseignement? @relation(fields: [uniteEnseignementId], references: [id])
+  anneeAcademique          AnneeAcademique?   @relation(fields: [anneeAcademiqueId], references: [id])
+
+  @@index([filiereId, niveau, sessionExamen])
+  @@index([enseignantId, statut])
+  @@index([anneeAcademiqueId])
 }
 
 model EpreuveQuestion {
@@ -656,6 +665,12 @@ enum StatutSoumission {
   RETOURNE
 }
 
+enum SessionExamen {
+  NORMALE
+  RATTRAPAGE
+  SPECIALE
+}
+
 model Facture {
   id                String   @id @default(cuid())
   numero            String   @unique
@@ -738,6 +753,21 @@ model AIProviderConfig {
   lastTestOk  Boolean?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model AnneeAcademique {
+  id               String    @id @default(cuid())
+  libelle          String    // ex: "2024-2025", "2025-2026"
+  dateDebut        DateTime  // Début de l'année académique
+  dateFin          DateTime  // Fin de l'année académique
+  etablissementId  String
+  actif            Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  etablissement    Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+  epreuves         Epreuve[]
+
+  @@unique([libelle, etablissementId])
 }
 
 model AIFailoverEvent {
