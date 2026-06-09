@@ -40,7 +40,6 @@ import {
   FileDown,
   FileCheck2,
   ClipboardList,
-  SlidersHorizontal,
   GraduationCap,
   CalendarRange,
   RotateCcw,
@@ -48,10 +47,8 @@ import {
   List,
 } from 'lucide-react'
 import { ClassificationSidebar } from './classification-sidebar'
-import { ClassificationStatsView } from './classification-stats'
 import { EpreuveGroupedView } from './epreuve-grouped-view'
 import {
-  type ClassificationStats,
   type ClassificationTree,
   type SelectedPath,
   type GroupByField,
@@ -1147,7 +1144,6 @@ function SessionsTab() {
   const [statutFilter, setStatutFilter] = useState('TOUS')
 
   // ─── Advanced filter state ───
-  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
   const [filterAnneeAcademiqueId, setFilterAnneeAcademiqueId] = useState<string>('')
   const [filterFiliereId, setFilterFiliereId] = useState<string>('')
   const [filterNiveau, setFilterNiveau] = useState<string>('')
@@ -1157,7 +1153,6 @@ function SessionsTab() {
   // ─── Advanced filter data ───
   const [anneesAcademiques, setAnneesAcademiques] = useState<AnneeAcademiqueOption[]>([])
   const [filterFilieres, setFilterFilieres] = useState<EnseignantFiliereContext[]>([])
-  const [isLoadingFilters, setIsLoadingFilters] = useState(false)
 
   const NIVEAU_OPTIONS = [
     { value: 'L1', label: 'L1 — Licence 1' },
@@ -1172,7 +1167,6 @@ function SessionsTab() {
   useEffect(() => {
     if (!user?.id) return
     const fetchFilterData = async () => {
-      setIsLoadingFilters(true)
       try {
         // Fetch annees academiques
         if (user.etablissementId) {
@@ -1191,30 +1185,12 @@ function SessionsTab() {
         }
       } catch {
         // Silently ignore filter data load failures
-      } finally {
-        setIsLoadingFilters(false)
       }
     }
     fetchFilterData()
   }, [user?.id, user?.etablissementId])
 
-  // Reset all advanced filters
-  const resetAdvancedFilters = () => {
-    setFilterAnneeAcademiqueId('')
-    setFilterFiliereId('')
-    setFilterNiveau('')
-    setFilterUEId('')
-    setFilterSessionExamen('')
-  }
 
-  // Count active advanced filters
-  const activeAdvancedFilterCount = [
-    filterAnneeAcademiqueId,
-    filterFiliereId,
-    filterNiveau,
-    filterUEId,
-    filterSessionExamen,
-  ].filter(Boolean).length
 
   // Planifier dialog
   const [planifierDialogOpen, setPlanifierDialogOpen] = useState(false)
@@ -1261,31 +1237,17 @@ function SessionsTab() {
   // ─── Classification system state ───
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
   const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
-  const [classificationStats, setClassificationStats] = useState<ClassificationStats | null>(null)
   const [classificationTree, setClassificationTree] = useState<ClassificationTree>({ filieres: [], nonClassees: 0 })
   const [selectedPath, setSelectedPath] = useState<SelectedPath>({})
-  const [activeClassFilters, setActiveClassFilters] = useState<Array<{ dimension: 'filiere' | 'niveau' | 'sessionExamen' | 'anneeAcademique'; value: string }>>([])
-  const [isLoadingClassification, setIsLoadingClassification] = useState(false)
 
   // Fetch classification data
   const fetchClassification = useCallback(async () => {
     if (!user?.id) return
-    setIsLoadingClassification(true)
     try {
       const params = new URLSearchParams({ enseignantId: user.id })
       const res = await fetch(`/api/epreuves/classification?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
-        setClassificationStats({
-          byFiliere: data.byFiliere || [],
-          byNiveau: data.byNiveau || [],
-          bySessionExamen: data.bySessionExamen || [],
-          byAnneeAcademique: data.byAnneeAcademique || [],
-          byUniteEnseignement: data.byUniteEnseignement || [],
-          byStatut: data.byStatut || [],
-          total: data.totalCount || 0,
-          nonClassees: data.uncategorizedCount || 0,
-        })
         // Build tree from API response
         const treeData: ClassificationTree = {
           filieres: (data.tree || []).map((f: any) => ({
@@ -1310,8 +1272,6 @@ function SessionsTab() {
       }
     } catch {
       // Silently ignore classification fetch failures
-    } finally {
-      setIsLoadingClassification(false)
     }
   }, [user?.id])
 
@@ -1335,39 +1295,7 @@ function SessionsTab() {
     else setFilterUEId('')
   }
 
-  // Handle classification stats chip click → apply as filter
-  const handleClassFilterClick = (filter: { dimension: 'filiere' | 'niveau' | 'sessionExamen' | 'anneeAcademique'; value: string }) => {
-    // Toggle: if already active, remove it; otherwise, set it
-    const existing = activeClassFilters.find(f => f.dimension === filter.dimension && f.value === filter.value)
-    if (existing) {
-      setActiveClassFilters(prev => prev.filter(f => !(f.dimension === filter.dimension && f.value === filter.value)))
-      // Reset the corresponding filter
-      switch (filter.dimension) {
-        case 'filiere': setFilterFiliereId(''); break
-        case 'niveau': setFilterNiveau(''); break
-        case 'sessionExamen': setFilterSessionExamen(''); break
-        case 'anneeAcademique': setFilterAnneeAcademiqueId(''); break
-      }
-    } else {
-      setActiveClassFilters([filter]) // Only one active at a time for simplicity
-      switch (filter.dimension) {
-        case 'filiere': setFilterFiliereId(filter.value); break
-        case 'niveau': setFilterNiveau(filter.value); break
-        case 'sessionExamen': setFilterSessionExamen(filter.value); break
-        case 'anneeAcademique': setFilterAnneeAcademiqueId(filter.value); break
-      }
-    }
-  }
 
-  const handleClassFilterRemove = (dimension: 'filiere' | 'niveau' | 'sessionExamen' | 'anneeAcademique', _value: string) => {
-    setActiveClassFilters(prev => prev.filter(f => f.dimension !== dimension))
-    switch (dimension) {
-      case 'filiere': setFilterFiliereId(''); break
-      case 'niveau': setFilterNiveau(''); break
-      case 'sessionExamen': setFilterSessionExamen(''); break
-      case 'anneeAcademique': setFilterAnneeAcademiqueId(''); break
-    }
-  }
 
   // Special sessions traceability in monitoring dialog
   const [specialSessions, setSpecialSessions] = useState<Array<{
@@ -2015,195 +1943,6 @@ function SessionsTab() {
           </Button>
         </div>
       </div>
-
-      {/* ─── Classification Stats Dashboard ─── */}
-      {classificationStats && classificationStats.total > 0 && (
-        <ClassificationStatsView
-          stats={classificationStats}
-          activeFilters={activeClassFilters}
-          onFilterClick={handleClassFilterClick}
-          onFilterRemove={handleClassFilterRemove}
-        />
-      )}
-
-      {/* ─── Advanced Filters (Collapsible) ─── */}
-      <Collapsible open={advancedFiltersOpen} onOpenChange={setAdvancedFiltersOpen}>
-        <div className="flex items-center justify-between">
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <SlidersHorizontal className="h-4 w-4" />
-              Filtres avancés
-              {activeAdvancedFilterCount > 0 && (
-                <Badge variant="default" className="ml-1 h-5 min-w-5 rounded-full px-1.5 text-[10px] bg-emerald-600">
-                  {activeAdvancedFilterCount}
-                </Badge>
-              )}
-              {advancedFiltersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            </Button>
-          </CollapsibleTrigger>
-          {activeAdvancedFilterCount > 0 && (
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={resetAdvancedFilters}>
-              <RotateCcw className="h-3 w-3" />
-              Réinitialiser
-            </Button>
-          )}
-        </div>
-        <CollapsibleContent>
-          <div className="mt-3 rounded-lg border bg-muted/30 p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {/* Année académique */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <CalendarRange className="h-3 w-3" />
-                  Année académique
-                </Label>
-                <Select value={filterAnneeAcademiqueId} onValueChange={setFilterAnneeAcademiqueId}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Toutes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Toutes les années</SelectItem>
-                    {anneesAcademiques.map((aa) => (
-                      <SelectItem key={aa.id} value={aa.id}>
-                        {aa.libelle}{aa.actif ? ' ●' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Filière */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <BookOpen className="h-3 w-3" />
-                  Filière
-                </Label>
-                <Select
-                  value={filterFiliereId}
-                  onValueChange={(val) => {
-                    setFilterFiliereId(val === '__all__' ? '' : val)
-                    setFilterNiveau('')
-                    setFilterUEId('')
-                  }}
-                >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Toutes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Toutes les filières</SelectItem>
-                    {filterFilieres.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.nom} {f.code ? `(${f.code})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Niveau */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <GraduationCap className="h-3 w-3" />
-                  Niveau
-                </Label>
-                <Select
-                  value={filterNiveau}
-                  onValueChange={(val) => {
-                    setFilterNiveau(val === '__all__' ? '' : val)
-                    setFilterUEId('')
-                  }}
-                >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Tous" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Tous les niveaux</SelectItem>
-                    {(() => {
-                      const selectedFiliere = filterFilieres.find((f) => f.id === filterFiliereId)
-                      const availableNiveaux = selectedFiliere
-                        ? selectedFiliere.niveaux
-                        : [...new Set(filterFilieres.flatMap((f) => f.niveaux))].sort()
-                      return availableNiveaux.map((n) => (
-                        <SelectItem key={n} value={n}>
-                          {NIVEAU_OPTIONS.find((opt) => opt.value === n)?.label || n}
-                        </SelectItem>
-                      ))
-                    })()}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* UE */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <Hash className="h-3 w-3" />
-                  UE
-                </Label>
-                <Select value={filterUEId} onValueChange={(val) => setFilterUEId(val === '__none__' ? '' : val)}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Toutes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Toutes les UE</SelectItem>
-                    {(() => {
-                      const selectedFiliere = filterFilieres.find((f) => f.id === filterFiliereId)
-                      if (!selectedFiliere) {
-                        // No filiere selected: show all UEs from all filieres
-                        const allUEs = filterFilieres.flatMap((f) => f.unitesEnseignement)
-                        const uniqueUEs = [...new Map(allUEs.map((ue) => [ue.id, ue])).values()]
-                        return uniqueUEs.map((ue) => (
-                          <SelectItem key={ue.id} value={ue.id}>
-                            {ue.code} — {ue.nom}
-                          </SelectItem>
-                        ))
-                      }
-                      let ues = selectedFiliere.unitesEnseignement
-                      if (filterNiveau) {
-                        ues = ues.filter((ue) => {
-                          if (ue.niveau === filterNiveau) return true
-                          if (ue.niveaux) {
-                            try {
-                              const shared = JSON.parse(ue.niveaux) as string[]
-                              if (shared.includes(filterNiveau)) return true
-                            } catch { /* ignore */ }
-                          }
-                          return false
-                        })
-                      }
-                      return ues.map((ue) => (
-                        <SelectItem key={ue.id} value={ue.id}>
-                          {ue.code} — {ue.nom}
-                        </SelectItem>
-                      ))
-                    })()}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Session */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <Layers className="h-3 w-3" />
-                  Session
-                </Label>
-                <Select value={filterSessionExamen} onValueChange={(val) => setFilterSessionExamen(val === '__all__' ? '' : val)}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Toutes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Toutes les sessions</SelectItem>
-                    <SelectItem value="NORMALE">Normale</SelectItem>
-                    <SelectItem value="RATTRAPAGE">Rattrapage</SelectItem>
-                    <SelectItem value="SPECIALE">Spéciale</SelectItem>
-                    <SelectItem value="EXCEPTIONNELLE">Exceptionnelle</SelectItem>
-                    <SelectItem value="DIFFERE">Différé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
 
       {/* Status quick filters */}
       {!isLoading && (
