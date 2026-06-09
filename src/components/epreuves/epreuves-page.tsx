@@ -2974,6 +2974,159 @@ function SessionsTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// QUESTION SELECTOR (grouped by type for Session Spéciale)
+// ═══════════════════════════════════════════════════════════════
+
+const TYPE_LABELS: Record<string, string> = {
+  QCU: 'Question à Choix Unique',
+  QCM: 'Question à Choix Multiples',
+  QRC: 'Question à Réponse Courte',
+  REFLEXION: 'Question de Réflexion',
+  CODE: 'Question de Code',
+  TRS: 'Question de Transfert',
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  QCU: '◉',
+  QCM: '☑',
+  QRC: '✎',
+  REFLEXION: '💡',
+  CODE: '⟨⟩',
+  TRS: '↔',
+}
+
+function QuestionSelector({
+  questions,
+  selectedQuestions,
+  onToggleQuestion,
+  onToggleAllForType,
+}: {
+  questions: Array<{ id: string; type: string; enonce: string; bareme: number; difficulte?: string }>
+  selectedQuestions: Set<string>
+  onToggleQuestion: (id: string) => void
+  onToggleAllForType: (type: string, ids: string[]) => void
+}) {
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(() => {
+    // Start with all types expanded
+    const types = new Set<string>()
+    questions.forEach((q) => types.add(q.type))
+    return types
+  })
+
+  // Group questions by type
+  const groupedByType = useMemo(() => {
+    const groups: Record<string, Array<{ id: string; enonce: string; bareme: number; difficulte?: string } & { _originalIdx: number }>> = {}
+    questions.forEach((q, idx) => {
+      if (!groups[q.type]) groups[q.type] = []
+      groups[q.type].push({ ...q, _originalIdx: idx })
+    })
+    return groups
+  }, [questions])
+
+  const typeOrder = Object.keys(groupedByType)
+
+  const toggleTypeExpanded = (type: string) => {
+    setExpandedTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold">Questions sélectionnées</Label>
+        <Badge variant="outline" className="text-[10px] gap-0.5 py-0">
+          {selectedQuestions.size} / {questions.length}
+        </Badge>
+      </div>
+      {questions.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">Aucune question disponible dans le contenu de l&apos;épreuve.</p>
+      ) : (
+        <ScrollArea className="max-h-64">
+          <div className="space-y-2 pr-1">
+            {typeOrder.map((type) => {
+              const typeQuestions = groupedByType[type]
+              const typeIds = typeQuestions.map((q) => q.id)
+              const allSelected = typeIds.every((id) => selectedQuestions.has(id))
+              const selectedInType = typeIds.filter((id) => selectedQuestions.has(id)).length
+              const isExpanded = expandedTypes.has(type)
+
+              return (
+                <div key={type} className="rounded-lg border overflow-hidden">
+                  {/* Type header */}
+                  <div
+                    className="flex items-center gap-2 px-3 py-2 bg-muted/40 cursor-pointer select-none"
+                    onClick={() => toggleTypeExpanded(type)}
+                  >
+                    <span className="text-sm">{isExpanded ? '▾' : '▸'}</span>
+                    <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${TYPE_COLORS[type] || ''}`}>
+                      {TYPE_ICONS[type] || '●'} {type}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground flex-1">{TYPE_LABELS[type] || type}</span>
+                    <span className="text-[10px] text-muted-foreground">{selectedInType}/{typeIds.length}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 text-[10px] px-1.5"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleAllForType(type, typeIds)
+                      }}
+                    >
+                      {allSelected ? 'Tout désél.' : 'Tout sélect.'}
+                    </Button>
+                  </div>
+
+                  {/* Questions in this type */}
+                  {isExpanded && (
+                    <div className="divide-y divide-border">
+                      {typeQuestions.map((q) => (
+                        <div
+                          key={q.id}
+                          className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
+                            selectedQuestions.has(q.id)
+                              ? 'bg-amber-50/60 dark:bg-amber-950/20'
+                              : 'hover:bg-muted/30'
+                          }`}
+                          onClick={() => onToggleQuestion(q.id)}
+                        >
+                          <Checkbox
+                            checked={selectedQuestions.has(q.id)}
+                            onCheckedChange={() => onToggleQuestion(q.id)}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted/60 text-[9px] font-bold text-muted-foreground">
+                                {q._originalIdx + 1}
+                              </span>
+                              {q.difficulte && (
+                                <Badge variant="outline" className={`text-[8px] py-0 px-1 ${DIFFICULTE_COLORS[q.difficulte] || ''}`}>
+                                  {DIFFICULTE_LABELS[q.difficulte] || q.difficulte}
+                                </Badge>
+                              )}
+                              <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">{q.bareme} pts</span>
+                            </div>
+                            <p className="text-xs mt-0.5 leading-relaxed line-clamp-2">{q.enonce}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SESSION SPÉCIALE DIALOG
 // ═══════════════════════════════════════════════════════════════
 
@@ -3337,36 +3490,23 @@ function SessionSpecialeDialog({
 
               {/* Question selection for partial */}
               {estPartielle && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-semibold">Questions sélectionnées</Label>
-                    <Badge variant="outline" className="text-[10px] gap-0.5 py-0">{selectedQuestions.size} / {questions.length}</Badge>
-                  </div>
-                  {questions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic">Aucune question disponible dans le contenu de l&apos;épreuve.</p>
-                  ) : (
-                    <ScrollArea className="max-h-40">
-                      <div className="space-y-1">
-                        {questions.map((q, idx) => (
-                          <div
-                            key={q.id}
-                            className={`flex items-center gap-2 rounded-md border p-2 cursor-pointer transition-colors ${selectedQuestions.has(q.id) ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : 'hover:bg-muted/30'}`}
-                            onClick={() => toggleQuestion(q.id)}
-                          >
-                            <Checkbox
-                              checked={selectedQuestions.has(q.id)}
-                              onCheckedChange={() => toggleQuestion(q.id)}
-                            />
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold">{idx + 1}</span>
-                            <Badge variant="outline" className={`text-[9px] gap-0.5 py-0 ${TYPE_COLORS[q.type] || ''}`}>{q.type}</Badge>
-                            <p className="text-xs truncate flex-1">{q.enonce}</p>
-                            <span className="text-[10px] text-muted-foreground shrink-0">{q.bareme}pts</span>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </div>
+                <QuestionSelector
+                  questions={questions}
+                  selectedQuestions={selectedQuestions}
+                  onToggleQuestion={toggleQuestion}
+                  onToggleAllForType={(type, ids) => {
+                    setSelectedQuestions((prev) => {
+                      const next = new Set(prev)
+                      const allSelected = ids.every((id) => next.has(id))
+                      if (allSelected) {
+                        ids.forEach((id) => next.delete(id))
+                      } else {
+                        ids.forEach((id) => next.add(id))
+                      }
+                      return next
+                    })
+                  }}
+                />
               )}
 
               {/* Title override */}
