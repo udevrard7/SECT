@@ -420,7 +420,9 @@ async function _GET(
           enseignant: { select: { id: true, name: true } },
           questions: { include: { question: true } },
           sessions: {
-            select: { id: true, statut: true, score: true, etudiantId: true },
+            include: {
+              etudiant: { select: { id: true, name: true, email: true } },
+            },
           },
           sourceDocuments: {
             include: {
