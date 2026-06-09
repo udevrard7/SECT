@@ -92,7 +92,7 @@ async function _POST(
     }
 
     // Build create data
-    const validSessionExamen = ['NORMALE', 'RATTRAPAGE', 'SPECIALE']
+    const validSessionExamen = ['NORMALE', 'RATTRAPAGE', 'SPECIALE', 'EXCEPTIONNELLE', 'DIFFERE']
     const createData: Record<string, unknown> = {
       enseignantId,
       titre,
@@ -451,6 +451,7 @@ async function _GET(
       const parsedEpreuves = epreuves.map((e) => ({
         ...e,
         groupesCibles: e.groupesCibles ? JSON.parse(e.groupesCibles) : null,
+        etudiantsAutorises: e.etudiantsAutorises ? JSON.parse(e.etudiantsAutorises as string) : null,
         questions: e.questions.map((eq) => ({
           ...eq,
           question: {
@@ -552,11 +553,17 @@ async function _GET(
       const filiereFilter = studentFiliereId
         ? {
             OR: [
-              { filiereId: null },
-              { filiereId: studentFiliereId },
+              { filiereId: null, etudiantsAutorises: null },
+              { filiereId: studentFiliereId, etudiantsAutorises: null },
+              { etudiantsAutorises: { contains: etudiantId } },  // Sessions spéciales: student is authorized
             ],
           }
-        : {}
+        : {
+            OR: [
+              { etudiantsAutorises: null },
+              { etudiantsAutorises: { contains: etudiantId } },
+            ],
+          }
 
       const [epreuves, completedEpreuves, absentEpreuves] = await Promise.all([
         db.epreuve.findMany({

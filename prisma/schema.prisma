@@ -41,6 +41,7 @@ model User {
   etablissement       Etablissement?        @relation(fields: [etablissementId], references: [id])
   filiere             Filiere?              @relation("UserFiliere", fields: [filiereId], references: [id])
   notificationsAdmin  NotificationAdmin[]
+  sessionsSpecialesCreees SessionSpeciale[]  @relation("SessionsSpecialesCreees")
 }
 
 model Etablissement {
@@ -255,6 +256,8 @@ model Epreuve {
   raisonCloture            String?            // "TOUS_SOUMIS" ou "ECHEANCE_ATTEINTE"
   clotureePar              String?            // ID utilisateur si clôture manuelle, null si auto
   delaiGrace               Int                @default(3)     // Délai de grâce en minutes (2-5 min) après l'échéance
+  etudiantsAutorises       String?            // JSON array of student IDs — si défini, seuls ces étudiants peuvent passer l'épreuve
+  epreuveOrigineId         String?            // ID de l'épreuve d'origine si celle-ci est une session spéciale dérivée
   alertes                  Alerte[]
   enseignant               User               @relation(fields: [enseignantId], references: [id])
   questions                EpreuveQuestion[]
@@ -263,10 +266,15 @@ model Epreuve {
   filiere                  Filiere?           @relation(fields: [filiereId], references: [id])
   uniteEnseignement        UniteEnseignement? @relation(fields: [uniteEnseignementId], references: [id])
   anneeAcademique          AnneeAcademique?   @relation(fields: [anneeAcademiqueId], references: [id])
+  epreuveOrigine           Epreuve?           @relation("EpreuveDerivee", fields: [epreuveOrigineId], references: [id])
+  epreuvesDerivees         Epreuve[]          @relation("EpreuveDerivee")
+  sessionsSpecialesOrigine SessionSpeciale[]  @relation("SessionSpecialeOrigine")
+  sessionsSpecialesDerivee SessionSpeciale[]  @relation("SessionSpecialeDerivee")
 
   @@index([filiereId, niveau, sessionExamen])
   @@index([enseignantId, statut])
   @@index([anneeAcademiqueId])
+  @@index([epreuveOrigineId])
 }
 
 model EpreuveQuestion {
@@ -669,6 +677,8 @@ enum SessionExamen {
   NORMALE
   RATTRAPAGE
   SPECIALE
+  EXCEPTIONNELLE
+  DIFFERE
 }
 
 model Facture {
@@ -768,6 +778,35 @@ model AnneeAcademique {
   epreuves         Epreuve[]
 
   @@unique([libelle, etablissementId])
+}
+
+model SessionSpeciale {
+  id                     String               @id @default(cuid())
+  epreuveOrigineId       String               // Épreuve d'origine
+  epreuveDeriveeId       String               // Nouvelle épreuve dérivée
+  type                   TypeSessionSpeciale  // Type de session spéciale
+  motif                  String               // Raison (maladie, accident, catastrophe, force majeure...)
+  justificatif           String?              // Référence ou document justificatif
+  etudiantsCibles        String               // JSON array of student IDs
+  estPartielle           Boolean              @default(false)  // true = uniquement certaines questions
+  questionsSelectionnees String?              // JSON array of selected question IDs (if partial)
+  creeParId              String               // Utilisateur ayant créé la session
+  createdAt              DateTime             @default(now())
+
+  epreuveOrigine         Epreuve              @relation("SessionSpecialeOrigine", fields: [epreuveOrigineId], references: [id], onDelete: Cascade)
+  epreuveDerivee         Epreuve              @relation("SessionSpecialeDerivee", fields: [epreuveDeriveeId], references: [id], onDelete: Cascade)
+  creePar                User                 @relation("SessionsSpecialesCreees", fields: [creeParId], references: [id])
+
+  @@index([epreuveOrigineId])
+  @@index([epreuveDeriveeId])
+  @@index([creeParId])
+  @@index([type])
+}
+
+enum TypeSessionSpeciale {
+  RATTRAPAGE
+  EXCEPTIONNELLE
+  DIFFERE
 }
 
 model AIFailoverEvent {
