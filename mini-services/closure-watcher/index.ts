@@ -1,18 +1,21 @@
 /**
  * Closure Watcher Service
  * 
- * Background watcher that automatically closes epreuves when:
- * - Condition A: All eligible students have submitted (100% submission rate)
- * - Condition B: The scheduled end date/time + grace period is reached
+ * Background watcher that automatically:
+ * 1. Transitions PLANIFIEE → EN_COURS when dateDebut is reached
+ * 2. Closes epreuves when:
+ *    - Condition A: All eligible students have submitted (100% submission rate)
+ *    - Condition B: The scheduled end date/time + grace period is reached
+ * 3. Handles PLANIFIEE → CLOTUREE when dateFin + delaiGrace is past (no one started)
  * 
  * FIX: Condition A now compares against eligible student count (based on filiere/niveau),
  * NOT just existing session records. Sessions are only created when a student starts the exam,
  * so using totalSessions would incorrectly close when only 1 student submits.
  * 
  * Architecture:
- * - Polls Supabase for EN_COURS/TERMINEE epreuves
- * - Checks if closure conditions are met
- * - Performs closure: locks submissions, marks absent students, notifies teachers
+ * - Polls Supabase for PLANIFIEE, EN_COURS, TERMINEE epreuves
+ * - Checks if transition/closure conditions are met
+ * - Performs actions: auto-start, lock submissions, mark absent students, notify teachers
  * 
  * Port: 3033 (health check only)
  * Poll interval: 30 seconds
@@ -33,29 +36,27 @@ let isProcessing = false
 let stats = {
   totalScanned: 0,
   totalClosed: 0,
+  totalStarted: 0,
   totalMarkedAbsent: 0,
   totalMarkedNonSoumis: 0,
   lastPoll: null as Date | null,
   currentStatus: 'idle' as string,
   lastClosedEpreuveId: null as string | null,
+  lastStartedEpreuveId: null as string | null,
   errors: 0,
 }
 
 /**
  * Get the number of eligible students for an epreuve based on its filiereId and groupesCibles.
- * This is the authoritative count of students who SHOULD take the exam,
- * NOT just the count of existing SessionPassation records.
  */
 async function getEligibleStudentCount(
   filiereId: string | null,
   groupesCibles: string | null
 ): Promise<number> {
   if (!filiereId) {
-    // No filiere → can't determine eligible students
     return 0
   }
 
-  // Parse niveau from groupesCibles if available
   let niveau: string | null = null
   if (groupesCibles) {
     try {
@@ -68,7 +69,6 @@ async function getEligibleStudentCount(
     }
   }
 
-  // Count eligible students: active students in the filiere, optionally filtered by niveau
   const where: Record<string, unknown> = {
     role: 'ETUDIANT',
     actif: true,
@@ -83,7 +83,9 @@ async function getEligibleStudentCount(
 }
 
 /**
- * Scan all active epreuves and check if they should be closed
+ * Scan all active epreuves and:
+ * - Auto-transition PLANIFIEE → EN_COURS when dateDebut reached
+ * - Auto-close when all submitted or deadline reached
  */
 async function scanAndCloseEpreuves(): Promise<void> {
   if (isProcessing) {
@@ -96,7 +98,83 @@ async function scanAndCloseEpreuves(): Promise<void> {
   stats.lastPoll = new Date()
 
   try {
-    // Find epreuves that are EN_COURS or TERMINEE and not yet closed
+    const now = new Date()
+
+    // ─── Step 1: Auto-start PLANIFIEE epreuves whose dateDebut is reached ──
+    const planifieeEpreuves = await prisma.epreuve.findMany({
+      where: {
+        statut: 'PLANIFIEE',
+        dateDebut: { lte: now },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        titre: true,
+        statut: true,
+        dateDebut: true,
+        dateFin: true,
+        delaiGrace: true,
+        enseignantId: true,
+        filiereId: true,
+        groupesCibles: true,
+        sessions: {
+          select: {
+            id: true,
+            etudiantId: true,
+            statut: true,
+          },
+        },
+      },
+    })
+
+    for (const epreuve of planifieeEpreuves) {
+      try {
+        const dateFinWithGrace = new Date(epreuve.dateFin.getTime() + (epreuve.delaiGrace || 3) * 60 * 1000)
+
+        // CAS 1: dateFin + grace already past → close directly (no one started)
+        if (now >= dateFinWithGrace) {
+          console.log(`🔒 PLANIFIEE epreuve "${epreuve.titre}" deadline past — closing directly`)
+          await closeEpreuve(epreuve, 'ECHEANCE_ATTEINTE', 'PLANIFIEE')
+          continue
+        }
+
+        // CAS 2: dateDebut reached → transition to EN_COURS
+        console.log(`▶️ Auto-starting PLANIFIEE epreuve "${epreuve.titre}" (${epreuve.id})`)
+        await prisma.epreuve.update({
+          where: { id: epreuve.id },
+          data: { statut: 'EN_COURS' },
+        })
+
+        await prisma.auditLog.create({
+          data: {
+            userId: 'system',
+            userEmail: 'system',
+            action: 'AUTO_START_EPREUVE',
+            entite: 'Epreuve',
+            entiteId: epreuve.id,
+            details: `Épreuve passée automatiquement en EN_COURS — dateDebut atteinte: ${epreuve.dateDebut.toISOString()}`,
+          },
+        })
+
+        stats.totalStarted++
+        stats.lastStartedEpreuveId = epreuve.id
+
+        // After transitioning, also check if closure conditions are met
+        const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
+        const submittedCount = epreuve.sessions.filter(s => submittedStatuses.includes(s.statut)).length
+        const activeSessions = epreuve.sessions.filter(s => s.statut === 'EN_COURS').length
+        const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null)
+
+        if (eligibleStudentCount > 0 && submittedCount === eligibleStudentCount && activeSessions === 0) {
+          await closeEpreuve(epreuve, 'TOUS_SOUMIS', 'PLANIFIEE')
+        }
+      } catch (err: any) {
+        console.error(`❌ Error processing PLANIFIEE epreuve ${epreuve.id}:`, err.message)
+        stats.errors++
+      }
+    }
+
+    // ─── Step 2: Check EN_COURS and TERMINEE for closure ─────────────────
     const activeEpreuves = await prisma.epreuve.findMany({
       where: {
         statut: { in: ['EN_COURS', 'TERMINEE'] },
@@ -121,12 +199,11 @@ async function scanAndCloseEpreuves(): Promise<void> {
       },
     })
 
-    stats.totalScanned += activeEpreuves.length
-    const now = new Date()
+    stats.totalScanned += activeEpreuves.length + planifieeEpreuves.length
 
     for (const epreuve of activeEpreuves) {
       try {
-        const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE', 'ABSENT', 'NON_SOUMIS']
+        const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
         const totalSessions = epreuve.sessions.length
         const submittedCount = epreuve.sessions.filter(s => submittedStatuses.includes(s.statut)).length
         const activeSessions = epreuve.sessions.filter(s => s.statut === 'EN_COURS').length
@@ -138,9 +215,8 @@ async function scanAndCloseEpreuves(): Promise<void> {
         )
 
         // Condition A: All eligible students have submitted
-        // FIX: Compare against eligible student count, NOT just existing sessions
         const allSubmitted = eligibleStudentCount > 0
-          ? submittedCount === eligibleStudentCount
+          ? submittedCount === eligibleStudentCount && activeSessions === 0
           : (totalSessions > 0 && submittedCount === totalSessions && activeSessions === 0)
 
         // Condition B: Deadline + grace period reached
@@ -151,8 +227,7 @@ async function scanAndCloseEpreuves(): Promise<void> {
         if (allSubmitted || deadlineReached) {
           const raison = allSubmitted ? 'TOUS_SOUMIS' : 'ECHEANCE_ATTEINTE'
           console.log(`🔒 Closing epreuve "${epreuve.titre}" (${epreuve.id}) — Raison: ${raison} (submitted: ${submittedCount}/${eligibleStudentCount || totalSessions} eligible)`)
-
-          await closeEpreuve(epreuve, raison)
+          await closeEpreuve(epreuve, raison, epreuve.statut)
         }
       } catch (err: any) {
         console.error(`❌ Error processing epreuve ${epreuve.id}:`, err.message)
@@ -180,7 +255,8 @@ async function closeEpreuve(
     enseignantId: string
     sessions: Array<{ id: string; etudiantId: string; statut: string }>
   },
-  raison: 'TOUS_SOUMIS' | 'ECHEANCE_ATTEINTE'
+  raison: 'TOUS_SOUMIS' | 'ECHEANCE_ATTEINTE',
+  previousStatut?: string
 ): Promise<void> {
   const now = new Date()
   const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
@@ -240,11 +316,13 @@ async function closeEpreuve(
   const raisonLabel = raison === 'TOUS_SOUMIS'
     ? 'Tous les étudiants ont soumis leur composition'
     : 'La période de passation est terminée'
+  
+  const previousLabel = previousStatut ? ` (était ${previousStatut})` : ''
 
   await prisma.alerte.create({
     data: {
       titre: `Épreuve clôturée automatiquement`,
-      description: `L'épreuve "${epreuve.titre}" a été clôturée automatiquement. Raison : ${raisonLabel}.${absentCount > 0 ? ` ${absentCount} étudiant(s) marqué(s) absent(s).` : ''}${nonSoumisCount > 0 ? ` ${nonSoumisCount} étudiant(s) non soumis (brouillon sauvegardé).` : ''}`,
+      description: `L'épreuve "${epreuve.titre}" a été clôturée automatiquement${previousLabel}. Raison : ${raisonLabel}.${absentCount > 0 ? ` ${absentCount} étudiant(s) marqué(s) absent(s).` : ''}${nonSoumisCount > 0 ? ` ${nonSoumisCount} étudiant(s) non soumis (brouillon sauvegardé).` : ''}`,
       severity: 'INFO',
       type: 'SYSTEME',
       epreuveId: epreuve.id,
@@ -260,13 +338,13 @@ async function closeEpreuve(
       action: 'AUTO_CLOSE_EPREUVE',
       entite: 'Epreuve',
       entiteId: epreuve.id,
-      details: `Clôture automatique — Raison: ${raison}. Absents: ${absentCount}. Non soumis: ${nonSoumisCount}.`,
+      details: `Clôture automatique${previousLabel} — Raison: ${raison}. Absents: ${absentCount}. Non soumis: ${nonSoumisCount}.`,
     },
   })
 
   stats.totalClosed++
   stats.lastClosedEpreuveId = epreuve.id
-  console.log(`✅ Epreuve "${epreuve.titre}" closed. Absents: ${absentCount}, Non soumis: ${nonSoumisCount}`)
+  console.log(`✅ Epreuve "${epreuve.titre}" closed${previousLabel}. Absents: ${absentCount}, Non soumis: ${nonSoumisCount}`)
 }
 
 // Health check HTTP server
@@ -316,7 +394,7 @@ async function start() {
       scanAndCloseEpreuves().catch(console.error)
     }, POLL_INTERVAL_MS)
 
-    console.log(`🔄 Scanning every ${POLL_INTERVAL_MS / 1000}s for epreuves to auto-close`)
+    console.log(`🔄 Scanning every ${POLL_INTERVAL_MS / 1000}s for epreuves to auto-start/close`)
   } catch (err: any) {
     console.error('💥 Failed to start Closure Watcher:', err.message)
     process.exit(1)

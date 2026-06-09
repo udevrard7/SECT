@@ -5,6 +5,12 @@
  * - Condition A : Tous les étudiants inscrits ont soumis (taux de soumission = 100%)
  * - Condition B : La date/heure de fin est atteinte (avec délai de grâce)
  * 
+ * Transitions automatiques :
+ * - PLANIFIEE → EN_COURS quand dateDebut est atteinte
+ * - PLANIFIEE → CLOTUREE quand dateFin + delaiGrace est dépassée (personne n'a commencé)
+ * - EN_COURS → CLOTUREE quand tous ont soumis OU dateFin + delaiGrace dépassée
+ * - TERMINEE → CLOTUREE (même logique que EN_COURS)
+ * 
  * Actions lors de la clôture :
  * - Verrouiller toute nouvelle soumission
  * - Empêcher la modification des compositions déjà soumises
@@ -27,6 +33,8 @@ export interface ClosureResult {
   submittedSessions: number
   eligibleStudentCount: number
   message?: string
+  transitioned?: boolean
+  previousStatut?: string
 }
 
 /**
@@ -78,6 +86,8 @@ async function getEligibleStudentCount(
 /**
  * Vérifie si une épreuve doit être clôturée automatiquement
  * et effectue la clôture si les conditions sont remplies.
+ * 
+ * Gère aussi la transition automatique PLANIFIEE → EN_COURS quand dateDebut est atteinte.
  */
 export async function checkAndAutoCloseEpreuve(epreuveId: string): Promise<ClosureResult> {
   const epreuve = await db.epreuve.findUnique({
@@ -99,22 +109,94 @@ export async function checkAndAutoCloseEpreuve(epreuveId: string): Promise<Closu
     return { closed: false, epreuveId, sessionsMarqueesAbsent: 0, sessionsMarqueesNonSoumis: 0, totalSessions: 0, submittedSessions: 0, eligibleStudentCount: 0 }
   }
 
-  // Ne traiter que les épreuves EN_COURS ou TERMINEE
-  if (!['EN_COURS', 'TERMINEE'].includes(epreuve.statut)) {
-    return { closed: false, epreuveId, sessionsMarqueesAbsent: 0, sessionsMarqueesNonSoumis: 0, totalSessions: epreuve.sessions.length, submittedSessions: 0, eligibleStudentCount: 0 }
-  }
+  const now = new Date()
 
-  // Déjà clôturée
+  // ─── Déjà clôturée — rien à faire ─────────────────────────────────────
   if (epreuve.statut === 'CLOTUREE') {
     return { closed: false, epreuveId, sessionsMarqueesAbsent: 0, sessionsMarqueesNonSoumis: 0, totalSessions: epreuve.sessions.length, submittedSessions: 0, eligibleStudentCount: 0 }
   }
 
-  const now = new Date()
+  // ─── BROUILLON — ne jamais auto-transitionner ─────────────────────────
+  if (epreuve.statut === 'BROUILLON') {
+    return { closed: false, epreuveId, sessionsMarqueesAbsent: 0, sessionsMarqueesNonSoumis: 0, totalSessions: epreuve.sessions.length, submittedSessions: 0, eligibleStudentCount: 0 }
+  }
+
+  // ─── PLANIFIEE — transitions automatiques ──────────────────────────────
+  if (epreuve.statut === 'PLANIFIEE') {
+    const dateFinWithGrace = new Date(epreuve.dateFin.getTime() + (epreuve.delaiGrace || 3) * 60 * 1000)
+
+    // CAS 1 : dateFin + délai de grâce déjà dépassée → personne n'a commencé, clôturer directement
+    if (now >= dateFinWithGrace) {
+      return await performClosure(epreuveId, 'ECHEANCE_ATTEINTE', epreuve.sessions, epreuve.enseignantId, 'PLANIFIEE')
+    }
+
+    // CAS 2 : dateDebut atteinte → passer en EN_COURS automatiquement
+    if (now >= epreuve.dateDebut) {
+      await db.epreuve.update({
+        where: { id: epreuveId },
+        data: { statut: 'EN_COURS' },
+      })
+
+      await db.auditLog.create({
+        data: {
+          userId: 'system',
+          userEmail: 'system',
+          action: 'AUTO_START_EPREUVE',
+          entite: 'Epreuve',
+          entiteId: epreuveId,
+          details: `Épreuve passée automatiquement en EN_COURS — dateDebut atteinte: ${epreuve.dateDebut.toISOString()}`,
+        },
+      })
+
+      // Now re-check with EN_COURS status (for closure conditions)
+      // But first, let's check closure conditions directly here to avoid re-fetching
+      const totalSessions = epreuve.sessions.length
+      const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
+      const submittedSessions = epreuve.sessions.filter(s => submittedStatuses.includes(s.statut)).length
+      const activeSessions = epreuve.sessions.filter(s => s.statut === 'EN_COURS').length
+      const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions)
+
+      // Condition A: tous les étudiants ont soumis
+      if (eligibleStudentCount > 0 && submittedSessions === eligibleStudentCount && activeSessions === 0) {
+        return await performClosure(epreuveId, 'TOUS_SOUMIS', epreuve.sessions, epreuve.enseignantId, 'PLANIFIEE')
+      }
+
+      return {
+        closed: false,
+        epreuveId,
+        sessionsMarqueesAbsent: 0,
+        sessionsMarqueesNonSoumis: 0,
+        totalSessions,
+        submittedSessions,
+        eligibleStudentCount,
+        transitioned: true,
+        previousStatut: 'PLANIFIEE',
+        message: `Épreuve passée automatiquement de PLANIFIEE → EN_COURS (dateDebut atteinte)`,
+      }
+    }
+
+    // CAS 3 : dateDebut pas encore atteinte — attendre
+    return {
+      closed: false,
+      epreuveId,
+      sessionsMarqueesAbsent: 0,
+      sessionsMarqueesNonSoumis: 0,
+      totalSessions: epreuve.sessions.length,
+      submittedSessions: 0,
+      eligibleStudentCount: 0,
+      message: `Épreuve PLANIFIEE — dateDebut pas encore atteinte (${epreuve.dateDebut.toISOString()})`,
+    }
+  }
+
+  // ─── EN_COURS ou TERMINEE — vérifier les conditions de clôture ─────────
+  if (!['EN_COURS', 'TERMINEE'].includes(epreuve.statut)) {
+    return { closed: false, epreuveId, sessionsMarqueesAbsent: 0, sessionsMarqueesNonSoumis: 0, totalSessions: epreuve.sessions.length, submittedSessions: 0, eligibleStudentCount: 0 }
+  }
+
   const totalSessions = epreuve.sessions.length
   const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
   const submittedSessions = epreuve.sessions.filter(s => submittedStatuses.includes(s.statut)).length
   const activeSessions = epreuve.sessions.filter(s => s.statut === 'EN_COURS').length
-  const notStartedSessions = epreuve.sessions.filter(s => s.statut === 'NON_COMMENCEE').length
 
   // ─── Condition A : Tous les étudiants inscrits ont soumis ───────────────
   // FIX: Compare against eligible student count, NOT just existing sessions.
@@ -125,14 +207,14 @@ export async function checkAndAutoCloseEpreuve(epreuveId: string): Promise<Closu
   const eligibleStudentCount = await getEligibleStudentCount(epreuve.filiereId, epreuve.groupesCibles as string | null, totalSessions)
 
   if (eligibleStudentCount > 0 && submittedSessions === eligibleStudentCount && activeSessions === 0) {
-    return await performClosure(epreuveId, 'TOUS_SOUMIS', epreuve.sessions, epreuve.enseignantId)
+    return await performClosure(epreuveId, 'TOUS_SOUMIS', epreuve.sessions, epreuve.enseignantId, epreuve.statut)
   }
 
   // ─── Condition B : La date/heure de fin + délai de grâce est atteinte ──
   const dateFinWithGrace = new Date(epreuve.dateFin.getTime() + (epreuve.delaiGrace || 3) * 60 * 1000)
   
   if (now >= dateFinWithGrace) {
-    return await performClosure(epreuveId, 'ECHEANCE_ATTEINTE', epreuve.sessions, epreuve.enseignantId)
+    return await performClosure(epreuveId, 'ECHEANCE_ATTEINTE', epreuve.sessions, epreuve.enseignantId, epreuve.statut)
   }
 
   // Si la dateFin est atteinte mais pas le délai de grâce, on ne clôture pas encore
@@ -169,7 +251,8 @@ async function performClosure(
   epreuveId: string,
   raison: RaisonCloture,
   sessions: Array<{ id: string; etudiantId: string; statut: string; dateDebut: string | Date | null }>,
-  enseignantId: string
+  enseignantId: string,
+  previousStatut?: string
 ): Promise<ClosureResult> {
   const now = new Date()
   const submittedStatuses = ['SOUMISE', 'CORRIGEE', 'RETOURNEE']
@@ -229,10 +312,12 @@ async function performClosure(
     ? 'Tous les étudiants ont soumis leur composition' 
     : 'La période de passation est terminée'
 
+  const previousLabel = previousStatut ? ` (était ${previousStatut})` : ''
+
   await db.alerte.create({
     data: {
       titre: `Épreuve clôturée automatiquement`,
-      description: `L'épreuve a été clôturée automatiquement. Raison : ${raisonLabel}. ${sessionsMarqueesAbsent > 0 ? `${sessionsMarqueesAbsent} étudiant(s) marqué(s) absent(s).` : ''} ${sessionsMarqueesNonSoumis > 0 ? `${sessionsMarqueesNonSoumis} étudiant(s) non soumis (brouillon sauvegardé).` : ''}`,
+      description: `L'épreuve a été clôturée automatiquement${previousLabel}. Raison : ${raisonLabel}. ${sessionsMarqueesAbsent > 0 ? `${sessionsMarqueesAbsent} étudiant(s) marqué(s) absent(s).` : ''} ${sessionsMarqueesNonSoumis > 0 ? `${sessionsMarqueesNonSoumis} étudiant(s) non soumis (brouillon sauvegardé).` : ''}`,
       severity: 'INFO',
       type: 'SYSTEME',
       epreuveId,
@@ -248,7 +333,7 @@ async function performClosure(
       action: 'AUTO_CLOSE_EPREUVE',
       entite: 'Epreuve',
       entiteId: epreuveId,
-      details: `Clôture automatique — Raison: ${raison}. Absents: ${sessionsMarqueesAbsent}. Non soumis: ${sessionsMarqueesNonSoumis}.`,
+      details: `Clôture automatique${previousLabel} — Raison: ${raison}. Absents: ${sessionsMarqueesAbsent}. Non soumis: ${sessionsMarqueesNonSoumis}.`,
     },
   })
 
@@ -263,7 +348,8 @@ async function performClosure(
     totalSessions: sessions.length,
     submittedSessions: totalSubmitted,
     eligibleStudentCount: 0, // Not needed in closure result
-    message: `Épreuve clôturée automatiquement : ${raisonLabel}`,
+    previousStatut,
+    message: `Épreuve clôturée automatiquement${previousLabel} : ${raisonLabel}`,
   }
 }
 
@@ -339,13 +425,27 @@ export async function isEpreuveClosed(epreuveId: string): Promise<{
 }
 
 /**
- * Scanne toutes les épreuves EN_COURS et vérifie si elles doivent être clôturées.
- * Utilisé par le mini-service de surveillance.
+ * Scanne toutes les épreuves actives et vérifie si elles doivent être :
+ * - Transitionnées de PLANIFIEE → EN_COURS (quand dateDebut atteinte)
+ * - Clôturées automatiquement (quand conditions remplies)
+ * 
+ * Utilisé par le Vercel Cron (chaque minute) et par le mini-service de surveillance.
  */
 export async function scanAndAutoCloseEpreuves(): Promise<ClosureResult[]> {
-  // Trouver les épreuves EN_COURS dont la dateFin + délai de grâce est dépassée
-  // ou les épreuves TERMINEE qui n'ont pas encore été clôturées
-  const epreuves = await db.epreuve.findMany({
+  const now = new Date()
+
+  // ─── Étape 1 : Transitionner les PLANIFIEE dont dateDebut est atteinte ──
+  const planifieeEpreuves = await db.epreuve.findMany({
+    where: {
+      statut: 'PLANIFIEE',
+      dateDebut: { lte: now },
+      deletedAt: null,
+    },
+    select: { id: true },
+  })
+
+  // ─── Étape 2 : Trouver les EN_COURS et TERMINEE à vérifier ─────────────
+  const activeEpreuves = await db.epreuve.findMany({
     where: {
       statut: { in: ['EN_COURS', 'TERMINEE'] },
       deletedAt: null,
@@ -353,17 +453,23 @@ export async function scanAndAutoCloseEpreuves(): Promise<ClosureResult[]> {
     select: { id: true },
   })
 
+  // Combiner toutes les épreuves à vérifier (sans doublons)
+  const allIds = new Set([
+    ...planifieeEpreuves.map(e => e.id),
+    ...activeEpreuves.map(e => e.id),
+  ])
+
   const results: ClosureResult[] = []
 
-  for (const epreuve of epreuves) {
+  for (const epreuveId of allIds) {
     try {
-      const result = await checkAndAutoCloseEpreuve(epreuve.id)
+      const result = await checkAndAutoCloseEpreuve(epreuveId)
       results.push(result)
     } catch (error) {
-      console.error(`Error auto-closing epreuve ${epreuve.id}:`, error)
+      console.error(`Error auto-closing epreuve ${epreuveId}:`, error)
       results.push({
         closed: false,
-        epreuveId: epreuve.id,
+        epreuveId,
         sessionsMarqueesAbsent: 0,
         sessionsMarqueesNonSoumis: 0,
         totalSessions: 0,

@@ -17,6 +17,7 @@ import {
 import { withAuth } from '@/lib/auth-session'
 import { type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult, EXECUTION_CONFIG, parseCodingAnswer, parseFunctionSignature } from '@/lib/coding-types'
 import { validateCode } from '@/lib/code-sandbox-validator'
+import { checkAndAutoCloseEpreuve } from '@/lib/auto-closure'
 
 async function _POST(
   request: NextRequest,
@@ -329,6 +330,20 @@ async function _POST(
       response.scenarioMessage = 'Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.'
     } else {
       response.scenarioMessage = `Note partielle: ${scoreAfterPenalty.toFixed(1)}/${autoGradableTotal} (questions auto-corrigées). En attente de la correction manuelle de l'enseignant pour ${scenario.manualCorrectionCount} question(s) ouverte(s).`
+    }
+
+    // ─── Déclencher la vérification d'auto-clôture après soumission ────────
+    // Si tous les étudiants ont soumis, l'épreuve sera clôturée automatiquement.
+    // Ne pas bloquer la réponse si cette vérification échoue.
+    try {
+      const autoCloseResult = await checkAndAutoCloseEpreuve(session.epreuveId)
+      if (autoCloseResult.closed) {
+        response.epreuveAutoClosed = true
+        response.autoCloseRaison = autoCloseResult.raison || null
+      }
+    } catch (autoCloseError) {
+      // Ne pas faire échouer la soumission si l'auto-close échoue
+      console.error('[Submit] Auto-close check failed:', autoCloseError)
     }
 
     return NextResponse.json(response)
