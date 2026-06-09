@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Clock,
   Calendar,
@@ -44,7 +44,18 @@ import {
   GraduationCap,
   CalendarRange,
   RotateCcw,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
+import { ClassificationSidebar } from './classification-sidebar'
+import { ClassificationStatsView } from './classification-stats'
+import { EpreuveGroupedView } from './epreuve-grouped-view'
+import {
+  type ClassificationStats,
+  type ClassificationTree,
+  type SelectedPath,
+  type GroupByField,
+} from './classification-types'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { PAGE_ROUTES } from '@/lib/routes'
@@ -163,6 +174,9 @@ interface ModeleEpreuve {
   sourceDocuments: Array<{ id: string; nomFichier: string }>
   filiere: { id: string; nom: string; code: string | null } | null
   uniteEnseignement: { id: string; nom: string; code: string | null } | null
+  niveau?: string | null
+  sessionExamen?: string | null
+  anneeAcademiqueId?: string | null
   sessionCount: number
   hasContenuFormat: boolean
   createdAt: string
@@ -411,6 +425,15 @@ function ModelesTab() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [modeFilter, setModeFilter] = useState('TOUS')
 
+  // Classification filters for ModelesTab
+  const [modeleFiliereFilter, setModeleFiliereFilter] = useState<string>('')
+  const [modeleNiveauFilter, setModeleNiveauFilter] = useState<string>('')
+  const [modeleSessionFilter, setModeleSessionFilter] = useState<string>('')
+
+  // Classification data for ModelesTab filters
+  const [modeleFilieres, setModeleFilieres] = useState<EnseignantFiliereContext[]>([])
+  const [modeleAnnees, setModeleAnnees] = useState<AnneeAcademiqueOption[]>([])
+
   // Dialogs
   const [previewEpreuve, setPreviewEpreuve] = useState<ModeleEpreuve | null>(null)
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
@@ -425,6 +448,28 @@ function ModelesTab() {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(timer)
   }, [search])
+
+  // Fetch filiere/annee data for ModelesTab classification filters
+  useEffect(() => {
+    if (!user?.id) return
+    const fetchFilterData = async () => {
+      try {
+        const filieresRes = await fetch(`/api/enseignant/context?enseignantId=${user.id}`)
+        if (filieresRes.ok) {
+          const data = await filieresRes.json()
+          setModeleFilieres(data.filieres ?? [])
+        }
+        if (user.etablissementId) {
+          const anneesRes = await fetch(`/api/annees-academiques?etablissementId=${user.etablissementId}`)
+          if (anneesRes.ok) {
+            const data = await anneesRes.json()
+            setModeleAnnees(Array.isArray(data) ? data : [])
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    fetchFilterData()
+  }, [user?.id, user?.etablissementId])
 
   // Fetch
   const fetchBanque = useCallback(async () => {
@@ -608,27 +653,83 @@ function ModelesTab() {
       )}
 
       {/* Search & Filter */}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un modèle..." className="pl-9" />
-          {search && (
-            <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')}>
-              <X className="h-3 w-3" />
-            </Button>
-          )}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un modèle..." className="pl-9" />
+            {search && (
+              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')}>
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+          <Select value={modeFilter} onValueChange={setModeFilter}>
+            <SelectTrigger className="w-[170px]">
+              <Filter className="mr-1 h-3 w-3" />
+              <SelectValue placeholder="Mode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TOUS">Tous les modes</SelectItem>
+              <SelectItem value="IA_ASSISTEE">Générées par IA</SelectItem>
+              <SelectItem value="MANUELLE">Manuelles</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={modeFilter} onValueChange={setModeFilter}>
-          <SelectTrigger className="w-[170px]">
-            <Filter className="mr-1 h-3 w-3" />
-            <SelectValue placeholder="Mode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TOUS">Tous les modes</SelectItem>
-            <SelectItem value="IA_ASSISTEE">Générées par IA</SelectItem>
-            <SelectItem value="MANUELLE">Manuelles</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Classification quick filters */}
+        {modeleFilieres.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <Select value={modeleFiliereFilter} onValueChange={(v) => { setModeleFiliereFilter(v === '__all__' ? '' : v); setModeleNiveauFilter('') }}>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <BookOpen className="mr-1 h-3 w-3" />
+                <SelectValue placeholder="Filière" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Toutes les filières</SelectItem>
+                {modeleFilieres.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={modeleNiveauFilter} onValueChange={(v) => setModeleNiveauFilter(v === '__all__' ? '' : v)}>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <GraduationCap className="mr-1 h-3 w-3" />
+                <SelectValue placeholder="Niveau" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Tous les niveaux</SelectItem>
+                {(() => {
+                  const selectedFiliere = modeleFilieres.find((f) => f.id === modeleFiliereFilter)
+                  const availableNiveaux = selectedFiliere
+                    ? selectedFiliere.niveaux
+                    : [...new Set(modeleFilieres.flatMap((f) => f.niveaux))].sort()
+                  return availableNiveaux.map((n) => (
+                    <SelectItem key={n} value={n}>{NIVEAU_LABELS[n] || n}</SelectItem>
+                  ))
+                })()}
+              </SelectContent>
+            </Select>
+            <Select value={modeleSessionFilter} onValueChange={(v) => setModeleSessionFilter(v === '__all__' ? '' : v)}>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <Layers className="mr-1 h-3 w-3" />
+                <SelectValue placeholder="Session" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Toutes les sessions</SelectItem>
+                <SelectItem value="NORMALE">Normale</SelectItem>
+                <SelectItem value="RATTRAPAGE">Rattrapage</SelectItem>
+                <SelectItem value="SPECIALE">Spéciale</SelectItem>
+                <SelectItem value="EXCEPTIONNELLE">Exceptionnelle</SelectItem>
+                <SelectItem value="DIFFERE">Différé</SelectItem>
+              </SelectContent>
+            </Select>
+            {(modeleFiliereFilter || modeleNiveauFilter || modeleSessionFilter) && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => { setModeleFiliereFilter(''); setModeleNiveauFilter(''); setModeleSessionFilter('') }}>
+                <RotateCcw className="h-3 w-3" /> Réinitialiser
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Loading */}
@@ -728,6 +829,30 @@ function ModelesTab() {
                       {epreuve.filiere?.nom}{epreuve.filiere && epreuve.uniteEnseignement ? ' · ' : ''}{epreuve.uniteEnseignement?.nom}
                     </div>
                   )}
+
+                  {/* Classification badges for modèles */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {epreuve.filiere && (
+                      <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-800">
+                        <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
+                      </Badge>
+                    )}
+                    {epreuve.uniteEnseignement && (
+                      <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+                        <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
+                      </Badge>
+                    )}
+                    {epreuve.niveau && (
+                      <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800">
+                        <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
+                      </Badge>
+                    )}
+                    {epreuve.sessionExamen && epreuve.sessionExamen !== 'NORMALE' && (
+                      <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] || ''}`}>
+                        <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
+                      </Badge>
+                    )}
+                  </div>
 
                   <div className="text-xs text-muted-foreground">
                     <Calendar className="h-3 w-3 inline mr-1" />
@@ -1132,6 +1257,117 @@ function SessionsTab() {
   // Session spéciale dialog
   const [sessionSpecialeDialogOpen, setSessionSpecialeDialogOpen] = useState(false)
   const [sessionSpecialeEpreuve, setSessionSpecialeEpreuve] = useState<SessionEpreuve | null>(null)
+
+  // ─── Classification system state ───
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+  const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
+  const [classificationStats, setClassificationStats] = useState<ClassificationStats | null>(null)
+  const [classificationTree, setClassificationTree] = useState<ClassificationTree>({ filieres: [], nonClassees: 0 })
+  const [selectedPath, setSelectedPath] = useState<SelectedPath>({})
+  const [activeClassFilters, setActiveClassFilters] = useState<Array<{ dimension: 'filiere' | 'niveau' | 'sessionExamen' | 'anneeAcademique'; value: string }>>([])
+  const [isLoadingClassification, setIsLoadingClassification] = useState(false)
+
+  // Fetch classification data
+  const fetchClassification = useCallback(async () => {
+    if (!user?.id) return
+    setIsLoadingClassification(true)
+    try {
+      const params = new URLSearchParams({ enseignantId: user.id })
+      const res = await fetch(`/api/epreuves/classification?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setClassificationStats({
+          byFiliere: data.byFiliere || [],
+          byNiveau: data.byNiveau || [],
+          bySessionExamen: data.bySessionExamen || [],
+          byAnneeAcademique: data.byAnneeAcademique || [],
+          byUniteEnseignement: data.byUniteEnseignement || [],
+          byStatut: data.byStatut || [],
+          total: data.totalCount || 0,
+          nonClassees: data.uncategorizedCount || 0,
+        })
+        // Build tree from API response
+        const treeData: ClassificationTree = {
+          filieres: (data.tree || []).map((f: any) => ({
+            id: f.filiereId || '__none__',
+            nom: f.filiereNom || 'Non classée',
+            code: f.filiereCode || null,
+            count: f.count || 0,
+            niveaux: (f.byNiveau || []).map((n: any) => ({
+              niveau: n.niveau || 'NON_DEFINI',
+              count: n.count || 0,
+              unites: (n.byUE || []).map((u: any) => ({
+                id: u.ueId || '__none__',
+                code: u.ueCode || 'N/A',
+                nom: u.ueNom || 'Non classée',
+                count: u.count || 0,
+              })),
+            })),
+          })),
+          nonClassees: data.uncategorizedCount || 0,
+        }
+        setClassificationTree(treeData)
+      }
+    } catch {
+      // Silently ignore classification fetch failures
+    } finally {
+      setIsLoadingClassification(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => { fetchClassification() }, [fetchClassification])
+
+  // Handle sidebar path selection → apply as filters
+  const handleSidebarSelect = (path: SelectedPath) => {
+    setSelectedPath(path)
+    // Apply path as filters
+    if (path.filiereId && path.filiereId !== '__non_classees__') {
+      setFilterFiliereId(path.filiereId)
+    } else if (path.filiereId === '__non_classees__') {
+      // Show only non-classified: filter for no filiere
+      setFilterFiliereId('')
+    } else {
+      setFilterFiliereId('')
+    }
+    if (path.niveau) setFilterNiveau(path.niveau)
+    else setFilterNiveau('')
+    if (path.uniteId && path.uniteId !== '__none__') setFilterUEId(path.uniteId)
+    else setFilterUEId('')
+  }
+
+  // Handle classification stats chip click → apply as filter
+  const handleClassFilterClick = (filter: { dimension: 'filiere' | 'niveau' | 'sessionExamen' | 'anneeAcademique'; value: string }) => {
+    // Toggle: if already active, remove it; otherwise, set it
+    const existing = activeClassFilters.find(f => f.dimension === filter.dimension && f.value === filter.value)
+    if (existing) {
+      setActiveClassFilters(prev => prev.filter(f => !(f.dimension === filter.dimension && f.value === filter.value)))
+      // Reset the corresponding filter
+      switch (filter.dimension) {
+        case 'filiere': setFilterFiliereId(''); break
+        case 'niveau': setFilterNiveau(''); break
+        case 'sessionExamen': setFilterSessionExamen(''); break
+        case 'anneeAcademique': setFilterAnneeAcademiqueId(''); break
+      }
+    } else {
+      setActiveClassFilters([filter]) // Only one active at a time for simplicity
+      switch (filter.dimension) {
+        case 'filiere': setFilterFiliereId(filter.value); break
+        case 'niveau': setFilterNiveau(filter.value); break
+        case 'sessionExamen': setFilterSessionExamen(filter.value); break
+        case 'anneeAcademique': setFilterAnneeAcademiqueId(filter.value); break
+      }
+    }
+  }
+
+  const handleClassFilterRemove = (dimension: 'filiere' | 'niveau' | 'sessionExamen' | 'anneeAcademique', _value: string) => {
+    setActiveClassFilters(prev => prev.filter(f => f.dimension !== dimension))
+    switch (dimension) {
+      case 'filiere': setFilterFiliereId(''); break
+      case 'niveau': setFilterNiveau(''); break
+      case 'sessionExamen': setFilterSessionExamen(''); break
+      case 'anneeAcademique': setFilterAnneeAcademiqueId(''); break
+    }
+  }
 
   // Special sessions traceability in monitoring dialog
   const [specialSessions, setSpecialSessions] = useState<Array<{
@@ -1649,18 +1885,146 @@ function SessionsTab() {
     CLOTUREE: epreuves.filter((e) => e.statut === 'CLOTUREE').length,
   }
 
+  // Render an epreuve card for grouped view
+  const renderEpreuveCard = (epreuve: SessionEpreuve) => {
+    const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
+    const contenuQuestions = contenuData?.questions ?? []
+    const questionCount = epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
+    const pts = epreuve.questions.length > 0
+      ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+      : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
+    const sessionCount = epreuve.sessions.length
+    const completedSessions = epreuve.sessions.filter((s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE').length
+    const completionRate = sessionCount > 0 ? Math.round((completedSessions / sessionCount) * 100) : 0
+
+    return (
+      <Card className="group transition-shadow hover:shadow-md">
+        <CardContent className="flex flex-col gap-4 p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+              {epreuve.description && (
+                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
+              )}
+            </div>
+            {getStatutBadge(epreuve.statut)}
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> {epreuve.duree} min</span>
+            <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" /> {formatDateTime(epreuve.dateDebut)}</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+              <HelpCircle className="h-3 w-3" /> {questionCount} Q
+            </Badge>
+            <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+              <Trophy className="h-3 w-3" /> {pts} pts
+            </Badge>
+            {sessionCount > 0 && (
+              <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                <Users className="h-3 w-3" /> {completedSessions}/{sessionCount} ({completionRate}%)
+              </Badge>
+            )}
+          </div>
+          {/* Classification badges */}
+          {(epreuve.niveau || epreuve.sessionExamen || epreuve.filiere || epreuve.uniteEnseignement || epreuve.epreuveOrigineId) && (
+            <div className="flex flex-wrap gap-1.5">
+              {epreuve.epreuveOrigineId && (
+                <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800">
+                  <RotateCcw className="h-2.5 w-2.5" /> Session spéciale
+                </Badge>
+              )}
+              {epreuve.niveau && (
+                <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800">
+                  <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
+                </Badge>
+              )}
+              {epreuve.sessionExamen && (
+                <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] || ''}`}>
+                  <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
+                </Badge>
+              )}
+              {epreuve.filiere && (
+                <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-800">
+                  <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
+                </Badge>
+              )}
+              {epreuve.uniteEnseignement && (
+                <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+                  <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
+                </Badge>
+              )}
+            </div>
+          )}
+          <Separator />
+          {renderActions(epreuve)}
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {/* Action bar */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {epreuves.length} session{epreuves.length > 1 ? 's' : ''} au total
-        </p>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={openPlanifier}>
-          <SendHorizonal className="h-4 w-4" />
-          Planifier une session
-        </Button>
+      {/* Action bar with view mode toggle */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            {epreuves.length} session{epreuves.length > 1 ? 's' : ''} au total
+          </p>
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+            <button
+              type="button"
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === 'flat' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setViewMode('flat')}
+            >
+              <List className="h-3.5 w-3.5" /> Liste
+            </button>
+            <button
+              type="button"
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === 'grouped' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setViewMode('grouped')}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Groupé
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Group by selector (visible when grouped mode) */}
+          {viewMode === 'grouped' && (
+            <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupByField)}>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue placeholder="Grouper par" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="filiere">Par filière</SelectItem>
+                <SelectItem value="niveau">Par niveau</SelectItem>
+                <SelectItem value="ue">Par UE</SelectItem>
+                <SelectItem value="sessionExamen">Par session</SelectItem>
+                <SelectItem value="anneeAcademique">Par année</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={openPlanifier}>
+            <SendHorizonal className="h-4 w-4" />
+            Planifier une session
+          </Button>
+        </div>
       </div>
+
+      {/* ─── Classification Stats Dashboard ─── */}
+      {classificationStats && classificationStats.total > 0 && (
+        <ClassificationStatsView
+          stats={classificationStats}
+          activeFilters={activeClassFilters}
+          onFilterClick={handleClassFilterClick}
+          onFilterRemove={handleClassFilterRemove}
+        />
+      )}
 
       {/* ─── Advanced Filters (Collapsible) ─── */}
       <Collapsible open={advancedFiltersOpen} onOpenChange={setAdvancedFiltersOpen}>
@@ -1909,129 +2273,155 @@ function SessionsTab() {
         </div>
       )}
 
-      {/* List */}
+      {/* ─── Content: Sidebar + Epreuves ─── */}
       {!isLoading && filteredEpreuves.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {filteredEpreuves.map((epreuve) => {
-            const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
-            const contenuQuestions = contenuData?.questions ?? []
-            const questionCount = epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
-            const pts = epreuve.questions.length > 0
-              ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
-              : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
-            const sessionCount = epreuve.sessions.length
-            const completedSessions = epreuve.sessions.filter((s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE').length
-            const completionRate = sessionCount > 0 ? Math.round((completedSessions / sessionCount) * 100) : 0
+        <div className="flex gap-6">
+          {/* Sidebar (desktop only) */}
+          {classificationTree.filieres.length > 0 && (
+            <div className="hidden lg:block">
+              <ClassificationSidebar
+                tree={classificationTree}
+                onSelect={handleSidebarSelect}
+                selectedPath={selectedPath}
+              />
+            </div>
+          )}
 
-            return (
-              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
-                <CardContent className="flex flex-col gap-4 p-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
-                      {epreuve.description && (
-                        <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
-                      )}
-                    </div>
-                    {getStatutBadge(epreuve.statut)}
-                  </div>
+          {/* Main content */}
+          <div className="flex-1 min-w-0">
+            {/* Mobile sidebar toggle */}
+            <div className="lg:hidden mb-4">
+              <ClassificationSidebar
+                tree={classificationTree}
+                onSelect={handleSidebarSelect}
+                selectedPath={selectedPath}
+              />
+            </div>
 
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> {epreuve.duree} min
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" /> {formatDateTime(epreuve.dateDebut)}
-                    </span>
-                  </div>
+            {viewMode === 'grouped' ? (
+              /* Grouped view */
+              <EpreuveGroupedView
+                epreuves={filteredEpreuves}
+                groupBy={groupBy}
+                renderCard={renderEpreuveCard}
+              />
+            ) : (
+              /* Flat list view */
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {filteredEpreuves.map((epreuve) => {
+                  const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
+                  const contenuQuestions = contenuData?.questions ?? []
+                  const questionCount = epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
+                  const pts = epreuve.questions.length > 0
+                    ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
+                    : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
+                  const sessionCount = epreuve.sessions.length
+                  const completedSessions = epreuve.sessions.filter((s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE').length
+                  const completionRate = sessionCount > 0 ? Math.round((completedSessions / sessionCount) * 100) : 0
 
-                  <div className="flex flex-wrap gap-3">
-                    <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
-                      <HelpCircle className="h-3 w-3" /> {questionCount} question{questionCount > 1 ? 's' : ''}
-                    </Badge>
-                    <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
-                      <Trophy className="h-3 w-3" /> {pts} pts
-                    </Badge>
-                    {sessionCount > 0 && (
-                      <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                        <Users className="h-3 w-3" /> {completedSessions}/{sessionCount} soumises{completionRate < 100 ? ` (${completionRate}%)` : ''}
-                      </Badge>
-                    )}
-                  </div>
+                  return (
+                    <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
+                      <CardContent className="flex flex-col gap-4 p-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+                            {epreuve.description && (
+                              <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
+                            )}
+                          </div>
+                          {getStatutBadge(epreuve.statut)}
+                        </div>
 
-                  {/* ─── Classification badges ─── */}
-                  {(epreuve.niveau || epreuve.sessionExamen || epreuve.anneeAcademique || epreuve.uniteEnseignement || epreuve.filiere || epreuve.epreuveOrigineId) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {epreuve.epreuveOrigineId && (
-                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800">
-                          <RotateCcw className="h-2.5 w-2.5" /> Session spéciale
-                        </Badge>
-                      )}
-                      {epreuve.etudiantsAutorises && epreuve.etudiantsAutorises.length > 0 && (
-                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
-                          <Users className="h-2.5 w-2.5" /> {epreuve.etudiantsAutorises.length} étudiant(s) autorisé(s)
-                        </Badge>
-                      )}
-                      {epreuve.niveau && (
-                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800">
-                          <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
-                        </Badge>
-                      )}
-                      {epreuve.sessionExamen && (
-                        <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] || ''}`}>
-                          <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
-                        </Badge>
-                      )}
-                      {epreuve.anneeAcademique && (
-                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-700">
-                          <CalendarRange className="h-2.5 w-2.5" /> {epreuve.anneeAcademique.libelle}
-                        </Badge>
-                      )}
-                      {epreuve.filiere && (
-                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-800">
-                          <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
-                        </Badge>
-                      )}
-                      {epreuve.uniteEnseignement && (
-                        <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
-                          <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> {epreuve.duree} min</span>
+                          <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" /> {formatDateTime(epreuve.dateDebut)}</span>
+                        </div>
 
-                  {(epreuve.melangeQuestions || epreuve.melangePropositions || epreuve.blocageRetour) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {epreuve.melangeQuestions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Questions mélangées</Badge>}
-                      {epreuve.melangePropositions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Props mélangées</Badge>}
-                      {epreuve.blocageRetour && <Badge variant="outline" className="text-[10px] gap-0.5 py-0 text-red-600 dark:text-red-400"><Ban className="h-2.5 w-2.5" /> Retour bloqué</Badge>}
-                    </div>
-                  )}
+                        <div className="flex flex-wrap gap-3">
+                          <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                            <HelpCircle className="h-3 w-3" /> {questionCount} question{questionCount > 1 ? 's' : ''}
+                          </Badge>
+                          <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                            <Trophy className="h-3 w-3" /> {pts} pts
+                          </Badge>
+                          {sessionCount > 0 && (
+                            <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                              <Users className="h-3 w-3" /> {completedSessions}/{sessionCount} soumises{completionRate < 100 ? ` (${completionRate}%)` : ''}
+                            </Badge>
+                          )}
+                        </div>
 
-                  {/* Auto-closure info */}
-                  {epreuve.statut === 'CLOTUREE' && epreuve.clotureeAutomatiquement && (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-800 dark:bg-amber-950/30">
-                      <div className="flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-300">
-                        <Lock className="h-3.5 w-3.5" />
-                        Clôturée automatiquement
-                      </div>
-                      <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                        {epreuve.raisonCloture === 'TOUS_SOUMIS'
-                          ? 'Tous les étudiants ont soumis leur composition'
-                          : 'La période de passation est terminée'}
-                        {epreuve.clotureeAt && (
-                          <> — {formatDateTime(epreuve.clotureeAt)}</>
+                        {/* Classification badges */}
+                        {(epreuve.niveau || epreuve.sessionExamen || epreuve.anneeAcademique || epreuve.uniteEnseignement || epreuve.filiere || epreuve.epreuveOrigineId) && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {epreuve.epreuveOrigineId && (
+                              <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800">
+                                <RotateCcw className="h-2.5 w-2.5" /> Session spéciale
+                              </Badge>
+                            )}
+                            {epreuve.etudiantsAutorises && epreuve.etudiantsAutorises.length > 0 && (
+                              <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+                                <Users className="h-2.5 w-2.5" /> {epreuve.etudiantsAutorises.length} autorisé(s)
+                              </Badge>
+                            )}
+                            {epreuve.niveau && (
+                              <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800">
+                                <GraduationCap className="h-2.5 w-2.5" /> {NIVEAU_LABELS[epreuve.niveau] || epreuve.niveau}
+                              </Badge>
+                            )}
+                            {epreuve.sessionExamen && (
+                              <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${SESSION_EXAMEN_COLORS[epreuve.sessionExamen] || ''}`}>
+                                <Layers className="h-2.5 w-2.5" /> {SESSION_EXAMEN_LABELS[epreuve.sessionExamen] || epreuve.sessionExamen}
+                              </Badge>
+                            )}
+                            {epreuve.anneeAcademique && (
+                              <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-700">
+                                <CalendarRange className="h-2.5 w-2.5" /> {epreuve.anneeAcademique.libelle}
+                              </Badge>
+                            )}
+                            {epreuve.filiere && (
+                              <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-800">
+                                <BookOpen className="h-2.5 w-2.5" /> {epreuve.filiere.nom}
+                              </Badge>
+                            )}
+                            {epreuve.uniteEnseignement && (
+                              <Badge variant="outline" className="text-[10px] gap-0.5 py-0 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+                                <Hash className="h-2.5 w-2.5" /> {epreuve.uniteEnseignement.code || epreuve.uniteEnseignement.nom}
+                              </Badge>
+                            )}
+                          </div>
                         )}
-                      </p>
-                    </div>
-                  )}
 
-                  <Separator />
-                  {renderActions(epreuve)}
-                </CardContent>
-              </Card>
-            )
-          })}
+                        {(epreuve.melangeQuestions || epreuve.melangePropositions || epreuve.blocageRetour) && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {epreuve.melangeQuestions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Questions mélangées</Badge>}
+                            {epreuve.melangePropositions && <Badge variant="outline" className="text-[10px] gap-0.5 py-0"><Shuffle className="h-2.5 w-2.5" /> Props mélangées</Badge>}
+                            {epreuve.blocageRetour && <Badge variant="outline" className="text-[10px] gap-0.5 py-0 text-red-600 dark:text-red-400"><Ban className="h-2.5 w-2.5" /> Retour bloqué</Badge>}
+                          </div>
+                        )}
+
+                        {/* Auto-closure info */}
+                        {epreuve.statut === 'CLOTUREE' && epreuve.clotureeAutomatiquement && (
+                          <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-800 dark:bg-amber-950/30">
+                            <div className="flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                              <Lock className="h-3.5 w-3.5" /> Clôturée automatiquement
+                            </div>
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                              {epreuve.raisonCloture === 'TOUS_SOUMIS' ? 'Tous les étudiants ont soumis' : 'Période de passation terminée'}
+                              {epreuve.clotureeAt && (<> — {formatDateTime(epreuve.clotureeAt)}</>)}
+                            </p>
+                          </div>
+                        )}
+
+                        <Separator />
+                        {renderActions(epreuve)}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

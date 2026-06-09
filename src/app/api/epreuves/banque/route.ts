@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const generationMode = searchParams.get('generationMode')
     const filiereId = searchParams.get('filiereId')
+    const niveau = searchParams.get('niveau')
+    const sessionExamen = searchParams.get('sessionExamen')
+    const anneeAcademiqueId = searchParams.get('anneeAcademiqueId')
 
     if (!enseignantId) {
       return NextResponse.json(
@@ -49,6 +52,21 @@ export async function GET(request: NextRequest) {
     // Filter by filiere
     if (filiereId) {
       where.filiereId = filiereId
+    }
+
+    // Filter by niveau
+    if (niveau) {
+      where.niveau = niveau
+    }
+
+    // Filter by sessionExamen
+    if (sessionExamen) {
+      where.sessionExamen = sessionExamen
+    }
+
+    // Filter by anneeAcademiqueId
+    if (anneeAcademiqueId) {
+      where.anneeAcademiqueId = anneeAcademiqueId
     }
 
     const epreuves = await db.epreuve.findMany({
@@ -135,6 +153,9 @@ export async function GET(request: NextRequest) {
         })),
         filiere: epreuve.filiere,
         uniteEnseignement: epreuve.uniteEnseignement,
+        niveau: epreuve.niveau,
+        sessionExamen: epreuve.sessionExamen,
+        anneeAcademiqueId: epreuve.anneeAcademiqueId,
         sessionCount: epreuve._count.sessions,
         hasContenuFormat: contenuQuestions.length > 0,
       }
