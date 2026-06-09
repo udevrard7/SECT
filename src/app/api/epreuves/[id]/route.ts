@@ -56,6 +56,15 @@ async function _GET(
             },
           },
         },
+        filiere: {
+          select: { id: true, nom: true, code: true },
+        },
+        uniteEnseignement: {
+          select: { id: true, nom: true, code: true },
+        },
+        anneeAcademique: {
+          select: { id: true, libelle: true },
+        },
       },
     })
 
@@ -218,6 +227,11 @@ async function _PATCH(
     if (data.blocageRetour !== undefined) updateData.blocageRetour = data.blocageRetour
     if (data.groupesCibles !== undefined) updateData.groupesCibles = JSON.stringify(data.groupesCibles)
     if (data.statut !== undefined) updateData.statut = data.statut
+    if (data.niveau !== undefined) updateData.niveau = data.niveau
+    if (data.sessionExamen !== undefined) updateData.sessionExamen = data.sessionExamen
+    if (data.anneeAcademiqueId !== undefined) updateData.anneeAcademiqueId = data.anneeAcademiqueId
+    if (data.uniteEnseignementId !== undefined) updateData.uniteEnseignementId = data.uniteEnseignementId
+    if (data.filiereId !== undefined) updateData.filiereId = data.filiereId
 
     const epreuve = await db.epreuve.update({
       where: { id },

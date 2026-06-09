@@ -29,6 +29,8 @@ async function _POST(
       uniteEnseignementId,
       noteTotal,
       niveau,
+      sessionExamen,
+      anneeAcademiqueId,
     } = body
 
     if (!enseignantId || !titre || !duree || !dateDebut || !dateFin) {
@@ -90,6 +92,7 @@ async function _POST(
     }
 
     // Build create data
+    const validSessionExamen = ['NORMALE', 'RATTRAPAGE', 'SPECIALE']
     const createData: Record<string, unknown> = {
       enseignantId,
       titre,
@@ -108,6 +111,9 @@ async function _POST(
       filiereId: filiereId || null,
       uniteEnseignementId: uniteEnseignementId || null,
       noteTotal: typeof noteTotal === 'number' && noteTotal > 0 ? noteTotal : 20,
+      niveau: niveau || null,
+      sessionExamen: validSessionExamen.includes(sessionExamen) ? sessionExamen : 'NORMALE',
+      anneeAcademiqueId: anneeAcademiqueId || null,
     }
 
     // Handle contenu (new JSONB format)
@@ -240,6 +246,10 @@ async function _GET(
     const responsableId = searchParams.get('responsableId')
     const statut = searchParams.get('statut')
     const search = searchParams.get('search') || ''
+    const niveauFilter = searchParams.get('niveau')
+    const sessionExamenFilter = searchParams.get('sessionExamen')
+    const anneeAcademiqueIdFilter = searchParams.get('anneeAcademiqueId')
+    const uniteEnseignementIdFilter = searchParams.get('uniteEnseignementId')
 
     // ─── ETUDIANT: etudiantId must be their own ID ───
     if (etudiantId && user.role === 'ETUDIANT') {
@@ -398,6 +408,10 @@ async function _GET(
 
       const where: Record<string, unknown> = { enseignantId, deletedAt: null }
       if (statut) where.statut = statut
+      if (niveauFilter) where.niveau = niveauFilter
+      if (sessionExamenFilter) where.sessionExamen = sessionExamenFilter
+      if (anneeAcademiqueIdFilter) where.anneeAcademiqueId = anneeAcademiqueIdFilter
+      if (uniteEnseignementIdFilter) where.uniteEnseignementId = uniteEnseignementIdFilter
 
       const epreuves = await db.epreuve.findMany({
         where,
@@ -427,6 +441,9 @@ async function _GET(
           },
           uniteEnseignement: {
             select: { id: true, nom: true, code: true },
+          },
+          anneeAcademique: {
+            select: { id: true, libelle: true },
           },
         },
       })
