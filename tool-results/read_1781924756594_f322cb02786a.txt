@@ -1,0 +1,977 @@
+     1→/**
+     2→ * ─── Moteur de Badges Dynamiques ───
+     3→ *
+     4→ * Ce module centralise toutes les définitions de badges et la logique
+     5→ * de calcul de progression. Il est conçu pour être évolutif :
+     6→ *
+     7→ * - Ajouter un badge = ajouter une entrée dans BADGE_DEFINITIONS
+     8→ * - La progression est calculée dynamiquement à partir des données réelles
+     9→ * - Les niveaux (Bronze → Diamant) offrent une progression continue
+    10→ * - Chaque rôle a ses propres badges pertinents
+    11→ */
+    12→
+    13→import { db, withRetry } from '@/lib/db'
+    14→
+    15→// ─── Types ───
+    16→
+    17→export type NiveauBadge = 'BRONZE' | 'ARGENT' | 'OR' | 'DIAMANT'
+    18→export type CategorieBadge = 'EVALUATION' | 'CORRECTION' | 'IA' | 'ENGAGEMENT' | 'EXCELLENCE' | 'PEDAGOGIE' | 'GESTION'
+    19→export type RoleCible = 'ADMIN' | 'RESPONSABLE' | 'ENSEIGNANT' | 'ETUDIANT'
+    20→
+    21→export interface NiveauDefinition {
+    22→  niveau: NiveauBadge
+    23→  seuil: number           // Valeur à atteindre pour ce niveau
+    24→  label: string           // Description du palier (ex: "Terminer 1 épreuve")
+    25→}
+    26→
+    27→export interface BadgeDefinitionConfig {
+    28→  cle: string
+    29→  titre: string
+    30→  description: string
+    31→  icone: string           // Nom de l'icône Lucide
+    32→  categorie: CategorieBadge
+    33→  rolesCibles: RoleCible[]
+    34→  niveaux: NiveauDefinition[]
+    35→  ordre: number
+    36→}
+    37→
+    38→export interface BadgeWithProgress {
+    39→  cle: string
+    40→  titre: string
+    41→  description: string
+    42→  icone: string
+    43→  categorie: CategorieBadge
+    44→  niveauActuel: NiveauBadge
+    45→  niveaux: NiveauDefinition[]
+    46→  valeurActuelle: number
+    47→  valeurPalier: number
+    48→  valeurProchain: number | null
+    49→  debloque: boolean
+    50→  progression: number     // 0-100% de progression vers le prochain niveau
+    51→  dateObtention: string | null
+    52→  isNewlyUnlocked: boolean
+    53→}
+    54→
+    55→// ─── Définitions de tous les badges ───
+    56→
+    57→export const BADGE_DEFINITIONS: BadgeDefinitionConfig[] = [
+    58→  // ═══════════════════════════════════════════
+    59→  // 🎓 BADGES ÉTUDIANT
+    60→  // ═══════════════════════════════════════════
+    61→
+    62→  {
+    63→    cle: 'bapteme_du_feu',
+    64→    titre: 'Baptême du Feu',
+    65→    description: 'Terminer des épreuves pour la première fois',
+    66→    icone: 'Flame',
+    67→    categorie: 'EVALUATION',
+    68→    rolesCibles: ['ETUDIANT'],
+    69→    niveaux: [
+    70→      { niveau: 'BRONZE', seuil: 1, label: 'Terminer 1 épreuve' },
+    71→      { niveau: 'ARGENT', seuil: 5, label: 'Terminer 5 épreuves' },
+    72→      { niveau: 'OR', seuil: 15, label: 'Terminer 15 épreuves' },
+    73→      { niveau: 'DIAMANT', seuil: 30, label: 'Terminer 30 épreuves' },
+    74→    ],
+    75→    ordre: 1,
+    76→  },
+    77→  {
+    78→    cle: 'bien_joue',
+    79→    titre: 'Bien Joué !',
+    80→    description: 'Obtenir des bonnes notes aux épreuves',
+    81→    icone: 'ThumbsUp',
+    82→    categorie: 'EXCELLENCE',
+    83→    rolesCibles: ['ETUDIANT'],
+    84→    niveaux: [
+    85→      { niveau: 'BRONZE', seuil: 1, label: '1 note ≥ 12/20' },
+    86→      { niveau: 'ARGENT', seuil: 5, label: '5 notes ≥ 12/20' },
+    87→      { niveau: 'OR', seuil: 15, label: '15 notes ≥ 12/20' },
+    88→      { niveau: 'DIAMANT', seuil: 30, label: '30 notes ≥ 12/20' },
+    89→    ],
+    90→    ordre: 2,
+    91→  },
+    92→  {
+    93→    cle: 'major_de_promo',
+    94→    titre: 'Major de Promo',
+    95→    description: 'Obtenir des notes exceptionnelles',
+    96→    icone: 'Trophy',
+    97→    categorie: 'EXCELLENCE',
+    98→    rolesCibles: ['ETUDIANT'],
+    99→    niveaux: [
+   100→      { niveau: 'BRONZE', seuil: 1, label: '1 note ≥ 16/20' },
+   101→      { niveau: 'ARGENT', seuil: 3, label: '3 notes ≥ 16/20' },
+   102→      { niveau: 'OR', seuil: 7, label: '7 notes ≥ 16/20' },
+   103→      { niveau: 'DIAMANT', seuil: 15, label: '15 notes ≥ 16/20' },
+   104→    ],
+   105→    ordre: 3,
+   106→  },
+   107→  {
+   108→    cle: 'eclair_de_genie',
+   109→    titre: 'Éclair de Génie',
+   110→    description: 'Terminer des épreuves très rapidement',
+   111→    icone: 'Zap',
+   112→    categorie: 'EVALUATION',
+   113→    rolesCibles: ['ETUDIANT'],
+   114→    niveaux: [
+   115→      { niveau: 'BRONZE', seuil: 1, label: '1 épreuve en < 50% du temps' },
+   116→      { niveau: 'ARGENT', seuil: 5, label: '5 épreuves en < 50% du temps' },
+   117→      { niveau: 'OR', seuil: 15, label: '15 épreuves rapides' },
+   118→      { niveau: 'DIAMANT', seuil: 30, label: '30 épreuves rapides' },
+   119→    ],
+   120→    ordre: 4,
+   121→  },
+   122→  {
+   123→    cle: 'persévérant',
+   124→    titre: 'Persévérant',
+   125→    description: 'Se connecter régulièrement sur la plateforme',
+   126→    icone: 'CalendarCheck',
+   127→    categorie: 'ENGAGEMENT',
+   128→    rolesCibles: ['ETUDIANT'],
+   129→    niveaux: [
+   130→      { niveau: 'BRONZE', seuil: 7, label: 'Se connecter 7 jours' },
+   131→      { niveau: 'ARGENT', seuil: 30, label: 'Se connecter 30 jours' },
+   132→      { niveau: 'OR', seuil: 100, label: 'Se connecter 100 jours' },
+   133→      { niveau: 'DIAMANT', seuil: 365, label: 'Se connecter 365 jours' },
+   134→    ],
+   135→    ordre: 5,
+   136→  },
+   137→  {
+   138→    cle: 'zero_faute',
+   139→    titre: 'Zéro Faute',
+   140→    description: 'Obtenir un score parfait à une épreuve',
+   141→    icone: 'CheckCircle2',
+   142→    categorie: 'EXCELLENCE',
+   143→    rolesCibles: ['ETUDIANT'],
+   144→    niveaux: [
+   145→      { niveau: 'BRONZE', seuil: 1, label: '1 score parfait (20/20)' },
+   146→      { niveau: 'ARGENT', seuil: 3, label: '3 scores parfaits' },
+   147→      { niveau: 'OR', seuil: 7, label: '7 scores parfaits' },
+   148→      { niveau: 'DIAMANT', seuil: 15, label: '15 scores parfaits' },
+   149→    ],
+   150→    ordre: 6,
+   151→  },
+   152→
+   153→  // ═══════════════════════════════════════════
+   154→  // 👨‍🏫 BADGES ENSEIGNANT
+   155→  // ═══════════════════════════════════════════
+   156→
+   157→  {
+   158→    cle: 'premiere_epreuve',
+   159→    titre: 'Première Épreuve',
+   160→    description: 'Créer des épreuves pour vos étudiants',
+   161→    icone: 'FileText',
+   162→    categorie: 'EVALUATION',
+   163→    rolesCibles: ['ENSEIGNANT'],
+   164→    niveaux: [
+   165→      { niveau: 'BRONZE', seuil: 1, label: 'Créer 1 épreuve' },
+   166→      { niveau: 'ARGENT', seuil: 10, label: 'Créer 10 épreuves' },
+   167→      { niveau: 'OR', seuil: 25, label: 'Créer 25 épreuves' },
+   168→      { niveau: 'DIAMANT', seuil: 50, label: 'Créer 50 épreuves' },
+   169→    ],
+   170→    ordre: 10,
+   171→  },
+   172→  {
+   173→    cle: 'maitre_corrigeur',
+   174→    titre: 'Maître Corrigeur',
+   175→    description: 'Corriger des copies avec rigueur',
+   176→    icone: 'PenTool',
+   177→    categorie: 'CORRECTION',
+   178→    rolesCibles: ['ENSEIGNANT'],
+   179→    niveaux: [
+   180→      { niveau: 'BRONZE', seuil: 1, label: 'Corriger 1 copie' },
+   181→      { niveau: 'ARGENT', seuil: 10, label: 'Corriger 10 copies' },
+   182→      { niveau: 'OR', seuil: 50, label: 'Corriger 50 copies' },
+   183→      { niveau: 'DIAMANT', seuil: 200, label: 'Corriger 200 copies' },
+   184→    ],
+   185→    ordre: 11,
+   186→  },
+   187→  {
+   188→    cle: 'createur_ia',
+   189→    titre: 'Créateur IA',
+   190→    description: 'Générer des épreuves avec l\'intelligence artificielle',
+   191→    icone: 'Sparkles',
+   192→    categorie: 'IA',
+   193→    rolesCibles: ['ENSEIGNANT'],
+   194→    niveaux: [
+   195→      { niveau: 'BRONZE', seuil: 1, label: 'Générer 1 épreuve IA' },
+   196→      { niveau: 'ARGENT', seuil: 5, label: 'Générer 5 épreuves IA' },
+   197→      { niveau: 'OR', seuil: 15, label: 'Générer 15 épreuves IA' },
+   198→      { niveau: 'DIAMANT', seuil: 30, label: 'Générer 30 épreuves IA' },
+   199→    ],
+   200→    ordre: 12,
+   201→  },
+   202→  {
+   203→    cle: 'excellence_pedagogique',
+   204→    titre: 'Excellence Pédagogique',
+   205→    description: 'Vos étudiants obtiennent d\'excellents résultats',
+   206→    icone: 'GraduationCap',
+   207→    categorie: 'PEDAGOGIE',
+   208→    rolesCibles: ['ENSEIGNANT'],
+   209→    niveaux: [
+   210→      { niveau: 'BRONZE', seuil: 10, label: 'Moyenne ≥ 10/20 sur 5+ copies' },
+   211→      { niveau: 'ARGENT', seuil: 12, label: 'Moyenne ≥ 12/20 sur 15+ copies' },
+   212→      { niveau: 'OR', seuil: 14, label: 'Moyenne ≥ 14/20 sur 30+ copies' },
+   213→      { niveau: 'DIAMANT', seuil: 16, label: 'Moyenne ≥ 16/20 sur 50+ copies' },
+   214→    ],
+   215→    ordre: 13,
+   216→  },
+   217→  {
+   218→    cle: 'banquier_questions',
+   219→    titre: 'Banquier de Questions',
+   220→    description: 'Alimenter la banque de questions',
+   221→    icone: 'Library',
+   222→    categorie: 'PEDAGOGIE',
+   223→    rolesCibles: ['ENSEIGNANT'],
+   224→    niveaux: [
+   225→      { niveau: 'BRONZE', seuil: 10, label: 'Créer 10 questions' },
+   226→      { niveau: 'ARGENT', seuil: 50, label: 'Créer 50 questions' },
+   227→      { niveau: 'OR', seuil: 150, label: 'Créer 150 questions' },
+   228→      { niveau: 'DIAMANT', seuil: 500, label: 'Créer 500 questions' },
+   229→    ],
+   230→    ordre: 14,
+   231→  },
+   232→  {
+   233→    cle: 'correcteur_rapide',
+   234→    titre: 'Correcteur Éclair',
+   235→    description: 'Corriger les copies rapidement après soumission',
+   236→    icone: 'Clock',
+   237→    categorie: 'CORRECTION',
+   238→    rolesCibles: ['ENSEIGNANT'],
+   239→    niveaux: [
+   240→      { niveau: 'BRONZE', seuil: 5, label: '5 copies corrigées sous 24h' },
+   241→      { niveau: 'ARGENT', seuil: 20, label: '20 copies corrigées sous 24h' },
+   242→      { niveau: 'OR', seuil: 50, label: '50 copies corrigées sous 24h' },
+   243→      { niveau: 'DIAMANT', seuil: 100, label: '100 copies corrigées sous 24h' },
+   244→    ],
+   245→    ordre: 15,
+   246→  },
+   247→
+   248→  // ═══════════════════════════════════════════
+   249→  // 🏢 BADGES RESPONSABLE
+   250→  // ═══════════════════════════════════════════
+   251→
+   252→  {
+   253→    cle: 'batisseur',
+   254→    titre: 'Bâtisseur',
+   255→    description: 'Superviser des évaluations dans votre établissement',
+   256→    icone: 'ClipboardCheck',
+   257→    categorie: 'EVALUATION',
+   258→    rolesCibles: ['RESPONSABLE'],
+   259→    niveaux: [
+   260→      { niveau: 'BRONZE', seuil: 1, label: 'Superviser 1 évaluation' },
+   261→      { niveau: 'ARGENT', seuil: 10, label: 'Superviser 10 évaluations' },
+   262→      { niveau: 'OR', seuil: 30, label: 'Superviser 30 évaluations' },
+   263→      { niveau: 'DIAMANT', seuil: 100, label: 'Superviser 100 évaluations' },
+   264→    ],
+   265→    ordre: 20,
+   266→  },
+   267→  {
+   268→    cle: 'pilier_academique',
+   269→    titre: 'Pilier Académique',
+   270→    description: 'Développer le nombre d\'étudiants dans votre établissement',
+   271→    icone: 'Users',
+   272→    categorie: 'GESTION',
+   273→    rolesCibles: ['RESPONSABLE'],
+   274→    niveaux: [
+   275→      { niveau: 'BRONZE', seuil: 10, label: '10 étudiants inscrits' },
+   276→      { niveau: 'ARGENT', seuil: 50, label: '50 étudiants inscrits' },
+   277→      { niveau: 'OR', seuil: 150, label: '150 étudiants inscrits' },
+   278→      { niveau: 'DIAMANT', seuil: 500, label: '500 étudiants inscrits' },
+   279→    ],
+   280→    ordre: 21,
+   281→  },
+   282→  {
+   283→    cle: 'visionnaire',
+   284→    titre: 'Visionnaire',
+   285→    description: 'Atteindre un taux de réussite élevé dans votre établissement',
+   286→    icone: 'Eye',
+   287→    categorie: 'EXCELLENCE',
+   288→    rolesCibles: ['RESPONSABLE'],
+   289→    niveaux: [
+   290→      { niveau: 'BRONZE', seuil: 60, label: 'Taux de réussite ≥ 60%' },
+   291→      { niveau: 'ARGENT', seuil: 70, label: 'Taux de réussite ≥ 70%' },
+   292→      { niveau: 'OR', seuil: 80, label: 'Taux de réussite ≥ 80%' },
+   293→      { niveau: 'DIAMANT', seuil: 90, label: 'Taux de réussite ≥ 90%' },
+   294→    ],
+   295→    ordre: 22,
+   296→  },
+   297→  {
+   298→    cle: 'architecte_filiaire',
+   299→    titre: 'Architecte Filière',
+   300→    description: 'Structurer les programmes académiques',
+   301→    icone: 'Network',
+   302→    categorie: 'PEDAGOGIE',
+   303→    rolesCibles: ['RESPONSABLE'],
+   304→    niveaux: [
+   305→      { niveau: 'BRONZE', seuil: 1, label: 'Créer 1 filière' },
+   306→      { niveau: 'ARGENT', seuil: 3, label: 'Créer 3 filières' },
+   307→      { niveau: 'OR', seuil: 5, label: 'Créer 5 filières' },
+   308→      { niveau: 'DIAMANT', seuil: 10, label: 'Créer 10 filières' },
+   309→    ],
+   310→    ordre: 23,
+   311→  },
+   312→
+   313→  // ═══════════════════════════════════════════
+   314→  // 🛡️ BADGES ADMIN
+   315→  // ═══════════════════════════════════════════
+   316→
+   317→  {
+   318→    cle: 'gardien_plateforme',
+   319→    titre: 'Gardien de la Plateforme',
+   320→    description: 'Gérer les établissements sur SECT',
+   321→    icone: 'Shield',
+   322→    categorie: 'GESTION',
+   323→    rolesCibles: ['ADMIN'],
+   324→    niveaux: [
+   325→      { niveau: 'BRONZE', seuil: 1, label: 'Gérer 1 établissement' },
+   326→      { niveau: 'ARGENT', seuil: 5, label: 'Gérer 5 établissements' },
+   327→      { niveau: 'OR', seuil: 15, label: 'Gérer 15 établissements' },
+   328→      { niveau: 'DIAMANT', seuil: 50, label: 'Gérer 50 établissements' },
+   329→    ],
+   330→    ordre: 30,
+   331→  },
+   332→  {
+   333→    cle: 'strategiste',
+   334→    titre: 'Stratège',
+   335→    description: 'Maintenir un taux de réussite global élevé',
+   336→    icone: 'Target',
+   337→    categorie: 'EXCELLENCE',
+   338→    rolesCibles: ['ADMIN'],
+   339→    niveaux: [
+   340→      { niveau: 'BRONZE', seuil: 50, label: 'Taux réussite global ≥ 50%' },
+   341→      { niveau: 'ARGENT', seuil: 65, label: 'Taux réussite global ≥ 65%' },
+   342→      { niveau: 'OR', seuil: 75, label: 'Taux réussite global ≥ 75%' },
+   343→      { niveau: 'DIAMANT', seuil: 85, label: 'Taux réussite global ≥ 85%' },
+   344→    ],
+   345→    ordre: 31,
+   346→  },
+   347→  {
+   348→    cle: 'pilote_ia',
+   349→    titre: 'Pilote IA',
+   350→    description: 'Configurer les providers IA pour la plateforme',
+   351→    icone: 'Cpu',
+   352→    categorie: 'IA',
+   353→    rolesCibles: ['ADMIN'],
+   354→    niveaux: [
+   355→      { niveau: 'BRONZE', seuil: 1, label: 'Configurer 1 provider IA' },
+   356→      { niveau: 'ARGENT', seuil: 2, label: 'Configurer 2 providers IA' },
+   357→      { niveau: 'OR', seuil: 3, label: 'Configurer 3 providers IA' },
+   358→      { niveau: 'DIAMANT', seuil: 5, label: 'Configurer 5 providers IA' },
+   359→    ],
+   360→    ordre: 32,
+   361→  },
+   362→  {
+   363→    cle: 'sensei',
+   364→    titre: 'Senseï',
+   365→    description: 'Accompagner les enseignants sur la plateforme',
+   366→    icone: 'HeartHandshake',
+   367→    categorie: 'ENGAGEMENT',
+   368→    rolesCibles: ['ADMIN'],
+   369→    niveaux: [
+   370→      { niveau: 'BRONZE', seuil: 5, label: '5 enseignants actifs' },
+   371→      { niveau: 'ARGENT', seuil: 20, label: '20 enseignants actifs' },
+   372→      { niveau: 'OR', seuil: 50, label: '50 enseignants actifs' },
+   373→      { niveau: 'DIAMANT', seuil: 100, label: '100 enseignants actifs' },
+   374→    ],
+   375→    ordre: 33,
+   376→  },
+   377→]
+   378→
+   379→// ─── Couleurs et labels par niveau ───
+   380→
+   381→export const NIVEAU_CONFIG: Record<NiveauBadge, { label: string; color: string; bgColor: string; borderColor: string; glowColor: string }> = {
+   382→  BRONZE: {
+   383→    label: 'Bronze',
+   384→    color: 'text-amber-700 dark:text-amber-400',
+   385→    bgColor: 'bg-amber-50 dark:bg-amber-950/50',
+   386→    borderColor: 'border-amber-400',
+   387→    glowColor: 'shadow-amber-400/30',
+   388→  },
+   389→  ARGENT: {
+   390→    label: 'Argent',
+   391→    color: 'text-slate-600 dark:text-slate-300',
+   392→    bgColor: 'bg-slate-50 dark:bg-slate-800/50',
+   393→    borderColor: 'border-slate-400',
+   394→    glowColor: 'shadow-slate-400/30',
+   395→  },
+   396→  OR: {
+   397→    label: 'Or',
+   398→    color: 'text-yellow-600 dark:text-yellow-400',
+   399→    bgColor: 'bg-yellow-50 dark:bg-yellow-950/50',
+   400→    borderColor: 'border-yellow-400',
+   401→    glowColor: 'shadow-yellow-400/30',
+   402→  },
+   403→  DIAMANT: {
+   404→    label: 'Diamant',
+   405→    color: 'text-cyan-600 dark:text-cyan-300',
+   406→    bgColor: 'bg-cyan-50 dark:bg-cyan-950/50',
+   407→    borderColor: 'border-cyan-400',
+   408→    glowColor: 'shadow-cyan-400/40',
+   409→  },
+   410→}
+   411→
+   412→export const CATEGORIE_CONFIG: Record<CategorieBadge, { label: string; color: string }> = {
+   413→  EVALUATION: { label: 'Évaluation', color: 'text-blue-600' },
+   414→  CORRECTION: { label: 'Correction', color: 'text-green-600' },
+   415→  IA: { label: 'Intelligence Artificielle', color: 'text-purple-600' },
+   416→  ENGAGEMENT: { label: 'Engagement', color: 'text-orange-600' },
+   417→  EXCELLENCE: { label: 'Excellence', color: 'text-amber-600' },
+   418→  PEDAGOGIE: { label: 'Pédagogie', color: 'text-rose-600' },
+   419→  GESTION: { label: 'Gestion', color: 'text-teal-600' },
+   420→}
+   421→
+   422→// ─── Fonctions de calcul de progression ───
+   423→
+   424→interface BadgeMetrics {
+   425→  // Étudiant
+   426→  nbEpreuvesTerminees?: number
+   427→  nbNotesSup12?: number
+   428→  nbNotesSup16?: number
+   429→  nbEpreuvesRapides?: number
+   430→  nbScoresParfaits?: number
+   431→  nbJoursConnexion?: number
+   432→
+   433→  // Enseignant
+   434→  nbEpreuvesCreees?: number
+   435→  nbCopiesCorrigees?: number
+   436→  nbEpreuvesIA?: number
+   437→  moyenneEtudiants?: number
+   438→  nbCopiesPourMoyenne?: number
+   439→  nbQuestionsCreees?: number
+   440→  nbCorrectionsRapides?: number
+   441→
+   442→  // Responsable
+   443→  nbEvaluations?: number
+   444→  nbEtudiants?: number
+   445→  tauxReussite?: number
+   446→  nbFilieres?: number
+   447→
+   448→  // Admin
+   449→  nbEtablissements?: number
+   450→  tauxReussiteGlobal?: number
+   451→  nbProvidersIA?: number
+   452→  nbEnseignantsActifs?: number
+   453→}
+   454→
+   455→/**
+   456→ * Calcule la valeur métrique pour un badge donné à partir des métriques fournies.
+   457→ */
+   458→function getMetricValue(cle: string, metrics: BadgeMetrics): number {
+   459→  switch (cle) {
+   460→    // Étudiant
+   461→    case 'bapteme_du_feu': return metrics.nbEpreuvesTerminees ?? 0
+   462→    case 'bien_joue': return metrics.nbNotesSup12 ?? 0
+   463→    case 'major_de_promo': return metrics.nbNotesSup16 ?? 0
+   464→    case 'eclair_de_genie': return metrics.nbEpreuvesRapides ?? 0
+   465→    case 'persévérant': return metrics.nbJoursConnexion ?? 0
+   466→    case 'zero_faute': return metrics.nbScoresParfaits ?? 0
+   467→
+   468→    // Enseignant
+   469→    case 'premiere_epreuve': return metrics.nbEpreuvesCreees ?? 0
+   470→    case 'maitre_corrigeur': return metrics.nbCopiesCorrigees ?? 0
+   471→    case 'createur_ia': return metrics.nbEpreuvesIA ?? 0
+   472→    case 'excellence_pedagogique':
+   473→      // Pour ce badge, la métrique est la moyenne (seuil = note minimale)
+   474→      // mais on ne valide que si on a assez de copies
+   475→      if ((metrics.nbCopiesPourMoyenne ?? 0) < 5) return 0
+   476→      return metrics.moyenneEtudiants ?? 0
+   477→    case 'banquier_questions': return metrics.nbQuestionsCreees ?? 0
+   478→    case 'correcteur_rapide': return metrics.nbCorrectionsRapides ?? 0
+   479→
+   480→    // Responsable
+   481→    case 'batisseur': return metrics.nbEvaluations ?? 0
+   482→    case 'pilier_academique': return metrics.nbEtudiants ?? 0
+   483→    case 'visionnaire': return metrics.tauxReussite ?? 0
+   484→    case 'architecte_filiaire': return metrics.nbFilieres ?? 0
+   485→
+   486→    // Admin
+   487→    case 'gardien_plateforme': return metrics.nbEtablissements ?? 0
+   488→    case 'strategiste': return metrics.tauxReussiteGlobal ?? 0
+   489→    case 'pilote_ia': return metrics.nbProvidersIA ?? 0
+   490→    case 'sensei': return metrics.nbEnseignantsActifs ?? 0
+   491→
+   492→    default: return 0
+   493→  }
+   494→}
+   495→
+   496→/**
+   497→ * Calcule la progression et le niveau pour un badge donné.
+   498→ */
+   499→export function computeBadgeProgress(
+   500→  definition: BadgeDefinitionConfig,
+   501→  metrics: BadgeMetrics
+   502→): Omit<BadgeWithProgress, 'isNewlyUnlocked'> {
+   503→  const valeurActuelle = getMetricValue(definition.cle, metrics)
+   504→  const niveaux = definition.niveaux
+   505→
+   506→  // Trouver le niveau actuel et les paliers
+   507→  let niveauActuel: NiveauBadge = 'BRONZE'
+   508→  let valeurPalier = niveaux[0].seuil
+   509→  let valeurProchain: number | null = niveaux.length > 1 ? niveaux[1].seuil : null
+   510→  let debloque = false
+   511→  let dateObtention: string | null = null
+   512→
+   513→  // Vérifier chaque niveau du plus haut au plus bas
+   514→  for (let i = niveaux.length - 1; i >= 0; i--) {
+   515→    if (valeurActuelle >= niveaux[i].seuil) {
+   516→      niveauActuel = niveaux[i].niveau
+   517→      valeurPalier = niveaux[i].seuil
+   518→      valeurProchain = i < niveaux.length - 1 ? niveaux[i + 1].seuil : null
+   519→      debloque = true
+   520→      break
+   521→    }
+   522→  }
+   523→
+   524→  // Si pas encore débloquent, le palier est le premier niveau
+   525→  if (!debloque) {
+   526→    niveauActuel = 'BRONZE'
+   527→    valeurPalier = niveaux[0].seuil
+   528→    valeurProchain = niveaux.length > 1 ? niveaux[1].seuil : null
+   529→  }
+   530→
+   531→  // Calculer la progression (0-100) vers le prochain niveau
+   532→  let progression = 0
+   533→  if (valeurProchain !== null && valeurProchain > valeurPalier) {
+   534→    const range = valeurProchain - valeurPalier
+   535→    const current = Math.max(0, valeurActuelle - valeurPalier)
+   536→    progression = Math.min(100, Math.round((current / range) * 100))
+   537→  } else if (debloque && valeurProchain === null) {
+   538→    // Niveau maximum atteint
+   539→    progression = 100
+   540→  } else if (!debloque && valeurPalier > 0) {
+   541→    // Pas encore débloquent, progression vers le premier niveau
+   542→    progression = Math.min(100, Math.round((valeurActuelle / valeurPalier) * 100))
+   543→  }
+   544→
+   545→  return {
+   546→    cle: definition.cle,
+   547→    titre: definition.titre,
+   548→    description: definition.description,
+   549→    icone: definition.icone,
+   550→    categorie: definition.categorie,
+   551→    niveauActuel,
+   552→    niveaux,
+   553→    valeurActuelle,
+   554→    valeurPalier,
+   555→    valeurProchain,
+   556→    debloque,
+   557→    progression,
+   558→    dateObtention,
+   559→  }
+   560→}
+   561→
+   562→// ─── Collecteurs de métriques par rôle ───
+   563→
+   564→/**
+   565→ * Collecte les métriques pour un étudiant
+   566→ */
+   567→export async function collectEtudiantMetrics(userId: string): Promise<BadgeMetrics> {
+   568→  const sessions = await withRetry(() =>
+   569→    db.sessionPassation.findMany({
+   570→      where: {
+   571→        etudiantId: userId,
+   572→        statut: { in: ['SOUMISE', 'CORRIGEE', 'RETOURNEE'] },
+   573→        score: { not: null },
+   574→      },
+   575→      include: {
+   576→        epreuve: { select: { duree: true, noteTotal: true } },
+   577→        resultat: { select: { totalPossible: true, detailParQuestion: true } },
+   578→      },
+   579→    })
+   580→  )
+   581→
+   582→  const nbEpreuvesTerminees = sessions.length
+   583→
+   584→  let nbNotesSup12 = 0
+   585→  let nbNotesSup16 = 0
+   586→  let nbScoresParfaits = 0
+   587→  let nbEpreuvesRapides = 0
+   588→
+   589→  for (const s of sessions) {
+   590→    const totalPossible = s.resultat?.totalPossible || s.epreuve.noteTotal || 20
+   591→    const normalizedScore = totalPossible > 0 ? ((s.score || 0) / totalPossible) * 20 : 0
+   592→
+   593→    if (normalizedScore >= 12) nbNotesSup12++
+   594→    if (normalizedScore >= 16) nbNotesSup16++
+   595→    if (normalizedScore >= 19.5) nbScoresParfaits++
+   596→
+   597→    // Vérifier la rapidité
+   598→    if (s.dateDebut && s.dateFin && s.epreuve.duree) {
+   599→      const timeTaken = (s.dateFin.getTime() - s.dateDebut.getTime()) / (1000 * 60)
+   600→      if (timeTaken < s.epreuve.duree / 2) nbEpreuvesRapides++
+   601→    }
+   602→  }
+   603→
+   604→  // Jours de connexion (approximation basée sur derniereConnexion)
+   605→  const user = await withRetry(() =>
+   606→    db.user.findUnique({
+   607→      where: { id: userId },
+   608→      select: { derniereConnexion: true, createdAt: true },
+   609→    })
+   610→  )
+   611→  const nbJoursConnexion = user?.derniereConnexion
+   612→    ? Math.max(1, Math.floor((Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24)))
+   613→    : 0
+   614→
+   615→  return {
+   616→    nbEpreuvesTerminees,
+   617→    nbNotesSup12,
+   618→    nbNotesSup16,
+   619→    nbEpreuvesRapides,
+   620→    nbScoresParfaits,
+   621→    nbJoursConnexion,
+   622→  }
+   623→}
+   624→
+   625→/**
+   626→ * Collecte les métriques pour un enseignant
+   627→ */
+   628→export async function collectEnseignantMetrics(userId: string): Promise<BadgeMetrics> {
+   629→  const [nbEpreuvesCreees, nbQuestionsCreees, nbEpreuvesIA] = await Promise.all([
+   630→    withRetry(() => db.epreuve.count({ where: { enseignantId: userId, deletedAt: null } })),
+   631→    withRetry(() => db.question.count({ where: { OR: [{ auteurId: userId }, { document: { ownerId: userId } }], deletedAt: null } })),
+   632→    withRetry(() => db.epreuve.count({ where: { enseignantId: userId, generationMode: 'IA_ASSISTEE', deletedAt: null } })),
+   633→  ])
+   634→
+   635→  // Copies corrigées
+   636→  const nbCopiesCorrigees = await withRetry(() =>
+   637→    db.sessionPassation.count({
+   638→      where: {
+   639→        epreuve: { enseignantId: userId },
+   640→        statut: { in: ['CORRIGEE', 'RETOURNEE'] },
+   641→      },
+   642→    })
+   643→  )
+   644→
+   645→  // Moyenne étudiants
+   646→  const scoredSessions = await withRetry(() =>
+   647→    db.sessionPassation.findMany({
+   648→      where: {
+   649→        epreuve: { enseignantId: userId, deletedAt: null },
+   650→        score: { not: null },
+   651→      },
+   652→      select: { score: true, epreuve: { select: { noteTotal: true } } },
+   653→    })
+   654→  )
+   655→  const nbCopiesPourMoyenne = scoredSessions.length
+   656→  const moyenneEtudiants = nbCopiesPourMoyenne > 0
+   657→    ? scoredSessions.reduce((sum, s) => {
+   658→        const noteTotal = s.epreuve?.noteTotal || 20
+   659→        return sum + (s.score! / noteTotal) * 20
+   660→      }, 0) / nbCopiesPourMoyenne
+   661→    : 0
+   662→
+   663→  // Corrections rapides (< 24h)
+   664→  const correctedSessions = await withRetry(() =>
+   665→    db.sessionPassation.findMany({
+   666→      where: {
+   667→        epreuve: { enseignantId: userId },
+   668→        statut: { in: ['CORRIGEE', 'RETOURNEE'] },
+   669→        dateFin: { not: null },
+   670→      },
+   671→      select: { dateFin: true, updatedAt: true },
+   672→    })
+   673→  )
+   674→  const nbCorrectionsRapides = correctedSessions.filter(s => {
+   675→    if (!s.dateFin) return false
+   676→    const diffHours = (s.updatedAt.getTime() - s.dateFin.getTime()) / (1000 * 60 * 60)
+   677→    return diffHours <= 24
+   678→  }).length
+   679→
+   680→  return {
+   681→    nbEpreuvesCreees,
+   682→    nbCopiesCorrigees,
+   683→    nbEpreuvesIA,
+   684→    moyenneEtudiants: Math.round(moyenneEtudiants * 10) / 10,
+   685→    nbCopiesPourMoyenne,
+   686→    nbQuestionsCreees,
+   687→    nbCorrectionsRapides,
+   688→  }
+   689→}
+   690→
+   691→/**
+   692→ * Collecte les métriques pour un responsable
+   693→ */
+   694→export async function collectResponsableMetrics(userId: string, etablissementId: string | null): Promise<BadgeMetrics> {
+   695→  if (!etablissementId) return {}
+   696→
+   697→  const [nbEvaluations, nbEtudiants, nbFilieres, sessionsData] = await Promise.all([
+   698→    withRetry(() => db.epreuve.count({ where: { etablissementId, deletedAt: null } })),
+   699→    withRetry(() => db.user.count({ where: { etablissementId, role: 'ETUDIANT', actif: true } })),
+   700→    withRetry(() => db.filiere.count({ where: { etablissementId } })),
+   701→    withRetry(() =>
+   702→      db.sessionPassation.findMany({
+   703→        where: {
+   704→          epreuve: { etablissementId, deletedAt: null },
+   705→          score: { not: null },
+   706→        },
+   707→        select: { score: true, epreuve: { select: { noteTotal: true } } },
+   708→      })
+   709→    ),
+   710→  ])
+   711→
+   712→  const tauxReussite = sessionsData.length > 0
+   713→    ? (sessionsData.filter(s => {
+   714→        const noteTotal = s.epreuve?.noteTotal || 20
+   715→        return ((s.score! / noteTotal) * 20) >= 10
+   716→      }).length / sessionsData.length) * 100
+   717→    : 0
+   718→
+   719→  return {
+   720→    nbEvaluations,
+   721→    nbEtudiants,
+   722→    tauxReussite: Math.round(tauxReussite * 10) / 10,
+   723→    nbFilieres,
+   724→  }
+   725→}
+   726→
+   727→/**
+   728→ * Collecte les métriques pour un admin
+   729→ */
+   730→export async function collectAdminMetrics(): Promise<BadgeMetrics> {
+   731→  const [nbEtablissements, nbProvidersIA, nbEnseignantsActifs, sessionsData] = await Promise.all([
+   732→    withRetry(() => db.etablissement.count({ where: { actif: true } })),
+   733→    withRetry(() => db.aIProviderConfig.count({ where: { isActive: true } })),
+   734→    withRetry(() => db.user.count({ where: { role: 'ENSEIGNANT', actif: true } })),
+   735→    withRetry(() =>
+   736→      db.sessionPassation.findMany({
+   737→        where: { score: { not: null } },
+   738→        select: { score: true, epreuve: { select: { noteTotal: true } } },
+   739→        take: 1000,
+   740→      })
+   741→    ),
+   742→  ])
+   743→
+   744→  const tauxReussiteGlobal = sessionsData.length > 0
+   745→    ? (sessionsData.filter(s => {
+   746→        const noteTotal = s.epreuve?.noteTotal || 20
+   747→        return ((s.score! / noteTotal) * 20) >= 10
+   748→      }).length / sessionsData.length) * 100
+   749→    : 0
+   750→
+   751→  return {
+   752→    nbEtablissements,
+   753→    tauxReussiteGlobal: Math.round(tauxReussiteGlobal * 10) / 10,
+   754→    nbProvidersIA,
+   755→    nbEnseignantsActifs,
+   756→  }
+   757→}
+   758→
+   759→// ─── Fonction principale : calculer tous les badges d'un utilisateur ───
+   760→
+   761→/**
+   762→ * Calcule tous les badges pour un utilisateur donné avec leur progression.
+   763→ * Persiste les progressions en base et détecte les nouveaux déblocages.
+   764→ */
+   765→export async function computeAllBadges(
+   766→  userId: string,
+   767→  role: string,
+   768→  etablissementId: string | null = null
+   769→): Promise<BadgeWithProgress[]> {
+   770→  // 1. Collecter les métriques
+   771→  let metrics: BadgeMetrics
+   772→  switch (role) {
+   773→    case 'ETUDIANT':
+   774→      metrics = await collectEtudiantMetrics(userId)
+   775→      break
+   776→    case 'ENSEIGNANT':
+   777→      metrics = await collectEnseignantMetrics(userId)
+   778→      break
+   779→    case 'RESPONSABLE':
+   780→      metrics = await collectResponsableMetrics(userId, etablissementId)
+   781→      break
+   782→    case 'ADMIN':
+   783→      metrics = await collectAdminMetrics()
+   784→      break
+   785→    default:
+   786→      metrics = {}
+   787→  }
+   788→
+   789→  // 2. Filtrer les badges pertinents pour ce rôle
+   790→  const relevantBadges = BADGE_DEFINITIONS.filter(b => b.rolesCibles.includes(role as RoleCible))
+   791→
+   792→  // 3. Calculer la progression pour chaque badge
+   793→  const badgesWithProgress: BadgeWithProgress[] = relevantBadges.map(def => {
+   794→    const progress = computeBadgeProgress(def, metrics)
+   795→
+   796→    // Vérifier si c'est un nouveau déblocage en comparant avec la DB
+   797→    return {
+   798→      ...progress,
+   799→      isNewlyUnlocked: false, // Sera mis à jour après comparaison DB
+   800→    }
+   801→  })
+   802→
+   803→  // 4. Synchroniser avec la base de données
+   804→  try {
+   805→    // Récupérer les progressions existantes
+   806→    const existingProgressions = await withRetry(() =>
+   807→      db.badgeProgression.findMany({
+   808→        where: { userId },
+   809→        include: { badgeDefinition: true },
+   810→      })
+   811→    )
+   812→
+   813→    // S'assurer que toutes les définitions de badges existent en base
+   814→    for (const def of relevantBadges) {
+   815→      const existing = existingProgressions.find(p => p.badgeDefinition.cle === def.cle)
+   816→      const computed = badgesWithProgress.find(b => b.cle === def.cle)!
+   817→
+   818→      if (!existing) {
+   819→        // Créer la définition en base si elle n'existe pas
+   820→        let badgeDef = await withRetry(() =>
+   821→          db.badgeDefinition.findUnique({ where: { cle: def.cle } })
+   822→        )
+   823→        if (!badgeDef) {
+   824→          badgeDef = await withRetry(() =>
+   825→            db.badgeDefinition.create({
+   826→              data: {
+   827→                cle: def.cle,
+   828→                titre: def.titre,
+   829→                description: def.description,
+   830→                icone: def.icone,
+   831→                categorie: def.categorie,
+   832→                roleCible: def.rolesCibles.length === 1 ? def.rolesCibles[0] : null,
+   833→                niveaux: def.niveaux.map(n => n.niveau),
+   834→                ordre: def.ordre,
+   835→              },
+   836→            })
+   837→          )
+   838→        }
+   839→
+   840→        // Créer la progression
+   841→        const wasLocked = !computed.debloque
+   842→        await withRetry(() =>
+   843→          db.badgeProgression.create({
+   844→            data: {
+   845→              userId,
+   846→              badgeDefinitionId: badgeDef!.id,
+   847→              niveauActuel: computed.niveauActuel,
+   848→              valeurActuelle: computed.valeurActuelle,
+   849→              valeurPalier: computed.valeurPalier,
+   850→              valeurProchain: computed.valeurProchain,
+   851→              debloque: computed.debloque,
+   852→              dateObtention: computed.debloque ? new Date() : null,
+   853→            },
+   854→          })
+   855→        )
+   856→
+   857→        // Marquer comme nouvellement débloquent si applicable
+   858→        if (computed.debloque && wasLocked) {
+   859→          computed.isNewlyUnlocked = true
+   860→        }
+   861→      } else {
+   862→        // Mettre à jour la progression existante
+   863→        const wasUnlocked = existing.debloque
+   864→        const currentNiveau = existing.niveauActuel
+   865→        const hasNewLevel = computed.debloque && computed.niveauActuel !== currentNiveau
+   866→        const hasNewUnlock = computed.debloque && !wasUnlocked
+   867→
+   868→        if (
+   869→          existing.valeurActuelle !== computed.valeurActuelle ||
+   870→          existing.niveauActuel !== computed.niveauActuel ||
+   871→          existing.debloque !== computed.debloque
+   872→        ) {
+   873→          await withRetry(() =>
+   874→            db.badgeProgression.update({
+   875→              where: { id: existing.id },
+   876→              data: {
+   877→                niveauActuel: computed.niveauActuel,
+   878→                valeurActuelle: computed.valeurActuelle,
+   879→                valeurPalier: computed.valeurPalier,
+   880→                valeurProchain: computed.valeurProchain,
+   881→                debloque: computed.debloque,
+   882→                dateObtention: hasNewLevel || hasNewUnlock ? new Date() : existing.dateObtention,
+   883→              },
+   884→            })
+   885→          )
+   886→        }
+   887→
+   888→        // Marquer comme nouvellement débloquent si nouveau niveau ou nouveau déblocage
+   889→        if (hasNewLevel || hasNewUnlock) {
+   890→          computed.isNewlyUnlocked = true
+   891→          computed.dateObtention = new Date().toISOString()
+   892→        } else {
+   893→          computed.dateObtention = existing.dateObtention?.toISOString() ?? null
+   894→        }
+   895→      }
+   896→    }
+   897→  } catch (error) {
+   898→    console.error('[Badge Engine] Error syncing badge progressions:', error)
+   899→    // Ne pas bloquer l'affichage si la synchronisation échoue
+   900→  }
+   901→
+   902→  return badgesWithProgress
+   903→}
+   904→
+   905→/**
+   906→ * Récupère les badges d'un utilisateur directement depuis la base
+   907→ * (sans recalcul complet - plus rapide pour l'affichage).
+   908→ */
+   909→export async function getUserBadgesFromDB(userId: string, role: string): Promise<BadgeWithProgress[]> {
+   910→  const relevantDefinitions = BADGE_DEFINITIONS.filter(b => b.rolesCibles.includes(role as RoleCible))
+   911→
+   912→  const progressions = await withRetry(() =>
+   913→    db.badgeProgression.findMany({
+   914→      where: {
+   915→        userId,
+   916→        badgeDefinition: { cle: { in: relevantDefinitions.map(d => d.cle) } },
+   917→      },
+   918→      include: { badgeDefinition: true },
+   919→    })
+   920→  )
+   921→
+   922→  return relevantDefinitions.map(def => {
+   923→    const progression = progressions.find(p => p.badgeDefinition.cle === def.cle)
+   924→    const niveaux = def.niveaux
+   925→
+   926→    if (!progression) {
+   927→      // Pas encore de progression enregistrée → afficher comme non commencé
+   928→      return {
+   929→        cle: def.cle,
+   930→        titre: def.titre,
+   931→        description: def.description,
+   932→        icone: def.icone,
+   933→        categorie: def.categorie,
+   934→        niveauActuel: 'BRONZE' as NiveauBadge,
+   935→        niveaux,
+   936→        valeurActuelle: 0,
+   937→        valeurPalier: niveaux[0].seuil,
+   938→        valeurProchain: niveaux.length > 1 ? niveaux[1].seuil : null,
+   939→        debloque: false,
+   940→        progression: 0,
+   941→        dateObtention: null,
+   942→        isNewlyUnlocked: false,
+   943→      }
+   944→    }
+   945→
+   946→    // Calculer la progression locale
+   947→    const valeurActuelle = progression.valeurActuelle
+   948→    let progressPct = 0
+   949→    if (progression.valeurProchain !== null && progression.valeurProchain > progression.valeurPalier) {
+   950→      const range = progression.valeurProchain - progression.valeurPalier
+   951→      const current = Math.max(0, valeurActuelle - progression.valeurPalier)
+   952→      progressPct = Math.min(100, Math.round((current / range) * 100))
+   953→    } else if (progression.debloque && progression.valeurProchain === null) {
+   954→      progressPct = 100
+   955→    } else if (progression.valeurPalier > 0) {
+   956→      progressPct = Math.min(100, Math.round((valeurActuelle / progression.valeurPalier) * 100))
+   957→    }
+   958→
+   959→    return {
+   960→      cle: def.cle,
+   961→      titre: def.titre,
+   962→      description: def.description,
+   963→      icone: def.icone,
+   964→      categorie: def.categorie,
+   965→      niveauActuel: progression.niveauActuel,
+   966→      niveaux,
+   967→      valeurActuelle: progression.valeurActuelle,
+   968→      valeurPalier: progression.valeurPalier,
+   969→      valeurProchain: progression.valeurProchain,
+   970→      debloque: progression.debloque,
+   971→      progression: progressPct,
+   972→      dateObtention: progression.dateObtention?.toISOString() ?? null,
+   973→      isNewlyUnlocked: false,
+   974→    }
+   975→  })
+   976→}
+   977→
