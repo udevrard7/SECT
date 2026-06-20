@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import gsap from 'gsap'
 import {
   Mail,
   Lock,
@@ -69,61 +70,66 @@ const features = [
 // ─── Typewriter words ───
 const typewriterWords = ['Intelligence Artificielle', 'Automatisation', 'Précision', 'Innovation']
 
-// ─── Animation Variants ───
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
-  },
-}
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] } },
-}
-
-const leftPanelVariants = {
-  hidden: { opacity: 0, x: -60, scale: 0.95 },
-  visible: {
-    opacity: 1, x: 0, scale: 1,
-    transition: { duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
-  },
-}
-
-// ─── Floating Particles ───
+// ─── GSAP Floating Particles ───
 function FloatingParticles() {
-  const particles = Array.from({ length: 30 }, (_, i) => ({
-    id: i,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    size: Math.random() * 4 + 1,
-    duration: Math.random() * 10 + 8,
-    delay: Math.random() * 5,
-  }))
+  const containerRef = useRef<HTMLDivElement>(null)
+  const particlesRef = useRef<HTMLDivElement[]>([])
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const els = particlesRef.current.filter(Boolean)
+    if (els.length === 0) return
+
+    const tl = gsap.timeline()
+
+    els.forEach((el, i) => {
+      const yPos = -(30 + Math.random() * 50)
+      tl.to(el, {
+        y: yPos,
+        opacity: 0.6,
+        scale: 1,
+        duration: 4 + Math.random() * 3,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+        delay: i * 0.3,
+      }, 0)
+      gsap.to(el, {
+        x: (Math.random() - 0.5) * 40,
+        duration: 3 + Math.random() * 4,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+        delay: i * 0.2,
+      })
+    })
+
+    return () => { tl.kill() }
+  }, [])
+
+  const particles = useMemo(() =>
+    Array.from({ length: 30 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: Math.random() * 4 + 1,
+    })),
+  [])
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((p) => (
-        <motion.div
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden pointer-events-none">
+      {particles.map((p, i) => (
+        <div
           key={p.id}
+          ref={(el) => { if (el) particlesRef.current[i] = el }}
           className="absolute rounded-full bg-white"
           style={{
             width: p.size,
             height: p.size,
             left: `${p.x}%`,
             top: `${p.y}%`,
-          }}
-          animate={{
-            y: [0, -(30 + Math.random() * 40), 0],
-            opacity: [0, 0.6, 0],
-            scale: [0.5, 1, 0.5],
-          }}
-          transition={{
-            duration: p.duration,
-            repeat: Infinity,
-            ease: 'easeInOut',
-            delay: p.delay,
+            opacity: 0,
+            scale: 0.5,
           }}
         />
       ))}
@@ -131,27 +137,55 @@ function FloatingParticles() {
   )
 }
 
-// ─── Aurora Gradient Effect ───
+// ─── GSAP Aurora Gradient Effect ───
 function AuroraEffect() {
+  const auroraRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!auroraRef.current) return
+    const anim = gsap.to(auroraRef.current, {
+      rotation: 360,
+      duration: 20,
+      repeat: -1,
+      ease: 'none',
+      transformOrigin: 'center center',
+    })
+    return () => { anim.kill() }
+  }, [])
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <motion.div
+      <div
+        ref={auroraRef}
         className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] rounded-full opacity-30"
         style={{
           background: 'conic-gradient(from 0deg, transparent 0%, rgba(16,185,129,0.4) 10%, transparent 20%, rgba(6,182,212,0.3) 30%, transparent 40%)',
         }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
       />
     </div>
   )
 }
 
-// ─── Animated Grid Background ───
+// ─── GSAP Animated Grid Background ───
 function AnimatedGrid() {
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!gridRef.current) return
+    const anim = gsap.to(gridRef.current, {
+      y: 30,
+      duration: 15,
+      repeat: -1,
+      yoyo: true,
+      ease: 'sine.inOut',
+    })
+    return () => { anim.kill() }
+  }, [])
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-[0.08]">
-      <motion.div
+      <div
+        ref={gridRef}
         className="absolute inset-0"
         style={{
           backgroundImage: `
@@ -160,51 +194,57 @@ function AnimatedGrid() {
           `,
           backgroundSize: '60px 60px',
         }}
-        animate={{ y: [0, 30, 0] }}
-        transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
       />
     </div>
   )
 }
 
-// ─── Glowing Orbs (Enhanced) ───
+// ─── GSAP Glowing Orbs ───
 function GlowingOrbs() {
+  const orb1Ref = useRef<HTMLDivElement>(null)
+  const orb2Ref = useRef<HTMLDivElement>(null)
+  const orb3Ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      if (orb1Ref.current) {
+        gsap.to(orb1Ref.current, {
+          y: -40, x: 30, scale: 1.15,
+          duration: 8, repeat: -1, yoyo: true, ease: 'sine.inOut',
+        })
+      }
+      if (orb2Ref.current) {
+        gsap.to(orb2Ref.current, {
+          y: 30, x: -20, scale: 0.9,
+          duration: 10, repeat: -1, yoyo: true, ease: 'sine.inOut',
+        })
+      }
+      if (orb3Ref.current) {
+        gsap.to(orb3Ref.current, {
+          y: -25, scale: 1.1,
+          duration: 12, repeat: -1, yoyo: true, ease: 'sine.inOut',
+        })
+      }
+    })
+    return () => ctx.revert()
+  }, [])
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <motion.div
+      <div
+        ref={orb1Ref}
         className="absolute -top-32 -left-32 w-96 h-96 rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(52,211,153,0.25) 0%, transparent 70%)',
-        }}
-        animate={{
-          y: [0, -40, 0],
-          x: [0, 30, 0],
-          scale: [1, 1.15, 1],
-        }}
-        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ background: 'radial-gradient(circle, rgba(52,211,153,0.25) 0%, transparent 70%)' }}
       />
-      <motion.div
+      <div
+        ref={orb2Ref}
         className="absolute top-1/4 -right-20 w-80 h-80 rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 70%)',
-        }}
-        animate={{
-          y: [0, 30, 0],
-          x: [0, -20, 0],
-          scale: [1, 0.9, 1],
-        }}
-        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 70%)' }}
       />
-      <motion.div
+      <div
+        ref={orb3Ref}
         className="absolute -bottom-24 left-1/3 w-72 h-72 rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(34,211,238,0.15) 0%, transparent 70%)',
-        }}
-        animate={{
-          y: [0, -25, 0],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.15) 0%, transparent 70%)' }}
       />
     </div>
   )
@@ -240,82 +280,199 @@ function useTypewriter(words: string[], typingSpeed = 80, deletingSpeed = 40, pa
   return text
 }
 
-// ─── Glowing Feature Card ───
+// ─── GSAP 3D Tilt Feature Card ───
 function FeatureCard({ feature, index }: { feature: typeof features[0]; index: number }) {
+  const cardRef = useRef<HTMLDivElement>(null)
+  const iconRef = useRef<HTMLDivElement>(null)
+  const statRef = useRef<HTMLSpanElement>(null)
   const [hovered, setHovered] = useState(false)
-  const x = useMotionValue(0)
-  const y = useMotionValue(0)
-  const rotateX = useTransform(y, [-50, 50], [5, -5])
-  const rotateY = useTransform(x, [-50, 50], [-5, 5])
 
-  const handleMouse = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    x.set(e.clientX - rect.left - rect.width / 2)
-    y.set(e.clientY - rect.top - rect.height / 2)
-  }, [x, y])
+  useEffect(() => {
+    if (!cardRef.current) return
+
+    const card = cardRef.current
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = card.getBoundingClientRect()
+      const x = e.clientX - rect.left - rect.width / 2
+      const y = e.clientY - rect.top - rect.height / 2
+      const rotateX = (y / rect.height) * -12
+      const rotateY = (x / rect.width) * 12
+
+      gsap.to(card, {
+        rotateX,
+        rotateY,
+        duration: 0.3,
+        ease: 'power2.out',
+        transformPerspective: 600,
+      })
+    }
+
+    const handleMouseLeave = () => {
+      gsap.to(card, {
+        rotateX: 0,
+        rotateY: 0,
+        duration: 0.6,
+        ease: 'elastic.out(1, 0.5)',
+        transformPerspective: 600,
+      })
+      setHovered(false)
+    }
+
+    const handleMouseEnter = () => {
+      setHovered(true)
+      if (iconRef.current) {
+        gsap.to(iconRef.current, {
+          scale: 1.15,
+          rotation: 8,
+          duration: 0.3,
+          ease: 'back.out(2)',
+        })
+      }
+      if (statRef.current) {
+        gsap.fromTo(statRef.current,
+          { scale: 1 },
+          { scale: 1.2, duration: 0.3, yoyo: true, repeat: 1, ease: 'power2.out' }
+        )
+      }
+    }
+
+    card.addEventListener('mousemove', handleMouseMove)
+    card.addEventListener('mouseleave', handleMouseLeave)
+    card.addEventListener('mouseenter', handleMouseEnter)
+
+    return () => {
+      card.removeEventListener('mousemove', handleMouseMove)
+      card.removeEventListener('mouseleave', handleMouseLeave)
+      card.removeEventListener('mouseenter', handleMouseEnter)
+    }
+  }, [index])
+
+  // Reset icon on unhover via GSAP
+  useEffect(() => {
+    if (!hovered && iconRef.current) {
+      gsap.to(iconRef.current, {
+        scale: 1,
+        rotation: 0,
+        duration: 0.4,
+        ease: 'power2.out',
+      })
+    }
+  }, [hovered])
 
   return (
-    <motion.div
-      key={feature.label}
-      variants={itemVariants}
-      style={{ rotateX, rotateY, transformPerspective: 600 }}
-      onMouseMove={handleMouse}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); x.set(0); y.set(0) }}
-      className={`flex items-center gap-3 rounded-2xl px-4 py-3.5 border transition-all duration-300 cursor-default ${
+    <div
+      ref={cardRef}
+      className={`flex items-center gap-3 rounded-2xl px-4 py-3.5 border transition-colors duration-300 cursor-default ${
         hovered
           ? 'bg-white/20 backdrop-blur-md border-white/30 shadow-lg shadow-emerald-500/10'
           : 'bg-white/8 backdrop-blur-sm border-white/12 hover:bg-white/12'
       }`}
+      style={{ opacity: 0, transform: 'translateY(20px)' }}
     >
-      <motion.div
+      <div
+        ref={iconRef}
         className="w-10 h-10 rounded-xl bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center shrink-0 border border-white/10"
-        animate={hovered ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
-        transition={{ duration: 0.4 }}
       >
         <feature.icon className="w-4.5 h-4.5 text-white" />
-      </motion.div>
+      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-white">{feature.label}</p>
-          <motion.span
+          <span
+            ref={statRef}
             className="text-[10px] font-bold text-emerald-300 bg-emerald-400/20 px-1.5 py-0.5 rounded-full"
-            animate={hovered ? { scale: [1, 1.2, 1] } : {}}
-            transition={{ duration: 0.3 }}
           >
             {feature.stat}
-          </motion.span>
+          </span>
         </div>
         <p className="text-[11px] text-white/50 mt-0.5">{feature.desc}</p>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
-// ─── Animated Gradient Border Button ───
-function GradientButton({ children, onClick, disabled, className }: {
+// ─── GSAP Animated Gradient Border Button ───
+function GradientButton({ children, onClick, disabled, className, btnRef }: {
   children: React.ReactNode
   onClick?: () => void
   disabled?: boolean
   className?: string
+  btnRef?: React.RefObject<HTMLDivElement | null>
 }) {
+  const borderRef = useRef<HTMLDivElement>(null)
+  const shineRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!borderRef.current) return
+    const anim = gsap.to(borderRef.current, {
+      backgroundPosition: '300% 300%',
+      duration: 3,
+      repeat: -1,
+      ease: 'none',
+    })
+    return () => { anim.kill() }
+  }, [])
+
+  useEffect(() => {
+    if (!shineRef.current) return
+    const anim = gsap.to(shineRef.current, {
+      x: '200%',
+      duration: 1.5,
+      repeat: -1,
+      repeatDelay: 1,
+      ease: 'power2.inOut',
+    })
+    return () => { anim.kill() }
+  }, [])
+
+  // Magnetic hover effect
+  useEffect(() => {
+    const wrapper = btnRef?.current
+    if (!wrapper) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = wrapper.getBoundingClientRect()
+      const x = e.clientX - rect.left - rect.width / 2
+      const y = e.clientY - rect.top - rect.height / 2
+
+      gsap.to(wrapper, {
+        x: x * 0.15,
+        y: y * 0.15,
+        duration: 0.3,
+        ease: 'power2.out',
+      })
+    }
+
+    const handleMouseLeave = () => {
+      gsap.to(wrapper, {
+        x: 0,
+        y: 0,
+        duration: 0.5,
+        ease: 'elastic.out(1, 0.4)',
+      })
+    }
+
+    wrapper.addEventListener('mousemove', handleMouseMove)
+    wrapper.addEventListener('mouseleave', handleMouseLeave)
+
+    return () => {
+      wrapper.removeEventListener('mousemove', handleMouseMove)
+      wrapper.removeEventListener('mouseleave', handleMouseLeave)
+    }
+  }, [btnRef])
+
   return (
-    <motion.div
-      className="relative rounded-xl p-[1.5px] overflow-hidden group"
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
-    >
+    <div ref={btnRef} className="relative rounded-xl p-[1.5px] overflow-hidden group">
       {/* Animated gradient border */}
-      <motion.div
+      <div
+        ref={borderRef}
         className="absolute inset-0"
         style={{
           background: 'linear-gradient(135deg, #10b981, #14b8a6, #06b6d4, #10b981)',
           backgroundSize: '300% 300%',
+          backgroundPosition: '0% 0%',
         }}
-        animate={{
-          backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'],
-        }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
       />
       <Button
         type="submit"
@@ -326,42 +483,48 @@ function GradientButton({ children, onClick, disabled, className }: {
         {children}
       </Button>
       {/* Shine effect */}
-      <motion.div
-        className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none"
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: 1 }}
-      >
-        <motion.div
+      <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <div
+          ref={shineRef}
           className="absolute inset-0"
           style={{
             background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.15) 55%, transparent 60%)',
+            transform: 'translateX(-100%)',
           }}
-          animate={{ x: ['-100%', '100%'] }}
-          transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 1, ease: 'easeInOut' }}
         />
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   )
 }
 
-// ─── Mode Toggle ───
+// ─── GSAP Mode Toggle ───
 function LoginModeToggle({ mode, onModeChange }: {
   mode: LoginMode
   onModeChange: (mode: LoginMode) => void
 }) {
+  const indicatorRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!indicatorRef.current) return
+    gsap.to(indicatorRef.current, {
+      left: mode === 'personnel' ? '4px' : '50%',
+      width: 'calc(50% - 4px)',
+      duration: 0.4,
+      ease: 'elastic.out(1, 0.6)',
+    })
+  }, [mode])
+
   return (
-    <motion.div
+    <div
+      ref={containerRef}
       className="relative flex rounded-xl bg-zinc-100 dark:bg-zinc-800/60 p-1 mb-6"
-      layout
     >
       {/* Sliding indicator */}
-      <motion.div
+      <div
+        ref={indicatorRef}
         className="absolute top-1 bottom-1 rounded-lg bg-white dark:bg-zinc-700 shadow-sm"
-        animate={{
-          left: mode === 'personnel' ? '4px' : '50%',
-          width: 'calc(50% - 4px)',
-        }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        style={{ left: '4px', width: 'calc(50% - 4px)' }}
       />
 
       <button
@@ -389,7 +552,7 @@ function LoginModeToggle({ mode, onModeChange }: {
         <GraduationCap className="w-4 h-4" />
         <span className="hidden sm:inline">Espace</span> Étudiant
       </button>
-    </motion.div>
+    </div>
   )
 }
 
@@ -423,6 +586,28 @@ export function LoginForm({ onBack }: LoginFormProps) {
   const [confirmSubmitting, setConfirmSubmitting] = useState(false)
   const [confirmSuccess, setConfirmSuccess] = useState(false)
 
+  // GSAP refs
+  const pageRef = useRef<HTMLDivElement>(null)
+  const leftPanelRef = useRef<HTMLDivElement>(null)
+  const rightPanelRef = useRef<HTMLDivElement>(null)
+  const bgImgRef = useRef<HTMLImageElement>(null)
+  const logoBoxRef = useRef<HTMLDivElement>(null)
+  const logoGlowRef = useRef<HTMLDivElement>(null)
+  const logoSparkRef = useRef<HTMLDivElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const subtitleRef = useRef<HTMLParagraphElement>(null)
+  const taglineRef = useRef<HTMLDivElement>(null)
+  const featuresGridRef = useRef<HTMLDivElement>(null)
+  const statsRef = useRef<HTMLDivElement>(null)
+  const formCardRef = useRef<HTMLDivElement>(null)
+  const mobileLogoRef = useRef<HTMLDivElement>(null)
+  const identifierInputRef = useRef<HTMLInputElement>(null)
+  const identifierLabelRef = useRef<HTMLLabelElement>(null)
+  const passwordInputRef = useRef<HTMLInputElement>(null)
+  const passwordLabelRef = useRef<HTMLLabelElement>(null)
+  const submitBtnRef = useRef<HTMLDivElement>(null)
+  const cursorRef = useRef<HTMLSpanElement>(null)
+
   const form = useForm({
     resolver: zodResolver(loginMode === 'personnel' ? personnelSchema : etudiantSchema),
     defaultValues: { identifier: '', password: '' },
@@ -433,6 +618,240 @@ export function LoginForm({ onBack }: LoginFormProps) {
     form.reset({ identifier: '', password: '' })
     setLoginError(null)
   }, [loginMode, form])
+
+  // ═══════════════════════════════════════════
+  // GSAP Page Entrance Animation
+  // ═══════════════════════════════════════════
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
+
+      // Left panel slides in from left
+      if (leftPanelRef.current) {
+        tl.fromTo(leftPanelRef.current,
+          { x: -80, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.9 },
+          0
+        )
+      }
+
+      // Right panel slides in from right
+      if (rightPanelRef.current) {
+        tl.fromTo(rightPanelRef.current,
+          { x: 80, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.9 },
+          0.15
+        )
+      }
+
+      // Logo entrance
+      if (logoBoxRef.current) {
+        tl.fromTo(logoBoxRef.current,
+          { scale: 0.5, opacity: 0, rotation: -20 },
+          { scale: 1, opacity: 1, rotation: 0, duration: 0.7, ease: 'back.out(2)' },
+          0.4
+        )
+      }
+
+      // Logo glow pulse
+      if (logoGlowRef.current) {
+        gsap.to(logoGlowRef.current, {
+          boxShadow: [
+            '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)',
+            '0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1)',
+            '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)',
+          ],
+          duration: 3,
+          repeat: -1,
+          ease: 'sine.inOut',
+        })
+      }
+
+      // Logo sparkle
+      if (logoSparkRef.current) {
+        gsap.to(logoSparkRef.current, {
+          scale: 1.3,
+          rotation: 10,
+          duration: 2.5,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        })
+      }
+
+      // Title stagger
+      if (titleRef.current) {
+        tl.fromTo(titleRef.current,
+          { x: -30, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.6 },
+          0.55
+        )
+      }
+
+      if (subtitleRef.current) {
+        tl.fromTo(subtitleRef.current,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.6 },
+          0.7
+        )
+      }
+
+      // Tagline
+      if (taglineRef.current) {
+        tl.fromTo(taglineRef.current,
+          { y: 15, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.6 },
+          0.75
+        )
+      }
+
+      // Feature cards stagger with rotation
+      if (featuresGridRef.current) {
+        const cards = featuresGridRef.current.querySelectorAll('[data-feature-card]')
+        tl.fromTo(cards,
+          { y: 30, opacity: 0, rotationX: 15 },
+          {
+            y: 0, opacity: 1, rotationX: 0,
+            duration: 0.5,
+            stagger: 0.1,
+            ease: 'power2.out',
+          },
+          0.8
+        )
+      }
+
+      // Bottom stats
+      if (statsRef.current) {
+        const statEls = statsRef.current.querySelectorAll('[data-stat]')
+        tl.fromTo(statEls,
+          { scale: 0.5, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.4, stagger: 0.12, ease: 'back.out(2)' },
+          1.2
+        )
+      }
+
+      // Form card entrance: scale from 0.95, opacity 0
+      if (formCardRef.current) {
+        tl.fromTo(formCardRef.current,
+          { scale: 0.95, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.6, ease: 'power2.out' },
+          0.3
+        )
+      }
+
+      // Input fields stagger in from below
+      const inputs = formCardRef.current?.querySelectorAll('[data-form-field]')
+      if (inputs && inputs.length > 0) {
+        tl.fromTo(inputs,
+          { y: 20, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out' },
+          0.6
+        )
+      }
+
+      // Mobile logo pulse
+      if (mobileLogoRef.current) {
+        gsap.to(mobileLogoRef.current, {
+          rotation: 360,
+          duration: 20,
+          repeat: -1,
+          ease: 'none',
+        })
+      }
+
+      // Cursor blink
+      if (cursorRef.current) {
+        gsap.to(cursorRef.current, {
+          opacity: 0,
+          duration: 0.5,
+          repeat: -1,
+          yoyo: true,
+          ease: 'steps(1)',
+        })
+      }
+    }, pageRef)
+
+    return () => ctx.revert()
+  }, [])
+
+  // ═══════════════════════════════════════════
+  // GSAP Ken Burns effect on background image
+  // ═══════════════════════════════════════════
+  useEffect(() => {
+    if (!bgImgRef.current) return
+    const anim = gsap.to(bgImgRef.current, {
+      scale: 1.1,
+      duration: 20,
+      repeat: -1,
+      yoyo: true,
+      ease: 'sine.inOut',
+    })
+    return () => { anim.kill() }
+  }, [])
+
+  // ═══════════════════════════════════════════
+  // GSAP Logo float
+  // ═══════════════════════════════════════════
+  useEffect(() => {
+    if (!logoBoxRef.current) return
+    const anim = gsap.to(logoBoxRef.current, {
+      y: -5,
+      duration: 3,
+      repeat: -1,
+      yoyo: true,
+      ease: 'sine.inOut',
+    })
+    return () => { anim.kill() }
+  }, [])
+
+  // ═══════════════════════════════════════════
+  // GSAP Input Focus Label Float
+  // ═══════════════════════════════════════════
+  useEffect(() => {
+    const idInput = identifierInputRef.current
+    const idLabel = identifierLabelRef.current
+    const pwInput = passwordInputRef.current
+    const pwLabel = passwordLabelRef.current
+
+    const setupFloat = (input: HTMLInputElement | null, label: HTMLLabelElement | null) => {
+      if (!input || !label) return
+
+      const onFocus = () => {
+        gsap.to(label, {
+          y: -2,
+          scale: 1.02,
+          color: '#10b981',
+          duration: 0.25,
+          ease: 'power2.out',
+        })
+      }
+      const onBlur = () => {
+        gsap.to(label, {
+          y: 0,
+          scale: 1,
+          color: '',
+          duration: 0.25,
+          ease: 'power2.out',
+        })
+      }
+
+      input.addEventListener('focus', onFocus)
+      input.addEventListener('blur', onBlur)
+
+      return () => {
+        input.removeEventListener('focus', onFocus)
+        input.removeEventListener('blur', onBlur)
+      }
+    }
+
+    const cleanupId = setupFloat(idInput, idLabel)
+    const cleanupPw = setupFloat(pwInput, pwLabel)
+
+    return () => {
+      cleanupId?.()
+      cleanupPw?.()
+    }
+  }, [loginMode])
 
   const onSubmit = useCallback(async (data: { identifier: string; password: string }) => {
     setLoginError(null)
@@ -446,31 +865,26 @@ export function LoginForm({ onBack }: LoginFormProps) {
       }
 
       if (!success) {
-        // This shouldn't happen anymore since we throw errors, but just in case
         setLoginError('Identifiants incorrects. Veuillez réessayer.')
       }
     } catch (err: unknown) {
       const loginErr = err as LoginError
       if (loginErr?.status === 500) {
-        // Server error (DB connection issue, etc.) — NOT a wrong password
         setLoginError('Erreur serveur. Veuillez réessayer plus tard.')
         toast.error('Erreur serveur', {
           description: 'Une erreur technique est survenue. Veuillez réessayer dans quelques instants.',
         })
       } else if (loginErr?.status === 403) {
-        // Account disabled
         setLoginError(loginErr.message || 'Votre compte a été désactivé.')
         toast.error('Accès refusé', {
           description: loginErr.message,
         })
       } else if (loginErr?.status === 0) {
-        // Network error
         setLoginError('Erreur de connexion. Vérifiez votre réseau.')
         toast.error('Erreur réseau', {
           description: 'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
         })
       } else {
-        // 401 or other — wrong credentials
         const errorMsg = loginMode === 'etudiant'
           ? 'Matricule, email ou mot de passe incorrect.'
           : 'Identifiants incorrects. Veuillez réessayer.'
@@ -563,25 +977,23 @@ export function LoginForm({ onBack }: LoginFormProps) {
 
   return (
     <>
-    <div className="min-h-screen flex flex-col lg:flex-row bg-white dark:bg-zinc-950 overflow-hidden">
+    <div ref={pageRef} className="min-h-screen flex flex-col lg:flex-row bg-white dark:bg-zinc-950 overflow-hidden">
       {/* ═══════════════════════════════════════════════════════ */}
       {/* LEFT PANEL — Branding with Background Image + Effects  */}
       {/* ═══════════════════════════════════════════════════════ */}
-      <motion.div
+      <div
+        ref={leftPanelRef}
         className="hidden lg:flex lg:w-[45%] relative overflow-y-auto flex-col justify-between"
-        variants={leftPanelVariants}
-        initial="hidden"
-        animate="visible"
+        style={{ opacity: 0 }}
       >
-        {/* Background Image with overlay */}
+        {/* Background Image with Ken Burns + overlay */}
         <div className="absolute inset-0">
-          <motion.img
+          <img
+            ref={bgImgRef}
             src="/login-bg.jpg"
             alt=""
             className="w-full h-full object-cover"
-            initial={{ scale: 1.1, filter: 'brightness(0.4) saturate(1.2)' }}
-            animate={{ scale: [1.1, 1.15, 1.1], filter: 'brightness(0.35) saturate(1.3)' }}
-            transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ scale: 1, filter: 'brightness(0.35) saturate(1.3)' }}
           />
           {/* Multi-layer overlay */}
           <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/60 via-teal-900/50 to-cyan-900/70" />
@@ -603,12 +1015,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
 
         {/* Back button */}
         {onBack && (
-          <motion.div
-            className="relative z-10"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-          >
+          <div className="relative z-10">
             <button
               onClick={onBack}
               className="flex items-center gap-2 text-white/70 hover:text-white transition-all duration-300 group px-2 py-1"
@@ -616,136 +1023,112 @@ export function LoginForm({ onBack }: LoginFormProps) {
               <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
               <span className="text-sm font-medium">Retour</span>
             </button>
-          </motion.div>
+          </div>
         )}
 
         {/* Central branding */}
         <div className="relative z-10 flex-1 flex flex-col justify-center max-w-xl px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
-          >
-            {/* Logo with glow */}
-            <div className="flex items-center gap-5 mb-8">
-              <motion.div
-                className="relative"
-                animate={{ y: [0, -5, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          {/* Logo with glow */}
+          <div className="flex items-center gap-5 mb-8">
+            <div ref={logoBoxRef} className="relative">
+              <div className="w-16 h-16 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl shadow-emerald-500/20">
+                <span className="text-white font-black text-2xl tracking-tighter">S</span>
+              </div>
+              {/* Glow ring */}
+              <div
+                ref={logoGlowRef}
+                className="absolute -inset-1 rounded-3xl border-2 border-emerald-400/30"
+                style={{ boxShadow: '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)' }}
+              />
+              <div
+                ref={logoSparkRef}
+                className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-yellow-400 border-2 border-emerald-800 flex items-center justify-center"
               >
-                <div className="w-16 h-16 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl shadow-emerald-500/20">
-                  <span className="text-white font-black text-2xl tracking-tighter">S</span>
-                </div>
-                {/* Glow ring */}
-                <motion.div
-                  className="absolute -inset-1 rounded-3xl border-2 border-emerald-400/30"
-                  animate={{
-                    boxShadow: [
-                      '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)',
-                      '0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1)',
-                      '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)',
-                    ],
-                  }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                />
-                <motion.div
-                  className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-yellow-400 border-2 border-emerald-800 flex items-center justify-center"
-                  animate={{ scale: [1, 1.3, 1], rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 2.5, repeat: Infinity }}
-                >
-                  <Sparkles className="w-3 h-3 text-yellow-900" />
-                </motion.div>
-              </motion.div>
-              <div>
-                <motion.h1
-                  className="text-5xl xl:text-6xl font-black text-white tracking-tighter"
-                  initial={{ opacity: 0, x: -30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  SECT
-                </motion.h1>
-                <motion.p
-                  className="text-emerald-300/80 text-xs font-semibold tracking-[0.25em] uppercase mt-1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.7 }}
-                >
-                  Système d&apos;Évaluation Casse-Tête
-                </motion.p>
+                <Sparkles className="w-3 h-3 text-yellow-900" />
               </div>
             </div>
-
-            {/* Tagline with typewriter */}
-            <motion.div
-              className="mb-12"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
-            >
-              <p className="text-xl xl:text-2xl text-white/90 font-light leading-relaxed">
-                La plateforme d&apos;évaluation propulsée par l&apos;
+            <div>
+              <h1
+                ref={titleRef}
+                className="text-5xl xl:text-6xl font-black text-white tracking-tighter"
+                style={{ opacity: 0 }}
+              >
+                SECT
+              </h1>
+              <p
+                ref={subtitleRef}
+                className="text-emerald-300/80 text-xs font-semibold tracking-[0.25em] uppercase mt-1"
+                style={{ opacity: 0 }}
+              >
+                Système d&apos;Évaluation Casse-Tête
               </p>
-              <p className="text-xl xl:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 inline-block min-h-[2rem]">
-                {typedText}
-                <motion.span
-                  className="inline-block w-0.5 h-6 bg-emerald-300 ml-1 align-middle"
-                  animate={{ opacity: [1, 0] }}
-                  transition={{ duration: 0.5, repeat: Infinity, repeatType: 'reverse' }}
-                />
-              </p>
-            </motion.div>
+            </div>
+          </div>
 
-            {/* Feature pills with 3D tilt */}
-            <motion.div
-              className="grid grid-cols-2 gap-3"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              {features.map((feature, index) => (
-                <FeatureCard key={feature.label} feature={feature} index={index} />
-              ))}
-            </motion.div>
-          </motion.div>
+          {/* Tagline with typewriter */}
+          <div
+            ref={taglineRef}
+            className="mb-12"
+            style={{ opacity: 0 }}
+          >
+            <p className="text-xl xl:text-2xl text-white/90 font-light leading-relaxed">
+              La plateforme d&apos;évaluation propulsée par l&apos;
+            </p>
+            <p className="text-xl xl:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 inline-block min-h-[2rem]">
+              {typedText}
+              <span
+                ref={cursorRef}
+                className="inline-block w-0.5 h-6 bg-emerald-300 ml-1 align-middle"
+                style={{ opacity: 1 }}
+              />
+            </p>
+          </div>
+
+          {/* Feature cards with GSAP 3D tilt */}
+          <div
+            ref={featuresGridRef}
+            className="grid grid-cols-2 gap-3"
+          >
+            {features.map((feature, index) => (
+              <div key={feature.label} data-feature-card>
+                <FeatureCard feature={feature} index={index} />
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Bottom stats with animated counters */}
-        <motion.div
+        {/* Bottom stats */}
+        <div
+          ref={statsRef}
           className="relative z-10 flex items-center gap-8 px-6 pb-6 pt-4"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1, duration: 0.6 }}
         >
           {[
             { value: '4', label: 'Rôles', icon: Users },
             { value: '25+', label: 'Modèles', icon: TrendingUp },
             { value: '80+', label: 'API Routes', icon: Zap },
-          ].map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              className="text-center"
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 1.2 + i * 0.15, type: 'spring', stiffness: 200 }}
-            >
+          ].map((stat) => (
+            <div key={stat.label} data-stat className="text-center">
               <div className="flex items-center justify-center gap-1.5">
                 <stat.icon className="w-3 h-3 text-emerald-400/60" />
                 <p className="text-2xl font-black text-white">{stat.value}</p>
               </div>
               <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider">{stat.label}</p>
-            </motion.div>
+            </div>
           ))}
           <div className="ml-auto">
             <p className="text-[10px] text-white/30 font-medium">&copy; 2026 SECT</p>
           </div>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
 
       {/* ═══════════════════════════════════════════════════════ */}
       {/* RIGHT PANEL — Form with subtle WOW effects              */}
       {/* ═══════════════════════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col min-h-screen lg:min-h-0 bg-white dark:bg-zinc-950 relative">
+      <div
+        ref={rightPanelRef}
+        className="flex-1 flex flex-col min-h-screen lg:min-h-0 bg-white dark:bg-zinc-950 relative"
+        style={{ opacity: 0 }}
+      >
         {/* Subtle background pattern for right panel */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-emerald-50 dark:bg-emerald-950/10 blur-3xl" />
@@ -764,73 +1147,49 @@ export function LoginForm({ onBack }: LoginFormProps) {
             </button>
           )}
           <div className="flex items-center gap-2 ml-auto">
-            <motion.div
+            <div
+              ref={mobileLogoRef}
               className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center"
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-              style={{ transform: 'none' }}
             >
               <span className="text-white font-bold text-sm">S</span>
-            </motion.div>
+            </div>
             <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100">SECT</span>
           </div>
         </div>
 
         {/* Form content */}
-        <motion.main
-          className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-8 lg:py-12"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
+        <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
           <div className="w-full max-w-[420px] space-y-8">
             {/* Header */}
-            <motion.div variants={itemVariants} className="text-center lg:text-left">
+            <div className="text-center lg:text-left">
               <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
-                <motion.div
-                  className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-xl shadow-emerald-500/30"
-                  animate={{ boxShadow: ['0 20px 40px rgba(16,185,129,0.3)', '0 15px 30px rgba(16,185,129,0.2)', '0 20px 40px rgba(16,185,129,0.3)'] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-xl shadow-emerald-500/30">
                   <GraduationCap className="w-7 h-7 text-white" />
-                </motion.div>
+                </div>
               </div>
-              <motion.h2
-                className="text-2xl sm:text-3xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight"
-              >
-                <motion.span
-                  className="inline-block"
-                  whileHover={{ scale: 1.02 }}
-                >
-                  Bon retour
-                </motion.span>
-                <motion.span
-                  className="inline-block ml-1.5"
-                  animate={{ rotate: [0, 14, -8, 14, -4, 0] }}
-                  transition={{ duration: 0.6, delay: 1 }}
-                >
-                  👋
-                </motion.span>
-              </motion.h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight">
+                Bon retour{' '}
+                <span className="inline-block ml-1.5">👋</span>
+              </h2>
               <p className="mt-2 text-zinc-500 dark:text-zinc-400 text-sm sm:text-base">
                 Connectez-vous pour accéder à votre espace
               </p>
-            </motion.div>
+            </div>
 
             {/* Login Form Card */}
-            <motion.div variants={itemVariants}>
-              <motion.div
-                className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/50 backdrop-blur-sm p-6 sm:p-8 shadow-xl shadow-zinc-200/40 dark:shadow-zinc-900/50"
-                whileHover={{ boxShadow: '0 25px 50px -12px rgba(0,0,0,0.12)' }}
-                transition={{ duration: 0.3 }}
-              >
+            <div ref={formCardRef} style={{ opacity: 0 }}>
+              <div className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/50 backdrop-blur-sm p-6 sm:p-8 shadow-xl shadow-zinc-200/40 dark:shadow-zinc-900/50 transition-shadow duration-300 hover:shadow-2xl">
                 {/* Mode Toggle */}
                 <LoginModeToggle mode={loginMode} onModeChange={handleModeChange} />
 
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
                   {/* Identifier (Email or Matricule) */}
-                  <div className="space-y-2">
-                    <Label htmlFor="identifier" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <div data-form-field className="space-y-2" style={{ opacity: 0 }}>
+                    <Label
+                      ref={identifierLabelRef}
+                      htmlFor="identifier"
+                      className="text-sm font-medium text-zinc-700 dark:text-zinc-300 transition-colors duration-200 origin-left"
+                    >
                       {identifierLabel}
                     </Label>
                     <div className="relative group">
@@ -847,6 +1206,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                         </motion.div>
                       </AnimatePresence>
                       <Input
+                        ref={identifierInputRef}
                         id="identifier"
                         type={isPersonnel ? 'email' : 'text'}
                         placeholder={identifierPlaceholder}
@@ -871,13 +1231,18 @@ export function LoginForm({ onBack }: LoginFormProps) {
                   </div>
 
                   {/* Password */}
-                  <div className="space-y-2">
-                    <Label htmlFor="password" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <div data-form-field className="space-y-2" style={{ opacity: 0 }}>
+                    <Label
+                      ref={passwordLabelRef}
+                      htmlFor="password"
+                      className="text-sm font-medium text-zinc-700 dark:text-zinc-300 transition-colors duration-200 origin-left"
+                    >
                       Mot de passe
                     </Label>
                     <div className="relative group">
                       <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 group-focus-within:text-emerald-500 transition-colors duration-300" />
                       <Input
+                        ref={passwordInputRef}
                         id="password"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="••••••••"
@@ -920,15 +1285,14 @@ export function LoginForm({ onBack }: LoginFormProps) {
                   </div>
 
                   {/* Forgot password (available for all modes) */}
-                  <div className="flex justify-end">
-                    <motion.button
+                  <div data-form-field className="flex justify-end" style={{ opacity: 0 }}>
+                    <button
                       type="button"
                       onClick={openResetDialog}
                       className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
-                      whileHover={{ x: 2 }}
                     >
                       Mot de passe oublié ?
-                    </motion.button>
+                    </button>
                   </div>
 
                   {/* Error message */}
@@ -956,29 +1320,28 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     )}
                   </AnimatePresence>
 
-                  {/* Submit with animated gradient border */}
-                  <GradientButton disabled={isLoading}>
-                    {isLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Connexion en cours...
-                      </span>
-                    ) : (
-                      <span className="flex items-center justify-center gap-2">
-                        Se connecter
-                        <ChevronRight className="w-4 h-4" />
-                      </span>
-                    )}
-                  </GradientButton>
+                  {/* Submit with animated gradient border + magnetic effect */}
+                  <div data-form-field style={{ opacity: 0 }}>
+                    <GradientButton disabled={isLoading} btnRef={submitBtnRef}>
+                      {isLoading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Connexion en cours...
+                        </span>
+                      ) : (
+                        <span className="flex items-center justify-center gap-2">
+                          Se connecter
+                          <ChevronRight className="w-4 h-4" />
+                        </span>
+                      )}
+                    </GradientButton>
+                  </div>
                 </form>
-              </motion.div>
-            </motion.div>
+              </div>
+            </div>
 
             {/* Footer text */}
-            <motion.div
-              variants={itemVariants}
-              className="text-center"
-            >
+            <div className="text-center">
               <p className="text-xs text-zinc-400 dark:text-zinc-500">
                 {loginMode === 'personnel' ? (
                   <>Connexion réservée au personnel administratif et enseignant</>
@@ -986,9 +1349,9 @@ export function LoginForm({ onBack }: LoginFormProps) {
                   <>Connexion réservée aux étudiants via leur matricule ou email</>
                 )}
               </p>
-            </motion.div>
+            </div>
           </div>
-        </motion.main>
+        </main>
       </div>
 
       {/* ═══════════════ Password Reset Request Dialog ═══════════════ */}
