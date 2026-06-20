@@ -43,6 +43,9 @@ model User {
   notificationsAdmin  NotificationAdmin[]
   sessionsSpecialesCreees SessionSpeciale[]  @relation("SessionsSpecialesCreees")
   badgeProgressions       BadgeProgression[]
+  validationsUE          ValidationUE[]
+  certificats            Certificat[]
+  certificatsEmis        Certificat[]          @relation("CertificatsEmis")
 }
 
 model Etablissement {
@@ -133,6 +136,7 @@ model UniteEnseignement {
   epreuves       Epreuve[]
   filiere        Filiere       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
   filieresSuppl  UniteEnseignementFiliere[]  // Filières supplémentaires (partage multi-filières)
+  validationsUE  ValidationUE[]
 
   @@unique([code, filiereId])
 }
@@ -777,6 +781,7 @@ model AnneeAcademique {
   updatedAt        DateTime  @updatedAt
   etablissement    Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
   epreuves         Epreuve[]
+  validationsUE    ValidationUE[]
 
   @@unique([libelle, etablissementId])
 }
@@ -865,6 +870,95 @@ enum NiveauBadge {
   ARGENT
   OR
   DIAMANT
+}
+
+// ─── Système de Validation UE & Certificats ───
+
+model ValidationUE {
+  id                    String            @id @default(cuid())
+  etudiantId            String
+  uniteEnseignementId   String
+  anneeAcademiqueId     String?
+  statut                StatutValidation  @default(EN_COURS)
+  moyenneUE             Float             @default(0)
+  noteNormale           Float?
+  noteRattrapage        Float?
+  noteFinale            Float             @default(0)
+  nbEpreuvesTotal       Int               @default(0)
+  nbEpreuvesCompletees  Int               @default(0)
+  dateValidation        DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  etudiant              User              @relation(fields: [etudiantId], references: [id], onDelete: Cascade)
+  uniteEnseignement     UniteEnseignement @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+  anneeAcademique       AnneeAcademique?  @relation(fields: [anneeAcademiqueId], references: [id], onDelete: SetNull)
+  certificats           Certificat[]
+
+  @@unique([etudiantId, uniteEnseignementId, anneeAcademiqueId])
+  @@index([etudiantId])
+  @@index([uniteEnseignementId])
+  @@index([statut])
+}
+
+model Certificat {
+  id                  String            @id @default(cuid())
+  codeVerification    String            @unique  // Code public (ex: SECT-A1B2-C3D4)
+  etudiantId          String
+  validationUEId      String
+  type                TypeCertificat
+  intitule            String                        // "Certificat d'Accomplissement"
+  mention             String?                       // "Assez Bien", "Bien", "Très Bien"
+  noteFinale          Float                         // Note figurant sur le certificat
+  etablissementNom    String                        // Snapshot
+  etablissementLogo   String?                       // Snapshot logo
+  etablissementVille  String?                       // Snapshot
+  etablissementPays   String?                       // Snapshot
+  filiereNom          String                        // Snapshot
+  filiereCode         String?                       // Snapshot
+  ueCode              String                        // Snapshot
+  ueNom               String                        // Snapshot
+  creditsECTS         Int?                          // Crédits ECTS de l'UE
+  etudiantNom         String                        // Snapshot nom étudiant
+  etudiantMatricule   String?                       // Snapshot matricule
+  etudiantNiveau      String?                       // Snapshot niveau (L1, L2...)
+  sessionType         String             @default("NORMALE")  // Session normale ou rattrapage
+  anneeAcademique     String?                       // "2025-2026"
+  dateEmission        DateTime                      // Date d'émission
+  emetteParId         String                        // Qui a émis
+  pdfUrl              String?                       // URL du PDF généré
+  statut              StatutCertificat   @default(EMIS)
+  dateRevocation      DateTime?
+  raisonRevocation    String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  etudiant            User               @relation(fields: [etudiantId], references: [id], onDelete: Cascade)
+  validationUE        ValidationUE       @relation(fields: [validationUEId], references: [id], onDelete: Cascade)
+  emettePar           User               @relation("CertificatsEmis", fields: [emetteParId], references: [id])
+
+  @@index([etudiantId])
+  @@index([codeVerification])
+  @@index([type])
+  @@index([statut])
+}
+
+enum StatutValidation {
+  EN_COURS
+  VALIDEE
+  NON_VALIDEE
+}
+
+enum TypeCertificat {
+  PARTICIPATION
+  ACCOMPLISSEMENT
+  EXCELLENCE
+}
+
+enum StatutCertificat {
+  EMIS
+  REVOQUE
+  EXPIRE
 }
 
 model AIFailoverEvent {
