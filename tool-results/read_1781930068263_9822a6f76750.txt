@@ -1,0 +1,1201 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useCallback, useEffect } from 'react'
+     4→     4→import { useForm } from 'react-hook-form'
+     5→     5→import { zodResolver } from '@hookform/resolvers/zod'
+     6→     6→import { z } from 'zod'
+     7→     7→import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
+     8→     8→import {
+     9→     9→  Mail,
+    10→    10→  Lock,
+    11→    11→  Loader2,
+    12→    12→  Eye,
+    13→    13→  EyeOff,
+    14→    14→  ArrowLeft,
+    15→    15→  KeyRound,
+    16→    16→  CheckCircle2,
+    17→    17→  Sparkles,
+    18→    18→  Shield,
+    19→    19→  GraduationCap,
+    20→    20→  Users,
+    21→    21→  Brain,
+    22→    22→  ChevronRight,
+    23→    23→  Zap,
+    24→    24→  Globe,
+    25→    25→  TrendingUp,
+    26→    26→  Hash,
+    27→    27→  Briefcase,
+    28→    28→} from 'lucide-react'
+    29→    29→import { useAuthStore, type LoginError } from '@/stores/auth-store'
+    30→    30→import { toast } from 'sonner'
+    31→    31→
+    32→    32→import { Input } from '@/components/ui/input'
+    33→    33→import { Label } from '@/components/ui/label'
+    34→    34→import { Button } from '@/components/ui/button'
+    35→    35→import {
+    36→    36→  Dialog,
+    37→    37→  DialogContent,
+    38→    38→  DialogDescription,
+    39→    39→  DialogFooter,
+    40→    40→  DialogHeader,
+    41→    41→  DialogTitle,
+    42→    42→} from '@/components/ui/dialog'
+    43→    43→
+    44→    44→// ─── Login mode ───
+    45→    45→type LoginMode = 'personnel' | 'etudiant'
+    46→    46→
+    47→    47→// ─── Validation ───
+    48→    48→const personnelSchema = z.object({
+    49→    49→  identifier: z.string().email('Veuillez entrer une adresse email valide'),
+    50→    50→  password: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
+    51→    51→})
+    52→    52→
+    53→    53→const etudiantSchema = z.object({
+    54→    54→  identifier: z.string().min(3, 'Veuillez entrer votre matricule ou email'),
+    55→    55→  password: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
+    56→    56→})
+    57→    57→
+    58→    58→type PersonnelFormValues = z.infer<typeof personnelSchema>
+    59→    59→type EtudiantFormValues = z.infer<typeof etudiantSchema>
+    60→    60→
+    61→    61→// ─── Features for left panel ───
+    62→    62→const features = [
+    63→    63→  { icon: Brain, label: 'IA Intégrée', desc: 'Questions auto-générées', stat: '98%' },
+    64→    64→  { icon: Zap, label: 'Temps Réel', desc: 'Correction instantanée', stat: '<1s' },
+    65→    65→  { icon: Shield, label: 'Anti-Triche', desc: 'Proctoring intelligent', stat: '24/7' },
+    66→    66→  { icon: Globe, label: 'Multi-tenant', desc: 'Établissements illimités', stat: '∞' },
+    67→    67→]
+    68→    68→
+    69→    69→// ─── Typewriter words ───
+    70→    70→const typewriterWords = ['Intelligence Artificielle', 'Automatisation', 'Précision', 'Innovation']
+    71→    71→
+    72→    72→// ─── Animation Variants ───
+    73→    73→const containerVariants = {
+    74→    74→  hidden: { opacity: 0 },
+    75→    75→  visible: {
+    76→    76→    opacity: 1,
+    77→    77→    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+    78→    78→  },
+    79→    79→}
+    80→    80→
+    81→    81→const itemVariants = {
+    82→    82→  hidden: { opacity: 0, y: 20 },
+    83→    83→  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] } },
+    84→    84→}
+    85→    85→
+    86→    86→const leftPanelVariants = {
+    87→    87→  hidden: { opacity: 0, x: -60, scale: 0.95 },
+    88→    88→  visible: {
+    89→    89→    opacity: 1, x: 0, scale: 1,
+    90→    90→    transition: { duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
+    91→    91→  },
+    92→    92→}
+    93→    93→
+    94→    94→// ─── Floating Particles ───
+    95→    95→function FloatingParticles() {
+    96→    96→  const particles = Array.from({ length: 30 }, (_, i) => ({
+    97→    97→    id: i,
+    98→    98→    x: Math.random() * 100,
+    99→    99→    y: Math.random() * 100,
+   100→   100→    size: Math.random() * 4 + 1,
+   101→   101→    duration: Math.random() * 10 + 8,
+   102→   102→    delay: Math.random() * 5,
+   103→   103→  }))
+   104→   104→
+   105→   105→  return (
+   106→   106→    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+   107→   107→      {particles.map((p) => (
+   108→   108→        <motion.div
+   109→   109→          key={p.id}
+   110→   110→          className="absolute rounded-full bg-white"
+   111→   111→          style={{
+   112→   112→            width: p.size,
+   113→   113→            height: p.size,
+   114→   114→            left: `${p.x}%`,
+   115→   115→            top: `${p.y}%`,
+   116→   116→          }}
+   117→   117→          animate={{
+   118→   118→            y: [0, -(30 + Math.random() * 40), 0],
+   119→   119→            opacity: [0, 0.6, 0],
+   120→   120→            scale: [0.5, 1, 0.5],
+   121→   121→          }}
+   122→   122→          transition={{
+   123→   123→            duration: p.duration,
+   124→   124→            repeat: Infinity,
+   125→   125→            ease: 'easeInOut',
+   126→   126→            delay: p.delay,
+   127→   127→          }}
+   128→   128→        />
+   129→   129→      ))}
+   130→   130→    </div>
+   131→   131→  )
+   132→   132→}
+   133→   133→
+   134→   134→// ─── Aurora Gradient Effect ───
+   135→   135→function AuroraEffect() {
+   136→   136→  return (
+   137→   137→    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+   138→   138→      <motion.div
+   139→   139→        className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] rounded-full opacity-30"
+   140→   140→        style={{
+   141→   141→          background: 'conic-gradient(from 0deg, transparent 0%, rgba(16,185,129,0.4) 10%, transparent 20%, rgba(6,182,212,0.3) 30%, transparent 40%)',
+   142→   142→        }}
+   143→   143→        animate={{ rotate: 360 }}
+   144→   144→        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+   145→   145→      />
+   146→   146→    </div>
+   147→   147→  )
+   148→   148→}
+   149→   149→
+   150→   150→// ─── Animated Grid Background ───
+   151→   151→function AnimatedGrid() {
+   152→   152→  return (
+   153→   153→    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-[0.08]">
+   154→   154→      <motion.div
+   155→   155→        className="absolute inset-0"
+   156→   156→        style={{
+   157→   157→          backgroundImage: `
+   158→   158→            linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
+   159→   159→            linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)
+   160→   160→          `,
+   161→   161→          backgroundSize: '60px 60px',
+   162→   162→        }}
+   163→   163→        animate={{ y: [0, 30, 0] }}
+   164→   164→        transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
+   165→   165→      />
+   166→   166→    </div>
+   167→   167→  )
+   168→   168→}
+   169→   169→
+   170→   170→// ─── Glowing Orbs (Enhanced) ───
+   171→   171→function GlowingOrbs() {
+   172→   172→  return (
+   173→   173→    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+   174→   174→      <motion.div
+   175→   175→        className="absolute -top-32 -left-32 w-96 h-96 rounded-full"
+   176→   176→        style={{
+   177→   177→          background: 'radial-gradient(circle, rgba(52,211,153,0.25) 0%, transparent 70%)',
+   178→   178→        }}
+   179→   179→        animate={{
+   180→   180→          y: [0, -40, 0],
+   181→   181→          x: [0, 30, 0],
+   182→   182→          scale: [1, 1.15, 1],
+   183→   183→        }}
+   184→   184→        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+   185→   185→      />
+   186→   186→      <motion.div
+   187→   187→        className="absolute top-1/4 -right-20 w-80 h-80 rounded-full"
+   188→   188→        style={{
+   189→   189→          background: 'radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 70%)',
+   190→   190→        }}
+   191→   191→        animate={{
+   192→   192→          y: [0, 30, 0],
+   193→   193→          x: [0, -20, 0],
+   194→   194→          scale: [1, 0.9, 1],
+   195→   195→        }}
+   196→   196→        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+   197→   197→      />
+   198→   198→      <motion.div
+   199→   199→        className="absolute -bottom-24 left-1/3 w-72 h-72 rounded-full"
+   200→   200→        style={{
+   201→   201→          background: 'radial-gradient(circle, rgba(34,211,238,0.15) 0%, transparent 70%)',
+   202→   202→        }}
+   203→   203→        animate={{
+   204→   204→          y: [0, -25, 0],
+   205→   205→          scale: [1, 1.1, 1],
+   206→   206→        }}
+   207→   207→        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+   208→   208→      />
+   209→   209→    </div>
+   210→   210→  )
+   211→   211→}
+   212→   212→
+   213→   213→// ─── Typewriter Hook ───
+   214→   214→function useTypewriter(words: string[], typingSpeed = 80, deletingSpeed = 40, pauseTime = 2000) {
+   215→   215→  const [text, setText] = useState('')
+   216→   216→  const [wordIndex, setWordIndex] = useState(0)
+   217→   217→  const [isDeleting, setIsDeleting] = useState(false)
+   218→   218→
+   219→   219→  useEffect(() => {
+   220→   220→    const currentWord = words[wordIndex]
+   221→   221→
+   222→   222→    const timeout = setTimeout(() => {
+   223→   223→      if (!isDeleting) {
+   224→   224→        setText(currentWord.substring(0, text.length + 1))
+   225→   225→        if (text.length === currentWord.length) {
+   226→   226→          setTimeout(() => setIsDeleting(true), pauseTime)
+   227→   227→        }
+   228→   228→      } else {
+   229→   229→        setText(currentWord.substring(0, text.length - 1))
+   230→   230→        if (text.length === 0) {
+   231→   231→          setIsDeleting(false)
+   232→   232→          setWordIndex((prev) => (prev + 1) % words.length)
+   233→   233→        }
+   234→   234→      }
+   235→   235→    }, isDeleting ? deletingSpeed : typingSpeed)
+   236→   236→
+   237→   237→    return () => clearTimeout(timeout)
+   238→   238→  }, [text, isDeleting, wordIndex, words, typingSpeed, deletingSpeed, pauseTime])
+   239→   239→
+   240→   240→  return text
+   241→   241→}
+   242→   242→
+   243→   243→// ─── Glowing Feature Card ───
+   244→   244→function FeatureCard({ feature, index }: { feature: typeof features[0]; index: number }) {
+   245→   245→  const [hovered, setHovered] = useState(false)
+   246→   246→  const x = useMotionValue(0)
+   247→   247→  const y = useMotionValue(0)
+   248→   248→  const rotateX = useTransform(y, [-50, 50], [5, -5])
+   249→   249→  const rotateY = useTransform(x, [-50, 50], [-5, 5])
+   250→   250→
+   251→   251→  const handleMouse = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+   252→   252→    const rect = e.currentTarget.getBoundingClientRect()
+   253→   253→    x.set(e.clientX - rect.left - rect.width / 2)
+   254→   254→    y.set(e.clientY - rect.top - rect.height / 2)
+   255→   255→  }, [x, y])
+   256→   256→
+   257→   257→  return (
+   258→   258→    <motion.div
+   259→   259→      key={feature.label}
+   260→   260→      variants={itemVariants}
+   261→   261→      style={{ rotateX, rotateY, transformPerspective: 600 }}
+   262→   262→      onMouseMove={handleMouse}
+   263→   263→      onMouseEnter={() => setHovered(true)}
+   264→   264→      onMouseLeave={() => { setHovered(false); x.set(0); y.set(0) }}
+   265→   265→      className={`flex items-center gap-3 rounded-2xl px-4 py-3.5 border transition-all duration-300 cursor-default ${
+   266→   266→        hovered
+   267→   267→          ? 'bg-white/20 backdrop-blur-md border-white/30 shadow-lg shadow-emerald-500/10'
+   268→   268→          : 'bg-white/8 backdrop-blur-sm border-white/12 hover:bg-white/12'
+   269→   269→      }`}
+   270→   270→    >
+   271→   271→      <motion.div
+   272→   272→        className="w-10 h-10 rounded-xl bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center shrink-0 border border-white/10"
+   273→   273→        animate={hovered ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
+   274→   274→        transition={{ duration: 0.4 }}
+   275→   275→      >
+   276→   276→        <feature.icon className="w-4.5 h-4.5 text-white" />
+   277→   277→      </motion.div>
+   278→   278→      <div className="flex-1 min-w-0">
+   279→   279→        <div className="flex items-center justify-between">
+   280→   280→          <p className="text-sm font-semibold text-white">{feature.label}</p>
+   281→   281→          <motion.span
+   282→   282→            className="text-[10px] font-bold text-emerald-300 bg-emerald-400/20 px-1.5 py-0.5 rounded-full"
+   283→   283→            animate={hovered ? { scale: [1, 1.2, 1] } : {}}
+   284→   284→            transition={{ duration: 0.3 }}
+   285→   285→          >
+   286→   286→            {feature.stat}
+   287→   287→          </motion.span>
+   288→   288→        </div>
+   289→   289→        <p className="text-[11px] text-white/50 mt-0.5">{feature.desc}</p>
+   290→   290→      </div>
+   291→   291→    </motion.div>
+   292→   292→  )
+   293→   293→}
+   294→   294→
+   295→   295→// ─── Animated Gradient Border Button ───
+   296→   296→function GradientButton({ children, onClick, disabled, className }: {
+   297→   297→  children: React.ReactNode
+   298→   298→  onClick?: () => void
+   299→   299→  disabled?: boolean
+   300→   300→  className?: string
+   301→   301→}) {
+   302→   302→  return (
+   303→   303→    <motion.div
+   304→   304→      className="relative rounded-xl p-[1.5px] overflow-hidden group"
+   305→   305→      whileHover={{ scale: 1.01 }}
+   306→   306→      whileTap={{ scale: 0.99 }}
+   307→   307→    >
+   308→   308→      {/* Animated gradient border */}
+   309→   309→      <motion.div
+   310→   310→        className="absolute inset-0"
+   311→   311→        style={{
+   312→   312→          background: 'linear-gradient(135deg, #10b981, #14b8a6, #06b6d4, #10b981)',
+   313→   313→          backgroundSize: '300% 300%',
+   314→   314→        }}
+   315→   315→        animate={{
+   316→   316→          backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'],
+   317→   317→        }}
+   318→   318→        transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+   319→   319→      />
+   320→   320→      <Button
+   321→   321→        type="submit"
+   322→   322→        onClick={onClick}
+   323→   323→        disabled={disabled}
+   324→   324→        className={`relative w-full h-12 rounded-[10px] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold shadow-lg shadow-emerald-600/25 hover:shadow-emerald-500/50 transition-all duration-300 text-sm ${className || ''}`}
+   325→   325→      >
+   326→   326→        {children}
+   327→   327→      </Button>
+   328→   328→      {/* Shine effect */}
+   329→   329→      <motion.div
+   330→   330→        className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none"
+   331→   331→        initial={{ opacity: 0 }}
+   332→   332→        whileHover={{ opacity: 1 }}
+   333→   333→      >
+   334→   334→        <motion.div
+   335→   335→          className="absolute inset-0"
+   336→   336→          style={{
+   337→   337→            background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.15) 55%, transparent 60%)',
+   338→   338→          }}
+   339→   339→          animate={{ x: ['-100%', '100%'] }}
+   340→   340→          transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 1, ease: 'easeInOut' }}
+   341→   341→        />
+   342→   342→      </motion.div>
+   343→   343→    </motion.div>
+   344→   344→  )
+   345→   345→}
+   346→   346→
+   347→   347→// ─── Mode Toggle ───
+   348→   348→function LoginModeToggle({ mode, onModeChange }: {
+   349→   349→  mode: LoginMode
+   350→   350→  onModeChange: (mode: LoginMode) => void
+   351→   351→}) {
+   352→   352→  return (
+   353→   353→    <motion.div
+   354→   354→      className="relative flex rounded-xl bg-zinc-100 dark:bg-zinc-800/60 p-1 mb-6"
+   355→   355→      layout
+   356→   356→    >
+   357→   357→      {/* Sliding indicator */}
+   358→   358→      <motion.div
+   359→   359→        className="absolute top-1 bottom-1 rounded-lg bg-white dark:bg-zinc-700 shadow-sm"
+   360→   360→        animate={{
+   361→   361→          left: mode === 'personnel' ? '4px' : '50%',
+   362→   362→          width: 'calc(50% - 4px)',
+   363→   363→        }}
+   364→   364→        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+   365→   365→      />
+   366→   366→
+   367→   367→      <button
+   368→   368→        type="button"
+   369→   369→        onClick={() => onModeChange('personnel')}
+   370→   370→        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 ${
+   371→   371→          mode === 'personnel'
+   372→   372→            ? 'text-emerald-700 dark:text-emerald-300'
+   373→   373→            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+   374→   374→        }`}
+   375→   375→      >
+   376→   376→        <Briefcase className="w-4 h-4" />
+   377→   377→        <span className="hidden sm:inline">Espace</span> Personnel
+   378→   378→      </button>
+   379→   379→
+   380→   380→      <button
+   381→   381→        type="button"
+   382→   382→        onClick={() => onModeChange('etudiant')}
+   383→   383→        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 ${
+   384→   384→          mode === 'etudiant'
+   385→   385→            ? 'text-teal-700 dark:text-teal-300'
+   386→   386→            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+   387→   387→        }`}
+   388→   388→      >
+   389→   389→        <GraduationCap className="w-4 h-4" />
+   390→   390→        <span className="hidden sm:inline">Espace</span> Étudiant
+   391→   391→      </button>
+   392→   392→    </motion.div>
+   393→   393→  )
+   394→   394→}
+   395→   395→
+   396→   396→// ─── Main Component ───
+   397→   397→interface LoginFormProps {
+   398→   398→  onBack?: () => void
+   399→   399→}
+   400→   400→
+   401→   401→export function LoginForm({ onBack }: LoginFormProps) {
+   402→   402→  const [loginMode, setLoginMode] = useState<LoginMode>('personnel')
+   403→   403→  const [showPassword, setShowPassword] = useState(false)
+   404→   404→  const [loginError, setLoginError] = useState<string | null>(null)
+   405→   405→  const login = useAuthStore((state) => state.login)
+   406→   406→  const loginStudent = useAuthStore((state) => state.loginStudent)
+   407→   407→  const isLoading = useAuthStore((state) => state.isLoading)
+   408→   408→
+   409→   409→  // Typewriter
+   410→   410→  const typedText = useTypewriter(typewriterWords)
+   411→   411→
+   412→   412→  // Password Reset state
+   413→   413→  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+   414→   414→  const [resetEmail, setResetEmail] = useState('')
+   415→   415→  const [resetSending, setResetSending] = useState(false)
+   416→   416→  const [resetSent, setResetSent] = useState(false)
+   417→   417→  const [resetToken, setResetToken] = useState<string | null>(null)
+   418→   418→
+   419→   419→  // Password Reset Confirm state
+   420→   420→  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+   421→   421→  const [confirmToken, setConfirmToken] = useState('')
+   422→   422→  const [confirmPassword, setConfirmPassword] = useState('')
+   423→   423→  const [confirmSubmitting, setConfirmSubmitting] = useState(false)
+   424→   424→  const [confirmSuccess, setConfirmSuccess] = useState(false)
+   425→   425→
+   426→   426→  const form = useForm({
+   427→   427→    resolver: zodResolver(loginMode === 'personnel' ? personnelSchema : etudiantSchema),
+   428→   428→    defaultValues: { identifier: '', password: '' },
+   429→   429→  })
+   430→   430→
+   431→   431→  // Reset form when mode changes
+   432→   432→  useEffect(() => {
+   433→   433→    form.reset({ identifier: '', password: '' })
+   434→   434→    setLoginError(null)
+   435→   435→  }, [loginMode, form])
+   436→   436→
+   437→   437→  const onSubmit = useCallback(async (data: { identifier: string; password: string }) => {
+   438→   438→    setLoginError(null)
+   439→   439→
+   440→   440→    try {
+   441→   441→      let success: boolean
+   442→   442→      if (loginMode === 'etudiant') {
+   443→   443→        success = await loginStudent(data.identifier, data.password)
+   444→   444→      } else {
+   445→   445→        success = await login(data.identifier, data.password)
+   446→   446→      }
+   447→   447→
+   448→   448→      if (!success) {
+   449→   449→        // This shouldn't happen anymore since we throw errors, but just in case
+   450→   450→        setLoginError('Identifiants incorrects. Veuillez réessayer.')
+   451→   451→      }
+   452→   452→    } catch (err: unknown) {
+   453→   453→      const loginErr = err as LoginError
+   454→   454→      if (loginErr?.status === 500) {
+   455→   455→        // Server error (DB connection issue, etc.) — NOT a wrong password
+   456→   456→        setLoginError('Erreur serveur. Veuillez réessayer plus tard.')
+   457→   457→        toast.error('Erreur serveur', {
+   458→   458→          description: 'Une erreur technique est survenue. Veuillez réessayer dans quelques instants.',
+   459→   459→        })
+   460→   460→      } else if (loginErr?.status === 403) {
+   461→   461→        // Account disabled
+   462→   462→        setLoginError(loginErr.message || 'Votre compte a été désactivé.')
+   463→   463→        toast.error('Accès refusé', {
+   464→   464→          description: loginErr.message,
+   465→   465→        })
+   466→   466→      } else if (loginErr?.status === 0) {
+   467→   467→        // Network error
+   468→   468→        setLoginError('Erreur de connexion. Vérifiez votre réseau.')
+   469→   469→        toast.error('Erreur réseau', {
+   470→   470→          description: 'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+   471→   471→        })
+   472→   472→      } else {
+   473→   473→        // 401 or other — wrong credentials
+   474→   474→        const errorMsg = loginMode === 'etudiant'
+   475→   475→          ? 'Matricule, email ou mot de passe incorrect.'
+   476→   476→          : 'Identifiants incorrects. Veuillez réessayer.'
+   477→   477→        setLoginError(errorMsg)
+   478→   478→        toast.error('Échec de la connexion', {
+   479→   479→          description: errorMsg,
+   480→   480→        })
+   481→   481→      }
+   482→   482→    }
+   483→   483→  }, [loginMode, login, loginStudent])
+   484→   484→
+   485→   485→  const handleModeChange = useCallback((newMode: LoginMode) => {
+   486→   486→    setLoginMode(newMode)
+   487→   487→  }, [])
+   488→   488→
+   489→   489→  const handleResetRequest = async () => {
+   490→   490→    if (!resetEmail.trim()) {
+   491→   491→      toast.error('Champ requis', { description: 'Veuillez entrer votre adresse email.' })
+   492→   492→      return
+   493→   493→    }
+   494→   494→    setResetSending(true)
+   495→   495→    try {
+   496→   496→      const res = await fetch('/api/auth/password-reset', {
+   497→   497→        method: 'POST',
+   498→   498→        headers: { 'Content-Type': 'application/json' },
+   499→   499→        body: JSON.stringify({ email: resetEmail.trim() }),
+   500→   500→      })
+   501→   501→      const data = await res.json()
+   502→   502→      setResetSent(true)
+   503→   503→      if (data.token) setResetToken(data.token)
+   504→   504→      toast.success('Demande envoyée', {
+   505→   505→        description: data.message || 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.',
+   506→   506→      })
+   507→   507→    } catch {
+   508→   508→      toast.error('Erreur', { description: 'Impossible d\'envoyer la demande. Veuillez réessayer.' })
+   509→   509→    } finally {
+   510→   510→      setResetSending(false)
+   511→   511→    }
+   512→   512→  }
+   513→   513→
+   514→   514→  const handleResetConfirm = async () => {
+   515→   515→    if (!confirmToken.trim()) {
+   516→   516→      toast.error('Champ requis', { description: 'Veuillez entrer le token de réinitialisation.' })
+   517→   517→      return
+   518→   518→    }
+   519→   519→    if (!confirmPassword || confirmPassword.length < 6) {
+   520→   520→      toast.error('Mot de passe invalide', { description: 'Le mot de passe doit contenir au moins 6 caractères.' })
+   521→   521→      return
+   522→   522→    }
+   523→   523→    setConfirmSubmitting(true)
+   524→   524→    try {
+   525→   525→      const res = await fetch('/api/auth/password-reset/confirm', {
+   526→   526→        method: 'POST',
+   527→   527→        headers: { 'Content-Type': 'application/json' },
+   528→   528→        body: JSON.stringify({ token: confirmToken.trim(), password: confirmPassword }),
+   529→   529→      })
+   530→   530→      const data = await res.json()
+   531→   531→      if (!res.ok) throw new Error(data.error || 'Erreur lors de la réinitialisation')
+   532→   532→      setConfirmSuccess(true)
+   533→   533→      toast.success('Mot de passe réinitialisé', {
+   534→   534→        description: 'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
+   535→   535→      })
+   536→   536→    } catch (err) {
+   537→   537→      toast.error('Erreur', {
+   538→   538→        description: err instanceof Error ? err.message : 'Impossible de réinitialiser le mot de passe.',
+   539→   539→      })
+   540→   540→    } finally {
+   541→   541→      setConfirmSubmitting(false)
+   542→   542→    }
+   543→   543→  }
+   544→   544→
+   545→   545→  const openResetDialog = () => {
+   546→   546→    setResetEmail('')
+   547→   547→    setResetSent(false)
+   548→   548→    setResetToken(null)
+   549→   549→    setResetDialogOpen(true)
+   550→   550→  }
+   551→   551→
+   552→   552→  const openConfirmDialog = (token?: string) => {
+   553→   553→    setConfirmToken(token || '')
+   554→   554→    setConfirmPassword('')
+   555→   555→    setConfirmSuccess(false)
+   556→   556→    setConfirmDialogOpen(true)
+   557→   557→  }
+   558→   558→
+   559→   559→  const isPersonnel = loginMode === 'personnel'
+   560→   560→  const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule ou Email'
+   561→   561→  const identifierPlaceholder = isPersonnel ? 'votre.email@universite.fr' : 'Ex: 2024-INFO-001 ou email'
+   562→   562→  const IdentifierIcon = isPersonnel ? Mail : Hash
+   563→   563→
+   564→   564→  return (
+   565→   565→    <>
+   566→   566→    <div className="min-h-screen flex flex-col lg:flex-row bg-white dark:bg-zinc-950 overflow-hidden">
+   567→   567→      {/* ═══════════════════════════════════════════════════════ */}
+   568→   568→      {/* LEFT PANEL — Branding with Background Image + Effects  */}
+   569→   569→      {/* ═══════════════════════════════════════════════════════ */}
+   570→   570→      <motion.div
+   571→   571→        className="hidden lg:flex lg:w-[45%] relative overflow-y-auto flex-col justify-between"
+   572→   572→        variants={leftPanelVariants}
+   573→   573→        initial="hidden"
+   574→   574→        animate="visible"
+   575→   575→      >
+   576→   576→        {/* Background Image with overlay */}
+   577→   577→        <div className="absolute inset-0">
+   578→   578→          <motion.img
+   579→   579→            src="/login-bg.jpg"
+   580→   580→            alt=""
+   581→   581→            className="w-full h-full object-cover"
+   582→   582→            initial={{ scale: 1.1, filter: 'brightness(0.4) saturate(1.2)' }}
+   583→   583→            animate={{ scale: [1.1, 1.15, 1.1], filter: 'brightness(0.35) saturate(1.3)' }}
+   584→   584→            transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
+   585→   585→          />
+   586→   586→          {/* Multi-layer overlay */}
+   587→   587→          <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/60 via-teal-900/50 to-cyan-900/70" />
+   588→   588→          <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/20" />
+   589→   589→          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
+   590→   590→        </div>
+   591→   591→
+   592→   592→        {/* Aurora rotating gradient */}
+   593→   593→        <AuroraEffect />
+   594→   594→
+   595→   595→        {/* Animated grid */}
+   596→   596→        <AnimatedGrid />
+   597→   597→
+   598→   598→        {/* Floating particles */}
+   599→   599→        <FloatingParticles />
+   600→   600→
+   601→   601→        {/* Glowing orbs */}
+   602→   602→        <GlowingOrbs />
+   603→   603→
+   604→   604→        {/* Back button */}
+   605→   605→        {onBack && (
+   606→   606→          <motion.div
+   607→   607→            className="relative z-10"
+   608→   608→            initial={{ opacity: 0, x: -20 }}
+   609→   609→            animate={{ opacity: 1, x: 0 }}
+   610→   610→            transition={{ delay: 0.3 }}
+   611→   611→          >
+   612→   612→            <button
+   613→   613→              onClick={onBack}
+   614→   614→              className="flex items-center gap-2 text-white/70 hover:text-white transition-all duration-300 group px-2 py-1"
+   615→   615→            >
+   616→   616→              <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
+   617→   617→              <span className="text-sm font-medium">Retour</span>
+   618→   618→            </button>
+   619→   619→          </motion.div>
+   620→   620→        )}
+   621→   621→
+   622→   622→        {/* Central branding */}
+   623→   623→        <div className="relative z-10 flex-1 flex flex-col justify-center max-w-xl px-6">
+   624→   624→          <motion.div
+   625→   625→            initial={{ opacity: 0, y: 40 }}
+   626→   626→            animate={{ opacity: 1, y: 0 }}
+   627→   627→            transition={{ duration: 0.8, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
+   628→   628→          >
+   629→   629→            {/* Logo with glow */}
+   630→   630→            <div className="flex items-center gap-5 mb-8">
+   631→   631→              <motion.div
+   632→   632→                className="relative"
+   633→   633→                animate={{ y: [0, -5, 0] }}
+   634→   634→                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+   635→   635→              >
+   636→   636→                <div className="w-16 h-16 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl shadow-emerald-500/20">
+   637→   637→                  <span className="text-white font-black text-2xl tracking-tighter">S</span>
+   638→   638→                </div>
+   639→   639→                {/* Glow ring */}
+   640→   640→                <motion.div
+   641→   641→                  className="absolute -inset-1 rounded-3xl border-2 border-emerald-400/30"
+   642→   642→                  animate={{
+   643→   643→                    boxShadow: [
+   644→   644→                      '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)',
+   645→   645→                      '0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1)',
+   646→   646→                      '0 0 15px rgba(52,211,153,0.1), inset 0 0 15px rgba(52,211,153,0.05)',
+   647→   647→                    ],
+   648→   648→                  }}
+   649→   649→                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+   650→   650→                />
+   651→   651→                <motion.div
+   652→   652→                  className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-yellow-400 border-2 border-emerald-800 flex items-center justify-center"
+   653→   653→                  animate={{ scale: [1, 1.3, 1], rotate: [0, 10, -10, 0] }}
+   654→   654→                  transition={{ duration: 2.5, repeat: Infinity }}
+   655→   655→                >
+   656→   656→                  <Sparkles className="w-3 h-3 text-yellow-900" />
+   657→   657→                </motion.div>
+   658→   658→              </motion.div>
+   659→   659→              <div>
+   660→   660→                <motion.h1
+   661→   661→                  className="text-5xl xl:text-6xl font-black text-white tracking-tighter"
+   662→   662→                  initial={{ opacity: 0, x: -30 }}
+   663→   663→                  animate={{ opacity: 1, x: 0 }}
+   664→   664→                  transition={{ delay: 0.5 }}
+   665→   665→                >
+   666→   666→                  SECT
+   667→   667→                </motion.h1>
+   668→   668→                <motion.p
+   669→   669→                  className="text-emerald-300/80 text-xs font-semibold tracking-[0.25em] uppercase mt-1"
+   670→   670→                  initial={{ opacity: 0 }}
+   671→   671→                  animate={{ opacity: 1 }}
+   672→   672→                  transition={{ delay: 0.7 }}
+   673→   673→                >
+   674→   674→                  Système d&apos;Évaluation Casse-Tête
+   675→   675→                </motion.p>
+   676→   676→              </div>
+   677→   677→            </div>
+   678→   678→
+   679→   679→            {/* Tagline with typewriter */}
+   680→   680→            <motion.div
+   681→   681→              className="mb-12"
+   682→   682→              initial={{ opacity: 0 }}
+   683→   683→              animate={{ opacity: 1 }}
+   684→   684→              transition={{ delay: 0.6 }}
+   685→   685→            >
+   686→   686→              <p className="text-xl xl:text-2xl text-white/90 font-light leading-relaxed">
+   687→   687→                La plateforme d&apos;évaluation propulsée par l&apos;
+   688→   688→              </p>
+   689→   689→              <p className="text-xl xl:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 inline-block min-h-[2rem]">
+   690→   690→                {typedText}
+   691→   691→                <motion.span
+   692→   692→                  className="inline-block w-0.5 h-6 bg-emerald-300 ml-1 align-middle"
+   693→   693→                  animate={{ opacity: [1, 0] }}
+   694→   694→                  transition={{ duration: 0.5, repeat: Infinity, repeatType: 'reverse' }}
+   695→   695→                />
+   696→   696→              </p>
+   697→   697→            </motion.div>
+   698→   698→
+   699→   699→            {/* Feature pills with 3D tilt */}
+   700→   700→            <motion.div
+   701→   701→              className="grid grid-cols-2 gap-3"
+   702→   702→              variants={containerVariants}
+   703→   703→              initial="hidden"
+   704→   704→              animate="visible"
+   705→   705→            >
+   706→   706→              {features.map((feature, index) => (
+   707→   707→                <FeatureCard key={feature.label} feature={feature} index={index} />
+   708→   708→              ))}
+   709→   709→            </motion.div>
+   710→   710→          </motion.div>
+   711→   711→        </div>
+   712→   712→
+   713→   713→        {/* Bottom stats with animated counters */}
+   714→   714→        <motion.div
+   715→   715→          className="relative z-10 flex items-center gap-8 px-6 pb-6 pt-4"
+   716→   716→          initial={{ opacity: 0, y: 20 }}
+   717→   717→          animate={{ opacity: 1, y: 0 }}
+   718→   718→          transition={{ delay: 1, duration: 0.6 }}
+   719→   719→        >
+   720→   720→          {[
+   721→   721→            { value: '4', label: 'Rôles', icon: Users },
+   722→   722→            { value: '25+', label: 'Modèles', icon: TrendingUp },
+   723→   723→            { value: '80+', label: 'API Routes', icon: Zap },
+   724→   724→          ].map((stat, i) => (
+   725→   725→            <motion.div
+   726→   726→              key={stat.label}
+   727→   727→              className="text-center"
+   728→   728→              initial={{ opacity: 0, scale: 0.5 }}
+   729→   729→              animate={{ opacity: 1, scale: 1 }}
+   730→   730→              transition={{ delay: 1.2 + i * 0.15, type: 'spring', stiffness: 200 }}
+   731→   731→            >
+   732→   732→              <div className="flex items-center justify-center gap-1.5">
+   733→   733→                <stat.icon className="w-3 h-3 text-emerald-400/60" />
+   734→   734→                <p className="text-2xl font-black text-white">{stat.value}</p>
+   735→   735→              </div>
+   736→   736→              <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider">{stat.label}</p>
+   737→   737→            </motion.div>
+   738→   738→          ))}
+   739→   739→          <div className="ml-auto">
+   740→   740→            <p className="text-[10px] text-white/30 font-medium">&copy; 2026 SECT</p>
+   741→   741→          </div>
+   742→   742→        </motion.div>
+   743→   743→      </motion.div>
+   744→   744→
+   745→   745→      {/* ═══════════════════════════════════════════════════════ */}
+   746→   746→      {/* RIGHT PANEL — Form with subtle WOW effects              */}
+   747→   747→      {/* ═══════════════════════════════════════════════════════ */}
+   748→   748→      <div className="flex-1 flex flex-col min-h-screen lg:min-h-0 bg-white dark:bg-zinc-950 relative">
+   749→   749→        {/* Subtle background pattern for right panel */}
+   750→   750→        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+   751→   751→          <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-emerald-50 dark:bg-emerald-950/10 blur-3xl" />
+   752→   752→          <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-teal-50 dark:bg-teal-950/10 blur-3xl" />
+   753→   753→        </div>
+   754→   754→
+   755→   755→        {/* Mobile header */}
+   756→   756→        <div className="lg:hidden p-4 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 relative z-10">
+   757→   757→          {onBack && (
+   758→   758→            <button
+   759→   759→              onClick={onBack}
+   760→   760→              className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+   761→   761→            >
+   762→   762→              <ArrowLeft className="h-4 w-4" />
+   763→   763→              <span className="text-sm font-medium">Retour</span>
+   764→   764→            </button>
+   765→   765→          )}
+   766→   766→          <div className="flex items-center gap-2 ml-auto">
+   767→   767→            <motion.div
+   768→   768→              className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center"
+   769→   769→              animate={{ rotate: [0, 360] }}
+   770→   770→              transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+   771→   771→              style={{ transform: 'none' }}
+   772→   772→            >
+   773→   773→              <span className="text-white font-bold text-sm">S</span>
+   774→   774→            </motion.div>
+   775→   775→            <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100">SECT</span>
+   776→   776→          </div>
+   777→   777→        </div>
+   778→   778→
+   779→   779→        {/* Form content */}
+   780→   780→        <motion.main
+   781→   781→          className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-8 lg:py-12"
+   782→   782→          variants={containerVariants}
+   783→   783→          initial="hidden"
+   784→   784→          animate="visible"
+   785→   785→        >
+   786→   786→          <div className="w-full max-w-[420px] space-y-8">
+   787→   787→            {/* Header */}
+   788→   788→            <motion.div variants={itemVariants} className="text-center lg:text-left">
+   789→   789→              <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
+   790→   790→                <motion.div
+   791→   791→                  className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-xl shadow-emerald-500/30"
+   792→   792→                  animate={{ boxShadow: ['0 20px 40px rgba(16,185,129,0.3)', '0 15px 30px rgba(16,185,129,0.2)', '0 20px 40px rgba(16,185,129,0.3)'] }}
+   793→   793→                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+   794→   794→                >
+   795→   795→                  <GraduationCap className="w-7 h-7 text-white" />
+   796→   796→                </motion.div>
+   797→   797→              </div>
+   798→   798→              <motion.h2
+   799→   799→                className="text-2xl sm:text-3xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight"
+   800→   800→              >
+   801→   801→                <motion.span
+   802→   802→                  className="inline-block"
+   803→   803→                  whileHover={{ scale: 1.02 }}
+   804→   804→                >
+   805→   805→                  Bon retour
+   806→   806→                </motion.span>
+   807→   807→                <motion.span
+   808→   808→                  className="inline-block ml-1.5"
+   809→   809→                  animate={{ rotate: [0, 14, -8, 14, -4, 0] }}
+   810→   810→                  transition={{ duration: 0.6, delay: 1 }}
+   811→   811→                >
+   812→   812→                  👋
+   813→   813→                </motion.span>
+   814→   814→              </motion.h2>
+   815→   815→              <p className="mt-2 text-zinc-500 dark:text-zinc-400 text-sm sm:text-base">
+   816→   816→                Connectez-vous pour accéder à votre espace
+   817→   817→              </p>
+   818→   818→            </motion.div>
+   819→   819→
+   820→   820→            {/* Login Form Card */}
+   821→   821→            <motion.div variants={itemVariants}>
+   822→   822→              <motion.div
+   823→   823→                className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/50 backdrop-blur-sm p-6 sm:p-8 shadow-xl shadow-zinc-200/40 dark:shadow-zinc-900/50"
+   824→   824→                whileHover={{ boxShadow: '0 25px 50px -12px rgba(0,0,0,0.12)' }}
+   825→   825→                transition={{ duration: 0.3 }}
+   826→   826→              >
+   827→   827→                {/* Mode Toggle */}
+   828→   828→                <LoginModeToggle mode={loginMode} onModeChange={handleModeChange} />
+   829→   829→
+   830→   830→                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+   831→   831→                  {/* Identifier (Email or Matricule) */}
+   832→   832→                  <div className="space-y-2">
+   833→   833→                    <Label htmlFor="identifier" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+   834→   834→                      {identifierLabel}
+   835→   835→                    </Label>
+   836→   836→                    <div className="relative group">
+   837→   837→                      <AnimatePresence mode="wait">
+   838→   838→                        <motion.div
+   839→   839→                          key={loginMode}
+   840→   840→                          className="absolute left-3.5 top-1/2 -translate-y-1/2"
+   841→   841→                          initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
+   842→   842→                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+   843→   843→                          exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
+   844→   844→                          transition={{ duration: 0.2 }}
+   845→   845→                        >
+   846→   846→                          <IdentifierIcon className="h-4 w-4 text-zinc-400 group-focus-within:text-emerald-500 transition-colors duration-300" />
+   847→   847→                        </motion.div>
+   848→   848→                      </AnimatePresence>
+   849→   849→                      <Input
+   850→   850→                        id="identifier"
+   851→   851→                        type={isPersonnel ? 'email' : 'text'}
+   852→   852→                        placeholder={identifierPlaceholder}
+   853→   853→                        autoComplete={isPersonnel ? 'email' : 'off'}
+   854→   854→                        className="pl-10 h-11 rounded-xl border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/50 focus:bg-white dark:focus:bg-zinc-800 transition-all duration-300 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500"
+   855→   855→                        {...form.register('identifier')}
+   856→   856→                        aria-invalid={!!form.formState.errors.identifier}
+   857→   857→                      />
+   858→   858→                    </div>
+   859→   859→                    <AnimatePresence>
+   860→   860→                      {form.formState.errors.identifier && (
+   861→   861→                        <motion.p
+   862→   862→                          initial={{ opacity: 0, y: -4 }}
+   863→   863→                          animate={{ opacity: 1, y: 0 }}
+   864→   864→                          exit={{ opacity: 0, y: -4 }}
+   865→   865→                          className="text-sm text-rose-500 flex items-center gap-1"
+   866→   866→                        >
+   867→   867→                          {form.formState.errors.identifier.message}
+   868→   868→                        </motion.p>
+   869→   869→                      )}
+   870→   870→                    </AnimatePresence>
+   871→   871→                  </div>
+   872→   872→
+   873→   873→                  {/* Password */}
+   874→   874→                  <div className="space-y-2">
+   875→   875→                    <Label htmlFor="password" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+   876→   876→                      Mot de passe
+   877→   877→                    </Label>
+   878→   878→                    <div className="relative group">
+   879→   879→                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 group-focus-within:text-emerald-500 transition-colors duration-300" />
+   880→   880→                      <Input
+   881→   881→                        id="password"
+   882→   882→                        type={showPassword ? 'text' : 'password'}
+   883→   883→                        placeholder="••••••••"
+   884→   884→                        className="pl-10 pr-10 h-11 rounded-xl border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/50 focus:bg-white dark:focus:bg-zinc-800 transition-all duration-300 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500"
+   885→   885→                        {...form.register('password')}
+   886→   886→                        aria-invalid={!!form.formState.errors.password}
+   887→   887→                      />
+   888→   888→                      <motion.button
+   889→   889→                        type="button"
+   890→   890→                        onClick={() => setShowPassword(!showPassword)}
+   891→   891→                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors p-0.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
+   892→   892→                        aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+   893→   893→                        whileTap={{ scale: 0.85 }}
+   894→   894→                      >
+   895→   895→                        <AnimatePresence mode="wait">
+   896→   896→                          <motion.div
+   897→   897→                            key={showPassword ? 'hide' : 'show'}
+   898→   898→                            initial={{ opacity: 0, rotate: -90 }}
+   899→   899→                            animate={{ opacity: 1, rotate: 0 }}
+   900→   900→                            exit={{ opacity: 0, rotate: 90 }}
+   901→   901→                            transition={{ duration: 0.15 }}
+   902→   902→                          >
+   903→   903→                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+   904→   904→                          </motion.div>
+   905→   905→                        </AnimatePresence>
+   906→   906→                      </motion.button>
+   907→   907→                    </div>
+   908→   908→                    <AnimatePresence>
+   909→   909→                      {form.formState.errors.password && (
+   910→   910→                        <motion.p
+   911→   911→                          initial={{ opacity: 0, y: -4 }}
+   912→   912→                          animate={{ opacity: 1, y: 0 }}
+   913→   913→                          exit={{ opacity: 0, y: -4 }}
+   914→   914→                          className="text-sm text-rose-500 flex items-center gap-1"
+   915→   915→                        >
+   916→   916→                          {form.formState.errors.password.message}
+   917→   917→                        </motion.p>
+   918→   918→                      )}
+   919→   919→                    </AnimatePresence>
+   920→   920→                  </div>
+   921→   921→
+   922→   922→                  {/* Forgot password (available for all modes) */}
+   923→   923→                  <div className="flex justify-end">
+   924→   924→                    <motion.button
+   925→   925→                      type="button"
+   926→   926→                      onClick={openResetDialog}
+   927→   927→                      className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
+   928→   928→                      whileHover={{ x: 2 }}
+   929→   929→                    >
+   930→   930→                      Mot de passe oublié ?
+   931→   931→                    </motion.button>
+   932→   932→                  </div>
+   933→   933→
+   934→   934→                  {/* Error message */}
+   935→   935→                  <AnimatePresence>
+   936→   936→                    {loginError && (
+   937→   937→                      <motion.div
+   938→   938→                        initial={{ opacity: 0, height: 0, marginTop: 0 }}
+   939→   939→                        animate={{ opacity: 1, height: 'auto', marginTop: 4 }}
+   940→   940→                        exit={{ opacity: 0, height: 0, marginTop: 0 }}
+   941→   941→                        className="overflow-hidden"
+   942→   942→                      >
+   943→   943→                        <motion.div
+   944→   944→                          className="rounded-xl border border-rose-200 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-600 dark:text-rose-400 flex items-center gap-2"
+   945→   945→                          animate={{ x: [0, -4, 4, -4, 0] }}
+   946→   946→                          transition={{ duration: 0.4, delay: 0.1 }}
+   947→   947→                        >
+   948→   948→                          <motion.div
+   949→   949→                            className="w-2 h-2 rounded-full bg-rose-500 shrink-0"
+   950→   950→                            animate={{ scale: [1, 1.3, 1] }}
+   951→   951→                            transition={{ duration: 0.6, repeat: Infinity }}
+   952→   952→                          />
+   953→   953→                          {loginError}
+   954→   954→                        </motion.div>
+   955→   955→                      </motion.div>
+   956→   956→                    )}
+   957→   957→                  </AnimatePresence>
+   958→   958→
+   959→   959→                  {/* Submit with animated gradient border */}
+   960→   960→                  <GradientButton disabled={isLoading}>
+   961→   961→                    {isLoading ? (
+   962→   962→                      <span className="flex items-center justify-center gap-2">
+   963→   963→                        <Loader2 className="h-4 w-4 animate-spin" />
+   964→   964→                        Connexion en cours...
+   965→   965→                      </span>
+   966→   966→                    ) : (
+   967→   967→                      <span className="flex items-center justify-center gap-2">
+   968→   968→                        Se connecter
+   969→   969→                        <ChevronRight className="w-4 h-4" />
+   970→   970→                      </span>
+   971→   971→                    )}
+   972→   972→                  </GradientButton>
+   973→   973→                </form>
+   974→   974→              </motion.div>
+   975→   975→            </motion.div>
+   976→   976→
+   977→   977→            {/* Footer text */}
+   978→   978→            <motion.div
+   979→   979→              variants={itemVariants}
+   980→   980→              className="text-center"
+   981→   981→            >
+   982→   982→              <p className="text-xs text-zinc-400 dark:text-zinc-500">
+   983→   983→                {loginMode === 'personnel' ? (
+   984→   984→                  <>Connexion réservée au personnel administratif et enseignant</>
+   985→   985→                ) : (
+   986→   986→                  <>Connexion réservée aux étudiants via leur matricule ou email</>
+   987→   987→                )}
+   988→   988→              </p>
+   989→   989→            </motion.div>
+   990→   990→          </div>
+   991→   991→        </motion.main>
+   992→   992→      </div>
+   993→   993→
+   994→   994→      {/* ═══════════════ Password Reset Request Dialog ═══════════════ */}
+   995→   995→      <Dialog open={resetDialogOpen} onOpenChange={(open) => { if (!open) setResetDialogOpen(false) }}>
+   996→   996→        <DialogContent className="sm:max-w-md rounded-2xl">
+   997→   997→          <DialogHeader>
+   998→   998→            <DialogTitle className="flex items-center gap-2.5 text-lg">
+   999→   999→              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+  1000→  1000→                <KeyRound className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+  1001→  1001→              </div>
+  1002→  1002→              Réinitialiser le mot de passe
+  1003→  1003→            </DialogTitle>
+  1004→  1004→            <DialogDescription className="text-sm">
+  1005→  1005→              Entrez votre adresse email pour recevoir un token de réinitialisation.
+  1006→  1006→            </DialogDescription>
+  1007→  1007→          </DialogHeader>
+  1008→  1008→
+  1009→  1009→          {!resetSent ? (
+  1010→  1010→            <div className="space-y-4">
+  1011→  1011→              <div className="space-y-2">
+  1012→  1012→                <Label htmlFor="reset-email" className="text-sm font-medium">Adresse email</Label>
+  1013→  1013→                <div className="relative">
+  1014→  1014→                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+  1015→  1015→                  <Input
+  1016→  1016→                    id="reset-email"
+  1017→  1017→                    type="email"
+  1018→  1018→                    placeholder="votre.email@universite.fr"
+  1019→  1019→                    value={resetEmail}
+  1020→  1020→                    onChange={(e) => setResetEmail(e.target.value)}
+  1021→  1021→                    className="pl-10 h-11 rounded-xl"
+  1022→  1022→                    onKeyDown={(e) => e.key === 'Enter' && handleResetRequest()}
+  1023→  1023→                  />
+  1024→  1024→                </div>
+  1025→  1025→              </div>
+  1026→  1026→              <DialogFooter className="gap-2 sm:gap-2 pt-2">
+  1027→  1027→                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl h-10">
+  1028→  1028→                  Annuler
+  1029→  1029→                </Button>
+  1030→  1030→                <Button onClick={handleResetRequest} disabled={resetSending} className="rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500">
+  1031→  1031→                  {resetSending ? (
+  1032→  1032→                    <>
+  1033→  1033→                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+  1034→  1034→                      Envoi...
+  1035→  1035→                    </>
+  1036→  1036→                  ) : (
+  1037→  1037→                    'Envoyer le token'
+  1038→  1038→                  )}
+  1039→  1039→                </Button>
+  1040→  1040→              </DialogFooter>
+  1041→  1041→            </div>
+  1042→  1042→          ) : (
+  1043→  1043→            <div className="space-y-4">
+  1044→  1044→              <motion.div
+  1045→  1045→                initial={{ opacity: 0, scale: 0.9 }}
+  1046→  1046→                animate={{ opacity: 1, scale: 1 }}
+  1047→  1047→                className="rounded-xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/20 p-4 text-center"
+  1048→  1048→              >
+  1049→  1049→                <motion.div
+  1050→  1050→                  animate={{ scale: [1, 1.2, 1] }}
+  1051→  1051→                  transition={{ duration: 0.4 }}
+  1052→  1052→                >
+  1053→  1053→                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+  1054→  1054→                </motion.div>
+  1055→  1055→                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+  1056→  1056→                  Demande envoyée avec succès
+  1057→  1057→                </p>
+  1058→  1058→                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mt-1">
+  1059→  1059→                  Vérifiez votre boîte mail pour le token de réinitialisation.
+  1060→  1060→                </p>
+  1061→  1061→              </motion.div>
+  1062→  1062→
+  1063→  1063→              {resetToken && (
+  1064→  1064→                <motion.div
+  1065→  1065→                  initial={{ opacity: 0, height: 0 }}
+  1066→  1066→                  animate={{ opacity: 1, height: 'auto' }}
+  1067→  1067→                  className="space-y-3"
+  1068→  1068→                >
+  1069→  1069→                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-3">
+  1070→  1070→                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Token reçu :</p>
+  1071→  1071→                    <code className="text-sm font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded break-all">{resetToken}</code>
+  1072→  1072→                  </div>
+  1073→  1073→                  <Button
+  1074→  1074→                    onClick={() => openConfirmDialog(resetToken)}
+  1075→  1075→                    className="w-full rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500"
+  1076→  1076→                  >
+  1077→  1077→                    Définir un nouveau mot de passe
+  1078→  1078→                  </Button>
+  1079→  1079→                </motion.div>
+  1080→  1080→              )}
+  1081→  1081→
+  1082→  1082→              <DialogFooter className="gap-2 sm:gap-2 pt-2">
+  1083→  1083→                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl h-10">
+  1084→  1084→                  Fermer
+  1085→  1085→                </Button>
+  1086→  1086→                <Button
+  1087→  1087→                  variant="ghost"
+  1088→  1088→                  onClick={() => {
+  1089→  1089→                    setResetSent(false)
+  1090→  1090→                    setResetToken(null)
+  1091→  1091→                    setResetEmail('')
+  1092→  1092→                  }}
+  1093→  1093→                  className="rounded-xl h-10"
+  1094→  1094→                >
+  1095→  1095→                  Renvoyer
+  1096→  1096→                </Button>
+  1097→  1097→                {!resetToken && (
+  1098→  1098→                  <Button
+  1099→  1099→                    onClick={() => openConfirmDialog()}
+  1100→  1100→                    className="rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500"
+  1101→  1101→                  >
+  1102→  1102→                    J&apos;ai déjà un token
+  1103→  1103→                  </Button>
+  1104→  1104→                )}
+  1105→  1105→              </DialogFooter>
+  1106→  1106→            </div>
+  1107→  1107→          )}
+  1108→  1108→        </DialogContent>
+  1109→  1109→      </Dialog>
+  1110→  1110→
+  1111→  1111→      {/* ═══════════════ Password Reset Confirm Dialog ═══════════════ */}
+  1112→  1112→      <Dialog open={confirmDialogOpen} onOpenChange={(open) => { if (!open) setConfirmDialogOpen(false) }}>
+  1113→  1113→        <DialogContent className="sm:max-w-md rounded-2xl">
+  1114→  1114→          <DialogHeader>
+  1115→  1115→            <DialogTitle className="flex items-center gap-2.5 text-lg">
+  1116→  1116→              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+  1117→  1117→                <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+  1118→  1118→              </div>
+  1119→  1119→              Nouveau mot de passe
+  1120→  1120→            </DialogTitle>
+  1121→  1121→            <DialogDescription className="text-sm">
+  1122→  1122→              Entrez votre token et choisissez un nouveau mot de passe.
+  1123→  1123→            </DialogDescription>
+  1124→  1124→          </DialogHeader>
+  1125→  1125→
+  1126→  1126→          {!confirmSuccess ? (
+  1127→  1127→            <div className="space-y-4">
+  1128→  1128→              <div className="space-y-2">
+  1129→  1129→                <Label htmlFor="confirm-token" className="text-sm font-medium">Token de réinitialisation</Label>
+  1130→  1130→                <Input
+  1131→  1131→                  id="confirm-token"
+  1132→  1132→                  type="text"
+  1133→  1133→                  placeholder="Entrez le token ici"
+  1134→  1134→                  value={confirmToken}
+  1135→  1135→                  onChange={(e) => setConfirmToken(e.target.value)}
+  1136→  1136→                  className="h-11 rounded-xl"
+  1137→  1137→                />
+  1138→  1138→              </div>
+  1139→  1139→              <div className="space-y-2">
+  1140→  1140→                <Label htmlFor="confirm-password" className="text-sm font-medium">Nouveau mot de passe</Label>
+  1141→  1141→                <div className="relative">
+  1142→  1142→                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+  1143→  1143→                  <Input
+  1144→  1144→                    id="confirm-password"
+  1145→  1145→                    type="password"
+  1146→  1146→                    placeholder="••••••••"
+  1147→  1147→                    value={confirmPassword}
+  1148→  1148→                    onChange={(e) => setConfirmPassword(e.target.value)}
+  1149→  1149→                    className="pl-10 h-11 rounded-xl"
+  1150→  1150→                    onKeyDown={(e) => e.key === 'Enter' && handleResetConfirm()}
+  1151→  1151→                  />
+  1152→  1152→                </div>
+  1153→  1153→              </div>
+  1154→  1154→              <DialogFooter className="gap-2 sm:gap-2 pt-2">
+  1155→  1155→                <Button variant="outline" onClick={() => setConfirmDialogOpen(false)} className="rounded-xl h-10">
+  1156→  1156→                  Annuler
+  1157→  1157→                </Button>
+  1158→  1158→                <Button onClick={handleResetConfirm} disabled={confirmSubmitting} className="rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500">
+  1159→  1159→                  {confirmSubmitting ? (
+  1160→  1160→                    <>
+  1161→  1161→                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+  1162→  1162→                      Mise à jour...
+  1163→  1163→                    </>
+  1164→  1164→                  ) : (
+  1165→  1165→                    'Confirmer'
+  1166→  1166→                  )}
+  1167→  1167→                </Button>
+  1168→  1168→              </DialogFooter>
+  1169→  1169→            </div>
+  1170→  1170→          ) : (
+  1171→  1171→            <div className="space-y-4">
+  1172→  1172→              <motion.div
+  1173→  1173→                initial={{ opacity: 0, scale: 0.9 }}
+  1174→  1174→                animate={{ opacity: 1, scale: 1 }}
+  1175→  1175→                className="rounded-xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/20 p-4 text-center"
+  1176→  1176→              >
+  1177→  1177→                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+  1178→  1178→                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+  1179→  1179→                  Mot de passe mis à jour avec succès !
+  1180→  1180→                </p>
+  1181→  1181→              </motion.div>
+  1182→  1182→              <DialogFooter className="pt-2">
+  1183→  1183→                <Button
+  1184→  1184→                  onClick={() => {
+  1185→  1185→                    setConfirmDialogOpen(false)
+  1186→  1186→                    setResetDialogOpen(false)
+  1187→  1187→                  }}
+  1188→  1188→                  className="w-full rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500"
+  1189→  1189→                >
+  1190→  1190→                  Retour à la connexion
+  1191→  1191→                </Button>
+  1192→  1192→              </DialogFooter>
+  1193→  1193→            </div>
+  1194→  1194→          )}
+  1195→  1195→        </DialogContent>
+  1196→  1196→      </Dialog>
+  1197→  1197→    </div>
+  1198→  1198→    </>
+  1199→  1199→  )
+  1200→  1200→}
+  1201→  1201→
