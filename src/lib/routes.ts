@@ -37,6 +37,7 @@ export type PageId =
   | 'facturation'
   | 'ai-providers'
   | 'surveillance'
+  | 'mes-certificats'
   | 'profil'
   | 'parametres'
 
@@ -77,6 +78,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   facturation: '/facturation',
   'ai-providers': '/ai-providers',
   surveillance: '/surveillance',
+  'mes-certificats': '/mes-certificats',
   profil: '/profil',
   parametres: '/parametres',
 }
@@ -123,6 +125,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   notifications: 'Centre de notifications',
   'ai-providers': 'Fournisseurs IA',
   surveillance: 'Surveillance & Alertes',
+  'mes-certificats': 'Mes certificats',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -164,6 +167,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   notifications: 'Gérer les notifications et les diffusions de la plateforme',
   'ai-providers': "Configurer et gérer les fournisseurs d'intelligence artificielle",
   surveillance: 'Consultez les alertes anti-fraude et captures d\'écran',
+  'mes-certificats': 'Consulter et télécharger vos certificats',
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -381,6 +385,7 @@ const ETUDIANT_CATEGORIES: NavCategory[] = [
     defaultOpen: true,
     items: [
       { id: 'mes-resultats', label: 'Notes & résultats', icon: 'Award' },
+      { id: 'mes-certificats', label: 'Mes certificats', icon: 'ScrollText' },
     ],
   },
 ]

@@ -7,12 +7,14 @@ const PUBLIC_PATHS = [
   '/',               // Landing page (page.tsx handles auth redirect internally)
   '/login',
   '/invitation',
+  '/verify',         // Public certificate verification page
   '/api/auth',       // NextAuth routes (login, session, callback)
   '/api/auth/password-reset',
   '/api/auth/password-reset/confirm',
   '/api/invitations/verify',
   '/api/invitations/accept',
   '/api/epreuves/auto-close', // Cron auto-close (has its own secret-based auth)
+  '/api/certificats/verify',  // Public certificate verification endpoint
 ]
 
 // API routes that should return 401 instead of redirecting
