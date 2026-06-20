@@ -4,6 +4,7 @@ import { getToken } from 'next-auth/jwt'
 
 // Public routes that don't require authentication
 const PUBLIC_PATHS = [
+  '/',               // Landing page (page.tsx handles auth redirect internally)
   '/login',
   '/invitation',
   '/api/auth',       // NextAuth routes (login, session, callback)
@@ -21,7 +22,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow public paths
-  if (PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
+  if (PUBLIC_PATHS.some(path => path === '/' ? pathname === '/' : pathname.startsWith(path))) {
     return NextResponse.next()
   }
 
