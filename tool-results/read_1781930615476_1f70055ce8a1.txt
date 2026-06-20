@@ -1,0 +1,1131 @@
+     1→'use client'
+     2→
+     3→import { motion, useInView, useScroll, useTransform, AnimatePresence } from 'framer-motion'
+     4→import { useRef, useState, useEffect } from 'react'
+     5→import {
+     6→  Sparkles,
+     7→  FileText,
+     8→  CheckCircle,
+     9→  Shield,
+    10→  BarChart3,
+    11→  Building2,
+    12→  ArrowRight,
+    13→  Star,
+    14→  Quote,
+    15→  Mail,
+    16→  Phone,
+    17→  Upload,
+    18→  Monitor,
+    19→  Brain,
+    20→  Check,
+    21→  Zap,
+    22→  Crown,
+    23→  ChevronDown,
+    24→  Play,
+    25→  Clock,
+    26→  GraduationCap,
+    27→  Cpu,
+    28→  Menu,
+    29→  X,
+    30→  LucideIcon,
+    31→} from 'lucide-react'
+    32→import { Button } from '@/components/ui/button'
+    33→import {
+    34→  Card,
+    35→  CardContent,
+    36→  CardDescription,
+    37→  CardFooter,
+    38→  CardHeader,
+    39→  CardTitle,
+    40→} from '@/components/ui/card'
+    41→import { Separator } from '@/components/ui/separator'
+    42→
+    43→interface LandingPageProps {
+    44→  onLogin: () => void
+    45→  onDemo: () => void
+    46→}
+    47→
+    48→/* ─── Particle system ─── */
+    49→function Particles() {
+    50→  const canvasRef = useRef<HTMLCanvasElement>(null)
+    51→
+    52→  useEffect(() => {
+    53→    const canvas = canvasRef.current
+    54→    if (!canvas) return
+    55→    const ctx = canvas.getContext('2d')
+    56→    if (!ctx) return
+    57→
+    58→    let animationId: number
+    59→    const particles: { x: number; y: number; vx: number; vy: number; size: number; opacity: number; hue: number }[] = []
+    60→
+    61→    const resize = () => {
+    62→      canvas.width = window.innerWidth
+    63→      canvas.height = window.innerHeight
+    64→    }
+    65→    resize()
+    66→    window.addEventListener('resize', resize)
+    67→
+    68→    for (let i = 0; i < 50; i++) {
+    69→      particles.push({
+    70→        x: Math.random() * canvas.width,
+    71→        y: Math.random() * canvas.height,
+    72→        vx: (Math.random() - 0.5) * 0.4,
+    73→        vy: (Math.random() - 0.5) * 0.4,
+    74→        size: Math.random() * 2.5 + 1,
+    75→        opacity: Math.random() * 0.25 + 0.08,
+    76→        hue: Math.random() > 0.5 ? 160 : 170,
+    77→      })
+    78→    }
+    79→
+    80→    const animate = () => {
+    81→      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    82→
+    83→      particles.forEach((p, i) => {
+    84→        p.x += p.vx
+    85→        p.y += p.vy
+    86→        if (p.x < 0 || p.x > canvas.width) p.vx *= -1
+    87→        if (p.y < 0 || p.y > canvas.height) p.vy *= -1
+    88→
+    89→        ctx.beginPath()
+    90→        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+    91→        ctx.fillStyle = `hsla(${p.hue}, 70%, 45%, ${p.opacity})`
+    92→        ctx.fill()
+    93→
+    94→        for (let j = i + 1; j < particles.length; j++) {
+    95→          const dx = particles[j].x - p.x
+    96→          const dy = particles[j].y - p.y
+    97→          const dist = Math.sqrt(dx * dx + dy * dy)
+    98→          if (dist < 120) {
+    99→            ctx.beginPath()
+   100→            ctx.moveTo(p.x, p.y)
+   101→            ctx.lineTo(particles[j].x, particles[j].y)
+   102→            ctx.strokeStyle = `hsla(165, 60%, 45%, ${0.06 * (1 - dist / 120)})`
+   103→            ctx.lineWidth = 0.5
+   104→            ctx.stroke()
+   105→          }
+   106→        }
+   107→      })
+   108→
+   109→      animationId = requestAnimationFrame(animate)
+   110→    }
+   111→    animate()
+   112→
+   113→    return () => {
+   114→      cancelAnimationFrame(animationId)
+   115→      window.removeEventListener('resize', resize)
+   116→    }
+   117→  }, [])
+   118→
+   119→  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }} />
+   120→}
+   121→
+   122→/* ─── Animated counter ─── */
+   123→function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
+   124→  const [count, setCount] = useState(0)
+   125→  const ref = useRef(null)
+   126→  const isInView = useInView(ref, { once: true })
+   127→
+   128→  useEffect(() => {
+   129→    if (!isInView) return
+   130→    const duration = 2000
+   131→    const steps = 60
+   132→    const increment = target / steps
+   133→    let current = 0
+   134→    const timer = setInterval(() => {
+   135→      current += increment
+   136→      if (current >= target) {
+   137→        setCount(target)
+   138→        clearInterval(timer)
+   139→      } else {
+   140→        setCount(Math.floor(current))
+   141→      }
+   142→    }, duration / steps)
+   143→    return () => clearInterval(timer)
+   144→  }, [isInView, target])
+   145→
+   146→  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>
+   147→}
+   148→
+   149→/* ─── Fade in when visible ─── */
+   150→function FadeInWhenVisible({
+   151→  children,
+   152→  delay = 0,
+   153→  direction = 'up',
+   154→  className,
+   155→}: {
+   156→  children: React.ReactNode
+   157→  delay?: number
+   158→  direction?: 'up' | 'down' | 'left' | 'right'
+   159→  className?: string
+   160→}) {
+   161→  const ref = useRef(null)
+   162→  const isInView = useInView(ref, { once: true, margin: '-80px' })
+   163→
+   164→  const directionMap = {
+   165→    up: { y: 40, x: 0 },
+   166→    down: { y: -40, x: 0 },
+   167→    left: { x: 40, y: 0 },
+   168→    right: { x: -40, y: 0 },
+   169→  }
+   170→
+   171→  return (
+   172→    <motion.div
+   173→      ref={ref}
+   174→      initial={{ opacity: 0, ...directionMap[direction] }}
+   175→      animate={isInView ? { opacity: 1, x: 0, y: 0 } : {}}
+   176→      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
+   177→      className={className}
+   178→    >
+   179→      {children}
+   180→    </motion.div>
+   181→  )
+   182→}
+   183→
+   184→/* ─── Floating shapes ─── */
+   185→function FloatingShapes() {
+   186→  return (
+   187→    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+   188→      <motion.div
+   189→        className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-emerald-200/40 to-teal-200/20 blur-3xl"
+   190→        animate={{ x: [0, 40, 0], y: [0, -30, 0] }}
+   191→        transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+   192→      />
+   193→      <motion.div
+   194→        className="absolute top-1/3 -left-32 w-[400px] h-[400px] rounded-full bg-gradient-to-br from-cyan-200/30 to-emerald-100/20 blur-3xl"
+   195→        animate={{ x: [0, -30, 0], y: [0, 40, 0] }}
+   196→        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+   197→      />
+   198→      <motion.div
+   199→        className="absolute -bottom-20 right-1/4 w-[350px] h-[350px] rounded-full bg-gradient-to-br from-teal-200/30 to-cyan-100/20 blur-3xl"
+   200→        animate={{ x: [0, 25, 0], y: [0, -35, 0] }}
+   201→        transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+   202→      />
+   203→    </div>
+   204→  )
+   205→}
+   206→
+   207→/* ─── Decorative grid ─── */
+   208→function DecorativeGrid() {
+   209→  return (
+   210→    <div className="absolute inset-0 pointer-events-none opacity-[0.03]">
+   211→      <div
+   212→        className="w-full h-full"
+   213→        style={{
+   214→          backgroundImage: 'radial-gradient(circle, #0d9488 1px, transparent 1px)',
+   215→          backgroundSize: '48px 48px',
+   216→        }}
+   217→      />
+   218→    </div>
+   219→  )
+   220→}
+   221→
+   222→/* ─── Typing text animation ─── */
+   223→function TypingText({ texts, className }: { texts: string[]; className?: string }) {
+   224→  const [currentIndex, setCurrentIndex] = useState(0)
+   225→  const [displayText, setDisplayText] = useState('')
+   226→  const [isDeleting, setIsDeleting] = useState(false)
+   227→
+   228→  useEffect(() => {
+   229→    const currentFullText = texts[currentIndex]
+   230→    let timeout: ReturnType<typeof setTimeout>
+   231→
+   232→    if (!isDeleting) {
+   233→      if (displayText.length < currentFullText.length) {
+   234→        timeout = setTimeout(() => {
+   235→          setDisplayText(currentFullText.slice(0, displayText.length + 1))
+   236→        }, 60)
+   237→      } else {
+   238→        timeout = setTimeout(() => setIsDeleting(true), 2000)
+   239→      }
+   240→    } else {
+   241→      if (displayText.length > 0) {
+   242→        timeout = setTimeout(() => {
+   243→          setDisplayText(displayText.slice(0, -1))
+   244→        }, 30)
+   245→      } else {
+   246→        timeout = setTimeout(() => {
+   247→          setIsDeleting(false)
+   248→          setCurrentIndex((prev) => (prev + 1) % texts.length)
+   249→        }, 300)
+   250→      }
+   251→    }
+   252→
+   253→    return () => clearTimeout(timeout)
+   254→  }, [displayText, isDeleting, currentIndex, texts])
+   255→
+   256→  return (
+   257→    <span className={className}>
+   258→      {displayText}
+   259→      <motion.span
+   260→        animate={{ opacity: [1, 0] }}
+   261→        transition={{ duration: 0.5, repeat: Infinity, repeatType: 'reverse' }}
+   262→        className="inline-block w-[3px] h-[1em] bg-emerald-600 ml-1 align-middle"
+   263→      />
+   264→    </span>
+   265→  )
+   266→}
+   267→
+   268→/* ─── Feature card ─── */
+   269→function FeatureCard({ icon: Icon, title, description, iconBg, iconColor, delay }: {
+   270→  icon: LucideIcon
+   271→  title: string
+   272→  description: string
+   273→  iconBg: string
+   274→  iconColor: string
+   275→  delay: number
+   276→}) {
+   277→  return (
+   278→    <FadeInWhenVisible delay={delay}>
+   279→      <motion.div
+   280→        whileHover={{ y: -8, scale: 1.02 }}
+   281→        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   282→      >
+   283→        <Card className="h-full bg-white/70 backdrop-blur-sm border-gray-100 hover:border-emerald-300/60 hover:shadow-xl hover:shadow-emerald-100/50 transition-all duration-500 group rounded-2xl overflow-hidden">
+   284→          <div className="h-1 bg-gradient-to-r from-emerald-400 to-teal-400 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" />
+   285→          <CardContent className="p-7">
+   286→            <div className={`w-14 h-14 rounded-2xl ${iconBg} flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
+   287→              <Icon className={`w-7 h-7 ${iconColor}`} />
+   288→            </div>
+   289→            <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
+   290→            <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+   291→          </CardContent>
+   292→        </Card>
+   293→      </motion.div>
+   294→    </FadeInWhenVisible>
+   295→  )
+   296→}
+   297→
+   298→/* ─── Data ─── */
+   299→const features = [
+   300→  {
+   301→    icon: Sparkles,
+   302→    title: 'Génération IA de questions',
+   303→    description: "Importez vos documents et laissez l'IA générer automatiquement des questions pertinentes et variées adaptées à votre programme.",
+   304→    iconBg: 'bg-amber-50',
+   305→    iconColor: 'text-amber-600',
+   306→  },
+   307→  {
+   308→    icon: FileText,
+   309→    title: 'Épreuves en ligne interactives',
+   310→    description: 'Créez des épreuves personnalisées avec QCM, questions ouvertes, et bien plus. Planifiez et diffusez en un clic.',
+   311→    iconBg: 'bg-emerald-50',
+   312→    iconColor: 'text-emerald-600',
+   313→  },
+   314→  {
+   315→    icon: CheckCircle,
+   316→    title: 'Correction automatisée par IA',
+   317→    description: "La correction des copies est effectuée par l'IA en quelques secondes, avec une fiabilité de 99.7% et des feedbacks détaillés.",
+   318→    iconBg: 'bg-sky-50',
+   319→    iconColor: 'text-sky-600',
+   320→  },
+   321→  {
+   322→    icon: Shield,
+   323→    title: 'Proctoring & anti-fraude',
+   324→    description: "Surveillance intelligente par IA : détection de triche, verrouillage du navigateur, et suivi comportemental en temps réel.",
+   325→    iconBg: 'bg-rose-50',
+   326→    iconColor: 'text-rose-600',
+   327→  },
+   328→  {
+   329→    icon: BarChart3,
+   330→    title: 'Tableaux de bord analytiques',
+   331→    description: 'Visualisez les performances, identifiez les lacunes et prenez des décisions éclairées grâce à des statistiques détaillées.',
+   332→    iconBg: 'bg-violet-50',
+   333→    iconColor: 'text-violet-600',
+   334→  },
+   335→  {
+   336→    icon: Building2,
+   337→    title: 'Multi-établissements SaaS',
+   338→    description: 'Gérez plusieurs établissements depuis une seule plateforme. Architecture multi-tenant sécurisée et évolutive.',
+   339→    iconBg: 'bg-teal-50',
+   340→    iconColor: 'text-teal-600',
+   341→  },
+   342→]
+   343→
+   344→const steps = [
+   345→  {
+   346→    number: '01',
+   347→    icon: Upload,
+   348→    title: 'Créez vos épreuves',
+   349→    description: "Uploadez vos documents pédagogiques et laissez l'IA générer des questions pertinentes. Personnalisez et composez vos épreuves en quelques minutes.",
+   350→    color: 'from-emerald-500 to-teal-500',
+   351→  },
+   352→  {
+   353→    number: '02',
+   354→    icon: Monitor,
+   355→    title: 'Faites passer les examens',
+   356→    description: "Diffusez les épreuves en ligne avec un système de proctoring intégré. Les étudiants passent les examens en toute sécurité depuis n'importe quel appareil.",
+   357→    color: 'from-cyan-500 to-sky-500',
+   358→  },
+   359→  {
+   360→    number: '03',
+   361→    icon: Brain,
+   362→    title: 'Corrigez automatiquement',
+   363→    description: "L'IA corrige les copies instantanément et génère des analytics détaillés. Identifiez les forces et les axes d'amélioration de chaque étudiant.",
+   364→    color: 'from-teal-500 to-emerald-500',
+   365→  },
+   366→]
+   367→
+   368→const stats = [
+   369→  { value: 10000, suffix: '+', label: 'Questions générées', icon: Sparkles },
+   370→  { value: 500, suffix: '+', label: 'Épreuves créées', icon: FileText },
+   371→  { value: 99, suffix: '.7%', label: 'Fiabilité', icon: CheckCircle },
+   372→  { value: 50, suffix: '+', label: 'Établissements', icon: Building2 },
+   373→]
+   374→
+   375→const plans = [
+   376→  {
+   377→    name: 'Gratuit',
+   378→    price: 'Gratuit',
+   379→    period: '/mois',
+   380→    description: 'Idéal pour découvrir la plateforme',
+   381→    icon: Zap,
+   382→    features: [
+   383→      '1 établissement',
+   384→      '50 questions IA / mois',
+   385→      '5 épreuves actives',
+   386→      'Correction automatique',
+   387→      'Support communautaire',
+   388→    ],
+   389→    cta: 'Commencer gratuitement',
+   390→    popular: false,
+   391→  },
+   392→  {
+   393→    name: 'Essentiel',
+   394→    price: '29 900 FCFA',
+   395→    period: '/mois',
+   396→    description: 'Pour les établissements en croissance',
+   397→    icon: Crown,
+   398→    features: [
+   399→      '3 établissements',
+   400→      '500 questions IA / mois',
+   401→      '50 épreuves actives',
+   402→      'Proctoring basique',
+   403→      'Analytics avancés',
+   404→      'Support prioritaire',
+   405→    ],
+   406→    cta: 'Essayer gratuitement',
+   407→    popular: true,
+   408→  },
+   409→  {
+   410→    name: 'Professionnel',
+   411→    price: '89 900 FCFA',
+   412→    period: '/mois',
+   413→    description: 'Pour les grandes institutions',
+   414→    icon: Building2,
+   415→    features: [
+   416→      'Établissements illimités',
+   417→      'Questions IA illimitées',
+   418→      'Épreuves illimitées',
+   419→      'Proctoring avancé',
+   420→      'API & intégrations',
+   421→      'Support dédié 24/7',
+   422→      'SLA garanti 99.9%',
+   423→    ],
+   424→    cta: 'Contacter les ventes',
+   425→    popular: false,
+   426→  },
+   427→]
+   428→
+   429→const testimonials = [
+   430→  {
+   431→    name: 'Dr. Marie Dupont',
+   432→    role: 'Doyenne de la Faculté des Sciences',
+   433→    institution: 'Université de Lyon',
+   434→    content: "SECT a révolutionné notre processus d'évaluation. La génération de questions par IA nous fait gagner des heures de travail chaque semaine, et la correction automatique est d'une fiabilité remarquable.",
+   435→    rating: 5,
+   436→    avatar: 'MD',
+   437→  },
+   438→  {
+   439→    name: 'Prof. Ahmed Benali',
+   440→    role: 'Responsable Pédagogique',
+   441→    institution: 'École Nationale d\'Ingénieurs',
+   442→    content: "Le système de proctoring nous a permis de passer aux examens en ligne en toute confiance. Les étudiants apprécient la flexibilité et nous, la qualité des analytics.",
+   443→    rating: 5,
+   444→    avatar: 'AB',
+   445→  },
+   446→  {
+   447→    name: 'Dr. Claire Martin',
+   448→    role: 'Directrice des Études',
+   449→    institution: 'Institut d\'Administration des Entreprises',
+   450→    content: "La plateforme multi-établissements est exactement ce dont nous avions besoin. Un seul outil pour gérer les évaluations de toutes nos composantes. L'accompagnement est excellent.",
+   451→    rating: 5,
+   452→    avatar: 'CM',
+   453→  },
+   454→]
+   455→
+   456→/* ─── Main Component ─── */
+   457→export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
+   458→  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+   459→  const [scrolled, setScrolled] = useState(false)
+   460→  const heroRef = useRef(null)
+   461→  const { scrollYProgress } = useScroll({
+   462→    target: heroRef,
+   463→    offset: ['start start', 'end start'],
+   464→  })
+   465→  const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '25%'])
+   466→  const heroOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0])
+   467→
+   468→  useEffect(() => {
+   469→    const handleScroll = () => setScrolled(window.scrollY > 20)
+   470→    window.addEventListener('scroll', handleScroll, { passive: true })
+   471→    return () => window.removeEventListener('scroll', handleScroll)
+   472→  }, [])
+   473→
+   474→  return (
+   475→    <div className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 via-white to-gray-50 text-gray-900 overflow-x-hidden">
+   476→      {/* ─── Navbar ─── */}
+   477→      <motion.nav
+   478→        initial={{ y: -20, opacity: 0 }}
+   479→        animate={{ y: 0, opacity: 1 }}
+   480→        transition={{ duration: 0.5 }}
+   481→        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+   482→          scrolled
+   483→            ? 'bg-white/80 backdrop-blur-xl shadow-sm shadow-gray-200/50 border-b border-gray-100'
+   484→            : 'bg-transparent'
+   485→        }`}
+   486→      >
+   487→        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+   488→          <div className="flex items-center gap-3">
+   489→            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+   490→              <span className="text-white font-bold text-sm">S</span>
+   491→            </div>
+   492→            <span className="text-xl font-extrabold bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">
+   493→              SECT
+   494→            </span>
+   495→          </div>
+   496→
+   497→          <div className="hidden md:flex items-center gap-8">
+   498→            {[
+   499→              { href: '#fonctionnalites', label: 'Fonctionnalités' },
+   500→              { href: '#comment', label: 'Comment ça marche' },
+   501→              { href: '#tarifs', label: 'Tarifs' },
+   502→              { href: '#temoignages', label: 'Témoignages' },
+   503→            ].map((link) => (
+   504→              <a
+   505→                key={link.href}
+   506→                href={link.href}
+   507→                className="text-sm font-medium text-gray-500 hover:text-emerald-600 transition-colors duration-200"
+   508→              >
+   509→                {link.label}
+   510→              </a>
+   511→            ))}
+   512→          </div>
+   513→
+   514→          <div className="hidden md:flex items-center gap-3">
+   515→            <Button
+   516→              variant="ghost"
+   517→              onClick={onLogin}
+   518→              className="text-gray-600 hover:text-emerald-700 hover:bg-emerald-50"
+   519→            >
+   520→              Connexion
+   521→            </Button>
+   522→            <Button
+   523→              onClick={onLogin}
+   524→              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 px-5 rounded-xl border-0"
+   525→            >
+   526→              Essai gratuit
+   527→            </Button>
+   528→          </div>
+   529→
+   530→          <button
+   531→            className="md:hidden text-gray-600 hover:text-emerald-600"
+   532→            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+   533→          >
+   534→            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+   535→          </button>
+   536→        </div>
+   537→
+   538→        <AnimatePresence>
+   539→          {mobileMenuOpen && (
+   540→            <motion.div
+   541→              initial={{ opacity: 0, height: 0 }}
+   542→              animate={{ opacity: 1, height: 'auto' }}
+   543→              exit={{ opacity: 0, height: 0 }}
+   544→              className="md:hidden bg-white/95 backdrop-blur-xl border-b border-gray-100 px-4 py-4 space-y-3"
+   545→            >
+   546→              {[
+   547→                { href: '#fonctionnalites', label: 'Fonctionnalités' },
+   548→                { href: '#comment', label: 'Comment ça marche' },
+   549→                { href: '#tarifs', label: 'Tarifs' },
+   550→                { href: '#temoignages', label: 'Témoignages' },
+   551→              ].map((link) => (
+   552→                <a
+   553→                  key={link.href}
+   554→                  href={link.href}
+   555→                  className="block text-sm font-medium text-gray-500 hover:text-emerald-600 py-2"
+   556→                  onClick={() => setMobileMenuOpen(false)}
+   557→                >
+   558→                  {link.label}
+   559→                </a>
+   560→              ))}
+   561→              <div className="flex gap-3 pt-2">
+   562→                <Button variant="outline" onClick={onLogin} className="text-gray-600 flex-1 rounded-xl">
+   563→                  Connexion
+   564→                </Button>
+   565→                <Button
+   566→                  onClick={onLogin}
+   567→                  className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex-1 rounded-xl border-0"
+   568→                >
+   569→                  Essai gratuit
+   570→                </Button>
+   571→              </div>
+   572→            </motion.div>
+   573→          )}
+   574→        </AnimatePresence>
+   575→      </motion.nav>
+   576→
+   577→      {/* ─── Hero Section ─── */}
+   578→      <section ref={heroRef} className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden">
+   579→        <div className="absolute inset-0">
+   580→          <img src="/landing-hero.png" alt="" className="w-full h-full object-cover object-center opacity-[0.15] lg:opacity-[0.22]" />
+   581→          <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/90 via-white/95 to-teal-50/90 lg:from-emerald-50/80 lg:via-white/85 lg:to-teal-50/80" />
+   582→        </div>
+   583→        <motion.div style={{ y: heroY }} className="absolute inset-0">
+   584→          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(16,185,129,0.15),rgba(255,255,255,0))]" />
+   585→          <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_80%_50%,rgba(20,184,166,0.08),rgba(255,255,255,0))]" />
+   586→        </motion.div>
+   587→
+   588→        <FloatingShapes />
+   589→        <Particles />
+   590→        <DecorativeGrid />
+   591→
+   592→        <motion.div style={{ opacity: heroOpacity }} className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20" >
+   593→          <div className="max-w-4xl mx-auto text-center relative" style={{ zIndex: 2 }}>
+   594→            <motion.div
+   595→              initial={{ opacity: 0, y: 30, scale: 0.95 }}
+   596→              animate={{ opacity: 1, y: 0, scale: 1 }}
+   597→              transition={{ duration: 0.6, delay: 0.2 }}
+   598→            >
+   599→              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 backdrop-blur-sm px-5 py-2 mb-8 shadow-sm">
+   600→                <span className="relative flex h-2 w-2">
+   601→                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+   602→                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+   603→                </span>
+   604→                <span className="text-sm font-semibold text-emerald-700">Propulsé par l&apos;Intelligence Artificielle</span>
+   605→              </div>
+   606→            </motion.div>
+   607→
+   608→            <motion.h1
+   609→              initial={{ opacity: 0, y: 30 }}
+   610→              animate={{ opacity: 1, y: 0 }}
+   611→              transition={{ duration: 0.7, delay: 0.3 }}
+   612→              className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1]"
+   613→            >
+   614→              <span className="text-gray-900">Transformez</span>
+   615→              <br />
+   616→              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">
+   617→                l&apos;évaluation
+   618→              </span>
+   619→              <br />
+   620→              <span className="text-gray-900">avec l&apos;IA</span>
+   621→            </motion.h1>
+   622→
+   623→            <motion.div
+   624→              initial={{ opacity: 0, y: 20 }}
+   625→              animate={{ opacity: 1, y: 0 }}
+   626→              transition={{ duration: 0.7, delay: 0.5 }}
+   627→              className="mt-6 h-8"
+   628→            >
+   629→              <TypingText
+   630→                texts={[
+   631→                  'Génération automatique de questions',
+   632→                  'Correction intelligente des copies',
+   633→                  'Analytics en temps réel',
+   634→                  'Proctoring anti-fraude IA',
+   635→                ]}
+   636→                className="text-lg text-emerald-600 font-medium"
+   637→              />
+   638→            </motion.div>
+   639→
+   640→            <motion.p
+   641→              initial={{ opacity: 0, y: 30 }}
+   642→              animate={{ opacity: 1, y: 0 }}
+   643→              transition={{ duration: 0.7, delay: 0.55 }}
+   644→              className="mt-4 text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed"
+   645→            >
+   646→              SECT est la plateforme tout-en-un qui automatise la création, la passation et la
+   647→              correction des épreuves. Gagnez du temps, améliorez la fiabilité.
+   648→            </motion.p>
+   649→
+   650→            <motion.div
+   651→              initial={{ opacity: 0, y: 30 }}
+   652→              animate={{ opacity: 1, y: 0 }}
+   653→              transition={{ duration: 0.7, delay: 0.6 }}
+   654→              className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
+   655→            >
+   656→              <Button
+   657→                size="lg"
+   658→                onClick={onLogin}
+   659→                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-xl shadow-emerald-500/25 px-8 text-base h-14 rounded-2xl border-0 group"
+   660→              >
+   661→                Commencer gratuitement
+   662→                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+   663→              </Button>
+   664→              <Button
+   665→                size="lg"
+   666→                variant="outline"
+   667→                onClick={onDemo}
+   668→                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 px-8 text-base h-14 rounded-2xl backdrop-blur-sm"
+   669→              >
+   670→                <Play className="mr-2 h-5 w-5" />
+   671→                Voir une démo
+   672→              </Button>
+   673→            </motion.div>
+   674→
+   675→            <motion.div
+   676→              initial={{ opacity: 0 }}
+   677→              animate={{ opacity: 1 }}
+   678→              transition={{ duration: 1, delay: 0.9 }}
+   679→              className="mt-14 flex flex-col sm:flex-row items-center justify-center gap-6 text-sm text-gray-400"
+   680→            >
+   681→              <div className="flex items-center gap-2">
+   682→                <Shield className="h-4 w-4 text-emerald-500" />
+   683→                <span>Données chiffrées</span>
+   684→              </div>
+   685→              <div className="flex items-center gap-2">
+   686→                <Clock className="h-4 w-4 text-amber-500" />
+   687→                <span>Configuration en 5 min</span>
+   688→              </div>
+   689→              <div className="flex items-center gap-2">
+   690→                <Zap className="h-4 w-4 text-cyan-500" />
+   691→                <span>Sans carte de crédit</span>
+   692→              </div>
+   693→            </motion.div>
+   694→
+   695→            {/* Hero Image Showcase */}
+   696→            <motion.div
+   697→              initial={{ opacity: 0, y: 50 }}
+   698→              animate={{ opacity: 1, y: 0 }}
+   699→              transition={{ duration: 0.8, delay: 1.2, ease: [0.22, 1, 0.36, 1] }}
+   700→              className="mt-16 relative max-w-4xl mx-auto"
+   701→            >
+   702→              <div className="absolute -inset-4 bg-gradient-to-r from-emerald-200/50 to-teal-200/50 rounded-3xl blur-2xl" />
+   703→              <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-emerald-900/10 border border-white/60 backdrop-blur-sm">
+   704→                <img src="/landing-hero.png" alt="Étudiants utilisant SECT en salle informatique universitaire" className="w-full object-cover" />
+   705→              </div>
+   706→            </motion.div>
+   707→          </div>
+   708→        </motion.div>
+   709→
+   710→        <motion.div
+   711→          initial={{ opacity: 0 }}
+   712→          animate={{ opacity: 1 }}
+   713→          transition={{ delay: 1.5 }}
+   714→          className="absolute bottom-8 left-1/2 -translate-x-1/2"
+   715→        >
+   716→          <motion.div animate={{ y: [0, 8, 0] }} transition={{ duration: 2, repeat: Infinity }}>
+   717→            <ChevronDown className="h-6 w-6 text-emerald-400" />
+   718→          </motion.div>
+   719→        </motion.div>
+   720→      </section>
+   721→
+   722→      {/* ─── Trust bar ─── */}
+   723→      <section className="relative py-12 px-4 border-y border-gray-100 bg-white/50">
+   724→        <div className="max-w-5xl mx-auto text-center">
+   725→          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-6">Ils nous font confiance</p>
+   726→          <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 text-gray-300">
+   727→            {['Université de Lyon', 'ENI Paris', 'IAE Bordeaux', 'UTC Compiègne', 'INSA Toulouse'].map((name) => (
+   728→              <span key={name} className="text-lg font-bold tracking-tight">{name}</span>
+   729→            ))}
+   730→          </div>
+   731→        </div>
+   732→      </section>
+   733→
+   734→      {/* ─── Features Section ─── */}
+   735→      <section id="fonctionnalites" className="relative py-28 px-4 sm:px-6 lg:px-8">
+   736→        <FloatingShapes />
+   737→        <div className="max-w-7xl mx-auto relative">
+   738→          <FadeInWhenVisible>
+   739→            <div className="text-center max-w-2xl mx-auto mb-20">
+   740→              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 mb-6">
+   741→                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+   742→                <span className="text-sm font-semibold text-emerald-700">Fonctionnalités</span>
+   743→              </div>
+   744→              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+   745→                Tout ce dont vous{' '}
+   746→                <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">avez besoin</span>
+   747→              </h2>
+   748→              <p className="mt-5 text-lg text-gray-500">
+   749→                Une suite complète d&apos;outils pour moderniser l&apos;évaluation dans l&apos;enseignement supérieur.
+   750→              </p>
+   751→            </div>
+   752→          </FadeInWhenVisible>
+   753→
+   754→          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+   755→            {/* Features Image */}
+   756→            <FadeInWhenVisible delay={0.2} direction="right" className="w-full lg:w-5/12 shrink-0">
+   757→              <div className="relative">
+   758→                <div className="absolute -inset-4 bg-gradient-to-br from-emerald-100/80 to-teal-100/80 rounded-3xl blur-2xl" />
+   759→                <div className="relative rounded-2xl overflow-hidden shadow-xl shadow-emerald-500/5 border border-white/60">
+   760→                  <img src="/landing-features.png" alt="Professeur utilisant la correction IA de SECT" className="w-full object-cover" />
+   761→                </div>
+   762→              </div>
+   763→            </FadeInWhenVisible>
+   764→
+   765→            {/* Feature Cards */}
+   766→            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-6">
+   767→              {features.map((feature, index) => (
+   768→                <FeatureCard key={feature.title} {...feature} delay={index * 0.1} />
+   769→              ))}
+   770→            </div>
+   771→          </div>
+   772→        </div>
+   773→      </section>
+   774→
+   775→      {/* ─── How it Works ─── */}
+   776→      <section id="comment" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-emerald-50/30 to-white">
+   777→        <div className="max-w-7xl mx-auto relative">
+   778→          <FadeInWhenVisible>
+   779→            <div className="text-center max-w-2xl mx-auto mb-20">
+   780→              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-1.5 mb-6">
+   781→                <Cpu className="w-3.5 h-3.5 text-cyan-600" />
+   782→                <span className="text-sm font-semibold text-cyan-700">Comment ça marche</span>
+   783→              </div>
+   784→              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+   785→                Trois étapes{' '}
+   786→                <span className="bg-gradient-to-r from-cyan-600 to-teal-500 bg-clip-text text-transparent">simples</span>
+   787→              </h2>
+   788→              <p className="mt-5 text-lg text-gray-500">
+   789→                De la création à la correction, SECT simplifie chaque étape du processus d&apos;évaluation.
+   790→              </p>
+   791→            </div>
+   792→          </FadeInWhenVisible>
+   793→
+   794→          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
+   795→            {steps.map((step, index) => (
+   796→              <FadeInWhenVisible key={step.number} delay={index * 0.15}>
+   797→                <div className="relative text-center group">
+   798→                  {index < steps.length - 1 && (
+   799→                    <div className="hidden md:block absolute top-20 left-[calc(50%+72px)] w-[calc(100%-144px)] h-0.5">
+   800→                      <div className="h-full bg-gradient-to-r from-emerald-300 to-cyan-300 opacity-30" />
+   801→                      <motion.div
+   802→                        className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 -mt-0.5"
+   803→                        initial={{ width: '0%' }}
+   804→                        whileInView={{ width: '100%' }}
+   805→                        viewport={{ once: true }}
+   806→                        transition={{ duration: 1, delay: 0.5 + index * 0.3 }}
+   807→                      />
+   808→                    </div>
+   809→                  )}
+   810→                  <div className="relative z-10">
+   811→                    <motion.div
+   812→                      whileHover={{ scale: 1.08, rotate: 3 }}
+   813→                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   814→                      className={`w-28 h-28 rounded-3xl bg-gradient-to-br ${step.color} flex items-center justify-center mx-auto mb-8 shadow-xl group-hover:shadow-2xl transition-shadow duration-500`}
+   815→                    >
+   816→                      <step.icon className="w-12 h-12 text-white" />
+   817→                    </motion.div>
+   818→                    <span className="text-sm font-bold text-emerald-600/60 tracking-[0.2em] uppercase">
+   819→                      Étape {step.number}
+   820→                    </span>
+   821→                    <h3 className="text-2xl font-bold text-gray-900 mt-3 mb-4">{step.title}</h3>
+   822→                    <p className="text-sm text-gray-500 leading-relaxed max-w-sm mx-auto">{step.description}</p>
+   823→                  </div>
+   824→                </div>
+   825→              </FadeInWhenVisible>
+   826→            ))}
+   827→          </div>
+   828→        </div>
+   829→      </section>
+   830→
+   831→      {/* ─── Stats Section ─── */}
+   832→      <section className="relative py-28 px-4 sm:px-6 lg:px-8 overflow-hidden">
+   833→        <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600" />
+   834→        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_50%,rgba(255,255,255,0.1),rgba(255,255,255,0))]" />
+   835→        <FloatingShapes />
+   836→        <div className="max-w-7xl mx-auto relative">
+   837→          <FadeInWhenVisible>
+   838→            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+   839→              {stats.map((stat, index) => (
+   840→                <motion.div
+   841→                  key={stat.label}
+   842→                  initial={{ opacity: 0, y: 30 }}
+   843→                  whileInView={{ opacity: 1, y: 0 }}
+   844→                  viewport={{ once: true }}
+   845→                  transition={{ duration: 0.6, delay: index * 0.1 }}
+   846→                  className="text-center group"
+   847→                >
+   848→                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 mb-4 group-hover:bg-white/25 transition-colors">
+   849→                    <stat.icon className="w-6 h-6 text-white" />
+   850→                  </div>
+   851→                  <p className="text-4xl sm:text-5xl font-extrabold text-white">
+   852→                    <AnimatedCounter target={stat.value} suffix={stat.suffix} />
+   853→                  </p>
+   854→                  <p className="mt-2 text-sm text-white/70 font-medium">{stat.label}</p>
+   855→                </motion.div>
+   856→              ))}
+   857→            </div>
+   858→          </FadeInWhenVisible>
+   859→        </div>
+   860→      </section>
+   861→
+   862→      {/* ─── Pricing Section ─── */}
+   863→      <section id="tarifs" className="relative py-28 px-4 sm:px-6 lg:px-8">
+   864→        <div className="max-w-7xl mx-auto">
+   865→          <FadeInWhenVisible>
+   866→            <div className="text-center max-w-2xl mx-auto mb-20">
+   867→              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-1.5 mb-6">
+   868→                <Crown className="w-3.5 h-3.5 text-amber-600" />
+   869→                <span className="text-sm font-semibold text-amber-700">Tarifs</span>
+   870→              </div>
+   871→              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+   872→                Un plan pour{' '}
+   873→                <span className="bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">chaque besoin</span>
+   874→              </h2>
+   875→              <p className="mt-5 text-lg text-gray-500">
+   876→                Commencez gratuitement et évoluez selon vos besoins. Aucune carte de crédit requise.
+   877→              </p>
+   878→            </div>
+   879→          </FadeInWhenVisible>
+   880→
+   881→          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+   882→            {plans.map((plan, index) => (
+   883→              <FadeInWhenVisible key={plan.name} delay={index * 0.1}>
+   884→                <motion.div whileHover={{ y: -8 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
+   885→                  <Card
+   886→                    className={`relative h-full transition-all duration-500 rounded-2xl ${
+   887→                      plan.popular
+   888→                        ? 'bg-gradient-to-b from-emerald-50 to-white border-2 border-emerald-300 shadow-2xl shadow-emerald-200/50 scale-[1.02] md:-mt-4 md:mb-[-16px]'
+   889→                        : 'bg-white/80 backdrop-blur-sm border border-gray-200 hover:border-emerald-200 hover:shadow-lg'
+   890→                    }`}
+   891→                  >
+   892→                    {plan.popular && (
+   893→                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+   894→                        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full px-5 py-1.5 text-xs font-bold shadow-lg shadow-emerald-500/30">
+   895→                          Le plus populaire
+   896→                        </div>
+   897→                      </div>
+   898→                    )}
+   899→                    <CardHeader className="text-center pb-2 pt-8">
+   900→                      <div className={`w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center ${
+   901→                        plan.popular
+   902→                          ? 'bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/25'
+   903→                          : 'bg-gray-100'
+   904→                      }`}>
+   905→                        <plan.icon className={`w-7 h-7 ${plan.popular ? 'text-white' : 'text-gray-500'}`} />
+   906→                      </div>
+   907→                      <CardTitle className="text-xl text-gray-900">{plan.name}</CardTitle>
+   908→                      <CardDescription className="text-gray-500">{plan.description}</CardDescription>
+   909→                    </CardHeader>
+   910→                    <CardContent className="text-center pb-2">
+   911→                      <div className="mb-6">
+   912→                        <span className="text-5xl font-extrabold text-gray-900">{plan.price}</span>
+   913→                        <span className="text-gray-400 text-lg">{plan.period}</span>
+   914→                      </div>
+   915→                      <Separator className="mb-6 bg-gray-100" />
+   916→                      <ul className="space-y-3.5 text-left">
+   917→                        {plan.features.map((feature) => (
+   918→                          <li key={feature} className="flex items-start gap-3">
+   919→                            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+   920→                              plan.popular ? 'bg-emerald-100' : 'bg-gray-100'
+   921→                            }`}>
+   922→                              <Check className={`w-3 h-3 ${plan.popular ? 'text-emerald-600' : 'text-gray-400'}`} />
+   923→                            </div>
+   924→                            <span className="text-sm text-gray-600">{feature}</span>
+   925→                          </li>
+   926→                        ))}
+   927→                      </ul>
+   928→                    </CardContent>
+   929→                    <CardFooter className="pt-4 pb-8">
+   930→                      <Button
+   931→                        className={`w-full h-12 rounded-xl text-sm font-semibold ${
+   932→                          plan.popular
+   933→                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20 border-0'
+   934→                            : 'bg-white border-2 border-gray-200 text-gray-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
+   935→                        }`}
+   936→                        variant={plan.popular ? 'default' : 'outline'}
+   937→                        onClick={onLogin}
+   938→                      >
+   939→                        {plan.cta}
+   940→                      </Button>
+   941→                    </CardFooter>
+   942→                  </Card>
+   943→                </motion.div>
+   944→              </FadeInWhenVisible>
+   945→            ))}
+   946→          </div>
+   947→        </div>
+   948→      </section>
+   949→
+   950→      {/* ─── Testimonials ─── */}
+   951→      <section id="temoignages" className="relative py-28 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-emerald-50/20 to-white">
+   952→        <div className="max-w-7xl mx-auto relative">
+   953→          <FadeInWhenVisible>
+   954→            <div className="text-center max-w-2xl mx-auto mb-20">
+   955→              <div className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-4 py-1.5 mb-6">
+   956→                <GraduationCap className="w-3.5 h-3.5 text-teal-600" />
+   957→                <span className="text-sm font-semibold text-teal-700">Témoignages</span>
+   958→              </div>
+   959→              <h2 className="text-4xl sm:text-5xl font-extrabold text-gray-900">
+   960→                Ils nous font{' '}
+   961→                <span className="bg-gradient-to-r from-teal-500 to-emerald-500 bg-clip-text text-transparent">confiance</span>
+   962→              </h2>
+   963→              <p className="mt-5 text-lg text-gray-500">
+   964→                Découvrez ce que les professionnels de l&apos;enseignement supérieur disent de SECT.
+   965→              </p>
+   966→            </div>
+   967→          </FadeInWhenVisible>
+   968→
+   969→          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+   970→            {testimonials.map((testimonial, index) => (
+   971→              <FadeInWhenVisible key={testimonial.name} delay={index * 0.1}>
+   972→                <motion.div whileHover={{ y: -6 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
+   973→                  <Card className="h-full bg-white/80 backdrop-blur-sm border border-gray-100 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-50/50 transition-all duration-500 rounded-2xl">
+   974→                    <CardContent className="p-7">
+   975→                      <Quote className="w-8 h-8 text-emerald-200 mb-5" />
+   976→                      <p className="text-sm text-gray-600 leading-relaxed mb-6">
+   977→                        &ldquo;{testimonial.content}&rdquo;
+   978→                      </p>
+   979→                      <div className="flex items-center gap-1 mb-5">
+   980→                        {Array.from({ length: testimonial.rating }).map((_, i) => (
+   981→                          <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+   982→                        ))}
+   983→                      </div>
+   984→                      <Separator className="mb-5 bg-gray-100" />
+   985→                      <div className="flex items-center gap-3">
+   986→                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-sm font-bold text-white shadow-md shadow-emerald-500/20">
+   987→                          {testimonial.avatar}
+   988→                        </div>
+   989→                        <div>
+   990→                          <p className="text-sm font-semibold text-gray-900">{testimonial.name}</p>
+   991→                          <p className="text-xs text-gray-500">{testimonial.role}</p>
+   992→                          <p className="text-xs text-gray-400 font-medium">{testimonial.institution}</p>
+   993→                        </div>
+   994→                      </div>
+   995→                    </CardContent>
+   996→                  </Card>
+   997→                </motion.div>
+   998→              </FadeInWhenVisible>
+   999→            ))}
+  1000→          </div>
+  1001→        </div>
+  1002→      </section>
+  1003→
+  1004→      {/* ─── CTA Section ─── */}
+  1005→      <section className="relative py-28 px-4 sm:px-6 lg:px-8 overflow-hidden">
+  1006→        <div className="absolute inset-0">
+  1007→          <img src="/landing-cta.png" alt="" className="w-full h-full object-cover object-center" />
+  1008→          <div className="absolute inset-0 bg-gradient-to-br from-emerald-700/90 via-teal-700/90 to-cyan-800/90" />
+  1009→        </div>
+  1010→        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(255,255,255,0.15),rgba(255,255,255,0))]" />
+  1011→        <FloatingShapes />
+  1012→        <div className="max-w-4xl mx-auto text-center relative">
+  1013→          <FadeInWhenVisible>
+  1014→            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 mb-8 backdrop-blur-sm">
+  1015→              <Zap className="w-3.5 h-3.5 text-amber-300" />
+  1016→              <span className="text-sm font-semibold text-white/90">Commencez maintenant</span>
+  1017→            </div>
+  1018→            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight">
+  1019→              Prêt à transformer
+  1020→              <br />
+  1021→              <span className="bg-gradient-to-r from-emerald-200 via-teal-200 to-cyan-200 bg-clip-text text-transparent">
+  1022→                vos évaluations ?
+  1023→              </span>
+  1024→            </h2>
+  1025→            <p className="mt-6 text-lg text-white/80 max-w-2xl mx-auto">
+  1026→              Rejoignez les établissements qui ont déjà adopté SECT. Commencez gratuitement et
+  1027→              découvrez la puissance de l&apos;IA au service de l&apos;évaluation.
+  1028→            </p>
+  1029→            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+  1030→              <Button
+  1031→                size="lg"
+  1032→                onClick={onLogin}
+  1033→                className="bg-white text-emerald-700 hover:bg-emerald-50 shadow-xl px-8 text-base h-14 rounded-2xl font-semibold group"
+  1034→              >
+  1035→                Commencer gratuitement
+  1036→                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+  1037→              </Button>
+  1038→              <Button
+  1039→                size="lg"
+  1040→                variant="outline"
+  1041→                onClick={onDemo}
+  1042→                className="border-white/30 text-white/90 hover:bg-white/10 hover:text-white px-8 text-base h-14 rounded-2xl"
+  1043→              >
+  1044→                <Mail className="mr-2 h-5 w-5" />
+  1045→                Nous contacter
+  1046→              </Button>
+  1047→            </div>
+  1048→          </FadeInWhenVisible>
+  1049→        </div>
+  1050→      </section>
+  1051→
+  1052→      {/* ─── Footer ─── */}
+  1053→      <footer className="mt-auto relative py-16 px-4 sm:px-6 lg:px-8 border-t border-gray-100 bg-white">
+  1054→        <div className="max-w-7xl mx-auto">
+  1055→          <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-10">
+  1056→            <div className="md:col-span-1">
+  1057→              <div className="flex items-center gap-3 mb-5">
+  1058→                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/20">
+  1059→                  <span className="text-white font-bold text-sm">S</span>
+  1060→                </div>
+  1061→                <span className="text-lg font-extrabold bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">SECT</span>
+  1062→              </div>
+  1063→              <p className="text-sm text-gray-400 leading-relaxed">
+  1064→                Système d&apos;Évaluation et de Contrôle des Tests. La plateforme d&apos;évaluation en ligne propulsée par l&apos;Intelligence Artificielle.
+  1065→              </p>
+  1066→            </div>
+  1067→
+  1068→            <div>
+  1069→              <h4 className="text-sm font-semibold text-gray-900 mb-5">Produit</h4>
+  1070→              <ul className="space-y-3">
+  1071→                <li><a href="#fonctionnalites" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Fonctionnalités</a></li>
+  1072→                <li><a href="#tarifs" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Tarifs</a></li>
+  1073→                <li><a href="#comment" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Comment ça marche</a></li>
+  1074→                <li><a href="#temoignages" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Témoignages</a></li>
+  1075→              </ul>
+  1076→            </div>
+  1077→
+  1078→            <div>
+  1079→              <h4 className="text-sm font-semibold text-gray-900 mb-5">Entreprise</h4>
+  1080→              <ul className="space-y-3">
+  1081→                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">À propos</a></li>
+  1082→                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Contact</a></li>
+  1083→                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Mentions légales</a></li>
+  1084→                <li><a href="#" className="text-sm text-gray-400 hover:text-emerald-600 transition-colors">Support</a></li>
+  1085→              </ul>
+  1086→            </div>
+  1087→
+  1088→            <div>
+  1089→              <h4 className="text-sm font-semibold text-gray-900 mb-5">Contact</h4>
+  1090→              <ul className="space-y-3">
+  1091→                <li className="flex items-center gap-2 text-sm text-gray-400">
+  1092→                  <Mail className="w-4 h-4" /> contact@sect.fr
+  1093→                </li>
+  1094→                <li className="flex items-center gap-2 text-sm text-gray-400">
+  1095→                  <Phone className="w-4 h-4" /> +33 1 23 45 67 89
+  1096→                </li>
+  1097→              </ul>
+  1098→              <div className="flex items-center gap-3 mt-5">
+  1099→                {[
+  1100→                  { label: 'Twitter', icon: 'T' },
+  1101→                  { label: 'LinkedIn', icon: 'in' },
+  1102→                  { label: 'GitHub', icon: 'GH' },
+  1103→                ].map((social) => (
+  1104→                  <a
+  1105→                    key={social.label}
+  1106→                    href="#"
+  1107→                    className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-emerald-100 hover:text-emerald-600 flex items-center justify-center text-gray-400 text-xs font-bold transition-all duration-200"
+  1108→                  >
+  1109→                    {social.icon}
+  1110→                  </a>
+  1111→                ))}
+  1112→              </div>
+  1113→            </div>
+  1114→          </div>
+  1115→
+  1116→          <Separator className="mb-6 bg-gray-100" />
+  1117→
+  1118→          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+  1119→            <p className="text-xs text-gray-400">&copy; 2026 SECT — Tous droits réservés</p>
+  1120→            <div className="flex items-center gap-6">
+  1121→              <a href="#" className="text-xs text-gray-400 hover:text-emerald-600 transition-colors">Politique de confidentialité</a>
+  1122→              <a href="#" className="text-xs text-gray-400 hover:text-emerald-600 transition-colors">CGU</a>
+  1123→              <a href="#" className="text-xs text-gray-400 hover:text-emerald-600 transition-colors">Cookies</a>
+  1124→            </div>
+  1125→          </div>
+  1126→        </div>
+  1127→      </footer>
+  1128→    </div>
+  1129→  )
+  1130→}
+  1131→
