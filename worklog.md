@@ -1,55 +1,27 @@
+# SECT Project - Worklog
+
 ---
 Task ID: 1
-Agent: Main
-Task: Fix Python code execution and code submission during exam passation
+Agent: Main Agent
+Task: Clone, setup and run the SECT project from GitHub
 
 Work Log:
-- Explored entire code execution system: code-editor.tsx, execute API, submit route, grading
-- Identified 6 critical issues: Pyodide never loaded, server Python is stub, gradeCODE never called, private tests never run, CODE not in grading scenario, C/Java non-functional
-- Created `usePyodide` hook (src/hooks/use-pyodide.ts) that loads Pyodide from CDN lazily with singleton pattern
-- Refactored `code-editor.tsx` to use Pyodide hook for Python execution in browser sandbox
-- Rewrote `execute/route.ts` to execute Python via sandboxed subprocess (python3 with resource limits)
-- Rewrote `submit/route.ts` to handle CODE grading: runs all tests (public+private) server-side, calls gradeCODE()
-- Updated `detectGradingScenario` in grading.ts to include CODE as semi-auto-gradable
-- Updated `onCodeChange` signature in code-editor.tsx to pass test results
-- Updated passation-page.tsx to save test results with code answers
-- Build compiles cleanly (npx next build succeeds)
-- Lint passes with no errors
-- Server runs and serves pages correctly
+- Cloned the SECT repository from https://github.com/udevrard7/SECT to /home/z/SECT-project
+- Analyzed the full project structure: Next.js 16 + React 19 + Prisma + Supabase + shadcn/ui
+- SECT = Système d'Évaluation Casse-Tête - AI-powered evaluation platform for higher education
+- Configured .env with Supabase credentials (DATABASE_URL, DIRECT_URL, DATABASE_URL_PG, NEXTAUTH_SECRET)
+- Configured Git identity: udevrard7 / ulrichdouh@gmail.com
+- Generated Prisma client and verified schema sync with remote Supabase DB (empty migration - fully in sync)
+- Synced project files from /home/z/SECT-project to /home/z/my-project (sandbox working directory)
+- Installed dependencies with bun install
+- Resolved dev server stability issues: needed `-H 0.0.0.0` flag and `--max-old-space-size=1024`
+- Updated keep-alive.sh with proper flags for auto-restart
+- Verified all routes working: Root (307 redirect), Login (200), API Session (200)
+- Verified Caddy gateway routing works on port 81
 
 Stage Summary:
-- Python code now executes in browser via Pyodide (loaded from CDN on demand)
-- Python code also executes server-side via sandboxed subprocess for grading
-- CODE questions are now auto-graded on exam submission using all tests
-- "Submit" button in coding editor now runs tests before saving
-- Grading scenario detection correctly identifies CODE as semi-auto-gradable
-- Files modified: src/hooks/use-pyodide.ts (new), src/components/coding/code-editor.tsx, src/app/api/coding/execute/route.ts, src/app/api/sessions/[id]/submit/route.ts, src/lib/grading.ts, src/components/passation/passation-page.tsx
-
----
-Task ID: 2
-Agent: Main
-Task: Fix correction page scroll issues, CODE question crashes, and redesign CODE question correction
-
-Work Log:
-- Fixed scroll issue: changed h-[calc(100vh-8rem)] to h-[calc(100vh-10rem)] and style attribute for proper height calculation
-- Fixed ScrollArea scrollTo: now targets the Radix viewport via querySelector('[data-slot="scroll-area-viewport"]')
-- Fixed parseAnswerContent: properly handles CodingAnswer JSON objects instead of crashing with JSON.stringify
-- Added isCodingAnswer() helper to detect coding answers
-- Integrated CodingCorrection component into "par copie" mode for CODE questions
-- Added CODE-specific rendering in "par question" mode (code preview with language badge, test results, line count)
-- Added semi-auto grading UI for CODE questions in "par question" mode (Auto+ badge, override score)
-- Added semi-auto notice for CODE questions in "par copie" mode
-- Updated correction API to include CODE fields (langage, fonctionSignature, testsPublics, testsPrives)
-- Updated correction API to count CODE in auto-graded total
-- Fixed CODE questions not requiring manual correction when auto-scored
-- Added CODE to getQuestionTypeLabel()
-- Separated isAutoGradedType() and isSemiAutoGradedType() in all conditional rendering
-- Build compiles cleanly, lint passes
-
-Stage Summary:
-- Scroll fixed: proper viewport height calculation and ScrollArea viewport targeting
-- CODE questions no longer crash: proper JSON parsing for CodingAnswer objects
-- CodingCorrection component now integrated for rich CODE correction UI
-- "Par question" mode shows compact code preview for CODE questions
-- Correction API now provides CODE-specific fields
-- CODE questions treated as semi-auto-gradable throughout
+- SECT project is running at http://localhost:3000 (direct) and via Caddy on port 81
+- Database is connected to Supabase (PostgreSQL) and schema is fully synced
+- Git configured with user identity udevrard7 / ulrichdouh@gmail.com
+- Auto-restart mechanism in place via keep-alive.sh
+- Project has 30+ models, 40+ API routes, 4 role-based dashboards, AI integration
