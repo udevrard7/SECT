@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import {
   Building2,
   CreditCard,
@@ -65,6 +66,8 @@ import {
   CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
+import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
+import type { BadgeWithProgress } from '@/lib/badges-engine'
 
 // ─── Types ───
 
@@ -252,6 +255,8 @@ export function AdminDashboard() {
   const [requestDateFin, setRequestDateFin] = useState('')
   const [requestCommentaire, setRequestCommentaire] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [badges, setBadges] = useState<BadgeWithProgress[]>([])
+  const [newlyUnlocked, setNewlyUnlocked] = useState<BadgeWithProgress | null>(null)
 
   // Fetch admin stats
   useEffect(() => {
@@ -289,6 +294,28 @@ export function AdminDashboard() {
   useEffect(() => {
     fetchAccessRecords()
   }, [fetchAccessRecords])
+
+  // Fetch badges
+  useEffect(() => {
+    async function fetchBadges() {
+      try {
+        // First recalculate badges
+        await fetch('/api/badges', { method: 'POST' })
+        // Then get current badges
+        const res = await fetch('/api/badges')
+        if (!res.ok) return
+        const data = await res.json()
+        setBadges(data.badges || [])
+        // Show notification for newly unlocked badges
+        if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+          setNewlyUnlocked(data.newlyUnlocked[0])
+        }
+      } catch {
+        // Silently fail — badges are non-critical
+      }
+    }
+    fetchBadges()
+  }, [user?.id])
 
   // Request access handler
   const handleRequestAccess = async () => {
@@ -447,6 +474,9 @@ export function AdminDashboard() {
           />
         </div>
       )}
+
+      {/* ─── Mes Succès (Badges) ─── */}
+      <BadgesCarousel badges={badges} />
 
       {/* ─── 3. Revenue Chart + Plan Distribution (2-column) ─── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -945,6 +975,16 @@ export function AdminDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Badge unlock notification */}
+      <AnimatePresence>
+        {newlyUnlocked && (
+          <BadgeUnlockNotification
+            badge={newlyUnlocked}
+            onClose={() => setNewlyUnlocked(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
