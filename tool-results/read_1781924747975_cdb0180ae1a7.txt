@@ -1,0 +1,874 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState, useCallback } from 'react'
+     4→     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→     5→import {
+     6→     6→  GraduationCap,
+     7→     7→  ClipboardCheck,
+     8→     8→  Users,
+     9→     9→  BookOpen,
+    10→    10→  AlertTriangle,
+    11→    11→  BarChart3,
+    12→    12→  TrendingUp,
+    13→    13→  Award,
+    14→    14→  Star,
+    15→    15→  Target,
+    16→    16→  Check,
+    17→    17→  RefreshCw,
+    18→    18→  Clock,
+    19→    19→  Shield,
+    20→    20→  Trophy,
+    21→    21→  Eye,
+    22→    22→} from 'lucide-react'
+    23→    23→import {
+    24→    24→  Card,
+    25→    25→  CardHeader,
+    26→    26→  CardTitle,
+    27→    27→  CardDescription,
+    28→    28→  CardContent,
+    29→    29→} from '@/components/ui/card'
+    30→    30→import { Badge } from '@/components/ui/badge'
+    31→    31→import { Button } from '@/components/ui/button'
+    32→    32→import { Skeleton } from '@/components/ui/skeleton'
+    33→    33→import { useAuthStore } from '@/stores/auth-store'
+    34→    34→import { toast } from 'sonner'
+    35→    35→import {
+    36→    36→  AreaChart,
+    37→    37→  Area,
+    38→    38→  BarChart,
+    39→    39→  Bar,
+    40→    40→  Cell,
+    41→    41→  XAxis,
+    42→    42→  YAxis,
+    43→    43→  Tooltip,
+    44→    44→  ResponsiveContainer,
+    45→    45→} from 'recharts'
+    46→    46→
+    47→    47→// --- Animation Variants ---
+    48→    48→const containerVariants = {
+    49→    49→  hidden: { opacity: 0 },
+    50→    50→  visible: {
+    51→    51→    opacity: 1,
+    52→    52→    transition: { staggerChildren: 0.1, delayChildren: 0.1 },
+    53→    53→  },
+    54→    54→}
+    55→    55→
+    56→    56→const itemVariants = {
+    57→    57→  hidden: { y: 20, opacity: 0 },
+    58→    58→  visible: {
+    59→    59→    y: 0,
+    60→    60→    opacity: 1,
+    61→    61→    transition: { type: 'spring' as const, stiffness: 100 },
+    62→    62→  },
+    63→    63→}
+    64→    64→
+    65→    65→// ─── Types (matching API response) ───
+    66→    66→
+    67→    67→interface RepartitionNote {
+    68→    68→  label: string
+    69→    69→  count: number
+    70→    70→}
+    71→    71→
+    72→    72→interface ResultatParMatiere {
+    73→    73→  titre: string
+    74→    74→  enseignant: string
+    75→    75→  moyenne: number
+    76→    76→  tauxReussite: number
+    77→    77→  nbParticipants: number
+    78→    78→}
+    79→    79→
+    80→    80→interface EtudiantParFiliere {
+    81→    81→  filiere: string
+    82→    82→  count: number
+    83→    83→}
+    84→    84→
+    85→    85→interface EvolutionMoyenne {
+    86→    86→  mois: string
+    87→    87→  moyenne: number
+    88→    88→  nbEvaluations: number
+    89→    89→}
+    90→    90→
+    91→    91→interface TopEnseignant {
+    92→    92→  nom: string
+    93→    93→  nbEpreuves: number
+    94→    94→  moyenne: number
+    95→    95→  tauxReussite: number
+    96→    96→}
+    97→    97→
+    98→    98→interface AlerteStat {
+    99→    99→  type: string
+   100→   100→  titre: string
+   101→   101→  description: string
+   102→   102→  severity: string
+   103→   103→}
+   104→   104→
+   105→   105→interface TopEtudiant {
+   106→   106→  id: string
+   107→   107→  nom: string
+   108→   108→  email: string
+   109→   109→  moyenne: number
+   110→   110→  filiere: string
+   111→   111→}
+   112→   112→
+   113→   113→interface StatsData {
+   114→   114→  nbEtudiants: number
+   115→   115→  nbEnseignants: number
+   116→   116→  nbEvaluations: number
+   117→   117→  tauxReussiteGlobal: number
+   118→   118→  moyenneGenerale: number
+   119→   119→  repartitionNotes: RepartitionNote[]
+   120→   120→  resultatsParMatiere: ResultatParMatiere[]
+   121→   121→  etudiantsParFiliere: EtudiantParFiliere[]
+   122→   122→  evolutionMoyennes: EvolutionMoyenne[]
+   123→   123→  topEnseignants: TopEnseignant[]
+   124→   124→  alertes: AlerteStat[]
+   125→   125→  topEtudiants: TopEtudiant[]
+   126→   126→  etudiantsEnDifficulte: TopEtudiant[]
+   127→   127→}
+   128→   128→
+   129→   129→// --- Helper Functions ---
+   130→   130→
+   131→   131→function getScoreColor(score: number, maxScore: number = 20): string {
+   132→   132→  const halfMax = maxScore / 2
+   133→   133→  if (score >= halfMax) return '#10b981'
+   134→   134→  if (score >= halfMax * 0.8) return '#f59e0b'
+   135→   135→  return '#ef4444'
+   136→   136→}
+   137→   137→
+   138→   138→function getTauxColor(taux: number): string {
+   139→   139→  if (taux >= 70) return '#10b981'
+   140→   140→  if (taux >= 50) return '#f59e0b'
+   141→   141→  return '#ef4444'
+   142→   142→}
+   143→   143→
+   144→   144→function formatDateFR(dateStr: string): string {
+   145→   145→  try {
+   146→   146→    const date = new Date(dateStr)
+   147→   147→    return date.toLocaleDateString('fr-FR', {
+   148→   148→      day: '2-digit',
+   149→   149→      month: 'long',
+   150→   150→      year: 'numeric',
+   151→   151→    })
+   152→   152→  } catch {
+   153→   153→    return dateStr
+   154→   154→  }
+   155→   155→}
+   156→   156→
+   157→   157→function formatMonth(mois: string): string {
+   158→   158→  try {
+   159→   159→    const [year, month] = mois.split('-')
+   160→   160→    const date = new Date(parseInt(year), parseInt(month) - 1)
+   161→   161→    return date.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' })
+   162→   162→  } catch {
+   163→   163→    return mois
+   164→   164→  }
+   165→   165→}
+   166→   166→
+   167→   167→function getSeverityIcon(severity: string) {
+   168→   168→  switch (severity.toLowerCase()) {
+   169→   169→    case 'critical':
+   170→   170→    case 'critique':
+   171→   171→      return <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+   172→   172→    case 'warning':
+   173→   173→    case 'avertissement':
+   174→   174→      return <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+   175→   175→    default:
+   176→   176→      return <Clock className="h-3.5 w-3.5 text-blue-500" />
+   177→   177→  }
+   178→   178→}
+   179→   179→
+   180→   180→function getSeverityBorder(severity: string): string {
+   181→   181→  switch (severity.toLowerCase()) {
+   182→   182→    case 'critical':
+   183→   183→    case 'critique':
+   184→   184→      return 'border-red-500'
+   185→   185→    case 'warning':
+   186→   186→    case 'avertissement':
+   187→   187→      return 'border-amber-500'
+   188→   188→    default:
+   189→   189→      return 'border-blue-500'
+   190→   190→  }
+   191→   191→}
+   192→   192→
+   193→   193→// --- Skeleton for Loading State ---
+   194→   194→
+   195→   195→function DashboardSkeleton() {
+   196→   196→  return (
+   197→   197→    <div className="space-y-6">
+   198→   198→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+   199→   199→        <Skeleton className="h-9 w-64" />
+   200→   200→        <Skeleton className="h-6 w-32" />
+   201→   201→      </div>
+   202→   202→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+   203→   203→        {Array.from({ length: 5 }).map((_, i) => (
+   204→   204→          <Skeleton key={i} className="h-20 w-full" />
+   205→   205→        ))}
+   206→   206→      </div>
+   207→   207→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   208→   208→        <div className="lg:col-span-2 space-y-6">
+   209→   209→          <Skeleton className="h-40 w-full" />
+   210→   210→          <Skeleton className="h-40 w-full" />
+   211→   211→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+   212→   212→            <Skeleton className="h-72 w-full" />
+   213→   213→            <Skeleton className="h-72 w-full" />
+   214→   214→          </div>
+   215→   215→        </div>
+   216→   216→        <div className="lg:col-span-1 space-y-6">
+   217→   217→          <Skeleton className="h-64 w-full" />
+   218→   218→          <Skeleton className="h-48 w-full" />
+   219→   219→          <Skeleton className="h-48 w-full" />
+   220→   220→        </div>
+   221→   221→      </div>
+   222→   222→    </div>
+   223→   223→  )
+   224→   224→}
+   225→   225→
+   226→   226→// --- Error State ---
+   227→   227→function DashboardError({ onRetry }: { onRetry: () => void }) {
+   228→   228→  return (
+   229→   229→    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+   230→   230→      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/30">
+   231→   231→        <AlertTriangle className="h-10 w-10 text-amber-500" />
+   232→   232→      </div>
+   233→   233→      <h3 className="text-lg font-semibold text-center">Impossible de charger le tableau de bord</h3>
+   234→   234→      <p className="text-sm text-muted-foreground text-center max-w-sm">
+   235→   235→        Une erreur est survenue lors du chargement des statistiques. Veuillez réessayer.
+   236→   236→      </p>
+   237→   237→      <Button variant="outline" onClick={onRetry} className="gap-2">
+   238→   238→        <RefreshCw className="h-4 w-4" />
+   239→   239→        Réessayer
+   240→   240→      </Button>
+   241→   241→    </div>
+   242→   242→  )
+   243→   243→}
+   244→   244→
+   245→   245→// --- Objective Card ---
+   246→   246→function ObjectiveCard() {
+   247→   247→  const [objective, setObjective] = useState('Améliorer le taux de réussite de 5%')
+   248→   248→  const [isEditing, setIsEditing] = useState(false)
+   249→   249→
+   250→   250→  return (
+   251→   251→    <Card className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 border-amber-200 dark:border-amber-800">
+   252→   252→      <CardHeader>
+   253→   253→        <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+   254→   254→          <Target className="h-5 w-5" />
+   255→   255→          Mon Objectif
+   256→   256→        </CardTitle>
+   257→   257→      </CardHeader>
+   258→   258→      <CardContent>
+   259→   259→        {isEditing ? (
+   260→   260→          <div className="flex items-center gap-2">
+   261→   261→            <input
+   262→   262→              type="text"
+   263→   263→              value={objective}
+   264→   264→              onChange={(e) => setObjective(e.target.value)}
+   265→   265→              className="flex-grow bg-transparent border-b border-amber-500 focus:outline-none text-lg font-semibold"
+   266→   266→            />
+   267→   267→            <Button size="sm" onClick={() => setIsEditing(false)}>
+   268→   268→              <Check className="h-4 w-4" />
+   269→   269→            </Button>
+   270→   270→          </div>
+   271→   271→        ) : (
+   272→   272→          <div className="flex items-center justify-between gap-2">
+   273→   273→            <p className="text-lg font-semibold">{objective}</p>
+   274→   274→            <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>Modifier</Button>
+   275→   275→          </div>
+   276→   276→        )}
+   277→   277→      </CardContent>
+   278→   278→    </Card>
+   279→   279→  )
+   280→   280→}
+   281→   281→
+   282→   282→// --- Badges Carousel ---
+   283→   283→function BadgesCarousel({ data }: { data: StatsData }) {
+   284→   284→  const allBadges: { id: string; titre: string; description: string; icon: React.ReactNode; unlocked: boolean }[] = [
+   285→   285→    {
+   286→   286→      id: 'batisseur',
+   287→   287→      titre: 'Bâtisseur',
+   288→   288→      description: 'Superviser au moins 1 évaluation.',
+   289→   289→      icon: <ClipboardCheck />,
+   290→   290→      unlocked: data.nbEvaluations >= 1,
+   291→   291→    },
+   292→   292→    {
+   293→   293→      id: 'pilier',
+   294→   294→      titre: 'Pilier Académique',
+   295→   295→      description: 'Avoir 5+ évaluations réalisées.',
+   296→   296→      icon: <Star />,
+   297→   297→      unlocked: data.nbEvaluations >= 5,
+   298→   298→    },
+   299→   299→    {
+   300→   300→      id: 'visionnaire',
+   301→   301→      titre: 'Visionnaire',
+   302→   302→      description: 'Superviser 10+ étudiants.',
+   303→   303→      icon: <Eye />,
+   304→   304→      unlocked: data.nbEtudiants >= 10,
+   305→   305→    },
+   306→   306→    {
+   307→   307→      id: 'excellence_inst',
+   308→   308→      titre: 'Excellence',
+   309→   309→      description: 'Taux de réussite ≥ 80%.',
+   310→   310→      icon: <Trophy />,
+   311→   311→      unlocked: data.tauxReussiteGlobal >= 80,
+   312→   312→    },
+   313→   313→  ]
+   314→   314→
+   315→   315→  return (
+   316→   316→    <Card>
+   317→   317→      <CardHeader>
+   318→   318→        <CardTitle className="flex items-center gap-2">
+   319→   319→          <Award className="h-5 w-5 text-amber-500" />
+   320→   320→          Mes Succès
+   321→   321→        </CardTitle>
+   322→   322→      </CardHeader>
+   323→   323→      <CardContent className="flex gap-4 overflow-x-auto pb-4">
+   324→   324→        {allBadges.map(badge => (
+   325→   325→          <motion.div
+   326→   326→            key={badge.id}
+   327→   327→            variants={itemVariants}
+   328→   328→            className={`flex flex-col items-center justify-center text-center p-4 rounded-lg w-32 shrink-0 border-2 ${badge.unlocked ? 'border-amber-400 bg-amber-50 dark:bg-amber-950' : 'border-dashed bg-muted/50'}`}
+   329→   329→          >
+   330→   330→            <div className={`h-12 w-12 rounded-full flex items-center justify-center ${badge.unlocked ? 'bg-amber-100 dark:bg-amber-900' : 'bg-muted'}`}>
+   331→   331→              {badge.unlocked
+   332→   332→                ? <span className="text-amber-500">{badge.icon}</span>
+   333→   333→                : <span className="text-muted-foreground">{badge.icon}</span>
+   334→   334→              }
+   335→   335→            </div>
+   336→   336→            <p className={`mt-2 text-xs font-semibold ${badge.unlocked ? '' : 'text-muted-foreground'}`}>{badge.titre}</p>
+   337→   337→          </motion.div>
+   338→   338→        ))}
+   339→   339→      </CardContent>
+   340→   340→    </Card>
+   341→   341→  )
+   342→   342→}
+   343→   343→
+   344→   344→// --- Alertes Timeline ---
+   345→   345→function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
+   346→   346→  return (
+   347→   347→    <Card>
+   348→   348→      <CardHeader>
+   349→   349→        <CardTitle className="flex items-center gap-2">
+   350→   350→          <AlertTriangle className="h-5 w-5 text-amber-600" />
+   351→   351→          Alertes Récentes
+   352→   352→        </CardTitle>
+   353→   353→        <CardDescription>Points d&apos;attention nécessitant votre intervention</CardDescription>
+   354→   354→      </CardHeader>
+   355→   355→      <CardContent>
+   356→   356→        {alertes.length === 0 ? (
+   357→   357→          <div className="flex flex-col items-center justify-center text-center py-6">
+   358→   358→            <Shield className="h-10 w-10 text-emerald-500 mb-2" />
+   359→   359→            <p className="font-semibold">Tout est au vert</p>
+   360→   360→            <p className="text-sm text-muted-foreground">Aucune alerte active pour le moment.</p>
+   361→   361→          </div>
+   362→   362→        ) : (
+   363→   363→          <div className="relative pl-6">
+   364→   364→            <div className="absolute left-0 top-0 h-full w-0.5 bg-border -translate-x-1/2 ml-3"></div>
+   365→   365→            {alertes.slice(0, 5).map((alerte, index) => (
+   366→   366→              <motion.div key={index} variants={itemVariants} className="mb-6 last:mb-0">
+   367→   367→                <div className={`absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 ${getSeverityBorder(alerte.severity)} flex items-center justify-center -translate-x-1/2 ml-0.5`}>
+   368→   368→                  {getSeverityIcon(alerte.severity)}
+   369→   369→                </div>
+   370→   370→                <p className="font-semibold text-sm">{alerte.titre}</p>
+   371→   371→                <p className="text-xs text-muted-foreground mt-0.5">{alerte.description}</p>
+   372→   372→                <Badge variant="outline" className="text-[10px] mt-1">{alerte.type}</Badge>
+   373→   373→              </motion.div>
+   374→   374→            ))}
+   375→   375→          </div>
+   376→   376→        )}
+   377→   377→      </CardContent>
+   378→   378→    </Card>
+   379→   379→  )
+   380→   380→}
+   381→   381→
+   382→   382→// --- Top Enseignants ---
+   383→   383→function TopEnseignantsSection({ enseignants }: { enseignants: TopEnseignant[] }) {
+   384→   384→  return (
+   385→   385→    <Card>
+   386→   386→      <CardHeader>
+   387→   387→        <CardTitle className="flex items-center gap-2">
+   388→   388→          <Trophy className="h-5 w-5 text-amber-500" />
+   389→   389→          Top Enseignants
+   390→   390→        </CardTitle>
+   391→   391→      </CardHeader>
+   392→   392→      <CardContent>
+   393→   393→        {enseignants.length === 0 ? (
+   394→   394→          <p className="text-muted-foreground text-center py-4">Aucune donnée disponible.</p>
+   395→   395→        ) : (
+   396→   396→          <div className="space-y-4">
+   397→   397→            {enseignants.slice(0, 5).map((ens, index) => {
+   398→   398→              const tauxColor = getTauxColor(ens.tauxReussite)
+   399→   399→              return (
+   400→   400→                <div key={index} className="flex items-center">
+   401→   401→                  <div
+   402→   402→                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+   403→   403→                    style={{
+   404→   404→                      backgroundColor: `${tauxColor}20`,
+   405→   405→                      color: tauxColor,
+   406→   406→                    }}
+   407→   407→                  >
+   408→   408→                    {ens.tauxReussite}%
+   409→   409→                  </div>
+   410→   410→                  <div className="ml-4 flex-grow">
+   411→   411→                    <p className="font-semibold truncate">{ens.nom}</p>
+   412→   412→                    <p className="text-sm text-muted-foreground">
+   413→   413→                      {ens.nbEpreuves} épreuve{ens.nbEpreuves !== 1 ? 's' : ''} · Moy: {ens.moyenne.toFixed(1)}/20
+   414→   414→                    </p>
+   415→   415→                  </div>
+   416→   416→                  {index === 0 && <Award className="h-5 w-5 text-amber-500" />}
+   417→   417→                </div>
+   418→   418→              )
+   419→   419→            })}
+   420→   420→          </div>
+   421→   421→        )}
+   422→   422→      </CardContent>
+   423→   423→    </Card>
+   424→   424→  )
+   425→   425→}
+   426→   426→
+   427→   427→// --- Étudiants en Difficulté ---
+   428→   428→function EtudiantsDifficulteSection({ etudiants }: { etudiants: TopEtudiant[] }) {
+   429→   429→  if (etudiants.length === 0) return null
+   430→   430→
+   431→   431→  return (
+   432→   432→    <Card className="border-rose-200 dark:border-rose-800/50">
+   433→   433→      <CardHeader>
+   434→   434→        <CardTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-300">
+   435→   435→          <AlertTriangle className="h-5 w-5" />
+   436→   436→          Étudiants en Difficulté
+   437→   437→        </CardTitle>
+   438→   438→        <CardDescription>Moyenne inférieure à 10/20</CardDescription>
+   439→   439→      </CardHeader>
+   440→   440→      <CardContent>
+   441→   441→        <div className="space-y-3">
+   442→   442→          {etudiants.slice(0, 5).map((etu, index) => {
+   443→   443→            const scoreColor = getScoreColor(etu.moyenne)
+   444→   444→            return (
+   445→   445→              <div key={index} className="flex items-center">
+   446→   446→                <div
+   447→   447→                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px]"
+   448→   448→                  style={{
+   449→   449→                    backgroundColor: `${scoreColor}20`,
+   450→   450→                    color: scoreColor,
+   451→   451→                  }}
+   452→   452→                >
+   453→   453→                  {etu.moyenne.toFixed(1)}
+   454→   454→                </div>
+   455→   455→                <div className="ml-3 flex-grow">
+   456→   456→                  <p className="font-medium text-sm truncate">{etu.nom}</p>
+   457→   457→                  <p className="text-xs text-muted-foreground">{etu.filiere}</p>
+   458→   458→                </div>
+   459→   459→              </div>
+   460→   460→            )
+   461→   461→          })}
+   462→   462→        </div>
+   463→   463→      </CardContent>
+   464→   464→    </Card>
+   465→   465→  )
+   466→   466→}
+   467→   467→
+   468→   468→// --- Empty Dashboard ---
+   469→   469→function EmptyDashboard({ name }: { name: string }) {
+   470→   470→  return (
+   471→   471→    <motion.div
+   472→   472→      className="space-y-6"
+   473→   473→      variants={containerVariants}
+   474→   474→      initial="hidden"
+   475→   475→      animate="visible"
+   476→   476→    >
+   477→   477→      <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+   478→   478→        Bonjour, {name} ! Bienvenue sur votre espace.
+   479→   479→      </motion.h1>
+   480→   480→      <ObjectiveCard />
+   481→   481→      <Card className="border-dashed">
+   482→   482→        <CardContent className="flex flex-col items-center justify-center py-12">
+   483→   483→          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/30">
+   484→   484→            <GraduationCap className="h-10 w-10 text-amber-500" />
+   485→   485→          </div>
+   486→   486→          <h3 className="mt-4 text-lg font-semibold">Bienvenue sur SECT !</h3>
+   487→   487→          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+   488→   488→            Votre tableau de bord stratégique sera disponible dès que des données seront enregistrées.
+   489→   489→          </p>
+   490→   490→        </CardContent>
+   491→   491→      </Card>
+   492→   492→    </motion.div>
+   493→   493→  )
+   494→   494→}
+   495→   495→
+   496→   496→// ─── Main Component ───
+   497→   497→export function ResponsableDashboard() {
+   498→   498→  const user = useAuthStore((s) => s.user)
+   499→   499→  const name = user?.name ?? 'Responsable'
+   500→   500→
+   501→   501→  const [data, setData] = useState<StatsData | null>(null)
+   502→   502→  const [loading, setLoading] = useState(true)
+   503→   503→  const [error, setError] = useState(false)
+   504→   504→
+   505→   505→  const fetchStats = useCallback(async () => {
+   506→   506→    setLoading(true)
+   507→   507→    setError(false)
+   508→   508→    try {
+   509→   509→      const controller = new AbortController()
+   510→   510→      const timeoutId = setTimeout(() => controller.abort(), 15000)
+   511→   511→
+   512→   512→      const res = await fetch(`/api/stats/responsable`, {
+   513→   513→        signal: controller.signal,
+   514→   514→      })
+   515→   515→      clearTimeout(timeoutId)
+   516→   516→
+   517→   517→      if (!res.ok) throw new Error('Erreur réseau')
+   518→   518→      const json: StatsData = await res.json()
+   519→   519→      setData(json)
+   520→   520→    } catch (err) {
+   521→   521→      console.error('Dashboard fetch error:', err)
+   522→   522→      setError(true)
+   523→   523→      if (data === null) {
+   524→   524→        toast.error('Impossible de charger les statistiques du tableau de bord.', {
+   525→   525→          action: { label: 'Réessayer', onClick: () => fetchStats() },
+   526→   526→        })
+   527→   527→      }
+   528→   528→    } finally {
+   529→   529→      setLoading(false)
+   530→   530→    }
+   531→   531→  }, [])
+   532→   532→
+   533→   533→  useEffect(() => {
+   534→   534→    fetchStats()
+   535→   535→  }, [fetchStats])
+   536→   536→
+   537→   537→  if (loading && !data) {
+   538→   538→    return <DashboardSkeleton />
+   539→   539→  }
+   540→   540→
+   541→   541→  if (error && !data) {
+   542→   542→    return <DashboardError onRetry={fetchStats} />
+   543→   543→  }
+   544→   544→
+   545→   545→  if (!data) {
+   546→   546→    return <EmptyDashboard name={name} />
+   547→   547→  }
+   548→   548→
+   549→   549→  const hasNoActivity = data.nbEtudiants === 0 && data.nbEvaluations === 0
+   550→   550→
+   551→   551→  if (hasNoActivity) {
+   552→   552→    return <EmptyDashboard name={name} />
+   553→   553→  }
+   554→   554→
+   555→   555→  return (
+   556→   556→    <motion.div
+   557→   557→      className="space-y-6"
+   558→   558→      variants={containerVariants}
+   559→   559→      initial="hidden"
+   560→   560→      animate="visible"
+   561→   561→    >
+   562→   562→      <AnimatePresence>
+   563→   563→        <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+   564→   564→          Bonjour, {name} ! Vue stratégique de votre établissement.
+   565→   565→        </motion.h1>
+   566→   566→      </AnimatePresence>
+   567→   567→
+   568→   568→      {/* Quick stats bar */}
+   569→   569→      <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+   570→   570→        <Card className="p-4">
+   571→   571→          <div className="flex items-center gap-3">
+   572→   572→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+   573→   573→              <GraduationCap className="h-5 w-5 text-amber-600" />
+   574→   574→            </div>
+   575→   575→            <div>
+   576→   576→              <p className="text-2xl font-bold">{data.nbEtudiants}</p>
+   577→   577→              <p className="text-xs text-muted-foreground">Étudiant{data.nbEtudiants !== 1 ? 's' : ''}</p>
+   578→   578→            </div>
+   579→   579→          </div>
+   580→   580→        </Card>
+   581→   581→        <Card className="p-4">
+   582→   582→          <div className="flex items-center gap-3">
+   583→   583→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+   584→   584→              <Users className="h-5 w-5 text-emerald-600" />
+   585→   585→            </div>
+   586→   586→            <div>
+   587→   587→              <p className="text-2xl font-bold">{data.nbEnseignants}</p>
+   588→   588→              <p className="text-xs text-muted-foreground">Enseignant{data.nbEnseignants !== 1 ? 's' : ''}</p>
+   589→   589→            </div>
+   590→   590→          </div>
+   591→   591→        </Card>
+   592→   592→        <Card className="p-4">
+   593→   593→          <div className="flex items-center gap-3">
+   594→   594→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
+   595→   595→              <ClipboardCheck className="h-5 w-5 text-teal-600" />
+   596→   596→            </div>
+   597→   597→            <div>
+   598→   598→              <p className="text-2xl font-bold">{data.nbEvaluations}</p>
+   599→   599→              <p className="text-xs text-muted-foreground">Évaluation{data.nbEvaluations !== 1 ? 's' : ''}</p>
+   600→   600→            </div>
+   601→   601→          </div>
+   602→   602→        </Card>
+   603→   603→        <Card className="p-4">
+   604→   604→          <div className="flex items-center gap-3">
+   605→   605→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/40">
+   606→   606→              <TrendingUp className="h-5 w-5 text-sky-600" />
+   607→   607→            </div>
+   608→   608→            <div>
+   609→   609→              <p className="text-2xl font-bold">{data.tauxReussiteGlobal}%</p>
+   610→   610→              <p className="text-xs text-muted-foreground">Taux réussite</p>
+   611→   611→            </div>
+   612→   612→          </div>
+   613→   613→        </Card>
+   614→   614→        <Card className="p-4">
+   615→   615→          <div className="flex items-center gap-3">
+   616→   616→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
+   617→   617→              <BarChart3 className="h-5 w-5 text-violet-600" />
+   618→   618→            </div>
+   619→   619→            <div>
+   620→   620→              <p className="text-2xl font-bold">{data.moyenneGenerale.toFixed(1)}</p>
+   621→   621→              <p className="text-xs text-muted-foreground">Moyenne /20</p>
+   622→   622→            </div>
+   623→   623→          </div>
+   624→   624→        </Card>
+   625→   625→      </motion.div>
+   626→   626→
+   627→   627→      {/* Alertes banner */}
+   628→   628→      {data.alertes.length > 0 && (
+   629→   629→        <motion.div variants={itemVariants}>
+   630→   630→          <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+   631→   631→            <CardContent className="flex items-center justify-between p-4">
+   632→   632→              <div className="flex items-center gap-3">
+   633→   633→                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
+   634→   634→                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+   635→   635→                </div>
+   636→   636→                <div>
+   637→   637→                  <p className="font-semibold text-amber-800 dark:text-amber-300">
+   638→   638→                    {data.alertes.length} alerte{data.alertes.length !== 1 ? 's' : ''} active{data.alertes.length !== 1 ? 's' : ''}
+   639→   639→                  </p>
+   640→   640→                  <p className="text-sm text-amber-700 dark:text-amber-400">
+   641→   641→                    Des points d&apos;attention nécessitent votre intervention
+   642→   642→                  </p>
+   643→   643→                </div>
+   644→   644→              </div>
+   645→   645→              <Button
+   646→   646→                className="bg-amber-600 hover:bg-amber-700"
+   647→   647→                onClick={() => window.location.href = '/alertes'}
+   648→   648→              >
+   649→   649→                <AlertTriangle className="mr-2 h-4 w-4" /> Voir les alertes
+   650→   650→              </Button>
+   651→   651→            </CardContent>
+   652→   652→          </Card>
+   653→   653→        </motion.div>
+   654→   654→      )}
+   655→   655→
+   656→   656→      <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-6 space-y-6 lg:space-y-0">
+   657→   657→        {/* Main column (2/3) */}
+   658→   658→        <div className="lg:col-span-2 space-y-6">
+   659→   659→          <motion.div variants={itemVariants}>
+   660→   660→            <ObjectiveCard />
+   661→   661→          </motion.div>
+   662→   662→
+   663→   663→          <motion.div variants={itemVariants}>
+   664→   664→            <BadgesCarousel data={data} />
+   665→   665→          </motion.div>
+   666→   666→
+   667→   667→          {/* Charts */}
+   668→   668→          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+   669→   669→            <motion.div variants={itemVariants}>
+   670→   670→              <Card>
+   671→   671→                <CardHeader>
+   672→   672→                  <CardTitle className="flex items-center gap-2">
+   673→   673→                    <TrendingUp className="h-5 w-5 text-amber-600" />
+   674→   674→                    Évolution des moyennes
+   675→   675→                  </CardTitle>
+   676→   676→                </CardHeader>
+   677→   677→                <CardContent className="h-72">
+   678→   678→                  {data.evolutionMoyennes.length > 0 ? (
+   679→   679→                    <ResponsiveContainer width="100%" height="100%">
+   680→   680→                      <AreaChart data={data.evolutionMoyennes.map(e => ({ ...e, mois: formatMonth(e.mois) }))}>
+   681→   681→                        <defs>
+   682→   682→                          <linearGradient id="responsableScoreGradient" x1="0" y1="0" x2="0" y2="1">
+   683→   683→                            <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+   684→   684→                            <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02} />
+   685→   685→                          </linearGradient>
+   686→   686→                        </defs>
+   687→   687→                        <XAxis dataKey="mois" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   688→   688→                        <YAxis domain={[0, 20]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   689→   689→                        <Tooltip />
+   690→   690→                        <Area type="monotone" dataKey="moyenne" stroke="#f59e0b" strokeWidth={2.5} fill="url(#responsableScoreGradient)" />
+   691→   691→                      </AreaChart>
+   692→   692→                    </ResponsiveContainer>
+   693→   693→                  ) : (
+   694→   694→                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+   695→   695→                      Pas encore de données
+   696→   696→                    </div>
+   697→   697→                  )}
+   698→   698→                </CardContent>
+   699→   699→              </Card>
+   700→   700→            </motion.div>
+   701→   701→
+   702→   702→            <motion.div variants={itemVariants}>
+   703→   703→              <Card>
+   704→   704→                <CardHeader>
+   705→   705→                  <CardTitle className="flex items-center gap-2">
+   706→   706→                    <BarChart3 className="h-5 w-5 text-amber-600" />
+   707→   707→                    Répartition des notes
+   708→   708→                  </CardTitle>
+   709→   709→                </CardHeader>
+   710→   710→                <CardContent className="h-72">
+   711→   711→                  {data.repartitionNotes.some(r => r.count > 0) ? (
+   712→   712→                    <ResponsiveContainer width="100%" height="100%">
+   713→   713→                      <BarChart data={data.repartitionNotes}>
+   714→   714→                        <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   715→   715→                        <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   716→   716→                        <Tooltip />
+   717→   717→                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+   718→   718→                          {data.repartitionNotes.map((entry, index) => {
+   719→   719→                            // Color by bucket: green for high scores, amber for medium, red for low
+   720→   720→                            const bucketCenter = parseFloat(entry.label.split('-')[0])
+   721→   721→                            let fill = '#ef4444' // red
+   722→   722→                            if (bucketCenter >= 12) fill = '#10b981' // green
+   723→   723→                            else if (bucketCenter >= 8) fill = '#f59e0b' // amber
+   724→   724→                            return <Cell key={`cell-${index}`} fill={fill} />
+   725→   725→                          })}
+   726→   726→                        </Bar>
+   727→   727→                      </BarChart>
+   728→   728→                    </ResponsiveContainer>
+   729→   729→                  ) : (
+   730→   730→                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+   731→   731→                      Pas encore de données
+   732→   732→                    </div>
+   733→   733→                  )}
+   734→   734→                </CardContent>
+   735→   735→              </Card>
+   736→   736→            </motion.div>
+   737→   737→          </div>
+   738→   738→
+   739→   739→          {/* Resultats par matière */}
+   740→   740→          {data.resultatsParMatiere.length > 0 && (
+   741→   741→            <motion.div variants={itemVariants}>
+   742→   742→              <Card>
+   743→   743→                <CardHeader>
+   744→   744→                  <CardTitle className="flex items-center gap-2">
+   745→   745→                    <BookOpen className="h-5 w-5 text-amber-600" />
+   746→   746→                    Résultats par matière
+   747→   747→                  </CardTitle>
+   748→   748→                  <CardDescription>Classement par moyenne décroissante</CardDescription>
+   749→   749→                </CardHeader>
+   750→   750→                <CardContent>
+   751→   751→                  <div className="space-y-4">
+   752→   752→                    {data.resultatsParMatiere.slice(0, 6).map((matiere, index) => {
+   753→   753→                      const scoreColor = getScoreColor(matiere.moyenne)
+   754→   754→                      return (
+   755→   755→                        <div key={index} className="flex items-center">
+   756→   756→                          <div
+   757→   757→                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+   758→   758→                            style={{
+   759→   759→                              backgroundColor: `${scoreColor}20`,
+   760→   760→                              color: scoreColor,
+   761→   761→                            }}
+   762→   762→                          >
+   763→   763→                            {matiere.moyenne.toFixed(1)}
+   764→   764→                          </div>
+   765→   765→                          <div className="ml-4 flex-grow">
+   766→   766→                            <p className="font-semibold truncate">{matiere.titre}</p>
+   767→   767→                            <p className="text-sm text-muted-foreground">
+   768→   768→                              {matiere.enseignant} · {matiere.nbParticipants} participant{matiere.nbParticipants !== 1 ? 's' : ''}
+   769→   769→                            </p>
+   770→   770→                          </div>
+   771→   771→                          <div className="text-right">
+   772→   772→                            <Badge
+   773→   773→                              variant="outline"
+   774→   774→                              className="text-[10px]"
+   775→   775→                              style={{
+   776→   776→                                borderColor: `${getTauxColor(matiere.tauxReussite)}`,
+   777→   777→                                color: getTauxColor(matiere.tauxReussite),
+   778→   778→                              }}
+   779→   779→                            >
+   780→   780→                              {matiere.tauxReussite}% réussite
+   781→   781→                            </Badge>
+   782→   782→                          </div>
+   783→   783→                        </div>
+   784→   784→                      )
+   785→   785→                    })}
+   786→   786→                  </div>
+   787→   787→                </CardContent>
+   788→   788→              </Card>
+   789→   789→            </motion.div>
+   790→   790→          )}
+   791→   791→        </div>
+   792→   792→
+   793→   793→        {/* Sidebar (1/3) */}
+   794→   794→        <div className="lg:col-span-1 space-y-6">
+   795→   795→          <motion.div variants={itemVariants}>
+   796→   796→            <AlertesTimeline alertes={data.alertes} />
+   797→   797→          </motion.div>
+   798→   798→
+   799→   799→          <motion.div variants={itemVariants}>
+   800→   800→            <TopEnseignantsSection enseignants={data.topEnseignants} />
+   801→   801→          </motion.div>
+   802→   802→
+   803→   803→          <motion.div variants={itemVariants}>
+   804→   804→            <EtudiantsDifficulteSection etudiants={data.etudiantsEnDifficulte} />
+   805→   805→          </motion.div>
+   806→   806→
+   807→   807→          {/* Filières breakdown */}
+   808→   808→          {data.etudiantsParFiliere.length > 0 && (
+   809→   809→            <motion.div variants={itemVariants}>
+   810→   810→              <Card>
+   811→   811→                <CardHeader>
+   812→   812→                  <CardTitle className="flex items-center gap-2">
+   813→   813→                    <GraduationCap className="h-5 w-5 text-amber-600" />
+   814→   814→                    Étudiants par filière
+   815→   815→                  </CardTitle>
+   816→   816→                </CardHeader>
+   817→   817→                <CardContent>
+   818→   818→                  <div className="space-y-3">
+   819→   819→                    {data.etudiantsParFiliere.map((f, index) => (
+   820→   820→                      <div key={index} className="flex items-center justify-between">
+   821→   821→                        <span className="font-medium text-sm truncate">{f.filiere}</span>
+   822→   822→                        <Badge variant="secondary" className="text-xs">{f.count}</Badge>
+   823→   823→                      </div>
+   824→   824→                    ))}
+   825→   825→                  </div>
+   826→   826→                </CardContent>
+   827→   827→              </Card>
+   828→   828→            </motion.div>
+   829→   829→          )}
+   830→   830→
+   831→   831→          {/* Top étudiants */}
+   832→   832→          {data.topEtudiants.length > 0 && (
+   833→   833→            <motion.div variants={itemVariants}>
+   834→   834→              <Card>
+   835→   835→                <CardHeader>
+   836→   836→                  <CardTitle className="flex items-center gap-2">
+   837→   837→                    <Star className="h-5 w-5 text-amber-500" />
+   838→   838→                    Top Étudiants
+   839→   839→                  </CardTitle>
+   840→   840→                </CardHeader>
+   841→   841→                <CardContent>
+   842→   842→                  <div className="space-y-3">
+   843→   843→                    {data.topEtudiants.slice(0, 5).map((etu, index) => {
+   844→   844→                      const scoreColor = getScoreColor(etu.moyenne)
+   845→   845→                      return (
+   846→   846→                        <div key={index} className="flex items-center">
+   847→   847→                          <div
+   848→   848→                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px]"
+   849→   849→                            style={{
+   850→   850→                              backgroundColor: `${scoreColor}20`,
+   851→   851→                              color: scoreColor,
+   852→   852→                            }}
+   853→   853→                          >
+   854→   854→                            {etu.moyenne.toFixed(1)}
+   855→   855→                          </div>
+   856→   856→                          <div className="ml-3 flex-grow">
+   857→   857→                            <p className="font-medium text-sm truncate">{etu.nom}</p>
+   858→   858→                            <p className="text-xs text-muted-foreground">{etu.filiere}</p>
+   859→   859→                          </div>
+   860→   860→                          {index === 0 && <Trophy className="h-4 w-4 text-amber-500" />}
+   861→   861→                        </div>
+   862→   862→                      )
+   863→   863→                    })}
+   864→   864→                  </div>
+   865→   865→                </CardContent>
+   866→   866→              </Card>
+   867→   867→            </motion.div>
+   868→   868→          )}
+   869→   869→        </div>
+   870→   870→      </div>
+   871→   871→    </motion.div>
+   872→   872→  )
+   873→   873→}
+   874→   874→

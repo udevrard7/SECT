@@ -1,0 +1,824 @@
+     1→generator client {
+     2→  provider = "prisma-client-js"
+     3→}
+     4→
+     5→datasource db {
+     6→  provider  = "postgresql"
+     7→  url       = env("DATABASE_URL")
+     8→  directUrl = env("DIRECT_URL")
+     9→}
+    10→
+    11→model User {
+    12→  id                  String                @id @default(cuid())
+    13→  email               String                @unique
+    14→  name                String
+    15→  password            String
+    16→  role                Role                  @default(ETUDIANT)
+    17→  etablissementId     String?
+    18→  filiereId           String?
+    19→  image               String?
+    20→  actif               Boolean               @default(true)
+    21→  derniereConnexion   DateTime?
+    22→  createdAt           DateTime              @default(now())
+    23→  updatedAt           DateTime              @updatedAt
+    24→  lockedUntil         DateTime?
+    25→  loginAttempts       Int                   @default(0)
+    26→  matricule           String?               @unique
+    27→  mustChangePwd       Boolean               @default(false)
+    28→  niveau              NiveauEtude?          // Niveau d'étude de l'étudiant (L1, L2, L3, M1, M2)
+    29→  affectations        Affectation[]
+    30→  alertes             Alerte[]
+    31→  Devoir              Devoir[]
+    32→  documents           Document[]
+    33→  enseignantFilieres  EnseignantFiliere[]
+    34→  epreuves            Epreuve[]
+    35→  etablissementAccess EtablissementAccess[]
+    36→  filieresResponsable Filiere[]             @relation("FiliereResponsable")
+    37→  Invitation          Invitation[]
+    38→  PasswordReset       PasswordReset[]
+    39→  sessions            SessionPassation[]
+    40→  Soumission          Soumission[]
+    41→  etablissement       Etablissement?        @relation(fields: [etablissementId], references: [id])
+    42→  filiere             Filiere?              @relation("UserFiliere", fields: [filiereId], references: [id])
+    43→  notificationsAdmin  NotificationAdmin[]
+    44→  sessionsSpecialesCreees SessionSpeciale[]  @relation("SessionsSpecialesCreees")
+    45→}
+    46→
+    47→model Etablissement {
+    48→  id               String                @id @default(cuid())
+    49→  nom              String                @unique
+    50→  type             String?
+    51→  ville            String?
+    52→  pays             String?               @default("France")
+    53→  adresse          String?
+    54→  telephone        String?
+    55→  email            String?
+    56→  siteWeb          String?
+    57→  logo             String?
+    58→  actif            Boolean               @default(true)
+    59→  createdAt        DateTime              @default(now())
+    60→  updatedAt        DateTime              @updatedAt
+    61→  exempleMatricule String?
+    62→  formatMatricule  String?
+    63→  regexMatricule   String?
+    64→  abonnements      Abonnement[]
+    65→  adminAccess      EtablissementAccess[]
+    66→  anneesAcademiques AnneeAcademique[]
+    67→  factures         Facture[]
+    68→  filieres         Filiere[]
+    69→  ipWhitelist      IpWhitelist[]
+    70→  Invitation       Invitation[]
+    71→  securitySettings SecuritySettings?
+    72→  users            User[]
+    73→}
+    74→
+    75→model Filiere {
+    76→  id                 String              @id @default(cuid())
+    77→  nom                String
+    78→  code               String?
+    79→  etablissementId    String
+    80→  responsableId      String?
+    81→  description        String?
+    82→  nbEtudiants        Int?
+    83→  actif              Boolean             @default(true)
+    84→  createdAt          DateTime            @default(now())
+    85→  updatedAt          DateTime            @updatedAt
+    86→  alertes            Alerte[]
+    87→  enseignantFilieres EnseignantFiliere[]
+    88→  etablissement      Etablissement       @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+    89→  responsable        User?               @relation("FiliereResponsable", fields: [responsableId], references: [id])
+    90→  Invitation         Invitation[]
+    91→  unitesEnseignement UniteEnseignement[]
+    92→  ueFilieresSuppl    UniteEnseignementFiliere[]  // UEs partagées d'autres filières
+    93→  etudiants          User[]              @relation("UserFiliere")
+    94→  epreuves           Epreuve[]
+    95→
+    96→  @@unique([nom, etablissementId])
+    97→}
+    98→
+    99→model EnseignantFiliere {
+   100→  id           String      @id @default(cuid())
+   101→  enseignantId String
+   102→  filiereId    String
+   103→  createdAt    DateTime    @default(now())
+   104→  updatedAt    DateTime    @updatedAt
+   105→  niveau       NiveauEtude
+   106→  enseignant   User        @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+   107→  filiere      Filiere     @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+   108→
+   109→  @@unique([enseignantId, filiereId, niveau])
+   110→}
+   111→
+   112→model UniteEnseignement {
+   113→  id             String        @id @default(cuid())
+   114→  code           String
+   115→  nom            String
+   116→  description    String?
+   117→  filiereId      String        // Filière propriétaire (principale)
+   118→  niveau         NiveauEtude
+   119→  niveaux        String?       // JSON array of NiveauEtude values for shared UEs across levels (e.g. '["L1","L2"]')
+   120→  semestre       Int?
+   121→  creditsECTS    Int?
+   122→  volumeHeuresCM Int           @default(0)
+   123→  volumeHeuresTD Int           @default(0)
+   124→  volumeHeuresTP Int           @default(0)
+   125→  obligatoire    Boolean       @default(true)
+   126→  actif          Boolean       @default(true)
+   127→  createdAt      DateTime      @default(now())
+   128→  updatedAt      DateTime      @updatedAt
+   129→  affectations   Affectation[]
+   130→  Devoir         Devoir[]
+   131→  documents      Document[]
+   132→  epreuves       Epreuve[]
+   133→  filiere        Filiere       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+   134→  filieresSuppl  UniteEnseignementFiliere[]  // Filières supplémentaires (partage multi-filières)
+   135→
+   136→  @@unique([code, filiereId])
+   137→}
+   138→
+   139→model UniteEnseignementFiliere {
+   140→  id                  String              @id @default(cuid())
+   141→  uniteEnseignementId String
+   142→  filiereId           String
+   143→  createdAt           DateTime            @default(now())
+   144→  uniteEnseignement   UniteEnseignement   @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+   145→  filiere             Filiere             @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+   146→
+   147→  @@unique([uniteEnseignementId, filiereId])
+   148→}
+   149→
+   150→model Affectation {
+   151→  id                  String            @id @default(cuid())
+   152→  enseignantId        String
+   153→  uniteEnseignementId String
+   154→  typeSeance          TypeSeance        @default(CM)
+   155→  groupe              String?
+   156→  volumeHeures        Float
+   157→  anneeUniversitaire  String            @default("2024-2025")
+   158→  statut              StatutAffectation @default(PROVISOIRE)
+   159→  commentaire         String?
+   160→  createdAt           DateTime          @default(now())
+   161→  updatedAt           DateTime          @updatedAt
+   162→  enseignant          User              @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+   163→  uniteEnseignement   UniteEnseignement @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+   164→
+   165→  @@unique([enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire])
+   166→}
+   167→
+   168→model AuditLog {
+   169→  id        String   @id @default(cuid())
+   170→  userId    String?
+   171→  userEmail String?
+   172→  action    String
+   173→  entite    String
+   174→  entiteId  String?
+   175→  details   String?
+   176→  adresseIp String?
+   177→  createdAt DateTime @default(now())
+   178→}
+   179→
+   180→model Document {
+   181→  id                    String              @id @default(cuid())
+   182→  ownerId               String
+   183→  nomFichier            String
+   184→  cheminStockage        String
+   185→  tailleFichier         Int?
+   186→  typeMime              String?
+   187→  statutAnalyse         StatutAnalyse       @default(EN_ATTENTE)
+   188→  themesDetectes        String?
+   189→  conceptsCles          String?
+   190→  volumeEstime          String?
+   191→  contenuTexte          String?
+   192→  dateUpload            DateTime            @default(now())
+   193→  createdAt             DateTime            @default(now())
+   194→  updatedAt             DateTime            @updatedAt
+   195→  deletedAt             DateTime?           // Soft delete — null means active, set date when moved to Corbeille
+   196→  erreurAnalyse         String?
+   197→  resumeAnalyse         String?
+   198→  uniteEnseignementId   String?
+   199→  owner                 User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+   200→  uniteEnseignement     UniteEnseignement?  @relation(fields: [uniteEnseignementId], references: [id], onDelete: SetNull)
+   201→  questions             Question[]
+   202→  epreuveSources        EpreuveDocument[]
+   203→}
+   204→
+   205→model Question {
+   206→  id               String            @id @default(cuid())
+   207→  documentId       String?
+   208→  auteurId         String?
+   209→  type             TypeQuestion
+   210→  enonce           String
+   211→  propositions     String?
+   212→  reponseCorrecte  String?
+   213→  explication      String?
+   214→  difficulte       Difficulte        @default(MOYEN)
+   215→  themes           String?
+   216→  tags             String?
+   217→  scoreQualite     Float?
+   218→  validee          Boolean           @default(false)
+   219→  langue           String            @default("fr")
+   220→  createdAt        DateTime          @default(now())
+   221→  updatedAt        DateTime          @updatedAt
+   222→  deletedAt        DateTime?         // Soft delete — null means active, set date when moved to Corbeille
+   223→  epreuveQuestions EpreuveQuestion[]
+   224→  document         Document?         @relation(fields: [documentId], references: [id])
+   225→}
+   226→
+   227→model Epreuve {
+   228→  id                       String             @id @default(cuid())
+   229→  enseignantId             String
+   230→  titre                    String
+   231→  description              String?
+   232→  duree                    Int
+   233→  dateDebut                DateTime
+   234→  dateFin                  DateTime
+   235→  melangeQuestions         Boolean            @default(true)
+   236→  melangePropositions      Boolean            @default(true)
+   237→  blocageRetour            Boolean            @default(false)
+   238→  statut                   StatutEpreuve      @default(BROUILLON)
+   239→  groupesCibles            String?
+   240→  contenu                  Json?              // Complete exam content as JSONB (new Banque d'Épreuves format)
+   241→  filiereId                String?            // Optional link to Filiere
+   242→  uniteEnseignementId      String?            // Optional link to UniteEnseignement
+   243→  niveau                   NiveauEtude?       // Niveau d'étude ciblé (L1, L2, L3, M1, M2, DOCTORAT)
+   244→  sessionExamen            SessionExamen      @default(NORMALE)  // Session d'examen (normale, rattrapage, spéciale)
+   245→  anneeAcademiqueId        String?            // Lien vers l'année académique
+   246→  createdAt                DateTime           @default(now())
+   247→  updatedAt                DateTime           @updatedAt
+   248→  deletedAt                DateTime?          // Soft delete — null means active, set date when moved to Corbeille
+   249→  proctoringActif          Boolean            @default(false)
+   250→  verificationIdentite     Boolean            @default(false)
+   251→  generationMode           ModeGeneration     @default(MANUELLE)
+   252→  isTemplate               Boolean            @default(false)
+   253→  noteTotal                Float              @default(20)   // Note totale de l'épreuve (ex: 20, 100)
+   254→  clotureeAt               DateTime?          // Date/heure précise de la clôture automatique
+   255→  clotureeAutomatiquement  Boolean            @default(false)  // true si clôture automatique, false si manuelle
+   256→  raisonCloture            String?            // "TOUS_SOUMIS" ou "ECHEANCE_ATTEINTE"
+   257→  clotureePar              String?            // ID utilisateur si clôture manuelle, null si auto
+   258→  delaiGrace               Int                @default(3)     // Délai de grâce en minutes (2-5 min) après l'échéance
+   259→  etudiantsAutorises       String?            // JSON array of student IDs — si défini, seuls ces étudiants peuvent passer l'épreuve
+   260→  epreuveOrigineId         String?            // ID de l'épreuve d'origine si celle-ci est une session spéciale dérivée
+   261→  alertes                  Alerte[]
+   262→  enseignant               User               @relation(fields: [enseignantId], references: [id])
+   263→  questions                EpreuveQuestion[]
+   264→  sessions                 SessionPassation[]
+   265→  sourceDocuments          EpreuveDocument[]
+   266→  filiere                  Filiere?           @relation(fields: [filiereId], references: [id])
+   267→  uniteEnseignement        UniteEnseignement? @relation(fields: [uniteEnseignementId], references: [id])
+   268→  anneeAcademique          AnneeAcademique?   @relation(fields: [anneeAcademiqueId], references: [id])
+   269→  epreuveOrigine           Epreuve?           @relation("EpreuveDerivee", fields: [epreuveOrigineId], references: [id])
+   270→  epreuvesDerivees         Epreuve[]          @relation("EpreuveDerivee")
+   271→  sessionsSpecialesOrigine SessionSpeciale[]  @relation("SessionSpecialeOrigine")
+   272→  sessionsSpecialesDerivee SessionSpeciale[]  @relation("SessionSpecialeDerivee")
+   273→
+   274→  @@index([filiereId, niveau, sessionExamen])
+   275→  @@index([enseignantId, statut])
+   276→  @@index([anneeAcademiqueId])
+   277→  @@index([epreuveOrigineId])
+   278→}
+   279→
+   280→model EpreuveQuestion {
+   281→  id         String   @id @default(cuid())
+   282→  epreuveId  String
+   283→  questionId String
+   284→  bareme     Float    @default(1.0)
+   285→  ordre      Int      @default(0)
+   286→  epreuve    Epreuve  @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+   287→  question   Question @relation(fields: [questionId], references: [id])
+   288→
+   289→  @@unique([epreuveId, questionId])
+   290→}
+   291→
+   292→model EpreuveDocument {
+   293→  id         String   @id @default(cuid())
+   294→  epreuveId  String
+   295→  documentId String
+   296→  epreuve    Epreuve  @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+   297→  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+   298→
+   299→  @@unique([epreuveId, documentId])
+   300→}
+   301→
+   302→model SessionPassation {
+   303→  id                  String        @id @default(cuid())
+   304→  etudiantId          String
+   305→  epreuveId           String
+   306→  statut              StatutSession @default(NON_COMMENCEE)
+   307→  dateDebut           DateTime?
+   308→  dateFin             DateTime?
+   309→  score               Float?
+   310→  logEvents           String?
+   311→  alertes             Int           @default(0)
+   312→  createdAt           DateTime      @default(now())
+   313→  updatedAt           DateTime      @updatedAt
+   314→  propositionMappings String?
+   315→  penalite            Float         @default(0)
+   316→  reponses            Reponse[]
+   317→  resultat            Resultat?
+   318→  epreuve             Epreuve       @relation(fields: [epreuveId], references: [id])
+   319→  etudiant            User          @relation(fields: [etudiantId], references: [id])
+   320→}
+   321→
+   322→model Reponse {
+   323→  id              String           @id @default(cuid())
+   324→  sessionId       String
+   325→  questionId      String           // Can reference Question.id OR a contenu JSONB question id — no FK constraint to support both formats
+   326→  contenu         String?
+   327→  score           Float?
+   328→  commentaire     String?
+   329→  noteIA          Float?
+   330→  justificationIA String?
+   331→  createdAt       DateTime         @default(now())
+   332→  updatedAt       DateTime         @updatedAt
+   333→  session         SessionPassation @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+   334→
+   335→  @@unique([sessionId, questionId])
+   336→}
+   337→
+   338→model Alerte {
+   339→  id          String         @id @default(cuid())
+   340→  titre       String
+   341→  description String
+   342→  severity    SeverityAlerte @default(INFO)
+   343→  type        TypeAlerte     @default(CUSTOM)
+   344→  lue         Boolean        @default(false)
+   345→  resolu      Boolean        @default(false)
+   346→  filiereId   String?
+   347→  epreuveId   String?
+   348→  userId      String?
+   349→  createdAt   DateTime       @default(now())
+   350→  updatedAt   DateTime       @updatedAt
+   351→  epreuve     Epreuve?       @relation(fields: [epreuveId], references: [id], onDelete: Cascade)
+   352→  filiere     Filiere?       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+   353→  user        User?          @relation(fields: [userId], references: [id])
+   354→}
+   355→
+   356→model Resultat {
+   357→  id                String           @id @default(cuid())
+   358→  sessionId         String           @unique
+   359→  scoreFinal        Float
+   360→  detailParQuestion String?
+   361→  dateCorrection    DateTime?
+   362→  dateRetour        DateTime?
+   363→  commentaires      String?
+   364→  exporte           Boolean          @default(false)
+   365→  createdAt         DateTime         @default(now())
+   366→  updatedAt         DateTime         @updatedAt
+   367→  totalPossible     Float            @default(20)
+   368→  session           SessionPassation @relation(fields: [sessionId], references: [id])
+   369→}
+   370→
+   371→model Plan {
+   372→  id                  String       @id @default(cuid())
+   373→  nom                 String       @unique
+   374→  type                TypePlan
+   375→  prixMensuel         Float
+   376→  prixAnnuel          Float?
+   377→  nbEtablissementsMax Int
+   378→  nbFilieresMax       Int
+   379→  nbEnseignantsMax    Int
+   380→  nbEtudiantsMax      Int
+   381→  nbQuestionsMax      Int
+   382→  nbEvaluationsMois   Int
+   383→  iaGeneration        Boolean      @default(true)
+   384→  iaCorrection        Boolean      @default(false)
+   385→  proctoring          Boolean      @default(false)
+   386→  exportPDF           Boolean      @default(true)
+   387→  support             String       @default("email")
+   388→  description         String?
+   389→  actif               Boolean      @default(true)
+   390→  createdAt           DateTime     @default(now())
+   391→  updatedAt           DateTime     @updatedAt
+   392→  abonnements         Abonnement[]
+   393→}
+   394→
+   395→model Abonnement {
+   396→  id                 String           @id @default(cuid())
+   397→  etablissementId    String
+   398→  planId             String
+   399→  statut             StatutAbonnement @default(ESSAI)
+   400→  dateDebut          DateTime
+   401→  dateFin            DateTime?
+   402→  periodeEssaiJours  Int              @default(14)
+   403→  modePaiement       String?
+   404→  referencePaiement  String?
+   405→  montantPaye        Float            @default(0)
+   406→  renouvellementAuto Boolean          @default(true)
+   407→  notes              String?
+   408→  createdAt          DateTime         @default(now())
+   409→  updatedAt          DateTime         @updatedAt
+   410→  etablissement      Etablissement    @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+   411→  plan               Plan             @relation(fields: [planId], references: [id])
+   412→  factures           Facture[]
+   413→}
+   414→
+   415→model EtablissementAccess {
+   416→  id              String        @id @default(cuid())
+   417→  adminId         String
+   418→  etablissementId String
+   419→  motif           String
+   420→  statut          String        @default("EN_ATTENTE")
+   421→  dateDebut       DateTime?
+   422→  dateFin         DateTime?
+   423→  approuvePar     String?
+   424→  commentaire     String?
+   425→  createdAt       DateTime      @default(now())
+   426→  updatedAt       DateTime      @updatedAt
+   427→  admin           User          @relation(fields: [adminId], references: [id], onDelete: Cascade)
+   428→  etablissement   Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+   429→
+   430→  @@unique([adminId, etablissementId])
+   431→}
+   432→
+   433→model SecuritySettings {
+   434→  id                       String        @id @default(cuid())
+   435→  etablissementId          String        @unique
+   436→  proctoringActif          Boolean       @default(false)
+   437→  detectionCopie           Boolean       @default(true)
+   438→  detectionOnglet          Boolean       @default(true)
+   439→  detectionFullscreen      Boolean       @default(true)
+   440→  blocageCopie             Boolean       @default(true)
+   441→  blocageClicDroit         Boolean       @default(true)
+   442→  blocageImpression        Boolean       @default(true)
+   443→  verificationIdentite     Boolean       @default(false)
+   444→  tempsInactiviteMax       Int           @default(120)
+   445→  nbOngletsMax             Int           @default(3)
+   446→  nbAlertesMax             Int           @default(5)
+   447→  autoSubmitOnViolation    Boolean       @default(false)
+   448→  captureEcran             Boolean       @default(false)
+   449→  rapportFraude            Boolean       @default(true)
+   450→  seuilSimilarite          Float         @default(0.85)
+   451→  penaliteFullscreenExit   Int           @default(5)
+   452→  fullscreenObligatoire    Boolean       @default(true)
+   453→  intervalleCaptureEcran   Int           @default(60)
+   454→  createdAt                DateTime      @default(now())
+   455→  updatedAt                DateTime      @updatedAt
+   456→  etablissement            Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+   457→}
+   458→
+   459→model Devoir {
+   460→  id                  String            @id
+   461→  titre               String
+   462→  description         String?
+   463→  consignes           String?
+   464→  uniteEnseignementId String
+   465→  enseignantId        String
+   466→  typeSeance          TypeSeance        @default(TD)
+   467→  datePublication     DateTime?
+   468→  dateLimite          DateTime
+   469→  noteMax             Float             @default(20)
+   470→  renduFichiers       String?
+   471→  soumissionGroupe    Boolean           @default(false)
+   472→  nbMaxFichiers       Int               @default(10)
+   473→  tailleMaxFichier    Int               @default(52428800)
+   474→  statut              StatutDevoir      @default(BROUILLON)
+   475→  anneeUniversitaire  String            @default("2024-2025")
+   476→  createdAt           DateTime          @default(now())
+   477→  updatedAt           DateTime
+   478→  deletedAt           DateTime?         // Soft delete — null means active, set date when moved to Corbeille
+   479→  User                User              @relation(fields: [enseignantId], references: [id])
+   480→  UniteEnseignement   UniteEnseignement @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
+   481→  GrilleEvaluation    GrilleEvaluation?
+   482→  Soumission          Soumission[]
+   483→}
+   484→
+   485→model GrilleEvaluation {
+   486→  id        String   @id
+   487→  devoirId  String   @unique
+   488→  criteres  String
+   489→  createdAt DateTime @default(now())
+   490→  updatedAt DateTime
+   491→  Devoir    Devoir   @relation(fields: [devoirId], references: [id], onDelete: Cascade)
+   492→}
+   493→
+   494→model Invitation {
+   495→  id              String         @id
+   496→  token           String         @unique
+   497→  email           String
+   498→  role            Role
+   499→  name            String?
+   500→  etablissementId String?
+   501→  filiereId       String?
+   502→  expiresAt       DateTime
+   503→  used            Boolean        @default(false)
+   504→  usedAt          DateTime?
+   505→  createdById     String
+   506→  createdAt       DateTime       @default(now())
+   507→  User            User           @relation(fields: [createdById], references: [id])
+   508→  Etablissement   Etablissement? @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+   509→  Filiere         Filiere?       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+   510→
+   511→  @@index([email])
+   512→  @@index([token])
+   513→}
+   514→
+   515→model PasswordReset {
+   516→  id        String    @id
+   517→  token     String    @unique
+   518→  userId    String
+   519→  expiresAt DateTime
+   520→  used      Boolean   @default(false)
+   521→  usedAt    DateTime?
+   522→  createdAt DateTime  @default(now())
+   523→  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+   524→
+   525→  @@index([token])
+   526→  @@index([userId])
+   527→}
+   528→
+   529→model PlatformSettings {
+   530→  id        String   @id @default("default")
+   531→  settings  String
+   532→  updatedAt DateTime
+   533→}
+   534→
+   535→model Soumission {
+   536→  id                    String           @id
+   537→  devoirId              String
+   538→  etudiantId            String
+   539→  groupeId              String?
+   540→  contenuTexte          String?
+   541→  fichiersSoumis        String?
+   542→  commentaireEtudiant   String?
+   543→  statut                StatutSoumission @default(BROUILLON)
+   544→  renduAt               DateTime?
+   545→  note                  Float?
+   546→  commentaireEnseignant String?
+   547→  noteIA                Float?
+   548→  justificationIA       String?
+   549→  rapportPlagiat        String?
+   550→  historiqueVersions    String?
+   551→  createdAt             DateTime         @default(now())
+   552→  updatedAt             DateTime
+   553→  Devoir                Devoir           @relation(fields: [devoirId], references: [id], onDelete: Cascade)
+   554→  User                  User             @relation(fields: [etudiantId], references: [id])
+   555→
+   556→  @@unique([devoirId, etudiantId])
+   557→}
+   558→
+   559→enum Role {
+   560→  ADMIN
+   561→  RESPONSABLE
+   562→  ENSEIGNANT
+   563→  ETUDIANT
+   564→}
+   565→
+   566→enum TypeQuestion {
+   567→  QCU
+   568→  QCM
+   569→  QRC
+   570→  REFLEXION
+   571→  TRS
+   572→  CODE
+   573→}
+   574→
+   575→enum Difficulte {
+   576→  FACILE
+   577→  MOYEN
+   578→  DIFFICILE
+   579→  EXPERT
+   580→}
+   581→
+   582→enum StatutAnalyse {
+   583→  EN_ATTENTE
+   584→  EN_COURS
+   585→  ANALYSE
+   586→  ERREUR
+   587→}
+   588→
+   589→enum ModeGeneration {
+   590→  MANUELLE
+   591→  IA_ASSISTEE
+   592→}
+   593→
+   594→enum StatutEpreuve {
+   595→  BROUILLON
+   596→  PLANIFIEE
+   597→  EN_COURS
+   598→  TERMINEE
+   599→  CLOTUREE
+   600→}
+   601→
+   602→enum StatutSession {
+   603→  NON_COMMENCEE
+   604→  EN_COURS
+   605→  SOUMISE
+   606→  CORRIGEE
+   607→  RETOURNEE
+   608→  ABSENT
+   609→  NON_SOUMIS
+   610→}
+   611→
+   612→enum StatutAbonnement {
+   613→  ESSAI
+   614→  ACTIF
+   615→  SUSPENDU
+   616→  EXPIRE
+   617→  RESILIE
+   618→}
+   619→
+   620→enum TypePlan {
+   621→  GRATUIT
+   622→  ESSENTIEL
+   623→  PROFESSIONNEL
+   624→  ENTREPRISE
+   625→}
+   626→
+   627→enum NiveauEtude {
+   628→  L1
+   629→  L2
+   630→  L3
+   631→  M1
+   632→  M2
+   633→  DOCTORAT
+   634→}
+   635→
+   636→enum TypeSeance {
+   637→  CM
+   638→  TD
+   639→  TP
+   640→}
+   641→
+   642→enum StatutAffectation {
+   643→  PROVISOIRE
+   644→  VALIDEE
+   645→  PUBLIEE
+   646→}
+   647→
+   648→enum SeverityAlerte {
+   649→  CRITICAL
+   650→  WARNING
+   651→  INFO
+   652→}
+   653→
+   654→enum TypeAlerte {
+   655→  PERFORMANCE
+   656→  FRAUDE
+   657→  SYSTEME
+   658→  RAPPEL
+   659→  CUSTOM
+   660→}
+   661→
+   662→enum StatutDevoir {
+   663→  BROUILLON
+   664→  PUBLIE
+   665→  FERME
+   666→  ARCHIVE
+   667→}
+   668→
+   669→enum StatutSoumission {
+   670→  BROUILLON
+   671→  SOUMIS
+   672→  CORRIGE
+   673→  RETOURNE
+   674→}
+   675→
+   676→enum SessionExamen {
+   677→  NORMALE
+   678→  RATTRAPAGE
+   679→  SPECIALE
+   680→  EXCEPTIONNELLE
+   681→  DIFFERE
+   682→}
+   683→
+   684→model Facture {
+   685→  id                String   @id @default(cuid())
+   686→  numero            String   @unique
+   687→  abonnementId      String
+   688→  etablissementId   String
+   689→  montantHt         Float
+   690→  tva               Float    @default(20.0)
+   691→  montantTtc        Float
+   692→  statut            String   @default("EN_ATTENTE")
+   693→  dateEmission      DateTime @default(now())
+   694→  dateEcheance      DateTime
+   695→  datePaiement      DateTime?
+   696→  modePaiement      String?
+   697→  referencePaiement String?
+   698→  lignes            String
+   699→  notes             String?
+   700→  abonnement        Abonnement     @relation(fields: [abonnementId], references: [id])
+   701→  etablissement     Etablissement  @relation(fields: [etablissementId], references: [id])
+   702→  createdAt         DateTime       @default(now())
+   703→  updatedAt         DateTime       @updatedAt
+   704→}
+   705→
+   706→model NotificationAdmin {
+   707→  id               String   @id @default(cuid())
+   708→  type             String
+   709→  titre            String
+   710→  message          String
+   711→  destinataireId   String?
+   712→  destinataireRole String?
+   713→  lu               Boolean  @default(false)
+   714→  actionUrl        String?
+   715→  actionLabel      String?
+   716→  priorite         String   @default("NORMALE")
+   717→  categorie        String   @default("SYSTEME")
+   718→  icone            String?
+   719→  expireLe         DateTime?
+   720→  destinataire     User?    @relation(fields: [destinataireId], references: [id])
+   721→  createdAt        DateTime @default(now())
+   722→}
+   723→
+   724→model MonitoringEvent {
+   725→  id        String    @id @default(cuid())
+   726→  type      String
+   727→  severite  String    @default("INFO")
+   728→  message   String
+   729→  details   String?
+   730→  source    String?
+   731→  duree     Int?
+   732→  statut    String    @default("ACTIF")
+   733→  resoluLe  DateTime?
+   734→  resoluPar String?
+   735→  createdAt DateTime  @default(now())
+   736→  updatedAt DateTime  @updatedAt
+   737→}
+   738→
+   739→model IpWhitelist {
+   740→  id              String   @id @default(cuid())
+   741→  adresseIp       String   @unique
+   742→  description     String?
+   743→  etablissementId String?
+   744→  creePar         String?
+   745→  actif           Boolean  @default(true)
+   746→  etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
+   747→  createdAt       DateTime @default(now())
+   748→}
+   749→
+   750→model AIProviderConfig {
+   751→  id          String   @id @default(cuid())
+   752→  name        String   @unique
+   753→  provider    String
+   754→  baseUrl     String?
+   755→  apiKey      String?
+   756→  model       String?
+   757→  temperature Float    @default(0.7)
+   758→  maxTokens   Int      @default(4096)
+   759→  isActive    Boolean  @default(false)
+   760→  priority    Int      @default(99)
+   761→  extraConfig String?
+   762→  lastTestAt  DateTime?
+   763→  lastTestOk  Boolean?
+   764→  createdAt   DateTime @default(now())
+   765→  updatedAt   DateTime @updatedAt
+   766→}
+   767→
+   768→model AnneeAcademique {
+   769→  id               String    @id @default(cuid())
+   770→  libelle          String    // ex: "2024-2025", "2025-2026"
+   771→  dateDebut        DateTime  // Début de l'année académique
+   772→  dateFin          DateTime  // Fin de l'année académique
+   773→  etablissementId  String
+   774→  actif            Boolean   @default(true)
+   775→  createdAt        DateTime  @default(now())
+   776→  updatedAt        DateTime  @updatedAt
+   777→  etablissement    Etablissement @relation(fields: [etablissementId], references: [id], onDelete: Cascade)
+   778→  epreuves         Epreuve[]
+   779→
+   780→  @@unique([libelle, etablissementId])
+   781→}
+   782→
+   783→model SessionSpeciale {
+   784→  id                     String               @id @default(cuid())
+   785→  epreuveOrigineId       String               // Épreuve d'origine
+   786→  epreuveDeriveeId       String               // Nouvelle épreuve dérivée
+   787→  type                   TypeSessionSpeciale  // Type de session spéciale
+   788→  motif                  String               // Raison (maladie, accident, catastrophe, force majeure...)
+   789→  justificatif           String?              // Référence ou document justificatif
+   790→  etudiantsCibles        String               // JSON array of student IDs
+   791→  estPartielle           Boolean              @default(false)  // true = uniquement certaines questions
+   792→  questionsSelectionnees String?              // JSON array of selected question IDs (if partial)
+   793→  creeParId              String               // Utilisateur ayant créé la session
+   794→  createdAt              DateTime             @default(now())
+   795→
+   796→  epreuveOrigine         Epreuve              @relation("SessionSpecialeOrigine", fields: [epreuveOrigineId], references: [id], onDelete: Cascade)
+   797→  epreuveDerivee         Epreuve              @relation("SessionSpecialeDerivee", fields: [epreuveDeriveeId], references: [id], onDelete: Cascade)
+   798→  creePar                User                 @relation("SessionsSpecialesCreees", fields: [creeParId], references: [id])
+   799→
+   800→  @@index([epreuveOrigineId])
+   801→  @@index([epreuveDeriveeId])
+   802→  @@index([creeParId])
+   803→  @@index([type])
+   804→}
+   805→
+   806→enum TypeSessionSpeciale {
+   807→  RATTRAPAGE
+   808→  EXCEPTIONNELLE
+   809→  DIFFERE
+   810→}
+   811→
+   812→model AIFailoverEvent {
+   813→  id           String   @id @default(cuid())
+   814→  providerId   String?
+   815→  providerName String?
+   816→  eventType    String
+   817→  fromProvider String?
+   818→  toProvider   String?
+   819→  reason       String
+   820→  errorDetails String?
+   821→  resolved     Boolean  @default(false)
+   822→  createdAt    DateTime @default(now())
+   823→}
+   824→
