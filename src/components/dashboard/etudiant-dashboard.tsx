@@ -40,6 +40,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
+import type { BadgeWithProgress } from '@/lib/badges-engine'
 
 // --- Animation Variants ---
 const containerVariants = {
@@ -106,15 +108,6 @@ interface SessionEnCours {
   dateDebut: string
 }
 
-interface BadgeDeReussite {
-  id: string;
-  titre: string;
-  description: string;
-  icon: React.ReactNode;
-  unlocked: boolean;
-  dateObtention?: string;
-}
-
 interface StatsData {
   nbEpreuvesAVenir: number
   nbEpreuvesTerminees: number
@@ -125,7 +118,7 @@ interface StatsData {
   evolutionScores: EvolutionScore[]
   performanceParType: PerformanceType[]
   sessionEnCours: SessionEnCours | null
-  badges: Omit<BadgeDeReussite, 'icon'>[];
+  badges: BadgeWithProgress[]
 }
 
 // --- Helper Functions ---
@@ -266,50 +259,6 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
   )
 }
 
-// --- Badges Carousel ---
-function BadgesCarousel({ userBadges }: { userBadges: Omit<BadgeDeReussite, 'icon'>[] }) {
-    const allBadges: Omit<BadgeDeReussite, 'unlocked'>[] = [
-        { id: 'first_test', titre: 'Le Baptême du Feu', description: 'Terminer votre première épreuve.', icon: <Award /> },
-        { id: 'good_score', titre: 'Bien Joué !', description: 'Obtenir une note supérieure à 12/20.', icon: <Star /> },
-        { id: 'high_score', titre: 'Major de Promo', description: 'Obtenir une note supérieure à 18/20.', icon: <Trophy /> },
-        { id: 'fast_answer', titre: 'Éclair de Génie', description: 'Terminer une épreuve très rapidement.', icon: <Zap /> },
-    ];
-
-    const unlockedBadges = useMemo(() => allBadges.map(b => {
-        const userBadge = userBadges.find(ub => ub.id === b.id);
-        return { ...b, unlocked: !!userBadge, dateObtention: userBadge?.dateObtention };
-    }), [userBadges]);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-            <Award className="h-5 w-5 text-amber-500" />
-            Mes Succès
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex gap-4 overflow-x-auto pb-4">
-        {unlockedBadges.map(badge => (
-          <motion.div
-            key={badge.id}
-            variants={itemVariants}
-            className={`flex flex-col items-center justify-center text-center p-4 rounded-lg w-32 shrink-0 border-2 ${badge.unlocked ? 'border-amber-400 bg-amber-50 dark:bg-amber-950' : 'border-dashed bg-muted/50'}`}
-          >
-            <div className={`h-12 w-12 rounded-full flex items-center justify-center ${badge.unlocked ? 'bg-amber-100 dark:bg-amber-900' : 'bg-muted'}`}>
-              {badge.unlocked
-                ? <span className="text-amber-500">{badge.icon}</span>
-                : <span className="text-muted-foreground">{badge.icon}</span>
-              }
-            </div>
-            <p className={`mt-2 text-xs font-semibold ${badge.unlocked ? '' : 'text-muted-foreground'}`}>{badge.titre}</p>
-            {badge.unlocked && <p className="text-[10px] text-muted-foreground">{formatDateFR(badge.dateObtention!)}</p>}
-          </motion.div>
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
-
 // --- Empty Dashboard (no data yet) ---
 function EmptyDashboard({ name }: { name: string }) {
   const router = useRouter()
@@ -357,6 +306,7 @@ export function EtudiantDashboard() {
   const [data, setData] = useState<StatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
 
   const fetchStats = async () => {
     if (!user?.id) return
@@ -373,6 +323,24 @@ export function EtudiantDashboard() {
 
       if (!res.ok) throw new Error('Erreur API')
       const json = await res.json()
+
+      // Fetch badges from the dedicated API
+      try {
+        const badgesRes = await fetch('/api/badges')
+        if (badgesRes.ok) {
+          const badgesJson = await badgesRes.json()
+          json.badges = badgesJson.badges || []
+
+          // Show notification for newly unlocked badges
+          if (badgesJson.newlyUnlocked && badgesJson.newlyUnlocked.length > 0) {
+            setNewlyUnlockedBadge(badgesJson.newlyUnlocked[0])
+          }
+        }
+      } catch (badgeErr) {
+        console.error('Badges fetch error:', badgeErr)
+        // Don't fail the whole dashboard if badges fail
+      }
+
       setData(json)
     } catch (err) {
       console.error('Dashboard fetch error:', err)
@@ -390,6 +358,33 @@ export function EtudiantDashboard() {
 
   useEffect(() => {
     fetchStats()
+  }, [user?.id])
+
+  // Trigger badge recalculation on page load, then fetch results
+  useEffect(() => {
+    if (!user?.id) return
+
+    const recalculateBadges = async () => {
+      try {
+        // POST to trigger recalculation
+        const postRes = await fetch('/api/badges', { method: 'POST' })
+        if (postRes.ok) {
+          const postJson = await postRes.json()
+          // If there are newly unlocked badges, show notification
+          if (postJson.newlyUnlocked && postJson.newlyUnlocked.length > 0) {
+            setNewlyUnlockedBadge(postJson.newlyUnlocked[0])
+          }
+          // Merge the fresh badges into the existing data
+          if (data && postJson.badges) {
+            setData({ ...data, badges: postJson.badges })
+          }
+        }
+      } catch (err) {
+        console.error('Badge recalculation error:', err)
+      }
+    }
+
+    recalculateBadges()
   }, [user?.id])
 
   // Loading state
@@ -414,6 +409,8 @@ export function EtudiantDashboard() {
     return <EmptyDashboard name={name} />
   }
 
+  const unlockedBadgeCount = data.badges.filter((b: BadgeWithProgress) => b.debloque).length
+
   return (
     <motion.div
         className="space-y-6"
@@ -421,6 +418,16 @@ export function EtudiantDashboard() {
         initial="hidden"
         animate="visible"
     >
+        {/* Badge unlock notification */}
+        <AnimatePresence>
+          {newlyUnlockedBadge && (
+            <BadgeUnlockNotification
+              badge={newlyUnlockedBadge}
+              onClose={() => setNewlyUnlockedBadge(null)}
+            />
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
             <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
                 Bonjour, {name} ! Bienvenue sur votre espace.
@@ -468,8 +475,8 @@ export function EtudiantDashboard() {
                 <Award className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{data.badges.length}</p>
-                <p className="text-xs text-muted-foreground">Badge{data.badges.length !== 1 ? 's' : ''}</p>
+                <p className="text-2xl font-bold">{unlockedBadgeCount}</p>
+                <p className="text-xs text-muted-foreground">Badge{unlockedBadgeCount !== 1 ? 's' : ''}</p>
               </div>
             </div>
           </Card>
@@ -509,7 +516,7 @@ export function EtudiantDashboard() {
                 </motion.div>
 
                 <motion.div variants={itemVariants}>
-                    <BadgesCarousel userBadges={data.badges || []} />
+                    <BadgesCarousel badges={data.badges || []} />
                 </motion.div>
 
                  {/* Results & Evolution */}

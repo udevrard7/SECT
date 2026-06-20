@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
@@ -13,9 +13,6 @@ import {
   CheckCircle,
   MessageSquareWarning,
   CalendarDays,
-  Award,
-  Star,
-  Zap,
   Target,
   Check,
   RefreshCw,
@@ -48,6 +45,8 @@ import {
 } from 'recharts'
 import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
+import type { BadgeWithProgress } from '@/lib/badges-engine'
 
 // --- Animation Variants ---
 const containerVariants = {
@@ -110,14 +109,6 @@ interface EpreuveAVenir {
   nbParticipants: number
 }
 
-interface BadgeData {
-  id: string
-  titre: string
-  description: string
-  unlocked: boolean
-  dateObtention?: string
-}
-
 interface StatsData {
   nbDocuments: number
   nbQuestionsTotal: number
@@ -129,7 +120,7 @@ interface StatsData {
   performanceParEpreuve: PerformanceData[]
   evolutionMoyennes: EvolutionMoyenne[]
   epreuvesAVenir: EpreuveAVenir[]
-  badges: BadgeData[]
+  badges: BadgeWithProgress[]
 }
 
 // --- Helper Functions ---
@@ -255,52 +246,6 @@ function ObjectiveCard() {
             <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>Modifier</Button>
           </div>
         )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// --- Badges Carousel ---
-function BadgesCarousel({ userBadges }: { userBadges: BadgeData[] }) {
-  const allBadges: { id: string; titre: string; description: string; icon: React.ReactNode }[] = [
-    { id: 'first_epreuve', titre: 'Première Épreuve', description: 'Créer votre première épreuve.', icon: <Award /> },
-    { id: 'master_corrector', titre: 'Maître Corrigeur', description: 'Corriger 10 copies ou plus.', icon: <Star /> },
-    { id: 'ai_creator', titre: 'Créateur IA', description: 'Générer une épreuve avec l\'IA.', icon: <Zap /> },
-    { id: 'excellence', titre: 'Excellence', description: 'Moyenne étudiante ≥ 14/20.', icon: <TrendingUp /> },
-  ]
-
-  const unlockedBadges = useMemo(() => allBadges.map(b => {
-    const userBadge = userBadges.find(ub => ub.id === b.id)
-    return { ...b, unlocked: userBadge?.unlocked ?? false, dateObtention: userBadge?.dateObtention }
-  }), [userBadges])
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Award className="h-5 w-5 text-amber-500" />
-          Mes Succès
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex gap-4 overflow-x-auto pb-4">
-        {unlockedBadges.map(badge => (
-          <motion.div
-            key={badge.id}
-            variants={itemVariants}
-            className={`flex flex-col items-center justify-center text-center p-4 rounded-lg w-32 shrink-0 border-2 ${badge.unlocked ? 'border-amber-400 bg-amber-50 dark:bg-amber-950' : 'border-dashed bg-muted/50'}`}
-          >
-            <div className={`h-12 w-12 rounded-full flex items-center justify-center ${badge.unlocked ? 'bg-amber-100 dark:bg-amber-900' : 'bg-muted'}`}>
-              {badge.unlocked
-                ? <span className="text-amber-500">{badge.icon}</span>
-                : <span className="text-muted-foreground">{badge.icon}</span>
-              }
-            </div>
-            <p className={`mt-2 text-xs font-semibold ${badge.unlocked ? '' : 'text-muted-foreground'}`}>{badge.titre}</p>
-            {badge.unlocked && badge.dateObtention && (
-              <p className="text-[10px] text-muted-foreground">{formatDateFR(badge.dateObtention)}</p>
-            )}
-          </motion.div>
-        ))}
       </CardContent>
     </Card>
   )
@@ -444,6 +389,33 @@ export function EnseignantDashboard() {
   const [data, setData] = useState<StatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
+
+  const fetchBadges = async () => {
+    try {
+      // Trigger badge recalculation via POST
+      const postRes = await fetch('/api/badges', { method: 'POST' })
+      if (postRes.ok) {
+        const postJson = await postRes.json()
+        const badges: BadgeWithProgress[] = postJson.badges || []
+        const newBadges: BadgeWithProgress[] = postJson.newlyUnlocked || []
+
+        // Show notification for the first newly unlocked badge
+        if (newBadges.length > 0) {
+          setNewlyUnlockedBadge(newBadges[0])
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => setNewlyUnlockedBadge(null), 5000)
+        }
+
+        // Merge badges into stats data
+        setData(prev => prev ? { ...prev, badges } : prev)
+        return badges
+      }
+    } catch (err) {
+      console.error('Badge refresh error:', err)
+    }
+    return []
+  }
 
   const fetchStats = async () => {
     if (!userId) return
@@ -461,6 +433,9 @@ export function EnseignantDashboard() {
       if (!res.ok) throw new Error('Erreur API')
       const json = await res.json()
       setData(json)
+
+      // After stats are loaded, fetch badges separately
+      await fetchBadges()
     } catch (err) {
       console.error('Dashboard fetch error:', err)
       setError(true)
@@ -594,7 +569,7 @@ export function EnseignantDashboard() {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <BadgesCarousel userBadges={data.badges || []} />
+            <BadgesCarousel badges={data.badges || []} />
           </motion.div>
 
           {/* Charts */}
@@ -716,6 +691,16 @@ export function EnseignantDashboard() {
           </motion.div>
         </div>
       </div>
+
+      {/* Badge Unlock Notification */}
+      <AnimatePresence>
+        {newlyUnlockedBadge && (
+          <BadgeUnlockNotification
+            badge={newlyUnlockedBadge}
+            onClose={() => setNewlyUnlockedBadge(null)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }

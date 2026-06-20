@@ -42,6 +42,7 @@ model User {
   filiere             Filiere?              @relation("UserFiliere", fields: [filiereId], references: [id])
   notificationsAdmin  NotificationAdmin[]
   sessionsSpecialesCreees SessionSpeciale[]  @relation("SessionsSpecialesCreees")
+  badgeProgressions       BadgeProgression[]
 }
 
 model Etablissement {
@@ -807,6 +808,63 @@ enum TypeSessionSpeciale {
   RATTRAPAGE
   EXCEPTIONNELLE
   DIFFERE
+}
+
+// ─── Système de Badges Dynamiques ───
+
+model BadgeDefinition {
+  id              String         @id @default(cuid())
+  cle             String         @unique  // Clé unique (ex: "first_epreuve", "maitre_corrigeur")
+  titre           String                  // Nom affiché du badge
+  description     String                  // Description courte
+  icone           String                  // Nom de l'icône Lucide (ex: "Award", "Star", "Trophy")
+  categorie       CategorieBadge          // Catégorie du badge
+  roleCible       Role?                   // Rôle ciblé (null = tous les rôles)
+  niveaux         NiveauBadge[]           // Niveaux de progression (Bronze → Or)
+  actif           Boolean        @default(true)
+  ordre           Int            @default(0)  // Ordre d'affichage
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  progressions    BadgeProgression[]
+}
+
+model BadgeProgression {
+  id                String            @id @default(cuid())
+  userId            String
+  badgeDefinitionId String
+  niveauActuel     NiveauBadge        @default(BRONZE)
+  valeurActuelle    Int               @default(0)  // Valeur de progression actuelle
+  valeurPalier      Int               @default(1)  // Seuil du niveau actuel
+  valeurProchain    Int?                           // Seuil du prochain niveau (null = max atteint)
+  debloque          Boolean           @default(false)
+  dateObtention     DateTime?                      // Date de déblocage du niveau actuel
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeDefinition   BadgeDefinition   @relation(fields: [badgeDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeDefinitionId])
+  @@index([userId])
+  @@index([badgeDefinitionId])
+  @@index([debloque])
+}
+
+enum CategorieBadge {
+  EVALUATION     // Épreuves et examens
+  CORRECTION     // Correction et notation
+  IA             // Utilisation de l'IA
+  ENGAGEMENT     // Activité et régularité
+  EXCELLENCE     // Performance et excellence
+  PEDAGOGIE      // Pédagogie et enseignement
+  GESTION        // Gestion et administration
+}
+
+enum NiveauBadge {
+  BRONZE
+  ARGENT
+  OR
+  DIAMANT
 }
 
 model AIFailoverEvent {

@@ -43,6 +43,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
+import type { BadgeWithProgress } from '@/lib/badges-engine'
 
 // --- Animation Variants ---
 const containerVariants = {
@@ -124,6 +126,7 @@ interface StatsData {
   alertes: AlerteStat[]
   topEtudiants: TopEtudiant[]
   etudiantsEnDifficulte: TopEtudiant[]
+  badges: BadgeWithProgress[]
 }
 
 // --- Helper Functions ---
@@ -279,67 +282,7 @@ function ObjectiveCard() {
   )
 }
 
-// --- Badges Carousel ---
-function BadgesCarousel({ data }: { data: StatsData }) {
-  const allBadges: { id: string; titre: string; description: string; icon: React.ReactNode; unlocked: boolean }[] = [
-    {
-      id: 'batisseur',
-      titre: 'Bâtisseur',
-      description: 'Superviser au moins 1 évaluation.',
-      icon: <ClipboardCheck />,
-      unlocked: data.nbEvaluations >= 1,
-    },
-    {
-      id: 'pilier',
-      titre: 'Pilier Académique',
-      description: 'Avoir 5+ évaluations réalisées.',
-      icon: <Star />,
-      unlocked: data.nbEvaluations >= 5,
-    },
-    {
-      id: 'visionnaire',
-      titre: 'Visionnaire',
-      description: 'Superviser 10+ étudiants.',
-      icon: <Eye />,
-      unlocked: data.nbEtudiants >= 10,
-    },
-    {
-      id: 'excellence_inst',
-      titre: 'Excellence',
-      description: 'Taux de réussite ≥ 80%.',
-      icon: <Trophy />,
-      unlocked: data.tauxReussiteGlobal >= 80,
-    },
-  ]
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Award className="h-5 w-5 text-amber-500" />
-          Mes Succès
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex gap-4 overflow-x-auto pb-4">
-        {allBadges.map(badge => (
-          <motion.div
-            key={badge.id}
-            variants={itemVariants}
-            className={`flex flex-col items-center justify-center text-center p-4 rounded-lg w-32 shrink-0 border-2 ${badge.unlocked ? 'border-amber-400 bg-amber-50 dark:bg-amber-950' : 'border-dashed bg-muted/50'}`}
-          >
-            <div className={`h-12 w-12 rounded-full flex items-center justify-center ${badge.unlocked ? 'bg-amber-100 dark:bg-amber-900' : 'bg-muted'}`}>
-              {badge.unlocked
-                ? <span className="text-amber-500">{badge.icon}</span>
-                : <span className="text-muted-foreground">{badge.icon}</span>
-              }
-            </div>
-            <p className={`mt-2 text-xs font-semibold ${badge.unlocked ? '' : 'text-muted-foreground'}`}>{badge.titre}</p>
-          </motion.div>
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
 
 // --- Alertes Timeline ---
 function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
@@ -501,6 +444,7 @@ export function ResponsableDashboard() {
   const [data, setData] = useState<StatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
 
   const fetchStats = useCallback(async () => {
     setLoading(true)
@@ -516,6 +460,20 @@ export function ResponsableDashboard() {
 
       if (!res.ok) throw new Error('Erreur réseau')
       const json: StatsData = await res.json()
+
+      // Fetch badges separately
+      try {
+        const badgesRes = await fetch('/api/badges')
+        if (badgesRes.ok) {
+          const badgesData = await badgesRes.json()
+          json.badges = badgesData.badges || []
+        } else {
+          json.badges = []
+        }
+      } catch {
+        json.badges = []
+      }
+
       setData(json)
     } catch (err) {
       console.error('Dashboard fetch error:', err)
@@ -528,6 +486,28 @@ export function ResponsableDashboard() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  // Trigger badge recalculation on dashboard load
+  useEffect(() => {
+    const refreshBadges = async () => {
+      try {
+        const res = await fetch('/api/badges', { method: 'POST' })
+        if (res.ok) {
+          const badgesData = await res.json()
+          if (badgesData.badges) {
+            setData(prev => prev ? { ...prev, badges: badgesData.badges } : prev)
+          }
+          // Show notification for newly unlocked badges
+          if (badgesData.newlyUnlocked && badgesData.newlyUnlocked.length > 0) {
+            setNewlyUnlockedBadge(badgesData.newlyUnlocked[0])
+          }
+        }
+      } catch (err) {
+        console.error('Badge refresh error:', err)
+      }
+    }
+    refreshBadges()
   }, [])
 
   useEffect(() => {
@@ -661,7 +641,7 @@ export function ResponsableDashboard() {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <BadgesCarousel data={data} />
+            <BadgesCarousel badges={data.badges || []} />
           </motion.div>
 
           {/* Charts */}
@@ -868,6 +848,16 @@ export function ResponsableDashboard() {
           )}
         </div>
       </div>
+
+      {/* Badge unlock notification */}
+      <AnimatePresence>
+        {newlyUnlockedBadge && (
+          <BadgeUnlockNotification
+            badge={newlyUnlockedBadge}
+            onClose={() => setNewlyUnlockedBadge(null)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
