@@ -1,0 +1,845 @@
+     1→import { NextRequest, NextResponse } from 'next/server'
+     2→import { execFile } from 'child_process'
+     3→import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
+     4→import { join } from 'path'
+     5→import { tmpdir } from 'os'
+     6→import { db } from '@/lib/db'
+     7→import {
+     8→  parsePropositionMappings,
+     9→  parseCorrectAnswer,
+    10→  gradeQCU,
+    11→  gradeQCM,
+    12→  gradeCODE,
+    13→  detectGradingScenario,
+    14→  AUTO_GRADABLE_TYPES,
+    15→  SEMI_AUTO_GRADABLE_TYPES,
+    16→} from '@/lib/grading'
+    17→import { withAuth } from '@/lib/auth-session'
+    18→import { type CodingLanguage, type TestCase, type TestResult, type CodeExecutionResult, EXECUTION_CONFIG, parseCodingAnswer, parseFunctionSignature } from '@/lib/coding-types'
+    19→import { validateCode } from '@/lib/code-sandbox-validator'
+    20→import { checkAndAutoCloseEpreuve } from '@/lib/auto-closure'
+    21→
+    22→async function _POST(
+    23→  request: NextRequest,
+    24→  context: { params: any; user: any }
+    25→) {
+    26→  try {
+    27→    const { id } = await context.params
+    28→    const body = await request.json()
+    29→    const { autoSubmit, reponses } = body
+    30→
+    31→    const session = await db.sessionPassation.findUnique({
+    32→      where: { id },
+    33→      include: {
+    34→        epreuve: {
+    35→          include: {
+    36→            questions: {
+    37→              include: {
+    38→                question: true,
+    39→              },
+    40→            },
+    41→          },
+    42→        },
+    43→        reponses: true,
+    44→      },
+    45→    })
+    46→
+    47→    if (!session) {
+    48→      return NextResponse.json({ error: 'Session non trouvée' }, { status: 404 })
+    49→    }
+    50→
+    51→    if (session.statut !== 'EN_COURS') {
+    52→      return NextResponse.json({ error: 'Session déjà soumise' }, { status: 400 })
+    53→    }
+    54→
+    55→    if (session.epreuve.statut === 'CLOTUREE') {
+    56→      return NextResponse.json(
+    57→        { error: 'Cette épreuve est clôturée, les soumissions ne sont plus acceptées', code: 'EPREUVE_CLOTUREE' },
+    58→        { status: 403 }
+    59→      )
+    60→    }
+    61→
+    62→    const currentTime = new Date()
+    63→    const gracePeriodEnd = new Date(session.epreuve.dateFin.getTime() + (session.epreuve.delaiGrace || 3) * 60 * 1000)
+    64→    if (currentTime >= gracePeriodEnd && !autoSubmit) {
+    65→      return NextResponse.json(
+    66→        { error: 'Le délai de grâce est expiré, les soumissions ne sont plus acceptées', code: 'GRACE_PERIOD_EXPIRED' },
+    67→        { status: 403 }
+    68→      )
+    69→    }
+    70→
+    71→    if (reponses && typeof reponses === 'object') {
+    72→      for (const [questionId, contenu] of Object.entries(reponses as Record<string, string>)) {
+    73→        if (contenu !== undefined && contenu !== null && contenu !== '') {
+    74→          await db.reponse.upsert({
+    75→            where: {
+    76→              sessionId_questionId: { sessionId: id, questionId },
+    77→            },
+    78→            create: {
+    79→              sessionId: id,
+    80→              questionId,
+    81→              contenu: String(contenu),
+    82→            },
+    83→            update: {
+    84→              contenu: String(contenu),
+    85→            },
+    86→          })
+    87→        }
+    88→      }
+    89→      const updatedReponses = await db.reponse.findMany({ where: { sessionId: id } })
+    90→      session.reponses = updatedReponses
+    91→    }
+    92→
+    93→    const propositionMappings = parsePropositionMappings(session.propositionMappings)
+    94→
+    95→    type QuestionForGrading = {
+    96→      id: string
+    97→      questionId: string
+    98→      bareme: number
+    99→      type: string
+   100→      reponseCorrecte: string | null
+   101→      propositions: string | null
+   102→      langage?: string
+   103→      fonctionSignature?: string
+   104→      testsPublics?: TestCase[]
+   105→      testsPrives?: TestCase[]
+   106→    }
+   107→
+   108→    const questionsForGrading: QuestionForGrading[] = []
+   109→
+   110→    for (const eq of session.epreuve.questions) {
+   111→      const qg: QuestionForGrading = {
+   112→        id: eq.id,
+   113→        questionId: eq.questionId,
+   114→        bareme: eq.bareme,
+   115→        type: eq.question.type,
+   116→        reponseCorrecte: eq.question.reponseCorrecte,
+   117→        propositions: eq.question.propositions,
+   118→      }
+   119→
+   120→      // For CODE questions, extract CODE-specific fields from reponseCorrecte
+   121→      if (eq.question.type === 'CODE' && eq.question.reponseCorrecte) {
+   122→        try {
+   123→          const parsed = JSON.parse(eq.question.reponseCorrecte)
+   124→          if (parsed && typeof parsed === 'object') {
+   125→            if (parsed.langage) qg.langage = String(parsed.langage)
+   126→            if (parsed.fonctionSignature) qg.fonctionSignature = String(parsed.fonctionSignature)
+   127→            if (Array.isArray(parsed.testsPublics)) qg.testsPublics = parsed.testsPublics
+   128→            if (Array.isArray(parsed.testsPrives)) qg.testsPrives = parsed.testsPrives
+   129→          }
+   130→        } catch {
+   131→          // Not valid JSON — ignore
+   132→        }
+   133→      }
+   134→
+   135→      questionsForGrading.push(qg)
+   136→    }
+   137→
+   138→    if (questionsForGrading.length === 0 && session.epreuve.contenu) {
+   139→      const contenuData = session.epreuve.contenu as Record<string, unknown> | null
+   140→      if (contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)) {
+   141→        const contenuQuestions = contenuData.questions as Array<Record<string, unknown>>
+   142→        for (let idx = 0; idx < contenuQuestions.length; idx++) {
+   143→          const q = contenuQuestions[idx]
+   144→          const qg: QuestionForGrading = {
+   145→            id: String(q.id || `contenu-q${idx}`),
+   146→            questionId: String(q.id || `contenu-q${idx}`),
+   147→            bareme: typeof q.bareme === 'number' ? q.bareme : 1,
+   148→            type: String(q.type || 'QRC'),
+   149→            reponseCorrecte: q.reponseCorrecte ? JSON.stringify(q.reponseCorrecte) : null,
+   150→            propositions: null,
+   151→          }
+   152→
+   153→          // Extract CODE fields from contenu questions
+   154→          if (qg.type === 'CODE') {
+   155→            if (q.langage) qg.langage = String(q.langage)
+   156→            if (q.fonctionSignature) qg.fonctionSignature = String(q.fonctionSignature)
+   157→            if (Array.isArray(q.testsPublics)) qg.testsPublics = q.testsPublics as TestCase[]
+   158→            if (Array.isArray(q.testsPrives)) qg.testsPrives = q.testsPrives as TestCase[]
+   159→          }
+   160→
+   161→          questionsForGrading.push(qg)
+   162→        }
+   163→      }
+   164→    }
+   165→
+   166→    const scenario = detectGradingScenario(questionsForGrading)
+   167→
+   168→    let autoGradedScore = 0
+   169→    const detailParQuestion: Record<string, unknown>[] = []
+   170→
+   171→    for (const qg of questionsForGrading) {
+   172→      const reponse = session.reponses.find((r) => r.questionId === qg.questionId || r.questionId === qg.id)
+   173→
+   174→      let questionScore: number | null = null
+   175→      let isAutoGraded = false
+   176→      const correctAnswer = parseCorrectAnswer(qg.reponseCorrecte)
+   177→      const mapping = propositionMappings[qg.questionId] || null
+   178→
+   179→      if (qg.type === 'QCU') {
+   180→        const result = gradeQCU(reponse?.contenu || null, correctAnswer, qg.bareme, mapping)
+   181→        questionScore = result.score
+   182→        isAutoGraded = true
+   183→      } else if (qg.type === 'QCM') {
+   184→        const result = gradeQCM(reponse?.contenu || null, correctAnswer, qg.bareme, mapping)
+   185→        questionScore = result.score
+   186→        isAutoGraded = true
+   187→      } else if (qg.type === 'CODE') {
+   188→        // Grade CODE question: run all tests (public + private) server-side
+   189→        const codeResult = await gradeCODEQuestion(
+   190→          reponse?.contenu || null,
+   191→          qg.testsPublics || [],
+   192→          qg.testsPrives || [],
+   193→          qg.bareme,
+   194→          qg.langage as CodingLanguage | undefined,
+   195→          qg.fonctionSignature
+   196→        )
+   197→        questionScore = codeResult.score
+   198→        isAutoGraded = codeResult.isAutoGraded
+   199→
+   200→        // If student has no code answer but there are tests, score 0
+   201→        if (!reponse?.contenu) {
+   202→          questionScore = 0
+   203→          isAutoGraded = true
+   204→        }
+   205→      }
+   206→
+   207→      if (reponse && (isAutoGraded || qg.type === 'CODE')) {
+   208→        await db.reponse.upsert({
+   209→          where: { sessionId_questionId: { sessionId: id, questionId: qg.questionId } },
+   210→          create: {
+   211→            sessionId: id,
+   212→            questionId: qg.questionId,
+   213→            contenu: reponse.contenu,
+   214→            score: questionScore,
+   215→          },
+   216→          update: {
+   217→            score: questionScore,
+   218→          },
+   219→        })
+   220→      } else if (!reponse && isAutoGraded) {
+   221→        await db.reponse.create({
+   222→          data: {
+   223→            sessionId: id,
+   224→            questionId: qg.questionId,
+   225→            contenu: null,
+   226→            score: questionScore,
+   227→          },
+   228→        })
+   229→      }
+   230→
+   231→      if (isAutoGraded && questionScore !== null) {
+   232→        autoGradedScore += questionScore
+   233→      }
+   234→
+   235→      detailParQuestion.push({
+   236→        questionId: qg.questionId,
+   237→        type: qg.type,
+   238→        bareme: qg.bareme,
+   239→        score: isAutoGraded ? questionScore : null,
+   240→        isAutoGraded,
+   241→        repondu: !!reponse,
+   242→      })
+   243→    }
+   244→
+   245→    const penalite = session.penalite || 0
+   246→    const scoreAfterPenalty = Math.max(0, autoGradedScore - penalite)
+   247→
+   248→    let newStatut: string
+   249→    let correctionMessage: string | null = null
+   250→
+   251→    if (scenario.type === 'A') {
+   252→      newStatut = 'CORRIGEE'
+   253→    } else {
+   254→      newStatut = 'SOUMISE'
+   255→      correctionMessage = 'En attente de la correction manuelle de l\'enseignant pour les questions ouvertes'
+   256→    }
+   257→
+   258→    const totalPossible = questionsForGrading.reduce((sum, q) => sum + q.bareme, 0)
+   259→    const autoGradableTotal = questionsForGrading
+   260→      .filter((q) => AUTO_GRADABLE_TYPES.includes(q.type) || SEMI_AUTO_GRADABLE_TYPES.includes(q.type))
+   261→      .reduce((sum, q) => sum + q.bareme, 0)
+   262→
+   263→    const existingResult = await db.resultat.findUnique({ where: { sessionId: id } })
+   264→
+   265→    const resultData = {
+   266→      scoreFinal: scoreAfterPenalty,
+   267→      detailParQuestion: JSON.stringify(detailParQuestion),
+   268→      totalPossible,
+   269→      commentaires: [
+   270→        penalite > 0 ? `Pénalité appliquée: -${penalite} point${penalite > 1 ? 's' : ''} (sorties plein écran)` : null,
+   271→        correctionMessage,
+   272→      ].filter(Boolean).join(' | ') || null,
+   273→      ...(scenario.type === 'A' ? { dateCorrection: new Date() } : {}),
+   274→    }
+   275→
+   276→    let resultat
+   277→    if (existingResult) {
+   278→      resultat = await db.resultat.update({
+   279→        where: { id: existingResult.id },
+   280→        data: resultData,
+   281→      })
+   282→    } else {
+   283→      resultat = await db.resultat.create({
+   284→        data: {
+   285→          sessionId: id,
+   286→          ...resultData,
+   287→        },
+   288→      })
+   289→    }
+   290→
+   291→    const now = new Date()
+   292→    const updatedSession = await db.sessionPassation.update({
+   293→      where: { id },
+   294→      data: {
+   295→        statut: newStatut,
+   296→        dateFin: now,
+   297→        score: scoreAfterPenalty,
+   298→        logEvents: session.logEvents
+   299→          ? JSON.stringify([
+   300→              ...JSON.parse(session.logEvents),
+   301→              { type: autoSubmit ? 'AUTO_SUBMIT' : 'MANUAL_SUBMIT', timestamp: now.toISOString() },
+   302→            ])
+   303→          : JSON.stringify([{ type: autoSubmit ? 'AUTO_SUBMIT' : 'MANUAL_SUBMIT', timestamp: now.toISOString() }]),
+   304→      },
+   305→    })
+   306→
+   307→    const response: Record<string, unknown> = {
+   308→      session: updatedSession,
+   309→      resultat: {
+   310→        ...resultat,
+   311→        detailParQuestion: JSON.parse(resultat.detailParQuestion || '[]'),
+   312→      },
+   313→      score: scoreAfterPenalty,
+   314→      rawScore: autoGradedScore,
+   315→      penalite,
+   316→      totalPossible,
+   317→      autoGradableTotal,
+   318→      percentage: totalPossible > 0 ? Math.round((scoreAfterPenalty / totalPossible) * 100) : 0,
+   319→      autoGraded: scenario.autoGradableCount,
+   320→      pendingCorrection: scenario.manualCorrectionCount,
+   321→      scenario: scenario.type,
+   322→      message: autoSubmit
+   323→        ? 'Épreuve soumise automatiquement (temps écoulé)'
+   324→        : 'Épreuve soumise avec succès',
+   325→      epreuveAutoClosed: false,
+   326→      autoCloseRaison: null,
+   327→    }
+   328→
+   329→    if (scenario.type === 'A') {
+   330→      response.scenarioMessage = 'Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.'
+   331→    } else {
+   332→      response.scenarioMessage = `Note partielle: ${scoreAfterPenalty.toFixed(1)}/${autoGradableTotal} (questions auto-corrigées). En attente de la correction manuelle de l'enseignant pour ${scenario.manualCorrectionCount} question(s) ouverte(s).`
+   333→    }
+   334→
+   335→    // ─── Déclencher la vérification d'auto-clôture après soumission ────────
+   336→    // Si tous les étudiants ont soumis, l'épreuve sera clôturée automatiquement.
+   337→    // Ne pas bloquer la réponse si cette vérification échoue.
+   338→    try {
+   339→      const autoCloseResult = await checkAndAutoCloseEpreuve(session.epreuveId)
+   340→      if (autoCloseResult.closed) {
+   341→        response.epreuveAutoClosed = true
+   342→        response.autoCloseRaison = autoCloseResult.raison || null
+   343→      }
+   344→    } catch (autoCloseError) {
+   345→      // Ne pas faire échouer la soumission si l'auto-close échoue
+   346→      console.error('[Submit] Auto-close check failed:', autoCloseError)
+   347→    }
+   348→
+   349→    return NextResponse.json(response)
+   350→  } catch (error) {
+   351→    console.error('Submit session error:', error)
+   352→    return NextResponse.json(
+   353→      { error: 'Erreur lors de la soumission' },
+   354→      { status: 500 }
+   355→    )
+   356→  }
+   357→}
+   358→
+   359→/**
+   360→ * Grade a CODE question by executing the student's code against all test cases.
+   361→ * Runs public + private tests server-side with FULL sandbox security.
+   362→ * Now async to use execFile (non-blocking) instead of execSync.
+   363→ */
+   364→async function gradeCODEQuestion(
+   365→  studentAnswerContenu: string | null,
+   366→  testsPublics: TestCase[],
+   367→  testsPrives: TestCase[],
+   368→  bareme: number,
+   369→  language?: CodingLanguage,
+   370→  functionSignature?: string
+   371→): Promise<{ score: number; isAutoGraded: boolean }> {
+   372→  // If no tests at all, can't auto-grade
+   373→  if (testsPublics.length === 0 && testsPrives.length === 0) {
+   374→    return { score: 0, isAutoGraded: false }
+   375→  }
+   376→
+   377→  // Parse student's code answer
+   378→  const codingAnswer = parseCodingAnswer(studentAnswerContenu)
+   379→  if (!codingAnswer || !codingAnswer.code.trim()) {
+   380→    // No code submitted — score 0
+   381→    return { score: 0, isAutoGraded: true }
+   382→  }
+   383→
+   384→  const lang = (codingAnswer.language || language || 'python') as CodingLanguage
+   385→  const allTests = [...testsPublics, ...testsPrives]
+   386→
+   387→  // ─── Pre-execution validation (security layer 1) ───
+   388→  const validation = validateCode(codingAnswer.code, lang)
+   389→  if (!validation.safe) {
+   390→    // Code contains dangerous patterns — refuse to execute, all tests fail
+   391→    console.warn('[gradeCODE] Dangerous code blocked:', validation.errors)
+   392→    const testResultsAll = allTests.map(() => ({ passed: false }))
+   393→    const testResultsPublics = codingAnswer.testResultsPublics || []
+   394→    return gradeCODE(testResultsPublics, testResultsAll, bareme)
+   395→  }
+   396→
+   397→  // ─── Execute the code server-side with full sandbox ───
+   398→  let testResultsAll: Array<{ passed: boolean }>
+   399→
+   400→  try {
+   401→    const executionResult = await executeCodeServerSide(
+   402→      codingAnswer.code,
+   403→      lang,
+   404→      allTests,
+   405→      functionSignature
+   406→    )
+   407→
+   408→    testResultsAll = executionResult.testResults || allTests.map(() => ({ passed: false }))
+   409→  } catch (error) {
+   410→    console.error('[gradeCODE] Execution error:', error)
+   411→    // If execution fails entirely, all tests fail
+   412→    testResultsAll = allTests.map(() => ({ passed: false }))
+   413→  }
+   414→
+   415→  // Also include public test results from the student's saved answer
+   416→  const testResultsPublics = codingAnswer.testResultsPublics || []
+   417→
+   418→  return gradeCODE(testResultsPublics, testResultsAll, bareme)
+   419→}
+   420→
+   421→/**
+   422→ * Execute code server-side for grading purposes.
+   423→ * Now uses the SAME security model as /api/coding/execute:
+   424→ *   - JS/TS: nullProto this context, 17 blocked globals
+   425→ *   - Python: execFile (async), restricted builtins, import whitelist, minimal env
+   426→ */
+   427→async function executeCodeServerSide(
+   428→  code: string,
+   429→  language: CodingLanguage,
+   430→  testCases: TestCase[],
+   431→  functionSignature?: string
+   432→): Promise<CodeExecutionResult> {
+   433→  switch (language) {
+   434→    case 'javascript':
+   435→    case 'typescript':
+   436→      return executeJavaScriptSecure(code, testCases, functionSignature)
+   437→    case 'python':
+   438→      return executePythonSecure(code, testCases, functionSignature)
+   439→    default:
+   440→      // C/Java — can't execute server-side, mark all tests as failed
+   441→      return {
+   442→        success: false,
+   443→        output: '',
+   444→        error: `L'exécution ${language.toUpperCase()} n'est pas disponible côté serveur`,
+   445→        testResults: testCases.map(tc => ({
+   446→          nom: tc.nom,
+   447→          passed: false,
+   448→          output: '',
+   449→          expected: tc.sortieAttendue,
+   450→          error: 'Environnement d\'exécution non disponible',
+   451→        })),
+   452→        totalTests: testCases.length,
+   453→        passedTests: 0,
+   454→      }
+   455→  }
+   456→}
+   457→
+   458→// ─── Secure JavaScript/TypeScript Execution (aligned with /api/coding/execute) ───
+   459→
+   460→function executeJavaScriptSecure(
+   461→  code: string,
+   462→  testCases: TestCase[],
+   463→  functionSignature?: string
+   464→): CodeExecutionResult {
+   465→  const results: TestResult[] = []
+   466→  let allOutput = ''
+   467→
+   468→  for (const tc of testCases) {
+   469→    const startTime = Date.now()
+   470→    try {
+   471→      const sigParsed = parseFunctionSignature(functionSignature || '')
+   472→      const funcNameFromSig = sigParsed?.funcName || null
+   473→      const funcNameRegex = new RegExp('(?:function\\s+(\\w+)|(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:function|\\())', 'm')
+   474→      const funcMatch = code.match(funcNameRegex)
+   475→      const funcNameFromCode = funcMatch ? (funcMatch[1] || funcMatch[2]) : null
+   476→      const funcName = funcNameFromSig || funcNameFromCode
+   477→
+   478→      let fullCode: string
+   479→      if (funcName) {
+   480→        let inputArg: unknown
+   481→        try {
+   482→          inputArg = JSON.parse(tc.entree)
+   483→        } catch {
+   484→          inputArg = tc.entree
+   485→        }
+   486→
+   487→        const inputSerialized = typeof inputArg === 'string'
+   488→          ? `"${inputArg.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
+   489→          : JSON.stringify(inputArg)
+   490→
+   491→        fullCode = `
+   492→          ${code}
+   493→          ;try {
+   494→            const _input = ${inputSerialized};
+   495→            const _result = ${funcName}(Array.isArray(_input) ? ..._input : _input);
+   496→            console.log(typeof _result === 'object' ? JSON.stringify(_result) : String(_result));
+   497→          } catch(e) {
+   498→            console.error('ERROR:', e.message);
+   499→          }
+   500→        `
+   501→      } else {
+   502→        fullCode = code
+   503→      }
+   504→
+   505→      // ─── SECURE sandbox: frozen context + nullProto thisArg ───
+   506→      const output: string[] = []
+   507→      const mockConsole = {
+   508→        log: (...args: unknown[]) => { output.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')) },
+   509→        error: (...args: unknown[]) => { output.push('ERROR: ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')) },
+   510→        warn: (...args: unknown[]) => {},
+   511→      }
+   512→
+   513→      // Create a deeply frozen null-prototype context
+   514→      const nullProto = Object.create(null)
+   515→      const sandboxContext = Object.freeze({
+   516→        console: Object.freeze(mockConsole),
+   517→        require: undefined,
+   518→        process: undefined,
+   519→        global: undefined,
+   520→        globalThis: undefined,
+   521→        fetch: undefined,
+   522→        XMLHttpRequest: undefined,
+   523→        WebSocket: undefined,
+   524→        eval: undefined,
+   525→        Function: undefined,
+   526→        setTimeout: undefined,
+   527→        setInterval: undefined,
+   528→        __dirname: undefined,
+   529→        __filename: undefined,
+   530→        module: undefined,
+   531→        exports: undefined,
+   532→        Buffer: undefined,
+   533→      })
+   534→
+   535→      const sandboxedFn = new Function(
+   536→        'console', 'require', 'process', 'global', 'globalThis',
+   537→        'fetch', 'XMLHttpRequest', 'WebSocket', 'eval', 'Function',
+   538→        'setTimeout', 'setInterval', '__dirname', '__filename',
+   539→        'module', 'exports', 'Buffer',
+   540→        `"use strict"; ${fullCode}`
+   541→      )
+   542→
+   543→      // Call with null thisArg to prevent this.constructor escapes
+   544→      sandboxedFn.call(
+   545→        nullProto,
+   546→        sandboxContext.console,
+   547→        undefined, undefined, undefined, undefined,
+   548→        undefined, undefined, undefined, undefined, undefined,
+   549→        undefined, undefined, undefined, undefined,
+   550→        undefined, undefined, undefined,
+   551→      )
+   552→
+   553→      const outputStr = output.join('\n').trim()
+   554→      const expectedStr = tc.sortieAttendue.trim()
+   555→      const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
+   556→
+   557→      results.push({
+   558→        nom: tc.nom,
+   559→        passed,
+   560→        output: outputStr,
+   561→        expected: expectedStr,
+   562→        duration: Date.now() - startTime,
+   563→      })
+   564→      allOutput += (allOutput ? '\n' : '') + outputStr
+   565→    } catch (error) {
+   566→      results.push({
+   567→        nom: tc.nom,
+   568→        passed: false,
+   569→        output: '',
+   570→        expected: tc.sortieAttendue,
+   571→        error: error instanceof Error ? error.message : String(error),
+   572→        duration: Date.now() - startTime,
+   573→      })
+   574→    }
+   575→  }
+   576→
+   577→  const passedTests = results.filter(r => r.passed).length
+   578→  return {
+   579→    success: passedTests === testCases.length,
+   580→    output: allOutput,
+   581→    testResults: results,
+   582→    totalTests: testCases.length,
+   583→    passedTests,
+   584→  }
+   585→}
+   586→
+   587→// ─── Secure Python Execution (aligned with /api/coding/execute) ───
+   588→
+   589→async function executePythonSecure(
+   590→  code: string,
+   591→  testCases: TestCase[],
+   592→  functionSignature?: string
+   593→): Promise<CodeExecutionResult> {
+   594→  const results: TestResult[] = []
+   595→  let allOutput = ''
+   596→
+   597→  const sigParsed = parseFunctionSignature(functionSignature || '')
+   598→  const funcName = sigParsed?.funcName || null
+   599→
+   600→  const tmpDir = join(tmpdir(), `sect_grade_${Date.now()}_${Math.random().toString(36).slice(2)}`)
+   601→
+   602→  try {
+   603→    mkdirSync(tmpDir, { recursive: true })
+   604→
+   605→    for (const tc of testCases) {
+   606→      const startTime = Date.now()
+   607→      const scriptFile = join(tmpDir, `test_${tc.nom.replace(/[^a-zA-Z0-9]/g, '_')}.py`)
+   608→
+   609→      try {
+   610→        // Build the secure sandboxed Python script (same as /api/coding/execute)
+   611→        const testCode = funcName
+   612→          ? `
+   613→import json as _json
+   614→_test_input = ${tc.entree}
+   615→try:
+   616→    if isinstance(_test_input, list):
+   617→        _test_result = ${funcName}(*_test_input)
+   618→    elif isinstance(_test_input, dict):
+   619→        _test_result = ${funcName}(**_test_input)
+   620→    else:
+   621→        _test_result = ${funcName}(_test_input)
+   622→    if isinstance(_test_result, (list, dict)):
+   623→        print(_json.dumps(_test_result, ensure_ascii=False))
+   624→    else:
+   625→        print(_test_result)
+   626→except Exception as _e:
+   627→    print(f"ERROR: {_e}", file=sys.stderr)
+   628→    sys.exit(1)
+   629→`
+   630→          : ''
+   631→
+   632→        const sandboxedScript = buildSecurePythonScript(code, testCode)
+   633→        writeFileSync(scriptFile, sandboxedScript, { encoding: 'utf-8' })
+   634→
+   635→        // Execute with async execFile + minimal secure env
+   636→        const timeout = Math.min(EXECUTION_CONFIG.timeout, 10000)
+   637→        const result = await executePythonProcess(scriptFile, tmpDir, timeout)
+   638→
+   639→        if (result.timedOut) {
+   640→          results.push({
+   641→            nom: tc.nom,
+   642→            passed: false,
+   643→            output: '',
+   644→            expected: tc.sortieAttendue,
+   645→            error: `Timeout : l'exécution a dépassé ${timeout / 1000}s`,
+   646→            duration: timeout,
+   647→          })
+   648→          continue
+   649→        }
+   650→
+   651→        const outputStr = result.stdout.trim()
+   652→        const errorStr = result.stderr.trim()
+   653→        const expectedStr = tc.sortieAttendue.trim()
+   654→
+   655→        if (errorStr.includes('BLOCKED:') || errorStr.includes('ImportError:') || errorStr.includes('is not allowed')) {
+   656→          results.push({
+   657→            nom: tc.nom,
+   658→            passed: false,
+   659→            output: '',
+   660→            expected: expectedStr,
+   661→            error: 'Opération non autorisée',
+   662→            duration: Date.now() - startTime,
+   663→          })
+   664→          continue
+   665→        }
+   666→
+   667→        if (errorStr && !outputStr) {
+   668→          results.push({
+   669→            nom: tc.nom,
+   670→            passed: false,
+   671→            output: '',
+   672→            expected: expectedStr,
+   673→            error: errorStr.split('\n').pop() || errorStr,
+   674→            duration: Date.now() - startTime,
+   675→          })
+   676→          continue
+   677→        }
+   678→
+   679→        const passed = normalizeOutput(outputStr) === normalizeOutput(expectedStr)
+   680→
+   681→        results.push({
+   682→          nom: tc.nom,
+   683→          passed,
+   684→          output: outputStr,
+   685→          expected: expectedStr,
+   686→          error: passed ? undefined : (errorStr ? errorStr.split('\n').pop() : undefined),
+   687→          duration: Date.now() - startTime,
+   688→        })
+   689→        allOutput += (allOutput ? '\n' : '') + outputStr
+   690→      } catch (error) {
+   691→        results.push({
+   692→          nom: tc.nom,
+   693→          passed: false,
+   694→          output: '',
+   695→          expected: tc.sortieAttendue,
+   696→          error: error instanceof Error ? error.message : String(error),
+   697→          duration: Date.now() - startTime,
+   698→        })
+   699→      }
+   700→    }
+   701→  } finally {
+   702→    try {
+   703→      if (existsSync(tmpDir)) {
+   704→        rmSync(tmpDir, { recursive: true, force: true })
+   705→      }
+   706→    } catch {
+   707→      // Ignore cleanup errors
+   708→    }
+   709→  }
+   710→
+   711→  const passedTests = results.filter(r => r.passed).length
+   712→  return {
+   713→    success: passedTests === testCases.length,
+   714→    output: allOutput,
+   715→    testResults: results,
+   716→    totalTests: testCases.length,
+   717→    passedTests,
+   718→  }
+   719→}
+   720→
+   721→// ─── Build Secure Python Script (same as /api/coding/execute) ───
+   722→
+   723→function buildSecurePythonScript(studentCode: string, testCode: string): string {
+   724→  return `# ─── SECT Python Sandbox v2 (Grading) ───
+   725→import sys as _sys
+   726→import json as _json
+   727→
+   728→# ─── Block dangerous builtins ───
+   729→_BLOCKED_BUILTINS = frozenset({
+   730→    'eval', 'exec', 'compile', '__import__', 'open', 'input',
+   731→    'globals', 'locals', 'vars', 'dir', 'getattr', 'setattr', 'delattr',
+   732→    'breakpoint', 'exit', 'quit', 'memoryview',
+   733→})
+   734→
+   735→_restricted_builtins = {}
+   736→for _name in dir(_sys.modules['builtins']):
+   737→    _value = getattr(_sys.modules['builtins'], _name)
+   738→    if _name in _BLOCKED_BUILTINS:
+   739→        def _blocked_func(*a, _n=_name, **kw):
+   740→            _sys.stderr.write(f"BLOCKED: {_n}() is not allowed\\n")
+   741→            raise RuntimeError(f"BLOCKED: {_n}() is not allowed")
+   742→        _restricted_builtins[_name] = _blocked_func
+   743→    else:
+   744→        _restricted_builtins[_name] = _value
+   745→
+   746→# ─── Restrict imports ───
+   747→_ALLOWED_MODULES = frozenset({
+   748→    'math', 'random', 'string', 'collections', 'itertools', 'functools',
+   749→    'operator', 'decimal', 'fractions', 'statistics', 'datetime', 're',
+   750→    'json', 'copy', 'enum', 'typing', 'dataclasses', 'abc',
+   751→    'array', 'heapq', 'bisect', 'pprint', 'textwrap', 'unicodedata',
+   752→    'cmath', 'numbers', 'uuid',
+   753→})
+   754→
+   755→_original_import = _sys.modules['builtins'].__import__
+   756→
+   757→def _restricted_import(name, *args, **kwargs):
+   758→    _top_level = name.split('.')[0]
+   759→    if _top_level not in _ALLOWED_MODULES:
+   760→        raise ImportError(f"Module '{_top_level}' is not allowed for security reasons.")
+   761→    return _original_import(name, *args, **kwargs)
+   762→
+   763→_restricted_builtins['__import__'] = _restricted_import
+   764→
+   765→# ─── Apply restricted builtins ───
+   766→_sys.modules['builtins'].__dict__.update(_restricted_builtins)
+   767→_sys.setrecursionlimit(500)
+   768→
+   769→# ─── Execute student code ───
+   770→_execution_error = None
+   771→try:
+   772→    exec(${JSON.stringify(studentCode)}, {'__builtins__': _restricted_builtins})
+   773→except Exception as _e:
+   774→    _execution_error = str(_e)
+   775→
+   776→# ─── Execute test code if no error ───
+   777→if _execution_error is None:
+   778→    try:
+   779→        exec(${JSON.stringify(testCode)}, {'__builtins__': _restricted_builtins})
+   780→    except Exception as _e:
+   781→        _execution_error = str(_e)
+   782→`
+   783→}
+   784→
+   785→// ─── Execute Python in subprocess (async, same as /api/coding/execute) ───
+   786→
+   787→function executePythonProcess(
+   788→  scriptFile: string,
+   789→  cwd: string,
+   790→  timeout: number
+   791→): Promise<{ stdout: string; stderr: string; timedOut: boolean }> {
+   792→  return new Promise((resolve) => {
+   793→    const env: NodeJS.ProcessEnv = {
+   794→      PATH: process.env.PATH || '',
+   795→      HOME: cwd,
+   796→      NODE_ENV: process.env.NODE_ENV || 'production',
+   797→      PYTHONPATH: '',
+   798→      PYTHONDONTWRITEBYTECODE: '1',
+   799→      PYTHONUNBUFFERED: '1',
+   800→      PYTHONNOUSERSITE: '1',
+   801→      PYTHONDISABLEPYPREFIX: '1',
+   802→    }
+   803→
+   804→    const child = execFile(
+   805→      'python3',
+   806→      ['-S', '-E', scriptFile],
+   807→      {
+   808→        timeout: timeout + 2000,
+   809→        maxBuffer: 1024 * 1024,
+   810→        cwd,
+   811→        env,
+   812→        windowsHide: true,
+   813→      },
+   814→      (error, stdout, stderr) => {
+   815→        if (error && error.killed) {
+   816→          resolve({ stdout: '', stderr: '', timedOut: true })
+   817→          return
+   818→        }
+   819→        resolve({
+   820→          stdout: stdout || '',
+   821→          stderr: stderr || '',
+   822→          timedOut: false,
+   823→        })
+   824→      }
+   825→    )
+   826→
+   827→    // Kill the process if it takes too long
+   828→    setTimeout(() => {
+   829→      try {
+   830→        if (child.pid) {
+   831→          process.kill(child.pid, 'SIGKILL')
+   832→        }
+   833→      } catch {
+   834→        // Process may have already exited
+   835→      }
+   836→    }, timeout + 3000)
+   837→  })
+   838→}
+   839→
+   840→function normalizeOutput(output: string): string {
+   841→  return output.replace(/\r\n/g, '\n').replace(/\n+/g, '\n').trim()
+   842→}
+   843→
+   844→export const POST = withAuth(_POST)
+   845→
