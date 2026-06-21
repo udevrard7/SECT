@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   '/api/invitations/accept',
   '/api/epreuves/auto-close', // Cron auto-close (has its own secret-based auth)
   '/api/certificats/verify',  // Public certificate verification endpoint
+  '/api/landing-demo',        // Public interactive demo on landing page (rate-limited)
 ]
 
 // API routes that should return 401 instead of redirecting
