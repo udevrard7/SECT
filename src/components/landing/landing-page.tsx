@@ -509,48 +509,50 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
           ))}
         </div>
 
-        {/* Dashboard Image */}
+        {/* Hero visual — abstract AI-exam concept (distinct from the product dashboard shown later) */}
         <div
           ref={imageRef}
           className="relative mx-auto max-w-5xl"
           style={{ transformStyle: 'preserve-3d' }}
         >
-          <div className="absolute -inset-4 bg-gradient-to-r from-emerald-500/20 via-teal-500/10 to-cyan-500/20 rounded-2xl blur-3xl" aria-hidden />
-          <div className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/10">
-            <img
-              src="/hero-dashboard.png"
-              alt="SECT Dashboard - Centre de commande pour examens"
-              className="w-full h-auto block"
-            />
-            {/* Subtle gradient overlay at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#09090b] to-transparent pointer-events-none" />
+          {/* Layered ambient glow for depth */}
+          <div className="absolute -inset-6 bg-gradient-to-tr from-emerald-500/20 via-teal-500/5 to-cyan-500/20 rounded-[2rem] blur-3xl" aria-hidden />
+          <div className="absolute -inset-2 bg-gradient-to-br from-emerald-400/10 to-cyan-400/10 rounded-2xl blur-2xl" aria-hidden />
+
+          {/* Refined frame: outer ring + inner border + top highlight */}
+          <div className="relative rounded-2xl ring-1 ring-white/[0.06] shadow-2xl shadow-emerald-500/10">
+            <div className="relative rounded-2xl border border-white/[0.1] overflow-hidden bg-[#0a0a0a]">
+              {/* Top edge light catch */}
+              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" aria-hidden />
+              <img
+                src="/hero-ai-exam.png"
+                alt="SECT — L'examen reinvente par l'IA : sujet d'examen holographique genere par intelligence artificielle"
+                className="w-full h-auto block"
+                loading="eager"
+              />
+              {/* Cinematic letterbox fades for a premium, framed feel */}
+              <div className="absolute top-0 left-0 right-0 h-20 bg-gradient-to-b from-[#09090b]/60 to-transparent pointer-events-none" aria-hidden />
+              <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#09090b] via-[#09090b]/80 to-transparent pointer-events-none" aria-hidden />
+            </div>
           </div>
 
-          {/* Floating badges */}
-          <div className="absolute -right-3 top-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
+          {/* Curated floating badges — 3, purposefully placed */}
+          <div className="absolute -right-3 sm:-right-5 top-[18%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs text-zinc-300 font-medium">IA Active</span>
+              <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.7)]" />
+              <span className="text-xs text-zinc-200 font-medium">Generation IA en direct</span>
             </div>
           </div>
-          <div className="absolute -left-3 bottom-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
-            <div className="flex items-center gap-2">
-              <Shield className="h-3 w-3 text-emerald-400" />
-              <span className="text-xs text-zinc-300 font-medium">Chiffrement AES-256</span>
-            </div>
-          </div>
-          {/* Additional floating badge - top left */}
-          <div className="absolute -left-3 top-[15%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl hidden sm:block">
+          <div className="absolute -left-3 sm:-left-5 top-[42%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl hidden sm:block">
             <div className="flex items-center gap-2">
               <Brain className="h-3 w-3 text-cyan-400" />
-              <span className="text-xs text-zinc-300 font-medium">3 Modeles IA</span>
+              <span className="text-xs text-zinc-200 font-medium">Sujets uniques par etudiant</span>
             </div>
           </div>
-          {/* Additional floating badge - bottom right */}
-          <div className="absolute -right-3 bottom-[20%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl hidden sm:block">
+          <div className="absolute -right-3 sm:-right-5 bottom-[14%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl hidden sm:block">
             <div className="flex items-center gap-2">
-              <BarChart3 className="h-3 w-3 text-teal-400" />
-              <span className="text-xs text-zinc-300 font-medium">99.7% Precision</span>
+              <Shield className="h-3 w-3 text-emerald-400" />
+              <span className="text-xs text-zinc-200 font-medium">Anti-fraude integre</span>
             </div>
           </div>
         </div>
