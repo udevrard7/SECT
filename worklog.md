@@ -891,3 +891,22 @@ Stage Summary:
 - SVG polygons for diagonal corner bands (reliable rendering in react-pdf)
 - Custom fonts bundled in public/fonts/ (~2.8MB total)
 - Commit 355312c deployed on https://sect-app.vercel.app
+
+---
+Task ID: 28
+Agent: Main Agent (Z.ai Code)
+Task: Remove obsolete jsPDF certificate generator (certificat-pdf.ts)
+
+Work Log:
+- User requested deletion of the old jsPDF generator file
+- Verified with grep that src/lib/pdf/certificat-pdf.ts is NOT imported anywhere in src/ (only certificat-pdf-react.tsx is used now)
+- Verified that jsPDF is still used by 2 other files (epreuve-pdf.ts, rapports-page.tsx) so the jspod package is kept
+- Deleted the file (587 lines, 20KB)
+- ESLint clean; GET / -> 200 (no broken imports)
+- Committed as 46f551b (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (355312c..46f551b)
+
+Stage Summary:
+- Old jsPDF certificate generator removed — only @react-pdf/renderer is used now
+- jsPDF package kept (still used for exam papers and reports)
+- 587 lines of dead code removed
+- Commit 46f551b deployed on https://sect-app.vercel.app
