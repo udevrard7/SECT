@@ -17,8 +17,10 @@ import {
   UserCheck,
   Hash,
   Share2,
+  Award,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
+import { CertificateTemplateDialog } from './certificate-template-dialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -161,10 +163,12 @@ export function UnitesEnseignementPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [affectationsDialogOpen, setAffectationsDialogOpen] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingUE, setEditingUE] = useState<UEItem | null>(null)
   const [viewingUE, setViewingUE] = useState<UEItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<UEItem | null>(null)
+  const [templateUE, setTemplateUE] = useState<UEItem | null>(null)
 
   // ─── Add form state ───
   const [addCode, setAddCode] = useState('')
@@ -962,6 +966,7 @@ export function UnitesEnseignementPage() {
                     onEdit={handleOpenEdit}
                     onDelete={setDeleteTarget}
                     onViewAffectations={handleViewAffectations}
+                    onTemplate={(ue) => { setTemplateUE(ue); setTemplateDialogOpen(true) }}
                     totalHours={totalHours}
                     allFilieres={allFilieres}
                   />
@@ -1150,6 +1155,13 @@ export function UnitesEnseignementPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── Certificate Template Dialog ─── */}
+      <CertificateTemplateDialog
+        ue={templateUE ? { id: templateUE.id, code: templateUE.code, nom: templateUE.nom } : null}
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+      />
     </div>
   )
 }
@@ -1162,6 +1174,7 @@ function UETableRow({
   onEdit,
   onDelete,
   onViewAffectations,
+  onTemplate,
   totalHours,
   allFilieres,
 }: {
@@ -1171,6 +1184,7 @@ function UETableRow({
   onEdit: (ue: UEItem) => void
   onDelete: (ue: UEItem) => void
   onViewAffectations: (ue: UEItem) => void
+  onTemplate: (ue: UEItem) => void
   totalHours: number
   allFilieres: { id: string; nom: string; code: string | null; isOwner: boolean }[]
 }) {
@@ -1241,6 +1255,13 @@ function UETableRow({
               title="Voir les affectations"
             >
               <Eye className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => onTemplate(ue)}
+              className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-amber-600"
+              title="Template de certificat"
+            >
+              <Award className="h-4 w-4" />
             </button>
             <button
               onClick={() => onEdit(ue)}

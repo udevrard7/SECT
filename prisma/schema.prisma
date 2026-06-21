@@ -137,8 +137,26 @@ model UniteEnseignement {
   filiere        Filiere       @relation(fields: [filiereId], references: [id], onDelete: Cascade)
   filieresSuppl  UniteEnseignementFiliere[]  // Filières supplémentaires (partage multi-filières)
   validationsUE  ValidationUE[]
+  certificateTemplate CertificateTemplate?
 
   @@unique([code, filiereId])
+}
+
+// ─── Certificate Template (1:1 with UE) ───
+// Per-UE visual customization for certificate rendering:
+// background watermark image, primary/accent colors, theme icon, font.
+model CertificateTemplate {
+  id                   String              @id @default(cuid())
+  uniteEnseignementId  String              @unique  // 1:1 relation
+  backgroundImage       String?                      // base64 data URI (filigrane, 10-20% opacity)
+  primaryColor          String?  @default("1A4D2E")  // hex without #, e.g. "1A4D2E" (dark green)
+  accentColor           String?  @default("DAA520")  // hex without #, e.g. "DAA520" (gold)
+  themeIcon             String?  @default("default")  // "default" | "code" | "science" | "law" | "business" | "math" | "language" | "art"
+  fontFamily            String?  @default("helvetica") // "helvetica" | "times" | "courier"
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  uniteEnseignement     UniteEnseignement   @relation(fields: [uniteEnseignementId], references: [id], onDelete: Cascade)
 }
 
 model UniteEnseignementFiliere {
