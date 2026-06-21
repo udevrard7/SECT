@@ -165,3 +165,45 @@ Stage Summary:
 - Centre de Commande image replaced with an online-exam-monitoring scene (exam-monitoring.png); old image deleted
 - Commit 293ead6 pushed to GitHub by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
 - Deliberately kept the pricing-card "Commencer maintenant" plan-selection CTA (flagged to user)
+
+---
+Task ID: 7
+Agent: Main Agent (Z.ai Code) acting as UI/UX + conversion-copywriting expert
+Task: Complete conversion-first redesign of the SECT landing page (12 sections, navy/violet/orange theme, interactive AI demo)
+
+Work Log:
+- Read prior worklog (Tasks 1-6) and studied existing landing (1868 lines, emerald theme), layout.tsx (Geist font already set), shadcn component inventory (accordion, switch, avatar, input, badge, button all available), z-ai-web-dev-sdk LLM pattern (getZAI() helper in src/lib/zai.ts), middleware PUBLIC_PATHS gating
+- Presented plan + headlines to user before implementing
+- Generated 2 before/after illustrations via z-ai image (1152x864): before-grading.png (tired teacher + paper copies) and after-dashboard.png (relaxed teacher + dashboard), dark navy + violet palette for cohesion
+- Created new public API route /api/landing-demo/route.ts: generates a single QCM via ZAI LLM with strict JSON schema + validation (question, 4 options, correctIndex, difficulty, explanation). In-memory rate limiter (5 req/min/IP). Added /api/landing-demo to middleware PUBLIC_PATHS so unauthenticated visitors can use the live demo
+- Completely rewrote src/components/landing/landing-page.tsx (~1700 lines) with 12 sections in conversion order:
+  1. Hero (headline "Vos copies corrigées en 2 minutes. Pas en 2 semaines.", 2 CTAs, animated CSS dashboard mockup with live correction progress + score, live counter "Temps économisé: 1 247 h")
+  2. Trust Bar (4 animated CountUp stats)
+  3. Le Problème (3 empathic cards)
+  4. La Solution (before/after 2-column with generated illustrations)
+  5. Features (6 bento cards, benefit-titled, colored glow hover)
+  6. Comment ça marche (3-step stepper)
+  7. Interactive Demo (real mini-editor -> /api/landing-demo generates live QCM)
+  8. Testimonials (3 cards, initials avatars flagged as placeholders)
+  9. Pricing (3 plans FCFA, monthly/annual toggle -20%, Pro highlighted)
+  10. FAQ (7-objection accordion)
+  11. CTA final (gradient, dual CTA, reassurance)
+  12. Footer (4 columns + newsletter)
+- Added differentiators strip "Conçu pour l'Afrique" (3G/4G, WhatsApp, hébergement local, éditeur de code)
+- Added sticky mobile CTA bar (appears on scroll, respects iOS safe-area)
+- Reusable helpers: MagneticButton (kept), VioletText/WarmText, Reveal (framer-motion fade-in), DotGrid, GlowOrb, CountUp (IntersectionObserver + rAF)
+- New palette: deep navy #0A1628 + violet/indigo accents + orange CTAs (Linear/Vercel/Notion-inspired)
+- Enriched layout.tsx metadata: conversion-focused title/description, keywords, OG, Twitter card, JSON-LD SoftwareApplication schema with XOF offers + rating
+- Cleaned up 11 unused landing images (~1.7 MB removed from repo/build): ai-brain, dashboard-mockup, exam-monitoring, hero-ai-exam, hero-ai-network, hero-bg, hero-classroom-future, hero-exam-ai, landing-cta, landing-features, landing-hero
+- Auth-compatible: unchanged LandingPage({onLogin, onDemo}) signature; no DB schema changes
+- ESLint clean (0 errors, 0 warnings)
+- Transient runtime verified: GET / -> 200, images -> 200, POST /api/landing-demo -> 200 with valid QCM JSON generated in 3.3s (tested with topic "La photosynthèse": correct question, 4 options, correctIndex, difficulty Moyen, explanation)
+- Committed as 3cc5a92 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (293ead6..3cc5a92) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Complete landing redesign delivered: 12 conversion-optimized sections, new navy/violet/orange design system, fully responsive + accessible
+- Killer feature: interactive AI demo where visitors type a topic and get a live-generated QCM (public, rate-limited API) — differentiator that lets visitors experience the AI before signing up
+- Pricing in FCFA with monthly/annual toggle (-20%)
+- SEO enriched (metadata + JSON-LD), 11 orphan images removed
+- Commit 3cc5a92 pushed to GitHub by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
+- Testimonial avatars are initials placeholders — user should replace with real establishment testimonials when available
