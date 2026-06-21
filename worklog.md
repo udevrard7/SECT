@@ -207,3 +207,23 @@ Stage Summary:
 - SEO enriched (metadata + JSON-LD), 11 orphan images removed
 - Commit 3cc5a92 pushed to GitHub by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
 - Testimonial avatars are initials placeholders — user should replace with real establishment testimonials when available
+
+---
+Task ID: 8
+Agent: Main Agent (Z.ai Code)
+Task: Fix landing page — too much vertical space between blocks (long scroll) and empty cells in the features bento grid
+
+Work Log:
+- User feedback: scroll too long due to excessive spacing between sections; features bento cards left empty gaps
+- Analyzed: 8 content sections used py-20 sm:py-24 (~80px/side); Hero pt-32 pb-20 sm:pt-36 sm:pb-28; CTA py-24 sm:py-32; heading margins mb-12/14/10
+- Analyzed bento: spans were [lg:col-span-2, '', '', '', lg:col-span-2, lg:col-span-2] on a 3-col grid -> pattern [2,1,1,1,2,2] = 8 col-units across 9 cells = 3 empty gaps
+- Fixed spacing: py-20 sm:py-24 -> py-12 sm:py-16 on all 8 sections; Hero -> pt-28 pb-12 sm:pt-32 sm:pb-16; CTA -> py-16 sm:py-20; TrustBar/Differentiators py-14 -> py-10; all heading margins mb-12/14/10 -> mb-8
+- Fixed bento: removed all lg:col-span-2 spans -> 6 equal cards in clean 2x3 grid, zero empty cells
+- Net result: ~500-600px shorter page, no visual gaps in features grid
+- ESLint clean; transient runtime GET / -> 200, no errors
+- Committed as 590b401 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (3cc5a92..590b401) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Vertical spacing significantly reduced across all 12 sections (page is now much shorter to scroll)
+- Features bento grid fixed: 6 cards in a perfect 2x3 layout with no empty cells
+- Commit 590b401 pushed to GitHub by udevrard7, Vercel deployment triggered
