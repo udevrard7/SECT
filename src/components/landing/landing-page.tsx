@@ -7,46 +7,33 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import {
   Sparkles,
   FileText,
-  CheckCircle,
-  Shield,
   BarChart3,
-  Building2,
   ArrowRight,
   Star,
-  Mail,
-  Phone,
-  Upload,
-  Monitor,
-  Brain,
-  Check,
   Zap,
   Crown,
-  ChevronDown,
-  Play,
-  Clock,
-  GraduationCap,
-  Cpu,
   Menu,
   X,
-  LucideIcon,
-  MapPin,
+  Brain,
+  Shield,
+  GraduationCap,
+  Cpu,
+  BookOpen,
   Users,
   Globe,
-  BookOpen,
+  Check,
+  Play,
+  Clock,
+  Monitor,
+  Layers,
+  Lock,
+  ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 
 gsap.registerPlugin(ScrollTrigger)
 
+/* ─── Types ─── */
 interface LandingPageProps {
   onLogin: () => void
   onDemo: () => void
@@ -72,19 +59,22 @@ function MagneticButton({
     }
   }, [])
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!ref.current || !xTo.current || !yTo.current) return
-    const rect = ref.current.getBoundingClientRect()
-    const dx = e.clientX - rect.left - rect.width / 2
-    const dy = e.clientY - rect.top - rect.height / 2
-    xTo.current(dx * 0.3)
-    yTo.current(dy * 0.3)
-  }
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!ref.current || !xTo.current || !yTo.current) return
+      const rect = ref.current.getBoundingClientRect()
+      const x = e.clientX - rect.left - rect.width / 2
+      const y = e.clientY - rect.top - rect.height / 2
+      xTo.current(x * 0.3)
+      yTo.current(y * 0.3)
+    },
+    []
+  )
 
-  const handleMouseLeave = () => {
+  const handleMouseLeave = useCallback(() => {
     xTo.current?.(0)
     yTo.current?.(0)
-  }
+  }, [])
 
   return (
     <Button
@@ -99,1057 +89,1391 @@ function MagneticButton({
   )
 }
 
-/* ─── Animated Counter ─── */
-function AnimatedCounter({ target, suffix = '', prefix = '' }: { target: number; suffix?: string; prefix?: string }) {
-  const ref = useRef<HTMLSpanElement>(null)
-  const counted = useRef(false)
-
-  useEffect(() => {
-    if (!ref.current) return
-    const el = ref.current
-    const trigger = ScrollTrigger.create({
-      trigger: el,
-      start: 'top 85%',
-      once: true,
-      onEnter: () => {
-        if (counted.current) return
-        counted.current = true
-        const obj = { val: 0 }
-        gsap.to(obj, {
-          val: target,
-          duration: 2,
-          ease: 'power2.out',
-          onUpdate: () => {
-            el.textContent = prefix + Math.round(obj.val).toLocaleString() + suffix
-          },
-        })
-      },
-    })
-    return () => trigger.kill()
-  }, [target, suffix, prefix])
-
-  return <span ref={ref}>{prefix}0{suffix}</span>
-}
-
-/* ─── Typing Effect ─── */
-function TypingText({ texts, speed = 80, pause = 2000 }: { texts: string[]; speed?: number; pause?: number }) {
-  const [display, setDisplay] = useState('')
-  const [textIdx, setTextIdx] = useState(0)
-  const [charIdx, setCharIdx] = useState(0)
-  const [deleting, setDeleting] = useState(false)
-
-  useEffect(() => {
-    const current = texts[textIdx]
-    if (!deleting && charIdx < current.length) {
-      const t = setTimeout(() => {
-        setDisplay(current.slice(0, charIdx + 1))
-        setCharIdx(charIdx + 1)
-      }, speed)
-      return () => clearTimeout(t)
-    }
-    if (!deleting && charIdx === current.length) {
-      const t = setTimeout(() => setDeleting(true), pause)
-      return () => clearTimeout(t)
-    }
-    if (deleting && charIdx > 0) {
-      const t = setTimeout(() => {
-        setDisplay(current.slice(0, charIdx - 1))
-        setCharIdx(charIdx - 1)
-      }, speed / 2)
-      return () => clearTimeout(t)
-    }
-    if (deleting && charIdx === 0) {
-      const t = setTimeout(() => {
-        setDeleting(false)
-        setTextIdx((prev) => (prev + 1) % texts.length)
-      }, speed)
-      return () => clearTimeout(t)
-    }
-  }, [charIdx, deleting, textIdx, texts, speed, pause])
-
+/* ─── Gradient Text Helper ─── */
+function GradientText({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <span>
-      {display}
-      <span className="animate-pulse text-emerald-400">|</span>
+    <span className={`bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent ${className}`}>
+      {children}
     </span>
   )
 }
 
-/* ─── Feature Card Data ─── */
-const features: { icon: LucideIcon; title: string; desc: string }[] = [
-  { icon: Brain, title: 'Génération IA', desc: 'Créez des épreuves intelligemment avec l\'IA avancée, adaptées à chaque niveau et matière.' },
-  { icon: FileText, title: 'Correction Automatique', desc: 'Corrigez instantanément les copies avec une précision remarquable grâce à l\'IA.' },
-  { icon: Shield, title: 'Anti-Fraude', desc: 'Détectez le plagiat et les comportements suspects avec des algorithmes avancés.' },
-  { icon: BarChart3, title: 'Analytics Prédictifs', desc: 'Anticipez les résultats et identifiez les étudiants à risque avant les examens.' },
-  { icon: Users, title: 'Gestion Multi-Rôles', desc: 'Administrez enseignants, étudiants et responsables avec des permissions granulaires.' },
-  { icon: Globe, title: 'Multi-Établissements', desc: 'Déployez la plateforme à l\'échelle de plusieurs campus et universités.' },
-]
+/* ─── Dot Grid Background ─── */
+function DotGrid() {
+  return (
+    <div
+      className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[length:32px_32px] pointer-events-none"
+      aria-hidden
+    />
+  )
+}
 
-const steps = [
-  { icon: Upload, title: 'Importez', desc: 'Téléchargez vos programmes académiques et critères d\'évaluation en quelques clics.' },
-  { icon: Cpu, title: 'Générez', desc: 'L\'IA crée des épreuves personnalisées conformes à vos standards pédagogiques.' },
-  { icon: CheckCircle, title: 'Évaluez', desc: 'Corrigez automatiquement et obtenez des analyses détaillées des performances.' },
-]
+/* ─── Glow Orb ─── */
+function GlowOrb({ x, y, color = 'emerald' }: { x: string; y: string; color?: string }) {
+  const colorMap: Record<string, string> = {
+    emerald: 'rgba(16,185,129,0.15)',
+    cyan: 'rgba(34,211,238,0.12)',
+    teal: 'rgba(45,212,191,0.13)',
+  }
+  return (
+    <div
+      className="absolute pointer-events-none"
+      style={{ left: x, top: y, width: 600, height: 600, transform: 'translate(-50%, -50%)' }}
+      aria-hidden
+    >
+      <div
+        className="w-full h-full rounded-full blur-[120px]"
+        style={{ background: colorMap[color] || colorMap.emerald }}
+      />
+    </div>
+  )
+}
 
-const plans = [
-  { name: 'Starter', price: '29', icon: Zap, desc: 'Pour les petits établissements', features: ['Jusqu\'à 100 étudiants', '5 enseignants', 'Génération IA basique', 'Correction automatique', 'Support email'], popular: false },
-  { name: 'Pro', price: '79', icon: Crown, desc: 'Pour les universités moyennes', features: ['Jusqu\'à 2 000 étudiants', '50 enseignants', 'IA avancée + Anti-fraude', 'Analytics prédictifs', 'Multi-départements', 'Support prioritaire'], popular: true },
-  { name: 'Enterprise', price: '199', icon: Building2, desc: 'Pour les grands groupes', features: ['Étudiants illimités', 'Enseignants illimités', 'IA premium + Custom', 'Multi-établissements', 'API & Intégrations', 'Account dédié'], popular: false },
-]
-
-const testimonials = [
-  { name: 'Dr. Aminata Diallo', role: 'Doyenne, Université Cheikh Anta Diop', text: 'ExamAI a révolutionné notre processus d\'évaluation. La correction automatique nous fait gagner 15 heures par semaine.', rating: 5 },
-  { name: 'Prof. Kwame Asante', role: 'Vice-Recteur, Université de Ghana', text: 'L\'anti-fraude IA est remarquable. Nous avons réduit les cas de triche de 87% en un semestre.', rating: 5 },
-  { name: 'Dr. Fatima Zahra', role: 'Directrice Pédagogique, Université Mohammed V', text: 'Les analytics prédictifs nous permettent d\'identifier les étudiants en difficulté bien avant les examens.', rating: 5 },
-]
-
-const trustLogos = [
-  'Université Cheikh Anta Diop',
-  'Université de Ghana',
-  'Université Mohammed V',
-  'Université de Nairobi',
-  'Université de Abidjan',
-  'Université de Dakar',
-]
-
-/* ─── Main Landing Page ─── */
-export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
-
-  // Refs for GSAP
+/* ─── Navbar ─── */
+function Navbar({ onLogin }: { onLogin: () => void }) {
   const navRef = useRef<HTMLElement>(null)
-  const heroRef = useRef<HTMLElement>(null)
-  const heroContentRef = useRef<HTMLDivElement>(null)
-  const heroImgRef = useRef<HTMLDivElement>(null)
-  const heroBgRef = useRef<HTMLDivElement>(null)
-  const trustRef = useRef<HTMLDivElement>(null)
-  const featuresRef = useRef<HTMLDivElement>(null)
-  const howRef = useRef<HTMLDivElement>(null)
-  const statsRef = useRef<HTMLDivElement>(null)
-  const dashboardRef = useRef<HTMLDivElement>(null)
-  const pricingRef = useRef<HTMLDivElement>(null)
-  const testimonialsRef = useRef<HTMLDivElement>(null)
-  const ctaRef = useRef<HTMLDivElement>(null)
+  const [scrolled, setScrolled] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const progressRef = useRef<HTMLDivElement>(null)
-  const shapesRef = useRef<HTMLDivElement>(null)
 
-  // Scroll progress + nav transparency
   useEffect(() => {
-    const progressEl = progressRef.current
-    const navEl = navRef.current
-    if (!progressEl || !navEl) return
+    const handleScroll = () => setScrolled(window.scrollY > 50)
+    window.addEventListener('scroll', handleScroll, { passive: true })
 
-    const progressTrigger = ScrollTrigger.create({
-      trigger: document.body,
-      start: 'top top',
-      end: 'bottom bottom',
-      onUpdate: (self) => {
-        progressEl.style.transform = `scaleX(${self.progress})`
-        if (self.progress > 0.02) {
-          setScrolled(true)
-        } else {
-          setScrolled(false)
-        }
-      },
+    const ctx = gsap.context(() => {
+      gsap.to(progressRef.current, {
+        scaleX: 1,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: document.documentElement,
+          start: 'top top',
+          end: 'bottom bottom',
+          scrub: 0.3,
+        },
+      })
     })
 
     return () => {
-      progressTrigger.kill()
+      window.removeEventListener('scroll', handleScroll)
+      ctx.revert()
     }
   }, [])
 
-  // Hero GSAP animations
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      // Parallax background
-      if (heroBgRef.current) {
-        gsap.to(heroBgRef.current, {
-          yPercent: 30,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: heroRef.current,
-            start: 'top top',
-            end: 'bottom top',
-            scrub: true,
-          },
-        })
-      }
-
-      // Hero content stagger
-      if (heroContentRef.current) {
-        const items = heroContentRef.current.querySelectorAll('.hero-item')
-        gsap.from(items, {
-          y: 60,
-          opacity: 0,
-          duration: 1,
-          stagger: 0.15,
-          ease: 'power3.out',
-          delay: 0.3,
-        })
-      }
-
-      // Hero image 3D tilt float
-      if (heroImgRef.current) {
-        gsap.from(heroImgRef.current, {
-          y: 80,
-          opacity: 0,
-          scale: 0.9,
-          rotationX: 10,
-          duration: 1.2,
-          ease: 'power3.out',
-          delay: 0.6,
-        })
-        gsap.to(heroImgRef.current, {
-          y: -15,
-          duration: 3,
-          ease: 'sine.inOut',
-          yoyo: true,
-          repeat: -1,
-        })
-      }
-    }, heroRef)
-
-    return () => ctx.revert()
-  }, [])
-
-  // Floating shapes
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!shapesRef.current) return
-      const shapes = shapesRef.current.querySelectorAll('.float-shape')
-      shapes.forEach((shape, i) => {
-        gsap.to(shape, {
-          y: `${gsap.utils.random(-30, 30)}`,
-          x: `${gsap.utils.random(-20, 20)}`,
-          rotation: gsap.utils.random(-20, 20),
-          duration: gsap.utils.random(4, 7),
-          ease: 'sine.inOut',
-          yoyo: true,
-          repeat: -1,
-          delay: i * 0.5,
-        })
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // Trust bar scroll
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!trustRef.current) return
-      gsap.from(trustRef.current.querySelectorAll('.trust-item'), {
-        y: 30,
-        opacity: 0,
-        stagger: 0.1,
-        duration: 0.6,
-        ease: 'power2.out',
-        scrollTrigger: {
-          trigger: trustRef.current,
-          start: 'top 85%',
-          once: true,
-        },
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // Features cards scroll
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!featuresRef.current) return
-      const cards = featuresRef.current.querySelectorAll('.feature-card')
-      cards.forEach((card, i) => {
-        gsap.from(card, {
-          x: i % 2 === 0 ? -80 : 80,
-          rotation: i % 2 === 0 ? -5 : 5,
-          opacity: 0,
-          duration: 0.8,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: card,
-            start: 'top 88%',
-            once: true,
-          },
-        })
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // How it works timeline
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!howRef.current) return
-      const tl = gsap.timeline({
-        scrollTrigger: {
-          trigger: howRef.current,
-          start: 'top 75%',
-          once: true,
-        },
-      })
-      const steps = howRef.current.querySelectorAll('.step-item')
-      const lines = howRef.current.querySelectorAll('.step-line')
-      steps.forEach((step, i) => {
-        tl.from(step, { y: 50, opacity: 0, duration: 0.6, ease: 'power2.out' }, i * 0.3)
-        if (lines[i]) {
-          tl.from(lines[i], { scaleX: 0, duration: 0.4, ease: 'power2.out' }, i * 0.3 + 0.3)
-        }
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // Stats counter
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!statsRef.current) return
-      gsap.from(statsRef.current.querySelectorAll('.stat-item'), {
-        y: 40,
-        opacity: 0,
-        stagger: 0.15,
-        duration: 0.7,
-        ease: 'power2.out',
-        scrollTrigger: {
-          trigger: statsRef.current,
-          start: 'top 80%',
-          once: true,
-        },
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // Dashboard mockup reveal
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!dashboardRef.current) return
-      gsap.from(dashboardRef.current.querySelector('.dashboard-img'), {
-        scale: 0.85,
-        opacity: 0,
-        y: 60,
-        duration: 1,
-        ease: 'power3.out',
-        scrollTrigger: {
-          trigger: dashboardRef.current,
-          start: 'top 80%',
-          once: true,
-        },
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // Pricing cards
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!pricingRef.current) return
-      const cards = pricingRef.current.querySelectorAll('.pricing-card')
-      cards.forEach((card, i) => {
-        gsap.from(card, {
-          scale: 0.85,
-          opacity: 0,
-          y: 40,
-          duration: 0.7,
-          delay: i * 0.15,
-          ease: 'back.out(1.5)',
-          scrollTrigger: {
-            trigger: pricingRef.current,
-            start: 'top 80%',
-            once: true,
-          },
-        })
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // Testimonials flip-in
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!testimonialsRef.current) return
-      const cards = testimonialsRef.current.querySelectorAll('.testimonial-card')
-      cards.forEach((card, i) => {
-        gsap.from(card, {
-          rotateX: 25,
-          y: 60,
-          opacity: 0,
-          duration: 0.8,
-          delay: i * 0.15,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: testimonialsRef.current,
-            start: 'top 80%',
-            once: true,
-          },
-        })
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  // CTA parallax
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (!ctaRef.current) return
-      const bg = ctaRef.current.querySelector('.cta-bg')
-      if (bg) {
-        gsap.to(bg, {
-          yPercent: -20,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: ctaRef.current,
-            start: 'top bottom',
-            end: 'bottom top',
-            scrub: true,
-          },
-        })
-      }
-      gsap.from(ctaRef.current.querySelector('.cta-content'), {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        ease: 'power2.out',
-        scrollTrigger: {
-          trigger: ctaRef.current,
-          start: 'top 80%',
-          once: true,
-        },
-      })
-    })
-    return () => ctx.revert()
-  }, [])
-
-  const handleSmoothScroll = useCallback((id: string) => {
-    const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth' })
-    setMenuOpen(false)
-  }, [])
+  const links = ['Fonctionnalites', 'Tarifs', 'Temoignages']
 
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-gray-950 overflow-x-hidden">
-      {/* Scroll progress */}
-      <div
-        ref={progressRef}
-        className="fixed top-0 left-0 w-full h-0.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 z-[60] origin-left"
-        style={{ transform: 'scaleX(0)' }}
-      />
-
-      {/* Grain texture overlay */}
-      <div className="fixed inset-0 z-[1] pointer-events-none opacity-[0.03] dark:opacity-[0.05]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\'/%3E%3C/svg%3E")' }} />
-
-      {/* Floating geometric shapes */}
-      <div ref={shapesRef} className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="float-shape absolute top-[15%] left-[8%] w-20 h-20 border border-emerald-300/20 dark:border-emerald-700/20 rounded-full" />
-        <div className="float-shape absolute top-[40%] right-[5%] w-32 h-32 border border-teal-300/15 dark:border-teal-700/15 rotate-45" />
-        <div className="float-shape absolute bottom-[30%] left-[3%] w-16 h-16 border border-cyan-300/20 dark:border-cyan-700/20 rounded-lg rotate-12" />
-        <div className="float-shape absolute top-[65%] right-[10%] w-24 h-24 bg-emerald-400/5 dark:bg-emerald-600/5 rounded-full blur-sm" />
-        <div className="float-shape absolute top-[20%] right-[25%] w-12 h-12 border border-emerald-400/10 dark:border-emerald-600/10 rotate-[30deg]" />
+    <>
+      {/* Scroll progress bar */}
+      <div className="fixed top-0 left-0 w-full h-[2px] z-[60]">
+        <div
+          ref={progressRef}
+          className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 origin-left"
+          style={{ transform: 'scaleX(0)' }}
+        />
       </div>
 
-      {/* ─── Navbar ─── */}
       <nav
         ref={navRef}
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
           scrolled
-            ? 'bg-white/70 dark:bg-gray-950/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 shadow-sm'
+            ? 'bg-[#09090b]/80 backdrop-blur-2xl border-b border-white/[0.06]'
             : 'bg-transparent'
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                ExamAI
-              </span>
-            </div>
-
-            <div className="hidden md:flex items-center gap-8">
-              {['Fonctionnalités', 'Comment ça marche', 'Tarifs', 'Témoignages'].map((item, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSmoothScroll(['features', 'how-it-works', 'pricing', 'testimonials'][i])}
-                  className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-
-            <div className="hidden md:flex items-center gap-3">
-              <Button variant="ghost" onClick={onLogin} className="text-gray-600 dark:text-gray-300 hover:text-emerald-600 dark:hover:text-emerald-400">
-                Connexion
-              </Button>
-              <MagneticButton
-                onClick={onDemo}
-                className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700 text-white shadow-lg shadow-emerald-500/25"
-              >
-                Démo gratuite <ArrowRight className="w-4 h-4 ml-1" />
-              </MagneticButton>
-            </div>
-
-            <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)}>
-              {menuOpen ? <X className="w-6 h-6 text-gray-700 dark:text-gray-200" /> : <Menu className="w-6 h-6 text-gray-700 dark:text-gray-200" />}
-            </button>
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-2">
+            <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+              SECT
+            </span>
           </div>
+
+          {/* Desktop Links */}
+          <div className="hidden md:flex items-center gap-8">
+            {links.map((link) => (
+              <a
+                key={link}
+                href={`#${link.toLowerCase()}`}
+                className="text-sm text-zinc-400 hover:text-white transition-colors duration-300"
+              >
+                {link}
+              </a>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="hidden md:flex items-center gap-3">
+            <MagneticButton
+              variant="ghost"
+              className="text-sm text-zinc-400 hover:text-white"
+              onClick={onLogin}
+            >
+              Connexion
+            </MagneticButton>
+            <MagneticButton
+              className="text-sm bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-5 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-shadow duration-300 rounded-lg"
+              onClick={onLogin}
+            >
+              Commencer
+              <ArrowRight className="ml-1.5 h-4 w-4" />
+            </MagneticButton>
+          </div>
+
+          {/* Mobile toggle */}
+          <button
+            className="md:hidden text-white"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Menu"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
 
         {/* Mobile menu */}
         <AnimatePresence>
-          {menuOpen && (
+          {mobileOpen && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden bg-white/90 dark:bg-gray-950/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 overflow-hidden"
+              className="md:hidden bg-[#09090b]/95 backdrop-blur-2xl border-b border-white/[0.06] overflow-hidden"
             >
-              <div className="px-4 py-4 space-y-3">
-                {['Fonctionnalités', 'Comment ça marche', 'Tarifs', 'Témoignages'].map((item, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSmoothScroll(['features', 'how-it-works', 'pricing', 'testimonials'][i])}
-                    className="block w-full text-left py-2 text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400"
+              <div className="px-6 py-4 flex flex-col gap-4">
+                {links.map((link) => (
+                  <a
+                    key={link}
+                    href={`#${link.toLowerCase()}`}
+                    className="text-sm text-zinc-400 hover:text-white transition-colors py-2"
+                    onClick={() => setMobileOpen(false)}
                   >
-                    {item}
-                  </button>
+                    {link}
+                  </a>
                 ))}
-                <Separator />
-                <Button variant="ghost" onClick={onLogin} className="w-full">Connexion</Button>
-                <Button onClick={onDemo} className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white">
-                  Démo gratuite <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
+                <MagneticButton
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-lg"
+                  onClick={onLogin}
+                >
+                  Commencer
+                </MagneticButton>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </nav>
+    </>
+  )
+}
 
-      {/* ─── Hero Section ─── */}
-      <section ref={heroRef} className="relative min-h-screen flex items-center pt-20 overflow-hidden">
-        {/* Background */}
-        <div ref={heroBgRef} className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/80 via-teal-50/50 to-white dark:from-emerald-950/80 dark:via-teal-950/50 dark:to-gray-950" />
-          <img
-            src="/landing-hero.png"
-            alt="Étudiants africains utilisant des tablettes IA"
-            className="absolute inset-0 w-full h-full object-cover opacity-15 dark:opacity-10"
-          />
-        </div>
+/* ─── Hero Section ─── */
+function HeroSection({ onDemo }: { onDemo: () => void }) {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const headlineRef = useRef<HTMLHeadingElement>(null)
+  const subRef = useRef<HTMLParagraphElement>(null)
+  const ctaRef = useRef<HTMLDivElement>(null)
+  const imageRef = useRef<HTMLDivElement>(null)
+  const typingRef = useRef<HTMLSpanElement>(null)
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            <div ref={heroContentRef} className="space-y-6 sm:space-y-8">
-              <div className="hero-item">
-                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-sm font-medium">
-                  <Sparkles className="w-4 h-4" />
-                  Propulsé par l\'IA Générative
-                </span>
-              </div>
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // Split headline into words and animate
+      if (headlineRef.current) {
+        const words = headlineRef.current.querySelectorAll('.hero-word')
+        gsap.fromTo(
+          words,
+          { y: 80, opacity: 0, rotateX: -40 },
+          {
+            y: 0,
+            opacity: 1,
+            rotateX: 0,
+            duration: 1.2,
+            stagger: 0.08,
+            ease: 'power3.out',
+            delay: 0.3,
+          }
+        )
+      }
 
-              <h1 className="hero-item text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold leading-tight tracking-tight">
-                <span className="text-gray-900 dark:text-white">Révolutionnez</span>
-                <br />
-                <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">
-                  vos examens
-                </span>
-                <br />
-                <span className="text-gray-900 dark:text-white">avec l&apos;IA</span>
-              </h1>
+      // Subtitle fade in
+      if (subRef.current) {
+        gsap.fromTo(
+          subRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 1, ease: 'power2.out', delay: 1.2 }
+        )
+      }
 
-              <p className="hero-item text-lg sm:text-xl text-gray-600 dark:text-gray-300 max-w-xl leading-relaxed">
-                <TypingText
-                  texts={[
-                    'Générez, corrigez et analysez vos épreuves en quelques clics.',
-                    'De la création à l\'évaluation, l\'IA fait tout pour vous.',
-                    'Zéro triche, zéro effort, résultats exceptionnels.',
-                  ]}
-                />
-              </p>
+      // CTA buttons
+      if (ctaRef.current) {
+        gsap.fromTo(
+          ctaRef.current.children,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.8, stagger: 0.15, ease: 'power2.out', delay: 1.5 }
+        )
+      }
 
-              <div className="hero-item flex flex-col sm:flex-row gap-4">
-                <MagneticButton
-                  onClick={onDemo}
-                  size="lg"
-                  className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700 text-white shadow-xl shadow-emerald-500/30 text-base px-8 py-6"
-                >
-                  Commencer gratuitement <ArrowRight className="w-5 h-5 ml-2" />
-                </MagneticButton>
-                <MagneticButton
-                  onClick={onLogin}
-                  variant="outline"
-                  size="lg"
-                  className="border-2 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-base px-8 py-6"
-                >
-                  <Play className="w-5 h-5 mr-2" /> Voir la démo
-                </MagneticButton>
-              </div>
+      // Dashboard image parallax
+      if (imageRef.current) {
+        gsap.fromTo(
+          imageRef.current,
+          { y: 60, opacity: 0, scale: 0.95 },
+          { y: 0, opacity: 1, scale: 1, duration: 1.4, ease: 'power3.out', delay: 1.8 }
+        )
 
-              <div className="hero-item flex items-center gap-6 pt-2">
-                <div className="flex -space-x-2">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-950 bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-[10px] text-white font-bold">
-                      {['AD', 'KA', 'FZ', 'MN'][i]}
-                    </div>
-                  ))}
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  <span className="font-semibold text-gray-900 dark:text-white">2,400+</span> enseignants nous font confiance
-                </div>
-              </div>
-            </div>
+        // Parallax on scroll
+        gsap.to(imageRef.current, {
+          y: -40,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: 1,
+          },
+        })
+      }
+    }, sectionRef)
 
-            <div ref={heroImgRef} className="relative" style={{ perspective: '1000px' }}>
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-emerald-500/20 border border-emerald-200/50 dark:border-emerald-800/50">
-                <img
-                  src="/ai-brain.png"
-                  alt="Réseau neuronal IA"
-                  className="w-full h-auto object-cover aspect-square"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/30 via-transparent to-transparent" />
-              </div>
-              {/* Floating badge */}
-              <motion.div
-                className="absolute -top-4 -right-4 sm:-top-6 sm:-right-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg rounded-2xl p-3 sm:p-4 shadow-xl border border-gray-200/50 dark:border-gray-700/50"
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-                    <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-900 dark:text-white">98.7%</p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Précision IA</p>
-                  </div>
-                </div>
-              </motion.div>
-              {/* Floating stats badge */}
-              <motion.div
-                className="absolute -bottom-4 -left-4 sm:-bottom-6 sm:-left-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg rounded-2xl p-3 sm:p-4 shadow-xl border border-gray-200/50 dark:border-gray-700/50"
-                animate={{ y: [0, 8, 0] }}
-                transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
-                    <Clock className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-900 dark:text-white">-85%</p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Temps correction</p>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        </div>
+    // 3D tilt on mouse move
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!imageRef.current) return
+      const rect = imageRef.current.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      const centerY = rect.top + rect.height / 2
+      const rotateY = ((e.clientX - centerX) / (rect.width / 2)) * 5
+      const rotateX = -((e.clientY - centerY) / (rect.height / 2)) * 5
+      gsap.to(imageRef.current, {
+        rotateX,
+        rotateY,
+        duration: 0.5,
+        ease: 'power2.out',
+        transformPerspective: 1200,
+      })
+    }
 
-        {/* Scroll indicator */}
+    const handleMouseLeave = () => {
+      if (!imageRef.current) return
+      gsap.to(imageRef.current, {
+        rotateX: 0,
+        rotateY: 0,
+        duration: 0.8,
+        ease: 'power2.out',
+      })
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    imageRef.current?.addEventListener('mouseleave', handleMouseLeave)
+
+    return () => {
+      ctx.revert()
+      window.removeEventListener('mousemove', handleMouseMove)
+    }
+  }, [])
+
+  // Typing effect
+  useEffect(() => {
+    if (!typingRef.current) return
+    const phrases = [
+      "Corriger 100 copies en 5 minutes",
+      "Generer des examens avec l'IA",
+      "Analyser les resultats en temps reel",
+      "Securiser chaque epreuve",
+    ]
+    let phraseIndex = 0
+    let charIndex = 0
+    let isDeleting = false
+    let timeout: ReturnType<typeof setTimeout>
+
+    const type = () => {
+      const currentPhrase = phrases[phraseIndex]
+      if (!isDeleting) {
+        charIndex++
+        if (typingRef.current) {
+          typingRef.current.textContent = currentPhrase.slice(0, charIndex)
+        }
+        if (charIndex === currentPhrase.length) {
+          isDeleting = true
+          timeout = setTimeout(type, 2000)
+          return
+        }
+        timeout = setTimeout(type, 60)
+      } else {
+        charIndex--
+        if (typingRef.current) {
+          typingRef.current.textContent = currentPhrase.slice(0, charIndex)
+        }
+        if (charIndex === 0) {
+          isDeleting = false
+          phraseIndex = (phraseIndex + 1) % phrases.length
+          timeout = setTimeout(type, 500)
+          return
+        }
+        timeout = setTimeout(type, 30)
+      }
+    }
+
+    timeout = setTimeout(type, 2000)
+    return () => clearTimeout(timeout)
+  }, [])
+
+  const headlineWords = ["L'examen", 'reinvente', 'par', "l'Intelligence", 'Artificielle']
+
+  return (
+    <section ref={sectionRef} className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-[#09090b]">
+      <DotGrid />
+      <GlowOrb x="50%" y="30%" color="emerald" />
+      <GlowOrb x="30%" y="60%" color="cyan" />
+
+      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-32 pb-20 text-center">
+        {/* Badge */}
         <motion.div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10"
-          animate={{ y: [0, 10, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.6 }}
+          className="inline-flex items-center gap-2 px-4 py-1.5 mb-8 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm"
         >
-          <ChevronDown className="w-6 h-6 text-emerald-500/60" />
+          <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+          <span className="text-xs text-zinc-400 font-medium tracking-wide">
+            Nouveau : IA Generative integree
+          </span>
         </motion.div>
-      </section>
 
-      {/* ─── Trust Bar ─── */}
-      <section ref={trustRef} className="relative z-10 py-12 sm:py-16 border-y border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm font-medium text-gray-400 dark:text-gray-500 mb-8 uppercase tracking-wider">
-            Adopté par les meilleures universités africaines
-          </p>
-          <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-10 lg:gap-16">
-            {trustLogos.map((name, i) => (
-              <div
-                key={i}
-                className="trust-item flex items-center gap-2 text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-              >
-                <GraduationCap className="w-5 h-5" />
-                <span className="text-sm font-medium whitespace-nowrap">{name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Features ─── */}
-      <section id="features" ref={featuresRef} className="relative z-10 py-20 sm:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-sm font-medium mb-6">
-              <Sparkles className="w-4 h-4" /> Fonctionnalités
+        {/* Headline */}
+        <h1
+          ref={headlineRef}
+          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[0.95] mb-6"
+          style={{ perspective: '600px' }}
+        >
+          {headlineWords.map((word, i) => (
+            <span
+              key={i}
+              className="hero-word inline-block mr-3 sm:mr-4 md:mr-5"
+              style={{ transformStyle: 'preserve-3d' }}
+            >
+              {i === 3 || i === 4 ? (
+                <GradientText>{word}</GradientText>
+              ) : (
+                <span className="text-white">{word}</span>
+              )}
             </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 dark:text-white mb-4">
-              Tout ce dont vous avez{' '}
-              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">besoin</span>
-            </h2>
-            <p className="text-lg text-gray-500 dark:text-gray-400">
-              Une suite complète d&apos;outils IA pour transformer votre processus d&apos;évaluation.
-            </p>
-          </div>
+          ))}
+        </h1>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((f, i) => (
-              <motion.div
-                key={i}
-                className="feature-card"
-                whileHover={{ y: -6, transition: { duration: 0.25 } }}
-              >
-                <Card className="h-full bg-white/60 dark:bg-gray-900/60 backdrop-blur-lg border-gray-200/60 dark:border-gray-700/40 hover:shadow-xl hover:shadow-emerald-500/10 transition-shadow duration-300">
-                  <CardHeader>
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 flex items-center justify-center mb-2">
-                      <f.icon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <CardTitle className="text-lg text-gray-900 dark:text-white">{f.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{f.desc}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+        {/* Typing line */}
+        <p ref={subRef} className="text-lg sm:text-xl text-zinc-400 mb-10 min-h-[32px]">
+          <span ref={typingRef} className="text-zinc-300" />
+          <span className="animate-pulse text-emerald-400">|</span>
+        </p>
+
+        {/* CTA Buttons */}
+        <div ref={ctaRef} className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <MagneticButton
+            className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3.5 text-base shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] transition-all duration-300 rounded-xl"
+            onClick={onDemo}
+          >
+            Demander une demo
+            <ArrowRight className="ml-2 h-5 w-5" />
+          </MagneticButton>
+          <MagneticButton
+            variant="outline"
+            className="border-white/[0.1] text-white hover:bg-white/[0.05] px-8 py-3.5 text-base rounded-xl"
+            onClick={onDemo}
+          >
+            <Play className="mr-2 h-4 w-4" />
+            Voir en action
+          </MagneticButton>
         </div>
-      </section>
 
-      {/* ─── How It Works ─── */}
-      <section id="how-it-works" ref={howRef} className="relative z-10 py-20 sm:py-28 bg-gray-50/70 dark:bg-gray-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-sm font-medium mb-6">
-              <BookOpen className="w-4 h-4" /> Comment ça marche
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 dark:text-white mb-4">
-              Trois étapes vers{' '}
-              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">l&apos;excellence</span>
-            </h2>
+        {/* Dashboard Image */}
+        <div
+          ref={imageRef}
+          className="relative mx-auto max-w-5xl"
+          style={{ transformStyle: 'preserve-3d' }}
+        >
+          <div className="absolute -inset-4 bg-gradient-to-r from-emerald-500/20 via-teal-500/10 to-cyan-500/20 rounded-2xl blur-3xl" aria-hidden />
+          <div className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/10">
+            <img
+              src="/hero-dashboard.png"
+              alt="SECT Dashboard - Centre de commande pour examens"
+              className="w-full h-auto block"
+            />
           </div>
-
-          <div className="grid md:grid-cols-3 gap-8 md:gap-4 relative">
-            {/* Connecting lines (desktop) */}
-            <div className="hidden md:block absolute top-20 left-[calc(16.66%+2rem)] right-[calc(16.66%+2rem)] h-0.5">
-              <div className="step-line w-full h-full bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 dark:from-emerald-700 dark:via-teal-700 dark:to-cyan-700 origin-left" />
-              <div className="step-line absolute top-0 left-1/2 w-1/2 h-full bg-gradient-to-r from-teal-300 to-cyan-300 dark:from-teal-700 dark:to-cyan-700 origin-left" />
+          {/* Floating badge */}
+          <div className="absolute -right-3 top-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs text-zinc-300 font-medium">IA Active</span>
             </div>
+          </div>
+          <div className="absolute -left-3 bottom-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
+            <div className="flex items-center gap-2">
+              <Shield className="h-3 w-3 text-emerald-400" />
+              <span className="text-xs text-zinc-300 font-medium">Chiffrement AES-256</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
 
+/* ─── Logo Cloud ─── */
+function LogoCloud() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const universities = [
+    'Universite Mohammed V',
+    'EMI Rabat',
+    'ENSIAS',
+    'Hassania Mohammedia',
+    'Universite Cadi Ayyad',
+    'ENSA Marrakech',
+  ]
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        sectionRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 1, ease: 'power2.out',
+          scrollTrigger: { trigger: sectionRef.current, start: 'top 90%' } }
+      )
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section ref={sectionRef} className="relative py-16 bg-[#0a0a0a] border-y border-white/[0.04]">
+      <div className="max-w-6xl mx-auto px-6 text-center">
+        <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-8 font-medium">
+          Adopte par les meilleures institutions
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+          {universities.map((name) => (
+            <span
+              key={name}
+              className="text-sm text-zinc-500/60 font-medium tracking-wide hover:text-zinc-400 transition-colors duration-300"
+            >
+              {name}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Bento Features Grid ─── */
+function FeaturesBento() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const cardsRef = useRef<HTMLDivElement>(null)
+
+  const features = [
+    {
+      icon: Brain,
+      title: 'Generation IA',
+      description: 'Creez des examens complets en quelques secondes avec notre IA generative.',
+      span: 'md:col-span-2 md:row-span-2',
+      image: true,
+      imageSrc: '/hero-exam-ai.png',
+    },
+    {
+      icon: Shield,
+      title: 'Anti-Fraude',
+      description: 'Surveillance en temps reel et detection automatique des comportements suspects.',
+      span: 'md:col-span-1',
+    },
+    {
+      icon: BarChart3,
+      title: 'Analytics Avances',
+      description: 'Visualisez les performances avec des graphiques interactifs.',
+      span: 'md:col-span-1',
+    },
+    {
+      icon: FileText,
+      title: 'Correction Automatique',
+      description: "Correction instantanee avec feedback personnalise pour chaque etudiant.",
+      span: 'md:col-span-1',
+    },
+    {
+      icon: Clock,
+      title: 'Temps Reel',
+      description: 'Suivi en direct de chaque epreuve et session.',
+      span: 'md:col-span-1',
+    },
+    {
+      icon: Layers,
+      title: 'Multi-Formats',
+      description: 'QCM, questions ouvertes, codage, et bien plus encore.',
+      span: 'md:col-span-1',
+    },
+    {
+      icon: Lock,
+      title: 'Securise',
+      description: 'Chiffrement de bout en bout pour toutes vos donnees sensibles.',
+      span: 'md:col-span-1',
+    },
+  ]
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      if (!cardsRef.current) return
+      const cards = cardsRef.current.querySelectorAll('.bento-card')
+      gsap.fromTo(
+        cards,
+        { opacity: 0, y: 40 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: 'power3.out',
+          scrollTrigger: { trigger: cardsRef.current, start: 'top 85%' },
+        }
+      )
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section id="fonctionnalites" ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b]">
+      <DotGrid />
+      <GlowOrb x="20%" y="50%" color="emerald" />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6">
+        <div className="text-center mb-16">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+            Fonctionnalites
+          </p>
+          <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight">
+            Tout ce dont vous avez{' '}
+            <GradientText>besoin</GradientText>
+          </h2>
+        </div>
+
+        <div
+          ref={cardsRef}
+          className="grid grid-cols-1 md:grid-cols-4 gap-4"
+        >
+          {features.map((feature, i) => (
+            <motion.div
+              key={i}
+              className={`bento-card group relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-6 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04] ${feature.span}`}
+              whileHover={{ y: -4, transition: { duration: 0.3 } }}
+            >
+              {/* Hover gradient border glow */}
+              <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/10 pointer-events-none" />
+
+              <div className="relative z-10 h-full flex flex-col">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <feature.icon className="h-5 w-5 text-emerald-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                </div>
+                <p className="text-sm text-zinc-400 leading-relaxed">{feature.description}</p>
+
+                {feature.image && (
+                  <div className="mt-6 flex-1 relative rounded-lg overflow-hidden border border-white/[0.06]">
+                      <img
+                      src={feature.imageSrc}
+                      alt={feature.title}
+                      className="w-full h-auto object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── AI Showcase ─── */
+function AIShowcase() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const imageWrapperRef = useRef<HTMLDivElement>(null)
+  const ringsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // Floating image
+      if (imageWrapperRef.current) {
+        gsap.to(imageWrapperRef.current, {
+          y: -15,
+          duration: 2.5,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        })
+      }
+
+      // Pulsing rings
+      if (ringsRef.current) {
+        const rings = ringsRef.current.querySelectorAll('.pulse-ring')
+        rings.forEach((ring, i) => {
+          gsap.fromTo(
+            ring,
+            { scale: 0.8, opacity: 0.6 },
+            {
+              scale: 1.4 + i * 0.3,
+              opacity: 0,
+              duration: 2.5,
+              repeat: -1,
+              delay: i * 0.6,
+              ease: 'power1.out',
+            }
+          )
+        })
+      }
+
+      // Text reveal
+      gsap.fromTo(
+        sectionRef.current?.querySelectorAll('.ai-text') || [],
+        { opacity: 0, x: -40 },
+        {
+          opacity: 1,
+          x: 0,
+          duration: 0.8,
+          stagger: 0.15,
+          ease: 'power3.out',
+          scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+        }
+      )
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#0a0a0a] overflow-hidden">
+      <DotGrid />
+      <GlowOrb x="70%" y="50%" color="teal" />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          {/* Left: Text */}
+          <div>
+            <p className="ai-text text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+              Intelligence Artificielle
+            </p>
+            <h2 className="ai-text text-4xl sm:text-5xl font-bold text-white tracking-tight mb-6">
+              Propulse par{' '}
+              <GradientText>l'Intelligence Artificielle</GradientText>
+            </h2>
+            <p className="ai-text text-lg text-zinc-400 leading-relaxed mb-8">
+              Notre IA analyse, genere et corrige vos examens avec une precision
+              inegalee. De la creation d'epreuves a la correction automatique,
+              chaque processus est optimise pour vous faire gagner un temps precieux.
+            </p>
+            <div className="ai-text flex flex-col gap-4">
+              {[
+                { icon: Cpu, text: 'Modeles entraines sur des millions de copies' },
+                { icon: Sparkles, text: 'Generation de contenu contextuel adapte' },
+                { icon: Shield, text: 'Donnees protegees et confidentielles' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10">
+                    <item.icon className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <span className="text-sm text-zinc-300">{item.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: Image with pulse rings */}
+          <div className="relative flex items-center justify-center">
+            <div ref={ringsRef} className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="pulse-ring absolute w-[280px] h-[280px] sm:w-[350px] sm:h-[350px] rounded-full border border-emerald-400/30"
+                />
+              ))}
+            </div>
+            <div ref={imageWrapperRef} className="relative">
+              <div className="absolute -inset-8 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 rounded-3xl blur-3xl" aria-hidden />
+              <div className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/10">
+                <img
+                  src="/hero-ai-network.png"
+                  alt="Reseau neuronal IA - SECT"
+                  className="w-full max-w-md h-auto block"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── How It Works ─── */
+function HowItWorks() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const lineRef = useRef<HTMLDivElement>(null)
+
+  const steps = [
+    {
+      number: '01',
+      icon: FileText,
+      title: 'Importez',
+      description: 'Uploadez vos examens ou laissez l\'IA les generer automatiquement.',
+    },
+    {
+      number: '02',
+      icon: Users,
+      title: 'Administrez',
+      description: 'Organisez les sessions, assignez les surveillants et securisez les epreuves.',
+    },
+    {
+      number: '03',
+      icon: BarChart3,
+      title: 'Analysez',
+      description: 'Obtenez des resultats instantanes avec des insights powers par l\'IA.',
+    },
+  ]
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // Animated connecting line
+      if (lineRef.current) {
+        gsap.fromTo(
+          lineRef.current,
+          { scaleX: 0 },
+          {
+            scaleX: 1,
+            duration: 1.5,
+            ease: 'power2.inOut',
+            scrollTrigger: { trigger: sectionRef.current, start: 'top 70%' },
+          }
+        )
+      }
+
+      // Steps appear sequentially
+      const stepEls = sectionRef.current?.querySelectorAll('.step-item')
+      if (stepEls) {
+        gsap.fromTo(
+          stepEls,
+          { opacity: 0, y: 40 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.8,
+            stagger: 0.3,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+          }
+        )
+      }
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b] overflow-hidden">
+      <DotGrid />
+
+      <div className="relative z-10 max-w-6xl mx-auto px-6">
+        <div className="text-center mb-16">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+            Comment ca marche
+          </p>
+          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
+            Simple comme <GradientText>1, 2, 3</GradientText>
+          </h2>
+        </div>
+
+        <div className="relative">
+          {/* Connecting line */}
+          <div className="hidden md:block absolute top-1/2 left-[16%] right-[16%] h-px bg-gradient-to-r from-emerald-500/30 via-teal-400/40 to-cyan-400/30 -translate-y-1/2">
+            <div ref={lineRef} className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 origin-left" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 md:gap-8">
             {steps.map((step, i) => (
-              <div key={i} className="step-item flex flex-col items-center text-center">
-                <div className="relative z-10 w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-6">
-                  <step.icon className="w-7 h-7 text-white" />
-                  <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white dark:bg-gray-900 text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center border-2 border-emerald-300 dark:border-emerald-700">
-                    {i + 1}
+              <div key={i} className="step-item relative flex flex-col items-center text-center">
+                <div className="relative mb-6">
+                  <div className="w-20 h-20 rounded-2xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-sm flex items-center justify-center">
+                    <step.icon className="h-8 w-8 text-emerald-400" />
+                  </div>
+                  <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-emerald-500 text-black text-xs font-bold flex items-center justify-center">
+                    {step.number}
                   </span>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{step.title}</h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs">{step.desc}</p>
+                <h3 className="text-xl font-semibold text-white mb-2">{step.title}</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed max-w-[260px]">
+                  {step.description}
+                </p>
               </div>
             ))}
           </div>
         </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
-      {/* ─── Stats ─── */}
-      <section ref={statsRef} className="relative z-10 py-20 sm:py-28 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-900 via-teal-900 to-cyan-900" />
-        <div className="absolute inset-0 opacity-20">
-          <img src="/landing-features.png" alt="" className="w-full h-full object-cover" />
-        </div>
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4">
-              Des chiffres qui parlent
-            </h2>
-            <p className="text-emerald-200/70 text-lg">L&apos;impact de ExamAI à travers l&apos;Afrique</p>
-          </div>
+/* ─── Stats Section ─── */
+function StatsSection() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const stats = [
+    { value: 50000, suffix: '+', label: 'Examens corriges' },
+    { value: 99.7, suffix: '%', label: 'Precision IA' },
+    { value: 200, suffix: '+', label: 'Institutions' },
+    { value: 15, suffix: 'min', label: 'Temps moyen' },
+  ]
+  const countersRef = useRef<(HTMLSpanElement | null)[]>([])
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              { target: 150, suffix: 'K+', label: 'Épreuves générées', icon: FileText },
-              { target: 98, suffix: '%', label: 'Précision IA', icon: Brain },
-              { target: 85, suffix: '%', label: 'Temps économisé', icon: Clock },
-              { target: 2400, suffix: '+', label: 'Enseignants actifs', icon: Users },
-            ].map((stat, i) => (
-              <div key={i} className="stat-item text-center">
-                <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-4">
-                  <stat.icon className="w-7 h-7 text-emerald-300" />
-                </div>
-                <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-2">
-                  <AnimatedCounter target={stat.target} suffix={stat.suffix} />
-                </div>
-                <p className="text-emerald-200/70 text-sm">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      countersRef.current.forEach((el, i) => {
+        if (!el) return
+        const target = stats[i].value
+        gsap.fromTo(
+          el,
+          { textContent: '0' },
+          {
+            textContent: target,
+            duration: 2,
+            ease: 'power2.out',
+            snap: { textContent: target % 1 === 0 ? 1 : 0.1 },
+            scrollTrigger: { trigger: sectionRef.current, start: 'top 80%' },
+            delay: i * 0.15,
+          }
+        )
+      })
+    })
+    return () => ctx.revert()
+  }, [])
 
-      {/* ─── Dashboard Preview ─── */}
-      <section ref={dashboardRef} className="relative z-10 py-20 sm:py-28 bg-white dark:bg-gray-950 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 text-sm font-medium mb-6">
-              <Monitor className="w-4 h-4" /> Aperçu
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 dark:text-white mb-4">
-              Un tableau de bord{' '}
-              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">intuitif</span>
-            </h2>
-            <p className="text-lg text-gray-500 dark:text-gray-400">
-              Visualisez toutes vos données en un coup d&apos;œil avec notre interface moderne.
-            </p>
-          </div>
+  return (
+    <section ref={sectionRef} className="relative py-20 bg-gradient-to-b from-[#09090b] via-emerald-950/20 to-[#09090b] overflow-hidden">
+      <div className="relative z-10 max-w-6xl mx-auto px-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          {stats.map((stat, i) => (
+            <div key={i} className="relative flex flex-col items-center text-center group">
+              {/* Glow behind number */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-24 bg-emerald-500/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" aria-hidden />
 
-          <div className="dashboard-img relative rounded-2xl overflow-hidden shadow-2xl shadow-emerald-500/10 border border-gray-200/60 dark:border-gray-700/40">
-            <img
-              src="/dashboard-mockup.png"
-              alt="Aperçu du tableau de bord ExamAI"
-              className="w-full h-auto"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/20 via-transparent to-transparent pointer-events-none" />
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Pricing ─── */}
-      <section id="pricing" ref={pricingRef} className="relative z-10 py-20 sm:py-28 bg-gray-50/70 dark:bg-gray-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-sm font-medium mb-6">
-              <Crown className="w-4 h-4" /> Tarifs
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 dark:text-white mb-4">
-              Des plans{' '}
-              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">adaptés</span>
-            </h2>
-            <p className="text-lg text-gray-500 dark:text-gray-400">
-              Choisissez le plan qui correspond à la taille de votre établissement.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto">
-            {plans.map((plan, i) => (
-              <motion.div
-                key={i}
-                className="pricing-card"
-                whileHover={{ y: -8, transition: { duration: 0.25 } }}
+              <span
+                ref={(el) => { countersRef.current[i] = el }}
+                className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-2"
               >
-                <Card className={`h-full relative overflow-hidden ${
-                  plan.popular
-                    ? 'bg-gradient-to-b from-emerald-50/80 to-teal-50/80 dark:from-emerald-950/50 dark:to-teal-950/50 border-2 border-emerald-400 dark:border-emerald-600 shadow-xl shadow-emerald-500/10'
-                    : 'bg-white/60 dark:bg-gray-900/60 backdrop-blur-lg border-gray-200/60 dark:border-gray-700/40'
-                }`}>
-                  {plan.popular && (
-                    <div className="absolute top-0 right-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white text-xs font-bold px-4 py-1 rounded-bl-xl">
-                      POPULAIRE
-                    </div>
-                  )}
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        plan.popular
-                          ? 'bg-gradient-to-br from-emerald-500 to-teal-500'
-                          : 'bg-emerald-100 dark:bg-emerald-900/50'
-                      }`}>
-                        <plan.icon className={`w-5 h-5 ${plan.popular ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg text-gray-900 dark:text-white">{plan.name}</CardTitle>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{plan.desc}</p>
-                      </div>
-                    </div>
-                    <div className="pt-4">
-                      <span className="text-4xl font-extrabold text-gray-900 dark:text-white">${plan.price}</span>
-                      <span className="text-gray-500 dark:text-gray-400 text-sm">/mois</span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-4">
-                    <ul className="space-y-3">
-                      {plan.features.map((feature, j) => (
-                        <li key={j} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
-                          <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                  <CardFooter>
-                    <MagneticButton
-                      onClick={onDemo}
-                      className={`w-full ${
-                        plan.popular
-                          ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700 text-white shadow-lg shadow-emerald-500/25'
-                          : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      Commencer <ArrowRight className="w-4 h-4 ml-1" />
-                    </MagneticButton>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+                {0}
+              </span>
+              <span className="text-emerald-400 text-sm font-semibold mb-1">{stat.suffix}</span>
+              <span className="text-xs text-zinc-500 uppercase tracking-wider">{stat.label}</span>
+            </div>
+          ))}
         </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
-      {/* ─── Testimonials ─── */}
-      <section id="testimonials" ref={testimonialsRef} className="relative z-10 py-20 sm:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-sm font-medium mb-6">
-              <Star className="w-4 h-4" /> Témoignages
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 dark:text-white mb-4">
-              Ils nous font{' '}
-              <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">confiance</span>
-            </h2>
-          </div>
+/* ─── Dashboard Preview ─── */
+function DashboardPreview() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const imageRef = useRef<HTMLDivElement>(null)
 
-          <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
-            {testimonials.map((t, i) => (
-              <motion.div
-                key={i}
-                className="testimonial-card"
-                whileHover={{ y: -6, transition: { duration: 0.25 } }}
-              >
-                <Card className="h-full bg-white/60 dark:bg-gray-900/60 backdrop-blur-lg border-gray-200/60 dark:border-gray-700/40 hover:shadow-xl hover:shadow-emerald-500/10 transition-shadow duration-300">
-                  <CardHeader>
-                    <div className="flex gap-1 mb-2">
-                      {[...Array(t.rating)].map((_, j) => (
-                        <Star key={j} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                      ))}
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed italic">
-                      &ldquo;{t.text}&rdquo;
-                    </p>
-                  </CardHeader>
-                  <CardFooter>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-bold">
-                        {t.name.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{t.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{t.role}</p>
-                      </div>
-                    </div>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      if (imageRef.current) {
+        // Clip-path circle reveal
+        gsap.fromTo(
+          imageRef.current,
+          { clipPath: 'circle(0% at 50% 50%)' },
+          {
+            clipPath: 'circle(75% at 50% 50%)',
+            duration: 1.8,
+            ease: 'power2.inOut',
+            scrollTrigger: { trigger: sectionRef.current, start: 'top 65%' },
+          }
+        )
+      }
+    })
+    return () => ctx.revert()
+  }, [])
 
-      {/* ─── CTA Section ─── */}
-      <section ref={ctaRef} className="relative z-10 py-20 sm:py-28 overflow-hidden">
-        <div className="cta-bg absolute inset-0">
-          <img
-            src="/landing-cta.png"
-            alt=""
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/95 via-teal-900/95 to-gray-900/95" />
-        </div>
+  const callouts = [
+    { position: 'top-[15%] left-[8%]', text: 'Analytics en temps reel' },
+    { position: 'top-[60%] left-[5%]', text: 'Gestion des epreuves' },
+    { position: 'top-[20%] right-[5%]', text: 'IA Integration' },
+    { position: 'top-[70%] right-[8%]', text: 'Rapports detailles' },
+  ]
 
-        <div className="cta-content relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-6">
-            Prêt à transformer vos examens ?
-          </h2>
-          <p className="text-emerald-200/70 text-lg mb-10 max-w-2xl mx-auto">
-            Rejoignez plus de 2 400 enseignants qui utilisent déjà ExamAI pour créer, corriger et analyser leurs épreuves.
+  return (
+    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#0a0a0a] overflow-hidden">
+      <DotGrid />
+      <GlowOrb x="50%" y="50%" color="emerald" />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6">
+        <div className="text-center mb-16">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+            Centre de commande
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <MagneticButton
-              onClick={onDemo}
-              size="lg"
-              className="bg-white text-emerald-900 hover:bg-gray-100 shadow-xl text-base px-8 py-6"
+          <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight">
+            Votre <GradientText>Centre de Commande</GradientText>
+          </h2>
+        </div>
+
+        <div className="relative">
+          {/* Callouts */}
+          {callouts.map((callout, i) => (
+            <div
+              key={i}
+              className={`absolute ${callout.position} hidden lg:flex items-center gap-2 z-20`}
             >
-              Commencer gratuitement <ArrowRight className="w-5 h-5 ml-2" />
-            </MagneticButton>
-            <MagneticButton
-              onClick={onLogin}
-              variant="outline"
-              size="lg"
-              className="border-2 border-white/30 text-white hover:bg-white/10 text-base px-8 py-6"
-            >
-              Se connecter
-            </MagneticButton>
+              <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+              <span className="text-xs text-zinc-400 font-medium whitespace-nowrap px-2 py-1 bg-[#0a0a0a]/80 rounded border border-white/[0.06]">
+                {callout.text}
+              </span>
+            </div>
+          ))}
+
+          <div ref={imageRef} className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/5">
+            <img
+              src="/hero-dashboard.png"
+              alt="SECT Dashboard - Vue d'ensemble"
+              className="w-full h-auto block"
+            />
           </div>
         </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
-      {/* ─── Footer ─── */}
-      <footer className="relative z-10 mt-auto bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center">
-                  <GraduationCap className="w-4 h-4 text-white" />
+/* ─── Pricing Section ─── */
+function PricingSection({ onDemo }: { onDemo: () => void }) {
+  const sectionRef = useRef<HTMLDivElement>(null)
+
+  const plans = [
+    {
+      name: 'Starter',
+      price: '499',
+      description: 'Pour les petites institutions qui debutent.',
+      features: ['Jusqu\'a 100 etudiants', '5 examens/mois', 'Correction automatique', 'Support email'],
+      popular: false,
+    },
+    {
+      name: 'Professionnel',
+      price: '1299',
+      description: 'Pour les institutions en croissance.',
+      features: [
+        'Jusqu\'a 2 000 etudiants',
+        'Examens illimites',
+        'IA Generative avancee',
+        'Anti-fraude complet',
+        'Analytics detailles',
+        'Support prioritaire 24/7',
+      ],
+      popular: true,
+    },
+    {
+      name: 'Entreprise',
+      price: 'Sur mesure',
+      description: 'Pour les grandes universites.',
+      features: [
+        'Etudiants illimites',
+        'Tout du plan Pro',
+        'Deploiement on-premise',
+        'SSO & Integration SI',
+        'SLA garanti 99.9%',
+        'Account manager dedie',
+      ],
+      popular: false,
+    },
+  ]
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      const cards = sectionRef.current?.querySelectorAll('.pricing-card')
+      if (cards) {
+        gsap.fromTo(
+          cards,
+          { opacity: 0, scale: 0.9 },
+          {
+            opacity: 1,
+            scale: 1,
+            duration: 0.8,
+            stagger: 0.15,
+            ease: 'elastic.out(1, 0.6)',
+            scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+          }
+        )
+      }
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section id="tarifs" ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b] overflow-hidden">
+      <DotGrid />
+      <GlowOrb x="50%" y="30%" color="emerald" />
+
+      <div className="relative z-10 max-w-6xl mx-auto px-6">
+        <div className="text-center mb-16">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+            Tarifs
+          </p>
+          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
+            Un plan pour chaque{' '}
+            <GradientText>ambition</GradientText>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+          {plans.map((plan, i) => (
+            <div
+              key={i}
+              className={`pricing-card relative rounded-xl border backdrop-blur-sm p-8 transition-all duration-500 ${
+                plan.popular
+                  ? 'border-emerald-500/40 bg-white/[0.04] md:-mt-4 md:mb-4 shadow-[0_0_40px_rgba(16,185,129,0.12)]'
+                  : 'border-white/[0.06] bg-white/[0.02]'
+              }`}
+            >
+              {plan.popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-emerald-500 rounded-full">
+                  <span className="text-xs font-bold text-black uppercase tracking-wider">Populaire</span>
                 </div>
-                <span className="text-lg font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                  ExamAI
-                </span>
+              )}
+
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-1">{plan.name}</h3>
+                <p className="text-sm text-zinc-400">{plan.description}</p>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                La plateforme IA de nouvelle génération pour la création et la correction d&apos;épreuves en Afrique.
+
+              <div className="mb-6">
+                {plan.price === 'Sur mesure' ? (
+                  <span className="text-3xl font-bold text-white">Sur mesure</span>
+                ) : (
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold text-white">{plan.price}</span>
+                    <span className="text-sm text-zinc-500">MAD/mois</span>
+                  </div>
+                )}
+              </div>
+
+              <ul className="space-y-3 mb-8">
+                {plan.features.map((feature, j) => (
+                  <li key={j} className="flex items-start gap-2.5">
+                    <Check className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                    <span className="text-sm text-zinc-300">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <MagneticButton
+                className={`w-full rounded-lg font-semibold ${
+                  plan.popular
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+                    : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.1]'
+                }`}
+                onClick={onDemo}
+              >
+                {plan.popular ? 'Commencer maintenant' : 'Nous contacter'}
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </MagneticButton>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Testimonials ─── */
+function Testimonials() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+
+  const testimonials = [
+    {
+      initials: 'AB',
+      name: 'Dr. Amina Benali',
+      role: 'Directrice, EMI Rabat',
+      quote: "SECT a revolutionne notre facon de gerer les examens. La correction automatique nous fait gagner des jours entiers.",
+      stars: 5,
+    },
+    {
+      initials: 'MK',
+      name: 'Prof. Mohammed Khalil',
+      role: 'Doyen, Faculte des Sciences',
+      quote: "L'anti-fraude integre nous a donne une tranquillite d'esprit totale pendant les sessions d'examen.",
+      stars: 5,
+    },
+    {
+      initials: 'SF',
+      name: 'Sara Fassi',
+      role: 'Responsable Pedagogique',
+      quote: "Les analytics en temps reel nous permettent d'identifier immediatement les etudiants en difficulte.",
+      stars: 5,
+    },
+  ]
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      const cards = sectionRef.current?.querySelectorAll('.testimonial-card')
+      if (cards) {
+        cards.forEach((card, i) => {
+          gsap.fromTo(
+            card,
+            { opacity: 0, x: i % 2 === 0 ? -60 : 60 },
+            {
+              opacity: 1,
+              x: 0,
+              duration: 0.9,
+              ease: 'power3.out',
+              scrollTrigger: { trigger: card, start: 'top 85%' },
+            }
+          )
+        })
+      }
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section id="temoignages" ref={sectionRef} className="relative py-24 sm:py-32 bg-[#0a0a0a] overflow-hidden">
+      <DotGrid />
+      <GlowOrb x="70%" y="40%" color="teal" />
+
+      <div className="relative z-10 max-w-6xl mx-auto px-6">
+        <div className="text-center mb-16">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+            Temoignages
+          </p>
+          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
+            Ce qu'ils en <GradientText>disent</GradientText>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {testimonials.map((t, i) => (
+            <div
+              key={i}
+              className="testimonial-card rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-6 sm:p-8 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04]"
+            >
+              {/* Stars */}
+              <div className="flex gap-1 mb-4">
+                {Array.from({ length: t.stars }).map((_, j) => (
+                  <Star key={j} className="h-4 w-4 fill-emerald-400 text-emerald-400" />
+                ))}
+              </div>
+
+              {/* Quote */}
+              <p className="text-sm sm:text-base text-zinc-300 leading-relaxed mb-6">
+                &ldquo;{t.quote}&rdquo;
               </p>
-            </div>
 
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Produit</h4>
-              <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                <li><button onClick={() => handleSmoothScroll('features')} className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Fonctionnalités</button></li>
-                <li><button onClick={() => handleSmoothScroll('pricing')} className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Tarifs</button></li>
-                <li><button onClick={() => handleSmoothScroll('how-it-works')} className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Comment ça marche</button></li>
-                <li><button onClick={onDemo} className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Démo gratuite</button></li>
-              </ul>
+              {/* Author */}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                  <span className="text-xs font-bold text-emerald-400">{t.initials}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-white">{t.name}</p>
+                  <p className="text-xs text-zinc-500">{t.role}</p>
+                </div>
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
 
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Entreprise</h4>
-              <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                <li><span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">À propos</span></li>
-                <li><span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">Carrières</span></li>
-                <li><span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">Blog</span></li>
-                <li><span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">Contact</span></li>
-              </ul>
-            </div>
+/* ─── CTA Section ─── */
+function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => void }) {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const bgRef = useRef<HTMLDivElement>(null)
 
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Contact</h4>
-              <ul className="space-y-3 text-sm text-gray-500 dark:text-gray-400">
-                <li className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" /> contact@examai.ai
-                </li>
-                <li className="flex items-center gap-2">
-                  <Phone className="w-4 h-4" /> +221 33 800 00 00
-                </li>
-                <li className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" /> Dakar, Sénégal
-                </li>
-              </ul>
-            </div>
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // Continuous gradient hue shift
+      if (bgRef.current) {
+        gsap.to(bgRef.current, {
+          backgroundPosition: '200% center',
+          duration: 8,
+          repeat: -1,
+          ease: 'none',
+        })
+      }
+
+      // Text reveal
+      gsap.fromTo(
+        sectionRef.current?.querySelectorAll('.cta-reveal') || [],
+        { opacity: 0, y: 30 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: 'power3.out',
+          scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+        }
+      )
+    })
+    return () => ctx.revert()
+  }, [])
+
+  return (
+    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b] overflow-hidden">
+      {/* Gradient border at top */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
+
+      {/* Animated background */}
+      <div
+        ref={bgRef}
+        className="absolute inset-0 opacity-20 pointer-events-none"
+        style={{
+          backgroundImage:
+            'linear-gradient(90deg, transparent, rgba(16,185,129,0.15), rgba(34,211,238,0.1), rgba(16,185,129,0.15), transparent)',
+          backgroundSize: '200% 100%',
+        }}
+        aria-hidden
+      />
+
+      <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
+        <h2 className="cta-reveal text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight mb-6">
+          Pret a transformer vos{' '}
+          <GradientText>examens ?</GradientText>
+        </h2>
+        <p className="cta-reveal text-lg text-zinc-400 mb-10 max-w-2xl mx-auto">
+          Rejoignez les institutions qui ont deja adopte la plateforme d&apos;examen la plus avancee.
+        </p>
+        <div className="cta-reveal flex flex-col sm:flex-row items-center justify-center gap-4">
+          <MagneticButton
+            className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3.5 text-base shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] transition-all duration-300 rounded-xl"
+            onClick={onDemo}
+          >
+            Demarrer gratuitement
+            <ArrowRight className="ml-2 h-5 w-5" />
+          </MagneticButton>
+          <MagneticButton
+            variant="outline"
+            className="border-white/[0.1] text-white hover:bg-white/[0.05] px-8 py-3.5 text-base rounded-xl"
+            onClick={onLogin}
+          >
+            <Globe className="mr-2 h-4 w-4" />
+            Planifier une demo
+          </MagneticButton>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Footer ─── */
+function Footer() {
+  const columns = [
+    {
+      title: 'Produit',
+      links: ['Fonctionnalites', 'Tarifs', 'Securite', 'Roadmap'],
+    },
+    {
+      title: 'Ressources',
+      links: ['Documentation', 'Blog', 'Guides', 'API'],
+    },
+    {
+      title: 'Entreprise',
+      links: ['A propos', 'Carrieres', 'Contact', 'Partenaires'],
+    },
+    {
+      title: 'Legal',
+      links: ['Confidentialite', 'CGU', 'Cookies', 'RGPD'],
+    },
+  ]
+
+  return (
+    <footer className="relative bg-[#09090b] border-t border-white/[0.04]">
+      <div className="max-w-7xl mx-auto px-6 py-16">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
+          {/* Logo column */}
+          <div className="col-span-2 md:col-span-1">
+            <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+              SECT
+            </span>
+            <p className="text-sm text-zinc-500 mt-3 leading-relaxed">
+              La plateforme d&apos;examen propulssee par l&apos;intelligence artificielle.
+            </p>
           </div>
 
-          <Separator className="mb-8" />
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-gray-400 dark:text-gray-500">
-              © {new Date().getFullYear()} ExamAI. Tous droits réservés.
-            </p>
-            <div className="flex items-center gap-6 text-sm text-gray-400 dark:text-gray-500">
-              <span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">Confidentialité</span>
-              <span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">CGU</span>
-              <span className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer">Cookies</span>
+          {/* Link columns */}
+          {columns.map((col) => (
+            <div key={col.title}>
+              <h4 className="text-sm font-semibold text-white mb-4">{col.title}</h4>
+              <ul className="space-y-2.5">
+                {col.links.map((link) => (
+                  <li key={link}>
+                    <a
+                      href="#"
+                      className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors duration-300"
+                    >
+                      {link}
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
+          ))}
+        </div>
+
+        <div className="border-t border-white/[0.04] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-zinc-600">
+            &copy; {new Date().getFullYear()} SECT. Tous droits reserves.
+          </p>
+          <div className="flex items-center gap-4">
+            {['Twitter', 'LinkedIn', 'GitHub'].map((social) => (
+              <a
+                key={social}
+                href="#"
+                className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors duration-300"
+              >
+                {social}
+              </a>
+            ))}
           </div>
         </div>
-      </footer>
+      </div>
+    </footer>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN LANDING PAGE COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
+  const mainRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // Refresh ScrollTrigger on mount
+    ScrollTrigger.refresh()
+
+    return () => {
+      // Kill all ScrollTriggers on unmount
+      ScrollTrigger.getAll().forEach((t) => t.kill())
+    }
+  }, [])
+
+  return (
+    <div ref={mainRef} className="min-h-screen flex flex-col bg-[#09090b]">
+      <Navbar onLogin={onLogin} />
+      <main className="flex-1">
+        <HeroSection onDemo={onDemo} />
+        <LogoCloud />
+        <FeaturesBento />
+        <AIShowcase />
+        <HowItWorks />
+        <StatsSection />
+        <DashboardPreview />
+        <PricingSection onDemo={onDemo} />
+        <Testimonials />
+        <CTASection onDemo={onDemo} onLogin={onLogin} />
+      </main>
+      <Footer />
     </div>
   )
 }
