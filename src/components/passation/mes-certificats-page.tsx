@@ -474,8 +474,31 @@ export function MesCertificatsPage() {
                               })}
                             </p>
 
-                            {/* Actions */}
-                            <div className="flex items-center gap-2 pt-1">
+                            {/* Format selector + Download */}
+                            <div className="flex flex-col gap-2 pt-1">
+                              {/* Toggle Paysage/Portrait */}
+                              <div className="flex gap-1 bg-muted/50 rounded-md p-0.5">
+                                <button
+                                  onClick={() => setPdfOrientation('landscape')}
+                                  className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-all ${
+                                    pdfOrientation === 'landscape'
+                                      ? 'bg-background shadow-sm text-emerald-600'
+                                      : 'text-muted-foreground hover:text-foreground'
+                                  }`}
+                                >
+                                  📐 Paysage
+                                </button>
+                                <button
+                                  onClick={() => setPdfOrientation('portrait')}
+                                  className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-all ${
+                                    pdfOrientation === 'portrait'
+                                      ? 'bg-background shadow-sm text-emerald-600'
+                                      : 'text-muted-foreground hover:text-foreground'
+                                  }`}
+                                >
+                                  📄 Portrait
+                                </button>
+                              </div>
                               <Button
                                 size="sm"
                                 className="flex-1 gap-1.5"
@@ -487,7 +510,7 @@ export function MesCertificatsPage() {
                                 ) : (
                                   <Download className="h-3.5 w-3.5" />
                                 )}
-                                Télécharger PDF
+                                Télécharger PDF ({pdfOrientation === 'landscape' ? 'Paysage' : 'Portrait'})
                               </Button>
                               {cert.verificationUrl && (
                                 <Button
