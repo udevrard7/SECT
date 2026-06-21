@@ -1072,3 +1072,30 @@ Stage Summary:
 - Premium certificate matching all 12 design constraints from the spec
 - 48pt spaced title, cursive student name, framed details, code/UML watermark, seal with ribbons
 - Commit db90f7e deployed on https://sect-app.vercel.app
+
+---
+Task ID: 34
+Agent: Main Agent (Z.ai Code)
+Task: Apply print-optimized signature space trick (60pt height + #CBD5E0 border)
+
+Work Log:
+- User provided a print optimization tip for the signature zone in react-pdf StyleSheet
+- Replaced the old sigLine style (borderBottomWidth 0.6 navy, no height) with:
+    signatureSpace: {
+      height: 60,
+      borderBottom: '1pt solid #CBD5E0',
+      marginBottom: 8,
+      width: '100%',
+    }
+- The 60pt height provides real empty space to hand-sign on a printed copy
+- The #CBD5E0 (light gray) border prints cleanly without overpowering the signature
+- Applied to both signature columns (teacher left + responsable right)
+- Removed the empty <View height:14> placeholder offset
+- ESLint clean
+- VLM confirms: 'espace suffisant pour signer ✓, ligne fine et gris clair ✓, labels lisibles ✓'
+- Committed as 5cdf4f9 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (db90f7e..5cdf4f9)
+
+Stage Summary:
+- Signature zone now print-optimized: 60pt empty space + fine light-gray line
+- Both columns (teacher + responsable) use the new signatureSpace style
+- Commit 5cdf4f9 deployed on https://sect-app.vercel.app
