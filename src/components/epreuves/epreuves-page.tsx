@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import { ClassificationSidebar } from './classification-sidebar'
 import { EpreuveGroupedView } from './epreuve-grouped-view'
+import { OrphanEpreuvesAlert } from './orphan-epreuves-alert'
 import {
   type ClassificationTree,
   type SelectedPath,
@@ -399,6 +400,9 @@ export function EpreuvesPage() {
           <span className="text-xs text-muted-foreground ml-1">Planification &amp; suivi</span>
         </button>
       </div>
+
+      {/* ─── Alert: épreuves sans UE (orphelines) ─── */}
+      <OrphanEpreuvesAlert />
 
       {/* ─── Tab Content ─── */}
       {activeTab === 'modeles' && <ModelesTab />}
@@ -1439,6 +1443,14 @@ function SessionsTab() {
     }
     if (debut >= fin) {
       toast.error('Date invalide', { description: 'La date de début doit être antérieure à la date de fin.' })
+      return
+    }
+
+    // UE obligatoire : une épreuve sans UE devient orpheline (pas de certificats)
+    if (!planUEId || planUEId === '__none__') {
+      toast.error('Unité d\'Enseignement requise', {
+        description: 'Sélectionnez une UE. Sans UE, les sessions ne produiront aucun certificat.',
+      })
       return
     }
 

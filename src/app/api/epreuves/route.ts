@@ -40,6 +40,57 @@ async function _POST(
       )
     }
 
+    // ─── UE obligatoire pour rattacher l'épreuve à un programme ───
+    // Une épreuve sans UE devient orpheline : ses sessions ne produisent
+    // ni ValidationUE ni certificat. On exige donc l'UE à la création.
+    if (!uniteEnseignementId) {
+      return NextResponse.json(
+        {
+          error: "L'Unité d'Enseignement (UE) est obligatoire. Une épreuve non rattachée à une UE ne peut pas générer de certificats pour les étudiants.",
+        },
+        { status: 400 }
+      )
+    }
+
+    // ─── Vérifier que l'UE existe et qu'elle est bien accessible ───
+    // (UE principale de la filière OU UE partagée avec la filière via UniteEnseignementFiliere)
+    const targetUE = await db.uniteEnseignement.findUnique({
+      where: { id: uniteEnseignementId },
+      select: { id: true, filiereId: true, actif: true },
+    })
+    if (!targetUE) {
+      return NextResponse.json(
+        { error: "L'Unité d'Enseignement sélectionnée est introuvable." },
+        { status: 404 }
+      )
+    }
+    if (!targetUE.actif) {
+      return NextResponse.json(
+        { error: "L'Unité d'Enseignement sélectionnée est désactivée." },
+        { status: 400 }
+      )
+    }
+    // Si une filière est fournie, vérifier la cohérence filière↔UE
+    if (filiereId) {
+      const isOwnedByFiliere = targetUE.filiereId === filiereId
+      let isSharedWithFiliere = false
+      if (!isOwnedByFiliere) {
+        const shared = await db.uniteEnseignementFiliere.findFirst({
+          where: { uniteEnseignementId, filiereId },
+          select: { id: true },
+        })
+        isSharedWithFiliere = !!shared
+      }
+      if (!isOwnedByFiliere && !isSharedWithFiliere) {
+        return NextResponse.json(
+          {
+            error: "L'Unité d'Enseignement sélectionnée n'appartient pas à cette filière (ni comme UE principale, ni comme UE secondaire).",
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // ─── Tenant scoping for POST ───
     if (user.role === 'ENSEIGNANT') {
       // ENSEIGNANT must use their own enseignantId
