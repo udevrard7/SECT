@@ -399,3 +399,30 @@ Stage Summary:
 - Login attempts and lock state cleared
 - Effective immediately on https://sect-app.vercel.app (shared Supabase DB)
 - Security note: the temporary password was displayed once in this session; the user should transmit it to the student via a secure channel and the student must change it at first login
+
+---
+Task ID: 15
+Agent: Main Agent (Z.ai Code)
+Task: Fix 'This page couldn't load' crash on the Mes certificats page
+
+Work Log:
+- Reproduced the symptom: the page crashed for students. Verified the API routes themselves were healthy (GET /api/certificats and /api/validations-ue both return 401 without auth, not 500), so the crash was client-side.
+- Inspected mes-certificats-page.tsx fetchData: it assigned raw API (DB) objects directly to typed frontend arrays WITHOUT mapping field names.
+- Identified the mismatch:
+  - DB/API Certificat returns noteFinale; frontend interface expects note
+  - DB/API ValidationUE returns noteFinale, nbEpreuvesTotal, nbEpreuvesCompletees, nested uniteEnseignement.{code,nom,creditsECTS}, certificats[] (array); frontend expects note, epreuvesTotal, epreuvesCompletees, flat ueCode/ueNom/creditsECTS, certificatId
+- Crash path: cert.note was undefined -> render did cert.note.toFixed(1) -> TypeError -> page crashed with 'This page couldn't load'
+- Why it appeared only now: before Task 11/12 there were 0 certificates in DB, so certificats.map never ran -> no crash. Once real certificates existed, every student hitting the page crashed.
+- Fix: added explicit defensive mapping in fetchData for BOTH endpoints:
+  - Certificat: note <- noteFinale (number, fallback 0); type <- validated with fallback PARTICIPATION; ueCode/ueNom/mention/dateEmission <- direct String() coercion; verificationUrl <- built from codeVerification
+  - ValidationUE: note <- noteFinale (null when statut=EN_COURS so UI shows '—' instead of '0.0'); ueCode/ueNom/creditsECTS <- nested uniteEnseignement; epreuvesCompletees/epreuvesTotal <- nb* fields; certificatId <- first certificat id; statut <- validated with fallback EN_COURS
+  - All mappings use typeof checks + String() coercion + fallbacks so one malformed record cannot crash the whole page again
+- ESLint clean; transient runtime GET / -> 200, /mes-certificats -> 307 (redirect to login, expected without auth), no compile errors
+- No DB schema change -> no Supabase sync needed
+- Committed as 2010fe6 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (38318fb..2010fe6) -> Vercel auto-deploy triggered
+- Verified production: /api/certificats returns 401 (live), landing OK
+
+Stage Summary:
+- Mes certificats page no longer crashes: DB fields are properly mapped to the frontend interface with defensive coercion
+- The crash was a latent bug exposed by the certificate generation fixes in Tasks 11/12 (0 -> 10 certificates)
+- Commit 2010fe6 pushed by udevrard7, deployed on https://sect-app.vercel.app
