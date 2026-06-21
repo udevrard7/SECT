@@ -279,3 +279,28 @@ Stage Summary:
 - 'Mes certificats' student sidebar entry now displays the ScrollText (parchemin) icon, consistent with the certificate concept
 - Only one icon was missing across all roles' nav; verified no other gaps
 - Commit 27420e5 pushed by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
+
+---
+Task ID: 11
+Agent: Main Agent (Z.ai Code)
+Task: Fix certificate generation bug — no certificates generated despite students having valid grades and compositions in multiple UEs
+
+Work Log:
+- Investigated the certificate pipeline: mes-certificats-page.tsx -> POST /api/validations-ue (recalc) -> GET /api/certificats; engine in src/lib/validation-ue-engine.ts (computeAndGenerateForStudent)
+- Queried real DB state: 15 students, 34 sessions CORRIGEE/RETOURNEE with scores 40-60, 4 active UEs, BUT 0 ValidationUE and 0 Certificat in the whole DB
+- Root cause #1 (frontend): mes-certificats-page.tsx:150 called POST /api/validations-ue/compute — a route that does NOT exist (the real route is POST /api/validations-ue, no /compute subdir). The silent .catch() hid the 404, so the recalculation that creates ValidationUE records and generates certificates NEVER ran -> 0 ValidationUE -> 0 certificate for every student
+- Root cause #2 (engine, score scale): the engine computed noteFinale = raw average of session scores. But sessions are scored on each exam's noteTotal scale (DB shows noteTotal=60, scores 40-60). A raw average of ~50 was compared to thresholds >= 10 (validé) and >= 16 (excellence), producing nonsensical results: every student would get a false Excellence certificate
+- Fix #1: corrected the URL in mes-certificats-page.tsx to POST /api/validations-ue with explicit empty JSON body + Content-Type header
+- Fix #2: rewrote the score computation in validation-ue-engine.ts to normalize each session score to /20 (score * 20 / noteTotal, defaulting noteTotal to 20 when missing or <= 0). noteFinale is now a true /20 average, so validation tiers and mentions are correct
+- Verified end-to-end locally on real INFO student ASSANI Emile Junior (4 sessions): engine produced 4 VALIDEE UEs with sane /20 notes (12.50, 18.17, 16.49, 16.83) and generated 4 certificates (1 Accomplissement for 12.50, 3 Excellence for the >= 16 ones). This created the first ValidationUE and Certificat records in the DB
+- ESLint clean; transient runtime GET / -> 200
+- No Prisma schema changes -> no Supabase sync needed
+- Committed as 7e3f72f (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (27420e5..7e3f72f) -> Vercel auto-deploy triggered
+- Flagged a data issue (not code): one exam 'Composition' has uniteEnseignementId=null, so its sessions are not attached to any UE and won't produce certificates until an admin assigns it a UE
+
+Stage Summary:
+- Certificate generation now works: students with validated UEs (noteFinale >= 10/20) automatically get certificates (Participation/Accomplissement/Excellence based on tier)
+- Two bugs fixed: wrong API URL (frontend) + score scale normalization (engine)
+- Verified on real data: 4 certificates generated for a test student with correct /20 notes and tiers
+- Commit 7e3f72f pushed by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
+- Data note: exam 'Composition' (ueId=null) needs an admin to assign it a UE for its sessions to count
