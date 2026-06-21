@@ -160,7 +160,32 @@ export function MesCertificatsPage() {
       let certs: Certificat[] = []
       if (certRes.ok) {
         const certData = await certRes.json()
-        certs = Array.isArray(certData) ? certData : certData.certificats ?? []
+        const rawCerts: Record<string, unknown>[] = Array.isArray(certData)
+          ? certData
+          : certData.certificats ?? []
+        // Map API (DB fields) -> frontend interface.
+        // API returns noteFinale/mention/ueCode/ueNom/codeVerification directly on the Certificat row.
+        const validTypes: CertificatType[] = ['PARTICIPATION', 'ACCOMPLISSEMENT', 'EXCELLENCE']
+        certs = rawCerts
+          .filter((c) => c && typeof c === 'object')
+          .map((c) => {
+            const type = validTypes.includes(c.type as CertificatType)
+              ? (c.type as CertificatType)
+              : 'PARTICIPATION'
+            const codeVerification = (c.codeVerification as string) || ''
+            return {
+              id: String(c.id ?? ''),
+              type,
+              ueCode: String(c.ueCode ?? '—'),
+              ueNom: String(c.ueNom ?? '—'),
+              note: typeof c.noteFinale === 'number' ? c.noteFinale : 0,
+              mention: typeof c.mention === 'string' ? c.mention : '',
+              dateEmission: c.dateEmission ? String(c.dateEmission) : new Date().toISOString(),
+              verificationUrl: codeVerification
+                ? `${window.location.origin}/verify/${codeVerification}`
+                : undefined,
+            }
+          })
       }
 
       // 3. Fetch UE validations
@@ -168,7 +193,36 @@ export function MesCertificatsPage() {
       let vals: ValidationUE[] = []
       if (valRes.ok) {
         const valData = await valRes.json()
-        vals = Array.isArray(valData) ? valData : valData.validations ?? []
+        const rawVals: Record<string, unknown>[] = Array.isArray(valData)
+          ? valData
+          : valData.validations ?? []
+        // Map API (DB fields + nested uniteEnseignement/certificats) -> frontend interface.
+        const validStatuts: StatutUE[] = ['EN_COURS', 'VALIDEE', 'NON_VALIDEE']
+        vals = rawVals
+          .filter((v) => v && typeof v === 'object')
+          .map((v) => {
+            const ue = (v.uniteEnseignement as Record<string, unknown> | null) ?? null
+            const certificats = Array.isArray(v.certificats) ? (v.certificats as Record<string, unknown>[]) : []
+            const firstCertId = certificats.length > 0 ? String(certificats[0].id ?? '') : null
+            const statut = validStatuts.includes(v.statut as StatutUE)
+              ? (v.statut as StatutUE)
+              : 'EN_COURS'
+            const noteFinale = typeof v.noteFinale === 'number' ? v.noteFinale : null
+            // noteFinale defaults to 0 in DB even when EN_COURS (no sessions yet);
+            // expose null to the UI in that case so it shows "—" instead of "0.0".
+            const note = statut === 'EN_COURS' ? null : noteFinale
+            return {
+              id: String(v.id ?? ''),
+              ueCode: String(ue?.code ?? '—'),
+              ueNom: String(ue?.nom ?? '—'),
+              creditsECTS: typeof ue?.creditsECTS === 'number' ? ue.creditsECTS : 0,
+              epreuvesCompletees: typeof v.nbEpreuvesCompletees === 'number' ? v.nbEpreuvesCompletees : 0,
+              epreuvesTotal: typeof v.nbEpreuvesTotal === 'number' ? v.nbEpreuvesTotal : 0,
+              note,
+              statut,
+              certificatId: firstCertId,
+            }
+          })
       }
 
       setCertificats(certs)
