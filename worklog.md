@@ -713,3 +713,44 @@ Stage Summary:
 - Watermark: now visible as a subtle background filigrane using color tinting instead of unreliable GState opacity
 - Both fixes VLM-verified on a freshly generated PDF
 - Commit def27b4 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 24
+Agent: Main Agent (Z.ai Code)
+Task: Refonte of certificate bottom section + fix responsable name (was showing student name)
+
+Work Log:
+- User reported: bottom of certificate had overlapping text, too many useless separator lines, and the 'Responsable pédagogique' name was the student's name, not the actual responsable.
+
+Root cause 1 — Wrong name:
+- certificat.emettePar points to the user who triggered emission. For auto-generated certificates (from the validation engine), emetteParId = etudiantId (the engine sets it to the student). So the signature showed 'ASSANI Emile Junior' (the student) instead of the actual filière responsable.
+- Verified in DB: filières INFO and SEG both have responsableId = cmq2dfnri0002lb04w0m6y868 (Mme Keita Safiya, the 1 RESPONSABLE user).
+
+Root cause 2 — Cluttered bottom:
+- Previous design had: 2-column signature (left=issuer, right=platform), verbose VÉRIFICATION header, full sentence, URL, code, then footer with separator + 2 lines = too many stacked elements with tight spacing → text overlap.
+
+Fix 1 — Correct responsable name:
+- API now fetches the UE's filière responsable via: certificat → validationUE → uniteEnseignement → filiere → responsable
+- Priority for responsableNom: filiere.responsable.name first; fallback to emettePar.name ONLY if emetteParId !== etudiantId (real admin/responsable emission, not auto-generated)
+- Renamed interface field emetteParNom → responsableNom (clearer)
+- Verified: now shows 'Mme Keita Safiya' instead of 'ASSANI Emile Junior'
+
+Fix 2 — Bottom section refonte:
+- Signature: single centered block (was 2-column). Responsable name ABOVE the line, label BELOW. Wider line (90mm). y+=22 spacing from date.
+- Verification: removed redundant 'VÉRIFICATION' header + verbose sentence. Now compact 2-line block (label:value pairs) with ONE separator above. No overlap.
+- Footer: reduced from 2 lines + separator to a single minimal line. Removed redundant 'Réf:' (code already in verification block).
+
+VLM verification on v6 PDF:
+  ✅ Signature: 'Mme Keita Safiya' (responsable, not student)
+  ✅ 'La ligne Le Responsable pédagogique est bien sous le nom, centrée'
+  ✅ 'Aucun texte ne se superpose'
+  ✅ 'Footer minimal (1 ligne)'
+  ✅ 'Mise en page aérée et propre, respecte les standards d'un certificat formel'
+
+- ESLint clean
+- Committed as 81b330f (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (def27b4..81b330f) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Bottom section completely refactored: clean signature (real responsable name), compact verification block, minimal footer — no overlaps, no clutter
+- Responsable name now correctly sourced from the filière, not the emettePar (which was the student for auto-generated certs)
+- Commit 81b330f deployed on https://sect-app.vercel.app
