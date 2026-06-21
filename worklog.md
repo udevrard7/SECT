@@ -958,3 +958,43 @@ Stage Summary:
 - Typography now matches the exact spec: Playfair Display + Great Vibes + Inter
 - Lato fonts removed, bundle ~2MB lighter
 - Commit 1c67128 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 31
+Agent: Main Agent (Z.ai Code)
+Task: Integrate per-UE theme watermark system in the react-pdf certificate
+
+Work Log:
+- The react-pdf certificate component had template fields (backgroundImage, themeIcon) defined in the interface but NEVER used in the rendering. The per-UE theme system from Tasks 18-20 was lost during the jsPDF→react-pdf migration.
+- Implemented the watermark system per the user's spec: opacity 10-15%, behind content, no readability interference.
+
+1. BACKGROUND IMAGE WATERMARK:
+   - If UE template has backgroundImage (base64 data URI), rendered as centered filigrane covering 70% of page
+   - Opacity: 12% (within 10-15% spec)
+   - objectFit: 'contain' preserves aspect ratio
+   - Positioned after corner bands, before borders (behind all content)
+
+2. THEME ICON WATERMARK:
+   - If UE template has themeIcon (non-'default'), large SVG icon rendered centered
+   - Opacity: 12%
+   - 7 theme icons implemented as SVG primitives (code </>, science atom, law scales, business bar chart, math π, language globe, art palette)
+   - Uses template's primary color, tinted by opacity
+
+3. Z-ORDER (react-pdf renders in document order):
+   - Corner bands (background)
+   - Watermark image (if any)
+   - Watermark icon (if any)
+   - Double border
+   - Content (always on top, fully readable)
+
+- Added Circle, Ellipse, Rect SVG imports for the theme icons
+- Added alt="" to Image for accessibility (ESLint fix)
+- ESLint clean (0 errors, 0 warnings)
+- VLM confirms: 'filigrane visible, bien estompé (subtil), n'empêche pas la lisibilité'
+- Committed as 04a0fbc (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (1c67128..04a0fbc)
+
+Stage Summary:
+- Per-UE theme watermark system fully integrated in the react-pdf certificate
+- Both backgroundImage and themeIcon filigranes render at 12% opacity behind content
+- Text readability preserved (watermark is subtle)
+- Commit 04a0fbc deployed on https://sect-app.vercel.app
