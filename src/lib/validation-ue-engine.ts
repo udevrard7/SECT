@@ -46,11 +46,17 @@ function getMention(noteFinale: number): string | null {
 
 /**
  * Determine the certificate type based on the final grade and validation status.
+ *
+ * Structure Standard / Avancé / Expert:
+ *   EXPERT   — ≥ 16/20  → Très Bien     → Or / Étoile ★
+ *   AVANCE   — 12–15.99 → Assez Bien/Bien → Bleu Roi / Losange ◆
+ *   STANDARD — 10–11.99 → Passable       → Vert / Carré ■
  */
 function getCertificateType(noteFinale: number, statut: string): string | null {
   if (statut !== 'VALIDEE') return null
-  if (noteFinale >= 16) return 'EXCELLENCE'
-  if (noteFinale >= 10) return 'ACCOMPLISSEMENT'
+  if (noteFinale >= 16) return 'EXPERT'
+  if (noteFinale >= 12) return 'AVANCE'
+  if (noteFinale >= 10) return 'STANDARD'
   return null
 }
 
@@ -70,12 +76,12 @@ function generateVerificationCode(): string {
  */
 function getIntitule(type: string): string {
   switch (type) {
-    case 'EXCELLENCE':
-      return "Certificat d'Excellence"
-    case 'ACCOMPLISSEMENT':
-      return "Certificat d'Accomplissement"
-    case 'PARTICIPATION':
-      return 'Certificat de Participation'
+    case 'EXPERT':
+      return 'Certificat de Réussite – Niveau Expert'
+    case 'AVANCE':
+      return 'Certificat de Réussite – Niveau Avancé'
+    case 'STANDARD':
+      return 'Certificat de Réussite – Niveau Standard'
     default:
       return 'Certificat'
   }

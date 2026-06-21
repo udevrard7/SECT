@@ -28,7 +28,7 @@ import { Separator } from '@/components/ui/separator'
 interface CertificatData {
   id?: string
   codeVerification: string
-  type: 'PARTICIPATION' | 'ACCOMPLISSEMENT' | 'EXCELLENCE'
+  type: 'STANDARD' | 'AVANCE' | 'EXPERT'
   etudiantNom: string
   ueCode: string
   ueNom: string
@@ -49,19 +49,19 @@ type VerificationStatus = 'idle' | 'loading' | 'valid' | 'invalid' | 'not_found'
 // ─── Badge config per type ───────────────────────────────────────────────────
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  PARTICIPATION: {
-    label: 'Participation',
-    color: 'bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-700',
+  STANDARD: {
+    label: 'Standard',
+    color: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700',
     icon: <BookOpen className="size-3.5" />,
   },
-  ACCOMPLISSEMENT: {
-    label: 'Accomplissement',
-    color: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700',
+  AVANCE: {
+    label: 'Avancé',
+    color: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
     icon: <Award className="size-3.5" />,
   },
-  EXCELLENCE: {
-    label: "Excellence",
-    color: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700',
+  EXPERT: {
+    label: "Expert",
+    color: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700',
     icon: <Star className="size-3.5" />,
   },
 }
@@ -178,7 +178,7 @@ export default function VerifyCertificatePage() {
 
       case 'valid':
         if (!certificat) return null
-        const typeConf = TYPE_CONFIG[certificat.type] || TYPE_CONFIG.PARTICIPATION
+        const typeConf = TYPE_CONFIG[certificat.type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.STANDARD
 
         return (
           <Card className="border-green-300 dark:border-green-800 shadow-lg overflow-hidden">

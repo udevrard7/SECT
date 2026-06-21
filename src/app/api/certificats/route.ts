@@ -180,24 +180,25 @@ async function _POST(
       )
     }
 
-    // Determine certificate type
+    // Determine certificate type (Standard / Avancé / Expert)
     let type = requestedType
     if (!type) {
-      // Auto-determine based on note
       if (validationUE.noteFinale >= 16) {
-        type = 'EXCELLENCE'
+        type = 'EXPERT'
+      } else if (validationUE.noteFinale >= 12) {
+        type = 'AVANCE'
       } else if (validationUE.noteFinale >= 10) {
-        type = 'ACCOMPLISSEMENT'
+        type = 'STANDARD'
       } else {
-        type = 'PARTICIPATION'
+        type = 'STANDARD' // Participation — below 10, manual emission only
       }
     }
 
     // Get intitulé
     const intituleMap: Record<string, string> = {
-      'EXCELLENCE': "Certificat d'Excellence",
-      'ACCOMPLISSEMENT': "Certificat d'Accomplissement",
-      'PARTICIPATION': 'Certificat de Participation',
+      'EXPERT': 'Certificat de Réussite – Niveau Expert',
+      'AVANCE': 'Certificat de Réussite – Niveau Avancé',
+      'STANDARD': 'Certificat de Réussite – Niveau Standard',
     }
     const intitule = intituleMap[type] || 'Certificat'
 
