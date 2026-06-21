@@ -632,3 +632,47 @@ Stage Summary:
 - The Award template button now appears on the correct UE page (Programme académique → Unités d'enseignement, detail view)
 - Clicking it opens the CertificateTemplateDialog with auto-generate buttons
 - Commit d5a5992 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 22
+Agent: Main Agent (Z.ai Code)
+Task: Fix certificate imperfections (VLM-driven) + auto-fit logo aspect ratio
+
+Work Log:
+- User shared a downloaded certificate PDF; I analyzed it with VLM (glm-4.6v) and cross-checked findings against the source code. Identified 5 real issues (the VLM hallucinated 2 fake "fautes d'orthographe" which I filtered out).
+- User also requested auto-adjustment of the logo to a proper size without deformation.
+
+1. LOGO AUTO-FIT (user request):
+   - Decoded the real logo: PNG 431×117px, ratio 3.68:1 (very landscape, typical of a horizontal logo with text)
+   - Root cause of deformation: renderLogo() forced the image into a fixed 25×25mm square, stretching it vertically
+   - Added decodeImageDimensions() that reads native PNG/JPEG pixel dimensions directly from the base64 header bytes (PNG: bytes 16-24 BE uint32; JPEG: SOF0 marker scan) — no external dependency
+   - renderLogo() now fits the image INSIDE a 45×22mm bounding box while preserving native aspect ratio: starts from max width, scales down if height overflows. The 431×117 logo now renders at 45×12.2mm (natural proportions)
+   - Bounding box widened to 45×22mm to accommodate landscape logos; fallback uses 60% width for unknown dimensions
+
+2. BADGE TYPE (#1+#4): replaced Unicode glyphs ★◆● (rendered as tofu by jsPDF helvetica) with vectorial shapes — EXCELLENCE=5-pointed star (doc.lines polygon), ACCOMPLISSEMENT=diamond (two triangles), PARTICIPATION=circle (doc.circle). Badge text simplified to just the type name (no redundant repetition of 'Excellence' since the intitule title already says 'Certificat d'Excellence').
+
+3. WATERMARK </> (#2): replaced the broken doc.lines() call with relative coordinates (which produced an 'X' shape) with explicit doc.line() calls drawing two clean V-shaped chevrons + a center slash. Now clearly reads </>.
+
+4. NIVEAU LINE (#3): the 'Niveau: ' field is now only rendered when etudiantNiveau is non-empty (was showing 'Niveau: ' with an empty value when the student had no niveau set).
+
+5. SIGNATURE ZONE (#5): added a two-column signature area between the date and the verification section. Left column: 'Le Responsable pédagogique' + the issuer's name (emettePar.name, newly fetched via include). Right column: 'SECT — Certification officielle' + 'Système d'Évaluation Casse-Tête'. Each column has a signature line + label + sublabel.
+
+API: GET /api/certificats/[id]/pdf now includes emettePar relation and passes emetteParNom to the generator.
+
+Verified visually with VLM on a freshly generated EXCELLENCE certificate:
+  ✅ Logo proportionné sans déformation (auto-fit aspect ratio working)
+  ✅ Badge type: formes vectorielles propres (étoile/diamant/cercle, plus de tofu)
+  ✅ Filigrane </> correct (plus de 'X')
+  ✅ Zone de signature présente avec lignes + labels + nom émetteur
+  ✅ Ligne Niveau correcte (L2 affiché)
+VLM conclusion: 'Aucun élément majeur détecté dans cette version. Le certificat respecte désormais toutes les exigences visuelles.'
+
+- ESLint clean
+- 2 test PDFs generated successfully (~20KB each)
+- No DB schema change
+- Committed as f5b4332 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (d5a5992..f5b4332) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Certificate PDF rendering is now production-quality: logo auto-fitted without deformation, vectorial type badges, clean </> watermark, conditional niveau line, professional signature zone
+- All 5 VLM-identified issues + the logo auto-fit feature are fixed and visually verified
+- Commit f5b4332 deployed on https://sect-app.vercel.app
