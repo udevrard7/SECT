@@ -443,11 +443,12 @@ function Logo({ logo, nom }: { logo: string | null; nom: string }) {
 // ═══ Main Component ═══
 
 export function CertificateDocument({ data }: { data: CertificatPDFData }) {
-  const subtitle = data.type === 'EXCELLENCE'
-    ? "d'Excellence"
-    : data.type === 'ACCOMPLISSEMENT'
-      ? "d'Accomplissement"
-      : 'de Participation'
+  // Subtitle based on the new 3-tier structure
+  const subtitle = data.type === 'EXPERT'
+    ? 'Niveau Expert'
+    : data.type === 'AVANCE'
+      ? 'Niveau Avancé'
+      : 'Niveau Standard'
 
   const studentName = capitalizeName(data.etudiantNom)
 

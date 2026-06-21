@@ -950,9 +950,9 @@ enum StatutValidation {
 }
 
 enum TypeCertificat {
-  PARTICIPATION
-  ACCOMPLISSEMENT
-  EXCELLENCE
+  STANDARD
+  AVANCE
+  EXPERT
 }
 
 enum StatutCertificat {

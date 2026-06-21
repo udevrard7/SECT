@@ -31,7 +31,7 @@ import { toast } from 'sonner'
 
 // ─── Types ───
 
-type CertificatType = 'PARTICIPATION' | 'ACCOMPLISSEMENT' | 'EXCELLENCE'
+type CertificatType = 'STANDARD' | 'AVANCE' | 'EXPERT'
 
 interface Certificat {
   id: string
@@ -64,24 +64,24 @@ const CERTIFICAT_CONFIG: Record<
   CertificatType,
   { label: string; color: string; bgClass: string; borderClass: string; badgeClass: string; icon: typeof Award }
 > = {
-  PARTICIPATION: {
-    label: 'Participation',
-    color: 'text-slate-600',
-    bgClass: 'bg-slate-50',
-    borderClass: 'border-slate-200',
-    badgeClass: 'bg-slate-100 text-slate-700',
-    icon: FileText,
-  },
-  ACCOMPLISSEMENT: {
-    label: 'Accomplissement',
+  STANDARD: {
+    label: 'Standard',
     color: 'text-emerald-600',
     bgClass: 'bg-emerald-50',
     borderClass: 'border-emerald-200',
     badgeClass: 'bg-emerald-100 text-emerald-700',
+    icon: FileText,
+  },
+  AVANCE: {
+    label: 'Avancé',
+    color: 'text-blue-600',
+    bgClass: 'bg-blue-50',
+    borderClass: 'border-blue-200',
+    badgeClass: 'bg-blue-100 text-blue-700',
     icon: Award,
   },
-  EXCELLENCE: {
-    label: 'Excellence',
+  EXPERT: {
+    label: 'Expert',
     color: 'text-amber-600',
     bgClass: 'bg-amber-50',
     borderClass: 'border-amber-200',
@@ -165,13 +165,13 @@ export function MesCertificatsPage() {
           : certData.certificats ?? []
         // Map API (DB fields) -> frontend interface.
         // API returns noteFinale/mention/ueCode/ueNom/codeVerification directly on the Certificat row.
-        const validTypes: CertificatType[] = ['PARTICIPATION', 'ACCOMPLISSEMENT', 'EXCELLENCE']
+        const validTypes: CertificatType[] = ['STANDARD', 'AVANCE', 'EXPERT']
         certs = rawCerts
           .filter((c) => c && typeof c === 'object')
           .map((c) => {
             const type = validTypes.includes(c.type as CertificatType)
               ? (c.type as CertificatType)
-              : 'PARTICIPATION'
+              : 'STANDARD'
             const codeVerification = (c.codeVerification as string) || ''
             return {
               id: String(c.id ?? ''),
