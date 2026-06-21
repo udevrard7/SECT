@@ -136,7 +136,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     page: {
       width: '297mm',
       height: '210mm',
-      backgroundColor: '#FFFFFF',
+      backgroundColor: '#F8F9FA', // Fond très léger
       position: 'relative',
       overflow: 'hidden',
       fontFamily: 'Lato',
@@ -195,7 +195,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     location: {
       fontSize: 9,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
       marginBottom: 8,
     },
 
@@ -244,7 +244,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     // Intro text
     intro: {
       fontSize: 11,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
       fontStyle: 'italic',
       marginBottom: 6,
     },
@@ -253,20 +253,20 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     studentName: {
       fontSize: 36,
       fontFamily: 'GreatVibes',
-      color: '#1a1a1a',
+      color: '#2C3E50',
       textAlign: 'center',
       marginBottom: 4,
     },
     studentInfo: {
       fontSize: 9,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
       marginBottom: 8,
     },
 
     // UE section
     ueIntro: {
       fontSize: 10,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
       fontStyle: 'italic',
       marginBottom: 4,
     },
@@ -279,7 +279,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     ueCode: {
       fontSize: 9,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
       marginBottom: 8,
     },
 
@@ -288,7 +288,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
       width: '70%',
       backgroundColor: mixWithWhite(primary, 0.05),
       borderWidth: 0.5,
-      borderColor: 'rgb(200,200,200)',
+      borderColor: '#7F8C8D',
       borderRadius: 3,
       padding: '8px 12px',
       marginBottom: 8,
@@ -311,13 +311,13 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     detailValue: {
       fontSize: 8,
-      color: '#333',
+      color: '#2C3E50',
     },
 
     // Date
     date: {
       fontSize: 9,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
       marginBottom: 8,
     },
 
@@ -353,7 +353,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     signatureLabel: {
       fontSize: 7,
-      color: 'rgb(100,100,100)',
+      color: '#7F8C8D',
     },
 
     // Seal (center, between signatures)
@@ -409,14 +409,14 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
       justifyContent: 'center',
       gap: 12,
       fontSize: 7,
-      color: 'rgb(120,120,120)',
+      color: '#7F8C8D',
     },
     verificationItem: {
       display: 'flex',
       flexDirection: 'row',
       gap: 3,
     },
-    verificationLabel: { color: 'rgb(120,120,120)' },
+    verificationLabel: { color: '#7F8C8D' },
     verificationValue: { color: primaryStr, fontWeight: 'bold' },
 
     // Footer
@@ -427,7 +427,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
       right: 0,
       textAlign: 'center',
       fontSize: 5,
-      color: 'rgb(160,160,160)',
+      color: '#7F8C8D',
     },
   })
 }
