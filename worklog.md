@@ -607,3 +607,28 @@ Stage Summary:
 - The auto-generate API is improved to correctly classify economics/management UEs (no more false "science" for "Sciences Économiques")
 - Commit 149324a deployed on https://sect-app.vercel.app
 - Students downloading their certificate PDFs from "Mes certificats" will now see the themed rendering
+
+---
+Task ID: 21
+Agent: Main Agent (Z.ai Code)
+Task: Fix Award template button not appearing on UE page — was added to wrong file
+
+Work Log:
+- User reported: the Award icon button doesn't exist on a UE in the frontend
+- Investigation: the button WAS in the source code (unites-enseignement-page.tsx line 1264) and WAS committed (1239c2b). But the button didn't appear in production.
+- Root cause discovered: page-content.tsx:104 maps the 'unites-enseignement' page ID to ProgrammeAcademiquePage (programme-academique-page.tsx) with defaultView='detail'. The UnitesEnseignementPage component (unites-enseignement-page.tsx) is NEVER imported anywhere — it's an orphan file. I added the Award button to the wrong file in Task 18.
+- Fix: added the Award button + CertificateTemplateDialog integration to programme-academique-page.tsx (the ACTUAL rendered component):
+  - Imported Award icon + CertificateTemplateDialog
+  - Added templateUE + templateDialogOpen state
+  - Added onTemplate prop to the UETableRow sub-component
+  - Added the Award button (amber, title='Template de certificat') as the FIRST action button in each UE row, before Edit/Eye/Trash
+  - Passed onTemplate to BOTH UETableRow instances (overview + detail views)
+  - Rendered the CertificateTemplateDialog at the end of the main component
+- ESLint clean; GET / -> 200
+- Committed as d5a5992 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (149324a..d5a5992) -> Vercel auto-deploy triggered
+- The orphan unites-enseignement-page.tsx is left as-is (harmless, not imported)
+
+Stage Summary:
+- The Award template button now appears on the correct UE page (Programme académique → Unités d'enseignement, detail view)
+- Clicking it opens the CertificateTemplateDialog with auto-generate buttons
+- Commit d5a5992 deployed on https://sect-app.vercel.app
