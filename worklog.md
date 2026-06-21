@@ -575,3 +575,35 @@ Stage Summary:
 - Two modes: instant keyword rules (default, free) or AI (for nuanced cases)
 - The auto-generated suggestion fills the form for review before saving
 - Commit 06dc367 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 20
+Agent: Main Agent (Z.ai Code)
+Task: Batch-create certificate templates for all 5 existing UE + fix detection edge case
+
+Work Log:
+- User confirmed: create templates automatically for the 5 UE
+- Ran a batch script replicating the auto-generate rules logic against all 5 active UE:
+  - UE-INFO-L201 (Bureautique II) → code, score 6 ✅
+  - UE-INFO-L202 (Programmation Système) → code, score 10 ✅
+  - UE-INFO-L203 (Python et de Java) → code, score 10 ✅
+  - UE-INFO-L204 (Génie Logiciel) → code, score 10 ✅
+  - UE-SEG-L201 (Économie et Gestion) → science, score 4 ❌ (FALSE POSITIVE)
+- Detected the false positive: "Sciences Économiques" in the SEG UE description matched both "science" AND "sciences" keywords in the science dictionary (double score = 4), while business only matched "économie" + "gestion" (score = 4). Tie → science won (first in array).
+- Manually corrected UE-SEG-L201 template to business (amber/orange) via direct DB update
+- Fixed the root cause in the auto-generate API:
+  - Removed "sciences" (plural) from the science dictionary — "science" (singular) already matches "sciences" as a substring, so no coverage lost but double-counting eliminated
+  - Added specific business composites: "sciences économiques", "sciences de gestion", "économiques", "économique", "économiste" — these outweigh any residual science match for economics UEs
+- Verified final DB state: 5 templates, all correct
+  - 4 INFO UE → code (navy #1A2540 + violet #8B5CF6, helvetica)
+  - 1 SEG UE → business (amber #B45309 + orange #EA580C, helvetica)
+- ESLint clean; no DB schema change
+- Committed API fix as 149324a (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (06dc367..149324a) -> Vercel auto-deploy triggered
+- The 5 templates are pure DB data on shared Supabase → immediately effective in production (no deploy needed for the data itself)
+
+Stage Summary:
+- All 5 existing UE now have a certificate template configured and active in production
+- Future certificate PDFs for these UE will use the thematic colors, watermark icon, and font
+- The auto-generate API is improved to correctly classify economics/management UEs (no more false "science" for "Sciences Économiques")
+- Commit 149324a deployed on https://sect-app.vercel.app
+- Students downloading their certificate PDFs from "Mes certificats" will now see the themed rendering
