@@ -456,3 +456,39 @@ Stage Summary:
 - Verify page now displays: grade value (e.g. "12,5/20"), verification code (e.g. "SECT-9Z18-OIR4"), and clean student name (no "undefined" prefix)
 - All fields are defensive (fallback to '—') so missing data never shows 'undefined'
 - Commit 8099731 deployed and verified on https://sect-app.vercel.app
+
+---
+Task ID: 17
+Agent: Main Agent (Z.ai Code)
+Task: Fix name changes by RESPONSABLE not reflecting on student dashboard and certificates
+
+Work Log:
+- User reported: when a RESPONSABLE edits a student's name, the change doesn't show on the student's dashboard and isn't applied to existing certificates.
+
+- Investigated the two data paths:
+  1. Dashboard name source: NextAuth JWT session -> auth-store.syncFromSession -> authenticated-layout. The jwt callback only populated the token on INITIAL sign-in (if (user) {...}); subsequent refreshes kept the stale name. So a name edit by a RESPONSABLE didn't reflect until the student signed out and back in.
+  2. Certificate name source: Certificat.etudiantNom is a SNAPSHOT field taken at emission time (schema line 922). PATCH /api/users/[id] updated User.name but never touched the certificate snapshots.
+
+Fix #1 — JWT refresh (src/app/api/auth/[...nextauth]/route.ts):
+- The jwt callback now reloads volatile fields from the DB on EVERY call when a userId exists (not just on initial sign-in): name, matricule, actif, mustChangePwd, etablissementId, filiereId, etablissement, filiere.
+- On initial sign-in (user object present), still sets all fields including token.name = user.name.
+- session callback already exposes token.name to session.user.name; authenticated-layout calls syncFromSession(session) on session changes -> dashboard reflects the new name automatically.
+- Non-blocking: if the DB refresh fails, the existing token is kept.
+
+Fix #2 — Certificate snapshot sync (src/app/api/users/[id]/route.ts):
+- After the user.update, if data.name or data.matricule changed, runs db.certificat.updateMany({ where: { etudiantId: id, statut: 'EMIS' }, data: { etudiantNom: newName, etudiantMatricule: newMatricule } }).
+- Only EMIS certificates are updated (REVOKED ones stay frozen for audit trail).
+- Non-blocking best-effort: wrapped in try/catch, so a cert sync failure doesn't roll back the user update.
+
+Verified end-to-end on ASSANI (4 EMIS certs):
+- Original name: "ASSANI Emile Junior"
+- Renamed to "ASSANI Emile J. (Test Sync)" -> all 4 cert snapshots updated to the new name
+- Restored to original -> all 4 cert snapshots restored
+- ESLint clean, GET / -> 200, /api/auth/session -> 200
+- No DB schema change -> no Supabase sync needed
+- Committed as 1781de7 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (8099731..1781de7) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- RESPONSABLE name edits now propagate to: (1) the student's active dashboard session within the next session refresh (no re-login needed), and (2) all existing EMIS certificate snapshots so the verify page and PDFs show the current name
+- matricule changes are also synced to certificate snapshots
+- Commit 1781de7 deployed on https://sect-app.vercel.app
