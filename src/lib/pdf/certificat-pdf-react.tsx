@@ -32,24 +32,28 @@ const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts')
 
 function registerFonts() {
   try {
+    // Playfair Display — elegant serif for the certificate title
     Font.register({
       family: 'PlayfairDisplay',
       fonts: [
         { src: path.join(FONTS_DIR, 'PlayfairDisplay-Regular.ttf'), fontWeight: 'normal' },
       ],
     })
+    // Great Vibes — script/cursive for the student name (handwriting style)
     Font.register({
       family: 'GreatVibes',
       fonts: [
         { src: path.join(FONTS_DIR, 'GreatVibes-Regular.ttf'), fontWeight: 'normal' },
       ],
     })
+    // Inter — modern sans-serif for body text (Regular + Italic variable fonts
+    // cover all weights via the variable font axes)
     Font.register({
-      family: 'Lato',
+      family: 'Inter',
       fonts: [
-        { src: path.join(FONTS_DIR, 'Lato-Regular.ttf'), fontWeight: 'normal' },
-        { src: path.join(FONTS_DIR, 'Lato-Bold.ttf'), fontWeight: 'bold' },
-        { src: path.join(FONTS_DIR, 'Lato-Italic.ttf'), fontWeight: 'normal', fontStyle: 'italic' },
+        { src: path.join(FONTS_DIR, 'Inter-Regular.ttf'), fontWeight: 'normal' },
+        { src: path.join(FONTS_DIR, 'Inter-Regular.ttf'), fontWeight: 'bold' },
+        { src: path.join(FONTS_DIR, 'Inter-Italic.ttf'), fontWeight: 'normal', fontStyle: 'italic' },
       ],
     })
   } catch (err) {
@@ -139,7 +143,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
       backgroundColor: '#F8F9FA', // Fond très léger
       position: 'relative',
       overflow: 'hidden',
-      fontFamily: 'Lato',
+      fontFamily: 'Inter',
     },
 
     // Corner SVG containers (positioned at each corner)
@@ -186,7 +190,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     // Establishment name
     establishment: {
       fontSize: 13,
-      fontFamily: 'Lato',
+      fontFamily: 'Inter',
       fontWeight: 'bold',
       color: primaryStr,
       textTransform: 'uppercase',
@@ -233,7 +237,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     typeLabel: {
       fontSize: 11,
-      fontFamily: 'Lato',
+      fontFamily: 'Inter',
       fontWeight: 'bold',
       color: accentStr,
       textTransform: 'uppercase',
@@ -338,7 +342,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     signatureName: {
       fontSize: 10,
-      fontFamily: 'Lato',
+      fontFamily: 'Inter',
       fontWeight: 'bold',
       color: primaryStr,
       marginBottom: 2,
@@ -388,7 +392,7 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     },
     sealText: {
       fontSize: 9,
-      fontFamily: 'Lato',
+      fontFamily: 'Inter',
       fontWeight: 'bold',
       color: primaryStr,
     },
