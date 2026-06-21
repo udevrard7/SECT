@@ -326,14 +326,16 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
     fontWeight: 'bold',
     color: NAVY,
-    marginBottom: 3,
+    marginBottom: 4,
   },
-  sigLine: {
+  // Espace de signature optimisé pour l'impression :
+  // hauteur suffisante (60pt) pour signer manuellement,
+  // ligne fine gris clair (#CBD5E0) pour un rendu propre au print.
+  signatureSpace: {
+    height: 60,
+    borderBottom: '1pt solid #CBD5E0',
+    marginBottom: 8,
     width: '100%',
-    borderBottomWidth: 0.6,
-    borderBottomColor: NAVY,
-    borderBottomStyle: 'solid',
-    marginBottom: 3,
   },
   sigLabel: {
     fontSize: 8,
@@ -605,10 +607,9 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
 
           {/* Signature row: teacher (left) + seal (center) + responsable (right) */}
           <View style={styles.signatureRow}>
-            {/* Left: teacher signature (empty line) */}
+            {/* Left: teacher signature (empty space for handwriting) */}
             <View style={styles.sigCol}>
-              <View style={{ height: 14 }} />
-              <View style={styles.sigLine} />
+              <View style={styles.signatureSpace} />
               <Text style={styles.sigLabel}>Signature de l&apos;enseignant</Text>
             </View>
 
@@ -619,10 +620,8 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
             <View style={styles.sigCol}>
               {data.responsableNom ? (
                 <Text style={styles.sigName}>{data.responsableNom}</Text>
-              ) : (
-                <View style={{ height: 14 }} />
-              )}
-              <View style={styles.sigLine} />
+              ) : null}
+              <View style={styles.signatureSpace} />
               <Text style={styles.sigLabel}>Le Responsable pédagogique</Text>
             </View>
           </View>
