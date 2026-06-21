@@ -1214,3 +1214,31 @@ Stage Summary:
 - Certificate matches the exact spec with perfect VLM score (10/10)
 - All 7 checklist items validated
 - Commit 5869d6d deployed on https://sect-app.vercel.app
+
+---
+Task ID: 38
+Agent: Main Agent (Z.ai Code)
+Task: Fix 2 bugs — certificate empty/2 pages + watermark still present after template removal
+
+Work Log:
+- User reported: certificate is empty with 2 pages, and watermark is still present despite template system removal.
+
+Bug 1 — Watermark still present:
+- The CodeWatermark component (SVG </> chevrons at 0.05 opacity) was part of the STATIC design (not the template system), so it survived the Task 36 template removal.
+- Also removed the whiteOverlay (View at 0.95 opacity covering the page).
+- Deleted: CodeWatermark function, watermarkWrapper style, whiteOverlay style, both JSX usages, unused SVG imports (Line, G, Rect, Ellipse, Path).
+
+Bug 2 — Certificate empty / 2 pages:
+- Root cause: the page had padding: '15mm' + content View with height: '100%'. In react-pdf, this combination causes the content to exceed the page height, creating a 2nd empty page.
+- Fix: removed page padding entirely, switched content to position: 'absolute' with fixed top/left/right/bottom (42pt). This constrains content to exactly the printable area — no overflow.
+- Also reduced spacing throughout to ensure all elements fit on one page: ueName 28→24pt, marginBottom 25→15, infoGrid marginBottom 30→15, signatures marginTop 40→20, signatureSpace height 70→50, badge marginVertical 15→8, studentInfo marginBottom 20→10, divider marginBottom 20→10.
+
+Verified: Pages: 1 (was 2), no watermark, all content visible.
+VLM: 9/10 — 'complet sur une page, pas de filigrane'
+- ESLint clean (-52 lines net — simpler code)
+- Committed as 46f0dee (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (5869d6d..46f0dee)
+
+Stage Summary:
+- Both bugs fixed: single page, no watermark, content complete and visible
+- Certificate is now clean and professional without any filigrane
+- Commit 46f0dee deployed on https://sect-app.vercel.app
