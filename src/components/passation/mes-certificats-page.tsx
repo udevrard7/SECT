@@ -1,5 +1,18 @@
 'use client'
 
+/**
+ * MesCertificatsPage — Refonte complète
+ *
+ * Design premium avec:
+ * - En-tête hero avec gradient
+ * - Cartes de certificats modernes (glassmorphism, hover lift)
+ * - Stats animées avec icônes colorées
+ * - Toggle Paysage/Portrait intégré par carte
+ * - Onglets Certificats / Progression UE
+ * - Table de progression stylée
+ * - États vide/loading/error soignés
+ */
+
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -15,14 +28,13 @@ import {
   Loader2,
   ScrollText,
   AlertCircle,
+  TrendingUp,
+  Trophy,
+  Medal,
+  Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -58,79 +70,64 @@ interface ValidationUE {
   certificatId: string | null
 }
 
-// ─── Constants ───
+// ─── Config ───
 
 const CERTIFICAT_CONFIG: Record<
   CertificatType,
-  { label: string; color: string; bgClass: string; borderClass: string; badgeClass: string; icon: typeof Award }
+  {
+    label: string
+    color: string
+    gradient: string
+    border: string
+    badge: string
+    icon: typeof Award
+    glow: string
+  }
 > = {
-  STANDARD: {
-    label: 'Standard',
-    color: 'text-emerald-600',
-    bgClass: 'bg-emerald-50',
-    borderClass: 'border-emerald-200',
-    badgeClass: 'bg-emerald-100 text-emerald-700',
-    icon: FileText,
+  EXPERT: {
+    label: 'Expert',
+    color: 'text-amber-600',
+    gradient: 'from-amber-500 to-orange-500',
+    border: 'border-amber-200 dark:border-amber-800',
+    badge: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white',
+    icon: Trophy,
+    glow: 'shadow-amber-500/20',
   },
   AVANCE: {
     label: 'Avancé',
     color: 'text-blue-600',
-    bgClass: 'bg-blue-50',
-    borderClass: 'border-blue-200',
-    badgeClass: 'bg-blue-100 text-blue-700',
+    gradient: 'from-blue-500 to-indigo-500',
+    border: 'border-blue-200 dark:border-blue-800',
+    badge: 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white',
+    icon: Medal,
+    glow: 'shadow-blue-500/20',
+  },
+  STANDARD: {
+    label: 'Standard',
+    color: 'text-emerald-600',
+    gradient: 'from-emerald-500 to-teal-500',
+    border: 'border-emerald-200 dark:border-emerald-800',
+    badge: 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white',
     icon: Award,
-  },
-  EXPERT: {
-    label: 'Expert',
-    color: 'text-amber-600',
-    bgClass: 'bg-amber-50',
-    borderClass: 'border-amber-200',
-    badgeClass: 'bg-amber-100 text-amber-700',
-    icon: Star,
+    glow: 'shadow-emerald-500/20',
   },
 }
 
-const STATUT_CONFIG: Record<
-  StatutUE,
-  { label: string; icon: typeof Clock; badgeClass: string }
-> = {
-  EN_COURS: {
-    label: 'En cours',
-    icon: Clock,
-    badgeClass: 'bg-yellow-100 text-yellow-800',
-  },
-  VALIDEE: {
-    label: 'Validée',
-    icon: CheckCircle2,
-    badgeClass: 'bg-green-100 text-green-800',
-  },
-  NON_VALIDEE: {
-    label: 'Non validée',
-    icon: XCircle,
-    badgeClass: 'bg-red-100 text-red-800',
-  },
+const STATUT_CONFIG: Record<StatutUE, { label: string; icon: typeof Clock; badge: string }> = {
+  EN_COURS: { label: 'En cours', icon: Clock, badge: 'bg-yellow-100 text-yellow-800' },
+  VALIDEE: { label: 'Validée', icon: CheckCircle2, badge: 'bg-green-100 text-green-800' },
+  NON_VALIDEE: { label: 'Non validée', icon: XCircle, badge: 'bg-red-100 text-red-800' },
 }
 
-// ─── Animation variants ───
+// ─── Animation ───
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06 },
-  },
-}
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
-}
+const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }
+const itemVariants = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' as const } } }
 
 // ─── Component ───
 
 export function MesCertificatsPage() {
   const { user } = useAuthStore()
-
   const [certificats, setCertificats] = useState<Certificat[]>([])
   const [validations, setValidations] = useState<ValidationUE[]>([])
   const [loading, setLoading] = useState(true)
@@ -145,87 +142,55 @@ export function MesCertificatsPage() {
     if (!user?.id) return
     setLoading(true)
     setError(null)
-
     try {
-      // 1. Trigger recalculation (computes validations + generates certificates)
-      await fetch('/api/validations-ue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }).catch(() => {
-        // Silently continue if compute endpoint is not available
-      })
+      await fetch('/api/validations-ue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).catch(() => {})
 
-      // 2. Fetch certificates
       const certRes = await fetch('/api/certificats')
       let certs: Certificat[] = []
       if (certRes.ok) {
         const certData = await certRes.json()
-        const rawCerts: Record<string, unknown>[] = Array.isArray(certData)
-          ? certData
-          : certData.certificats ?? []
-        // Map API (DB fields) -> frontend interface.
-        // API returns noteFinale/mention/ueCode/ueNom/codeVerification directly on the Certificat row.
+        const rawCerts: Record<string, unknown>[] = Array.isArray(certData) ? certData : certData.certificats ?? []
         const validTypes: CertificatType[] = ['STANDARD', 'AVANCE', 'EXPERT']
-        certs = rawCerts
-          .filter((c) => c && typeof c === 'object')
-          .map((c) => {
-            const type = validTypes.includes(c.type as CertificatType)
-              ? (c.type as CertificatType)
-              : 'STANDARD'
-            const codeVerification = (c.codeVerification as string) || ''
-            return {
-              id: String(c.id ?? ''),
-              type,
-              ueCode: String(c.ueCode ?? '—'),
-              ueNom: String(c.ueNom ?? '—'),
-              note: typeof c.noteFinale === 'number' ? c.noteFinale : 0,
-              mention: typeof c.mention === 'string' ? c.mention : '',
-              dateEmission: c.dateEmission ? String(c.dateEmission) : new Date().toISOString(),
-              verificationUrl: codeVerification
-                ? `${window.location.origin}/verify/${codeVerification}`
-                : undefined,
-            }
-          })
+        certs = rawCerts.filter((c) => c && typeof c === 'object').map((c) => {
+          const type = validTypes.includes(c.type as CertificatType) ? (c.type as CertificatType) : 'STANDARD'
+          const codeVerification = (c.codeVerification as string) || ''
+          return {
+            id: String(c.id ?? ''),
+            type,
+            ueCode: String(c.ueCode ?? '—'),
+            ueNom: String(c.ueNom ?? '—'),
+            note: typeof c.noteFinale === 'number' ? c.noteFinale : 0,
+            mention: typeof c.mention === 'string' ? c.mention : '',
+            dateEmission: c.dateEmission ? String(c.dateEmission) : new Date().toISOString(),
+            verificationUrl: codeVerification ? `${window.location.origin}/verify/${codeVerification}` : undefined,
+          }
+        })
       }
 
-      // 3. Fetch UE validations
       const valRes = await fetch('/api/validations-ue')
       let vals: ValidationUE[] = []
       if (valRes.ok) {
         const valData = await valRes.json()
-        const rawVals: Record<string, unknown>[] = Array.isArray(valData)
-          ? valData
-          : valData.validations ?? []
-        // Map API (DB fields + nested uniteEnseignement/certificats) -> frontend interface.
+        const rawVals: Record<string, unknown>[] = Array.isArray(valData) ? valData : valData.validations ?? []
         const validStatuts: StatutUE[] = ['EN_COURS', 'VALIDEE', 'NON_VALIDEE']
-        vals = rawVals
-          .filter((v) => v && typeof v === 'object')
-          .map((v) => {
-            const ue = (v.uniteEnseignement as Record<string, unknown> | null) ?? null
-            const certificats = Array.isArray(v.certificats) ? (v.certificats as Record<string, unknown>[]) : []
-            const firstCertId = certificats.length > 0 ? String(certificats[0].id ?? '') : null
-            const statut = validStatuts.includes(v.statut as StatutUE)
-              ? (v.statut as StatutUE)
-              : 'EN_COURS'
-            const noteFinale = typeof v.noteFinale === 'number' ? v.noteFinale : null
-            // noteFinale defaults to 0 in DB even when EN_COURS (no sessions yet);
-            // expose null to the UI in that case so it shows "—" instead of "0.0".
-            const note = statut === 'EN_COURS' ? null : noteFinale
-            return {
-              id: String(v.id ?? ''),
-              ueCode: String(ue?.code ?? '—'),
-              ueNom: String(ue?.nom ?? '—'),
-              creditsECTS: typeof ue?.creditsECTS === 'number' ? ue.creditsECTS : 0,
-              epreuvesCompletees: typeof v.nbEpreuvesCompletees === 'number' ? v.nbEpreuvesCompletees : 0,
-              epreuvesTotal: typeof v.nbEpreuvesTotal === 'number' ? v.nbEpreuvesTotal : 0,
-              note,
-              statut,
-              certificatId: firstCertId,
-            }
-          })
+        vals = rawVals.filter((v) => v && typeof v === 'object').map((v) => {
+          const ue = (v.uniteEnseignement as Record<string, unknown> | null) ?? null
+          const certificats = Array.isArray(v.certificats) ? (v.certificats as Record<string, unknown>[]) : []
+          const firstCertId = certificats.length > 0 ? String(certificats[0].id ?? '') : null
+          const statut = validStatuts.includes(v.statut as StatutUE) ? (v.statut as StatutUE) : 'EN_COURS'
+          const noteFinale = typeof v.noteFinale === 'number' ? v.noteFinale : null
+          const note = statut === 'EN_COURS' ? null : noteFinale
+          return {
+            id: String(v.id ?? ''),
+            ueCode: String(ue?.code ?? '—'),
+            ueNom: String(ue?.nom ?? '—'),
+            creditsECTS: typeof ue?.creditsECTS === 'number' ? ue.creditsECTS : 0,
+            epreuvesCompletees: typeof v.nbEpreuvesCompletees === 'number' ? v.nbEpreuvesCompletees : 0,
+            epreuvesTotal: typeof v.nbEpreuvesTotal === 'number' ? v.nbEpreuvesTotal : 0,
+            note, statut, certificatId: firstCertId,
+          }
+        })
       }
-
       setCertificats(certs)
       setValidations(vals)
     } catch (err) {
@@ -236,17 +201,15 @@ export function MesCertificatsPage() {
     }
   }, [user?.id])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  // ─── Summary stats ───
+  // ─── Stats ───
 
   const stats = {
     total: certificats.length,
-    accomplissements: certificats.filter((c) => c.note >= 10).length,
-    excellence: certificats.filter((c) => c.note >= 16).length,
-    participations: certificats.filter((c) => c.note < 10).length,
+    expert: certificats.filter((c) => c.type === 'EXPERT').length,
+    avance: certificats.filter((c) => c.type === 'AVANCE').length,
+    standard: certificats.filter((c) => c.type === 'STANDARD').length,
   }
 
   // ─── PDF download ───
@@ -256,49 +219,50 @@ export function MesCertificatsPage() {
     setDownloadingId(certificatId)
     try {
       const res = await fetch(`/api/certificats/${certificatId}/pdf?orientation=${orient}`)
-      if (!res.ok) throw new Error('Erreur lors du téléchargement')
+      if (!res.ok) throw new Error('Erreur')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       window.open(url)
       toast.success(`Certificat téléchargé (${orient === 'landscape' ? 'Paysage' : 'Portrait'})`)
-    } catch (err) {
-      console.error('PDF download error:', err)
+    } catch {
       toast.error('Impossible de télécharger le certificat')
     } finally {
       setDownloadingId(null)
     }
   }
 
-  // ─── Loading state ───
+  // ─── Loading ───
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+          <div className="relative">
+            <div className="absolute inset-0 animate-ping rounded-full bg-emerald-400/30" />
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+              <ScrollText className="h-6 w-6 text-emerald-600 animate-pulse" />
+            </div>
+          </div>
           <p className="text-sm text-muted-foreground">Chargement de vos certificats...</p>
         </div>
       </div>
     )
   }
 
-  // ─── Error state ───
+  // ─── Error ───
 
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <AlertCircle className="h-6 w-6 text-red-600" />
+        <Card className="w-full max-w-md border-red-200 dark:border-red-800">
+          <CardContent className="text-center py-8">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+              <AlertCircle className="h-7 w-7 text-red-600" />
             </div>
-            <CardTitle className="text-lg">Erreur de chargement</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center">
+            <p className="text-lg font-semibold mb-1">Erreur de chargement</p>
             <p className="text-sm text-muted-foreground mb-4">{error}</p>
             <Button onClick={fetchData} variant="outline" className="gap-2">
-              <Clock className="h-4 w-4" />
-              Réessayer
+              <Clock className="h-4 w-4" /> Réessayer
             </Button>
           </CardContent>
         </Card>
@@ -309,109 +273,75 @@ export function MesCertificatsPage() {
   // ─── Render ───
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="space-y-6"
-    >
-      {/* ─── Header ─── */}
-      <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-            <ScrollText className="h-5 w-5 text-emerald-600" />
+    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+      {/* ─── Hero Header ─── */}
+      <motion.div variants={itemVariants} className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-6 sm:p-8 text-white shadow-xl">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-300/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
+        <div className="relative flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm border border-white/30">
+              <ScrollText className="h-7 w-7" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Mes Certificats</h1>
+              <p className="text-sm text-emerald-100">Consultez et téléchargez vos certificats de réussite</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Mes Certificats</h1>
-            <p className="text-sm text-muted-foreground">
-              Consultez et téléchargez vos certificats
-            </p>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20">
+            <Sparkles className="h-5 w-5 text-amber-300" />
+            <span className="text-2xl font-bold">{stats.total}</span>
+            <span className="text-sm text-emerald-100">certificat{stats.total !== 1 ? 's' : ''}</span>
           </div>
         </div>
-        <Badge variant="secondary" className="text-sm px-3 py-1">
-          {stats.total} certificat{stats.total !== 1 ? 's' : ''}
-        </Badge>
       </motion.div>
 
-      {/* ─── Summary stats row ─── */}
-      <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100">
-                <FileText className="h-4 w-4 text-slate-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Certificats émis</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100">
-                <Award className="h-4 w-4 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-emerald-600">{stats.accomplissements}</p>
-                <p className="text-xs text-muted-foreground">Accomplissements</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
-                <Star className="h-4 w-4 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-amber-600">{stats.excellence}</p>
-                <p className="text-xs text-muted-foreground">Excellence</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100">
-                <Shield className="h-4 w-4 text-slate-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-500">{stats.participations}</p>
-                <p className="text-xs text-muted-foreground">Participations</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ─── Stats Cards ─── */}
+      <motion.div variants={itemVariants} className="grid grid-cols-3 gap-3 sm:gap-4">
+        {[
+          { count: stats.expert, label: 'Expert', icon: Trophy, gradient: 'from-amber-500 to-orange-500', bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-600 dark:text-amber-400' },
+          { count: stats.avance, label: 'Avancé', icon: Medal, gradient: 'from-blue-500 to-indigo-500', bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400' },
+          { count: stats.standard, label: 'Standard', icon: Award, gradient: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600 dark:text-emerald-400' },
+        ].map((stat, i) => (
+          <motion.div key={i} variants={itemVariants}>
+            <Card className={`hover:shadow-lg transition-shadow ${stat.bg} border-0`}>
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-gradient-to-br ${stat.gradient} shadow-lg`}>
+                    <stat.icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  </div>
+                  <div>
+                    <p className={`text-2xl sm:text-3xl font-bold ${stat.text}`}>{stat.count}</p>
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
       </motion.div>
 
       {/* ─── Tabs ─── */}
       <motion.div variants={itemVariants}>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+          <TabsList className="w-full justify-start">
             <TabsTrigger value="certificats" className="gap-1.5">
-              <Award className="h-4 w-4" />
-              Certificats
+              <Award className="h-4 w-4" /> Certificats
             </TabsTrigger>
             <TabsTrigger value="progression" className="gap-1.5">
-              <BarChart3Icon className="h-4 w-4" />
-              Progression par UE
+              <TrendingUp className="h-4 w-4" /> Progression par UE
             </TabsTrigger>
           </TabsList>
 
           {/* ─── Certificats tab ─── */}
-          <TabsContent value="certificats">
+          <TabsContent value="certificats" className="mt-4">
             {certificats.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                    <FileText className="h-7 w-7 text-muted-foreground" />
+              <Card className="border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+                    <FileText className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <p className="text-lg font-medium mb-1">Aucun certificat</p>
+                  <p className="text-lg font-semibold mb-1">Aucun certificat</p>
                   <p className="text-sm text-muted-foreground text-center max-w-sm">
                     Vos certificats apparaîtront ici une fois que vous aurez complété des épreuves et obtenu des résultats.
                   </p>
@@ -423,109 +353,69 @@ export function MesCertificatsPage() {
                   {certificats.map((cert, index) => {
                     const config = CERTIFICAT_CONFIG[cert.type]
                     const IconComponent = config.icon
-
                     return (
-                      <motion.div
-                        key={cert.id}
-                        variants={itemVariants}
-                        initial="hidden"
-                        animate="visible"
-                        transition={{ delay: index * 0.05 }}
-                      >
-                        <Card className={`border ${config.borderClass} hover:shadow-md transition-shadow`}>
-                          <CardHeader className="pb-3">
+                      <motion.div key={cert.id} variants={itemVariants} initial="hidden" animate="visible" transition={{ delay: index * 0.05 }}>
+                        <Card className={`group relative overflow-hidden border ${config.border} hover:shadow-xl ${config.glow} hover:-translate-y-1 transition-all duration-300`}>
+                          {/* Top gradient bar */}
+                          <div className={`h-1.5 bg-gradient-to-r ${config.gradient}`} />
+
+                          <CardContent className="p-5 space-y-4">
+                            {/* Header row */}
                             <div className="flex items-start justify-between">
-                              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${config.bgClass}`}>
-                                <IconComponent className={`h-5 w-5 ${config.color}`} />
+                              <div className={`flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${config.gradient} shadow-md`}>
+                                <IconComponent className="h-5 w-5 text-white" />
                               </div>
-                              <Badge className={config.badgeClass} variant="secondary">
-                                {config.label}
-                              </Badge>
+                              <Badge className={config.badge}>{config.label}</Badge>
                             </div>
-                            <CardTitle className="text-base mt-2">
-                              <span className="font-mono text-sm text-muted-foreground mr-2">
-                                {cert.ueCode}
-                              </span>
-                              {cert.ueNom}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            {/* Note & mention */}
+
+                            {/* UE info */}
+                            <div>
+                              <p className="font-mono text-xs text-muted-foreground mb-0.5">{cert.ueCode}</p>
+                              <h3 className="font-semibold text-base leading-tight">{cert.ueNom}</h3>
+                            </div>
+
+                            {/* Note + mention */}
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-2xl font-bold">{cert.note.toFixed(1)}</span>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-3xl font-bold">{cert.note.toFixed(2).replace(/[.,]00$/, '')}</span>
                                 <span className="text-sm text-muted-foreground">/20</span>
                               </div>
-                              <Badge variant="outline" className="text-xs">
-                                {cert.mention}
-                              </Badge>
+                              <Badge variant="outline" className="text-xs">{cert.mention}</Badge>
                             </div>
 
                             {/* Progress bar */}
-                            <Progress value={(cert.note / 20) * 100} className="h-2" />
+                            <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`absolute inset-y-0 left-0 rounded-full bg-gradient-to-r ${config.gradient}`}
+                                style={{ width: `${(cert.note / 20) * 100}%` }}
+                              />
+                            </div>
 
                             {/* Date */}
                             <p className="text-xs text-muted-foreground">
-                              Émis le{' '}
-                              {new Date(cert.dateEmission).toLocaleDateString('fr-FR', {
-                                day: 'numeric',
-                                month: 'long',
-                                year: 'numeric',
-                              })}
+                              {new Date(cert.dateEmission).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                             </p>
 
-                            {/* Format selector + Download */}
+                            {/* Toggle + Download */}
                             <div className="flex flex-col gap-2 pt-1">
-                              {/* Toggle Paysage/Portrait */}
-                              <div className="flex gap-1 bg-muted/50 rounded-md p-0.5">
+                              <div className="flex gap-1 bg-muted/50 rounded-lg p-0.5">
                                 <button
                                   onClick={() => setPdfOrientation('landscape')}
-                                  className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-all ${
-                                    pdfOrientation === 'landscape'
-                                      ? 'bg-background shadow-sm text-emerald-600'
-                                      : 'text-muted-foreground hover:text-foreground'
-                                  }`}
-                                >
-                                  📐 Paysage
-                                </button>
+                                  className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${pdfOrientation === 'landscape' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+                                >📐 Paysage</button>
                                 <button
                                   onClick={() => setPdfOrientation('portrait')}
-                                  className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-all ${
-                                    pdfOrientation === 'portrait'
-                                      ? 'bg-background shadow-sm text-emerald-600'
-                                      : 'text-muted-foreground hover:text-foreground'
-                                  }`}
-                                >
-                                  📄 Portrait
-                                </button>
+                                  className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${pdfOrientation === 'portrait' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+                                >📄 Portrait</button>
                               </div>
-                              <Button
-                                size="sm"
-                                className="flex-1 gap-1.5"
-                                onClick={() => handleDownloadPDF(cert.id)}
-                                disabled={downloadingId === cert.id}
-                              >
-                                {downloadingId === cert.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Download className="h-3.5 w-3.5" />
-                                )}
-                                Télécharger PDF ({pdfOrientation === 'landscape' ? 'Paysage' : 'Portrait'})
+                              <Button size="sm" className="w-full gap-1.5" onClick={() => handleDownloadPDF(cert.id)} disabled={downloadingId === cert.id}>
+                                {downloadingId === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                                Télécharger ({pdfOrientation === 'landscape' ? 'Paysage' : 'Portrait'})
                               </Button>
                               {cert.verificationUrl && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1.5"
-                                  asChild
-                                >
-                                  <a
-                                    href={cert.verificationUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <Shield className="h-3.5 w-3.5" />
-                                    Vérifier
+                                <Button size="sm" variant="outline" className="w-full gap-1.5" asChild>
+                                  <a href={cert.verificationUrl} target="_blank" rel="noopener noreferrer">
+                                    <Shield className="h-3.5 w-3.5" /> Vérifier en ligne
                                   </a>
                                 </Button>
                               )}
@@ -540,17 +430,17 @@ export function MesCertificatsPage() {
             )}
           </TabsContent>
 
-          {/* ─── Progression par UE tab ─── */}
-          <TabsContent value="progression">
+          {/* ─── Progression tab ─── */}
+          <TabsContent value="progression" className="mt-4">
             {validations.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-4">
-                    <BarChart3Icon className="h-7 w-7 text-muted-foreground" />
+              <Card className="border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+                    <TrendingUp className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <p className="text-lg font-medium mb-1">Aucune progression</p>
+                  <p className="text-lg font-semibold mb-1">Aucune progression</p>
                   <p className="text-sm text-muted-foreground text-center max-w-sm">
-                    Votre progression par unité d&apos;enseignement apparaîtra ici une fois les évaluations complétées.
+                    Votre progression par UE apparaîtra ici une fois les évaluations complétées.
                   </p>
                 </CardContent>
               </Card>
@@ -562,19 +452,18 @@ export function MesCertificatsPage() {
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="text-left p-3 font-medium text-muted-foreground">Code UE</th>
-                          <th className="text-left p-3 font-medium text-muted-foreground">Nom de l&apos;UE</th>
-                          <th className="text-center p-3 font-medium text-muted-foreground">Crédits ECTS</th>
+                          <th className="text-left p-3 font-medium text-muted-foreground">Nom</th>
+                          <th className="text-center p-3 font-medium text-muted-foreground">ECTS</th>
                           <th className="text-center p-3 font-medium text-muted-foreground">Épreuves</th>
                           <th className="text-center p-3 font-medium text-muted-foreground">Note</th>
                           <th className="text-center p-3 font-medium text-muted-foreground">Statut</th>
-                          <th className="text-center p-3 font-medium text-muted-foreground">Certificat</th>
+                          <th className="text-center p-3 font-medium text-muted-foreground">PDF</th>
                         </tr>
                       </thead>
                       <tbody>
                         {validations.map((val, index) => {
                           const statutConf = STATUT_CONFIG[val.statut]
                           const StatutIcon = statutConf.icon
-
                           return (
                             <motion.tr
                               key={val.id}
@@ -587,57 +476,28 @@ export function MesCertificatsPage() {
                               <td className="p-3 font-medium">{val.ueNom}</td>
                               <td className="p-3 text-center">{val.creditsECTS}</td>
                               <td className="p-3 text-center">
-                                <span className="text-muted-foreground">
-                                  {val.epreuvesCompletees}
-                                </span>
+                                <span className="text-muted-foreground">{val.epreuvesCompletees}</span>
                                 <span className="text-muted-foreground">/</span>
                                 <span>{val.epreuvesTotal}</span>
                               </td>
                               <td className="p-3 text-center font-semibold">
                                 {val.note !== null ? (
-                                  <span
-                                    className={
-                                      val.note >= 16
-                                        ? 'text-amber-600'
-                                        : val.note >= 10
-                                        ? 'text-emerald-600'
-                                        : 'text-red-600'
-                                    }
-                                  >
+                                  <span className={val.note >= 16 ? 'text-amber-600' : val.note >= 10 ? 'text-emerald-600' : 'text-red-600'}>
                                     {val.note.toFixed(1)}
                                   </span>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
+                                ) : (<span className="text-muted-foreground">—</span>)}
                               </td>
                               <td className="p-3 text-center">
-                                <Badge
-                                  variant="secondary"
-                                  className={`gap-1 ${statutConf.badgeClass}`}
-                                >
-                                  <StatutIcon className="h-3 w-3" />
-                                  {statutConf.label}
+                                <Badge variant="secondary" className={`gap-1 ${statutConf.badge}`}>
+                                  <StatutIcon className="h-3 w-3" /> {statutConf.label}
                                 </Badge>
                               </td>
                               <td className="p-3 text-center">
                                 {val.certificatId ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0"
-                                    onClick={() => handleDownloadPDF(val.certificatId!)}
-                                    disabled={downloadingId === val.certificatId}
-                                    title="Télécharger le certificat"
-                                  >
-                                    {downloadingId === val.certificatId ? (
-                                      <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
-                                    ) : (
-                                      <Download className="h-4 w-4 text-emerald-600" />
-                                    )}
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleDownloadPDF(val.certificatId!)} disabled={downloadingId === val.certificatId} title="Télécharger">
+                                    {downloadingId === val.certificatId ? <Loader2 className="h-4 w-4 animate-spin text-emerald-600" /> : <Download className="h-4 w-4 text-emerald-600" />}
                                   </Button>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
+                                ) : (<span className="text-muted-foreground">—</span>)}
                               </td>
                             </motion.tr>
                           )
@@ -652,29 +512,5 @@ export function MesCertificatsPage() {
         </Tabs>
       </motion.div>
     </motion.div>
-  )
-}
-
-// ─── Inline icon component to avoid naming conflict ───
-
-function BarChart3Icon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M3 3v18h18" />
-      <path d="M18 17V9" />
-      <path d="M13 17V5" />
-      <path d="M8 17v-3" />
-    </svg>
   )
 }
