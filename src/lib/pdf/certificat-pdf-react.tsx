@@ -429,7 +429,9 @@ function Logo({ logo, nom }: { logo: string | null; nom: string }) {
 
 // ═══ Main Component ═══
 
-export function CertificateDocument({ data }: { data: CertificatPDFData }) {
+// ═══ Landscape Certificate (A4 landscape: 842×595pt) ═══
+
+export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
   const subtitle = data.type === 'EXPERT'
     ? 'Niveau Expert'
     : data.type === 'AVANCE'
@@ -532,6 +534,148 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
   )
 }
 
-export async function renderCertificatPDF(data: CertificatPDFData): Promise<Buffer> {
-  return await renderToBuffer(<CertificateDocument data={data} />)
+// ═══ Portrait Certificate (A4 portrait: 595×842pt) ═══
+// Adapted layout: 2-col info grid, vertical signatures, compact spacing
+
+const portraitStyles = StyleSheet.create({
+  page: {
+    width: 595,
+    height: 842,
+    backgroundColor: WHITE,
+    position: 'relative',
+  },
+  corner: { position: 'absolute' },
+  borderOuter: {
+    position: 'absolute', top: '6mm', left: '6mm', right: '6mm', bottom: '6mm',
+    borderWidth: 2, borderColor: GOLD, borderStyle: 'solid',
+  },
+  borderMiddle: {
+    position: 'absolute', top: '9mm', left: '9mm', right: '9mm', bottom: '9mm',
+    borderWidth: 0.5, borderColor: NAVY, borderStyle: 'solid',
+  },
+  borderInner: {
+    position: 'absolute', top: '12mm', left: '12mm', right: '12mm', bottom: '12mm',
+    borderWidth: 0.3, borderColor: GOLD, borderStyle: 'solid',
+  },
+  content: {
+    position: 'absolute', top: '50pt', left: '45pt', right: '45pt', bottom: '50pt',
+    zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center',
+  },
+  logoWrap: { alignItems: 'center', marginBottom: 5 },
+  universityName: { fontSize: 10, color: GOLD, letterSpacing: 3, marginBottom: 1 },
+  universityCity: { fontSize: 9, color: TEXT_GRAY, marginBottom: 8 },
+  titleMain: { fontFamily: 'PlayfairDisplay', fontSize: 36, color: GOLD, letterSpacing: 4, marginVertical: 4 },
+  titleSub: { fontFamily: 'PlayfairDisplay', fontSize: 22, color: TEXT_DARK, letterSpacing: 2, marginBottom: 10 },
+  divider: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 12 },
+  diamondGold: { width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' },
+  diamondNavy: { width: 9, height: 9, backgroundColor: NAVY, transform: 'rotate(45deg)' },
+  introText: { fontSize: 12, color: TEXT_DARK, textAlign: 'center', marginBottom: 8, fontStyle: 'italic' },
+  studentName: { fontFamily: 'GreatVibes', fontSize: 48, color: '#1A1A1A', textAlign: 'center', marginBottom: 2 },
+  studentInfo: { fontSize: 10, color: TEXT_GRAY, textAlign: 'center', marginBottom: 10 },
+  ueIntro: { fontSize: 11, color: TEXT_DARK, textAlign: 'center', marginBottom: 3 },
+  ueName: { fontFamily: 'PlayfairDisplay', fontSize: 26, color: GOLD, textAlign: 'center', marginBottom: 15 },
+  // 2-col grid (portrait adaptation)
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 15, width: '85%' },
+  infoCell: { width: '47%', padding: 8, marginBottom: 8, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center' },
+  infoCellHighlighted: { width: '47%', padding: 8, marginBottom: 8, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
+  label: { fontSize: 8, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
+  value: { fontSize: 11, color: NAVY, fontWeight: 'bold', textAlign: 'center' },
+  badgeWrap: { alignItems: 'center', marginVertical: 15 },
+  // Vertical signatures (one below the other)
+  sigContainer: { flexDirection: 'column', alignItems: 'center', width: '100%', marginTop: 15 },
+  sigBlock: { flexDirection: 'column', alignItems: 'center', width: '60%', marginBottom: 25 },
+  sigSpace: { height: 50, borderBottom: `1pt solid ${GOLD}`, width: '100%', marginBottom: 6 },
+  sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
+  sigName: { fontSize: 10, color: '#2D3748', fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
+  footer: { marginTop: 20, paddingTop: 8, borderTop: `1pt solid ${GOLD}`, textAlign: 'center' },
+  footerText: { fontSize: 8, color: TEXT_FOOTER, textAlign: 'center' },
+})
+
+export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
+  const subtitle = data.type === 'EXPERT' ? 'Niveau Expert'
+    : data.type === 'AVANCE' ? 'Niveau Avancé' : 'Niveau Standard'
+  const studentName = capitalizeName(data.etudiantNom)
+  const studentParts: string[] = []
+  if (data.etudiantMatricule) studentParts.push(`Matricule : ${data.etudiantMatricule}`)
+  if (data.etudiantNiveau) studentParts.push(`Niveau : ${data.etudiantNiveau}`)
+  const sessionLabel = data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
+  const location = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
+  const footerText = `Émis le ${formatDate(data.dateEmission)}  |  Code: ${data.codeVerification}  |  Vérification: ${data.verificationUrl}`
+  const infos = [
+    { label: 'CODE UE', value: data.ueCode, highlight: false },
+    { label: 'FILIÈRE', value: data.filiereNom, highlight: false },
+    { label: 'NOTE', value: `${formatNote(data.noteFinale)}/20`, highlight: true },
+    { label: 'MENTION', value: data.mention || '—', highlight: true },
+    { label: 'SESSION', value: sessionLabel, highlight: false },
+    { label: 'ANNÉE', value: data.anneeAcademique || '—', highlight: false },
+  ]
+
+  return (
+    <Document>
+      <Page size={[595, 842]} style={portraitStyles.page}>
+        <OrnamentalCorners />
+        <View style={portraitStyles.borderOuter} />
+        <View style={portraitStyles.borderMiddle} />
+        <View style={portraitStyles.borderInner} />
+        <View style={portraitStyles.content}>
+          <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
+          <Text style={portraitStyles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
+          {location ? <Text style={portraitStyles.universityCity}>{location}</Text> : null}
+          <Text style={portraitStyles.titleMain}>CERTIFICAT DE RÉUSSITE</Text>
+          <Text style={portraitStyles.titleSub}>{subtitle}</Text>
+          <View style={portraitStyles.divider}>
+            <View style={portraitStyles.diamondGold} />
+            <View style={portraitStyles.diamondNavy} />
+            <View style={portraitStyles.diamondGold} />
+          </View>
+          <Text style={portraitStyles.introText}>Nous certifions par la présente que</Text>
+          <Text style={portraitStyles.studentName}>{studentName}</Text>
+          {studentParts.length > 0 ? <Text style={portraitStyles.studentInfo}>{studentParts.join('  •  ')}</Text> : null}
+          <Text style={portraitStyles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
+          <Text style={portraitStyles.ueName}>{data.ueNom}</Text>
+          {/* 2-col grid */}
+          <View style={portraitStyles.infoGrid}>
+            {infos.map((info, i) => (
+              <View key={i} style={info.highlight ? portraitStyles.infoCellHighlighted : portraitStyles.infoCell}>
+                <Text style={portraitStyles.label}>{info.label}</Text>
+                <Text style={portraitStyles.value}>{info.value}</Text>
+              </View>
+            ))}
+          </View>
+          <CentralBadge />
+          {/* Vertical signatures */}
+          <View style={portraitStyles.sigContainer}>
+            <View style={portraitStyles.sigBlock}>
+              <View style={portraitStyles.sigSpace} />
+              <Text style={portraitStyles.sigLabel}>Signature de l&apos;enseignant</Text>
+            </View>
+            <View style={portraitStyles.sigBlock}>
+              <View style={portraitStyles.sigSpace} />
+              {data.responsableNom ? <Text style={portraitStyles.sigName}>{data.responsableNom}</Text> : null}
+              <Text style={portraitStyles.sigLabel}>Le Responsable pédagogique</Text>
+            </View>
+          </View>
+          <View style={portraitStyles.footer}>
+            <Text style={portraitStyles.footerText}>{footerText}</Text>
+          </View>
+        </View>
+      </Page>
+    </Document>
+  )
+}
+
+// ═══ Dispatcher (chooses landscape or portrait) ═══
+
+export function CertificateDocument({ data, orientation = 'landscape' }: { data: CertificatPDFData; orientation?: 'landscape' | 'portrait' }) {
+  return orientation === 'portrait'
+    ? <CertificatePortrait data={data} />
+    : <CertificateLandscape data={data} />
+}
+
+/**
+ * Render the certificate PDF to a Node.js Buffer.
+ * @param orientation - 'landscape' (default) or 'portrait'
+ */
+export async function renderCertificatPDF(data: CertificatPDFData, orientation: 'landscape' | 'portrait' = 'landscape'): Promise<Buffer> {
+  return await renderToBuffer(<CertificateDocument data={data} orientation={orientation} />)
 }
