@@ -492,3 +492,36 @@ Stage Summary:
 - RESPONSABLE name edits now propagate to: (1) the student's active dashboard session within the next session refresh (no re-login needed), and (2) all existing EMIS certificate snapshots so the verify page and PDFs show the current name
 - matricule changes are also synced to certificate snapshots
 - Commit 1781de7 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 18
+Agent: Main Agent (Z.ai Code)
+Task: [BUG+FEATURE] Fix missing logo on certificates + add per-UE thematic certificate templates
+
+Work Log:
+- User provided a structured dev ticket with 2 parts: (1) bug fix for missing establishment logo on certificate PDFs, (2) feature for per-UE thematic certificate backgrounds.
+
+PART 1 — Bug fix (logo manquant):
+- Root cause: generateCertificatPDF() received data.etablissementLogo but never called doc.addImage(). The logo IS stored correctly in DB as a base64 data URI (data:image/png;base64,... 10522 chars) on the Certificat snapshot, but the rendering code ignored it entirely.
+- Fix: added renderLogo() helper in certificat-pdf.ts that parses data URIs / URLs / raw base64, validates format (PNG/JPEG), and calls doc.addImage() in the header section (centered, 25mm wide, above the establishment name). Graceful fallback: if logo is invalid/corrupt/CORS-blocked, the text-only header is still rendered (no crash). The header Y position auto-adjusts based on whether the logo was rendered.
+
+PART 2 — Feature (templates thématiques par UE):
+- Schema: new CertificateTemplate model (1:1 with UniteEnseignement) with fields: backgroundImage (base64 data URI), primaryColor, accentColor (hex without #), themeIcon (8 categories: default|code|science|law|business|math|language|art), fontFamily (helvetica|times|courier). Prisma db push applied to Supabase successfully.
+- PDF generator: extended CertificatPDFData with optional template field. Added resolveTemplateColors() (hex→RGB with fallback), resolveFontFamily(). Added drawThemeWatermark() — draws large faint (~8% opacity via GState) thematic icon in page center using jsPDF primitives (code </>, atom, scales, bar chart, π, globe, palette — no SVG needed). Added drawBackgroundWatermark() — draws background image at ~10% opacity. All color references in the generator now use resolved template colors with fallback to defaults. Font family is templated.
+- API: GET /api/certificate-templates?ueId=X (scoped by role), POST /api/certificate-templates (upsert by ueId, RESPONSABLE/ADMIN only). GET /api/certificats/[id]/pdf now loads the UE's template and passes it to the generator.
+- Admin UI: new CertificateTemplateDialog component (color pickers, icon dropdown, font dropdown, background image upload with base64 conversion max 2MB, preview note). Integrated into unites-enseignement-page.tsx: Award icon button per UE row opens the dialog.
+
+Verified:
+- ESLint clean
+- PDF with real logo: 18226 bytes ✅ (was failing silently before)
+- PDF with template (navy/violet, code icon watermark): 18798 bytes ✅
+- GET /api/certificate-templates without auth -> 401 (route live & protected)
+- Schema synced to Supabase
+- Committed as 1239c2b (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (1781de7..1239c2b) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Establishment logo now renders on all certificate PDFs (header, centered, 25mm)
+- Each UE can have a custom certificate template: colors, thematic watermark icon, font, optional background image
+- RESPONSABLE/ADMIN can configure templates from the UE management page (Award icon button per UE)
+- Templates apply to all future PDF downloads from the Mes certificats page
+- Commit 1239c2b deployed on https://sect-app.vercel.app
