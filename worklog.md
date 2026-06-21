@@ -935,3 +935,26 @@ Stage Summary:
 - Exact palette applied: navy #1B3A5C + gold #F4B942 + text #2C3E50 + textLight #7F8C8D + bg #F8F9FA
 - All 5 DB templates updated to match — consistent palette across all certificates
 - Commit 2210dfb deployed on https://sect-app.vercel.app
+
+---
+Task ID: 30
+Agent: Main Agent (Z.ai Code)
+Task: Switch certificate body font from Lato to Inter per user's typography spec
+
+Work Log:
+- User specified exact typography: Playfair Display (title), Great Vibes (student name), Inter (body)
+- Downloaded Inter variable font (Regular + Italic) from Google Fonts GitHub repo (~1.8MB total)
+- Updated Font.register() in certificat-pdf-react.tsx:
+  - PlayfairDisplay: kept (serif for title)
+  - GreatVibes: kept (script for student name)
+  - Inter: NEW — replaces Lato. Registered Regular for both normal and bold weights (variable font covers all weights via opsz/wght axes), plus Italic for italic styles.
+- Replaced all 5 'Lato' references with 'Inter' in the component (page fontFamily + 4 style declarations)
+- Removed 3 unused Lato TTF files (Regular, Bold, Italic) — saves ~2MB from the bundle
+- ESLint clean
+- VLM confirms: 'titre en serif élégant (Playfair Display) ✓, nom en script/cursive (Great Vibes) ✓, corps en sans-serif moderne (Inter) ✓'
+- Committed as 1c67128 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (2210dfb..1c67128)
+
+Stage Summary:
+- Typography now matches the exact spec: Playfair Display + Great Vibes + Inter
+- Lato fonts removed, bundle ~2MB lighter
+- Commit 1c67128 deployed on https://sect-app.vercel.app
