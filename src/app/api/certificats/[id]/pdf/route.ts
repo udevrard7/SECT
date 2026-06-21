@@ -13,7 +13,7 @@ async function _GET(
     const { id } = await context.params
     const { user } = context
 
-    // Fetch the certificate
+    // Fetch the certificate + the UE's certificate template (if any)
     const certificat = await withRetry(() =>
       db.certificat.findUnique({
         where: { id },
@@ -22,6 +22,7 @@ async function _GET(
             select: {
               id: true,
               statut: true,
+              uniteEnseignementId: true,
             },
           },
         },
@@ -45,6 +46,33 @@ async function _GET(
 
     // Build verification URL
     const verificationUrl = `https://sect-app.vercel.app/verify/${certificat.codeVerification}`
+
+    // Load the UE's certificate template (if any) for thematic rendering
+    const ueId = certificat.validationUE?.uniteEnseignementId
+    let templateData = null
+    if (ueId) {
+      const tpl = await withRetry(() =>
+        db.certificateTemplate.findUnique({
+          where: { uniteEnseignementId: ueId },
+          select: {
+            backgroundImage: true,
+            primaryColor: true,
+            accentColor: true,
+            themeIcon: true,
+            fontFamily: true,
+          },
+        })
+      )
+      if (tpl) {
+        templateData = {
+          backgroundImage: tpl.backgroundImage,
+          primaryColor: tpl.primaryColor,
+          accentColor: tpl.accentColor,
+          themeIcon: tpl.themeIcon,
+          fontFamily: tpl.fontFamily,
+        }
+      }
+    }
 
     // Generate PDF
     const pdf = generateCertificatPDF({
@@ -70,6 +98,7 @@ async function _GET(
       dateEmission: certificat.dateEmission,
       verificationUrl,
       statut: certificat.statut,
+      template: templateData,
     })
 
     // Convert to buffer and return
