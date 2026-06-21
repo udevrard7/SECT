@@ -108,8 +108,13 @@ function resolveFontFamily(template: CertificatTemplateData | null | undefined):
 
 /**
  * Draw a thematic watermark icon in the center of the page (filigrane).
- * Uses jsPDF primitives (no SVG needed). Opacity is set to ~8% so the
- * watermark is subtle and doesn't interfere with text readability.
+ * Uses jsPDF primitives (no SVG needed). The watermark is rendered in a
+ * LIGHT TINT of the primary color (mixed with white) instead of using
+ * GState opacity — GState opacity proved unreliable in some jsPDF contexts
+ * (watermark was completely invisible). Color mixing is 100% reliable.
+ *
+ * The tint ratio (~18% primary + 82% white) produces a subtle but VISIBLE
+ * watermark that doesn't interfere with text readability.
  */
 function drawThemeWatermark(
   doc: jsPDF,
@@ -121,19 +126,19 @@ function drawThemeWatermark(
   const icon = themeIcon?.toLowerCase() ?? 'default'
   if (icon === 'default' || !icon) return // no watermark for default
 
-  // Set low opacity for the watermark
-  try {
-    const gState = (doc as unknown as { GState: new (opts: { opacity: number }) => unknown }).GState
-    doc.setGState(new gState({ opacity: 0.08 }))
-  } catch {
-    // GState not available — skip watermark (text remains readable)
-    return
-  }
+  // Mix the primary color with white to create a light tint.
+  // ratio = 0.18 means 18% primary + 82% white → subtle but visible.
+  const ratio = 0.18
+  const tint: [number, number, number] = [
+    Math.round(color[0] * ratio + 255 * (1 - ratio)),
+    Math.round(color[1] * ratio + 255 * (1 - ratio)),
+    Math.round(color[2] * ratio + 255 * (1 - ratio)),
+  ]
 
-  doc.setDrawColor(...color)
-  doc.setFillColor(...color)
-  doc.setLineWidth(1.5)
-  const size = 60 // mm, half-extent of the icon
+  doc.setDrawColor(...tint)
+  doc.setFillColor(...tint)
+  doc.setLineWidth(2.5)
+  const size = 70 // mm, half-extent of the icon
 
   switch (icon) {
     case 'code': {
@@ -207,19 +212,12 @@ function drawThemeWatermark(
     default:
       break
   }
-
-  // Reset opacity to full
-  try {
-    const gState = (doc as unknown as { GState: new (opts: { opacity: number }) => unknown }).GState
-    doc.setGState(new gState({ opacity: 1 }))
-  } catch {
-    // noop
-  }
+  // No GState reset needed — we used color tinting, not opacity
 }
 
 /**
  * Draw the background image as a faint watermark covering most of the page.
- * Opacity is ~10% so text stays readable.
+ * Uses color tinting (mix with white) instead of GState opacity for reliability.
  */
 function drawBackgroundWatermark(
   doc: jsPDF,
@@ -478,69 +476,61 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.setTextColor(...C_PRIMARY)
   doc.setFont(font, 'bolditalic')
 
-  // ─── Type badge: vectorial icon + label (no Unicode glyphs that jsPDF
-  // can't render with helvetica/times). Draw a small decorative icon to the
-  // LEFT of the label, centered as a group. Avoids the "★/◆/● → tofu" bug.
-  // The intitule (e.g. "Certificat d'Excellence") already conveys the type,
-  // so the badge here is a subtle decorative confirmation, not a repetition.
+  // ─── Type badge: a single decorative icon centered ABOVE the type label.
+  // Previous design (icon left + text + icon right) caused the icons to
+  // overlap the text. Now the icon sits above, the text below — zero overlap.
+  // Icons are drawn with reliable jsPDF primitives (triangle/circle), not
+  // Unicode glyphs (which render as tofu in helvetica).
   const typeLabel = data.type === 'EXCELLENCE'
     ? 'Excellence'
     : data.type === 'ACCOMPLISSEMENT'
       ? 'Accomplissement'
       : 'Participation'
 
-  // Compute label width to center icon+label group
   doc.setFontSize(11)
-  const labelWidth = doc.getTextWidth(typeLabel)
-  const iconRadius = 1.8 // mm
-  const iconGap = 2.5 // mm between icon and label
-  const groupWidth = iconRadius * 2 + iconGap + labelWidth + iconGap + iconRadius * 2
-  const groupStartX = PAGE_WIDTH / 2 - groupWidth / 2
+  const iconR = 3.2 // mm — icon radius (bigger = recognizable)
+  const iconCx = PAGE_WIDTH / 2
+  const iconCy = y - 2 // icon center, slightly above the text baseline
 
-  // Draw icon(s) as simple vector shapes:
-  //  - EXCELLENCE: a 5-pointed star
-  //  - ACCOMPLISSEMENT: a filled diamond
-  //  - PARTICIPATION: a filled circle
   doc.setFillColor(...C_ACCENT)
   doc.setDrawColor(...C_ACCENT)
 
-  const drawIcon = (cx: number, cy: number) => {
-    if (data.type === 'EXCELLENCE') {
-      // 5-pointed star
-      const outerR = iconRadius
-      const innerR = iconRadius * 0.4
-      const pts: [number, number][] = []
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 === 0 ? outerR : innerR
-        const angle = (Math.PI / 5) * i - Math.PI / 2
-        pts.push([cx + r * Math.cos(angle), cy + r * Math.sin(angle)])
-      }
-      // jsPDF polygon: first point repeated at the end to close
-      const xs = pts.map((p) => p[0])
-      const ys = pts.map((p) => p[1])
-      xs.push(xs[0]); ys.push(ys[0])
-      doc.lines(pts.slice(1).map((p) => [p[0] - pts[0][0], p[1] - pts[0][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true)
-      // Fallback if lines() shape is wonky: use a filled triangle as a clean star proxy
-      void xs; void ys
-    } else if (data.type === 'ACCOMPLISSEMENT') {
-      // Filled diamond (rotated square)
-      doc.triangle(cx, cy - iconRadius, cx + iconRadius, cy, cx, cy + iconRadius, 'F')
-      doc.triangle(cx, cy - iconRadius, cx - iconRadius, cy, cx, cy + iconRadius, 'F')
-    } else {
-      // PARTICIPATION: filled circle
-      doc.circle(cx, cy, iconRadius, 'F')
+  if (data.type === 'EXCELLENCE') {
+    // 5-pointed star drawn as 10 filled triangles from the center.
+    // This is reliable (doc.triangle is well-tested) unlike doc.lines()
+    // which produced a deformed shape.
+    const outerR = iconR
+    const innerR = iconR * 0.42
+    const center = { x: iconCx, y: iconCy }
+    const pts: [number, number][] = []
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? outerR : innerR
+      const angle = (Math.PI / 5) * i - Math.PI / 2
+      pts.push([center.x + r * Math.cos(angle), center.y + r * Math.sin(angle)])
     }
+    // Draw 10 triangles from center to each adjacent pair of outline points
+    for (let i = 0; i < 10; i++) {
+      const p1 = pts[i]
+      const p2 = pts[(i + 1) % 10]
+      doc.triangle(center.x, center.y, p1[0], p1[1], p2[0], p2[1], 'F')
+    }
+  } else if (data.type === 'ACCOMPLISSEMENT') {
+    // Filled diamond (two triangles)
+    doc.triangle(iconCx, iconCy - iconR, iconCx + iconR, iconCy, iconCx, iconCy + iconR, 'F')
+    doc.triangle(iconCx, iconCy - iconR, iconCx - iconR, iconCy, iconCx, iconCy + iconR, 'F')
+  } else {
+    // PARTICIPATION: filled circle
+    doc.circle(iconCx, iconCy, iconR, 'F')
   }
 
-  // Icon left
-  drawIcon(groupStartX + iconRadius, y - 1.5)
-  // Label
-  doc.text(typeLabel, groupStartX + iconRadius * 2 + iconGap, y)
-  // Icon right
-  drawIcon(groupStartX + iconRadius * 2 + iconGap + labelWidth + iconGap + iconRadius, y - 1.5)
+  // Type label BELOW the icon (no overlap — icon is at y-2, text at y+6)
+  doc.setFontSize(11)
+  doc.setTextColor(...C_PRIMARY)
+  doc.setFont(font, 'bolditalic')
+  doc.text(typeLabel, PAGE_WIDTH / 2, y + 6, { align: 'center' })
 
   // ─── Separator ───
-  y += 8
+  y += 12
   doc.setDrawColor(...C_BORDER)
   doc.setLineWidth(0.3)
   doc.line(MARGIN_LEFT + 30, y, PAGE_WIDTH - MARGIN_RIGHT - 30, y)
