@@ -28,6 +28,9 @@ import {
   Layers,
   Lock,
   ChevronRight,
+  Award,
+  Mail,
+  Target,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -423,13 +426,13 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
       <GlowOrb x="50%" y="30%" color="emerald" />
       <GlowOrb x="30%" y="60%" color="cyan" />
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-32 pb-20 text-center">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-28 pb-16 text-center">
         {/* Badge */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.6 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 mb-8 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm"
+          className="inline-flex items-center gap-2 px-4 py-1.5 mb-6 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm"
         >
           <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
           <span className="text-xs text-zinc-400 font-medium tracking-wide">
@@ -440,7 +443,7 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
         {/* Headline */}
         <h1
           ref={headlineRef}
-          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[0.95] mb-6"
+          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[0.95] mb-5"
           style={{ perspective: '600px' }}
         >
           {headlineWords.map((word, i) => (
@@ -459,13 +462,21 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
         </h1>
 
         {/* Typing line */}
-        <p ref={subRef} className="text-lg sm:text-xl text-zinc-400 mb-10 min-h-[32px]">
+        <p ref={subRef} className="text-lg sm:text-xl text-zinc-400 mb-4 min-h-[32px]">
           <span ref={typingRef} className="text-zinc-300" />
           <span className="animate-pulse text-emerald-400">|</span>
         </p>
 
+        {/* Sub-description paragraph */}
+        <p className="max-w-3xl mx-auto text-base sm:text-lg text-zinc-500 leading-relaxed mb-8">
+          SECT est la plateforme tout-en-un qui automatise le cycle complet de vos examens :
+          generation de sujets par IA, surveillance anti-fraude integree, correction instantanee
+          et analytics detailles. Concue pour les universites, ecoles d&apos;ingenieurs et centres
+          de formation, elle transforme des jours de travail en quelques clics.
+        </p>
+
         {/* CTA Buttons */}
-        <div ref={ctaRef} className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+        <div ref={ctaRef} className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
           <MagneticButton
             className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3.5 text-base shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] transition-all duration-300 rounded-xl"
             onClick={onDemo}
@@ -483,6 +494,21 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
           </MagneticButton>
         </div>
 
+        {/* Trust indicators */}
+        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mb-10">
+          {[
+            { icon: Check, text: '500+ evaluations realisees' },
+            { icon: Shield, text: 'Donnees chiffrees AES-256' },
+            { icon: Clock, text: '98% de temps economise' },
+            { icon: Users, text: '200+ institutions actives' },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-zinc-500">
+              <item.icon className="h-3.5 w-3.5 text-emerald-400/70" />
+              <span className="text-xs font-medium">{item.text}</span>
+            </div>
+          ))}
+        </div>
+
         {/* Dashboard Image */}
         <div
           ref={imageRef}
@@ -497,6 +523,7 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
               className="w-full h-auto block"
             />
           </div>
+
           {/* Floating badge */}
           <div className="absolute -right-3 top-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
             <div className="flex items-center gap-2">
@@ -541,12 +568,12 @@ function LogoCloud() {
   }, [])
 
   return (
-    <section ref={sectionRef} className="relative py-16 bg-[#0a0a0a] border-y border-white/[0.04]">
+    <section ref={sectionRef} className="relative py-10 bg-[#0a0a0a] border-y border-white/[0.04]">
       <div className="max-w-6xl mx-auto px-6 text-center">
-        <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-8 font-medium">
+        <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-4 font-medium">
           Adopte par les meilleures institutions
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
           {universities.map((name) => (
             <span
               key={name}
@@ -571,44 +598,112 @@ function FeaturesBento() {
       icon: Brain,
       title: 'Generation IA',
       description: 'Creez des examens complets en quelques secondes avec notre IA generative.',
+      bullets: [
+        'Questions QCU, QCM, QRC et open-ended generees automatiquement',
+        'Adaptation au niveau et au programme de chaque institution',
+        'Generation de variantes uniques pour chaque etudiant',
+      ],
       span: 'md:col-span-2 md:row-span-2',
       image: true,
       imageSrc: '/hero-exam-ai.png',
     },
     {
       icon: Shield,
-      title: 'Anti-Fraude',
+      title: 'Anti-Fraude & Proctoring',
       description: 'Surveillance en temps reel et detection automatique des comportements suspects.',
+      bullets: [
+        'Proctoring video avec IA de detection',
+        'Verrouillage navigateur et onglets',
+        'Alertes en temps reel pour les surveillants',
+      ],
       span: 'md:col-span-1',
     },
     {
       icon: BarChart3,
       title: 'Analytics Avances',
-      description: 'Visualisez les performances avec des graphiques interactifs.',
+      description: 'Visualisez les performances avec des graphiques interactifs et des rapports detailles.',
+      bullets: [
+        'Tableaux de bord en temps reel',
+        'Analyse par question, etudiant et classe',
+        'Export PDF et Excel en un clic',
+      ],
       span: 'md:col-span-1',
     },
     {
       icon: FileText,
       title: 'Correction Automatique',
       description: "Correction instantanee avec feedback personnalise pour chaque etudiant.",
+      bullets: [
+        'Correction QCM/QCU instantanee',
+        'Evaluation IA des reponses ouvertes',
+        'Feedback detaille et suggestions d\'amelioration',
+      ],
       span: 'md:col-span-1',
     },
     {
       icon: Clock,
-      title: 'Temps Reel',
-      description: 'Suivi en direct de chaque epreuve et session.',
+      title: 'Monitoring Temps Reel',
+      description: 'Suivi en direct de chaque epreuve et session avec alertes intelligentes.',
+      bullets: [
+        'Progression en direct par etudiant',
+        'Alertes de depassement de temps',
+        'Statistiques live de participation',
+      ],
       span: 'md:col-span-1',
     },
     {
       icon: Layers,
       title: 'Multi-Formats',
       description: 'QCM, questions ouvertes, codage, et bien plus encore.',
+      bullets: [
+        'QCU, QCM, correspondance, ordonnancement',
+        'Questions de code avec execution en ligne',
+        'Cas cliniques et etudes de cas',
+      ],
+      span: 'md:col-span-1',
+    },
+    {
+      icon: Users,
+      title: 'Multi-Tenant',
+      description: 'Gerez plusieurs departements, filieres et campus depuis une seule plateforme.',
+      bullets: [
+        'Isolation complete des donnees par institution',
+        'Roles et permissions granulaires',
+        'Branding personnalise par etablissement',
+      ],
+      span: 'md:col-span-1',
+    },
+    {
+      icon: Award,
+      title: 'Certificats & Badges',
+      description: 'Generez automatiquement des certificats et badges de competence.',
+      bullets: [
+        'Certificats horodatés et verifiables',
+        'Badges numeriques compatibles Open Badges',
+        'Personnalisation complete du design',
+      ],
       span: 'md:col-span-1',
     },
     {
       icon: Lock,
-      title: 'Securise',
-      description: 'Chiffrement de bout en bout pour toutes vos donnees sensibles.',
+      title: 'Securite & Conformite',
+      description: 'Chiffrement de bout en bout et conformite RGPD pour toutes vos donnees sensibles.',
+      bullets: [
+        'Chiffrement AES-256 au repos et TLS en transit',
+        'Conformite RGPD et audit trails',
+        'Sauvegardes automatiques redondantes',
+      ],
+      span: 'md:col-span-1',
+    },
+    {
+      icon: Target,
+      title: 'Suggestion de Bareme',
+      description: "L'IA propose un bareme optimal en fonction de la difficulte de chaque question.",
+      bullets: [
+        'Analyse de difficulte automatique',
+        'Repartition intelligente des points',
+        'Ajustement manuel ou automatique',
+      ],
       span: 'md:col-span-1',
     },
   ]
@@ -634,46 +729,60 @@ function FeaturesBento() {
   }, [])
 
   return (
-    <section id="fonctionnalites" ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b]">
+    <section id="fonctionnalites" ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b]">
       <DotGrid />
       <GlowOrb x="20%" y="50%" color="emerald" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+        <div className="text-center mb-8">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
             Fonctionnalites
           </p>
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight">
             Tout ce dont vous avez{' '}
             <GradientText>besoin</GradientText>
           </h2>
+          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm sm:text-base">
+            De la creation a la certification, SECT couvre l&apos;integralite du processus d&apos;evaluation
+            avec des outils puissants et une IA de pointe.
+          </p>
         </div>
 
         <div
           ref={cardsRef}
-          className="grid grid-cols-1 md:grid-cols-4 gap-4"
+          className="grid grid-cols-1 md:grid-cols-4 gap-3"
         >
           {features.map((feature, i) => (
             <motion.div
               key={i}
-              className={`bento-card group relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-6 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04] ${feature.span}`}
+              className={`bento-card group relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04] ${feature.span}`}
               whileHover={{ y: -4, transition: { duration: 0.3 } }}
             >
               {/* Hover gradient border glow */}
               <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/10 pointer-events-none" />
 
               <div className="relative z-10 h-full flex flex-col">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                    <feature.icon className="h-5 w-5 text-emerald-400" />
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <feature.icon className="h-4.5 w-4.5 text-emerald-400" />
                   </div>
-                  <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                  <h3 className="text-base font-semibold text-white">{feature.title}</h3>
                 </div>
-                <p className="text-sm text-zinc-400 leading-relaxed">{feature.description}</p>
+                <p className="text-sm text-zinc-400 leading-relaxed mb-3">{feature.description}</p>
+
+                {/* Bullet points */}
+                <ul className="space-y-1.5 flex-1">
+                  {feature.bullets.map((bullet, j) => (
+                    <li key={j} className="flex items-start gap-2">
+                      <div className="w-1 h-1 rounded-full bg-emerald-400/60 mt-2 shrink-0" />
+                      <span className="text-xs text-zinc-500 leading-relaxed">{bullet}</span>
+                    </li>
+                  ))}
+                </ul>
 
                 {feature.image && (
-                  <div className="mt-6 flex-1 relative rounded-lg overflow-hidden border border-white/[0.06]">
-                      <img
+                  <div className="mt-4 flex-1 relative rounded-lg overflow-hidden border border-white/[0.06]">
+                    <img
                       src={feature.imageSrc}
                       alt={feature.title}
                       className="w-full h-auto object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
@@ -744,38 +853,69 @@ function AIShowcase() {
     return () => ctx.revert()
   }, [])
 
+  const aiCapabilities = [
+    {
+      icon: Brain,
+      title: 'Generation de questions QCU/QCM/QRC',
+      description: 'Creez des items de qualite professionnelle en quelques secondes, adaptes au niveau cible et au programme.',
+    },
+    {
+      icon: FileText,
+      title: 'Correction intelligente des copies',
+      description: "L'IA evalue les reponses ouvertes avec une precision proche de celle d'un correcteur humain, en quelques instants.",
+    },
+    {
+      icon: Cpu,
+      title: 'Analyse documentaire automatique',
+      description: 'Importez vos cours et supports PDF : l\'IA extrait les concepts cles et genere des questions pertinentes.',
+    },
+    {
+      icon: Shield,
+      title: 'Detection de plagiat IA',
+      description: 'Identifiez les reponses generees par ChatGPT ou d\'autres outils IA avec un taux de detection superieur a 95%.',
+    },
+    {
+      icon: Target,
+      title: 'Suggestion de bareme',
+      description: "L'IA analyse la difficulte de chaque question et propose une repartition optimale des points.",
+    },
+  ]
+
   return (
-    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#0a0a0a] overflow-hidden">
+    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
       <DotGrid />
       <GlowOrb x="70%" y="50%" color="teal" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           {/* Left: Text */}
           <div>
-            <p className="ai-text text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+            <p className="ai-text text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
               Intelligence Artificielle
             </p>
-            <h2 className="ai-text text-4xl sm:text-5xl font-bold text-white tracking-tight mb-6">
+            <h2 className="ai-text text-4xl sm:text-5xl font-bold text-white tracking-tight mb-4">
               Propulse par{' '}
               <GradientText>l'Intelligence Artificielle</GradientText>
             </h2>
-            <p className="ai-text text-lg text-zinc-400 leading-relaxed mb-8">
+            <p className="ai-text text-base text-zinc-400 leading-relaxed mb-6">
               Notre IA analyse, genere et corrige vos examens avec une precision
-              inegalee. De la creation d'epreuves a la correction automatique,
+              inegalee. De la creation d&apos;epreuves a la correction automatique,
               chaque processus est optimise pour vous faire gagner un temps precieux.
+              Les modeles sont entraines sur des millions de copies francophones et
+              s&apos;adaptent a votre contexte institutionnel.
             </p>
-            <div className="ai-text flex flex-col gap-4">
-              {[
-                { icon: Cpu, text: 'Modeles entraines sur des millions de copies' },
-                { icon: Sparkles, text: 'Generation de contenu contextuel adapte' },
-                { icon: Shield, text: 'Donnees protegees et confidentielles' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10">
+
+            {/* AI Capabilities List */}
+            <div className="ai-text flex flex-col gap-3">
+              {aiCapabilities.map((item, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/[0.08] transition-all duration-300">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0 mt-0.5">
                     <item.icon className="h-4 w-4 text-emerald-400" />
                   </div>
-                  <span className="text-sm text-zinc-300">{item.text}</span>
+                  <div>
+                    <span className="text-sm font-medium text-zinc-200 block mb-0.5">{item.title}</span>
+                    <span className="text-xs text-zinc-500 leading-relaxed">{item.description}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -817,20 +957,38 @@ function HowItWorks() {
     {
       number: '01',
       icon: FileText,
-      title: 'Importez',
-      description: 'Uploadez vos examens ou laissez l\'IA les generer automatiquement.',
+      title: 'Importez & Creez',
+      description: "Uploadez vos examens existants ou laissez l'IA les generer automatiquement a partir de vos cours.",
+      subSteps: [
+        'Importez vos PDF, Word ou Markdown',
+        "L'IA genere des questions pertinentes",
+        'Personnalisez le bareme et le timing',
+        'Generez des variantes uniques par etudiant',
+      ],
     },
     {
       number: '02',
       icon: Users,
-      title: 'Administrez',
-      description: 'Organisez les sessions, assignez les surveillants et securisez les epreuves.',
+      title: 'Administrez & Surveillez',
+      description: 'Organisez les sessions, assignez les surveillants et securisez les epreuves avec le proctoring IA.',
+      subSteps: [
+        'Planifiez les sessions et les salles',
+        'Activez le proctoring video et le verrouillage',
+        'Suivez la progression en temps reel',
+        'Recevez des alertes anti-fraude instantanees',
+      ],
     },
     {
       number: '03',
       icon: BarChart3,
-      title: 'Analysez',
-      description: 'Obtenez des resultats instantanes avec des insights powers par l\'IA.',
+      title: 'Corrigez & Analysez',
+      description: "Obtenez des resultats instantanes avec des insights powers par l'IA et des rapports detailles.",
+      subSteps: [
+        'Correction automatique QCM et IA pour copies',
+        'Feedback personnalise pour chaque etudiant',
+        'Statistiques detaillees par question et classe',
+        'Certificats et badges generes automatiquement',
+      ],
     },
   ]
 
@@ -871,17 +1029,21 @@ function HowItWorks() {
   }, [])
 
   return (
-    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b] overflow-hidden">
+    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b] overflow-hidden">
       <DotGrid />
 
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+        <div className="text-center mb-8">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
             Comment ca marche
           </p>
           <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
             Simple comme <GradientText>1, 2, 3</GradientText>
           </h2>
+          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+            En trois etapes, transformez completement votre processus d&apos;evaluation.
+            Pas de formation lourde, pas de migration complexe.
+          </p>
         </div>
 
         <div className="relative">
@@ -890,21 +1052,32 @@ function HowItWorks() {
             <div ref={lineRef} className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 origin-left" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 md:gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-6">
             {steps.map((step, i) => (
               <div key={i} className="step-item relative flex flex-col items-center text-center">
-                <div className="relative mb-6">
-                  <div className="w-20 h-20 rounded-2xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-sm flex items-center justify-center">
-                    <step.icon className="h-8 w-8 text-emerald-400" />
+                <div className="relative mb-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-sm flex items-center justify-center">
+                    <step.icon className="h-7 w-7 text-emerald-400" />
                   </div>
-                  <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-emerald-500 text-black text-xs font-bold flex items-center justify-center">
+                  <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-500 text-black text-xs font-bold flex items-center justify-center">
                     {step.number}
                   </span>
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-2">{step.title}</h3>
-                <p className="text-sm text-zinc-400 leading-relaxed max-w-[260px]">
+                <h3 className="text-lg font-semibold text-white mb-2">{step.title}</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed max-w-[280px] mb-3">
                   {step.description}
                 </p>
+                {/* Sub-steps */}
+                <ul className="space-y-1.5 text-left w-full max-w-[260px]">
+                  {step.subSteps.map((sub, j) => (
+                    <li key={j} className="flex items-start gap-2">
+                      <span className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-[9px] font-bold text-emerald-400">{j + 1}</span>
+                      </span>
+                      <span className="text-xs text-zinc-500 leading-relaxed">{sub}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -918,10 +1091,12 @@ function HowItWorks() {
 function StatsSection() {
   const sectionRef = useRef<HTMLDivElement>(null)
   const stats = [
-    { value: 50000, suffix: '+', label: 'Examens corriges' },
-    { value: 99.7, suffix: '%', label: 'Precision IA' },
-    { value: 200, suffix: '+', label: 'Institutions' },
-    { value: 15, suffix: 'min', label: 'Temps moyen' },
+    { value: 50000, suffix: '+', label: 'Examens corriges', subtext: 'Par l\'IA avec une precision de 99.7%' },
+    { value: 99.7, suffix: '%', label: 'Precision IA', subtext: 'Sur la correction automatique QCM/QCU' },
+    { value: 200, suffix: '+', label: 'Institutions', subtext: 'Universites et ecoles en Afrique et Europe' },
+    { value: 15, suffix: 'min', label: 'Temps moyen', subtext: 'Pour corriger 100 copies completement' },
+    { value: 98, suffix: '%', label: 'Taux de satisfaction', subtext: 'Enseignants et administrateurs conquis' },
+    { value: 3, suffix: 'M+', label: 'Questions generees', subtext: 'Par l\'IA depuis le lancement de SECT' },
   ]
   const countersRef = useRef<(HTMLSpanElement | null)[]>([])
 
@@ -948,9 +1123,9 @@ function StatsSection() {
   }, [])
 
   return (
-    <section ref={sectionRef} className="relative py-20 bg-gradient-to-b from-[#09090b] via-emerald-950/20 to-[#09090b] overflow-hidden">
+    <section ref={sectionRef} className="relative py-12 sm:py-14 bg-gradient-to-b from-[#09090b] via-emerald-950/20 to-[#09090b] overflow-hidden">
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
           {stats.map((stat, i) => (
             <div key={i} className="relative flex flex-col items-center text-center group">
               {/* Glow behind number */}
@@ -958,12 +1133,13 @@ function StatsSection() {
 
               <span
                 ref={(el) => { countersRef.current[i] = el }}
-                className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-2"
+                className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-1"
               >
                 {0}
               </span>
-              <span className="text-emerald-400 text-sm font-semibold mb-1">{stat.suffix}</span>
-              <span className="text-xs text-zinc-500 uppercase tracking-wider">{stat.label}</span>
+              <span className="text-emerald-400 text-sm font-semibold mb-0.5">{stat.suffix}</span>
+              <span className="text-xs text-zinc-400 uppercase tracking-wider mb-1">{stat.label}</span>
+              <span className="text-[10px] text-zinc-600 max-w-[180px] leading-relaxed">{stat.subtext}</span>
             </div>
           ))}
         </div>
@@ -997,25 +1173,30 @@ function DashboardPreview() {
   }, [])
 
   const callouts = [
-    { position: 'top-[15%] left-[8%]', text: 'Analytics en temps reel' },
-    { position: 'top-[60%] left-[5%]', text: 'Gestion des epreuves' },
-    { position: 'top-[20%] right-[5%]', text: 'IA Integration' },
-    { position: 'top-[70%] right-[8%]', text: 'Rapports detailles' },
+    { position: 'top-[12%] left-[6%]', text: 'Analytics en temps reel', description: 'KPIs et metriques live' },
+    { position: 'top-[55%] left-[4%]', text: 'Gestion des epreuves', description: 'Planification et suivi' },
+    { position: 'top-[18%] right-[4%]', text: 'IA Integration', description: 'Generation et correction' },
+    { position: 'top-[65%] right-[6%]', text: 'Rapports detailles', description: 'Export et partage' },
+    { position: 'top-[38%] left-[3%]', text: 'Monitoring sessions', description: 'Progression en direct' },
   ]
 
   return (
-    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#0a0a0a] overflow-hidden">
+    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
       <DotGrid />
       <GlowOrb x="50%" y="50%" color="emerald" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+        <div className="text-center mb-8">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
             Centre de commande
           </p>
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight">
             Votre <GradientText>Centre de Commande</GradientText>
           </h2>
+          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+            Un tableau de bord unifie pour piloter l&apos;ensemble de vos evaluations,
+            du planning a la certification.
+          </p>
         </div>
 
         <div className="relative">
@@ -1023,12 +1204,15 @@ function DashboardPreview() {
           {callouts.map((callout, i) => (
             <div
               key={i}
-              className={`absolute ${callout.position} hidden lg:flex items-center gap-2 z-20`}
+              className={`absolute ${callout.position} hidden lg:flex flex-col items-start gap-0.5 z-20`}
             >
-              <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-              <span className="text-xs text-zinc-400 font-medium whitespace-nowrap px-2 py-1 bg-[#0a0a0a]/80 rounded border border-white/[0.06]">
-                {callout.text}
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                <span className="text-xs text-zinc-300 font-medium whitespace-nowrap px-2 py-0.5 bg-[#0a0a0a]/80 rounded border border-white/[0.06]">
+                  {callout.text}
+                </span>
+              </div>
+              <span className="text-[10px] text-zinc-600 ml-4 pl-0.5">{callout.description}</span>
             </div>
           ))}
 
@@ -1053,38 +1237,63 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
     {
       name: 'Starter',
       price: '499',
-      description: 'Pour les petites institutions qui debutent.',
-      features: ['Jusqu\'a 100 etudiants', '5 examens/mois', 'Correction automatique', 'Support email'],
+      description: 'Pour les petites institutions qui debutent avec l\'evaluation numerique.',
+      features: [
+        'Jusqu\'a 100 etudiants',
+        '5 examens/mois',
+        'Correction automatique QCM',
+        'Support email (48h)',
+        '1 administrateur',
+        'Rapports basiques',
+      ],
       popular: false,
     },
     {
       name: 'Professionnel',
       price: '1299',
-      description: 'Pour les institutions en croissance.',
+      description: 'Pour les institutions en croissance qui veulent exploiter la puissance de l\'IA.',
       features: [
         'Jusqu\'a 2 000 etudiants',
         'Examens illimites',
         'IA Generative avancee',
-        'Anti-fraude complet',
-        'Analytics detailles',
+        'Anti-fraude & proctoring complet',
+        'Analytics detailles & exports',
         'Support prioritaire 24/7',
+        '5 administrateurs',
+        'Certificats & badges',
       ],
       popular: true,
     },
     {
       name: 'Entreprise',
       price: 'Sur mesure',
-      description: 'Pour les grandes universites.',
+      description: 'Pour les grandes universites et reseaux multi-campus.',
       features: [
         'Etudiants illimites',
-        'Tout du plan Pro',
-        'Deploiement on-premise',
-        'SSO & Integration SI',
+        'Tout du plan Professionnel',
+        'Deploiement on-premise ou cloud prive',
+        'SSO & Integration SI (LDAP, CAS)',
         'SLA garanti 99.9%',
         'Account manager dedie',
+        'Multi-tenant avance',
+        'API & Webhooks personnalises',
       ],
       popular: false,
     },
+  ]
+
+  // Feature comparison data
+  const comparisonFeatures = [
+    { name: 'Etudiants', starter: '100', pro: '2 000', enterprise: 'Illimites' },
+    { name: 'Examens/mois', starter: '5', pro: 'Illimites', enterprise: 'Illimites' },
+    { name: 'Generation IA', starter: false, pro: true, enterprise: true },
+    { name: 'Correction IA', starter: 'QCM', pro: 'Tous types', enterprise: 'Tous types' },
+    { name: 'Anti-fraude', starter: false, pro: true, enterprise: true },
+    { name: 'Proctoring video', starter: false, pro: true, enterprise: true },
+    { name: 'Certificats & Badges', starter: false, pro: true, enterprise: true },
+    { name: 'Analytics', starter: 'Basiques', pro: 'Avances', enterprise: 'Personnalises' },
+    { name: 'Support', starter: 'Email', pro: '24/7', enterprise: 'Dedie' },
+    { name: 'SSO / LDAP', starter: false, pro: false, enterprise: true },
   ]
 
   useEffect(() => {
@@ -1109,26 +1318,29 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
   }, [])
 
   return (
-    <section id="tarifs" ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b] overflow-hidden">
+    <section id="tarifs" ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b] overflow-hidden">
       <DotGrid />
       <GlowOrb x="50%" y="30%" color="emerald" />
 
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+        <div className="text-center mb-8">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
             Tarifs
           </p>
           <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
             Un plan pour chaque{' '}
             <GradientText>ambition</GradientText>
           </h2>
+          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+            Que vous soyez une petite ecole ou une grande universite, SECT s&apos;adapte a vos besoins et a votre budget.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-8">
           {plans.map((plan, i) => (
             <div
               key={i}
-              className={`pricing-card relative rounded-xl border backdrop-blur-sm p-8 transition-all duration-500 ${
+              className={`pricing-card relative rounded-xl border backdrop-blur-sm p-6 transition-all duration-500 ${
                 plan.popular
                   ? 'border-emerald-500/40 bg-white/[0.04] md:-mt-4 md:mb-4 shadow-[0_0_40px_rgba(16,185,129,0.12)]'
                   : 'border-white/[0.06] bg-white/[0.02]'
@@ -1140,12 +1352,12 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
                 </div>
               )}
 
-              <div className="mb-6">
+              <div className="mb-4">
                 <h3 className="text-lg font-semibold text-white mb-1">{plan.name}</h3>
-                <p className="text-sm text-zinc-400">{plan.description}</p>
+                <p className="text-xs text-zinc-400">{plan.description}</p>
               </div>
 
-              <div className="mb-6">
+              <div className="mb-4">
                 {plan.price === 'Sur mesure' ? (
                   <span className="text-3xl font-bold text-white">Sur mesure</span>
                 ) : (
@@ -1156,17 +1368,17 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
                 )}
               </div>
 
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-2 mb-6">
                 {plan.features.map((feature, j) => (
-                  <li key={j} className="flex items-start gap-2.5">
-                    <Check className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-                    <span className="text-sm text-zinc-300">{feature}</span>
+                  <li key={j} className="flex items-start gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                    <span className="text-xs text-zinc-300">{feature}</span>
                   </li>
                 ))}
               </ul>
 
               <MagneticButton
-                className={`w-full rounded-lg font-semibold ${
+                className={`w-full rounded-lg font-semibold text-sm ${
                   plan.popular
                     ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]'
                     : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.1]'
@@ -1178,6 +1390,47 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
               </MagneticButton>
             </div>
           ))}
+        </div>
+
+        {/* Feature Comparison Table */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-white/[0.06]">
+            <h3 className="text-sm font-semibold text-white">Comparaison detaillee</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-white/[0.04]">
+                  <th className="text-left text-zinc-500 font-medium px-5 py-2.5">Fonctionnalite</th>
+                  <th className="text-center text-zinc-500 font-medium px-4 py-2.5">Starter</th>
+                  <th className="text-center text-emerald-400 font-medium px-4 py-2.5 bg-emerald-500/5">Pro</th>
+                  <th className="text-center text-zinc-500 font-medium px-4 py-2.5">Entreprise</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonFeatures.map((feat, i) => (
+                  <tr key={i} className="border-b border-white/[0.03] last:border-0">
+                    <td className="text-zinc-300 px-5 py-2">{feat.name}</td>
+                    <td className="text-center px-4 py-2 text-zinc-500">
+                      {typeof feat.starter === 'boolean' ? (
+                        feat.starter ? <Check className="h-3.5 w-3.5 text-emerald-400 mx-auto" /> : <X className="h-3.5 w-3.5 text-zinc-700 mx-auto" />
+                      ) : feat.starter}
+                    </td>
+                    <td className="text-center px-4 py-2 text-zinc-300 bg-emerald-500/5">
+                      {typeof feat.pro === 'boolean' ? (
+                        feat.pro ? <Check className="h-3.5 w-3.5 text-emerald-400 mx-auto" /> : <X className="h-3.5 w-3.5 text-zinc-700 mx-auto" />
+                      ) : feat.pro}
+                    </td>
+                    <td className="text-center px-4 py-2 text-zinc-300">
+                      {typeof feat.enterprise === 'boolean' ? (
+                        feat.enterprise ? <Check className="h-3.5 w-3.5 text-emerald-400 mx-auto" /> : <X className="h-3.5 w-3.5 text-zinc-700 mx-auto" />
+                      ) : feat.enterprise}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -1193,22 +1446,37 @@ function Testimonials() {
       initials: 'AB',
       name: 'Dr. Amina Benali',
       role: 'Directrice, EMI Rabat',
-      quote: "SECT a revolutionne notre facon de gerer les examens. La correction automatique nous fait gagner des jours entiers.",
+      institution: 'Ecole Mohammed V - 3 200 etudiants',
+      quote: "SECT a revolutionne notre facon de gerer les examens. La correction automatique nous fait gagner des jours entiers. Nous avons reduit notre temps de correction de 85% depuis son adoption.",
       stars: 5,
+      result: '85% de temps economise',
     },
     {
       initials: 'MK',
       name: 'Prof. Mohammed Khalil',
       role: 'Doyen, Faculte des Sciences',
-      quote: "L'anti-fraude integre nous a donne une tranquillite d'esprit totale pendant les sessions d'examen.",
+      institution: 'Universite Cadi Ayyad - 8 500 etudiants',
+      quote: "L'anti-fraude integre nous a donne une tranquillite d'esprit totale pendant les sessions d'examen. Le taux de fraude a chute de 92% des la premiere session.",
       stars: 5,
+      result: '92% moins de fraude',
     },
     {
       initials: 'SF',
       name: 'Sara Fassi',
       role: 'Responsable Pedagogique',
-      quote: "Les analytics en temps reel nous permettent d'identifier immediatement les etudiants en difficulte.",
+      institution: 'ENSA Marrakech - 1 800 etudiants',
+      quote: "Les analytics en temps reel nous permettent d'identifier immediatement les etudiants en difficulte. Nous avons ameliore notre taux de reussite de 15% en un semestre.",
       stars: 5,
+      result: '+15% de reussite',
+    },
+    {
+      initials: 'YE',
+      name: 'Dr. Youssef El Amrani',
+      role: 'Chef de Departement Informatique',
+      institution: 'ENSIAS Rabat - 2 400 etudiants',
+      quote: "La generation IA d'examens est bluffante de qualite. En 2 minutes, j'obtiens un sujet equilibre et complet. C'est un gain de productivite incroyable pour toute l'equipe pedagogique.",
+      stars: 5,
+      result: '2 min par sujet',
     },
   ]
 
@@ -1235,46 +1503,55 @@ function Testimonials() {
   }, [])
 
   return (
-    <section id="temoignages" ref={sectionRef} className="relative py-24 sm:py-32 bg-[#0a0a0a] overflow-hidden">
+    <section id="temoignages" ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
       <DotGrid />
       <GlowOrb x="70%" y="40%" color="teal" />
 
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-4">
+        <div className="text-center mb-8">
+          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
             Temoignages
           </p>
           <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
             Ce qu'ils en <GradientText>disent</GradientText>
           </h2>
+          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+            Des centaines d&apos;institutions nous font confiance. Voici les retours de celles qui ont transforme leurs evaluations.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {testimonials.map((t, i) => (
             <div
               key={i}
-              className="testimonial-card rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-6 sm:p-8 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04]"
+              className="testimonial-card rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 sm:p-6 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04]"
             >
-              {/* Stars */}
-              <div className="flex gap-1 mb-4">
-                {Array.from({ length: t.stars }).map((_, j) => (
-                  <Star key={j} className="h-4 w-4 fill-emerald-400 text-emerald-400" />
-                ))}
+              {/* Stars & Result */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex gap-1">
+                  {Array.from({ length: t.stars }).map((_, j) => (
+                    <Star key={j} className="h-3.5 w-3.5 fill-emerald-400 text-emerald-400" />
+                  ))}
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  {t.result}
+                </span>
               </div>
 
               {/* Quote */}
-              <p className="text-sm sm:text-base text-zinc-300 leading-relaxed mb-6">
+              <p className="text-sm text-zinc-300 leading-relaxed mb-4">
                 &ldquo;{t.quote}&rdquo;
               </p>
 
               {/* Author */}
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
                   <span className="text-xs font-bold text-emerald-400">{t.initials}</span>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-white">{t.name}</p>
                   <p className="text-xs text-zinc-500">{t.role}</p>
+                  <p className="text-[10px] text-zinc-600">{t.institution}</p>
                 </div>
               </div>
             </div>
@@ -1319,8 +1596,15 @@ function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => vo
     return () => ctx.revert()
   }, [])
 
+  const benefits = [
+    { icon: Zap, text: 'Configuration en moins de 30 minutes' },
+    { icon: Shield, text: 'Securite de niveau entreprise des le premier jour' },
+    { icon: Brain, text: 'IA generative incluse dans tous les plans' },
+    { icon: Users, text: 'Accompagnement personnalise par notre equipe' },
+  ]
+
   return (
-    <section ref={sectionRef} className="relative py-24 sm:py-32 bg-[#09090b] overflow-hidden">
+    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b] overflow-hidden">
       {/* Gradient border at top */}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
 
@@ -1337,13 +1621,24 @@ function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => vo
       />
 
       <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-        <h2 className="cta-reveal text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight mb-6">
+        <h2 className="cta-reveal text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight mb-4">
           Pret a transformer vos{' '}
           <GradientText>examens ?</GradientText>
         </h2>
-        <p className="cta-reveal text-lg text-zinc-400 mb-10 max-w-2xl mx-auto">
+        <p className="cta-reveal text-base text-zinc-400 mb-6 max-w-2xl mx-auto">
           Rejoignez les institutions qui ont deja adopte la plateforme d&apos;examen la plus avancee.
         </p>
+
+        {/* Benefit bullets */}
+        <div className="cta-reveal grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto mb-8">
+          {benefits.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 text-left">
+              <b.icon className="h-4 w-4 text-emerald-400 shrink-0" />
+              <span className="text-sm text-zinc-300">{b.text}</span>
+            </div>
+          ))}
+        </div>
+
         <div className="cta-reveal flex flex-col sm:flex-row items-center justify-center gap-4">
           <MagneticButton
             className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3.5 text-base shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] transition-all duration-300 rounded-xl"
@@ -1368,49 +1663,71 @@ function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => vo
 
 /* ─── Footer ─── */
 function Footer() {
+  const [email, setEmail] = useState('')
+
   const columns = [
     {
       title: 'Produit',
-      links: ['Fonctionnalites', 'Tarifs', 'Securite', 'Roadmap'],
+      links: ['Fonctionnalites', 'Tarifs', 'Securite', 'Roadmap', 'Changelog', 'Integrations'],
     },
     {
       title: 'Ressources',
-      links: ['Documentation', 'Blog', 'Guides', 'API'],
+      links: ['Documentation', 'Blog', 'Guides', 'API Reference', 'Webinaires', 'Communaute'],
     },
     {
       title: 'Entreprise',
-      links: ['A propos', 'Carrieres', 'Contact', 'Partenaires'],
+      links: ['A propos', 'Carrieres', 'Contact', 'Partenaires', 'Presse', 'Equipe'],
     },
     {
       title: 'Legal',
-      links: ['Confidentialite', 'CGU', 'Cookies', 'RGPD'],
+      links: ['Confidentialite', 'CGU', 'Cookies', 'RGPD', 'Mentions legales', 'Conditions'],
     },
   ]
 
   return (
     <footer className="relative bg-[#09090b] border-t border-white/[0.04]">
-      <div className="max-w-7xl mx-auto px-6 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
-          {/* Logo column */}
-          <div className="col-span-2 md:col-span-1">
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-8">
+          {/* Logo column + newsletter */}
+          <div className="col-span-2">
             <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
               SECT
             </span>
-            <p className="text-sm text-zinc-500 mt-3 leading-relaxed">
-              La plateforme d&apos;examen propulssee par l&apos;intelligence artificielle.
+            <p className="text-sm text-zinc-500 mt-2 leading-relaxed">
+              La plateforme d&apos;examen propulssee par l&apos;intelligence artificielle. Automatisez, securisez et optimisez vos evaluations.
             </p>
+
+            {/* Newsletter */}
+            <div className="mt-4">
+              <p className="text-xs font-medium text-zinc-400 mb-2">Restez informe</p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="votre@email.com"
+                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40 transition-colors"
+                />
+                <button
+                  className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-lg text-xs font-semibold transition-colors shrink-0"
+                  aria-label="S'inscrire a la newsletter"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Link columns */}
           {columns.map((col) => (
             <div key={col.title}>
-              <h4 className="text-sm font-semibold text-white mb-4">{col.title}</h4>
-              <ul className="space-y-2.5">
+              <h4 className="text-xs font-semibold text-white mb-3 uppercase tracking-wider">{col.title}</h4>
+              <ul className="space-y-2">
                 {col.links.map((link) => (
                   <li key={link}>
                     <a
                       href="#"
-                      className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors duration-300"
+                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors duration-300"
                     >
                       {link}
                     </a>
@@ -1421,18 +1738,29 @@ function Footer() {
           ))}
         </div>
 
-        <div className="border-t border-white/[0.04] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-zinc-600">
-            &copy; {new Date().getFullYear()} SECT. Tous droits reserves.
-          </p>
+        <div className="border-t border-white/[0.04] pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-zinc-600">
+              &copy; {new Date().getFullYear()} SECT. Tous droits reserves.
+            </p>
+            <span className="text-xs text-zinc-700">|</span>
+            <p className="text-xs text-zinc-600">
+              Built with <span className="text-red-400">&#10084;</span> in Africa
+            </p>
+          </div>
           <div className="flex items-center gap-4">
-            {['Twitter', 'LinkedIn', 'GitHub'].map((social) => (
+            {[
+              { name: 'Twitter', href: '#' },
+              { name: 'LinkedIn', href: '#' },
+              { name: 'GitHub', href: '#' },
+              { name: 'YouTube', href: '#' },
+            ].map((social) => (
               <a
-                key={social}
-                href="#"
+                key={social.name}
+                href={social.href}
                 className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors duration-300"
               >
-                {social}
+                {social.name}
               </a>
             ))}
           </div>
