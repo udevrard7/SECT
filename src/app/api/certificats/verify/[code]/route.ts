@@ -50,11 +50,16 @@ export async function GET(
         etudiantNom: certificat.etudiantNom,
         ueCode: certificat.ueCode,
         ueNom: certificat.ueNom,
+        // The frontend reads 'note' (not noteFinale)
+        note: certificat.noteFinale,
         noteFinale: certificat.noteFinale,
         mention: certificat.mention,
         dateEmission: certificat.dateEmission,
         etablissementNom: certificat.etablissementNom,
         statut: certificat.statut,
+        // The verification code is public info — it IS the code being verified,
+        // and the verify page needs to display it for reference/sharing.
+        codeVerification: certificat.codeVerification,
       },
     })
   } catch (error) {
