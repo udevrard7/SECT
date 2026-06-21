@@ -40,6 +40,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { CertificateGenerator } from './certificate-generator'
 
 // ─── Types ───
 
@@ -134,6 +136,7 @@ export function MesCertificatsPage() {
   const [error, setError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [pdfOrientation, setPdfOrientation] = useState<'landscape' | 'portrait'>('landscape')
+  const [hdPreviewCert, setHdPreviewCert] = useState<Certificat | null>(null)
   const [activeTab, setActiveTab] = useState('certificats')
 
   // ─── Data fetching ───
@@ -229,6 +232,12 @@ export function MesCertificatsPage() {
     } finally {
       setDownloadingId(null)
     }
+  }
+
+  // ─── Open HD generator (pdf-lib + html2canvas) ───
+
+  const openHdGenerator = (cert: Certificat) => {
+    setHdPreviewCert(cert)
   }
 
   // ─── Loading ───
@@ -412,6 +421,11 @@ export function MesCertificatsPage() {
                                 {downloadingId === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                                 Télécharger ({pdfOrientation === 'landscape' ? 'Paysage' : 'Portrait'})
                               </Button>
+                              {/* HD download via pdf-lib + html2canvas (SVG background) */}
+                              <Button size="sm" variant="secondary" className="w-full gap-1.5" onClick={() => openHdGenerator(cert)}>
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Télécharger HD
+                              </Button>
                               {cert.verificationUrl && (
                                 <Button size="sm" variant="outline" className="w-full gap-1.5" asChild>
                                   <a href={cert.verificationUrl} target="_blank" rel="noopener noreferrer">
@@ -511,6 +525,40 @@ export function MesCertificatsPage() {
           </TabsContent>
         </Tabs>
       </motion.div>
+
+      {/* ─── HD Certificate Dialog (pdf-lib + html2canvas) ─── */}
+      <Dialog open={!!hdPreviewCert} onOpenChange={(open) => !open && setHdPreviewCert(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto">
+          {hdPreviewCert && (
+            <CertificateGenerator
+              data={{
+                codeVerification: hdPreviewCert.codeVerification,
+                type: hdPreviewCert.type,
+                intitule: hdPreviewCert.type === 'EXPERT' ? 'Certificat de Réussite – Niveau Expert'
+                  : hdPreviewCert.type === 'AVANCE' ? 'Certificat de Réussite – Niveau Avancé'
+                  : 'Certificat de Réussite – Niveau Standard',
+                mention: hdPreviewCert.mention,
+                noteFinale: hdPreviewCert.note,
+                etablissementNom: user?.etablissement?.nom || 'Établissement',
+                etablissementVille: null,
+                etablissementPays: null,
+                filiereNom: user?.filiere?.nom || '',
+                ueCode: hdPreviewCert.ueCode,
+                ueNom: hdPreviewCert.ueNom,
+                etudiantNom: hdPreviewCert.etudiantNom || user?.name || '',
+                etudiantMatricule: null,
+                etudiantNiveau: null,
+                sessionType: 'NORMALE',
+                anneeAcademique: null,
+                dateEmission: hdPreviewCert.dateEmission,
+                verificationUrl: hdPreviewCert.verificationUrl || '',
+                responsableNom: null,
+              }}
+              onClose={() => setHdPreviewCert(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }
