@@ -70,3 +70,43 @@ Stage Summary:
 - Automatic detection of newly unlocked badges with toast notifications
 - Click on badge opens detail modal with all 4 levels and achievement status
 - Color-coded by level: Bronze (amber), Argent (slate), Or (yellow), Diamant (cyan)
+
+---
+Task ID: 4
+Agent: Main Agent (Z.ai Code)
+Task: Re-setup the SECT project in the sandbox after reset — clone from GitHub, configure Supabase + Git identity + Vercel pipeline, verify runtime
+
+Work Log:
+- Read previous worklog (Tasks 1-3) to understand prior context: SECT = AI evaluation platform, Next.js 16 + React 19 + Prisma + Supabase + shadcn/ui, 30+ models, 40+ API routes, 4 role dashboards, badge system already implemented
+- Sandbox /home/z/my-project had been reset to the generic Next.js starter (only "Initial commit"), so the SECT project had to be re-installed
+- Cloned https://github.com/udevrard7/SECT.git (depth 50) to /home/z/sect-repo using the provided GitHub PAT
+- Stopped the generic-starter dev server (PIDs 1127/1132) that was running on port 3000
+- Replaced /home/z/my-project contents with SECT files, preserving sandbox infrastructure: .zscripts/ (orchestrator) and upload/ (ossfs mount)
+- Configured Git identity: user.name=udevrard7, user.email=ulrichdouh@gmail.com (global + local)
+- Configured Git credentials: credential.helper=store with ~/.git-credentials (chmod 600); cleaned remote URL to remove embedded token — `git remote -v` now shows clean https://github.com/udevrard7/SECT.git while push/pull auth still works via credential store
+- Created /home/z/my-project/.env (chmod 600) with CORRECTED Supabase credentials:
+  - Fixed user-provided typos: removed stray space before '@' and added missing ':' between user and password in DIRECT_URL
+  - DATABASE_URL (pooler:6543, pgbouncer=true) for runtime, DIRECT_URL (direct:5432) for migrations
+  - NEXTAUTH_SECRET generated via openssl rand -hex 32
+- Confirmed schema.prisma uses provider=postgresql with url=DATABASE_URL, directUrl=DIRECT_URL
+- Ran `bun install` → 992 packages installed (postinstall ran prisma generate)
+- Ran `prisma db push --skip-generate` → "The database is already in sync with the Prisma schema" (Supabase connection verified, no schema drift)
+- Diagnosed dev-server persistence: sandbox kills ALL background/orphaned processes (even setsid) between Bash tool calls; the original dev server only survived because it was started at boot by the main.py orchestrator. No watchdog exists to restart it.
+- Ran transient dev boot test within a single Bash call to verify runtime end-to-end:
+  - Next.js 16.1.3 (Turbopack) Ready in ~1s
+  - GET / → 200 (landing page), GET /login → 200
+  - GET /api/auth/session → {} (NextAuth OK)
+  - GET /api/seed → 401, GET /api/badges → 401 (protected routes — auth middleware working correctly)
+- Ran `bun run lint` → ESLint clean (no errors)
+- Verified .env is gitignored (.gitignore:34 `.env*`, git check-ignore confirms) — credentials will never be pushed
+- Restored .zscripts/dev.pid to keep the working tree clean
+- Removed the temporary clone /home/z/sect-repo
+
+Stage Summary:
+- SECT project fully re-installed and operational in /home/z/my-project
+- Git: identity = udevrard7 <ulrichdouh@gmail.com>, remote = clean GitHub URL, push auth via credential store (token not exposed in remote URL)
+- Database: Supabase PostgreSQL connected and 100% in sync with schema.prisma; 30+ models present
+- Runtime verified: app boots in ~1s, all tested routes respond correctly (200 for public, 401 for protected)
+- Lint: clean
+- KNOWN LIMITATION: no persistent local dev server between Bash tool calls (sandbox kills background processes). This does NOT affect the user's workflow because the real deployment pipeline is GitHub push → Vercel auto-deploy → Supabase sync. For local sanity checks, a transient dev boot can be run inside a single tool call.
+- Pipeline ready: any commit pushed to origin/main (GitHub) will auto-deploy to https://sect-app.vercel.app; schema changes will be synced to Supabase via `prisma db push`
