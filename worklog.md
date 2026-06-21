@@ -676,3 +676,40 @@ Stage Summary:
 - Certificate PDF rendering is now production-quality: logo auto-fitted without deformation, vectorial type badges, clean </> watermark, conditional niveau line, professional signature zone
 - All 5 VLM-identified issues + the logo auto-fit feature are fixed and visually verified
 - Commit f5b4332 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 23
+Agent: Main Agent (Z.ai Code)
+Task: Fix badge overlap + deformed star + invisible watermark on certificate PDF
+
+Work Log:
+- User uploaded a new certificate PDF reporting: watermark not estompe (faded), badge problem, overlaps.
+- Cropped the PDF into 3 zones (badge, watermark, bottom) and analyzed each separately with VLM for precision.
+- Diagnosis confirmed:
+  1. BADGE: the 5-pointed star drawn with doc.lines() rendered as a deformed/asymmetric shape, and the two icons (left+right of text) were positioned at the same Y as the text baseline → icons overlapped the "Excellence" text.
+  2. WATERMARK: completely invisible. GState opacity (0.08, then 0.15) was not rendering at all in jsPDF for vector shapes.
+  3. Bottom zone (signature + verification) was fine — no overlaps.
+
+Fix 1 — Badge:
+- Restructured layout: single icon centered ABOVE the text (not beside it). Icon at y-2, text at y+6 → zero horizontal overlap.
+- Star now drawn as 10 filled triangles from center using doc.triangle() (reliable), replacing the broken doc.lines() polygon approach.
+- Icon size increased from 1.8mm to 3.2mm for recognizability.
+- Separator Y adjusted from +8 to +12 to accommodate the new vertical layout.
+- ACCOMPLISSEMENT (diamond) and PARTICIPATION (circle) also use the new above-text layout.
+
+Fix 2 — Watermark:
+- Replaced GState opacity (unreliable — watermark was invisible) with COLOR TINTING: mix primary color with white at 18% ratio (primary*0.18 + white*0.82) to produce a light tint rendered at full opacity. 100% reliable across all jsPDF renderers.
+- Watermark size increased from 60 to 70mm, line width from 1.5 to 2.5mm.
+- Removed all GState set/reset code from drawThemeWatermark.
+
+VLM verification on v5 PDF:
+  ✅ Watermark: "visible au centre, bien estompé (subtil), forme de chevrons gris clair"
+  ✅ Badge: "l'étoile ne chevauche pas le texte, forme d'étoile recognizable"
+- ESLint clean
+- Committed as def27b4 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (f5b4332..def27b4) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Badge: star icon now renders correctly (10 triangles) and sits ABOVE the text — no overlap
+- Watermark: now visible as a subtle background filigrane using color tinting instead of unreliable GState opacity
+- Both fixes VLM-verified on a freshly generated PDF
+- Commit def27b4 deployed on https://sect-app.vercel.app
