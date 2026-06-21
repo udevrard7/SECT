@@ -337,3 +337,39 @@ Stage Summary:
 - DB now has 16 ValidationUE and 10 Certificats total (INFO + SEG students)
 - No code change required; data fix is live on Supabase and immediately visible on Vercel production
 - Admin note: the new UE is named generically 'Économie et Gestion'; if the exam content is more specific, an admin can rename it via the dashboard (Programme académique / UE management)
+
+---
+Task ID: 13
+Agent: Main Agent (Z.ai Code)
+Task: Implement UE-mandatory at epreuve creation + orphan alert banner (user chose #1 strict + #3 badge-in-existing-page, declined #2 auto-resolution)
+
+Work Log:
+- Read prior analysis (Task 12 context): the orphan 'Composition' epreuve was a symptom of allowing epreuve creation with uniteEnseignementId=null. User confirmed the principal/secondary UE model and asked to (1) make UE mandatory at creation, (3) add a badge/alert in the existing Épreuves page, and explicitly declined (2) auto-resolution engine as too risky.
+
+#1 PREVENTION — backend (src/app/api/epreuves/route.ts POST)
+- Added validation right after the required-fields check: if !uniteEnseignementId -> 400 with message 'L'UE est obligatoire. Une épreuve non rattachée à une UE ne peut pas générer de certificats.'
+- Validates the UE exists (404 if not) and is active (400 if disabled)
+- When filiereId is provided, enforces the principal/secondary UE model: checks UE.filiereId === filiereId (principal) OR UniteEnseignementFiliere exists for (ueId, filiereId) (shared/secondary). Returns 400 if neither. This directly supports the user's described model where a UE dispensed to multiple filières has one principal + N secondaries.
+
+#1 PREVENTION — frontend (the 2 creation forms)
+- epreuves-page.tsx handlePlanifierSubmit: added guard before setIsSubmitting — if !planUEId || planUEId === '__none__' -> toast.error 'Unité d'Enseignement requise' + return
+- generation-ia-page.tsx handleSave: added guard using effectiveUEId = autoDetectedUEId || selectedUEId; same toast if missing
+
+#3 UX ADMIN — orphan alert banner
+- New endpoint GET /api/epreuves/orphelines (auth ENSEIGNANT/RESPONSABLE/ADMIN, role-scoped): returns { count, orphelines[] } where each orpheline includes id, titre, niveau, noteTotal, filiere, enseignant, sessionsCount. Scoping: ENSEIGNANT sees only their own; RESPONSABLE sees their establishment's; ADMIN sees their establishment (or all if no etablissementId).
+- New component src/components/epreuves/orphan-epreuves-alert.tsx: amber banner with collapsible details. Shows count + total impacted sessions + per-epreuve details (titre, filière code, niveau, sessions count, enseignant name for non-ENSEIGNANT roles). Renders nothing when 0 orphans or while loading (non-intrusive). Uses Collapsible from shadcn. Also exports an OrphanEpreuvesBadge compact variant.
+- Inserted <OrphanEpreuvesAlert /> right under the header in BOTH epreuves-page.tsx (visible in Modeles + Sessions tabs) and banque-epreuves-page.tsx
+
+#2 AUTO-RESOLUTION — NOT implemented per user's explicit decision
+
+- ESLint clean (0 errors)
+- Transient runtime: GET / -> 200, GET /api/epreuves/orphelines without auth -> 401 (route is live and protected), no dev.log errors
+- No Prisma schema change -> no Supabase sync needed
+- Committed as 38318fb (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (7e3f72f..38318fb) -> Vercel auto-deploy triggered
+- Verified production: /api/epreuves/orphelines returns 401 without auth (live & protected), landing demo still works
+
+Stage Summary:
+- New epreuves can no longer be created without a UE — backend rejects with a clear message, frontend shows a toast before submit
+- The principal/secondary UE model is enforced: a shared UE can be assigned to an exam of any of its filières (principal or secondary), but not to an unrelated filière
+- Existing orphans are surfaced via an amber alert banner on both the Épreuves page and the Banque d'Épreuves page, with per-epreuve details and impacted session counts so admins/teachers can spot and fix them
+- Commit 38318fb pushed by udevrard7, deployed and verified on https://sect-app.vercel.app
