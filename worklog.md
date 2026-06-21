@@ -525,3 +525,53 @@ Stage Summary:
 - RESPONSABLE/ADMIN can configure templates from the UE management page (Award icon button per UE)
 - Templates apply to all future PDF downloads from the Mes certificats page
 - Commit 1239c2b deployed on https://sect-app.vercel.app
+
+---
+Task ID: 19
+Agent: Main Agent (Z.ai Code)
+Task: Automate certificate template creation based on UE description (rules + AI)
+
+Work Log:
+- User asked: can we automate template creation based on the UE description?
+- Implemented a dual-mode auto-generation system:
+
+1. RULES MODE (instant, free, deterministic):
+   - 7 themed keyword dictionaries covering code, science, law, business, math, language, art
+   - Each theme has 40+ FR+EN keywords, specific colors, and a font
+   - Scores each theme by counting keyword matches in the UE text (code+nom+description), weighting longer keywords higher
+   - Returns the best-matching theme; falls back to default (green/gold) if nothing matches
+
+2. AI MODE (~3s, nuanced):
+   - Uses getAIProvider() (Mistral in production) to classify the UE
+   - Strict JSON schema validation: icon from 8 valid values, hex colors validated, font from 3 valid values
+   - Used when mode=ai OR when rules found nothing (score=0)
+   - Falls back to rules if AI fails (non-blocking)
+
+- API: POST /api/certificate-templates/auto-generate { ueId, mode?: 'rules'|'ai' }
+  Reads the UE from DB, analyzes code+nom+description, returns a suggestion WITHOUT persisting (caller reviews then saves via the existing POST). Auth: ENSEIGNANT/RESPONSABLE/ADMIN.
+
+- UI: two buttons added at the top of CertificateTemplateDialog:
+  - 'Par mots-clés (instantané)' (Wand2 icon) — fills the form instantly
+  - 'Par IA (~3s)' (Sparkles icon) — for nuanced suggestions
+  Both show a spinner while running and a toast with the source/message.
+
+- Theme color mapping:
+  code→navy+violet, science→teal+cyan, law→burgundy+gold, business→amber+orange,
+  math→indigo+blue, language→rose+pink, art→purple+fuchsia
+
+- Verified on all 5 existing UEs (rules mode):
+  UE-INFO-L201 (Bureautique II) → code (score 3) ✅
+  UE-INFO-L202 (Programmation Système) → code (score 8) ✅
+  UE-INFO-L203 (Python et de Java) → code (score 10) ✅
+  UE-INFO-L204 (Génie Logiciel) → code (score 6) ✅
+  UE-SEG-L201 (Économie et Gestion) → business (score 7) ✅
+
+- ESLint clean; no DB schema change
+- Committed as 06dc367 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (1239c2b..06dc367) -> Vercel auto-deploy triggered
+- Verified production: auto-generate endpoint returns 401 without auth (live & protected)
+
+Stage Summary:
+- Certificate templates can now be auto-generated from the UE description with a single click
+- Two modes: instant keyword rules (default, free) or AI (for nuanced cases)
+- The auto-generated suggestion fills the form for review before saving
+- Commit 06dc367 deployed on https://sect-app.vercel.app
