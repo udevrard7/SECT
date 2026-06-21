@@ -32,6 +32,7 @@ import {
   ChevronDown,
   Trash2,
   Wrench,
+  ScrollText,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -88,6 +89,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ChevronDown,
   Trash2,
   Wrench,
+  ScrollText,
 }
 
 // ─── Modern Role Color System ───
