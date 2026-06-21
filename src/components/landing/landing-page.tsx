@@ -207,18 +207,10 @@ function Navbar({ onLogin }: { onLogin: () => void }) {
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
             <MagneticButton
-              variant="ghost"
-              className="text-sm text-zinc-400 hover:text-white"
-              onClick={onLogin}
-            >
-              Connexion
-            </MagneticButton>
-            <MagneticButton
               className="text-sm bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-5 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-shadow duration-300 rounded-lg"
               onClick={onLogin}
             >
-              Commencer
-              <ArrowRight className="ml-1.5 h-4 w-4" />
+              Connexion
             </MagneticButton>
           </div>
 
@@ -256,7 +248,7 @@ function Navbar({ onLogin }: { onLogin: () => void }) {
                   className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-lg"
                   onClick={onLogin}
                 >
-                  Commencer
+                  Connexion
                 </MagneticButton>
               </div>
             </motion.div>
@@ -1260,8 +1252,8 @@ function DashboardPreview() {
           {/* Main image */}
           <div ref={imageRef} className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/5">
             <img
-              src="/dashboard-command-center.png"
-              alt="SECT Centre de Commande - Analytics et monitoring en temps reel"
+              src="/exam-monitoring.png"
+              alt="SECT Centre de Commande - Surveillance des examens en ligne en temps reel"
               className="w-full h-auto block"
             />
             {/* Scan line overlay */}
@@ -1296,7 +1288,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
   const plans = [
     {
       name: 'Starter',
-      price: '499',
+      price: '30 000',
       description: 'Pour les petites institutions qui debutent avec l\'evaluation numerique.',
       features: [
         'Jusqu\'a 100 etudiants',
@@ -1310,7 +1302,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
     },
     {
       name: 'Professionnel',
-      price: '1299',
+      price: '80 000',
       description: 'Pour les institutions en croissance qui veulent exploiter la puissance de l\'IA.',
       features: [
         'Jusqu\'a 2 000 etudiants',
@@ -1423,7 +1415,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
                 ) : (
                   <div className="flex items-baseline gap-1">
                     <span className="text-4xl font-bold text-white">{plan.price}</span>
-                    <span className="text-sm text-zinc-500">MAD/mois</span>
+                    <span className="text-sm text-zinc-500">FCFA/mois</span>
                   </div>
                 )}
               </div>
