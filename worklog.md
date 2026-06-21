@@ -787,3 +787,40 @@ Stage Summary:
 - Certificate now has premium design: triple borders, corner flourishes, colored header band, title diamonds, double separators, colored details box accent, official SECT seal
 - Date→signature spacing reduced from 22mm to 10mm — physical signing and stamping now possible
 - Commit 4f68474 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 25
+Agent: Main Agent (Z.ai Code)
+Task: Enrich certificate design (colors, decorative band, detailed seal) + reduce date→signature spacing
+
+Work Log:
+- User feedback: certificate could be more beautiful/colorful, and the gap between 'Émis le [date]' and the responsable signature line was too large to practically sign and stamp on a printed copy.
+- VLM baseline analysis: rated the current design 6/10 — 'professionnel mais manque de personnalité', suggested more colors, decorative bands, enriched seal, better balance.
+
+Design improvements implemented:
+1. Decorative color band under the certificate title: thick accent line (1.5mm) + thin primary line below, 60mm wide centered. Visually anchors the title and adds a premium feel.
+2. Enriched official SECT seal (cachet):
+   - Larger (15mm radius, was 14)
+   - Tinted fill behind the seal (primary color at 8% mixed with white)
+   - 3 concentric rings: thick accent outer (1.5mm) + thin primary inner (0.6mm) + tiny dotted decorative ring (45 dots at 8° intervals) between them
+   - 5-pointed star ABOVE 'SECT' (accent fill, drawn as 10 triangles from center)
+   - 'SECT' text bigger (12pt, was 10) and 'CERTIFIÉ' bigger (7pt, was 5) for readability
+   - More authentic medallion look
+
+Spacing fix:
+- Reduced date→signature gap from y+=10mm to y+=6mm. VLM confirms: 'réduit/serré, suffisant pour signature manuscrite + cachet, sans espace excessif'.
+- Signature line now uses primary color (was border) at 0.5mm width for better visibility when signing.
+- Responsable name font increased from 10pt to 11pt for readability.
+
+VLM verification on v7 PDF:
+  ✅ Bottom: 'espacement réduit/serré optimal pour signer + cachet, cachet plus détaillé (étoile centrale, anneaux, texte lisible), note 8/10'
+  ✅ Full: 'note 8/10, bandeau violet sous le titre, couleurs harmonieuses et élégantes'
+- Overall rating improved from 6/10 → 8/10
+- ESLint clean
+- Committed as 0f3a4bb (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (4f68474..0f3a4bb) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Certificate design enriched: decorative color band under title, detailed 3-ring medallion seal with center star, better color harmony
+- Date→signature spacing reduced from 10mm to 6mm — now practical to sign and stamp on a printed copy
+- VLM rating 6/10 → 8/10
+- Commit 0f3a4bb deployed on https://sect-app.vercel.app
