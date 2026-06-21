@@ -146,8 +146,12 @@ export function MesCertificatsPage() {
     setError(null)
 
     try {
-      // 1. Trigger recalculation
-      await fetch('/api/validations-ue/compute', { method: 'POST' }).catch(() => {
+      // 1. Trigger recalculation (computes validations + generates certificates)
+      await fetch('/api/validations-ue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch(() => {
         // Silently continue if compute endpoint is not available
       })
 

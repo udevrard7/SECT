@@ -234,23 +234,35 @@ export async function computeValidationsForStudent(etudiantId: string): Promise<
   )
 
   for (const ue of allUEs) {
-    // Calculate average from all completed exam sessions
-    const allSessions = ue.epreuves.flatMap((ep) => ep.sessions)
+    // Calculate average from all completed exam sessions.
+    // IMPORTANT: each session's raw score is on the exam's noteTotal scale
+    // (e.g. 40/60). We normalize every score to /20 so that the moyenneUE
+    // and noteFinale are always on a /20 scale, which is what the
+    // validation threshold (>= 10) and certificate tiers (>= 16, >= 10)
+    // expect. Without this, an exam with noteTotal=60 and a score of 50
+    // would be wrongly treated as 50/20 -> false "Excellence" certificate.
     const nbEpreuvesTotal = ue.epreuves.length
-    const nbEpreuvesCompletees = allSessions.length
+    const normalizedNotes: number[] = []
+    for (const ep of ue.epreuves) {
+      const noteTotal = ep.noteTotal && ep.noteTotal > 0 ? ep.noteTotal : 20
+      for (const sess of ep.sessions) {
+        if (sess.score == null) continue
+        normalizedNotes.push((sess.score * 20) / noteTotal)
+      }
+    }
+    const nbEpreuvesCompletees = normalizedNotes.length
 
     let moyenneUE = 0
     let noteNormale: number | null = null
     let noteRattrapage: number | null = null
 
-    if (allSessions.length > 0) {
-      const totalScore = allSessions.reduce((sum, s) => sum + (s.score ?? 0), 0)
-      moyenneUE = totalScore / allSessions.length
+    if (normalizedNotes.length > 0) {
+      moyenneUE = normalizedNotes.reduce((sum, n) => sum + n, 0) / normalizedNotes.length
     }
 
-    // Use the moyenneUE as the noteFinale
+    // Use the moyenneUE as the noteFinale (on a /20 scale)
     const noteFinale = moyenneUE
-    noteNormale = allSessions.length > 0 ? moyenneUE : null
+    noteNormale = normalizedNotes.length > 0 ? moyenneUE : null
 
     // Determine validation status
     const statut = nbEpreuvesCompletees === 0
