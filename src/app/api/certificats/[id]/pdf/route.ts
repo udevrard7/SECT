@@ -13,7 +13,7 @@ async function _GET(
     const { id } = await context.params
     const { user } = context
 
-    // Fetch the certificate + the UE's certificate template (if any)
+    // Fetch the certificate + the UE's certificate template (if any) + issuer name
     const certificat = await withRetry(() =>
       db.certificat.findUnique({
         where: { id },
@@ -24,6 +24,9 @@ async function _GET(
               statut: true,
               uniteEnseignementId: true,
             },
+          },
+          emettePar: {
+            select: { id: true, name: true },
           },
         },
       })
@@ -98,6 +101,7 @@ async function _GET(
       dateEmission: certificat.dateEmission,
       verificationUrl,
       statut: certificat.statut,
+      emetteParNom: certificat.emettePar?.name ?? null,
       template: templateData,
     })
 
