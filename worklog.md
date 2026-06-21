@@ -426,3 +426,33 @@ Stage Summary:
 - Mes certificats page no longer crashes: DB fields are properly mapped to the frontend interface with defensive coercion
 - The crash was a latent bug exposed by the certificate generation fixes in Tasks 11/12 (0 -> 10 certificates)
 - Commit 2010fe6 pushed by udevrard7, deployed on https://sect-app.vercel.app
+
+---
+Task ID: 16
+Agent: Main Agent (Z.ai Code)
+Task: Fix certificate verification page — grade not visible, verification code empty, 'undefined' name prefix
+
+Work Log:
+- User uploaded screenshot (upload/verif.jpg) showing 3 bugs on /verify/[code] page:
+  1. Note field showed "/20" with no numeric value before it
+  2. "Code de vérification" field was empty
+  3. Student name showed "undefined ASSANI Emile Junior Assani"
+- VLM (glm-4.6v) confirmed all 3 bugs from the screenshot
+- Inspected the verify API (src/app/api/certificats/verify/[code]/route.ts) and page (src/app/verify/[code]/page.tsx):
+  - Bug 1: API returned noteFinale; page read certificat.note -> undefined -> rendered as "/20"
+  - Bug 2: API response omitted codeVerification entirely -> page rendered empty
+  - Bug 3: page rendered `${etudiantPrenom} ${etudiantNom}` but API/DB only has etudiantNom (full name). etudiantPrenom was undefined -> "undefined ASSANI..."
+
+Fixes:
+- API (route.ts): added 'note' (alias for noteFinale) and 'codeVerification' to the response. The verification code is public info — it IS the code being verified, safe to display.
+- Page (page.tsx): removed etudiantPrenom from CertificatData interface; name now renders etudiantNom directly. Note renders with toFixed(2) trimmed + '/20' as muted suffix. All DetailRow values now have || '—' fallbacks so no field can show 'undefined' again.
+- ESLint clean
+- Verified on real EMIS certificate SECT-9Z18-OIR4 (ASSANI, Bureautique II, 12.5/20, Assez Bien):
+  - Local direct DB test: API response shape correct (note=12.5, codeVerification present, etudiantNom full)
+  - Production Vercel after deploy: GET /api/certificats/verify/SECT-9Z18-OIR4 returns note=12.5, codeVerification=SECT-9Z18-OIR4, etudiantNom=ASSANI Emile Junior Assani. GET /verify/SECT-9Z18-OIR4 -> 200.
+- Committed as 8099731 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (2010fe6..8099731)
+
+Stage Summary:
+- Verify page now displays: grade value (e.g. "12,5/20"), verification code (e.g. "SECT-9Z18-OIR4"), and clean student name (no "undefined" prefix)
+- All fields are defensive (fallback to '—') so missing data never shows 'undefined'
+- Commit 8099731 deployed and verified on https://sect-app.vercel.app
