@@ -1143,3 +1143,37 @@ Stage Summary:
 - All 6 layout corrections applied and VLM-verified
 - Certificate now has: subtle watermark + white overlay for readability, capitalized student name, modern 3×2 data grid with highlighted NOTE/MENTION cells, balanced flexbox signatures, improved footer with gold separator
 - Commit 1d1c0ee deployed on https://sect-app.vercel.app
+
+---
+Task ID: 36
+Agent: Main Agent (Z.ai Code)
+Task: Definitively remove the certificate template system + clean frontend
+
+Work Log:
+- User requested complete removal of the per-UE certificate template system
+
+DELETED files:
+- prisma/schema.prisma: CertificateTemplate model + relation on UniteEnseignement
+- src/app/api/certificate-templates/route.ts (CRUD API)
+- src/app/api/certificate-templates/auto-generate/route.ts (rules+AI auto-generate)
+- src/components/responsable/certificate-template-dialog.tsx (admin UI dialog)
+- src/components/responsable/unites-enseignement-page.tsx (orphan file, never imported)
+
+CLEANED files:
+- src/lib/pdf/certificat-pdf-react.tsx: removed CertificatTemplateData interface + template field from CertificatPDFData
+- src/app/api/certificats/[id]/pdf/route.ts: removed template loading from DB + templateData passing
+- src/components/responsable/programme-academique-page.tsx: removed Award import, CertificateTemplateDialog import, templateUE/templateDialogOpen state, onTemplate prop, Award button, dialog render
+
+DB: prisma db push applied — CertificateTemplate table (5 rows) dropped from Supabase
+
+The certificate PDF design is now fully static: fixed navy #1B3A5C + gold #F4B942 palette, code/UML grid watermark, no per-UE customization.
+
+- ESLint clean (0 errors)
+- Committed as 96778fa (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (1d1c0ee..96778fa)
+
+Stage Summary:
+- Certificate template system completely removed: model, API, UI, all references
+- DB table dropped from Supabase
+- Frontend cleaned: no more Award button on UE page, no template dialog
+- Certificate design is now static (fixed colors + watermark for all UE)
+- Commit 96778fa deployed on https://sect-app.vercel.app
