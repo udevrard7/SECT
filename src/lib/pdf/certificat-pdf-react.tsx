@@ -1,13 +1,16 @@
 /**
- * Certificate PDF Document — Modern Elegant Design (Landscape A4)
+ * CertificatePDF.tsx — Modern Geometric Certificate (A4 Landscape)
  *
- * Built with @react-pdf/renderer for React-based PDF generation.
- * Inspired by the user's reference template: diagonal corner bands,
- * navy + gold palette, mixed typography (serif title + script name +
- * sans-serif body), central seal, two-column signature.
+ * @react-pdf/renderer component reproducing the modern elegant design:
+ * - Diagonal navy/gold corner bands (SVG polygons)
+ * - Mixed typography: Playfair Display (serif) + Great Vibes (script) + Inter (sans)
+ * - Central seal with TWO gold ribbons descending below
+ * - 3 decorative diamonds (gold-navy-gold) under the title
+ * - Thematic grid watermark (opacity 0.05)
+ * - Justified body paragraph (unified, not separate fields)
+ * - Two-column signature: left (teacher) + center (seal) + right (responsable)
  *
- * Font registration happens at module load. The component is rendered
- * server-side via renderToBuffer in the API route.
+ * Colors: navy #1B3A5C, gold #F4B942, text #2C3E50, textLight #7F8C8D
  */
 
 import React from 'react'
@@ -22,50 +25,34 @@ import {
   Svg,
   Polygon,
   Circle,
-  Ellipse,
   Rect,
+  Line,
+  G,
   renderToBuffer,
   type Styles,
 } from '@react-pdf/renderer'
 import path from 'path'
-import fs from 'fs'
 
-// ─── Font Registration (server-side, reads bundled TTF files) ───
+// ─── Font Registration ───
 
 const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts')
 
-function registerFonts() {
-  try {
-    // Playfair Display — elegant serif for the certificate title
-    Font.register({
-      family: 'PlayfairDisplay',
-      fonts: [
-        { src: path.join(FONTS_DIR, 'PlayfairDisplay-Regular.ttf'), fontWeight: 'normal' },
-      ],
-    })
-    // Great Vibes — script/cursive for the student name (handwriting style)
-    Font.register({
-      family: 'GreatVibes',
-      fonts: [
-        { src: path.join(FONTS_DIR, 'GreatVibes-Regular.ttf'), fontWeight: 'normal' },
-      ],
-    })
-    // Inter — modern sans-serif for body text (Regular + Italic variable fonts
-    // cover all weights via the variable font axes)
-    Font.register({
-      family: 'Inter',
-      fonts: [
-        { src: path.join(FONTS_DIR, 'Inter-Regular.ttf'), fontWeight: 'normal' },
-        { src: path.join(FONTS_DIR, 'Inter-Regular.ttf'), fontWeight: 'bold' },
-        { src: path.join(FONTS_DIR, 'Inter-Italic.ttf'), fontWeight: 'normal', fontStyle: 'italic' },
-      ],
-    })
-  } catch (err) {
-    console.error('[certificat-pdf-react] Font registration failed:', err)
-  }
-}
-
-registerFonts()
+Font.register({
+  family: 'PlayfairDisplay',
+  fonts: [{ src: path.join(FONTS_DIR, 'PlayfairDisplay-Regular.ttf'), fontWeight: 'normal' }],
+})
+Font.register({
+  family: 'GreatVibes',
+  fonts: [{ src: path.join(FONTS_DIR, 'GreatVibes-Regular.ttf'), fontWeight: 'normal' }],
+})
+Font.register({
+  family: 'Inter',
+  fonts: [
+    { src: path.join(FONTS_DIR, 'Inter-Regular.ttf'), fontWeight: 'normal' },
+    { src: path.join(FONTS_DIR, 'Inter-Regular.ttf'), fontWeight: 'bold' },
+    { src: path.join(FONTS_DIR, 'Inter-Italic.ttf'), fontWeight: 'normal', fontStyle: 'italic' },
+  ],
+})
 
 // ─── Types ───
 
@@ -104,361 +91,16 @@ export interface CertificatTemplateData {
   fontFamily: string | null
 }
 
-// ─── Color helpers ───
+// ─── Color constants (exact palette) ───
 
-function hexToRgb(hex: string): [number, number, number] {
-  const cleaned = hex.replace(/^#/, '').trim()
-  return [
-    parseInt(cleaned.slice(0, 2), 16),
-    parseInt(cleaned.slice(2, 4), 16),
-    parseInt(cleaned.slice(4, 6), 16),
-  ]
-}
+const NAVY = '#1B3A5C'
+const GOLD = '#F4B942'
+const TEXT_DARK = '#2C3E50'
+const TEXT_LIGHT = '#7F8C8D'
+const BG_LIGHT = '#F8F9FA'
+const WHITE = '#FFFFFF'
 
-function rgbStr(c: [number, number, number]): string {
-  return `rgb(${c[0]},${c[1]},${c[2]})`
-}
-
-function mixWithWhite(c: [number, number, number], ratio: number): string {
-  return `rgb(${Math.round(c[0] * ratio + 255 * (1 - ratio))},${Math.round(c[1] * ratio + 255 * (1 - ratio))},${Math.round(c[2] * ratio + 255 * (1 - ratio))})`
-}
-
-function resolveColors(template: CertificatTemplateData | null | undefined) {
-  const primary = (template?.primaryColor && /^#?[0-9a-fA-F]{6}$/.test(template.primaryColor))
-    ? hexToRgb(template.primaryColor)
-    : [27, 58, 92] as [number, number, number] // navy #1B3A5C
-  const accent = (template?.accentColor && /^#?[0-9a-fA-F]{6}$/.test(template.accentColor))
-    ? hexToRgb(template.accentColor)
-    : [244, 185, 66] as [number, number, number] // gold #F4B942
-  return { primary, accent }
-}
-
-// ─── Styles ───
-
-function buildStyles(primary: [number, number, number], accent: [number, number, number]): Styles {
-  const primaryStr = rgbStr(primary)
-  const accentStr = rgbStr(accent)
-
-  return StyleSheet.create({
-    // Page (A4 landscape)
-    page: {
-      width: '297mm',
-      height: '210mm',
-      backgroundColor: '#F8F9FA', // Fond très léger
-      position: 'relative',
-      overflow: 'hidden',
-      fontFamily: 'Inter',
-    },
-
-    // Corner SVG containers (positioned at each corner)
-    cornerTL: { position: 'absolute', top: 0, left: 0 },
-    cornerTR: { position: 'absolute', top: 0, right: 0 },
-    cornerBL: { position: 'absolute', bottom: 0, left: 0 },
-    cornerBR: { position: 'absolute', bottom: 0, right: 0 },
-
-    // Watermark — filigrane behind the content (opacity 12%)
-    watermarkImage: {
-      position: 'absolute',
-      top: '15%',
-      left: '15%',
-      width: '70%',
-      height: '70%',
-      opacity: 0.12,
-      objectFit: 'contain' as const,
-    },
-    watermarkIcon: {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      opacity: 0.12,
-    },
-
-    // Borders (double frame)
-    borderOuter: {
-      position: 'absolute',
-      top: '8mm',
-      left: '8mm',
-      right: '8mm',
-      bottom: '8mm',
-      borderWidth: 1.2,
-      borderColor: primaryStr,
-      borderStyle: 'solid',
-    },
-    borderInner: {
-      position: 'absolute',
-      top: '12mm',
-      left: '12mm',
-      right: '12mm',
-      bottom: '12mm',
-      borderWidth: 0.4,
-      borderColor: accentStr,
-      borderStyle: 'solid',
-    },
-
-    // Content container (inside borders)
-    content: {
-      position: 'absolute',
-      top: '18mm',
-      left: '20mm',
-      right: '20mm',
-      bottom: '18mm',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-    },
-
-    // Establishment name
-    establishment: {
-      fontSize: 13,
-      fontFamily: 'Inter',
-      fontWeight: 'bold',
-      color: primaryStr,
-      textTransform: 'uppercase',
-      letterSpacing: 1.5,
-      marginBottom: 2,
-    },
-    location: {
-      fontSize: 9,
-      color: '#7F8C8D',
-      marginBottom: 8,
-    },
-
-    // Diamond separator
-    diamonds: {
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: 10,
-    },
-    diamond: {
-      width: 5,
-      height: 5,
-      transform: 'rotate(45deg)',
-    },
-    diamondPrimary: { backgroundColor: primaryStr },
-    diamondAccent: { backgroundColor: accentStr, width: 7, height: 7 },
-
-    // Title
-    title: {
-      fontSize: 38,
-      fontFamily: 'PlayfairDisplay',
-      color: '#2C3E50',
-      textAlign: 'center',
-      lineHeight: 1,
-    },
-    subtitle: {
-      fontSize: 16,
-      fontFamily: 'PlayfairDisplay',
-      color: '#2C3E50',
-      textAlign: 'center',
-      marginTop: 2,
-      marginBottom: 6,
-    },
-    typeLabel: {
-      fontSize: 11,
-      fontFamily: 'Inter',
-      fontWeight: 'bold',
-      color: accentStr,
-      textTransform: 'uppercase',
-      letterSpacing: 2,
-      marginBottom: 10,
-    },
-
-    // Intro text
-    intro: {
-      fontSize: 11,
-      color: '#7F8C8D',
-      fontStyle: 'italic',
-      marginBottom: 6,
-    },
-
-    // Student name (script font!)
-    studentName: {
-      fontSize: 36,
-      fontFamily: 'GreatVibes',
-      color: '#2C3E50',
-      textAlign: 'center',
-      marginBottom: 4,
-    },
-    studentInfo: {
-      fontSize: 9,
-      color: '#7F8C8D',
-      marginBottom: 8,
-    },
-
-    // UE section
-    ueIntro: {
-      fontSize: 10,
-      color: '#7F8C8D',
-      fontStyle: 'italic',
-      marginBottom: 4,
-    },
-    ueName: {
-      fontSize: 16,
-      fontFamily: 'PlayfairDisplay',
-      color: primaryStr,
-      textAlign: 'center',
-      marginBottom: 2,
-    },
-    ueCode: {
-      fontSize: 9,
-      color: '#7F8C8D',
-      marginBottom: 8,
-    },
-
-    // Details box
-    detailsBox: {
-      width: '70%',
-      backgroundColor: mixWithWhite(primary, 0.05),
-      borderWidth: 0.5,
-      borderColor: '#7F8C8D',
-      borderRadius: 3,
-      padding: '8px 12px',
-      marginBottom: 8,
-      display: 'flex',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-    },
-    detailItem: {
-      width: '50%',
-      display: 'flex',
-      flexDirection: 'row',
-      marginBottom: 3,
-    },
-    detailLabel: {
-      fontSize: 8,
-      color: accentStr,
-      fontWeight: 'bold',
-      marginRight: 4,
-    },
-    detailValue: {
-      fontSize: 8,
-      color: '#2C3E50',
-    },
-
-    // Date
-    date: {
-      fontSize: 9,
-      color: '#7F8C8D',
-      marginBottom: 8,
-    },
-
-    // Signature row
-    signatureRow: {
-      display: 'flex',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-end',
-      width: '80%',
-      marginTop: 'auto',
-    },
-    signatureCol: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      width: '35%',
-    },
-    signatureName: {
-      fontSize: 10,
-      fontFamily: 'Inter',
-      fontWeight: 'bold',
-      color: primaryStr,
-      marginBottom: 2,
-    },
-    signatureLine: {
-      width: '100%',
-      borderWidth: 0,
-      borderBottomWidth: 0.6,
-      borderBottomColor: primaryStr,
-      borderBottomStyle: 'solid',
-      marginBottom: 2,
-    },
-    signatureLabel: {
-      fontSize: 7,
-      color: '#7F8C8D',
-    },
-
-    // Seal (center, between signatures)
-    seal: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
-      borderWidth: 1.5,
-      borderColor: accentStr,
-      backgroundColor: mixWithWhite(primary, 0.08),
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-    },
-    sealInner: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      borderWidth: 0.5,
-      borderColor: primaryStr,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    sealStar: {
-      fontSize: 10,
-      color: accentStr,
-      marginBottom: 0,
-    },
-    sealText: {
-      fontSize: 9,
-      fontFamily: 'Inter',
-      fontWeight: 'bold',
-      color: primaryStr,
-    },
-    sealSubtext: {
-      fontSize: 5,
-      color: accentStr,
-      fontWeight: 'bold',
-    },
-
-    // Verification (bottom)
-    verification: {
-      position: 'absolute',
-      bottom: '6mm',
-      left: '20mm',
-      right: '20mm',
-      display: 'flex',
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 12,
-      fontSize: 7,
-      color: '#7F8C8D',
-    },
-    verificationItem: {
-      display: 'flex',
-      flexDirection: 'row',
-      gap: 3,
-    },
-    verificationLabel: { color: '#7F8C8D' },
-    verificationValue: { color: primaryStr, fontWeight: 'bold' },
-
-    // Footer
-    footer: {
-      position: 'absolute',
-      bottom: '3mm',
-      left: 0,
-      right: 0,
-      textAlign: 'center',
-      fontSize: 5,
-      color: '#7F8C8D',
-    },
-  })
-}
-
-// ─── Date format helper ───
+// ─── Helpers ───
 
 function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
@@ -469,248 +111,466 @@ function formatNote(note: number): string {
   return note % 1 === 0 ? note.toFixed(0) : note.toFixed(2)
 }
 
-// ─── Theme Icon SVG (watermark) ───
+// ─── Styles ───
 
-function ThemeIconSvg({ icon, color }: { icon: string; color: string }) {
-  const s = 200 // SVG viewport size
-  const c = s / 2 // center
+const styles = StyleSheet.create({
+  page: {
+    width: '297mm',
+    height: '210mm',
+    backgroundColor: BG_LIGHT,
+    position: 'relative',
+    overflow: 'hidden',
+    fontFamily: 'Inter',
+  },
 
-  switch (icon.toLowerCase()) {
-    case 'code':
-      // </> chevrons
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Polygon points={`${c - 50},${c - 30} ${c - 20},${c} ${c - 50},${c + 30}`} fill="none" stroke={color} strokeWidth="8" />
-          <Polygon points={`${c + 50},${c - 30} ${c + 20},${c} ${c + 50},${c + 30}`} fill="none" stroke={color} strokeWidth="8" />
-          <Polygon points={`${c - 5},${c + 30} ${c + 5},${c + 30} ${c + 2},${c - 30} ${c - 2},${c - 30}`} fill={color} />
-        </Svg>
-      )
-    case 'science':
-      // Atom
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Ellipse cx={c} cy={c} rx={60} ry={25} fill="none" stroke={color} strokeWidth="4" />
-          <Ellipse cx={c} cy={c} rx={60} ry={25} fill="none" stroke={color} strokeWidth="4" transform={`rotate(60 ${c} ${c})`} />
-          <Ellipse cx={c} cy={c} rx={60} ry={25} fill="none" stroke={color} strokeWidth="4" transform={`rotate(120 ${c} ${c})`} />
-          <Circle cx={c} cy={c} r={8} fill={color} />
-        </Svg>
-      )
-    case 'law':
-      // Scales of justice
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Polygon points={`${c},${c - 50} ${c},${c + 40}`} fill="none" stroke={color} strokeWidth="6" />
-          <Polygon points={`${c - 50},${c - 30} ${c + 50},${c - 30}`} fill="none" stroke={color} strokeWidth="6" />
-          <Polygon points={`${c - 50},${c - 30} ${c - 65},${c} ${c - 35},${c}`} fill="none" stroke={color} strokeWidth="4" />
-          <Polygon points={`${c + 50},${c - 30} ${c + 35},${c} ${c + 65},${c}`} fill="none" stroke={color} strokeWidth="4" />
-        </Svg>
-      )
-    case 'business':
-      // Bar chart
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Rect x={c - 40} y={c + 10} width={15} height={30} fill={color} />
-          <Rect x={c - 15} y={c - 10} width={15} height={50} fill={color} />
-          <Rect x={c + 10} y={c - 5} width={15} height={45} fill={color} />
-          <Rect x={c + 35} y={c - 30} width={15} height={70} fill={color} />
-        </Svg>
-      )
-    case 'math':
-      // π symbol
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Text x={c} y={c + 20} textAnchor="middle" fontSize="120" fontFamily="PlayfairDisplay" fill={color}>π</Text>
-        </Svg>
-      )
-    case 'language':
-      // Globe
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Circle cx={c} cy={c} r={50} fill="none" stroke={color} strokeWidth="4" />
-          <Ellipse cx={c} cy={c} rx={20} ry={50} fill="none" stroke={color} strokeWidth="3" />
-          <Ellipse cx={c} cy={c} rx={50} ry={20} fill="none" stroke={color} strokeWidth="3" />
-        </Svg>
-      )
-    case 'art':
-      // Palette
-      return (
-        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <Circle cx={c} cy={c} r={50} fill="none" stroke={color} strokeWidth="4" />
-          <Circle cx={c - 20} cy={c - 20} r={6} fill={color} />
-          <Circle cx={c + 20} cy={c - 20} r={6} fill={color} />
-          <Circle cx={c + 25} cy={c + 10} r={6} fill={color} />
-          <Circle cx={c - 25} cy={c + 10} r={6} fill={color} />
-          <Circle cx={c} cy={c + 25} r={6} fill={color} />
-        </Svg>
-      )
-    default:
-      return null
+  // Corner containers
+  corner: { position: 'absolute' },
+
+  // Watermark grid wrapper (View with absolute positioning, contains the SVG)
+  watermarkWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 842,
+    height: 595,
+    opacity: 0.05,
+  },
+
+  // Borders
+  borderOuter: {
+    position: 'absolute',
+    top: '8mm',
+    left: '8mm',
+    right: '8mm',
+    bottom: '8mm',
+    borderWidth: 1.5,
+    borderColor: NAVY,
+    borderStyle: 'solid',
+  },
+  borderInner: {
+    position: 'absolute',
+    top: '11mm',
+    left: '11mm',
+    right: '11mm',
+    bottom: '11mm',
+    borderWidth: 0.5,
+    borderColor: GOLD,
+    borderStyle: 'solid',
+  },
+
+  // Content
+  content: {
+    position: 'absolute',
+    top: '14mm',
+    left: '25mm',
+    right: '25mm',
+    bottom: '14mm',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+
+  // Logo
+  logo: {
+    marginBottom: 4,
+  },
+
+  // Establishment header
+  establishment: {
+    fontSize: 10,
+    color: TEXT_LIGHT,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+
+  // Diamonds
+  diamonds: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginVertical: 8,
+  },
+  diamondGold: {
+    width: 6,
+    height: 6,
+    backgroundColor: GOLD,
+    transform: 'rotate(45deg)',
+  },
+  diamondNavy: {
+    width: 8,
+    height: 8,
+    backgroundColor: NAVY,
+    transform: 'rotate(45deg)',
+  },
+
+  // Title
+  title: {
+    fontSize: 42,
+    fontFamily: 'PlayfairDisplay',
+    color: TEXT_DARK,
+    textAlign: 'center',
+    lineHeight: 1,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontFamily: 'PlayfairDisplay',
+    color: TEXT_DARK,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 4,
+  },
+
+  // Intro
+  intro: {
+    fontSize: 11,
+    color: TEXT_LIGHT,
+    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
+  // Student name (script)
+  studentName: {
+    fontSize: 42,
+    fontFamily: 'GreatVibes',
+    color: TEXT_DARK,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  studentInfo: {
+    fontSize: 9,
+    color: TEXT_LIGHT,
+    marginBottom: 8,
+  },
+
+  // Body paragraph (justified)
+  body: {
+    fontSize: 10,
+    color: TEXT_DARK,
+    textAlign: 'justify',
+    lineHeight: 1.6,
+    maxWidth: '80%',
+    marginBottom: 6,
+  },
+
+  // Signature row
+  signatureRow: {
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    width: '90%',
+    marginTop: 'auto',
+    marginBottom: 8,
+  },
+  sigCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    width: '30%',
+  },
+  sigName: {
+    fontSize: 10,
+    fontFamily: 'Inter',
+    fontWeight: 'bold',
+    color: NAVY,
+    marginBottom: 3,
+  },
+  sigLine: {
+    width: '100%',
+    borderBottomWidth: 0.6,
+    borderBottomColor: NAVY,
+    borderBottomStyle: 'solid',
+    marginBottom: 3,
+  },
+  sigLabel: {
+    fontSize: 8,
+    color: TEXT_LIGHT,
+    textAlign: 'center',
+  },
+
+  // Footer
+  footer: {
+    position: 'absolute',
+    bottom: '5mm',
+    left: '25mm',
+    right: '25mm',
+    textAlign: 'center',
+    fontSize: 7,
+    color: TEXT_LIGHT,
+  },
+})
+
+// ─── Grid Watermark SVG ───
+
+function GridWatermark() {
+  const cellSize = 15 // mm
+  const cols = Math.ceil(297 / cellSize)
+  const rows = Math.ceil(210 / cellSize)
+  const lines: React.ReactElement[] = []
+
+  // Vertical lines
+  for (let i = 0; i <= cols; i++) {
+    const x = i * cellSize
+    lines.push(
+      <Line key={`v${i}`} x1={x} y1={0} x2={x} y2={210} stroke={NAVY} strokeWidth="0.3" />
+    )
   }
+  // Horizontal lines
+  for (let i = 0; i <= rows; i++) {
+    const y = i * cellSize
+    lines.push(
+      <Line key={`h${i}`} x1={0} y1={y} x2={297} y2={y} stroke={NAVY} strokeWidth="0.3" />
+    )
+  }
+
+  // Wrap SVG in a View with position:absolute (SVGs don't honor position in their own style)
+  return (
+    <View style={styles.watermarkWrapper} fixed>
+      <Svg width={842} height={595} viewBox="0 0 297 210">
+        {lines}
+      </Svg>
+    </View>
+  )
 }
 
-// ─── Certificate Document Component ───
+// ─── Corner Bands SVG ───
+
+function CornerBands() {
+  return (
+    <>
+      {/* Top-left */}
+      <View style={[styles.corner, { top: 0, left: 0 }]} fixed>
+        <Svg width="170" height="170" viewBox="0 0 60 60">
+          <Polygon points="0,0 60,0 0,60" fill={NAVY} />
+          <Polygon points="0,0 38,0 0,38" fill={GOLD} />
+        </Svg>
+      </View>
+      {/* Top-right */}
+      <View style={[styles.corner, { top: 0, right: 0 }]} fixed>
+        <Svg width="170" height="170" viewBox="0 0 60 60">
+          <Polygon points="60,0 60,60 0,0" fill={NAVY} />
+          <Polygon points="60,0 60,38 22,0" fill={GOLD} />
+        </Svg>
+      </View>
+      {/* Bottom-left */}
+      <View style={[styles.corner, { bottom: 0, left: 0 }]} fixed>
+        <Svg width="170" height="170" viewBox="0 0 60 60">
+          <Polygon points="0,60 60,60 0,0" fill={NAVY} />
+          <Polygon points="0,60 38,60 0,22" fill={GOLD} />
+        </Svg>
+      </View>
+      {/* Bottom-right */}
+      <View style={[styles.corner, { bottom: 0, right: 0 }]} fixed>
+        <Svg width="170" height="170" viewBox="0 0 60 60">
+          <Polygon points="60,60 0,60 60,0" fill={NAVY} />
+          <Polygon points="60,60 22,60 60,22" fill={GOLD} />
+        </Svg>
+      </View>
+    </>
+  )
+}
+
+// ─── Central Seal with Ribbons ───
+
+function CentralSeal() {
+  // The seal is a navy circle with gold border, "SECT CERTIFIÉ" inside,
+  // and TWO gold ribbons descending below (award-ribbon style).
+  const sealSize = 55 // pt diameter
+  const ribbonW = 18 // pt ribbon width
+  const ribbonH = 25 // pt ribbon length below seal
+
+  return (
+    <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '30%' }}>
+      {/* Seal circle + ribbons in one SVG */}
+      <Svg width={sealSize + 10} height={sealSize + ribbonH + 10} viewBox={`0 0 ${sealSize + 10} ${sealSize + ribbonH + 10}`}>
+        {/* Ribbons (drawn FIRST, behind the circle) */}
+        {/* Left ribbon */}
+        <Polygon
+          points={`${sealSize / 2 + 5 - ribbonW / 2 - 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5 + ribbonH - 5} ${sealSize / 2 + 5 - ribbonW / 2 - 3},${sealSize / 2 + 5 + ribbonH} ${sealSize / 2 + 5 - ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3}`}
+          fill={GOLD}
+        />
+        {/* Right ribbon */}
+        <Polygon
+          points={`${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2 + 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3} ${sealSize / 2 + 5 + ribbonW / 2 + 3},${sealSize / 2 + 5 + ribbonH} ${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5 + ribbonH - 5}`}
+          fill={GOLD}
+        />
+        {/* Ribbon shadows (darker gold for depth) */}
+        <Polygon
+          points={`${sealSize / 2 + 5 - ribbonW / 2},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5 + ribbonH - 5} ${sealSize / 2 + 5 - ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3}`}
+          fill="#D4A017"
+        />
+        <Polygon
+          points={`${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3} ${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5 + ribbonH - 5}`}
+          fill="#D4A017"
+        />
+
+        {/* Outer circle (gold border) */}
+        <Circle cx={sealSize / 2 + 5} cy={sealSize / 2 + 5} r={sealSize / 2} fill={NAVY} stroke={GOLD} strokeWidth="2.5" />
+        {/* Inner circle (thin gold ring) */}
+        <Circle cx={sealSize / 2 + 5} cy={sealSize / 2 + 5} r={sealSize / 2 - 4} fill="none" stroke={GOLD} strokeWidth="0.8" />
+
+        {/* Decorative dots around inner ring */}
+        {Array.from({ length: 16 }).map((_, i) => {
+          const angle = (i * 360) / 16
+          const rad = (angle * Math.PI) / 180
+          const dotR = sealSize / 2 - 2
+          return (
+            <Circle
+              key={i}
+              cx={sealSize / 2 + 5 + dotR * Math.cos(rad)}
+              cy={sealSize / 2 + 5 + dotR * Math.sin(rad)}
+              r="0.8"
+              fill={GOLD}
+            />
+          )
+        })}
+
+        {/* Center star (5-pointed) */}
+        {Array.from({ length: 10 }).map((_, i) => {
+          const outerR = 5
+          const innerR = 2.1
+          const r = i % 2 === 0 ? outerR : innerR
+          const a1 = (Math.PI / 5) * i - Math.PI / 2
+          const a2 = (Math.PI / 5) * (i + 1) - Math.PI / 2
+          const cx = sealSize / 2 + 5
+          const cy = sealSize / 2 + 5 - 7
+          return (
+            <Polygon
+              key={`star${i}`}
+              points={`${cx},${cy} ${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)} ${cx + r * Math.cos(a2)},${cy + r * Math.sin(a2)}`}
+              fill={GOLD}
+            />
+          )
+        })}
+      </Svg>
+
+      {/* Text below the seal (overlapping the ribbons area) */}
+      <View style={{ marginTop: -18 }}>
+        <Text style={{ fontSize: 9, fontFamily: 'Inter', fontWeight: 'bold', color: WHITE, textAlign: 'center' }}>SECT</Text>
+        <Text style={{ fontSize: 6, fontFamily: 'Inter', fontWeight: 'bold', color: GOLD, textAlign: 'center' }}>CERTIFIÉ</Text>
+      </View>
+    </View>
+  )
+}
+
+// ─── Logo Component (auto-fit, preserve aspect ratio) ───
+
+function Logo({ logo, nom }: { logo: string | null; nom: string }) {
+  if (!logo) {
+    // Fallback: text-only establishment name as "logo"
+    return (
+      <View style={styles.logo}>
+        <Text style={{ fontSize: 16, fontFamily: 'PlayfairDisplay', color: NAVY, textAlign: 'center' }}>
+          {nom}
+        </Text>
+      </View>
+    )
+  }
+  return (
+    <View style={styles.logo}>
+      <Image src={logo} style={{ width: 120, height: 50, objectFit: 'contain' as const }} alt="" />
+    </View>
+  )
+}
+
+// ─── Main Certificate Document ───
 
 export function CertificateDocument({ data }: { data: CertificatPDFData }) {
-  const { primary, accent } = resolveColors(data.template ?? null)
-  const styles = buildStyles(primary, accent)
+  // Determine subtitle based on type
+  const subtitle = data.type === 'EXCELLENCE'
+    ? "D'EXCELLENCE"
+    : data.type === 'ACCOMPLISSEMENT'
+      ? "D'ACCOMPLISSEMENT"
+      : 'DE PARTICIPATION'
 
-  const typeLabel = data.type === 'EXCELLENCE' ? 'Excellence'
-    : data.type === 'ACCOMPLISSEMENT' ? 'Accomplissement'
-    : 'Participation'
+  // Build the body paragraph (unified, justified)
+  const sessionLabel = data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
+  const bodyText = `a validé avec succès l'unité d'enseignement ${data.ueNom} (Code : ${data.ueCode}, Filière : ${data.filiereNom}) avec la note finale de ${formatNote(data.noteFinale)}/20 (Mention : ${data.mention || '—'}) lors de la Session ${sessionLabel}${data.anneeAcademique ? ` de l'année ${data.anneeAcademique}` : ''}.`
 
-  const location = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
-
-  const details = [
-    { label: 'Filière', value: `${data.filiereNom}${data.filiereCode ? ` (${data.filiereCode})` : ''}` },
-    { label: 'Note finale', value: `${formatNote(data.noteFinale)}/20${data.mention ? ` — ${data.mention}` : ''}` },
-    { label: 'Session', value: data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale' },
-    { label: 'Crédits ECTS', value: data.creditsECTS ? `${data.creditsECTS} crédits` : 'N/A' },
-  ]
-  if (data.anneeAcademique) details.push({ label: 'Année', value: data.anneeAcademique })
-
-  const matriculeOk = !!data.etudiantMatricule && data.etudiantMatricule.trim() !== ''
-  const niveauOk = !!data.etudiantNiveau && data.etudiantNiveau.trim() !== ''
+  // Student info line
   const studentParts: string[] = []
-  if (matriculeOk) studentParts.push(`Matricule: ${data.etudiantMatricule}`)
-  if (niveauOk) studentParts.push(`Niveau: ${data.etudiantNiveau}`)
+  if (data.etudiantMatricule) studentParts.push(`Matricule : ${data.etudiantMatricule}`)
+  if (data.etudiantNiveau) studentParts.push(`Niveau : ${data.etudiantNiveau}`)
+  const studentInfo = studentParts.join('  •  ')
+
+  // Establishment header
+  const location = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
+  const establishmentHeader = location ? `${data.etablissementNom} — ${location}` : data.etablissementNom
+
+  // Footer
+  const footerText = `Émis le ${formatDate(data.dateEmission)}  |  Code : ${data.codeVerification}  |  Vérification : ${data.verificationUrl}`
 
   return (
     <Document>
       <Page size={[842, 595]} style={styles.page}>
-        {/* Corner bands — SVG diagonal triangles (4 corners × 2 layers) */}
-        {/* Top-left: primary triangle (60mm) + accent triangle (38mm) */}
-        <View style={styles.cornerTL} fixed>
-          <Svg width="170" height="170" viewBox="0 0 60 60">
-            <Polygon points="0,0 60,0 0,60" fill={rgbStr(primary)} />
-            <Polygon points="0,0 38,0 0,38" fill={rgbStr(accent)} />
-          </Svg>
-        </View>
-        {/* Top-right */}
-        <View style={styles.cornerTR} fixed>
-          <Svg width="170" height="170" viewBox="0 0 60 60">
-            <Polygon points="60,0 60,60 0,0" fill={rgbStr(primary)} />
-            <Polygon points="60,0 60,38 22,0" fill={rgbStr(accent)} />
-          </Svg>
-        </View>
-        {/* Bottom-left */}
-        <View style={styles.cornerBL} fixed>
-          <Svg width="170" height="170" viewBox="0 0 60 60">
-            <Polygon points="0,60 60,60 0,0" fill={rgbStr(primary)} />
-            <Polygon points="0,60 38,60 0,22" fill={rgbStr(accent)} />
-          </Svg>
-        </View>
-        {/* Bottom-right */}
-        <View style={styles.cornerBR} fixed>
-          <Svg width="170" height="170" viewBox="0 0 60 60">
-            <Polygon points="60,60 0,60 60,0" fill={rgbStr(primary)} />
-            <Polygon points="60,60 22,60 60,22" fill={rgbStr(accent)} />
-          </Svg>
-        </View>
+        {/* ── Layer 1: Corner bands ── */}
+        <CornerBands />
 
-        {/* ─── Watermark (filigrane) — behind content, opacity 12% ─── */}
-        {/* Image de fond (si définie dans le template UE) */}
-        {data.template?.backgroundImage ? (
-          <Image
-            style={styles.watermarkImage}
-            src={data.template.backgroundImage}
-            alt=""
-          />
-        ) : null}
-        {/* Icône thématique (si définie et non "default") */}
-        {data.template?.themeIcon && data.template.themeIcon !== 'default' ? (
-          <View style={styles.watermarkIcon} fixed>
-            <ThemeIconSvg icon={data.template.themeIcon} color={rgbStr(primary)} />
-          </View>
-        ) : null}
+        {/* ── Layer 2: Grid watermark (opacity 0.05) ── */}
+        <GridWatermark />
 
-        {/* Double border */}
+        {/* ── Layer 3: Double border ── */}
         <View style={styles.borderOuter} />
         <View style={styles.borderInner} />
 
-        {/* Content */}
+        {/* ── Layer 4: Content ── */}
         <View style={styles.content}>
-          {/* Establishment */}
-          <Text style={styles.establishment}>{data.etablissementNom}</Text>
-          {location ? <Text style={styles.location}>{location}</Text> : null}
+          {/* Logo */}
+          <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
 
-          {/* Diamond separator */}
+          {/* Establishment header (small, centered) */}
+          <Text style={styles.establishment}>{establishmentHeader}</Text>
+
+          {/* 3 Diamonds: gold-navy-gold */}
           <View style={styles.diamonds}>
-            <View style={[styles.diamond, styles.diamondPrimary]} />
-            <View style={[styles.diamond, styles.diamondAccent]} />
-            <View style={[styles.diamond, styles.diamondPrimary]} />
+            <View style={styles.diamondGold} />
+            <View style={styles.diamondNavy} />
+            <View style={styles.diamondGold} />
           </View>
 
           {/* Title */}
-          <Text style={styles.title}>Certificat</Text>
-          <Text style={styles.subtitle}>d&apos;{data.type === 'EXCELLENCE' ? 'Excellence' : data.type === 'ACCOMPLISSEMENT' ? 'Accomplissement' : 'Participation'}</Text>
-          <Text style={styles.typeLabel}>{typeLabel}</Text>
+          <Text style={styles.title}>CERTIFICAT</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
 
           {/* Intro */}
           <Text style={styles.intro}>Nous certifions par la présente que</Text>
 
-          {/* Student name (SCRIPT FONT) */}
+          {/* Student name (Great Vibes script) */}
           <Text style={styles.studentName}>{data.etudiantNom}</Text>
-          {studentParts.length > 0 ? <Text style={styles.studentInfo}>{studentParts.join('  •  ')}</Text> : null}
+          {studentInfo ? <Text style={styles.studentInfo}>{studentInfo}</Text> : null}
 
-          {/* UE */}
-          <Text style={styles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
-          <Text style={styles.ueName}>{data.ueNom}</Text>
-          <Text style={styles.ueCode}>Code: {data.ueCode}</Text>
+          {/* Body paragraph (justified) */}
+          <Text style={styles.body}>{bodyText}</Text>
 
-          {/* Details box */}
-          <View style={styles.detailsBox}>
-            {details.map((d, i) => (
-              <View key={i} style={styles.detailItem}>
-                <Text style={styles.detailLabel}>{d.label}:</Text>
-                <Text style={styles.detailValue}>{d.value}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Date */}
-          <Text style={styles.date}>Émis le {formatDate(data.dateEmission)}</Text>
-
-          {/* Signature row */}
+          {/* ── Signature row: left (teacher) + center (seal) + right (responsable) ── */}
           <View style={styles.signatureRow}>
-            <View style={styles.signatureCol}>
-              {data.responsableNom ? <Text style={styles.signatureName}>{data.responsableNom}</Text> : null}
-              <View style={styles.signatureLine} />
-              <Text style={styles.signatureLabel}>Le Responsable pédagogique</Text>
+            {/* Left: empty line for teacher signature */}
+            <View style={styles.sigCol}>
+              <View style={{ height: 12 }} />
+              <View style={styles.sigLine} />
+              <Text style={styles.sigLabel}>Signature de l'enseignant</Text>
             </View>
 
-            {/* Seal */}
-            <View style={styles.seal}>
-              <View style={styles.sealInner}>
-                <Text style={styles.sealStar}>★</Text>
-                <Text style={styles.sealText}>SECT</Text>
-                <Text style={styles.sealSubtext}>CERTIFIÉ</Text>
-              </View>
-            </View>
+            {/* Center: Seal with ribbons */}
+            <CentralSeal />
 
-            <View style={styles.signatureCol}>
-              <Text style={styles.signatureName}>{formatDate(data.dateEmission)}</Text>
-              <View style={styles.signatureLine} />
-              <Text style={styles.signatureLabel}>Date</Text>
+            {/* Right: Responsable name + line + label */}
+            <View style={styles.sigCol}>
+              {data.responsableNom ? (
+                <Text style={styles.sigName}>{data.responsableNom}</Text>
+              ) : (
+                <View style={{ height: 12 }} />
+              )}
+              <View style={styles.sigLine} />
+              <Text style={styles.sigLabel}>Le Responsable pédagogique</Text>
             </View>
           </View>
         </View>
 
-        {/* Verification (bottom) */}
-        <View style={styles.verification}>
-          <View style={styles.verificationItem}>
-            <Text style={styles.verificationLabel}>Vérification:</Text>
-            <Text style={styles.verificationValue}>{data.verificationUrl}</Text>
-          </View>
-          <View style={styles.verificationItem}>
-            <Text style={styles.verificationLabel}>Code:</Text>
-            <Text style={styles.verificationValue}>{data.codeVerification}</Text>
-          </View>
-        </View>
-
-        {/* Footer */}
-        <Text style={styles.footer}>
-          SECT — Système d&apos;Évaluation Casse-Tête · {data.statut === 'EMIS' ? 'Certificat valide' : 'Certificat révoqué'}
-        </Text>
+        {/* ── Footer ── */}
+        <Text style={styles.footer}>{footerText}</Text>
       </Page>
     </Document>
   )
@@ -718,8 +578,6 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
 
 /**
  * Render the certificate PDF to a Node.js Buffer.
- * This function encapsulates the JSX so the API route (.ts file) can call
- * it without needing a .tsx extension.
  */
 export async function renderCertificatPDF(data: CertificatPDFData): Promise<Buffer> {
   return await renderToBuffer(<CertificateDocument data={data} />)
