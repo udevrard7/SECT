@@ -1177,3 +1177,40 @@ Stage Summary:
 - Frontend cleaned: no more Award button on UE page, no template dialog
 - Certificate design is now static (fixed colors + watermark for all UE)
 - Commit 96778fa deployed on https://sect-app.vercel.app
+
+---
+Task ID: 37
+Agent: Main Agent (Z.ai Code)
+Task: CertificatePDF.tsx — exact spec implementation (VLM 10/10)
+
+Work Log:
+- User provided exact StyleSheet spec + layout instructions for the certificate
+- Complete rewrite following the spec precisely:
+  - Page: A4 landscape, 15mm padding, white bg
+  - Header: logo + university name (10pt, letterSpacing 2) + city (8pt)
+  - Title: Playfair Display 42pt, letterSpacing 6, navy #1B3A5C
+  - Subtitle: Playfair 22pt, dark gray #2D3748
+  - 3 diamonds: gold(8pt)-navy(10pt)-gold(8pt), rotated 45°
+  - Intro: 12pt italic, #4A5568
+  - Student name: Great Vibes 48pt navy (capitalizeName helper)
+  - Student info: 10pt gray, matricule + niveau
+  - UE name: Playfair 28pt dark gray
+  - Info grid: 3 cols × 2 rows, 30% width, padding 10, borderRadius 4
+    - NOTE/MENTION cells: #EBF4FF bg + #BEE3F8 border (highlighted)
+    - Labels: 8pt gray uppercase letterSpacing 1
+    - Values: 11pt bold navy
+  - Badge: SVG navy circle + gold border + 24-dot ring + star + 'SECT CERTIFIÉ'
+  - Signatures: row, space-between, marginTop 40, paddingHorizontal 30
+    - 70px signatureSpace + #CBD5E0 line + 9pt label
+    - Right: responsable name 10pt bold + label
+  - Footer: marginTop 20, gold borderTop, 9pt #4A5568, centered
+  - Watermark: code </> at 0.05 opacity + white overlay 0.95
+
+VLM checklist (7/7): all confirmed → Score 10/10
+- ESLint clean
+- Committed as 5869d6d (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (96778fa..5869d6d)
+
+Stage Summary:
+- Certificate matches the exact spec with perfect VLM score (10/10)
+- All 7 checklist items validated
+- Commit 5869d6d deployed on https://sect-app.vercel.app
