@@ -67,6 +67,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import { OrphanEpreuvesAlert } from './orphan-epreuves-alert'
 
 // ─── Types ───
 
@@ -353,6 +354,9 @@ export function BanqueEpreuvesPage() {
           </Button>
         </div>
       </div>
+
+      {/* ─── Alert: épreuves sans UE (orphelines) ─── */}
+      <OrphanEpreuvesAlert />
 
       {/* ─── Statistics Card ─── */}
       {!isLoading && (

@@ -898,6 +898,15 @@ export function GenerationIAPage() {
   const handleSave = async () => {
     if (!user?.id || !generatedContenu) return
 
+    // UE obligatoire : une épreuve sans UE devient orpheline (pas de certificats)
+    const effectiveUEId = autoDetectedUEId || (selectedUEId && selectedUEId !== '__none__' ? selectedUEId : null)
+    if (!effectiveUEId) {
+      toast.error('Unité d\'Enseignement requise', {
+        description: 'Sélectionnez une UE. Sans UE, les sessions ne produiront aucun certificat.',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const body = {
