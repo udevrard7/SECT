@@ -21,8 +21,10 @@ import {
   LayoutGrid,
   List,
   Share2,
+  Award,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
+import { CertificateTemplateDialog } from './certificate-template-dialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -262,6 +264,8 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   const [editingUE, setEditingUE] = useState<UEItem | null>(null)
   const [viewingUE, setViewingUE] = useState<UEItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<UEItem | null>(null)
+  const [templateUE, setTemplateUE] = useState<UEItem | null>(null)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
 
   // ─── Add form state ───
   const [addCode, setAddCode] = useState('')
@@ -956,6 +960,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                               onEdit={handleOpenEdit}
                               onDelete={setDeleteTarget}
                               onViewAffectations={handleViewAffectations}
+                              onTemplate={(ue) => { setTemplateUE(ue); setTemplateDialogOpen(true) }}
                               totalHours={totalHours}
                               allFilieres={allFilieres}
                             />
@@ -1028,6 +1033,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                             onEdit={handleOpenEdit}
                             onDelete={setDeleteTarget}
                             onViewAffectations={handleViewAffectations}
+                            onTemplate={(ue) => { setTemplateUE(ue); setTemplateDialogOpen(true) }}
                             totalHours={totalHours}
                             allFilieres={allFilieres}
                           />
@@ -1184,6 +1190,13 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── Certificate Template Dialog ─── */}
+      <CertificateTemplateDialog
+        ue={templateUE ? { id: templateUE.id, code: templateUE.code, nom: templateUE.nom } : null}
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+      />
     </div>
   )
 }
@@ -1372,7 +1385,7 @@ function UEForm({
 // ─── UE Table Row Sub-component ───
 
 function UETableRow({
-  ue, isExpanded, onToggle, onEdit, onDelete, onViewAffectations, totalHours, allFilieres,
+  ue, isExpanded, onToggle, onEdit, onDelete, onViewAffectations, onTemplate, totalHours, allFilieres,
 }: {
   ue: UEItem
   isExpanded: boolean
@@ -1380,6 +1393,7 @@ function UETableRow({
   onEdit: (ue: UEItem) => void
   onDelete: (ue: UEItem) => void
   onViewAffectations: (ue: UEItem) => void
+  onTemplate: (ue: UEItem) => void
   totalHours: number
   allFilieres: { id: string; nom: string; code: string | null; isOwner: boolean }[]
 }) {
@@ -1430,6 +1444,9 @@ function UETableRow({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950" onClick={() => onTemplate(ue)} title="Template de certificat">
+              <Award className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950" onClick={() => onEdit(ue)}>
               <Edit3 className="h-4 w-4" />
             </Button>
