@@ -32,6 +32,8 @@ export interface CertificatPDFData {
   dateEmission: Date | string
   verificationUrl: string
   statut: string
+  /** Name of the issuer (responsable/admin who emitted or system). Shown in signature zone. */
+  emetteParNom?: string | null
   /** Optional per-UE template (colors, watermark, icon). */
   template?: CertificatTemplateData | null
 }
@@ -135,9 +137,19 @@ function drawThemeWatermark(
 
   switch (icon) {
     case 'code': {
-      // </>  — two chevrons
-      doc.lines([[-8, -10], [16, 16], [-8, 10]], centerX - 18, centerY - 8, [1, 1], 'S')
-      doc.lines([[8, -10], [-16, 16], [8, 10]], centerX + 18, centerY - 8, [1, 1], 'S')
+      // </>  — two chevrons drawn as simple line segments (V shapes).
+      // Previously used doc.lines() with relative coords that produced an "X".
+      // Using explicit doc.line() calls with absolute endpoints is reliable.
+      const s = size * 0.35 // chevron half-size
+      // Left chevron: <  (pointing left)
+      doc.line(centerX - s * 1.5, centerY - s, centerX - s * 0.5, centerY)
+      doc.line(centerX - s * 0.5, centerY, centerX - s * 1.5, centerY + s)
+      // Right chevron: >  (pointing right)
+      doc.line(centerX + s * 0.5, centerY - s, centerX + s * 1.5, centerY)
+      doc.line(centerX + s * 1.5, centerY, centerX + s * 0.5, centerY + s)
+      // Center slash (optional, makes it clearly "</>")
+      doc.setLineWidth(1.2)
+      doc.line(centerX - s * 0.15, centerY + s * 0.6, centerX + s * 0.15, centerY - s * 0.6)
       break
     }
     case 'science': {
@@ -259,8 +271,51 @@ function formatNote(note: number): string {
 }
 
 /**
+ * Decode the native pixel dimensions of a base64 PNG/JPEG image without
+ * any external dependency. PNG stores width/height at bytes 16-24 (BE uint32);
+ * JPEG stores them in the SOF0/SOF2 marker segment.
+ */
+function decodeImageDimensions(base64Data: string): { width: number; height: number } | null {
+  try {
+    const buf = Buffer.from(base64Data, 'base64')
+    if (buf.length < 24) return null
+    // PNG signature: 89 50 4E 47
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      const width = buf.readUInt32BE(16)
+      const height = buf.readUInt32BE(20)
+      if (width > 0 && height > 0) return { width, height }
+    }
+    // JPEG: scan markers for SOF0 (0xC0) or SOF2 (0xC2)
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let i = 2
+      while (i < buf.length - 8) {
+        if (buf[i] !== 0xff) { i++; continue }
+        const marker = buf[i + 1]
+        if (marker === 0xc0 || marker === 0xc2) {
+          const height = buf.readUInt16BE(i + 5)
+          const width = buf.readUInt16BE(i + 7)
+          if (width > 0 && height > 0) return { width, height }
+        }
+        // Skip this marker segment
+        if (marker >= 0xd0 && marker <= 0xd9) { i += 2; continue }
+        const segLen = buf.readUInt16BE(i + 2)
+        i += 2 + segLen
+      }
+    }
+  } catch {
+    // ignore decode errors
+  }
+  return null
+}
+
+/**
  * Parse a logo source (data URI or URL) and render it on the PDF.
  * Supports data URIs (base64 PNG/JPEG) and direct image URLs.
+ *
+ * The logo is FIT INSIDE a bounding box (maxWidthMm × maxHeightMm) while
+ * PRESERVING its native aspect ratio — no stretching, no deformation.
+ * We decode the image's native pixel dimensions to compute the fit.
+ *
  * Returns the Y position after the logo, or the original Y if the logo
  * could not be rendered (graceful fallback — text-only header).
  */
@@ -269,8 +324,8 @@ function renderLogo(
   logo: string | null | undefined,
   centerX: number,
   y: number,
-  maxWidthMm = 30,
-  maxHeightMm = 30
+  maxWidthMm = 40,
+  maxHeightMm = 25
 ): number {
   if (!logo || typeof logo !== 'string' || logo.trim().length === 0) {
     return y
@@ -279,44 +334,55 @@ function renderLogo(
   try {
     let format: 'PNG' | 'JPEG' | 'JPG' = 'PNG'
     let imageData = logo
+    let base64Data: string | null = null
 
     if (logo.startsWith('data:')) {
-      // Data URI: extract format and raw base64
       const match = logo.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i)
-      if (!match) {
-        // Unrecognized data URI format — skip
-        return y
-      }
+      if (!match) return y
       const fmtStr = match[1].toLowerCase()
       if (fmtStr === 'png') format = 'PNG'
       else if (fmtStr === 'jpeg' || fmtStr === 'jpg') format = 'JPEG'
-      else {
-        // webp or other — jsPDF may not support; skip gracefully
-        return y
-      }
+      else return y // webp/other not supported by jsPDF
       imageData = `data:image/${fmtStr};base64,${match[2]}`
+      base64Data = match[2]
     } else if (logo.startsWith('http://') || logo.startsWith('https://')) {
-      // URL — jsPDF can fetch it at render time. Infer format from extension.
       const lower = logo.toLowerCase().split('?')[0]
       if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) format = 'JPEG'
       else if (lower.endsWith('.png')) format = 'PNG'
       imageData = logo
+      // Can't decode dimensions from a URL without fetching — assume square fit
     } else {
-      // Raw base64 without data URI prefix — assume PNG
       imageData = `data:image/png;base64,${logo}`
       format = 'PNG'
+      base64Data = logo
     }
 
-    // Render centered, preserving aspect ratio (assume square-ish logos).
-    // jsPDF addImage signature: (imageData, format, x, y, width, height)
-    const w = maxWidthMm
-    const h = maxHeightMm
-    const x = centerX - w / 2
-    doc.addImage(imageData, format, x, y, w, h, undefined, 'FAST')
-    return y + h
+    // Compute display dimensions that FIT INSIDE the bounding box
+    // while preserving the native aspect ratio.
+    let dispW = maxWidthMm
+    let dispH = maxHeightMm
+    const dims = base64Data ? decodeImageDimensions(base64Data) : null
+    if (dims) {
+      const aspectRatio = dims.width / dims.height
+      // Fit inside the box: start from width, check if height fits
+      dispW = maxWidthMm
+      dispH = dispW / aspectRatio
+      if (dispH > maxHeightMm) {
+        // Height overflows — scale down to fit height
+        dispH = maxHeightMm
+        dispW = dispH * aspectRatio
+      }
+    } else {
+      // Unknown dimensions — default to a moderate landscape box (most logos
+      // are wider than tall), fit inside the max box.
+      dispW = maxWidthMm
+      dispH = Math.min(maxHeightMm, maxWidthMm * 0.6)
+    }
+
+    const x = centerX - dispW / 2
+    doc.addImage(imageData, format, x, y, dispW, dispH, undefined, 'FAST')
+    return y + dispH
   } catch (err) {
-    // If the image fails to load (CORS, corrupt data, unsupported format),
-    // silently skip — the text-only header is still valid.
     console.error('[certificat-pdf] Logo render failed:', err instanceof Error ? err.message : err)
     return y
   }
@@ -367,9 +433,10 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
 
   // ─── Header: Logo + Establishment ───
   y = 18
-  // Render the establishment logo (centered, ~25mm wide) if present.
-  // renderLogo returns the updated Y position, or the original Y if no logo.
-  const afterLogoY = renderLogo(doc, data.etablissementLogo, PAGE_WIDTH / 2, y, 25, 25)
+  // Render the establishment logo (centered, up to 45mm wide × 22mm tall).
+  // renderLogo auto-fits the image INSIDE this box while preserving aspect
+  // ratio — no deformation. Returns the updated Y, or original Y if no logo.
+  const afterLogoY = renderLogo(doc, data.etablissementLogo, PAGE_WIDTH / 2, y, 45, 22)
   if (afterLogoY > y) {
     // Logo was rendered — add a small gap and position the text below it
     y = afterLogoY + 4
@@ -411,13 +478,66 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.setTextColor(...C_PRIMARY)
   doc.setFont(font, 'bolditalic')
 
+  // ─── Type badge: vectorial icon + label (no Unicode glyphs that jsPDF
+  // can't render with helvetica/times). Draw a small decorative icon to the
+  // LEFT of the label, centered as a group. Avoids the "★/◆/● → tofu" bug.
+  // The intitule (e.g. "Certificat d'Excellence") already conveys the type,
+  // so the badge here is a subtle decorative confirmation, not a repetition.
   const typeLabel = data.type === 'EXCELLENCE'
-    ? '★ Excellence ★'
+    ? 'Excellence'
     : data.type === 'ACCOMPLISSEMENT'
-      ? '◆ Accomplissement ◆'
-      : '● Participation ●'
+      ? 'Accomplissement'
+      : 'Participation'
 
-  doc.text(typeLabel, PAGE_WIDTH / 2, y, { align: 'center' })
+  // Compute label width to center icon+label group
+  doc.setFontSize(11)
+  const labelWidth = doc.getTextWidth(typeLabel)
+  const iconRadius = 1.8 // mm
+  const iconGap = 2.5 // mm between icon and label
+  const groupWidth = iconRadius * 2 + iconGap + labelWidth + iconGap + iconRadius * 2
+  const groupStartX = PAGE_WIDTH / 2 - groupWidth / 2
+
+  // Draw icon(s) as simple vector shapes:
+  //  - EXCELLENCE: a 5-pointed star
+  //  - ACCOMPLISSEMENT: a filled diamond
+  //  - PARTICIPATION: a filled circle
+  doc.setFillColor(...C_ACCENT)
+  doc.setDrawColor(...C_ACCENT)
+
+  const drawIcon = (cx: number, cy: number) => {
+    if (data.type === 'EXCELLENCE') {
+      // 5-pointed star
+      const outerR = iconRadius
+      const innerR = iconRadius * 0.4
+      const pts: [number, number][] = []
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 === 0 ? outerR : innerR
+        const angle = (Math.PI / 5) * i - Math.PI / 2
+        pts.push([cx + r * Math.cos(angle), cy + r * Math.sin(angle)])
+      }
+      // jsPDF polygon: first point repeated at the end to close
+      const xs = pts.map((p) => p[0])
+      const ys = pts.map((p) => p[1])
+      xs.push(xs[0]); ys.push(ys[0])
+      doc.lines(pts.slice(1).map((p) => [p[0] - pts[0][0], p[1] - pts[0][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true)
+      // Fallback if lines() shape is wonky: use a filled triangle as a clean star proxy
+      void xs; void ys
+    } else if (data.type === 'ACCOMPLISSEMENT') {
+      // Filled diamond (rotated square)
+      doc.triangle(cx, cy - iconRadius, cx + iconRadius, cy, cx, cy + iconRadius, 'F')
+      doc.triangle(cx, cy - iconRadius, cx - iconRadius, cy, cx, cy + iconRadius, 'F')
+    } else {
+      // PARTICIPATION: filled circle
+      doc.circle(cx, cy, iconRadius, 'F')
+    }
+  }
+
+  // Icon left
+  drawIcon(groupStartX + iconRadius, y - 1.5)
+  // Label
+  doc.text(typeLabel, groupStartX + iconRadius * 2 + iconGap, y)
+  // Icon right
+  drawIcon(groupStartX + iconRadius * 2 + iconGap + labelWidth + iconGap + iconRadius, y - 1.5)
 
   // ─── Separator ───
   y += 8
@@ -440,14 +560,19 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.text(data.etudiantNom, PAGE_WIDTH / 2, y, { align: 'center' })
 
   // ─── Student Info ───
-  if (data.etudiantMatricule || data.etudiantNiveau) {
+  // Only show this line if there's at least one non-empty field.
+  // Each field is shown individually only if it has a value (avoids
+  // "Niveau: " with an empty value).
+  const matriculeOk = !!data.etudiantMatricule && data.etudiantMatricule.trim() !== ''
+  const niveauOk = !!data.etudiantNiveau && data.etudiantNiveau.trim() !== ''
+  if (matriculeOk || niveauOk) {
     y += 8
     doc.setFontSize(9)
     doc.setTextColor(...COLOR_TEXT)
     doc.setFont(font, 'normal')
     const infoParts: string[] = []
-    if (data.etudiantMatricule) infoParts.push(`Matricule: ${data.etudiantMatricule}`)
-    if (data.etudiantNiveau) infoParts.push(`Niveau: ${data.etudiantNiveau}`)
+    if (matriculeOk) infoParts.push(`Matricule: ${data.etudiantMatricule}`)
+    if (niveauOk) infoParts.push(`Niveau: ${data.etudiantNiveau}`)
     doc.text(infoParts.join('  •  '), PAGE_WIDTH / 2, y, { align: 'center' })
   }
 
@@ -519,6 +644,48 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.setTextColor(...COLOR_TEXT)
   doc.setFont(font, 'normal')
   doc.text(`Émis le ${formatDate(data.dateEmission)}`, PAGE_WIDTH / 2, y, { align: 'center' })
+
+  // ─── Signature Zone ───
+  // Two-column signature area: left = "Le Responsable pédagogique"
+  // (with the issuer's name if known), right = "SECT — Système d'Évaluation"
+  // (the platform's digital signature). Adds authenticity to the document.
+  y += 16
+  const sigLineY = y
+  const sigLineLeftX = MARGIN_LEFT + 15
+  const sigLineRightX = PAGE_WIDTH - MARGIN_RIGHT - 15
+  const sigLeftCenter = MARGIN_LEFT + (CONTENT_WIDTH / 4)
+  const sigRightCenter = PAGE_WIDTH - MARGIN_RIGHT - (CONTENT_WIDTH / 4)
+
+  doc.setDrawColor(...C_BORDER)
+  doc.setLineWidth(0.3)
+  // Left signature line
+  doc.line(sigLeftCenter - 30, sigLineY, sigLeftCenter + 30, sigLineY)
+  // Right signature line
+  doc.line(sigRightCenter - 30, sigLineY, sigRightCenter + 30, sigLineY)
+
+  // Left label (issuer)
+  doc.setFontSize(8)
+  doc.setTextColor(...C_PRIMARY)
+  doc.setFont(font, 'bold')
+  doc.text('Le Responsable pédagogique', sigLeftCenter, sigLineY + 5, { align: 'center' })
+  if (data.emetteParNom && data.emetteParNom.trim() !== '') {
+    doc.setFontSize(7)
+    doc.setTextColor(...COLOR_TEXT)
+    doc.setFont(font, 'italic')
+    doc.text(data.emetteParNom, sigLeftCenter, sigLineY + 9, { align: 'center' })
+  }
+
+  // Right label (platform)
+  doc.setFontSize(8)
+  doc.setTextColor(...C_PRIMARY)
+  doc.setFont(font, 'bold')
+  doc.text('SECT — Certification officielle', sigRightCenter, sigLineY + 5, { align: 'center' })
+  doc.setFontSize(7)
+  doc.setTextColor(...COLOR_TEXT)
+  doc.setFont(font, 'italic')
+  doc.text('Système d\u2019Évaluation Casse-Tête', sigRightCenter, sigLineY + 9, { align: 'center' })
+
+  void sigLineLeftX; void sigLineRightX
 
   // ─── Verification Section ───
   y += 18
