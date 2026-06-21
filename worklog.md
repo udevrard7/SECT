@@ -373,3 +373,29 @@ Stage Summary:
 - The principal/secondary UE model is enforced: a shared UE can be assigned to an exam of any of its filières (principal or secondary), but not to an unrelated filière
 - Existing orphans are surfaced via an amber alert banner on both the Épreuves page and the Banque d'Épreuves page, with per-epreuve details and impacted session counts so admins/teachers can spot and fix them
 - Commit 38318fb pushed by udevrard7, deployed and verified on https://sect-app.vercel.app
+
+---
+Task ID: 14
+Agent: Main Agent (Z.ai Code)
+Task: Reset the password for student ASSANI Emile Junior
+
+Work Log:
+- Located the student: id=cmq2fln7f000poev76laxf7eg, name=ASSANI Emile Junior Assani, email=assani.emile@uniabidjan.com, matricule=INF/LJ/25/008, role=ETUDIANT, actif=true
+- Confirmed the codebase password hashing pattern: bcrypt.hash(password, 10) with saltRounds=10 (used in [...nextauth]/route.ts, change-password/route.ts, password-reset/confirm/route.ts)
+- Confirmed the User model has a mustChangePwd Boolean field (default false) — used to force a password change on next login
+- Generated a strong temporary password: Sect-2J9G-UP6S (14 chars, alphanumeric without confusing chars 0/O/1/I, split into memorable segments)
+- Hashed it with bcrypt (saltRounds=10) — hash starts with $2b$10$, matches the existing pattern
+- Updated the DB record:
+  - password = new hash
+  - mustChangePwd = true (the student must change it on next login)
+  - lockedUntil = null, loginAttempts = 0 (cleared any lock state, defensive)
+- Verified end-to-end: bcrypt.compare('Sect-2J9G-UP6S', storedHash) returns true — the password works
+- No code change -> no commit/push needed. Pure DB update on shared Supabase, immediately effective in production.
+
+Stage Summary:
+- ASSANI Emile Junior's password has been reset.
+- Temporary password: Sect-2J9G-UP6S (to be communicated securely to the student)
+- mustChangePwd=true: the student will be forced to choose a new password at next login
+- Login attempts and lock state cleared
+- Effective immediately on https://sect-app.vercel.app (shared Supabase DB)
+- Security note: the temporary password was displayed once in this session; the user should transmit it to the student via a secure channel and the student must change it at first login
