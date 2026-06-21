@@ -1382,3 +1382,31 @@ PREMIUM REDESIGN:
 Stage Summary:
 - Mes Certificats page fully redesigned with premium modern UI
 - Commit 34b0f6b deployed on https://sect-app.vercel.app
+
+---
+Task ID: 44
+Agent: Main Agent (Z.ai Code)
+Task: Add pdf-lib + html2canvas HD certificate generator alongside react-pdf
+
+Work Log:
+- User requested adding pdf-lib + html2canvas as an alternative to @react-pdf/renderer for certificate generation, to preserve the complex SVG gradients
+
+NEW: src/components/passation/certificate-generator.tsx
+- html2canvas (scale:3 ≈300 DPI) captures HTML preview (SVG bg + text overlay)
+- pdf-lib creates A4 PDF (landscape or portrait) with embedded PNG
+- Toggle Paysage/Portrait in dialog
+- Off-screen full-size render (captured by html2canvas) + on-screen scaled preview (0.35x)
+- Dynamic text: title (Georgia, gold), student name (cursive, capitalize), UE, info grid (3-col/2-col), CSS badge, signatures (side-by-side landscape / stacked portrait), footer
+
+INTEGRATION: 'Télécharger HD' button on each cert card opens Dialog with CertificateGenerator
+The existing react-pdf download (Télécharger Paysage/Portrait) is kept as fast server-side alternative
+
+PACKAGES: pdf-lib 1.17.1 installed, html2canvas 1.4.1 already present
+SVG file public/certificate-bg-landscape.svg re-added (947KB)
+
+- ESLint clean
+- Committed as e3acf93 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (34b0f6b..e3acf93)
+
+Stage Summary:
+- Students now have 2 download options: fast react-pdf (server) or HD pdf-lib+html2canvas (client, SVG background)
+- Commit e3acf93 deployed on https://sect-app.vercel.app
