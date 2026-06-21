@@ -258,3 +258,24 @@ Stage Summary:
 - Architecture: getAIProvider() factory (DB-backed, Mistral active) + local deterministic fallback (6-question bank) = always-available demo.
 - The 'source' field lets us monitor whether AI or fallback is being used.
 - Commit 816f72b pushed by udevrard7, deployed and verified on https://sect-app.vercel.app
+
+---
+Task ID: 10
+Agent: Main Agent (Z.ai Code)
+Task: Fix missing icon for 'Mes certificats' in the student sidebar
+
+Work Log:
+- User reported: 'Mes certificats' page in the student sidebar has no icon
+- Located sidebar component: src/components/layout/sidebar.tsx (392 lines)
+- Found the sidebar uses an ICON_MAP (Record<string, LucideIcon>) that maps icon name strings to Lucide components; items whose icon name is NOT in the map render with no icon
+- Found the nav config in src/lib/routes.ts:388: { id: 'mes-certificats', label: 'Mes certificats', icon: 'ScrollText' }
+- Diffed all icon names used in routes.ts against the ICON_MAP keys: ScrollText was the ONLY missing one (all other 25 route icons are present)
+- Verified ScrollText exists in lucide-react (declared in lucide-react.d.ts and shipped as dist/esm/icons/scroll-text.js)
+- Added ScrollText to the lucide-react import (line 35) and to the ICON_MAP (line 92) in sidebar.tsx
+- ESLint clean; transient runtime GET / -> 200, no errors
+- Committed as 27420e5 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (816f72b..27420e5) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- 'Mes certificats' student sidebar entry now displays the ScrollText (parchemin) icon, consistent with the certificate concept
+- Only one icon was missing across all roles' nav; verified no other gaps
+- Commit 27420e5 pushed by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
