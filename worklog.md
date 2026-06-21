@@ -754,3 +754,36 @@ Stage Summary:
 - Bottom section completely refactored: clean signature (real responsable name), compact verification block, minimal footer — no overlaps, no clutter
 - Responsable name now correctly sourced from the filière, not the emettePar (which was the student for auto-generated certs)
 - Commit 81b330f deployed on https://sect-app.vercel.app
+
+---
+Task ID: 25
+Agent: Main Agent (Z.ai Code)
+Task: Premium design upgrade (colors, decorations, seal) + fix date→signature spacing
+
+Work Log:
+- User requested: more colors and design to make the certificate more beautiful + reduced spacing between emission date and responsable signature (was too large to sign/stamp on a printed copy).
+
+Design enhancements added:
+1. TRIPLE BORDER: 3 nested frames (thick 2.5mm border + thin accent + thin primary) instead of 2 — more elegant
+2. CORNER FLOURISHES: L-shaped decorative lines in all 4 corners (accent color) — classic certificate design element
+3. COLORED HEADER BAND: subtle filled rounded-rectangle (primary tint at 6%) behind the establishment name — adds depth
+4. TITLE DECORATIONS: small filled diamonds on each side of the certificate title — frames the title
+5. DOUBLE SEPARATOR LINE: thick accent + thin primary (1.5mm gap) after header — more distinguished
+6. DETAILS BOX LEFT ACCENT: 3mm colored bar on the left edge of the details box — premium touch
+7. OFFICIAL SECT SEAL: double-circle medallion (14mm radius) with 'SECT' center, 'CERTIFIÉ' subtext, 5-pointed star at top — positioned RIGHT of the signature like an official cachet
+
+Spacing fix:
+- Reduced date→signature spacing from y+=22 to y+=10 — enough room for physical signature + rubber stamp
+- Signature shifted left (sigCenterX = center-25) to make room for the seal on the right
+
+VLM verification on v7 PDF:
+  TOP: 'décorations de coin, bandeau coloré, diamants de chaque côté du titre, bordures triples, plus beau et coloré qu'un certificat basique'
+  BOTTOM: 'espacement réduit, sceau circulaire SECT/CERTIFIÉ à droite, nom du responsable au-dessus de la ligne, espace suffisant pour signer et apposer un cachet physique'
+
+- ESLint clean
+- Committed as 4f68474 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (81b330f..4f68474) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Certificate now has premium design: triple borders, corner flourishes, colored header band, title diamonds, double separators, colored details box accent, official SECT seal
+- Date→signature spacing reduced from 22mm to 10mm — physical signing and stamping now possible
+- Commit 4f68474 deployed on https://sect-app.vercel.app
