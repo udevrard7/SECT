@@ -853,3 +853,41 @@ Stage Summary:
 - Net code reduction (602 lines deleted, 359 added) — cleaner, more maintainable
 - VLM rating 8/10
 - Commit feb6715 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 27
+Agent: Main Agent (Z.ai Code)
+Task: Migrate certificate PDF to @react-pdf/renderer with landscape A4 modern elegant design
+
+Work Log:
+- User requested migration to @react-pdf/renderer with specific design specs: landscape A4, navy + gold palette, mixed typography (serif + script + sans-serif), diagonal corners, central seal, two-column signature.
+- Installed @react-pdf/renderer 4.5.1 (49 packages)
+- Downloaded and bundled 5 Google Fonts TTF files in public/fonts/:
+  - GreatVibes-Regular.ttf (458KB) — script/cursive for student name
+  - PlayfairDisplay-Regular.ttf (301KB) — elegant serif for title
+  - Lato-Regular.ttf + Lato-Bold.ttf + Lato-Italic.ttf (2MB total) — sans-serif body
+- Created src/lib/pdf/certificat-pdf-react.tsx — React component using @react-pdf/renderer primitives:
+  - Font.register() at module load (reads TTF from public/fonts/)
+  - CertificateDocument component: landscape A4 (842×595pt)
+  - 4 SVG polygon corner bands (primary + accent triangles) — CSS border-radius doesn't work in react-pdf, so used Svg+Polygon for reliable diagonal triangles
+  - Double thin border (outer primary 1.2pt + inner accent 0.4pt)
+  - 3 diamond separators (rotated 45° squares)
+  - Mixed typography: Playfair Display for title (38pt), Great Vibes for student name (36pt script), Lato for body
+  - Central seal: double-circle medallion with star + 'SECT CERTIFIÉ'
+  - Two-column signature: left=Responsable, right=Date, center=seal
+  - Details box with colored left bar, 2-column grid
+  - Compact verification + minimal footer
+- renderCertificatPDF() function encapsulates JSX rendering so the .ts API route can call it
+- Updated API route to use renderToBuffer (react-pdf server-side)
+- Fixed italic font resolution by registering Lato-Italic.ttf
+- ESLint clean
+- VLM verification: diagonal corners ✓, script name ✓, central seal ✓, landscape format ✓
+- Committed as 355312c (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (feb6715..355312c) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Certificate PDF generator migrated from jsPDF to @react-pdf/renderer
+- Landscape A4 format with modern elegant design matching the reference template
+- Script font (Great Vibes) for student name — the key feature that jsPDF couldn't support
+- SVG polygons for diagonal corner bands (reliable rendering in react-pdf)
+- Custom fonts bundled in public/fonts/ (~2.8MB total)
+- Commit 355312c deployed on https://sect-app.vercel.app
