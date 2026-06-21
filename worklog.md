@@ -1410,3 +1410,34 @@ SVG file public/certificate-bg-landscape.svg re-added (947KB)
 Stage Summary:
 - Students now have 2 download options: fast react-pdf (server) or HD pdf-lib+html2canvas (client, SVG background)
 - Commit e3acf93 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 45
+Agent: Main Agent (Z.ai Code)
+Task: Nouvelle refonte page Mes Certificats — moderne, rapide, captivante
+
+Work Log:
+- Complete rewrite of mes-certificats-page.tsx focused on performance + modern UX
+
+PERFORMANCE:
+- Skeleton loading (cards fantômes au lieu de spinner bloquant)
+- Parallel fetch (Promise.all)
+- Lazy load CertificateGenerator (code splitting — pdf-lib/html2canvas only load on HD click)
+- Global orientation toggle (not per-card — less re-renders)
+- Framer-motion optimized (layout + exit animations)
+
+DESIGN:
+- Hero compact gradient + glassmorphism + blur orbs
+- Stats inline in hero (no separate cards)
+- Cards: glassmorphism + colored ring per type + hover lift
+- Gradient progress bar per type
+- Compact buttons: PDF | HD | Vérifier
+- Compact table with hover highlight + color-coded notes
+- Clean empty states
+
+- ESLint clean
+- Committed as 562bf0e (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (e3acf93..562bf0e)
+
+Stage Summary:
+- Page Mes Certificats fully refactored — faster, more modern, lazy-loaded HD generator
+- Commit 562bf0e deployed on https://sect-app.vercel.app
