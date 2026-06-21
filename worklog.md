@@ -1242,3 +1242,42 @@ Stage Summary:
 - Both bugs fixed: single page, no watermark, content complete and visible
 - Certificate is now clean and professional without any filigrane
 - Commit 46f0dee deployed on https://sect-app.vercel.app
+
+---
+Task ID: 39
+Agent: Main Agent (Z.ai Code)
+Task: New 3-tier certificate structure — Expert / Avancé / Standard
+
+Work Log:
+- User provided the new 3-tier structure that valorizes every candidate who passed
+
+NEW STRUCTURE:
+| Type | Intitulé | Condition | Mention | Couleur |
+|------|----------|-----------|---------|---------|
+| EXPERT | Certificat de Réussite – Niveau Expert | ≥ 16/20 | Très Bien | Or/Jaune ★ |
+| AVANCE | Certificat de Réussite – Niveau Avancé | 12–15.99/20 | Assez Bien/Bien | Bleu Roi ◆ |
+| STANDARD | Certificat de Réussite – Niveau Standard | 10–11.99/20 | Passable | Vert ■ |
+
+Changes applied:
+- prisma/schema.prisma: TypeCertificat enum updated (EXPERT/AVANCE/STANDARD)
+- src/lib/validation-ue-engine.ts: getCertificateType() returns EXPERT (≥16), AVANCE (≥12), STANDARD (≥10). getIntitule() updated.
+- src/app/api/certificats/route.ts: intituleMap + type auto-determination updated
+- src/lib/pdf/certificat-pdf-react.tsx: subtitle shows 'Niveau Expert'/'Niveau Avancé'/'Niveau Standard'
+- src/app/verify/[code]/page.tsx: TYPE_CONFIG updated (emerald/blue/amber + BookOpen/Award/Star)
+- src/components/passation/mes-certificats-page.tsx: CertificatType, CERTIFICAT_CONFIG, validTypes updated
+
+DB migration (manual SQL):
+- Created new enum TypeCertificat_new with EXPERT/AVANCE/STANDARD
+- Migrated Certificat.type column (EXCELLENCE→EXPERT, others→STANDARD)
+- Dropped old enum, renamed new to TypeCertificat
+- Re-typed 10 certificates based on noteFinale: 6 EXPERT, 4 AVANCE
+- Updated intitulés to new format
+- Prisma client regenerated, schema in sync
+
+- ESLint clean
+- Committed as 316248d (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (46f0dee..316248d)
+
+Stage Summary:
+- New 3-tier certificate structure deployed: Expert (≥16, gold★), Avancé (12-15.99, blue◆), Standard (10-11.99, green■)
+- All 10 existing certificates migrated and re-typed
+- Commit 316248d deployed on https://sect-app.vercel.app
