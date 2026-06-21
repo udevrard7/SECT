@@ -179,9 +179,9 @@ const styles = StyleSheet.create({
   // Title
   titleMain: {
     fontFamily: 'PlayfairDisplay',
-    fontSize: 42,
+    fontSize: 32,
     color: NAVY,
-    letterSpacing: 6,
+    letterSpacing: 4,
     marginVertical: 5,
   },
   titleSub: {
@@ -491,7 +491,7 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
           </View>
 
           {/* Title */}
-          <Text style={styles.titleMain}>CERTIFICAT</Text>
+          <Text style={styles.titleMain}>CERTIFICAT DE RÉUSSITE</Text>
           <Text style={styles.titleSub}>{subtitle}</Text>
 
           {/* Divider (3 diamonds: gold-navy-gold) */}
