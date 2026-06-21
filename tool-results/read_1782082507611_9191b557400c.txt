@@ -1,0 +1,565 @@
+     1→'use client'
+     2→
+     3→/**
+     4→ * MesCertificatsPage — Refonte complète
+     5→ *
+     6→ * Design premium avec:
+     7→ * - En-tête hero avec gradient
+     8→ * - Cartes de certificats modernes (glassmorphism, hover lift)
+     9→ * - Stats animées avec icônes colorées
+    10→ * - Toggle Paysage/Portrait intégré par carte
+    11→ * - Onglets Certificats / Progression UE
+    12→ * - Table de progression stylée
+    13→ * - États vide/loading/error soignés
+    14→ */
+    15→
+    16→import { useState, useEffect, useCallback } from 'react'
+    17→import { motion, AnimatePresence } from 'framer-motion'
+    18→import {
+    19→  Download,
+    20→  Award,
+    21→  Shield,
+    22→  Star,
+    23→  ExternalLink,
+    24→  FileText,
+    25→  CheckCircle2,
+    26→  XCircle,
+    27→  Clock,
+    28→  Loader2,
+    29→  ScrollText,
+    30→  AlertCircle,
+    31→  TrendingUp,
+    32→  Trophy,
+    33→  Medal,
+    34→  Sparkles,
+    35→} from 'lucide-react'
+    36→import { useAuthStore } from '@/stores/auth-store'
+    37→import { Card, CardContent } from '@/components/ui/card'
+    38→import { Button } from '@/components/ui/button'
+    39→import { Badge } from '@/components/ui/badge'
+    40→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    41→import { Progress } from '@/components/ui/progress'
+    42→import { toast } from 'sonner'
+    43→import { Dialog, DialogContent } from '@/components/ui/dialog'
+    44→import { CertificateGenerator } from './certificate-generator'
+    45→
+    46→// ─── Types ───
+    47→
+    48→type CertificatType = 'STANDARD' | 'AVANCE' | 'EXPERT'
+    49→
+    50→interface Certificat {
+    51→  id: string
+    52→  type: CertificatType
+    53→  ueCode: string
+    54→  ueNom: string
+    55→  note: number
+    56→  mention: string
+    57→  dateEmission: string
+    58→  verificationUrl?: string
+    59→}
+    60→
+    61→type StatutUE = 'EN_COURS' | 'VALIDEE' | 'NON_VALIDEE'
+    62→
+    63→interface ValidationUE {
+    64→  id: string
+    65→  ueCode: string
+    66→  ueNom: string
+    67→  creditsECTS: number
+    68→  epreuvesCompletees: number
+    69→  epreuvesTotal: number
+    70→  note: number | null
+    71→  statut: StatutUE
+    72→  certificatId: string | null
+    73→}
+    74→
+    75→// ─── Config ───
+    76→
+    77→const CERTIFICAT_CONFIG: Record<
+    78→  CertificatType,
+    79→  {
+    80→    label: string
+    81→    color: string
+    82→    gradient: string
+    83→    border: string
+    84→    badge: string
+    85→    icon: typeof Award
+    86→    glow: string
+    87→  }
+    88→> = {
+    89→  EXPERT: {
+    90→    label: 'Expert',
+    91→    color: 'text-amber-600',
+    92→    gradient: 'from-amber-500 to-orange-500',
+    93→    border: 'border-amber-200 dark:border-amber-800',
+    94→    badge: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white',
+    95→    icon: Trophy,
+    96→    glow: 'shadow-amber-500/20',
+    97→  },
+    98→  AVANCE: {
+    99→    label: 'Avancé',
+   100→    color: 'text-blue-600',
+   101→    gradient: 'from-blue-500 to-indigo-500',
+   102→    border: 'border-blue-200 dark:border-blue-800',
+   103→    badge: 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white',
+   104→    icon: Medal,
+   105→    glow: 'shadow-blue-500/20',
+   106→  },
+   107→  STANDARD: {
+   108→    label: 'Standard',
+   109→    color: 'text-emerald-600',
+   110→    gradient: 'from-emerald-500 to-teal-500',
+   111→    border: 'border-emerald-200 dark:border-emerald-800',
+   112→    badge: 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white',
+   113→    icon: Award,
+   114→    glow: 'shadow-emerald-500/20',
+   115→  },
+   116→}
+   117→
+   118→const STATUT_CONFIG: Record<StatutUE, { label: string; icon: typeof Clock; badge: string }> = {
+   119→  EN_COURS: { label: 'En cours', icon: Clock, badge: 'bg-yellow-100 text-yellow-800' },
+   120→  VALIDEE: { label: 'Validée', icon: CheckCircle2, badge: 'bg-green-100 text-green-800' },
+   121→  NON_VALIDEE: { label: 'Non validée', icon: XCircle, badge: 'bg-red-100 text-red-800' },
+   122→}
+   123→
+   124→// ─── Animation ───
+   125→
+   126→const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }
+   127→const itemVariants = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' as const } } }
+   128→
+   129→// ─── Component ───
+   130→
+   131→export function MesCertificatsPage() {
+   132→  const { user } = useAuthStore()
+   133→  const [certificats, setCertificats] = useState<Certificat[]>([])
+   134→  const [validations, setValidations] = useState<ValidationUE[]>([])
+   135→  const [loading, setLoading] = useState(true)
+   136→  const [error, setError] = useState<string | null>(null)
+   137→  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+   138→  const [pdfOrientation, setPdfOrientation] = useState<'landscape' | 'portrait'>('landscape')
+   139→  const [hdPreviewCert, setHdPreviewCert] = useState<Certificat | null>(null)
+   140→  const [activeTab, setActiveTab] = useState('certificats')
+   141→
+   142→  // ─── Data fetching ───
+   143→
+   144→  const fetchData = useCallback(async () => {
+   145→    if (!user?.id) return
+   146→    setLoading(true)
+   147→    setError(null)
+   148→    try {
+   149→      await fetch('/api/validations-ue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).catch(() => {})
+   150→
+   151→      const certRes = await fetch('/api/certificats')
+   152→      let certs: Certificat[] = []
+   153→      if (certRes.ok) {
+   154→        const certData = await certRes.json()
+   155→        const rawCerts: Record<string, unknown>[] = Array.isArray(certData) ? certData : certData.certificats ?? []
+   156→        const validTypes: CertificatType[] = ['STANDARD', 'AVANCE', 'EXPERT']
+   157→        certs = rawCerts.filter((c) => c && typeof c === 'object').map((c) => {
+   158→          const type = validTypes.includes(c.type as CertificatType) ? (c.type as CertificatType) : 'STANDARD'
+   159→          const codeVerification = (c.codeVerification as string) || ''
+   160→          return {
+   161→            id: String(c.id ?? ''),
+   162→            type,
+   163→            ueCode: String(c.ueCode ?? '—'),
+   164→            ueNom: String(c.ueNom ?? '—'),
+   165→            note: typeof c.noteFinale === 'number' ? c.noteFinale : 0,
+   166→            mention: typeof c.mention === 'string' ? c.mention : '',
+   167→            dateEmission: c.dateEmission ? String(c.dateEmission) : new Date().toISOString(),
+   168→            verificationUrl: codeVerification ? `${window.location.origin}/verify/${codeVerification}` : undefined,
+   169→          }
+   170→        })
+   171→      }
+   172→
+   173→      const valRes = await fetch('/api/validations-ue')
+   174→      let vals: ValidationUE[] = []
+   175→      if (valRes.ok) {
+   176→        const valData = await valRes.json()
+   177→        const rawVals: Record<string, unknown>[] = Array.isArray(valData) ? valData : valData.validations ?? []
+   178→        const validStatuts: StatutUE[] = ['EN_COURS', 'VALIDEE', 'NON_VALIDEE']
+   179→        vals = rawVals.filter((v) => v && typeof v === 'object').map((v) => {
+   180→          const ue = (v.uniteEnseignement as Record<string, unknown> | null) ?? null
+   181→          const certificats = Array.isArray(v.certificats) ? (v.certificats as Record<string, unknown>[]) : []
+   182→          const firstCertId = certificats.length > 0 ? String(certificats[0].id ?? '') : null
+   183→          const statut = validStatuts.includes(v.statut as StatutUE) ? (v.statut as StatutUE) : 'EN_COURS'
+   184→          const noteFinale = typeof v.noteFinale === 'number' ? v.noteFinale : null
+   185→          const note = statut === 'EN_COURS' ? null : noteFinale
+   186→          return {
+   187→            id: String(v.id ?? ''),
+   188→            ueCode: String(ue?.code ?? '—'),
+   189→            ueNom: String(ue?.nom ?? '—'),
+   190→            creditsECTS: typeof ue?.creditsECTS === 'number' ? ue.creditsECTS : 0,
+   191→            epreuvesCompletees: typeof v.nbEpreuvesCompletees === 'number' ? v.nbEpreuvesCompletees : 0,
+   192→            epreuvesTotal: typeof v.nbEpreuvesTotal === 'number' ? v.nbEpreuvesTotal : 0,
+   193→            note, statut, certificatId: firstCertId,
+   194→          }
+   195→        })
+   196→      }
+   197→      setCertificats(certs)
+   198→      setValidations(vals)
+   199→    } catch (err) {
+   200→      console.error('Error fetching certificate data:', err)
+   201→      setError('Impossible de charger vos certificats. Veuillez réessayer.')
+   202→    } finally {
+   203→      setLoading(false)
+   204→    }
+   205→  }, [user?.id])
+   206→
+   207→  useEffect(() => { fetchData() }, [fetchData])
+   208→
+   209→  // ─── Stats ───
+   210→
+   211→  const stats = {
+   212→    total: certificats.length,
+   213→    expert: certificats.filter((c) => c.type === 'EXPERT').length,
+   214→    avance: certificats.filter((c) => c.type === 'AVANCE').length,
+   215→    standard: certificats.filter((c) => c.type === 'STANDARD').length,
+   216→  }
+   217→
+   218→  // ─── PDF download ───
+   219→
+   220→  const handleDownloadPDF = async (certificatId: string, orientation?: 'landscape' | 'portrait') => {
+   221→    const orient = orientation || pdfOrientation
+   222→    setDownloadingId(certificatId)
+   223→    try {
+   224→      const res = await fetch(`/api/certificats/${certificatId}/pdf?orientation=${orient}`)
+   225→      if (!res.ok) throw new Error('Erreur')
+   226→      const blob = await res.blob()
+   227→      const url = URL.createObjectURL(blob)
+   228→      window.open(url)
+   229→      toast.success(`Certificat téléchargé (${orient === 'landscape' ? 'Paysage' : 'Portrait'})`)
+   230→    } catch {
+   231→      toast.error('Impossible de télécharger le certificat')
+   232→    } finally {
+   233→      setDownloadingId(null)
+   234→    }
+   235→  }
+   236→
+   237→  // ─── Open HD generator (pdf-lib + html2canvas) ───
+   238→
+   239→  const openHdGenerator = (cert: Certificat) => {
+   240→    setHdPreviewCert(cert)
+   241→  }
+   242→
+   243→  // ─── Loading ───
+   244→
+   245→  if (loading) {
+   246→    return (
+   247→      <div className="flex items-center justify-center min-h-[60vh]">
+   248→        <div className="flex flex-col items-center gap-3">
+   249→          <div className="relative">
+   250→            <div className="absolute inset-0 animate-ping rounded-full bg-emerald-400/30" />
+   251→            <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+   252→              <ScrollText className="h-6 w-6 text-emerald-600 animate-pulse" />
+   253→            </div>
+   254→          </div>
+   255→          <p className="text-sm text-muted-foreground">Chargement de vos certificats...</p>
+   256→        </div>
+   257→      </div>
+   258→    )
+   259→  }
+   260→
+   261→  // ─── Error ───
+   262→
+   263→  if (error) {
+   264→    return (
+   265→      <div className="flex items-center justify-center min-h-[60vh]">
+   266→        <Card className="w-full max-w-md border-red-200 dark:border-red-800">
+   267→          <CardContent className="text-center py-8">
+   268→            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+   269→              <AlertCircle className="h-7 w-7 text-red-600" />
+   270→            </div>
+   271→            <p className="text-lg font-semibold mb-1">Erreur de chargement</p>
+   272→            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+   273→            <Button onClick={fetchData} variant="outline" className="gap-2">
+   274→              <Clock className="h-4 w-4" /> Réessayer
+   275→            </Button>
+   276→          </CardContent>
+   277→        </Card>
+   278→      </div>
+   279→    )
+   280→  }
+   281→
+   282→  // ─── Render ───
+   283→
+   284→  return (
+   285→    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+   286→      {/* ─── Hero Header ─── */}
+   287→      <motion.div variants={itemVariants} className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-6 sm:p-8 text-white shadow-xl">
+   288→        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+   289→        <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-300/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
+   290→        <div className="relative flex items-center justify-between flex-wrap gap-4">
+   291→          <div className="flex items-center gap-4">
+   292→            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm border border-white/30">
+   293→              <ScrollText className="h-7 w-7" />
+   294→            </div>
+   295→            <div>
+   296→              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Mes Certificats</h1>
+   297→              <p className="text-sm text-emerald-100">Consultez et téléchargez vos certificats de réussite</p>
+   298→            </div>
+   299→          </div>
+   300→          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20">
+   301→            <Sparkles className="h-5 w-5 text-amber-300" />
+   302→            <span className="text-2xl font-bold">{stats.total}</span>
+   303→            <span className="text-sm text-emerald-100">certificat{stats.total !== 1 ? 's' : ''}</span>
+   304→          </div>
+   305→        </div>
+   306→      </motion.div>
+   307→
+   308→      {/* ─── Stats Cards ─── */}
+   309→      <motion.div variants={itemVariants} className="grid grid-cols-3 gap-3 sm:gap-4">
+   310→        {[
+   311→          { count: stats.expert, label: 'Expert', icon: Trophy, gradient: 'from-amber-500 to-orange-500', bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-600 dark:text-amber-400' },
+   312→          { count: stats.avance, label: 'Avancé', icon: Medal, gradient: 'from-blue-500 to-indigo-500', bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400' },
+   313→          { count: stats.standard, label: 'Standard', icon: Award, gradient: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600 dark:text-emerald-400' },
+   314→        ].map((stat, i) => (
+   315→          <motion.div key={i} variants={itemVariants}>
+   316→            <Card className={`hover:shadow-lg transition-shadow ${stat.bg} border-0`}>
+   317→              <CardContent className="p-4 sm:p-5">
+   318→                <div className="flex items-center gap-3">
+   319→                  <div className={`flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-gradient-to-br ${stat.gradient} shadow-lg`}>
+   320→                    <stat.icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+   321→                  </div>
+   322→                  <div>
+   323→                    <p className={`text-2xl sm:text-3xl font-bold ${stat.text}`}>{stat.count}</p>
+   324→                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+   325→                  </div>
+   326→                </div>
+   327→              </CardContent>
+   328→            </Card>
+   329→          </motion.div>
+   330→        ))}
+   331→      </motion.div>
+   332→
+   333→      {/* ─── Tabs ─── */}
+   334→      <motion.div variants={itemVariants}>
+   335→        <Tabs value={activeTab} onValueChange={setActiveTab}>
+   336→          <TabsList className="w-full justify-start">
+   337→            <TabsTrigger value="certificats" className="gap-1.5">
+   338→              <Award className="h-4 w-4" /> Certificats
+   339→            </TabsTrigger>
+   340→            <TabsTrigger value="progression" className="gap-1.5">
+   341→              <TrendingUp className="h-4 w-4" /> Progression par UE
+   342→            </TabsTrigger>
+   343→          </TabsList>
+   344→
+   345→          {/* ─── Certificats tab ─── */}
+   346→          <TabsContent value="certificats" className="mt-4">
+   347→            {certificats.length === 0 ? (
+   348→              <Card className="border-dashed">
+   349→                <CardContent className="flex flex-col items-center justify-center py-16">
+   350→                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+   351→                    <FileText className="h-8 w-8 text-muted-foreground" />
+   352→                  </div>
+   353→                  <p className="text-lg font-semibold mb-1">Aucun certificat</p>
+   354→                  <p className="text-sm text-muted-foreground text-center max-w-sm">
+   355→                    Vos certificats apparaîtront ici une fois que vous aurez complété des épreuves et obtenu des résultats.
+   356→                  </p>
+   357→                </CardContent>
+   358→              </Card>
+   359→            ) : (
+   360→              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+   361→                <AnimatePresence mode="popLayout">
+   362→                  {certificats.map((cert, index) => {
+   363→                    const config = CERTIFICAT_CONFIG[cert.type]
+   364→                    const IconComponent = config.icon
+   365→                    return (
+   366→                      <motion.div key={cert.id} variants={itemVariants} initial="hidden" animate="visible" transition={{ delay: index * 0.05 }}>
+   367→                        <Card className={`group relative overflow-hidden border ${config.border} hover:shadow-xl ${config.glow} hover:-translate-y-1 transition-all duration-300`}>
+   368→                          {/* Top gradient bar */}
+   369→                          <div className={`h-1.5 bg-gradient-to-r ${config.gradient}`} />
+   370→
+   371→                          <CardContent className="p-5 space-y-4">
+   372→                            {/* Header row */}
+   373→                            <div className="flex items-start justify-between">
+   374→                              <div className={`flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${config.gradient} shadow-md`}>
+   375→                                <IconComponent className="h-5 w-5 text-white" />
+   376→                              </div>
+   377→                              <Badge className={config.badge}>{config.label}</Badge>
+   378→                            </div>
+   379→
+   380→                            {/* UE info */}
+   381→                            <div>
+   382→                              <p className="font-mono text-xs text-muted-foreground mb-0.5">{cert.ueCode}</p>
+   383→                              <h3 className="font-semibold text-base leading-tight">{cert.ueNom}</h3>
+   384→                            </div>
+   385→
+   386→                            {/* Note + mention */}
+   387→                            <div className="flex items-center justify-between">
+   388→                              <div className="flex items-baseline gap-1">
+   389→                                <span className="text-3xl font-bold">{cert.note.toFixed(2).replace(/[.,]00$/, '')}</span>
+   390→                                <span className="text-sm text-muted-foreground">/20</span>
+   391→                              </div>
+   392→                              <Badge variant="outline" className="text-xs">{cert.mention}</Badge>
+   393→                            </div>
+   394→
+   395→                            {/* Progress bar */}
+   396→                            <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+   397→                              <div
+   398→                                className={`absolute inset-y-0 left-0 rounded-full bg-gradient-to-r ${config.gradient}`}
+   399→                                style={{ width: `${(cert.note / 20) * 100}%` }}
+   400→                              />
+   401→                            </div>
+   402→
+   403→                            {/* Date */}
+   404→                            <p className="text-xs text-muted-foreground">
+   405→                              {new Date(cert.dateEmission).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+   406→                            </p>
+   407→
+   408→                            {/* Toggle + Download */}
+   409→                            <div className="flex flex-col gap-2 pt-1">
+   410→                              <div className="flex gap-1 bg-muted/50 rounded-lg p-0.5">
+   411→                                <button
+   412→                                  onClick={() => setPdfOrientation('landscape')}
+   413→                                  className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${pdfOrientation === 'landscape' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+   414→                                >📐 Paysage</button>
+   415→                                <button
+   416→                                  onClick={() => setPdfOrientation('portrait')}
+   417→                                  className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${pdfOrientation === 'portrait' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+   418→                                >📄 Portrait</button>
+   419→                              </div>
+   420→                              <Button size="sm" className="w-full gap-1.5" onClick={() => handleDownloadPDF(cert.id)} disabled={downloadingId === cert.id}>
+   421→                                {downloadingId === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+   422→                                Télécharger ({pdfOrientation === 'landscape' ? 'Paysage' : 'Portrait'})
+   423→                              </Button>
+   424→                              {/* HD download via pdf-lib + html2canvas (SVG background) */}
+   425→                              <Button size="sm" variant="secondary" className="w-full gap-1.5" onClick={() => openHdGenerator(cert)}>
+   426→                                <Sparkles className="h-3.5 w-3.5" />
+   427→                                Télécharger HD
+   428→                              </Button>
+   429→                              {cert.verificationUrl && (
+   430→                                <Button size="sm" variant="outline" className="w-full gap-1.5" asChild>
+   431→                                  <a href={cert.verificationUrl} target="_blank" rel="noopener noreferrer">
+   432→                                    <Shield className="h-3.5 w-3.5" /> Vérifier en ligne
+   433→                                  </a>
+   434→                                </Button>
+   435→                              )}
+   436→                            </div>
+   437→                          </CardContent>
+   438→                        </Card>
+   439→                      </motion.div>
+   440→                    )
+   441→                  })}
+   442→                </AnimatePresence>
+   443→              </div>
+   444→            )}
+   445→          </TabsContent>
+   446→
+   447→          {/* ─── Progression tab ─── */}
+   448→          <TabsContent value="progression" className="mt-4">
+   449→            {validations.length === 0 ? (
+   450→              <Card className="border-dashed">
+   451→                <CardContent className="flex flex-col items-center justify-center py-16">
+   452→                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+   453→                    <TrendingUp className="h-8 w-8 text-muted-foreground" />
+   454→                  </div>
+   455→                  <p className="text-lg font-semibold mb-1">Aucune progression</p>
+   456→                  <p className="text-sm text-muted-foreground text-center max-w-sm">
+   457→                    Votre progression par UE apparaîtra ici une fois les évaluations complétées.
+   458→                  </p>
+   459→                </CardContent>
+   460→              </Card>
+   461→            ) : (
+   462→              <Card>
+   463→                <CardContent className="p-0">
+   464→                  <div className="overflow-x-auto">
+   465→                    <table className="w-full text-sm">
+   466→                      <thead>
+   467→                        <tr className="border-b bg-muted/50">
+   468→                          <th className="text-left p-3 font-medium text-muted-foreground">Code UE</th>
+   469→                          <th className="text-left p-3 font-medium text-muted-foreground">Nom</th>
+   470→                          <th className="text-center p-3 font-medium text-muted-foreground">ECTS</th>
+   471→                          <th className="text-center p-3 font-medium text-muted-foreground">Épreuves</th>
+   472→                          <th className="text-center p-3 font-medium text-muted-foreground">Note</th>
+   473→                          <th className="text-center p-3 font-medium text-muted-foreground">Statut</th>
+   474→                          <th className="text-center p-3 font-medium text-muted-foreground">PDF</th>
+   475→                        </tr>
+   476→                      </thead>
+   477→                      <tbody>
+   478→                        {validations.map((val, index) => {
+   479→                          const statutConf = STATUT_CONFIG[val.statut]
+   480→                          const StatutIcon = statutConf.icon
+   481→                          return (
+   482→                            <motion.tr
+   483→                              key={val.id}
+   484→                              className="border-b last:border-0 hover:bg-muted/30 transition-colors"
+   485→                              initial={{ opacity: 0, x: -10 }}
+   486→                              animate={{ opacity: 1, x: 0 }}
+   487→                              transition={{ delay: index * 0.04, duration: 0.3 }}
+   488→                            >
+   489→                              <td className="p-3 font-mono text-xs">{val.ueCode}</td>
+   490→                              <td className="p-3 font-medium">{val.ueNom}</td>
+   491→                              <td className="p-3 text-center">{val.creditsECTS}</td>
+   492→                              <td className="p-3 text-center">
+   493→                                <span className="text-muted-foreground">{val.epreuvesCompletees}</span>
+   494→                                <span className="text-muted-foreground">/</span>
+   495→                                <span>{val.epreuvesTotal}</span>
+   496→                              </td>
+   497→                              <td className="p-3 text-center font-semibold">
+   498→                                {val.note !== null ? (
+   499→                                  <span className={val.note >= 16 ? 'text-amber-600' : val.note >= 10 ? 'text-emerald-600' : 'text-red-600'}>
+   500→                                    {val.note.toFixed(1)}
+   501→                                  </span>
+   502→                                ) : (<span className="text-muted-foreground">—</span>)}
+   503→                              </td>
+   504→                              <td className="p-3 text-center">
+   505→                                <Badge variant="secondary" className={`gap-1 ${statutConf.badge}`}>
+   506→                                  <StatutIcon className="h-3 w-3" /> {statutConf.label}
+   507→                                </Badge>
+   508→                              </td>
+   509→                              <td className="p-3 text-center">
+   510→                                {val.certificatId ? (
+   511→                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleDownloadPDF(val.certificatId!)} disabled={downloadingId === val.certificatId} title="Télécharger">
+   512→                                    {downloadingId === val.certificatId ? <Loader2 className="h-4 w-4 animate-spin text-emerald-600" /> : <Download className="h-4 w-4 text-emerald-600" />}
+   513→                                  </Button>
+   514→                                ) : (<span className="text-muted-foreground">—</span>)}
+   515→                              </td>
+   516→                            </motion.tr>
+   517→                          )
+   518→                        })}
+   519→                      </tbody>
+   520→                    </table>
+   521→                  </div>
+   522→                </CardContent>
+   523→              </Card>
+   524→            )}
+   525→          </TabsContent>
+   526→        </Tabs>
+   527→      </motion.div>
+   528→
+   529→      {/* ─── HD Certificate Dialog (pdf-lib + html2canvas) ─── */}
+   530→      <Dialog open={!!hdPreviewCert} onOpenChange={(open) => !open && setHdPreviewCert(null)}>
+   531→        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto">
+   532→          {hdPreviewCert && (
+   533→            <CertificateGenerator
+   534→              data={{
+   535→                codeVerification: hdPreviewCert.codeVerification,
+   536→                type: hdPreviewCert.type,
+   537→                intitule: hdPreviewCert.type === 'EXPERT' ? 'Certificat de Réussite – Niveau Expert'
+   538→                  : hdPreviewCert.type === 'AVANCE' ? 'Certificat de Réussite – Niveau Avancé'
+   539→                  : 'Certificat de Réussite – Niveau Standard',
+   540→                mention: hdPreviewCert.mention,
+   541→                noteFinale: hdPreviewCert.note,
+   542→                etablissementNom: user?.etablissement?.nom || 'Établissement',
+   543→                etablissementVille: null,
+   544→                etablissementPays: null,
+   545→                filiereNom: user?.filiere?.nom || '',
+   546→                ueCode: hdPreviewCert.ueCode,
+   547→                ueNom: hdPreviewCert.ueNom,
+   548→                etudiantNom: hdPreviewCert.etudiantNom || user?.name || '',
+   549→                etudiantMatricule: null,
+   550→                etudiantNiveau: null,
+   551→                sessionType: 'NORMALE',
+   552→                anneeAcademique: null,
+   553→                dateEmission: hdPreviewCert.dateEmission,
+   554→                verificationUrl: hdPreviewCert.verificationUrl || '',
+   555→                responsableNom: null,
+   556→              }}
+   557→              onClose={() => setHdPreviewCert(null)}
+   558→            />
+   559→          )}
+   560→        </DialogContent>
+   561→      </Dialog>
+   562→    </motion.div>
+   563→  )
+   564→}
+   565→
