@@ -138,3 +138,30 @@ Stage Summary:
 - Hero presentation refined: premium multi-layer frame, cinematic fades, curated floating badges with pulsing live indicator
 - Commit 58125f6 pushed to GitHub by udevrard7, Vercel deployment triggered
 - Landing retains 3 distinct visuals, each with a clear narrative purpose
+
+---
+Task ID: 6
+Agent: Main Agent (Z.ai Code)
+Task: Remove the navbar "Commencer" button, switch currency to Franc CFA (FCFA), replace Centre de Commande image with an online school exam scene
+
+Work Log:
+- Read prior worklog (Task 5) — landing page hero already refined in previous turn
+- Located 3 "Commencer" occurrences: navbar desktop (line 220), navbar mobile (line 259), pricing card CTA "Commencer maintenant" (line 1448)
+- Located currency: prices were 499 / 1299 with label "MAD/mois" (Moroccan Dirham) at line 1426
+- Located Centre de Commande image: DashboardPreview used /dashboard-command-center.png (generic control-room screenshot)
+- Decision: removed the navbar "Commencer" CTA entirely (both desktop and mobile). Promoted "Connexion" to the primary emerald button so the navbar keeps one clear login entry. Kept the pricing-card "Commencer maintenant" CTA because it is the contextual plan-selection action (removing it would break the pricing UX); flagged this to the user
+- Decision: converted MAD prices to round FCFA values appropriate for the West/Central African higher-ed market (1 MAD ~= 60 FCFA): Starter 499 -> 30 000, Professionnel 1299 -> 80 000, Entreprise unchanged ("Sur mesure"). Label "MAD/mois" -> "FCFA/mois"
+- Generated new image public/exam-monitoring.png (1344x768, 144KB) via z-ai image: depicts online exam monitoring — laptop with exam analytics, remote student video tiles, live progress, world map of active sessions. VLM (glm-4.6v) confirmed it matches "online school exams / examination monitoring" intent
+- Applied all changes in one MultiEdit on landing-page.tsx (6 edits): desktop navbar CTA, mobile navbar CTA, Starter price, Pro price, currency label, DashboardPreview img src+alt
+- Deleted obsolete public/dashboard-command-center.png (no remaining code refs)
+- Ran `bun run lint` -> clean
+- Transient runtime test: GET / -> 200, GET /exam-monitoring.png -> 200 (143944 bytes), no errors in dev.log, boot ~1s. (Note: FCFA/exam-monitoring text not in raw server HTML because the landing is a client component that hydrates; verified via source grep instead)
+- No Prisma schema changes -> no Supabase sync needed
+- Committed as 293ead6 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (58125f6..293ead6) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Navbar "Commencer" button removed (desktop + mobile); "Connexion" is now the single primary login CTA
+- Currency switched MAD -> FCFA with converted prices (30 000 / 80 000 / Sur mesure)
+- Centre de Commande image replaced with an online-exam-monitoring scene (exam-monitoring.png); old image deleted
+- Commit 293ead6 pushed to GitHub by udevrard7, Vercel deployment triggered on https://sect-app.vercel.app
+- Deliberately kept the pricing-card "Commencer maintenant" plan-selection CTA (flagged to user)
