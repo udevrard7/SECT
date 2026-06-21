@@ -824,3 +824,32 @@ Stage Summary:
 - Date→signature spacing reduced from 10mm to 6mm — now practical to sign and stamp on a printed copy
 - VLM rating 6/10 → 8/10
 - Commit 0f3a4bb deployed on https://sect-app.vercel.app
+
+---
+Task ID: 26
+Agent: Main Agent (Z.ai Code)
+Task: Complete modern elegant redesign of certificate PDF inspired by user's reference image
+
+Work Log:
+- User: current certificate design is unprofessional. Provided a reference image (2349754-modele-de-certificat-moderne-elegant-vectoriel.jpg) to inspire from.
+- VLM analysis of the reference image identified the key modern design elements: diagonal corner bands, double thin border, 3 diamond separators, clean white central zone, two-column signature with centered seal, modern typography hierarchy.
+- Complete rewrite of src/lib/pdf/certificat-pdf.ts (359 insertions, 602 deletions — net simplification):
+  1. drawCornerBands(): 4 corner triangles (45mm primary + 25mm accent overlaid) — the signature visual element
+  2. drawBorder(): double thin border (0.8mm outer + 0.3mm inner, 3mm apart) — clean, not heavy
+  3. drawDiamondSeparator(): 3 diamonds (primary-accent-primary) centered between establishment name and certificate title
+  4. drawWatermark(): subtle theme icon in center background using color tinting
+  5. drawSeal(): enriched medallion — tinted fill, 3 concentric rings (accent thick + primary thin + dotted), center 5-pointed star, 'SECT' (11pt) + 'CERTIFIÉ' (6pt)
+  6. Two-column signature: left=Responsable name+label, right=Date+label, center=official seal (exactly like the reference)
+  7. Clean details box with colored left bar, 2-column grid layout
+  8. Compact verification block + minimal footer
+- Typography: modern hierarchy — 28pt title, 24pt student name, 18pt UE name, 10pt body, 8pt details. Colors: black (#212121) primary text, gray (#424242) secondary, template colors for decorative elements.
+- ESLint clean
+- VLM verification: note 8/10 — 'bandes diagonales aux coins, double bordure fine, losanges séparateurs, layout moderne et élégant, couleurs harmonisées'
+- Committed as feb6715 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (0f3a4bb..feb6715) -> Vercel auto-deploy triggered
+
+Stage Summary:
+- Certificate completely redesigned in modern elegant style inspired by the user's reference image
+- Key elements: diagonal corner bands, double thin border, diamond separators, centered seal, two-column signature
+- Net code reduction (602 lines deleted, 359 added) — cleaner, more maintainable
+- VLM rating 8/10
+- Commit feb6715 deployed on https://sect-app.vercel.app
