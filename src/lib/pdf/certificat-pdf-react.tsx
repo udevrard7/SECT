@@ -1,19 +1,16 @@
 /**
- * CertificatePDF.tsx — Premium Modern Certificate (A4 Landscape)
+ * CertificatePDF.tsx — Professional Certificate (A4 Landscape)
  *
- * @react-pdf/renderer component implementing the full design spec:
- * - A4 landscape with diagonal navy/gold corner bands
- * - Playfair Display 48pt "CERTIFICAT" (letter-spaced)
- * - Great Vibes 48pt student name (cursive)
- * - Inter for body text (11-12pt)
- * - 3 decorative diamonds (gold-navy-gold)
- * - Central badge: navy circle + gold border + "SECT CERTIFIÉ" + gold ribbons
- * - Thematic watermark (code/UML icons, opacity 0.08)
- * - Logo top-center, establishment + city
- * - UE name prominent, details in framed box
- * - Signatures: teacher (left) + responsable (right), seal centered
+ * @react-pdf/renderer component with exact design spec:
+ * - Diagonal navy/gold corner bands (SVG)
+ * - Playfair Display titles + Great Vibes student name + Inter body
+ * - 3×2 info grid with highlighted NOTE/MENTION cells
+ * - Central badge "SECT CERTIFIÉ" with gold border
+ * - Two-column signatures (70px space each)
+ * - Footer with gold separator
+ * - Watermark at 0.05 opacity + white overlay 0.95
  *
- * Palette: navy #1B3A5C, gold #F4B942, text #2C3E50, textLight #7F8C8D
+ * Palette: navy #1B3A5C, gold #F4B942
  */
 
 import React from 'react'
@@ -30,8 +27,6 @@ import {
   Circle,
   Rect,
   Line,
-  Ellipse,
-  Path,
   G,
   renderToBuffer,
 } from '@react-pdf/renderer'
@@ -86,19 +81,17 @@ export interface CertificatPDFData {
   responsableNom?: string | null
 }
 
-// ═══ Color Constants ═══
+// ═══ Constants ═══
 
 const NAVY = '#1B3A5C'
 const GOLD = '#F4B942'
-const GOLD_DARK = '#D4A017'
-const TEXT_DARK = '#2C3E50'
-const TEXT_LIGHT = '#7F8C8D'
-const BG_LIGHT = '#F8F9FA'
+const TEXT_DARK = '#2D3748'
+const TEXT_GRAY = '#718096'
+const TEXT_FOOTER = '#4A5568'
 const WHITE = '#FFFFFF'
-const BOX_BG = '#EEF2F7'
-const NOTE_HIGHLIGHT = '#EBF4FF'  // Bleu très pâle pour cellules NOTE/MENTION
-const GRAY_LABEL = '#718096'       // Gris pour labels du data grid
-const FOOTER_GRAY = '#4A5568'       // Gris foncé pour le footer
+const HIGHLIGHT_BG = '#EBF4FF'
+const HIGHLIGHT_BORDER = '#BEE3F8'
+const SIG_LINE = '#CBD5E0'
 
 // ═══ Helpers ═══
 
@@ -111,43 +104,44 @@ function formatNote(note: number): string {
   return note % 1 === 0 ? note.toFixed(0) : note.toFixed(2)
 }
 
-// ═══ Styles ═══
+function capitalizeName(name: string): string {
+  return name
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+}
+
+// ═══ Styles (exact spec) ═══
 
 const styles = StyleSheet.create({
-  // Page (A4 landscape)
   page: {
     width: '297mm',
     height: '210mm',
-    backgroundColor: BG_LIGHT,
+    backgroundColor: WHITE,
+    padding: '15mm',
     position: 'relative',
-    overflow: 'hidden',
-    fontFamily: 'Inter',
   },
 
-  // Corner containers
+  // Corner bands
   corner: { position: 'absolute' },
 
-  // Watermark wrapper (opacité réduite à 0.06 pour lisibilité)
+  // Watermark
   watermarkWrapper: {
     position: 'absolute',
     top: 0,
     left: 0,
     width: 842,
     height: 595,
-    opacity: 0.06,
+    opacity: 0.05,
   },
-
-  // Overlay blanc pour garantir la lisibilité du texte central
-  // (entre le titre et les signatures, opacité 92%)
-  textOverlay: {
+  whiteOverlay: {
     position: 'absolute',
-    top: '42mm',
-    left: '18mm',
-    right: '18mm',
-    bottom: '42mm',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
     backgroundColor: WHITE,
-    opacity: 0.92,
-    borderRadius: 4,
+    opacity: 0.95,
   },
 
   // Borders
@@ -172,249 +166,220 @@ const styles = StyleSheet.create({
     borderStyle: 'solid',
   },
 
-  // Content container
+  // Content
   content: {
-    position: 'absolute',
-    top: '14mm',
-    left: '22mm',
-    right: '22mm',
-    bottom: '14mm',
+    position: 'relative',
+    zIndex: 10,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    height: '100%',
   },
 
-  // Logo
+  // Header
+  header: {
+    textAlign: 'center',
+    marginBottom: 10,
+  },
   logoWrap: {
+    alignItems: 'center',
     marginBottom: 4,
-    alignItems: 'center',
   },
-
-  // Establishment
-  establishment: {
+  universityName: {
     fontSize: 10,
-    color: TEXT_LIGHT,
-    textAlign: 'center',
-    letterSpacing: 1,
-    marginBottom: 1,
+    color: TEXT_GRAY,
+    letterSpacing: 2,
+    marginBottom: 2,
   },
-  establishmentCity: {
+  universityCity: {
     fontSize: 8,
-    color: TEXT_LIGHT,
-    textAlign: 'center',
-    marginBottom: 6,
+    color: TEXT_GRAY,
   },
 
-  // Diamonds
-  diamonds: {
-    display: 'flex',
+  // Title
+  titleMain: {
+    fontFamily: 'PlayfairDisplay',
+    fontSize: 42,
+    color: NAVY,
+    letterSpacing: 6,
+    marginVertical: 5,
+  },
+  titleSub: {
+    fontFamily: 'PlayfairDisplay',
+    fontSize: 22,
+    color: TEXT_DARK,
+    letterSpacing: 2,
+    marginBottom: 15,
+  },
+
+  // Divider (3 diamonds)
+  divider: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
-    marginVertical: 6,
+    gap: 8,
+    marginBottom: 20,
   },
   diamondGold: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     backgroundColor: GOLD,
     transform: 'rotate(45deg)',
   },
   diamondNavy: {
-    width: 9,
-    height: 9,
+    width: 10,
+    height: 10,
     backgroundColor: NAVY,
     transform: 'rotate(45deg)',
   },
 
-  // Title
-  title: {
-    fontSize: 48,
-    fontFamily: 'PlayfairDisplay',
-    color: TEXT_DARK,
+  // Intro
+  introText: {
+    fontSize: 12,
+    color: TEXT_FOOTER,
     textAlign: 'center',
-    letterSpacing: 6,
-    lineHeight: 1,
+    marginBottom: 10,
+    fontStyle: 'italic',
   },
-  subtitle: {
-    fontSize: 22,
-    fontFamily: 'PlayfairDisplay',
+
+  // Student name
+  studentName: {
+    fontFamily: 'GreatVibes',
+    fontSize: 48,
     color: NAVY,
     textAlign: 'center',
-    marginTop: 2,
-    marginBottom: 4,
-  },
-
-  // Intro
-  intro: {
-    fontSize: 11,
-    color: TEXT_LIGHT,
-    fontStyle: 'italic',
-    marginTop: 6,
-    marginBottom: 2,
-  },
-
-  // Student name (Great Vibes, 48pt, capitalize — pas tout en majuscules)
-  studentName: {
-    fontSize: 48,
-    fontFamily: 'GreatVibes',
-    color: TEXT_DARK,
-    textAlign: 'center',
-    marginBottom: 0,
-    textTransform: 'capitalize',
+    marginVertical: 10,
   },
   studentInfo: {
-    fontSize: 9,
-    color: TEXT_LIGHT,
-    marginBottom: 6,
+    fontSize: 10,
+    color: TEXT_GRAY,
+    textAlign: 'center',
+    marginBottom: 20,
   },
 
   // UE name
   ueName: {
-    fontSize: 18,
     fontFamily: 'PlayfairDisplay',
-    color: NAVY,
-    fontWeight: 'bold',
+    fontSize: 28,
+    color: TEXT_DARK,
     textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 4,
+    marginBottom: 25,
   },
 
-  // Data Grid moderne (3 colonnes × 2 lignes)
-  detailsGrid: {
-    width: '78%',
-    display: 'flex',
+  // Info grid (3 cols × 2 rows)
+  infoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 6,
+    paddingHorizontal: 20,
+    marginBottom: 30,
   },
-  detailCell: {
-    width: '32%',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    padding: '6px 4px',
+  infoCell: {
+    width: '30%',
+    padding: 10,
+    marginBottom: 10,
     borderRadius: 4,
-    backgroundColor: BOX_BG,
-  },
-  // Cellules NOTE et MENTION mises en valeur (fond bleu pâle #EBF4FF)
-  detailCellHighlight: {
-    width: '32%',
-    display: 'flex',
-    flexDirection: 'column',
+    textAlign: 'center',
+    backgroundColor: '#F7FAFC',
     alignItems: 'center',
-    padding: '6px 4px',
-    borderRadius: 4,
-    backgroundColor: NOTE_HIGHLIGHT,
   },
-  detailLabel: {
+  infoCellHighlighted: {
+    width: '30%',
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 4,
+    textAlign: 'center',
+    backgroundColor: HIGHLIGHT_BG,
+    borderWidth: 1,
+    borderColor: HIGHLIGHT_BORDER,
+    borderStyle: 'solid',
+    alignItems: 'center',
+  },
+  label: {
     fontSize: 8,
-    color: GRAY_LABEL,
-    fontWeight: 'bold',
+    color: TEXT_GRAY,
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 3,
+    marginBottom: 4,
   },
-  detailValue: {
-    fontSize: 12,
+  value: {
+    fontSize: 11,
     color: NAVY,
     fontWeight: 'bold',
-    textAlign: 'center',
   },
 
-  // Signature row — flexbox équilibrée
-  signatureRow: {
+  // Badge (centered)
+  badgeWrap: {
+    alignItems: 'center',
+    marginVertical: 15,
+  },
+
+  // Signatures
+  signaturesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    width: '100%',
     marginTop: 40,
-    paddingHorizontal: 40,
+    paddingHorizontal: 30,
   },
-  sigCol: {
-    flexDirection: 'column',
+  signatureBlock: {
+    width: '30%',
     alignItems: 'center',
-    width: '28%',
   },
-  sigName: {
-    fontSize: 10,
-    fontFamily: 'Inter',
-    fontWeight: 'bold',
-    color: NAVY,
-    marginBottom: 4,
-  },
-  // Espace de signature optimisé pour l'impression (60px + ligne fine)
   signatureSpace: {
-    height: 60,
-    borderBottom: '1pt solid #CBD5E0',
-    marginBottom: 8,
+    height: 70,
+    borderBottom: `1pt solid ${SIG_LINE}`,
     width: '100%',
+    marginBottom: 8,
   },
-  sigLabel: {
+  signatureLabel: {
     fontSize: 9,
-    color: TEXT_LIGHT,
+    color: TEXT_GRAY,
     textAlign: 'center',
+  },
+  signatureName: {
+    fontSize: 10,
+    color: TEXT_DARK,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 2,
   },
 
-  // Footer — remonté (15mm), ligne dorée au-dessus, 9pt gris foncé
-  footerSeparator: {
-    position: 'absolute',
-    bottom: '18mm',
-    left: '25mm',
-    right: '25mm',
-    borderBottomWidth: 0.5,
-    borderBottomColor: GOLD,
-    borderBottomStyle: 'solid',
-  },
+  // Footer
   footer: {
-    position: 'absolute',
-    bottom: '15mm',
-    left: '25mm',
-    right: '25mm',
+    marginTop: 20,
+    paddingTop: 10,
+    borderTop: `1pt solid ${GOLD}`,
     textAlign: 'center',
+  },
+  footerText: {
     fontSize: 9,
-    color: FOOTER_GRAY,
+    color: TEXT_FOOTER,
+    textAlign: 'center',
   },
 })
 
-// ═══ Grid Watermark (thematic for all UE types) ═══
+// ═══ Watermark (code/UML icons at 0.05 opacity) ═══
 
 function CodeWatermark() {
-  // Repeating pattern of code brackets </> and UML class boxes
-  // Rendered as a subtle SVG covering the page at 0.08 opacity
   return (
     <View style={styles.watermarkWrapper} fixed>
       <Svg width={842} height={595} viewBox="0 0 842 595">
-        {/* Repeating </> chevrons in a loose grid */}
-        {Array.from({ length: 6 }).map((_, row) =>
-          Array.from({ length: 9 }).map((_, col) => {
-            const cx = 50 + col * 90
-            const cy = 50 + row * 95
+        {Array.from({ length: 5 }).map((_, row) =>
+          Array.from({ length: 8 }).map((_, col) => {
+            const cx = 60 + col * 95
+            const cy = 60 + row * 110
             return (
               <G key={`${row}-${col}`}>
-                {/* Left chevron < */}
-                <Line x1={cx - 8} y1={cy - 6} x2={cx - 3} y2={cy} stroke={NAVY} strokeWidth="1.2" />
-                <Line x1={cx - 3} y1={cy} x2={cx - 8} y2={cy + 6} stroke={NAVY} strokeWidth="1.2" />
-                {/* Right chevron > */}
-                <Line x1={cx + 3} y1={cy - 6} x2={cx + 8} y2={cy} stroke={NAVY} strokeWidth="1.2" />
-                <Line x1={cx + 8} y1={cy} x2={cx + 3} y2={cy + 6} stroke={NAVY} strokeWidth="1.2" />
-                {/* Center slash */}
-                <Line x1={cx - 1} y1={cy + 4} x2={cx + 1} y2={cy - 4} stroke={NAVY} strokeWidth="0.8" />
+                <Line x1={cx - 8} y1={cy - 6} x2={cx - 3} y2={cy} stroke={NAVY} strokeWidth="1.5" />
+                <Line x1={cx - 3} y1={cy} x2={cx - 8} y2={cy + 6} stroke={NAVY} strokeWidth="1.5" />
+                <Line x1={cx + 3} y1={cy - 6} x2={cx + 8} y2={cy} stroke={NAVY} strokeWidth="1.5" />
+                <Line x1={cx + 8} y1={cy} x2={cx + 3} y2={cy + 6} stroke={NAVY} strokeWidth="1.5" />
+                <Line x1={cx - 1} y1={cy + 5} x2={cx + 1} y2={cy - 5} stroke={NAVY} strokeWidth="1" />
               </G>
             )
           })
         )}
-        {/* A few UML class box outlines scattered */}
-        {[
-          { x: 120, y: 120 }, { x: 600, y: 80 }, { x: 300, y: 420 }, { x: 700, y: 380 },
-        ].map((pos, i) => (
-          <G key={`uml-${i}`}>
-            <Rect x={pos.x} y={pos.y} width={60} height={35} fill="none" stroke={NAVY} strokeWidth="0.8" />
-            <Line x1={pos.x} y1={pos.y + 12} x2={pos.x + 60} y2={pos.y + 12} stroke={NAVY} strokeWidth="0.5" />
-            <Line x1={pos.x} y1={pos.y + 23} x2={pos.x + 60} y2={pos.y + 23} stroke={NAVY} strokeWidth="0.5" />
-          </G>
-        ))}
       </Svg>
     </View>
   )
@@ -453,49 +418,34 @@ function CornerBands() {
   )
 }
 
-// ═══ Central Seal with Gold Ribbons ═══
+// ═══ Central Badge ═══
 
-function CentralSeal() {
-  const cx = 35 // center x in SVG viewport
-  const cy = 32 // center y
-  const r = 26 // seal radius
+function CentralBadge() {
+  const cx = 35
+  const cy = 35
+  const r = 28
 
   return (
-    <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '28%' }}>
-      <Svg width={80} height={75} viewBox="0 0 70 70">
-        {/* ── Ribbons (behind circle, drawn first) ── */}
-        {/* Left ribbon */}
-        <Polygon
-          points={`${cx - 8},${cy + 18} ${cx - 2},${cy + 18} ${cx - 2},${cy + 40} ${cx - 5},${cy + 36} ${cx - 8},${cy + 40}`}
-          fill={GOLD}
-        />
-        <Polygon points={`${cx - 8},${cy + 18} ${cx - 5},${cy + 18} ${cx - 5},${cy + 40} ${cx - 8},${cy + 40}`} fill={GOLD_DARK} />
-        {/* Right ribbon */}
-        <Polygon
-          points={`${cx + 2},${cy + 18} ${cx + 8},${cy + 18} ${cx + 8},${cy + 40} ${cx + 5},${cy + 36} ${cx + 2},${cy + 40}`}
-          fill={GOLD}
-        />
-        <Polygon points={`${cx + 5},${cy + 18} ${cx + 8},${cy + 18} ${cx + 8},${cy + 40} ${cx + 5},${cy + 40}`} fill={GOLD_DARK} />
-
-        {/* ── Seal circle ── */}
-        {/* Navy fill */}
+    <View style={styles.badgeWrap}>
+      <Svg width={80} height={80} viewBox="0 0 70 70">
+        {/* Navy circle */}
         <Circle cx={cx} cy={cy} r={r} fill={NAVY} />
-        {/* Gold outer border (thick) */}
-        <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="2.5" />
-        {/* Gold inner ring (thin) */}
-        <Circle cx={cx} cy={cy} r={r - 4} fill="none" stroke={GOLD} strokeWidth="0.8" />
+        {/* Gold border (thick) */}
+        <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="3" />
+        {/* Gold inner ring */}
+        <Circle cx={cx} cy={cy} r={r - 5} fill="none" stroke={GOLD} strokeWidth="0.8" />
 
-        {/* Decorative dots ring */}
-        {Array.from({ length: 20 }).map((_, i) => {
-          const angle = (i * 360) / 20
+        {/* Decorative dots */}
+        {Array.from({ length: 24 }).map((_, i) => {
+          const angle = (i * 360) / 24
           const rad = (angle * Math.PI) / 180
-          const dr = r - 2
+          const dr = r - 2.5
           return (
-            <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.7" fill={GOLD} />
+            <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.6" fill={GOLD} />
           )
         })}
 
-        {/* Center star (5-pointed) */}
+        {/* Center star */}
         {Array.from({ length: 10 }).map((_, i) => {
           const outerR = 6
           const innerR = 2.5
@@ -505,73 +455,65 @@ function CentralSeal() {
           return (
             <Polygon
               key={`s${i}`}
-              points={`${cx},${cy - 6} ${cx + ri * Math.cos(a1)},${cy - 6 + ri * Math.sin(a1)} ${cx + ri * Math.cos(a2)},${cy - 6 + ri * Math.sin(a2)}`}
+              points={`${cx},${cy - 8} ${cx + ri * Math.cos(a1)},${cy - 8 + ri * Math.sin(a1)} ${cx + ri * Math.cos(a2)},${cy - 8 + ri * Math.sin(a2)}`}
               fill={GOLD}
             />
           )
         })}
 
-        {/* Text "SECT" */}
-        <Text x={cx} y={cy + 5} textAnchor="middle" fontSize="9" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</Text>
-        {/* Text "CERTIFIÉ" */}
-        <Text x={cx} y={cy + 11} textAnchor="middle" fontSize="4.5" fontFamily="Inter" fontWeight="bold" fill={GOLD}>CERTIFIÉ</Text>
+        {/* Text */}
+        <Text x={cx} y={cy + 4} textAnchor="middle" fontSize="10" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</Text>
+        <Text x={cx} y={cy + 11} textAnchor="middle" fontSize="5" fontFamily="Inter" fontWeight="bold" fill={GOLD}>CERTIFIÉ</Text>
       </Svg>
     </View>
   )
 }
 
-// ═══ Logo Component ═══
+// ═══ Logo ═══
 
 function Logo({ logo, nom }: { logo: string | null; nom: string }) {
   if (!logo) {
     return (
       <View style={styles.logoWrap}>
-        <Text style={{ fontSize: 16, fontFamily: 'PlayfairDisplay', color: NAVY, textAlign: 'center' }}>
-          {nom}
-        </Text>
+        <Text style={{ fontSize: 14, fontFamily: 'PlayfairDisplay', color: NAVY }}>{nom}</Text>
       </View>
     )
   }
   return (
     <View style={styles.logoWrap}>
-      <Image src={logo} style={{ width: 130, height: 55, objectFit: 'contain' as const }} alt="" />
+      <Image src={logo} style={{ width: 120, height: 50, objectFit: 'contain' as const }} alt="" />
     </View>
   )
 }
 
-// ═══ Main Certificate Document ═══
+// ═══ Main Component ═══
 
 export function CertificateDocument({ data }: { data: CertificatPDFData }) {
-  // Subtitle based on type
   const subtitle = data.type === 'EXCELLENCE'
     ? "d'Excellence"
     : data.type === 'ACCOMPLISSEMENT'
       ? "d'Accomplissement"
       : 'de Participation'
 
-  // Student info
+  const studentName = capitalizeName(data.etudiantNom)
+
   const studentParts: string[] = []
-  if (data.etudiantMatricule) studentParts.push(`Matricule : ${data.etudiantMatricule}`)
-  if (data.etudiantNiveau) studentParts.push(`Niveau : ${data.etudiantNiveau}`)
-  const studentInfo = studentParts.join('  •  ')
+  if (data.etudiantMatricule) studentParts.push(`Matricule: ${data.etudiantMatricule}`)
+  if (data.etudiantNiveau) studentParts.push(`Niveau: ${data.etudiantNiveau}`)
 
-  // Session label
   const sessionLabel = data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
-
-  // Establishment
   const location = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
 
-  // Footer
-  const footerText = `Émis le ${formatDate(data.dateEmission)}  |  Code : ${data.codeVerification}  |  Vérification : ${data.verificationUrl}`
+  const footerText = `Émis le ${formatDate(data.dateEmission)}  |  Code: ${data.codeVerification}  |  Vérification: ${data.verificationUrl}`
 
-  // Details array
-  const details = [
-    { label: 'Code UE', value: data.ueCode },
-    { label: 'Filière', value: data.filiereNom },
-    { label: 'Note', value: `${formatNote(data.noteFinale)}/20` },
-    { label: 'Mention', value: data.mention || '—' },
-    { label: 'Session', value: sessionLabel },
-    { label: 'Année', value: data.anneeAcademique || '—' },
+  // Info grid data
+  const infos = [
+    { label: 'CODE UE', value: data.ueCode, highlight: false },
+    { label: 'FILIÈRE', value: data.filiereNom, highlight: false },
+    { label: 'NOTE', value: `${formatNote(data.noteFinale)}/20`, highlight: true },
+    { label: 'MENTION', value: data.mention || '—', highlight: true },
+    { label: 'SESSION', value: sessionLabel, highlight: false },
+    { label: 'ANNÉE', value: data.anneeAcademique || '—', highlight: false },
   ]
 
   return (
@@ -580,87 +522,85 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
         {/* Layer 1: Corner bands */}
         <CornerBands />
 
-        {/* Layer 2: Code/UML watermark (opacity 0.06) */}
+        {/* Layer 2: Watermark (0.05 opacity) */}
         <CodeWatermark />
 
-        {/* Layer 3: Double border */}
+        {/* Layer 3: White overlay (0.95) for readability */}
+        <View style={styles.whiteOverlay} />
+
+        {/* Layer 4: Double border */}
         <View style={styles.borderOuter} />
         <View style={styles.borderInner} />
 
-        {/* Layer 3b: White overlay for text readability (opacity 0.92) */}
-        <View style={styles.textOverlay} />
-
-        {/* Layer 4: Content */}
+        {/* Layer 5: Content */}
         <View style={styles.content}>
-          {/* Logo + establishment */}
-          <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
-          <Text style={styles.establishment}>{data.etablissementNom.toUpperCase()}</Text>
-          {location ? <Text style={styles.establishmentCity}>{location}</Text> : null}
+          {/* Header */}
+          <View style={styles.header}>
+            <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
+            <Text style={styles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
+            {location ? <Text style={styles.universityCity}>{location}</Text> : null}
+          </View>
 
-          {/* Diamonds: gold - navy - gold */}
-          <View style={styles.diamonds}>
+          {/* Title */}
+          <Text style={styles.titleMain}>CERTIFICAT</Text>
+          <Text style={styles.titleSub}>{subtitle}</Text>
+
+          {/* Divider (3 diamonds: gold-navy-gold) */}
+          <View style={styles.divider}>
             <View style={styles.diamondGold} />
             <View style={styles.diamondNavy} />
             <View style={styles.diamondGold} />
           </View>
 
-          {/* Title + subtitle */}
-          <Text style={styles.title}>CERTIFICAT</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-
           {/* Intro */}
-          <Text style={styles.intro}>Nous certifions par la présente que</Text>
+          <Text style={styles.introText}>Nous certifions par la présente que</Text>
 
           {/* Student name (Great Vibes, 48pt) */}
-          <Text style={styles.studentName}>{data.etudiantNom}</Text>
-          {studentInfo ? <Text style={styles.studentInfo}>{studentInfo}</Text> : null}
+          <Text style={styles.studentName}>{studentName}</Text>
+          {studentParts.length > 0 ? <Text style={styles.studentInfo}>{studentParts.join('  •  ')}</Text> : null}
 
-          {/* "a validé avec succès l'unité d'enseignement" */}
-          <Text style={styles.intro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
-
-          {/* UE name (prominent) */}
+          {/* UE name */}
           <Text style={styles.ueName}>{data.ueNom}</Text>
 
-          {/* Data Grid moderne (3 colonnes × 2 lignes) avec cellules NOTE/MENTION mises en valeur */}
-          <View style={styles.detailsGrid}>
-            {details.map((d, i) => {
-              const isHighlight = d.label === 'Note' || d.label === 'Mention'
-              return (
-                <View key={i} style={isHighlight ? styles.detailCellHighlight : styles.detailCell}>
-                  <Text style={styles.detailLabel}>{d.label}</Text>
-                  <Text style={styles.detailValue}>{d.value}</Text>
-                </View>
-              )
-            })}
+          {/* Info grid (3 cols × 2 rows) */}
+          <View style={styles.infoGrid}>
+            {infos.map((info, i) => (
+              <View key={i} style={info.highlight ? styles.infoCellHighlighted : styles.infoCell}>
+                <Text style={styles.label}>{info.label}</Text>
+                <Text style={styles.value}>{info.value}</Text>
+              </View>
+            ))}
           </View>
 
-          {/* Signature row: teacher (left) + seal (center) + responsable (right) */}
-          <View style={styles.signatureRow}>
-            {/* Left: teacher signature (empty space for handwriting) */}
-            <View style={styles.sigCol}>
+          {/* Central badge */}
+          <CentralBadge />
+
+          {/* Signatures */}
+          <View style={styles.signaturesContainer}>
+            {/* Left: teacher */}
+            <View style={styles.signatureBlock}>
               <View style={styles.signatureSpace} />
-              <Text style={styles.sigLabel}>Signature de l&apos;enseignant</Text>
+              <Text style={styles.signatureLabel}>Signature de l'enseignant</Text>
             </View>
 
-            {/* Center: Seal with ribbons */}
-            <CentralSeal />
+            {/* Center: badge is already above, space here for layout balance */}
+            <View style={{ width: '20%' }} />
 
-            {/* Right: Responsable */}
-            <View style={styles.sigCol}>
+            {/* Right: responsable */}
+            <View style={styles.signatureBlock}>
+              <View style={styles.signatureSpace} />
               {data.responsableNom ? (
-                <Text style={styles.sigName}>{data.responsableNom}</Text>
+                <Text style={styles.signatureName}>{data.responsableNom}</Text>
               ) : null}
-              <View style={styles.signatureSpace} />
-              <Text style={styles.sigLabel}>Le Responsable pédagogique</Text>
+              <Text style={styles.signatureLabel}>Le Responsable pédagogique</Text>
             </View>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>{footerText}</Text>
           </View>
         </View>
-
-        {/* Footer separator (fine ligne dorée) */}
-        <View style={styles.footerSeparator} />
-
-        {/* Footer (remonté, 9pt gris foncé) */}
-        <Text style={styles.footer}>{footerText}</Text>
       </Page>
     </Document>
   )
