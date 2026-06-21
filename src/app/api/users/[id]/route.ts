@@ -208,6 +208,28 @@ async function _PATCH(
       },
     })
 
+    // ─── Sync certificate snapshots when name/matricule changes ───
+    // Certificat.etudiantNom and etudiantMatricule are snapshots taken at
+    // emission time. When a RESPONSABLE updates a student's name/matricule,
+    // these snapshots must be refreshed on all existing EMIS certificates
+    // so the verify page and PDFs show the current identity.
+    if (data.name !== undefined || data.matricule !== undefined) {
+      try {
+        const snapshotUpdate: Record<string, unknown> = {}
+        if (data.name !== undefined) snapshotUpdate.etudiantNom = data.name
+        if (data.matricule !== undefined) snapshotUpdate.etudiantMatricule = data.matricule || null
+        if (Object.keys(snapshotUpdate).length > 0) {
+          await db.certificat.updateMany({
+            where: { etudiantId: id, statut: 'EMIS' },
+            data: snapshotUpdate,
+          })
+        }
+      } catch (syncErr) {
+        // Non-blocking: the user update succeeded; certificate sync is best-effort
+        console.error('[users PATCH] Failed to sync certificate snapshots:', syncErr)
+      }
+    }
+
     // Create audit log (include old/new matricule if changed)
     const auditDetails: Record<string, unknown> = { updatedFields: Object.keys(data) }
     if (matriculeChanged) {

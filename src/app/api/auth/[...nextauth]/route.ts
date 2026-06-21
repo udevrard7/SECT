@@ -191,6 +191,46 @@ export const authOptions: NextAuthOptions = {
         token.actif = user.actif
         token.matricule = user.matricule
         token.mustChangePwd = user.mustChangePwd
+        // Stash the display name from the DB so the session stays in sync
+        // even if a responsable edits the user's name after sign-in.
+        token.name = user.name
+        return token
+      }
+
+      // On subsequent calls (existing token), refresh volatile fields from the DB
+      // so that profile edits (name, matricule, actif, mustChangePwd) made by a
+      // responsable are reflected in the active session WITHOUT requiring the
+      // student to sign out and back in.
+      if (token.userId) {
+        try {
+          const fresh = await withRetry(() =>
+            db.user.findUnique({
+              where: { id: token.userId as string },
+              select: {
+                name: true,
+                matricule: true,
+                actif: true,
+                mustChangePwd: true,
+                etablissementId: true,
+                filiereId: true,
+                etablissement: { select: { id: true, nom: true } },
+                filiere: { select: { id: true, nom: true } },
+              },
+            })
+          )
+          if (fresh) {
+            token.name = fresh.name
+            token.matricule = fresh.matricule
+            token.actif = fresh.actif
+            token.mustChangePwd = fresh.mustChangePwd
+            token.etablissementId = fresh.etablissementId
+            token.filiereId = fresh.filiereId
+            token.etablissement = fresh.etablissement
+            token.filiere = fresh.filiere
+          }
+        } catch {
+          // Non-blocking: keep the existing token if the DB refresh fails
+        }
       }
       return token
     },
