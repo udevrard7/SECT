@@ -1281,3 +1281,38 @@ Stage Summary:
 - New 3-tier certificate structure deployed: Expert (≥16, gold★), Avancé (12-15.99, blue◆), Standard (10-11.99, green■)
 - All 10 existing certificates migrated and re-typed
 - Commit 316248d deployed on https://sect-app.vercel.app
+
+---
+Task ID: 40
+Agent: Main Agent (Z.ai Code)
+Task: Ornamental certificate design inspired by vecteezy SVG — VLM 10/10
+
+Work Log:
+- User provided a vecteezy SVG certificate template (947KB, 12564 lines) and asked to reproduce it with @react-pdf/renderer
+- Analyzed the SVG: 124 paths, 468 gradients, 86 polygons, 2 embedded PNG images, viewBox 1767×1011 (landscape). The ornamental decorations use complex gradient-filled floral paths — impossible to reproduce 1:1 in react-pdf.
+- Strategy: captured the ESSENCE of the design (ornamental corners, triple gold border, elegant gold color scheme) using react-pdf SVG primitives, following the user's detailed text spec exactly.
+
+DESIGN ELEMENTS:
+- Ornamental corners: 4 SVG corner decorations with gold L-flourishes + navy inner accents + decorative dots
+- Triple border frame: gold (2pt) + navy (0.5pt) + gold (0.3pt)
+- Gold color #C5A044 (per user spec, darker and more elegant than previous #F4B942)
+- NOTE/MENTION cells: gold tint #FFF8E7 with gold border #E8D09A
+
+TYPOGRAPHY:
+- Title 'CERTIFICAT DE RÉUSSITE': Playfair 36pt gold #C5A044
+- Subtitle: Playfair 24pt (Niveau Expert/Avancé/Standard)
+- Student name: Great Vibes 52pt (cursive, capitalize)
+- UE name: Playfair 28pt gold
+- Body: Inter 12-13pt
+
+VLM checklist (9/9 all YES): ornamental corners ✓, triple border ✓, gold title ✓, cursive 52pt name ✓, 3×2 grid with gold-highlighted cells ✓, central badge ✓, gold signature lines ✓, gold footer line ✓, single page ✓
+Score: 10/10
+- Pages: 1 (no overflow)
+- ESLint clean (-26 lines net, simpler code)
+- Committed as cb2ee06 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (ef1aa61..cb2ee06)
+
+Stage Summary:
+- Certificate redesigned with ornamental elements inspired by the vecteezy SVG
+- Gold #C5A044 color scheme, triple border, ornamental corners, elegant typography
+- Perfect VLM score 10/10 with single-page output
+- Commit cb2ee06 deployed on https://sect-app.vercel.app
