@@ -53,7 +53,7 @@ const THEME_RULES: Array<{
       'bureautique', 'office', 'excel', 'word',
     ],
   },
-  // Sciences (bio, chimie, physique)
+  // Sciences (bio, chimie, physique) — note: "science" (singular) matches "sciences" as substring
   {
     icon: 'science',
     primaryColor: '0D9488',   // teal
@@ -61,7 +61,7 @@ const THEME_RULES: Array<{
     fontFamily: 'helvetica',
     keywords: [
       'biologie', 'biology', 'chimie', 'chemistry', 'physique', 'physics',
-      'science', 'sciences', 'laboratoire', 'lab', 'laboratory',
+      'science', 'laboratoire', 'lab', 'laboratory',
       'molécule', 'molecule', 'cellule', 'cell', 'génétique', 'genetic',
       'adn', 'dna', 'enzyme', 'protéine', 'protein',
       'thermodynamique', 'thermodynamics', 'quantique', 'quantum',
@@ -95,13 +95,16 @@ const THEME_RULES: Array<{
       'économie', 'economie', 'economics', 'gestion', 'management',
       'commerce', 'business', 'finance', 'financial', 'marketing',
       'comptabilité', 'comptabilite', 'accounting', 'audit',
-      'entreprise', 'business', 'strategy', 'stratégie',
+      'entreprise', 'strategy', 'stratégie',
       'vente', 'sales', 'negotiation', 'négociation',
       'logistique', 'logistics', 'supply chain', 'chaîne d\'approvisionnement',
       'ressources humaines', 'human resources', 'rh',
       'fiscalité', 'taxation', 'impôt', 'tax',
       'banque', 'banking', 'assurance', 'insurance',
       'bilan', 'budget', 'investissement', 'investment',
+      // Specific composites to outweigh "science" false-positive in "Sciences Économiques"
+      'sciences économiques', 'sciences de gestion', 'sciences économiques et de gestion',
+      'économiques', 'économique', 'économiste',
     ],
   },
   // Mathématiques
