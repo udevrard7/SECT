@@ -16,10 +16,14 @@ import {
   Page,
   View,
   Text,
+  Image,
   Font,
   StyleSheet,
   Svg,
   Polygon,
+  Circle,
+  Ellipse,
+  Rect,
   renderToBuffer,
   type Styles,
 } from '@react-pdf/renderer'
@@ -151,6 +155,24 @@ function buildStyles(primary: [number, number, number], accent: [number, number,
     cornerTR: { position: 'absolute', top: 0, right: 0 },
     cornerBL: { position: 'absolute', bottom: 0, left: 0 },
     cornerBR: { position: 'absolute', bottom: 0, right: 0 },
+
+    // Watermark — filigrane behind the content (opacity 12%)
+    watermarkImage: {
+      position: 'absolute',
+      top: '15%',
+      left: '15%',
+      width: '70%',
+      height: '70%',
+      opacity: 0.12,
+      objectFit: 'contain' as const,
+    },
+    watermarkIcon: {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      opacity: 0.12,
+    },
 
     // Borders (double frame)
     borderOuter: {
@@ -447,6 +469,85 @@ function formatNote(note: number): string {
   return note % 1 === 0 ? note.toFixed(0) : note.toFixed(2)
 }
 
+// ─── Theme Icon SVG (watermark) ───
+
+function ThemeIconSvg({ icon, color }: { icon: string; color: string }) {
+  const s = 200 // SVG viewport size
+  const c = s / 2 // center
+
+  switch (icon.toLowerCase()) {
+    case 'code':
+      // </> chevrons
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Polygon points={`${c - 50},${c - 30} ${c - 20},${c} ${c - 50},${c + 30}`} fill="none" stroke={color} strokeWidth="8" />
+          <Polygon points={`${c + 50},${c - 30} ${c + 20},${c} ${c + 50},${c + 30}`} fill="none" stroke={color} strokeWidth="8" />
+          <Polygon points={`${c - 5},${c + 30} ${c + 5},${c + 30} ${c + 2},${c - 30} ${c - 2},${c - 30}`} fill={color} />
+        </Svg>
+      )
+    case 'science':
+      // Atom
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Ellipse cx={c} cy={c} rx={60} ry={25} fill="none" stroke={color} strokeWidth="4" />
+          <Ellipse cx={c} cy={c} rx={60} ry={25} fill="none" stroke={color} strokeWidth="4" transform={`rotate(60 ${c} ${c})`} />
+          <Ellipse cx={c} cy={c} rx={60} ry={25} fill="none" stroke={color} strokeWidth="4" transform={`rotate(120 ${c} ${c})`} />
+          <Circle cx={c} cy={c} r={8} fill={color} />
+        </Svg>
+      )
+    case 'law':
+      // Scales of justice
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Polygon points={`${c},${c - 50} ${c},${c + 40}`} fill="none" stroke={color} strokeWidth="6" />
+          <Polygon points={`${c - 50},${c - 30} ${c + 50},${c - 30}`} fill="none" stroke={color} strokeWidth="6" />
+          <Polygon points={`${c - 50},${c - 30} ${c - 65},${c} ${c - 35},${c}`} fill="none" stroke={color} strokeWidth="4" />
+          <Polygon points={`${c + 50},${c - 30} ${c + 35},${c} ${c + 65},${c}`} fill="none" stroke={color} strokeWidth="4" />
+        </Svg>
+      )
+    case 'business':
+      // Bar chart
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Rect x={c - 40} y={c + 10} width={15} height={30} fill={color} />
+          <Rect x={c - 15} y={c - 10} width={15} height={50} fill={color} />
+          <Rect x={c + 10} y={c - 5} width={15} height={45} fill={color} />
+          <Rect x={c + 35} y={c - 30} width={15} height={70} fill={color} />
+        </Svg>
+      )
+    case 'math':
+      // π symbol
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Text x={c} y={c + 20} textAnchor="middle" fontSize="120" fontFamily="PlayfairDisplay" fill={color}>π</Text>
+        </Svg>
+      )
+    case 'language':
+      // Globe
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Circle cx={c} cy={c} r={50} fill="none" stroke={color} strokeWidth="4" />
+          <Ellipse cx={c} cy={c} rx={20} ry={50} fill="none" stroke={color} strokeWidth="3" />
+          <Ellipse cx={c} cy={c} rx={50} ry={20} fill="none" stroke={color} strokeWidth="3" />
+        </Svg>
+      )
+    case 'art':
+      // Palette
+      return (
+        <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+          <Circle cx={c} cy={c} r={50} fill="none" stroke={color} strokeWidth="4" />
+          <Circle cx={c - 20} cy={c - 20} r={6} fill={color} />
+          <Circle cx={c + 20} cy={c - 20} r={6} fill={color} />
+          <Circle cx={c + 25} cy={c + 10} r={6} fill={color} />
+          <Circle cx={c - 25} cy={c + 10} r={6} fill={color} />
+          <Circle cx={c} cy={c + 25} r={6} fill={color} />
+        </Svg>
+      )
+    default:
+      return null
+  }
+}
+
 // ─── Certificate Document Component ───
 
 export function CertificateDocument({ data }: { data: CertificatPDFData }) {
@@ -505,6 +606,22 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
             <Polygon points="60,60 22,60 60,22" fill={rgbStr(accent)} />
           </Svg>
         </View>
+
+        {/* ─── Watermark (filigrane) — behind content, opacity 12% ─── */}
+        {/* Image de fond (si définie dans le template UE) */}
+        {data.template?.backgroundImage ? (
+          <Image
+            style={styles.watermarkImage}
+            src={data.template.backgroundImage}
+            alt=""
+          />
+        ) : null}
+        {/* Icône thématique (si définie et non "default") */}
+        {data.template?.themeIcon && data.template.themeIcon !== 'default' ? (
+          <View style={styles.watermarkIcon} fixed>
+            <ThemeIconSvg icon={data.template.themeIcon} color={rgbStr(primary)} />
+          </View>
+        ) : null}
 
         {/* Double border */}
         <View style={styles.borderOuter} />
