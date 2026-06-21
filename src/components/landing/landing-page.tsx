@@ -367,7 +367,7 @@ function HeroSection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => v
   const headline = ['Vos copies corrigées', 'en 2 minutes.', 'Pas en 2 semaines.']
 
   return (
-    <section id="top" className="relative overflow-hidden bg-[#0A1628] pt-32 pb-20 sm:pt-36 sm:pb-28">
+    <section id="top" className="relative overflow-hidden bg-[#0A1628] pt-28 pb-12 sm:pt-32 sm:pb-16">
       <DotGrid />
       <GlowOrb x="20%" y="25%" color="violet" />
       <GlowOrb x="80%" y="35%" color="indigo" />
@@ -412,7 +412,7 @@ function HeroSection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => v
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.6 }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10"
+          className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-8"
         >
           <MagneticButton
             className="w-full sm:w-auto bg-orange-500 hover:bg-orange-400 text-white font-semibold px-7 py-3.5 text-base shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-shadow duration-300 rounded-xl"
@@ -432,7 +432,7 @@ function HeroSection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => v
         </motion.div>
 
         {/* Trust line */}
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-12 text-xs text-zinc-500">
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-8 text-xs text-zinc-500">
           <span className="inline-flex items-center gap-1.5">
             <Check className="h-3.5 w-3.5 text-violet-400" /> Déjà adopté par 15+ établissements
           </span>
@@ -642,7 +642,7 @@ function TrustBar() {
   ]
 
   return (
-    <section className="relative py-14 sm:py-16 bg-[#0D1B30] border-y border-white/[0.05]">
+    <section className="relative py-10 sm:py-12 bg-[#0D1B30] border-y border-white/[0.05]">
       <div className="max-w-6xl mx-auto px-6">
         <Reveal>
           <p className="text-center text-xs uppercase tracking-[0.2em] text-zinc-500 mb-8 font-medium">
@@ -692,10 +692,10 @@ function ProblemSection() {
   ]
 
   return (
-    <section className="relative py-20 sm:py-24 bg-[#0A1628] overflow-hidden">
+    <section className="relative py-12 sm:py-16 bg-[#0A1628] overflow-hidden">
       <GlowOrb x="50%" y="50%" color="indigo" />
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <Reveal className="text-center mb-12">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-orange-400 font-semibold mb-3">
             Le problème
           </p>
@@ -727,9 +727,9 @@ function ProblemSection() {
    ════════════════════════════════════════════════════════════════════ */
 function SolutionSection() {
   return (
-    <section className="relative py-20 sm:py-24 bg-[#0D1B30] overflow-hidden">
+    <section className="relative py-12 sm:py-16 bg-[#0D1B30] overflow-hidden">
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <Reveal className="text-center mb-12">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-violet-400 font-semibold mb-3">
             La solution
           </p>
@@ -814,7 +814,7 @@ function FeaturesBento() {
       icon: Zap,
       title: 'Générez vos sujets en 60 secondes',
       text: 'Décrivez votre cours, l\'IA produit un sujet complet et cohérent, prêt à diffuser.',
-      span: 'lg:col-span-2',
+      span: '',
       glow: 'violet',
     },
     {
@@ -842,14 +842,14 @@ function FeaturesBento() {
       icon: Code2,
       title: 'Évaluez le code avec un éditeur intégré',
       text: 'Éditeur Monaco, exécution Python/JS et tableur Excel. Unique sur le marché.',
-      span: 'lg:col-span-2',
+      span: '',
       glow: 'violet',
     },
     {
       icon: Rocket,
       title: 'Publiez les résultats en un clic',
       text: 'Notes, certificats et badges générés et envoyés automatiquement aux étudiants.',
-      span: 'lg:col-span-2',
+      span: '',
       glow: 'orange',
     },
   ]
@@ -866,10 +866,10 @@ function FeaturesBento() {
   }
 
   return (
-    <section id="fonctionnalites" className="relative py-20 sm:py-24 bg-[#0A1628] overflow-hidden">
+    <section id="fonctionnalites" className="relative py-12 sm:py-16 bg-[#0A1628] overflow-hidden">
       <DotGrid />
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <Reveal className="text-center mb-12">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-violet-400 font-semibold mb-3">
             Fonctionnalités
           </p>
@@ -925,10 +925,10 @@ function HowItWorks() {
   ]
 
   return (
-    <section className="relative py-20 sm:py-24 bg-[#0D1B30] overflow-hidden">
+    <section className="relative py-12 sm:py-16 bg-[#0D1B30] overflow-hidden">
       <GlowOrb x="50%" y="40%" color="violet" />
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <Reveal className="text-center mb-14">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-orange-400 font-semibold mb-3">
             Comment ça marche
           </p>
@@ -1012,11 +1012,11 @@ function InteractiveDemo() {
   }
 
   return (
-    <section id="demo" className="relative py-20 sm:py-24 bg-[#0A1628] overflow-hidden">
+    <section id="demo" className="relative py-12 sm:py-16 bg-[#0A1628] overflow-hidden">
       <DotGrid />
       <GlowOrb x="50%" y="50%" color="orange" />
       <div className="relative z-10 max-w-4xl mx-auto px-6">
-        <Reveal className="text-center mb-10">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-orange-400 font-semibold mb-3">
             Démo interactive
           </p>
@@ -1185,9 +1185,9 @@ function Testimonials() {
   ]
 
   return (
-    <section className="relative py-20 sm:py-24 bg-[#0D1B30] overflow-hidden">
+    <section className="relative py-12 sm:py-16 bg-[#0D1B30] overflow-hidden">
       <div className="relative z-10 max-w-6xl mx-auto px-6">
-        <Reveal className="text-center mb-12">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-violet-400 font-semibold mb-3">
             Témoignages
           </p>
@@ -1282,7 +1282,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
   const fmt = (n: number) => n.toLocaleString('fr-FR').replace(/\u202F/g, ' ')
 
   return (
-    <section id="tarifs" className="relative py-20 sm:py-24 bg-[#0A1628] overflow-hidden">
+    <section id="tarifs" className="relative py-12 sm:py-16 bg-[#0A1628] overflow-hidden">
       <DotGrid />
       <GlowOrb x="50%" y="30%" color="violet" />
       <div className="relative z-10 max-w-6xl mx-auto px-6">
@@ -1299,7 +1299,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
         </Reveal>
 
         {/* Toggle */}
-        <Reveal delay={0.1} className="flex items-center justify-center gap-3 mb-10">
+        <Reveal delay={0.1} className="flex items-center justify-center gap-3 mb-8">
           <span className={`text-sm ${!annual ? 'text-white font-medium' : 'text-zinc-500'}`}>Mensuel</span>
           <Switch checked={annual} onCheckedChange={setAnnual} aria-label="Basculer en facturation annuelle" />
           <span className={`text-sm ${annual ? 'text-white font-medium' : 'text-zinc-500'}`}>
@@ -1406,9 +1406,9 @@ function FAQSection() {
   ]
 
   return (
-    <section id="faq" className="relative py-20 sm:py-24 bg-[#0D1B30] overflow-hidden">
+    <section id="faq" className="relative py-12 sm:py-16 bg-[#0D1B30] overflow-hidden">
       <div className="relative z-10 max-w-3xl mx-auto px-6">
-        <Reveal className="text-center mb-10">
+        <Reveal className="text-center mb-8">
           <p className="text-sm uppercase tracking-[0.2em] text-violet-400 font-semibold mb-3">
             FAQ
           </p>
@@ -1451,7 +1451,7 @@ function DifferentiatorsStrip() {
     { icon: Code2, title: 'Éditeur de code', text: 'Python/JS exécutés. Unique au marché.' },
   ]
   return (
-    <section className="relative py-14 bg-[#0A1628] border-y border-white/[0.05]">
+    <section className="relative py-10 bg-[#0A1628] border-y border-white/[0.05]">
       <div className="max-w-6xl mx-auto px-6">
         <Reveal className="text-center mb-8">
           <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 font-medium">
@@ -1481,7 +1481,7 @@ function DifferentiatorsStrip() {
    ════════════════════════════════════════════════════════════════════ */
 function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => void }) {
   return (
-    <section className="relative py-24 sm:py-32 bg-[#0A1628] overflow-hidden">
+    <section className="relative py-16 sm:py-20 bg-[#0A1628] overflow-hidden">
       <GlowOrb x="50%" y="50%" color="orange" />
       <GlowOrb x="30%" y="40%" color="violet" />
       <div
@@ -1553,7 +1553,7 @@ function Footer() {
   return (
     <footer className="bg-[#070F1E] border-t border-white/[0.06] pt-16 pb-28 md:pb-10">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="grid lg:grid-cols-6 gap-10 mb-12">
+        <div className="grid lg:grid-cols-6 gap-10 mb-8">
           {/* Brand + newsletter */}
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
