@@ -1,16 +1,19 @@
 /**
- * CertificatePDF.tsx — Modern Geometric Certificate (A4 Landscape)
+ * CertificatePDF.tsx — Premium Modern Certificate (A4 Landscape)
  *
- * @react-pdf/renderer component reproducing the modern elegant design:
- * - Diagonal navy/gold corner bands (SVG polygons)
- * - Mixed typography: Playfair Display (serif) + Great Vibes (script) + Inter (sans)
- * - Central seal with TWO gold ribbons descending below
- * - 3 decorative diamonds (gold-navy-gold) under the title
- * - Thematic grid watermark (opacity 0.05)
- * - Justified body paragraph (unified, not separate fields)
- * - Two-column signature: left (teacher) + center (seal) + right (responsable)
+ * @react-pdf/renderer component implementing the full design spec:
+ * - A4 landscape with diagonal navy/gold corner bands
+ * - Playfair Display 48pt "CERTIFICAT" (letter-spaced)
+ * - Great Vibes 48pt student name (cursive)
+ * - Inter for body text (11-12pt)
+ * - 3 decorative diamonds (gold-navy-gold)
+ * - Central badge: navy circle + gold border + "SECT CERTIFIÉ" + gold ribbons
+ * - Thematic watermark (code/UML icons, opacity 0.08)
+ * - Logo top-center, establishment + city
+ * - UE name prominent, details in framed box
+ * - Signatures: teacher (left) + responsable (right), seal centered
  *
- * Colors: navy #1B3A5C, gold #F4B942, text #2C3E50, textLight #7F8C8D
+ * Palette: navy #1B3A5C, gold #F4B942, text #2C3E50, textLight #7F8C8D
  */
 
 import React from 'react'
@@ -27,13 +30,14 @@ import {
   Circle,
   Rect,
   Line,
+  Ellipse,
+  Path,
   G,
   renderToBuffer,
-  type Styles,
 } from '@react-pdf/renderer'
 import path from 'path'
 
-// ─── Font Registration ───
+// ═══ Font Registration ═══
 
 const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts')
 
@@ -54,7 +58,7 @@ Font.register({
   ],
 })
 
-// ─── Types ───
+// ═══ Types ═══
 
 export interface CertificatPDFData {
   codeVerification: string
@@ -91,16 +95,18 @@ export interface CertificatTemplateData {
   fontFamily: string | null
 }
 
-// ─── Color constants (exact palette) ───
+// ═══ Color Constants ═══
 
 const NAVY = '#1B3A5C'
 const GOLD = '#F4B942'
+const GOLD_DARK = '#D4A017'
 const TEXT_DARK = '#2C3E50'
 const TEXT_LIGHT = '#7F8C8D'
 const BG_LIGHT = '#F8F9FA'
 const WHITE = '#FFFFFF'
+const BOX_BG = '#EEF2F7'
 
-// ─── Helpers ───
+// ═══ Helpers ═══
 
 function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
@@ -111,9 +117,10 @@ function formatNote(note: number): string {
   return note % 1 === 0 ? note.toFixed(0) : note.toFixed(2)
 }
 
-// ─── Styles ───
+// ═══ Styles ═══
 
 const styles = StyleSheet.create({
+  // Page (A4 landscape)
   page: {
     width: '297mm',
     height: '210mm',
@@ -126,14 +133,14 @@ const styles = StyleSheet.create({
   // Corner containers
   corner: { position: 'absolute' },
 
-  // Watermark grid wrapper (View with absolute positioning, contains the SVG)
+  // Watermark wrapper
   watermarkWrapper: {
     position: 'absolute',
     top: 0,
     left: 0,
     width: 842,
     height: 595,
-    opacity: 0.05,
+    opacity: 0.08,
   },
 
   // Borders
@@ -158,12 +165,12 @@ const styles = StyleSheet.create({
     borderStyle: 'solid',
   },
 
-  // Content
+  // Content container
   content: {
     position: 'absolute',
     top: '14mm',
-    left: '25mm',
-    right: '25mm',
+    left: '22mm',
+    right: '22mm',
     bottom: '14mm',
     display: 'flex',
     flexDirection: 'column',
@@ -171,16 +178,24 @@ const styles = StyleSheet.create({
   },
 
   // Logo
-  logo: {
+  logoWrap: {
     marginBottom: 4,
+    alignItems: 'center',
   },
 
-  // Establishment header
+  // Establishment
   establishment: {
     fontSize: 10,
     color: TEXT_LIGHT,
     textAlign: 'center',
-    marginBottom: 2,
+    letterSpacing: 1,
+    marginBottom: 1,
+  },
+  establishmentCity: {
+    fontSize: 8,
+    color: TEXT_LIGHT,
+    textAlign: 'center',
+    marginBottom: 6,
   },
 
   // Diamonds
@@ -188,34 +203,35 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginVertical: 8,
+    gap: 12,
+    marginVertical: 6,
   },
   diamondGold: {
-    width: 6,
-    height: 6,
+    width: 7,
+    height: 7,
     backgroundColor: GOLD,
     transform: 'rotate(45deg)',
   },
   diamondNavy: {
-    width: 8,
-    height: 8,
+    width: 9,
+    height: 9,
     backgroundColor: NAVY,
     transform: 'rotate(45deg)',
   },
 
   // Title
   title: {
-    fontSize: 42,
+    fontSize: 48,
     fontFamily: 'PlayfairDisplay',
     color: TEXT_DARK,
     textAlign: 'center',
+    letterSpacing: 6,
     lineHeight: 1,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontFamily: 'PlayfairDisplay',
-    color: TEXT_DARK,
+    color: NAVY,
     textAlign: 'center',
     marginTop: 2,
     marginBottom: 4,
@@ -226,32 +242,67 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: TEXT_LIGHT,
     fontStyle: 'italic',
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: 6,
+    marginBottom: 2,
   },
 
-  // Student name (script)
+  // Student name
   studentName: {
-    fontSize: 42,
+    fontSize: 48,
     fontFamily: 'GreatVibes',
     color: TEXT_DARK,
     textAlign: 'center',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   studentInfo: {
     fontSize: 9,
     color: TEXT_LIGHT,
-    marginBottom: 8,
+    marginBottom: 6,
   },
 
-  // Body paragraph (justified)
-  body: {
-    fontSize: 10,
-    color: TEXT_DARK,
-    textAlign: 'justify',
-    lineHeight: 1.6,
-    maxWidth: '80%',
+  // UE name
+  ueName: {
+    fontSize: 18,
+    fontFamily: 'PlayfairDisplay',
+    color: NAVY,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+
+  // Details box (framed)
+  detailsBox: {
+    width: '75%',
+    backgroundColor: BOX_BG,
+    borderWidth: 0.5,
+    borderColor: GOLD,
+    borderRadius: 3,
+    padding: '6px 14px',
     marginBottom: 6,
+    display: 'flex',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  detailItem: {
+    width: '33%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  detailLabel: {
+    fontSize: 7,
+    color: GOLD_DARK,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 9,
+    color: TEXT_DARK,
+    marginTop: 1,
   },
 
   // Signature row
@@ -262,13 +313,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     width: '90%',
     marginTop: 'auto',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   sigCol: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    width: '30%',
+    width: '28%',
   },
   sigName: {
     fontSize: 10,
@@ -302,66 +353,71 @@ const styles = StyleSheet.create({
   },
 })
 
-// ─── Grid Watermark SVG ───
+// ═══ Grid Watermark (thematic for all UE types) ═══
 
-function GridWatermark() {
-  const cellSize = 15 // mm
-  const cols = Math.ceil(297 / cellSize)
-  const rows = Math.ceil(210 / cellSize)
-  const lines: React.ReactElement[] = []
-
-  // Vertical lines
-  for (let i = 0; i <= cols; i++) {
-    const x = i * cellSize
-    lines.push(
-      <Line key={`v${i}`} x1={x} y1={0} x2={x} y2={210} stroke={NAVY} strokeWidth="0.3" />
-    )
-  }
-  // Horizontal lines
-  for (let i = 0; i <= rows; i++) {
-    const y = i * cellSize
-    lines.push(
-      <Line key={`h${i}`} x1={0} y1={y} x2={297} y2={y} stroke={NAVY} strokeWidth="0.3" />
-    )
-  }
-
-  // Wrap SVG in a View with position:absolute (SVGs don't honor position in their own style)
+function CodeWatermark() {
+  // Repeating pattern of code brackets </> and UML class boxes
+  // Rendered as a subtle SVG covering the page at 0.08 opacity
   return (
     <View style={styles.watermarkWrapper} fixed>
-      <Svg width={842} height={595} viewBox="0 0 297 210">
-        {lines}
+      <Svg width={842} height={595} viewBox="0 0 842 595">
+        {/* Repeating </> chevrons in a loose grid */}
+        {Array.from({ length: 6 }).map((_, row) =>
+          Array.from({ length: 9 }).map((_, col) => {
+            const cx = 50 + col * 90
+            const cy = 50 + row * 95
+            return (
+              <G key={`${row}-${col}`}>
+                {/* Left chevron < */}
+                <Line x1={cx - 8} y1={cy - 6} x2={cx - 3} y2={cy} stroke={NAVY} strokeWidth="1.2" />
+                <Line x1={cx - 3} y1={cy} x2={cx - 8} y2={cy + 6} stroke={NAVY} strokeWidth="1.2" />
+                {/* Right chevron > */}
+                <Line x1={cx + 3} y1={cy - 6} x2={cx + 8} y2={cy} stroke={NAVY} strokeWidth="1.2" />
+                <Line x1={cx + 8} y1={cy} x2={cx + 3} y2={cy + 6} stroke={NAVY} strokeWidth="1.2" />
+                {/* Center slash */}
+                <Line x1={cx - 1} y1={cy + 4} x2={cx + 1} y2={cy - 4} stroke={NAVY} strokeWidth="0.8" />
+              </G>
+            )
+          })
+        )}
+        {/* A few UML class box outlines scattered */}
+        {[
+          { x: 120, y: 120 }, { x: 600, y: 80 }, { x: 300, y: 420 }, { x: 700, y: 380 },
+        ].map((pos, i) => (
+          <G key={`uml-${i}`}>
+            <Rect x={pos.x} y={pos.y} width={60} height={35} fill="none" stroke={NAVY} strokeWidth="0.8" />
+            <Line x1={pos.x} y1={pos.y + 12} x2={pos.x + 60} y2={pos.y + 12} stroke={NAVY} strokeWidth="0.5" />
+            <Line x1={pos.x} y1={pos.y + 23} x2={pos.x + 60} y2={pos.y + 23} stroke={NAVY} strokeWidth="0.5" />
+          </G>
+        ))}
       </Svg>
     </View>
   )
 }
 
-// ─── Corner Bands SVG ───
+// ═══ Corner Bands ═══
 
 function CornerBands() {
   return (
     <>
-      {/* Top-left */}
       <View style={[styles.corner, { top: 0, left: 0 }]} fixed>
         <Svg width="170" height="170" viewBox="0 0 60 60">
           <Polygon points="0,0 60,0 0,60" fill={NAVY} />
           <Polygon points="0,0 38,0 0,38" fill={GOLD} />
         </Svg>
       </View>
-      {/* Top-right */}
       <View style={[styles.corner, { top: 0, right: 0 }]} fixed>
         <Svg width="170" height="170" viewBox="0 0 60 60">
           <Polygon points="60,0 60,60 0,0" fill={NAVY} />
           <Polygon points="60,0 60,38 22,0" fill={GOLD} />
         </Svg>
       </View>
-      {/* Bottom-left */}
       <View style={[styles.corner, { bottom: 0, left: 0 }]} fixed>
         <Svg width="170" height="170" viewBox="0 0 60 60">
           <Polygon points="0,60 60,60 0,0" fill={NAVY} />
           <Polygon points="0,60 38,60 0,22" fill={GOLD} />
         </Svg>
       </View>
-      {/* Bottom-right */}
       <View style={[styles.corner, { bottom: 0, right: 0 }]} fixed>
         <Svg width="170" height="170" viewBox="0 0 60 60">
           <Polygon points="60,60 0,60 60,0" fill={NAVY} />
@@ -372,96 +428,79 @@ function CornerBands() {
   )
 }
 
-// ─── Central Seal with Ribbons ───
+// ═══ Central Seal with Gold Ribbons ═══
 
 function CentralSeal() {
-  // The seal is a navy circle with gold border, "SECT CERTIFIÉ" inside,
-  // and TWO gold ribbons descending below (award-ribbon style).
-  const sealSize = 55 // pt diameter
-  const ribbonW = 18 // pt ribbon width
-  const ribbonH = 25 // pt ribbon length below seal
+  const cx = 35 // center x in SVG viewport
+  const cy = 32 // center y
+  const r = 26 // seal radius
 
   return (
-    <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '30%' }}>
-      {/* Seal circle + ribbons in one SVG */}
-      <Svg width={sealSize + 10} height={sealSize + ribbonH + 10} viewBox={`0 0 ${sealSize + 10} ${sealSize + ribbonH + 10}`}>
-        {/* Ribbons (drawn FIRST, behind the circle) */}
+    <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '28%' }}>
+      <Svg width={80} height={75} viewBox="0 0 70 70">
+        {/* ── Ribbons (behind circle, drawn first) ── */}
         {/* Left ribbon */}
         <Polygon
-          points={`${sealSize / 2 + 5 - ribbonW / 2 - 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5 + ribbonH - 5} ${sealSize / 2 + 5 - ribbonW / 2 - 3},${sealSize / 2 + 5 + ribbonH} ${sealSize / 2 + 5 - ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3}`}
+          points={`${cx - 8},${cy + 18} ${cx - 2},${cy + 18} ${cx - 2},${cy + 40} ${cx - 5},${cy + 36} ${cx - 8},${cy + 40}`}
           fill={GOLD}
         />
+        <Polygon points={`${cx - 8},${cy + 18} ${cx - 5},${cy + 18} ${cx - 5},${cy + 40} ${cx - 8},${cy + 40}`} fill={GOLD_DARK} />
         {/* Right ribbon */}
         <Polygon
-          points={`${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2 + 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3} ${sealSize / 2 + 5 + ribbonW / 2 + 3},${sealSize / 2 + 5 + ribbonH} ${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5 + ribbonH - 5}`}
+          points={`${cx + 2},${cy + 18} ${cx + 8},${cy + 18} ${cx + 8},${cy + 40} ${cx + 5},${cy + 36} ${cx + 2},${cy + 40}`}
           fill={GOLD}
         />
-        {/* Ribbon shadows (darker gold for depth) */}
-        <Polygon
-          points={`${sealSize / 2 + 5 - ribbonW / 2},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 - ribbonW / 2 + 3},${sealSize / 2 + 5 + ribbonH - 5} ${sealSize / 2 + 5 - ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3}`}
-          fill="#D4A017"
-        />
-        <Polygon
-          points={`${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2},${sealSize / 2 + 5} ${sealSize / 2 + 5 + ribbonW / 2},${sealSize / 2 + 5 + ribbonH - 3} ${sealSize / 2 + 5 + ribbonW / 2 - 3},${sealSize / 2 + 5 + ribbonH - 5}`}
-          fill="#D4A017"
-        />
+        <Polygon points={`${cx + 5},${cy + 18} ${cx + 8},${cy + 18} ${cx + 8},${cy + 40} ${cx + 5},${cy + 40}`} fill={GOLD_DARK} />
 
-        {/* Outer circle (gold border) */}
-        <Circle cx={sealSize / 2 + 5} cy={sealSize / 2 + 5} r={sealSize / 2} fill={NAVY} stroke={GOLD} strokeWidth="2.5" />
-        {/* Inner circle (thin gold ring) */}
-        <Circle cx={sealSize / 2 + 5} cy={sealSize / 2 + 5} r={sealSize / 2 - 4} fill="none" stroke={GOLD} strokeWidth="0.8" />
+        {/* ── Seal circle ── */}
+        {/* Navy fill */}
+        <Circle cx={cx} cy={cy} r={r} fill={NAVY} />
+        {/* Gold outer border (thick) */}
+        <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="2.5" />
+        {/* Gold inner ring (thin) */}
+        <Circle cx={cx} cy={cy} r={r - 4} fill="none" stroke={GOLD} strokeWidth="0.8" />
 
-        {/* Decorative dots around inner ring */}
-        {Array.from({ length: 16 }).map((_, i) => {
-          const angle = (i * 360) / 16
+        {/* Decorative dots ring */}
+        {Array.from({ length: 20 }).map((_, i) => {
+          const angle = (i * 360) / 20
           const rad = (angle * Math.PI) / 180
-          const dotR = sealSize / 2 - 2
+          const dr = r - 2
           return (
-            <Circle
-              key={i}
-              cx={sealSize / 2 + 5 + dotR * Math.cos(rad)}
-              cy={sealSize / 2 + 5 + dotR * Math.sin(rad)}
-              r="0.8"
-              fill={GOLD}
-            />
+            <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.7" fill={GOLD} />
           )
         })}
 
         {/* Center star (5-pointed) */}
         {Array.from({ length: 10 }).map((_, i) => {
-          const outerR = 5
-          const innerR = 2.1
-          const r = i % 2 === 0 ? outerR : innerR
+          const outerR = 6
+          const innerR = 2.5
+          const ri = i % 2 === 0 ? outerR : innerR
           const a1 = (Math.PI / 5) * i - Math.PI / 2
           const a2 = (Math.PI / 5) * (i + 1) - Math.PI / 2
-          const cx = sealSize / 2 + 5
-          const cy = sealSize / 2 + 5 - 7
           return (
             <Polygon
-              key={`star${i}`}
-              points={`${cx},${cy} ${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)} ${cx + r * Math.cos(a2)},${cy + r * Math.sin(a2)}`}
+              key={`s${i}`}
+              points={`${cx},${cy - 6} ${cx + ri * Math.cos(a1)},${cy - 6 + ri * Math.sin(a1)} ${cx + ri * Math.cos(a2)},${cy - 6 + ri * Math.sin(a2)}`}
               fill={GOLD}
             />
           )
         })}
-      </Svg>
 
-      {/* Text below the seal (overlapping the ribbons area) */}
-      <View style={{ marginTop: -18 }}>
-        <Text style={{ fontSize: 9, fontFamily: 'Inter', fontWeight: 'bold', color: WHITE, textAlign: 'center' }}>SECT</Text>
-        <Text style={{ fontSize: 6, fontFamily: 'Inter', fontWeight: 'bold', color: GOLD, textAlign: 'center' }}>CERTIFIÉ</Text>
-      </View>
+        {/* Text "SECT" */}
+        <Text x={cx} y={cy + 5} textAnchor="middle" fontSize="9" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</Text>
+        {/* Text "CERTIFIÉ" */}
+        <Text x={cx} y={cy + 11} textAnchor="middle" fontSize="4.5" fontFamily="Inter" fontWeight="bold" fill={GOLD}>CERTIFIÉ</Text>
+      </Svg>
     </View>
   )
 }
 
-// ─── Logo Component (auto-fit, preserve aspect ratio) ───
+// ═══ Logo Component ═══
 
 function Logo({ logo, nom }: { logo: string | null; nom: string }) {
   if (!logo) {
-    // Fallback: text-only establishment name as "logo"
     return (
-      <View style={styles.logo}>
+      <View style={styles.logoWrap}>
         <Text style={{ fontSize: 16, fontFamily: 'PlayfairDisplay', color: NAVY, textAlign: 'center' }}>
           {nom}
         </Text>
@@ -469,99 +508,119 @@ function Logo({ logo, nom }: { logo: string | null; nom: string }) {
     )
   }
   return (
-    <View style={styles.logo}>
-      <Image src={logo} style={{ width: 120, height: 50, objectFit: 'contain' as const }} alt="" />
+    <View style={styles.logoWrap}>
+      <Image src={logo} style={{ width: 130, height: 55, objectFit: 'contain' as const }} alt="" />
     </View>
   )
 }
 
-// ─── Main Certificate Document ───
+// ═══ Main Certificate Document ═══
 
 export function CertificateDocument({ data }: { data: CertificatPDFData }) {
-  // Determine subtitle based on type
+  // Subtitle based on type
   const subtitle = data.type === 'EXCELLENCE'
-    ? "D'EXCELLENCE"
+    ? "d'Excellence"
     : data.type === 'ACCOMPLISSEMENT'
-      ? "D'ACCOMPLISSEMENT"
-      : 'DE PARTICIPATION'
+      ? "d'Accomplissement"
+      : 'de Participation'
 
-  // Build the body paragraph (unified, justified)
-  const sessionLabel = data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
-  const bodyText = `a validé avec succès l'unité d'enseignement ${data.ueNom} (Code : ${data.ueCode}, Filière : ${data.filiereNom}) avec la note finale de ${formatNote(data.noteFinale)}/20 (Mention : ${data.mention || '—'}) lors de la Session ${sessionLabel}${data.anneeAcademique ? ` de l'année ${data.anneeAcademique}` : ''}.`
-
-  // Student info line
+  // Student info
   const studentParts: string[] = []
   if (data.etudiantMatricule) studentParts.push(`Matricule : ${data.etudiantMatricule}`)
   if (data.etudiantNiveau) studentParts.push(`Niveau : ${data.etudiantNiveau}`)
   const studentInfo = studentParts.join('  •  ')
 
-  // Establishment header
+  // Session label
+  const sessionLabel = data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
+
+  // Establishment
   const location = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
-  const establishmentHeader = location ? `${data.etablissementNom} — ${location}` : data.etablissementNom
 
   // Footer
   const footerText = `Émis le ${formatDate(data.dateEmission)}  |  Code : ${data.codeVerification}  |  Vérification : ${data.verificationUrl}`
 
+  // Details array
+  const details = [
+    { label: 'Code UE', value: data.ueCode },
+    { label: 'Filière', value: data.filiereNom },
+    { label: 'Note', value: `${formatNote(data.noteFinale)}/20` },
+    { label: 'Mention', value: data.mention || '—' },
+    { label: 'Session', value: sessionLabel },
+    { label: 'Année', value: data.anneeAcademique || '—' },
+  ]
+
   return (
     <Document>
       <Page size={[842, 595]} style={styles.page}>
-        {/* ── Layer 1: Corner bands ── */}
+        {/* Layer 1: Corner bands */}
         <CornerBands />
 
-        {/* ── Layer 2: Grid watermark (opacity 0.05) ── */}
-        <GridWatermark />
+        {/* Layer 2: Code/UML watermark (opacity 0.08) */}
+        <CodeWatermark />
 
-        {/* ── Layer 3: Double border ── */}
+        {/* Layer 3: Double border */}
         <View style={styles.borderOuter} />
         <View style={styles.borderInner} />
 
-        {/* ── Layer 4: Content ── */}
+        {/* Layer 4: Content */}
         <View style={styles.content}>
-          {/* Logo */}
+          {/* Logo + establishment */}
           <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
+          <Text style={styles.establishment}>{data.etablissementNom.toUpperCase()}</Text>
+          {location ? <Text style={styles.establishmentCity}>{location}</Text> : null}
 
-          {/* Establishment header (small, centered) */}
-          <Text style={styles.establishment}>{establishmentHeader}</Text>
-
-          {/* 3 Diamonds: gold-navy-gold */}
+          {/* Diamonds: gold - navy - gold */}
           <View style={styles.diamonds}>
             <View style={styles.diamondGold} />
             <View style={styles.diamondNavy} />
             <View style={styles.diamondGold} />
           </View>
 
-          {/* Title */}
+          {/* Title + subtitle */}
           <Text style={styles.title}>CERTIFICAT</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
 
           {/* Intro */}
           <Text style={styles.intro}>Nous certifions par la présente que</Text>
 
-          {/* Student name (Great Vibes script) */}
+          {/* Student name (Great Vibes, 48pt) */}
           <Text style={styles.studentName}>{data.etudiantNom}</Text>
           {studentInfo ? <Text style={styles.studentInfo}>{studentInfo}</Text> : null}
 
-          {/* Body paragraph (justified) */}
-          <Text style={styles.body}>{bodyText}</Text>
+          {/* "a validé avec succès l'unité d'enseignement" */}
+          <Text style={styles.intro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
 
-          {/* ── Signature row: left (teacher) + center (seal) + right (responsable) ── */}
+          {/* UE name (prominent) */}
+          <Text style={styles.ueName}>{data.ueNom}</Text>
+
+          {/* Details box (framed, 2 rows × 3 columns) */}
+          <View style={styles.detailsBox}>
+            {details.map((d, i) => (
+              <View key={i} style={styles.detailItem}>
+                <Text style={styles.detailLabel}>{d.label}</Text>
+                <Text style={styles.detailValue}>{d.value}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Signature row: teacher (left) + seal (center) + responsable (right) */}
           <View style={styles.signatureRow}>
-            {/* Left: empty line for teacher signature */}
+            {/* Left: teacher signature (empty line) */}
             <View style={styles.sigCol}>
-              <View style={{ height: 12 }} />
+              <View style={{ height: 14 }} />
               <View style={styles.sigLine} />
-              <Text style={styles.sigLabel}>Signature de l'enseignant</Text>
+              <Text style={styles.sigLabel}>Signature de l&apos;enseignant</Text>
             </View>
 
             {/* Center: Seal with ribbons */}
             <CentralSeal />
 
-            {/* Right: Responsable name + line + label */}
+            {/* Right: Responsable */}
             <View style={styles.sigCol}>
               {data.responsableNom ? (
                 <Text style={styles.sigName}>{data.responsableNom}</Text>
               ) : (
-                <View style={{ height: 12 }} />
+                <View style={{ height: 14 }} />
               )}
               <View style={styles.sigLine} />
               <Text style={styles.sigLabel}>Le Responsable pédagogique</Text>
@@ -569,7 +628,7 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
           </View>
         </View>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <Text style={styles.footer}>{footerText}</Text>
       </Page>
     </Document>
