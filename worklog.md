@@ -1360,3 +1360,25 @@ Stage Summary:
 - Toggle selector on the Mes certificats page
 - Both formats produce clean single-page PDFs with all design elements
 - Commit 7875603 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 43
+Agent: Main Agent (Z.ai Code)
+Task: Complete redesign of Mes Certificats page
+
+Work Log:
+- Complete rewrite of mes-certificats-page.tsx (221 insertions, 385 deletions — net -164 lines, cleaner code)
+
+PREMIUM REDESIGN:
+- Hero header: gradient banner (emerald→teal→cyan) with glassmorphism, animated background blobs, badge count
+- Stats cards: 3 gradient cards (Expert=amber/orange, Avancé=blue/indigo, Standard=emerald/teal) with gradient icons
+- Certificate cards: top gradient bar per type, gradient icon badges (Trophy/Medal/Award), hover lift effect (-translate-y-1) + colored shadow glow, gradient progress bar (not generic), toggle Paysage/Portrait, full-width download + verify buttons
+- Table (Progression UE): clean hover highlight, color-coded notes, statut badges with icons
+- States: loading with animated ping+pulse, error with red-tinted card, empty with dashed border + large icon
+
+- ESLint clean
+- Committed as 34b0f6b (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (49e1145..34b0f6b)
+
+Stage Summary:
+- Mes Certificats page fully redesigned with premium modern UI
+- Commit 34b0f6b deployed on https://sect-app.vercel.app
