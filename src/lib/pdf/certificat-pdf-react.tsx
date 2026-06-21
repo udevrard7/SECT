@@ -105,6 +105,9 @@ const TEXT_LIGHT = '#7F8C8D'
 const BG_LIGHT = '#F8F9FA'
 const WHITE = '#FFFFFF'
 const BOX_BG = '#EEF2F7'
+const NOTE_HIGHLIGHT = '#EBF4FF'  // Bleu très pâle pour cellules NOTE/MENTION
+const GRAY_LABEL = '#718096'       // Gris pour labels du data grid
+const FOOTER_GRAY = '#4A5568'       // Gris foncé pour le footer
 
 // ═══ Helpers ═══
 
@@ -133,14 +136,27 @@ const styles = StyleSheet.create({
   // Corner containers
   corner: { position: 'absolute' },
 
-  // Watermark wrapper
+  // Watermark wrapper (opacité réduite à 0.06 pour lisibilité)
   watermarkWrapper: {
     position: 'absolute',
     top: 0,
     left: 0,
     width: 842,
     height: 595,
-    opacity: 0.08,
+    opacity: 0.06,
+  },
+
+  // Overlay blanc pour garantir la lisibilité du texte central
+  // (entre le titre et les signatures, opacité 92%)
+  textOverlay: {
+    position: 'absolute',
+    top: '42mm',
+    left: '18mm',
+    right: '18mm',
+    bottom: '42mm',
+    backgroundColor: WHITE,
+    opacity: 0.92,
+    borderRadius: 4,
   },
 
   // Borders
@@ -246,13 +262,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
-  // Student name
+  // Student name (Great Vibes, 48pt, capitalize — pas tout en majuscules)
   studentName: {
     fontSize: 48,
     fontFamily: 'GreatVibes',
     color: TEXT_DARK,
     textAlign: 'center',
     marginBottom: 0,
+    textTransform: 'capitalize',
   },
   studentInfo: {
     fontSize: 9,
@@ -271,52 +288,60 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  // Details box (framed)
-  detailsBox: {
-    width: '75%',
-    backgroundColor: BOX_BG,
-    borderWidth: 0.5,
-    borderColor: GOLD,
-    borderRadius: 3,
-    padding: '6px 14px',
-    marginBottom: 6,
+  // Data Grid moderne (3 colonnes × 2 lignes)
+  detailsGrid: {
+    width: '78%',
     display: 'flex',
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 6,
   },
-  detailItem: {
-    width: '33%',
+  detailCell: {
+    width: '32%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: 2,
+    padding: '6px 4px',
+    borderRadius: 4,
+    backgroundColor: BOX_BG,
+  },
+  // Cellules NOTE et MENTION mises en valeur (fond bleu pâle #EBF4FF)
+  detailCellHighlight: {
+    width: '32%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '6px 4px',
+    borderRadius: 4,
+    backgroundColor: NOTE_HIGHLIGHT,
   },
   detailLabel: {
-    fontSize: 7,
-    color: GOLD_DARK,
+    fontSize: 8,
+    color: GRAY_LABEL,
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+    marginBottom: 3,
   },
   detailValue: {
-    fontSize: 9,
-    color: TEXT_DARK,
-    marginTop: 1,
+    fontSize: 12,
+    color: NAVY,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
 
-  // Signature row
+  // Signature row — flexbox équilibrée
   signatureRow: {
-    display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    width: '90%',
-    marginTop: 'auto',
-    marginBottom: 4,
+    width: '100%',
+    marginTop: 40,
+    paddingHorizontal: 40,
   },
   sigCol: {
-    display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     width: '28%',
@@ -328,9 +353,7 @@ const styles = StyleSheet.create({
     color: NAVY,
     marginBottom: 4,
   },
-  // Espace de signature optimisé pour l'impression :
-  // hauteur suffisante (60pt) pour signer manuellement,
-  // ligne fine gris clair (#CBD5E0) pour un rendu propre au print.
+  // Espace de signature optimisé pour l'impression (60px + ligne fine)
   signatureSpace: {
     height: 60,
     borderBottom: '1pt solid #CBD5E0',
@@ -338,20 +361,29 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   sigLabel: {
-    fontSize: 8,
+    fontSize: 9,
     color: TEXT_LIGHT,
     textAlign: 'center',
   },
 
-  // Footer
+  // Footer — remonté (15mm), ligne dorée au-dessus, 9pt gris foncé
+  footerSeparator: {
+    position: 'absolute',
+    bottom: '18mm',
+    left: '25mm',
+    right: '25mm',
+    borderBottomWidth: 0.5,
+    borderBottomColor: GOLD,
+    borderBottomStyle: 'solid',
+  },
   footer: {
     position: 'absolute',
-    bottom: '5mm',
+    bottom: '15mm',
     left: '25mm',
     right: '25mm',
     textAlign: 'center',
-    fontSize: 7,
-    color: TEXT_LIGHT,
+    fontSize: 9,
+    color: FOOTER_GRAY,
   },
 })
 
@@ -557,12 +589,15 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
         {/* Layer 1: Corner bands */}
         <CornerBands />
 
-        {/* Layer 2: Code/UML watermark (opacity 0.08) */}
+        {/* Layer 2: Code/UML watermark (opacity 0.06) */}
         <CodeWatermark />
 
         {/* Layer 3: Double border */}
         <View style={styles.borderOuter} />
         <View style={styles.borderInner} />
+
+        {/* Layer 3b: White overlay for text readability (opacity 0.92) */}
+        <View style={styles.textOverlay} />
 
         {/* Layer 4: Content */}
         <View style={styles.content}>
@@ -595,14 +630,17 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
           {/* UE name (prominent) */}
           <Text style={styles.ueName}>{data.ueNom}</Text>
 
-          {/* Details box (framed, 2 rows × 3 columns) */}
-          <View style={styles.detailsBox}>
-            {details.map((d, i) => (
-              <View key={i} style={styles.detailItem}>
-                <Text style={styles.detailLabel}>{d.label}</Text>
-                <Text style={styles.detailValue}>{d.value}</Text>
-              </View>
-            ))}
+          {/* Data Grid moderne (3 colonnes × 2 lignes) avec cellules NOTE/MENTION mises en valeur */}
+          <View style={styles.detailsGrid}>
+            {details.map((d, i) => {
+              const isHighlight = d.label === 'Note' || d.label === 'Mention'
+              return (
+                <View key={i} style={isHighlight ? styles.detailCellHighlight : styles.detailCell}>
+                  <Text style={styles.detailLabel}>{d.label}</Text>
+                  <Text style={styles.detailValue}>{d.value}</Text>
+                </View>
+              )
+            })}
           </View>
 
           {/* Signature row: teacher (left) + seal (center) + responsable (right) */}
@@ -627,7 +665,10 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
           </View>
         </View>
 
-        {/* Footer */}
+        {/* Footer separator (fine ligne dorée) */}
+        <View style={styles.footerSeparator} />
+
+        {/* Footer (remonté, 9pt gris foncé) */}
         <Text style={styles.footer}>{footerText}</Text>
       </Page>
     </Document>
