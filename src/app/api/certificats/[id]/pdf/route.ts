@@ -61,33 +61,6 @@ async function _GET(
     // Build verification URL
     const verificationUrl = `https://sect-app.vercel.app/verify/${certificat.codeVerification}`
 
-    // Load the UE's certificate template (if any)
-    const ueId = certificat.validationUE?.uniteEnseignementId
-    let templateData = null
-    if (ueId) {
-      const tpl = await withRetry(() =>
-        db.certificateTemplate.findUnique({
-          where: { uniteEnseignementId: ueId },
-          select: {
-            backgroundImage: true,
-            primaryColor: true,
-            accentColor: true,
-            themeIcon: true,
-            fontFamily: true,
-          },
-        })
-      )
-      if (tpl) {
-        templateData = {
-          backgroundImage: tpl.backgroundImage,
-          primaryColor: tpl.primaryColor,
-          accentColor: tpl.accentColor,
-          themeIcon: tpl.themeIcon,
-          fontFamily: tpl.fontFamily,
-        }
-      }
-    }
-
     // Build the data object for the React component
     const pdfData: CertificatPDFData = {
       codeVerification: certificat.codeVerification,
@@ -117,7 +90,6 @@ async function _GET(
         (certificat.emettePar?.name && certificat.emetteParId !== certificat.etudiantId
           ? certificat.emettePar.name
           : null),
-      template: templateData,
     }
 
     // Render the React component to a PDF buffer (via @react-pdf/renderer)

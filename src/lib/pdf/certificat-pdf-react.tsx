@@ -84,15 +84,6 @@ export interface CertificatPDFData {
   verificationUrl: string
   statut: string
   responsableNom?: string | null
-  template?: CertificatTemplateData | null
-}
-
-export interface CertificatTemplateData {
-  backgroundImage: string | null
-  primaryColor: string | null
-  accentColor: string | null
-  themeIcon: string | null
-  fontFamily: string | null
 }
 
 // ═══ Color Constants ═══
