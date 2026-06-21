@@ -13,6 +13,10 @@ async function _GET(
     const { id } = await context.params
     const { user } = context
 
+    // Get orientation from query params (?orientation=portrait or landscape)
+    const { searchParams } = new URL(request.url)
+    const orientation = searchParams.get('orientation') === 'portrait' ? 'portrait' : 'landscape'
+
     // Fetch the certificate + UE template + filière responsable
     const certificat = await withRetry(() =>
       db.certificat.findUnique({
@@ -93,7 +97,7 @@ async function _GET(
     }
 
     // Render the React component to a PDF buffer (via @react-pdf/renderer)
-    const pdfBuffer = await renderCertificatPDF(pdfData)
+    const pdfBuffer = await renderCertificatPDF(pdfData, orientation)
 
     return new NextResponse(pdfBuffer, {
       headers: {

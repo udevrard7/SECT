@@ -136,6 +136,7 @@ export function MesCertificatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [pdfOrientation, setPdfOrientation] = useState<'landscape' | 'portrait'>('landscape')
   const [activeTab, setActiveTab] = useState('certificats')
 
   // ─── Data fetching ───
@@ -250,15 +251,16 @@ export function MesCertificatsPage() {
 
   // ─── PDF download ───
 
-  const handleDownloadPDF = async (certificatId: string) => {
+  const handleDownloadPDF = async (certificatId: string, orientation?: 'landscape' | 'portrait') => {
+    const orient = orientation || pdfOrientation
     setDownloadingId(certificatId)
     try {
-      const res = await fetch(`/api/certificats/${certificatId}/pdf`)
+      const res = await fetch(`/api/certificats/${certificatId}/pdf?orientation=${orient}`)
       if (!res.ok) throw new Error('Erreur lors du téléchargement')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       window.open(url)
-      toast.success('Certificat téléchargé avec succès')
+      toast.success(`Certificat téléchargé (${orient === 'landscape' ? 'Paysage' : 'Portrait'})`)
     } catch (err) {
       console.error('PDF download error:', err)
       toast.error('Impossible de télécharger le certificat')
