@@ -522,9 +522,11 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
               alt="SECT Dashboard - Centre de commande pour examens"
               className="w-full h-auto block"
             />
+            {/* Subtle gradient overlay at bottom */}
+            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#09090b] to-transparent pointer-events-none" />
           </div>
 
-          {/* Floating badge */}
+          {/* Floating badges */}
           <div className="absolute -right-3 top-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -535,6 +537,20 @@ function HeroSection({ onDemo }: { onDemo: () => void }) {
             <div className="flex items-center gap-2">
               <Shield className="h-3 w-3 text-emerald-400" />
               <span className="text-xs text-zinc-300 font-medium">Chiffrement AES-256</span>
+            </div>
+          </div>
+          {/* Additional floating badge - top left */}
+          <div className="absolute -left-3 top-[15%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl hidden sm:block">
+            <div className="flex items-center gap-2">
+              <Brain className="h-3 w-3 text-cyan-400" />
+              <span className="text-xs text-zinc-300 font-medium">3 Modeles IA</span>
+            </div>
+          </div>
+          {/* Additional floating badge - bottom right */}
+          <div className="absolute -right-3 bottom-[20%] px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl hidden sm:block">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-3 w-3 text-teal-400" />
+              <span className="text-xs text-zinc-300 font-medium">99.7% Precision</span>
             </div>
           </div>
         </div>
@@ -1152,6 +1168,7 @@ function StatsSection() {
 function DashboardPreview() {
   const sectionRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLDivElement>(null)
+  const metricsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -1168,22 +1185,45 @@ function DashboardPreview() {
           }
         )
       }
+      // Floating metric cards animation
+      if (metricsRef.current) {
+        const metricCards = metricsRef.current.querySelectorAll('.metric-float')
+        metricCards.forEach((card, i) => {
+          gsap.to(card, {
+            y: -8 - i * 2,
+            duration: 2.5 + i * 0.3,
+            repeat: -1,
+            yoyo: true,
+            ease: 'sine.inOut',
+            delay: i * 0.4,
+          })
+        })
+      }
     })
     return () => ctx.revert()
   }, [])
 
   const callouts = [
-    { position: 'top-[12%] left-[6%]', text: 'Analytics en temps reel', description: 'KPIs et metriques live' },
-    { position: 'top-[55%] left-[4%]', text: 'Gestion des epreuves', description: 'Planification et suivi' },
-    { position: 'top-[18%] right-[4%]', text: 'IA Integration', description: 'Generation et correction' },
-    { position: 'top-[65%] right-[6%]', text: 'Rapports detailles', description: 'Export et partage' },
-    { position: 'top-[38%] left-[3%]', text: 'Monitoring sessions', description: 'Progression en direct' },
+    { position: 'top-[12%] left-[6%]', text: 'Analytics en temps reel', description: 'KPIs et metriques live', icon: BarChart3 },
+    { position: 'top-[55%] left-[4%]', text: 'Gestion des epreuves', description: 'Planification et suivi', icon: FileText },
+    { position: 'top-[18%] right-[4%]', text: 'IA Integration', description: 'Generation et correction', icon: Brain },
+    { position: 'top-[65%] right-[6%]', text: 'Rapports detailles', description: 'Export et partage', icon: BookOpen },
+    { position: 'top-[38%] right-[5%]', text: 'Monitoring sessions', description: 'Progression en direct', icon: Monitor },
+  ]
+
+  const floatingMetrics = [
+    { label: 'Taux de reussite', value: '94.2%', barClass: 'bg-emerald-400/50', textClass: 'text-emerald-400' },
+    { label: 'Examens actifs', value: '127', barClass: 'bg-cyan-400/50', textClass: 'text-cyan-400' },
+    { label: 'Etudiants en ligne', value: '2.4k', barClass: 'bg-teal-400/50', textClass: 'text-teal-400' },
   ]
 
   return (
     <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
       <DotGrid />
       <GlowOrb x="50%" y="50%" color="emerald" />
+
+      {/* Decorative gradient border at top */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6">
         <div className="text-center mb-8">
@@ -1200,28 +1240,46 @@ function DashboardPreview() {
         </div>
 
         <div className="relative">
-          {/* Callouts */}
+          {/* Callouts with icons */}
           {callouts.map((callout, i) => (
             <div
               key={i}
-              className={`absolute ${callout.position} hidden lg:flex flex-col items-start gap-0.5 z-20`}
+              className={`absolute ${callout.position} hidden lg:flex flex-col items-start gap-1 z-20`}
             >
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                <span className="text-xs text-zinc-300 font-medium whitespace-nowrap px-2 py-0.5 bg-[#0a0a0a]/80 rounded border border-white/[0.06]">
-                  {callout.text}
-                </span>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0a0a0a]/90 rounded-lg border border-white/[0.08] backdrop-blur-md shadow-lg">
+                <callout.icon className="h-3 w-3 text-emerald-400 shrink-0" />
+                <span className="text-xs text-zinc-200 font-medium whitespace-nowrap">{callout.text}</span>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)] animate-pulse" />
               </div>
-              <span className="text-[10px] text-zinc-600 ml-4 pl-0.5">{callout.description}</span>
+              <span className="text-[10px] text-zinc-500 ml-5 pl-0.5">{callout.description}</span>
             </div>
           ))}
 
+          {/* Main image */}
           <div ref={imageRef} className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/5">
             <img
-              src="/hero-dashboard.png"
-              alt="SECT Dashboard - Vue d'ensemble"
+              src="/dashboard-command-center.png"
+              alt="SECT Centre de Commande - Analytics et monitoring en temps reel"
               className="w-full h-auto block"
             />
+            {/* Scan line overlay */}
+            <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(16,185,129,0.02) 2px, rgba(16,185,129,0.02) 4px)' }} />
+            {/* Bottom gradient fade */}
+            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none" />
+          </div>
+
+          {/* Floating metric cards below image */}
+          <div ref={metricsRef} className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {floatingMetrics.map((metric, i) => (
+              <div
+                key={i}
+                className="metric-float relative rounded-lg border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-4 text-center"
+              >
+                <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-12 h-0.5 rounded-full ${metric.barClass}`} />
+                <span className={`text-2xl font-bold block mb-1 ${metric.textClass}`}>{metric.value}</span>
+                <span className="text-xs text-zinc-500">{metric.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

@@ -1,0 +1,1808 @@
+     1→'use client'
+     2→
+     3→import gsap from 'gsap'
+     4→import { ScrollTrigger } from 'gsap/ScrollTrigger'
+     5→import { motion, AnimatePresence } from 'framer-motion'
+     6→import { useRef, useState, useEffect, useCallback } from 'react'
+     7→import {
+     8→  Sparkles,
+     9→  FileText,
+    10→  BarChart3,
+    11→  ArrowRight,
+    12→  Star,
+    13→  Zap,
+    14→  Crown,
+    15→  Menu,
+    16→  X,
+    17→  Brain,
+    18→  Shield,
+    19→  GraduationCap,
+    20→  Cpu,
+    21→  BookOpen,
+    22→  Users,
+    23→  Globe,
+    24→  Check,
+    25→  Play,
+    26→  Clock,
+    27→  Monitor,
+    28→  Layers,
+    29→  Lock,
+    30→  ChevronRight,
+    31→  Award,
+    32→  Mail,
+    33→  Target,
+    34→} from 'lucide-react'
+    35→import { Button } from '@/components/ui/button'
+    36→
+    37→gsap.registerPlugin(ScrollTrigger)
+    38→
+    39→/* ─── Types ─── */
+    40→interface LandingPageProps {
+    41→  onLogin: () => void
+    42→  onDemo: () => void
+    43→}
+    44→
+    45→/* ─── Magnetic Button ─── */
+    46→function MagneticButton({
+    47→  children,
+    48→  className = '',
+    49→  ...props
+    50→}: React.ComponentProps<typeof Button> & { children: React.ReactNode }) {
+    51→  const ref = useRef<HTMLButtonElement>(null)
+    52→  const xTo = useRef<gsap.QuickToFunc | null>(null)
+    53→  const yTo = useRef<gsap.QuickToFunc | null>(null)
+    54→
+    55→  useEffect(() => {
+    56→    if (!ref.current) return
+    57→    xTo.current = gsap.quickTo(ref.current, 'x', { duration: 0.3, ease: 'power2.out' })
+    58→    yTo.current = gsap.quickTo(ref.current, 'y', { duration: 0.3, ease: 'power2.out' })
+    59→    return () => {
+    60→      xTo.current = null
+    61→      yTo.current = null
+    62→    }
+    63→  }, [])
+    64→
+    65→  const handleMouseMove = useCallback(
+    66→    (e: React.MouseEvent<HTMLButtonElement>) => {
+    67→      if (!ref.current || !xTo.current || !yTo.current) return
+    68→      const rect = ref.current.getBoundingClientRect()
+    69→      const x = e.clientX - rect.left - rect.width / 2
+    70→      const y = e.clientY - rect.top - rect.height / 2
+    71→      xTo.current(x * 0.3)
+    72→      yTo.current(y * 0.3)
+    73→    },
+    74→    []
+    75→  )
+    76→
+    77→  const handleMouseLeave = useCallback(() => {
+    78→    xTo.current?.(0)
+    79→    yTo.current?.(0)
+    80→  }, [])
+    81→
+    82→  return (
+    83→    <Button
+    84→      ref={ref}
+    85→      className={className}
+    86→      onMouseMove={handleMouseMove}
+    87→      onMouseLeave={handleMouseLeave}
+    88→      {...props}
+    89→    >
+    90→      {children}
+    91→    </Button>
+    92→  )
+    93→}
+    94→
+    95→/* ─── Gradient Text Helper ─── */
+    96→function GradientText({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+    97→  return (
+    98→    <span className={`bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent ${className}`}>
+    99→      {children}
+   100→    </span>
+   101→  )
+   102→}
+   103→
+   104→/* ─── Dot Grid Background ─── */
+   105→function DotGrid() {
+   106→  return (
+   107→    <div
+   108→      className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[length:32px_32px] pointer-events-none"
+   109→      aria-hidden
+   110→    />
+   111→  )
+   112→}
+   113→
+   114→/* ─── Glow Orb ─── */
+   115→function GlowOrb({ x, y, color = 'emerald' }: { x: string; y: string; color?: string }) {
+   116→  const colorMap: Record<string, string> = {
+   117→    emerald: 'rgba(16,185,129,0.15)',
+   118→    cyan: 'rgba(34,211,238,0.12)',
+   119→    teal: 'rgba(45,212,191,0.13)',
+   120→  }
+   121→  return (
+   122→    <div
+   123→      className="absolute pointer-events-none"
+   124→      style={{ left: x, top: y, width: 600, height: 600, transform: 'translate(-50%, -50%)' }}
+   125→      aria-hidden
+   126→    >
+   127→      <div
+   128→        className="w-full h-full rounded-full blur-[120px]"
+   129→        style={{ background: colorMap[color] || colorMap.emerald }}
+   130→      />
+   131→    </div>
+   132→  )
+   133→}
+   134→
+   135→/* ─── Navbar ─── */
+   136→function Navbar({ onLogin }: { onLogin: () => void }) {
+   137→  const navRef = useRef<HTMLElement>(null)
+   138→  const [scrolled, setScrolled] = useState(false)
+   139→  const [mobileOpen, setMobileOpen] = useState(false)
+   140→  const progressRef = useRef<HTMLDivElement>(null)
+   141→
+   142→  useEffect(() => {
+   143→    const handleScroll = () => setScrolled(window.scrollY > 50)
+   144→    window.addEventListener('scroll', handleScroll, { passive: true })
+   145→
+   146→    const ctx = gsap.context(() => {
+   147→      gsap.to(progressRef.current, {
+   148→        scaleX: 1,
+   149→        ease: 'none',
+   150→        scrollTrigger: {
+   151→          trigger: document.documentElement,
+   152→          start: 'top top',
+   153→          end: 'bottom bottom',
+   154→          scrub: 0.3,
+   155→        },
+   156→      })
+   157→    })
+   158→
+   159→    return () => {
+   160→      window.removeEventListener('scroll', handleScroll)
+   161→      ctx.revert()
+   162→    }
+   163→  }, [])
+   164→
+   165→  const links = ['Fonctionnalites', 'Tarifs', 'Temoignages']
+   166→
+   167→  return (
+   168→    <>
+   169→      {/* Scroll progress bar */}
+   170→      <div className="fixed top-0 left-0 w-full h-[2px] z-[60]">
+   171→        <div
+   172→          ref={progressRef}
+   173→          className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 origin-left"
+   174→          style={{ transform: 'scaleX(0)' }}
+   175→        />
+   176→      </div>
+   177→
+   178→      <nav
+   179→        ref={navRef}
+   180→        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
+   181→          scrolled
+   182→            ? 'bg-[#09090b]/80 backdrop-blur-2xl border-b border-white/[0.06]'
+   183→            : 'bg-transparent'
+   184→        }`}
+   185→      >
+   186→        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+   187→          {/* Logo */}
+   188→          <div className="flex items-center gap-2">
+   189→            <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+   190→              SECT
+   191→            </span>
+   192→          </div>
+   193→
+   194→          {/* Desktop Links */}
+   195→          <div className="hidden md:flex items-center gap-8">
+   196→            {links.map((link) => (
+   197→              <a
+   198→                key={link}
+   199→                href={`#${link.toLowerCase()}`}
+   200→                className="text-sm text-zinc-400 hover:text-white transition-colors duration-300"
+   201→              >
+   202→                {link}
+   203→              </a>
+   204→            ))}
+   205→          </div>
+   206→
+   207→          {/* CTA */}
+   208→          <div className="hidden md:flex items-center gap-3">
+   209→            <MagneticButton
+   210→              variant="ghost"
+   211→              className="text-sm text-zinc-400 hover:text-white"
+   212→              onClick={onLogin}
+   213→            >
+   214→              Connexion
+   215→            </MagneticButton>
+   216→            <MagneticButton
+   217→              className="text-sm bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-5 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-shadow duration-300 rounded-lg"
+   218→              onClick={onLogin}
+   219→            >
+   220→              Commencer
+   221→              <ArrowRight className="ml-1.5 h-4 w-4" />
+   222→            </MagneticButton>
+   223→          </div>
+   224→
+   225→          {/* Mobile toggle */}
+   226→          <button
+   227→            className="md:hidden text-white"
+   228→            onClick={() => setMobileOpen(!mobileOpen)}
+   229→            aria-label="Menu"
+   230→          >
+   231→            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+   232→          </button>
+   233→        </div>
+   234→
+   235→        {/* Mobile menu */}
+   236→        <AnimatePresence>
+   237→          {mobileOpen && (
+   238→            <motion.div
+   239→              initial={{ opacity: 0, height: 0 }}
+   240→              animate={{ opacity: 1, height: 'auto' }}
+   241→              exit={{ opacity: 0, height: 0 }}
+   242→              className="md:hidden bg-[#09090b]/95 backdrop-blur-2xl border-b border-white/[0.06] overflow-hidden"
+   243→            >
+   244→              <div className="px-6 py-4 flex flex-col gap-4">
+   245→                {links.map((link) => (
+   246→                  <a
+   247→                    key={link}
+   248→                    href={`#${link.toLowerCase()}`}
+   249→                    className="text-sm text-zinc-400 hover:text-white transition-colors py-2"
+   250→                    onClick={() => setMobileOpen(false)}
+   251→                  >
+   252→                    {link}
+   253→                  </a>
+   254→                ))}
+   255→                <MagneticButton
+   256→                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-lg"
+   257→                  onClick={onLogin}
+   258→                >
+   259→                  Commencer
+   260→                </MagneticButton>
+   261→              </div>
+   262→            </motion.div>
+   263→          )}
+   264→        </AnimatePresence>
+   265→      </nav>
+   266→    </>
+   267→  )
+   268→}
+   269→
+   270→/* ─── Hero Section ─── */
+   271→function HeroSection({ onDemo }: { onDemo: () => void }) {
+   272→  const sectionRef = useRef<HTMLDivElement>(null)
+   273→  const headlineRef = useRef<HTMLHeadingElement>(null)
+   274→  const subRef = useRef<HTMLParagraphElement>(null)
+   275→  const ctaRef = useRef<HTMLDivElement>(null)
+   276→  const imageRef = useRef<HTMLDivElement>(null)
+   277→  const typingRef = useRef<HTMLSpanElement>(null)
+   278→
+   279→  useEffect(() => {
+   280→    const ctx = gsap.context(() => {
+   281→      // Split headline into words and animate
+   282→      if (headlineRef.current) {
+   283→        const words = headlineRef.current.querySelectorAll('.hero-word')
+   284→        gsap.fromTo(
+   285→          words,
+   286→          { y: 80, opacity: 0, rotateX: -40 },
+   287→          {
+   288→            y: 0,
+   289→            opacity: 1,
+   290→            rotateX: 0,
+   291→            duration: 1.2,
+   292→            stagger: 0.08,
+   293→            ease: 'power3.out',
+   294→            delay: 0.3,
+   295→          }
+   296→        )
+   297→      }
+   298→
+   299→      // Subtitle fade in
+   300→      if (subRef.current) {
+   301→        gsap.fromTo(
+   302→          subRef.current,
+   303→          { opacity: 0, y: 20 },
+   304→          { opacity: 1, y: 0, duration: 1, ease: 'power2.out', delay: 1.2 }
+   305→        )
+   306→      }
+   307→
+   308→      // CTA buttons
+   309→      if (ctaRef.current) {
+   310→        gsap.fromTo(
+   311→          ctaRef.current.children,
+   312→          { opacity: 0, y: 20 },
+   313→          { opacity: 1, y: 0, duration: 0.8, stagger: 0.15, ease: 'power2.out', delay: 1.5 }
+   314→        )
+   315→      }
+   316→
+   317→      // Dashboard image parallax
+   318→      if (imageRef.current) {
+   319→        gsap.fromTo(
+   320→          imageRef.current,
+   321→          { y: 60, opacity: 0, scale: 0.95 },
+   322→          { y: 0, opacity: 1, scale: 1, duration: 1.4, ease: 'power3.out', delay: 1.8 }
+   323→        )
+   324→
+   325→        // Parallax on scroll
+   326→        gsap.to(imageRef.current, {
+   327→          y: -40,
+   328→          ease: 'none',
+   329→          scrollTrigger: {
+   330→            trigger: sectionRef.current,
+   331→            start: 'top top',
+   332→            end: 'bottom top',
+   333→            scrub: 1,
+   334→          },
+   335→        })
+   336→      }
+   337→    }, sectionRef)
+   338→
+   339→    // 3D tilt on mouse move
+   340→    const handleMouseMove = (e: MouseEvent) => {
+   341→      if (!imageRef.current) return
+   342→      const rect = imageRef.current.getBoundingClientRect()
+   343→      const centerX = rect.left + rect.width / 2
+   344→      const centerY = rect.top + rect.height / 2
+   345→      const rotateY = ((e.clientX - centerX) / (rect.width / 2)) * 5
+   346→      const rotateX = -((e.clientY - centerY) / (rect.height / 2)) * 5
+   347→      gsap.to(imageRef.current, {
+   348→        rotateX,
+   349→        rotateY,
+   350→        duration: 0.5,
+   351→        ease: 'power2.out',
+   352→        transformPerspective: 1200,
+   353→      })
+   354→    }
+   355→
+   356→    const handleMouseLeave = () => {
+   357→      if (!imageRef.current) return
+   358→      gsap.to(imageRef.current, {
+   359→        rotateX: 0,
+   360→        rotateY: 0,
+   361→        duration: 0.8,
+   362→        ease: 'power2.out',
+   363→      })
+   364→    }
+   365→
+   366→    window.addEventListener('mousemove', handleMouseMove)
+   367→    imageRef.current?.addEventListener('mouseleave', handleMouseLeave)
+   368→
+   369→    return () => {
+   370→      ctx.revert()
+   371→      window.removeEventListener('mousemove', handleMouseMove)
+   372→    }
+   373→  }, [])
+   374→
+   375→  // Typing effect
+   376→  useEffect(() => {
+   377→    if (!typingRef.current) return
+   378→    const phrases = [
+   379→      "Corriger 100 copies en 5 minutes",
+   380→      "Generer des examens avec l'IA",
+   381→      "Analyser les resultats en temps reel",
+   382→      "Securiser chaque epreuve",
+   383→    ]
+   384→    let phraseIndex = 0
+   385→    let charIndex = 0
+   386→    let isDeleting = false
+   387→    let timeout: ReturnType<typeof setTimeout>
+   388→
+   389→    const type = () => {
+   390→      const currentPhrase = phrases[phraseIndex]
+   391→      if (!isDeleting) {
+   392→        charIndex++
+   393→        if (typingRef.current) {
+   394→          typingRef.current.textContent = currentPhrase.slice(0, charIndex)
+   395→        }
+   396→        if (charIndex === currentPhrase.length) {
+   397→          isDeleting = true
+   398→          timeout = setTimeout(type, 2000)
+   399→          return
+   400→        }
+   401→        timeout = setTimeout(type, 60)
+   402→      } else {
+   403→        charIndex--
+   404→        if (typingRef.current) {
+   405→          typingRef.current.textContent = currentPhrase.slice(0, charIndex)
+   406→        }
+   407→        if (charIndex === 0) {
+   408→          isDeleting = false
+   409→          phraseIndex = (phraseIndex + 1) % phrases.length
+   410→          timeout = setTimeout(type, 500)
+   411→          return
+   412→        }
+   413→        timeout = setTimeout(type, 30)
+   414→      }
+   415→    }
+   416→
+   417→    timeout = setTimeout(type, 2000)
+   418→    return () => clearTimeout(timeout)
+   419→  }, [])
+   420→
+   421→  const headlineWords = ["L'examen", 'reinvente', 'par', "l'Intelligence", 'Artificielle']
+   422→
+   423→  return (
+   424→    <section ref={sectionRef} className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-[#09090b]">
+   425→      <DotGrid />
+   426→      <GlowOrb x="50%" y="30%" color="emerald" />
+   427→      <GlowOrb x="30%" y="60%" color="cyan" />
+   428→
+   429→      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-28 pb-16 text-center">
+   430→        {/* Badge */}
+   431→        <motion.div
+   432→          initial={{ opacity: 0, y: -10 }}
+   433→          animate={{ opacity: 1, y: 0 }}
+   434→          transition={{ delay: 0.1, duration: 0.6 }}
+   435→          className="inline-flex items-center gap-2 px-4 py-1.5 mb-6 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm"
+   436→        >
+   437→          <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+   438→          <span className="text-xs text-zinc-400 font-medium tracking-wide">
+   439→            Nouveau : IA Generative integree
+   440→          </span>
+   441→        </motion.div>
+   442→
+   443→        {/* Headline */}
+   444→        <h1
+   445→          ref={headlineRef}
+   446→          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[0.95] mb-5"
+   447→          style={{ perspective: '600px' }}
+   448→        >
+   449→          {headlineWords.map((word, i) => (
+   450→            <span
+   451→              key={i}
+   452→              className="hero-word inline-block mr-3 sm:mr-4 md:mr-5"
+   453→              style={{ transformStyle: 'preserve-3d' }}
+   454→            >
+   455→              {i === 3 || i === 4 ? (
+   456→                <GradientText>{word}</GradientText>
+   457→              ) : (
+   458→                <span className="text-white">{word}</span>
+   459→              )}
+   460→            </span>
+   461→          ))}
+   462→        </h1>
+   463→
+   464→        {/* Typing line */}
+   465→        <p ref={subRef} className="text-lg sm:text-xl text-zinc-400 mb-4 min-h-[32px]">
+   466→          <span ref={typingRef} className="text-zinc-300" />
+   467→          <span className="animate-pulse text-emerald-400">|</span>
+   468→        </p>
+   469→
+   470→        {/* Sub-description paragraph */}
+   471→        <p className="max-w-3xl mx-auto text-base sm:text-lg text-zinc-500 leading-relaxed mb-8">
+   472→          SECT est la plateforme tout-en-un qui automatise le cycle complet de vos examens :
+   473→          generation de sujets par IA, surveillance anti-fraude integree, correction instantanee
+   474→          et analytics detailles. Concue pour les universites, ecoles d&apos;ingenieurs et centres
+   475→          de formation, elle transforme des jours de travail en quelques clics.
+   476→        </p>
+   477→
+   478→        {/* CTA Buttons */}
+   479→        <div ref={ctaRef} className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+   480→          <MagneticButton
+   481→            className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3.5 text-base shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] transition-all duration-300 rounded-xl"
+   482→            onClick={onDemo}
+   483→          >
+   484→            Demander une demo
+   485→            <ArrowRight className="ml-2 h-5 w-5" />
+   486→          </MagneticButton>
+   487→          <MagneticButton
+   488→            variant="outline"
+   489→            className="border-white/[0.1] text-white hover:bg-white/[0.05] px-8 py-3.5 text-base rounded-xl"
+   490→            onClick={onDemo}
+   491→          >
+   492→            <Play className="mr-2 h-4 w-4" />
+   493→            Voir en action
+   494→          </MagneticButton>
+   495→        </div>
+   496→
+   497→        {/* Trust indicators */}
+   498→        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mb-10">
+   499→          {[
+   500→            { icon: Check, text: '500+ evaluations realisees' },
+   501→            { icon: Shield, text: 'Donnees chiffrees AES-256' },
+   502→            { icon: Clock, text: '98% de temps economise' },
+   503→            { icon: Users, text: '200+ institutions actives' },
+   504→          ].map((item, i) => (
+   505→            <div key={i} className="flex items-center gap-1.5 text-zinc-500">
+   506→              <item.icon className="h-3.5 w-3.5 text-emerald-400/70" />
+   507→              <span className="text-xs font-medium">{item.text}</span>
+   508→            </div>
+   509→          ))}
+   510→        </div>
+   511→
+   512→        {/* Dashboard Image */}
+   513→        <div
+   514→          ref={imageRef}
+   515→          className="relative mx-auto max-w-5xl"
+   516→          style={{ transformStyle: 'preserve-3d' }}
+   517→        >
+   518→          <div className="absolute -inset-4 bg-gradient-to-r from-emerald-500/20 via-teal-500/10 to-cyan-500/20 rounded-2xl blur-3xl" aria-hidden />
+   519→          <div className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/10">
+   520→            <img
+   521→              src="/hero-dashboard.png"
+   522→              alt="SECT Dashboard - Centre de commande pour examens"
+   523→              className="w-full h-auto block"
+   524→            />
+   525→          </div>
+   526→
+   527→          {/* Floating badge */}
+   528→          <div className="absolute -right-3 top-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
+   529→            <div className="flex items-center gap-2">
+   530→              <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+   531→              <span className="text-xs text-zinc-300 font-medium">IA Active</span>
+   532→            </div>
+   533→          </div>
+   534→          <div className="absolute -left-3 bottom-1/4 px-3 py-1.5 bg-[#0a0a0a]/90 border border-white/[0.1] rounded-lg backdrop-blur-sm shadow-xl">
+   535→            <div className="flex items-center gap-2">
+   536→              <Shield className="h-3 w-3 text-emerald-400" />
+   537→              <span className="text-xs text-zinc-300 font-medium">Chiffrement AES-256</span>
+   538→            </div>
+   539→          </div>
+   540→        </div>
+   541→      </div>
+   542→    </section>
+   543→  )
+   544→}
+   545→
+   546→/* ─── Logo Cloud ─── */
+   547→function LogoCloud() {
+   548→  const sectionRef = useRef<HTMLDivElement>(null)
+   549→  const universities = [
+   550→    'Universite Mohammed V',
+   551→    'EMI Rabat',
+   552→    'ENSIAS',
+   553→    'Hassania Mohammedia',
+   554→    'Universite Cadi Ayyad',
+   555→    'ENSA Marrakech',
+   556→  ]
+   557→
+   558→  useEffect(() => {
+   559→    const ctx = gsap.context(() => {
+   560→      gsap.fromTo(
+   561→        sectionRef.current,
+   562→        { opacity: 0 },
+   563→        { opacity: 1, duration: 1, ease: 'power2.out',
+   564→          scrollTrigger: { trigger: sectionRef.current, start: 'top 90%' } }
+   565→      )
+   566→    })
+   567→    return () => ctx.revert()
+   568→  }, [])
+   569→
+   570→  return (
+   571→    <section ref={sectionRef} className="relative py-10 bg-[#0a0a0a] border-y border-white/[0.04]">
+   572→      <div className="max-w-6xl mx-auto px-6 text-center">
+   573→        <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-4 font-medium">
+   574→          Adopte par les meilleures institutions
+   575→        </p>
+   576→        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
+   577→          {universities.map((name) => (
+   578→            <span
+   579→              key={name}
+   580→              className="text-sm text-zinc-500/60 font-medium tracking-wide hover:text-zinc-400 transition-colors duration-300"
+   581→            >
+   582→              {name}
+   583→            </span>
+   584→          ))}
+   585→        </div>
+   586→      </div>
+   587→    </section>
+   588→  )
+   589→}
+   590→
+   591→/* ─── Bento Features Grid ─── */
+   592→function FeaturesBento() {
+   593→  const sectionRef = useRef<HTMLDivElement>(null)
+   594→  const cardsRef = useRef<HTMLDivElement>(null)
+   595→
+   596→  const features = [
+   597→    {
+   598→      icon: Brain,
+   599→      title: 'Generation IA',
+   600→      description: 'Creez des examens complets en quelques secondes avec notre IA generative.',
+   601→      bullets: [
+   602→        'Questions QCU, QCM, QRC et open-ended generees automatiquement',
+   603→        'Adaptation au niveau et au programme de chaque institution',
+   604→        'Generation de variantes uniques pour chaque etudiant',
+   605→      ],
+   606→      span: 'md:col-span-2 md:row-span-2',
+   607→      image: true,
+   608→      imageSrc: '/hero-exam-ai.png',
+   609→    },
+   610→    {
+   611→      icon: Shield,
+   612→      title: 'Anti-Fraude & Proctoring',
+   613→      description: 'Surveillance en temps reel et detection automatique des comportements suspects.',
+   614→      bullets: [
+   615→        'Proctoring video avec IA de detection',
+   616→        'Verrouillage navigateur et onglets',
+   617→        'Alertes en temps reel pour les surveillants',
+   618→      ],
+   619→      span: 'md:col-span-1',
+   620→    },
+   621→    {
+   622→      icon: BarChart3,
+   623→      title: 'Analytics Avances',
+   624→      description: 'Visualisez les performances avec des graphiques interactifs et des rapports detailles.',
+   625→      bullets: [
+   626→        'Tableaux de bord en temps reel',
+   627→        'Analyse par question, etudiant et classe',
+   628→        'Export PDF et Excel en un clic',
+   629→      ],
+   630→      span: 'md:col-span-1',
+   631→    },
+   632→    {
+   633→      icon: FileText,
+   634→      title: 'Correction Automatique',
+   635→      description: "Correction instantanee avec feedback personnalise pour chaque etudiant.",
+   636→      bullets: [
+   637→        'Correction QCM/QCU instantanee',
+   638→        'Evaluation IA des reponses ouvertes',
+   639→        'Feedback detaille et suggestions d\'amelioration',
+   640→      ],
+   641→      span: 'md:col-span-1',
+   642→    },
+   643→    {
+   644→      icon: Clock,
+   645→      title: 'Monitoring Temps Reel',
+   646→      description: 'Suivi en direct de chaque epreuve et session avec alertes intelligentes.',
+   647→      bullets: [
+   648→        'Progression en direct par etudiant',
+   649→        'Alertes de depassement de temps',
+   650→        'Statistiques live de participation',
+   651→      ],
+   652→      span: 'md:col-span-1',
+   653→    },
+   654→    {
+   655→      icon: Layers,
+   656→      title: 'Multi-Formats',
+   657→      description: 'QCM, questions ouvertes, codage, et bien plus encore.',
+   658→      bullets: [
+   659→        'QCU, QCM, correspondance, ordonnancement',
+   660→        'Questions de code avec execution en ligne',
+   661→        'Cas cliniques et etudes de cas',
+   662→      ],
+   663→      span: 'md:col-span-1',
+   664→    },
+   665→    {
+   666→      icon: Users,
+   667→      title: 'Multi-Tenant',
+   668→      description: 'Gerez plusieurs departements, filieres et campus depuis une seule plateforme.',
+   669→      bullets: [
+   670→        'Isolation complete des donnees par institution',
+   671→        'Roles et permissions granulaires',
+   672→        'Branding personnalise par etablissement',
+   673→      ],
+   674→      span: 'md:col-span-1',
+   675→    },
+   676→    {
+   677→      icon: Award,
+   678→      title: 'Certificats & Badges',
+   679→      description: 'Generez automatiquement des certificats et badges de competence.',
+   680→      bullets: [
+   681→        'Certificats horodatés et verifiables',
+   682→        'Badges numeriques compatibles Open Badges',
+   683→        'Personnalisation complete du design',
+   684→      ],
+   685→      span: 'md:col-span-1',
+   686→    },
+   687→    {
+   688→      icon: Lock,
+   689→      title: 'Securite & Conformite',
+   690→      description: 'Chiffrement de bout en bout et conformite RGPD pour toutes vos donnees sensibles.',
+   691→      bullets: [
+   692→        'Chiffrement AES-256 au repos et TLS en transit',
+   693→        'Conformite RGPD et audit trails',
+   694→        'Sauvegardes automatiques redondantes',
+   695→      ],
+   696→      span: 'md:col-span-1',
+   697→    },
+   698→    {
+   699→      icon: Target,
+   700→      title: 'Suggestion de Bareme',
+   701→      description: "L'IA propose un bareme optimal en fonction de la difficulte de chaque question.",
+   702→      bullets: [
+   703→        'Analyse de difficulte automatique',
+   704→        'Repartition intelligente des points',
+   705→        'Ajustement manuel ou automatique',
+   706→      ],
+   707→      span: 'md:col-span-1',
+   708→    },
+   709→  ]
+   710→
+   711→  useEffect(() => {
+   712→    const ctx = gsap.context(() => {
+   713→      if (!cardsRef.current) return
+   714→      const cards = cardsRef.current.querySelectorAll('.bento-card')
+   715→      gsap.fromTo(
+   716→        cards,
+   717→        { opacity: 0, y: 40 },
+   718→        {
+   719→          opacity: 1,
+   720→          y: 0,
+   721→          duration: 0.8,
+   722→          stagger: 0.1,
+   723→          ease: 'power3.out',
+   724→          scrollTrigger: { trigger: cardsRef.current, start: 'top 85%' },
+   725→        }
+   726→      )
+   727→    })
+   728→    return () => ctx.revert()
+   729→  }, [])
+   730→
+   731→  return (
+   732→    <section id="fonctionnalites" ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b]">
+   733→      <DotGrid />
+   734→      <GlowOrb x="20%" y="50%" color="emerald" />
+   735→
+   736→      <div className="relative z-10 max-w-7xl mx-auto px-6">
+   737→        <div className="text-center mb-8">
+   738→          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
+   739→            Fonctionnalites
+   740→          </p>
+   741→          <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight">
+   742→            Tout ce dont vous avez{' '}
+   743→            <GradientText>besoin</GradientText>
+   744→          </h2>
+   745→          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm sm:text-base">
+   746→            De la creation a la certification, SECT couvre l&apos;integralite du processus d&apos;evaluation
+   747→            avec des outils puissants et une IA de pointe.
+   748→          </p>
+   749→        </div>
+   750→
+   751→        <div
+   752→          ref={cardsRef}
+   753→          className="grid grid-cols-1 md:grid-cols-4 gap-3"
+   754→        >
+   755→          {features.map((feature, i) => (
+   756→            <motion.div
+   757→              key={i}
+   758→              className={`bento-card group relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04] ${feature.span}`}
+   759→              whileHover={{ y: -4, transition: { duration: 0.3 } }}
+   760→            >
+   761→              {/* Hover gradient border glow */}
+   762→              <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/10 pointer-events-none" />
+   763→
+   764→              <div className="relative z-10 h-full flex flex-col">
+   765→                <div className="flex items-center gap-3 mb-3">
+   766→                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+   767→                    <feature.icon className="h-4.5 w-4.5 text-emerald-400" />
+   768→                  </div>
+   769→                  <h3 className="text-base font-semibold text-white">{feature.title}</h3>
+   770→                </div>
+   771→                <p className="text-sm text-zinc-400 leading-relaxed mb-3">{feature.description}</p>
+   772→
+   773→                {/* Bullet points */}
+   774→                <ul className="space-y-1.5 flex-1">
+   775→                  {feature.bullets.map((bullet, j) => (
+   776→                    <li key={j} className="flex items-start gap-2">
+   777→                      <div className="w-1 h-1 rounded-full bg-emerald-400/60 mt-2 shrink-0" />
+   778→                      <span className="text-xs text-zinc-500 leading-relaxed">{bullet}</span>
+   779→                    </li>
+   780→                  ))}
+   781→                </ul>
+   782→
+   783→                {feature.image && (
+   784→                  <div className="mt-4 flex-1 relative rounded-lg overflow-hidden border border-white/[0.06]">
+   785→                    <img
+   786→                      src={feature.imageSrc}
+   787→                      alt={feature.title}
+   788→                      className="w-full h-auto object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+   789→                    />
+   790→                  </div>
+   791→                )}
+   792→              </div>
+   793→            </motion.div>
+   794→          ))}
+   795→        </div>
+   796→      </div>
+   797→    </section>
+   798→  )
+   799→}
+   800→
+   801→/* ─── AI Showcase ─── */
+   802→function AIShowcase() {
+   803→  const sectionRef = useRef<HTMLDivElement>(null)
+   804→  const imageWrapperRef = useRef<HTMLDivElement>(null)
+   805→  const ringsRef = useRef<HTMLDivElement>(null)
+   806→
+   807→  useEffect(() => {
+   808→    const ctx = gsap.context(() => {
+   809→      // Floating image
+   810→      if (imageWrapperRef.current) {
+   811→        gsap.to(imageWrapperRef.current, {
+   812→          y: -15,
+   813→          duration: 2.5,
+   814→          repeat: -1,
+   815→          yoyo: true,
+   816→          ease: 'sine.inOut',
+   817→        })
+   818→      }
+   819→
+   820→      // Pulsing rings
+   821→      if (ringsRef.current) {
+   822→        const rings = ringsRef.current.querySelectorAll('.pulse-ring')
+   823→        rings.forEach((ring, i) => {
+   824→          gsap.fromTo(
+   825→            ring,
+   826→            { scale: 0.8, opacity: 0.6 },
+   827→            {
+   828→              scale: 1.4 + i * 0.3,
+   829→              opacity: 0,
+   830→              duration: 2.5,
+   831→              repeat: -1,
+   832→              delay: i * 0.6,
+   833→              ease: 'power1.out',
+   834→            }
+   835→          )
+   836→        })
+   837→      }
+   838→
+   839→      // Text reveal
+   840→      gsap.fromTo(
+   841→        sectionRef.current?.querySelectorAll('.ai-text') || [],
+   842→        { opacity: 0, x: -40 },
+   843→        {
+   844→          opacity: 1,
+   845→          x: 0,
+   846→          duration: 0.8,
+   847→          stagger: 0.15,
+   848→          ease: 'power3.out',
+   849→          scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+   850→        }
+   851→      )
+   852→    })
+   853→    return () => ctx.revert()
+   854→  }, [])
+   855→
+   856→  const aiCapabilities = [
+   857→    {
+   858→      icon: Brain,
+   859→      title: 'Generation de questions QCU/QCM/QRC',
+   860→      description: 'Creez des items de qualite professionnelle en quelques secondes, adaptes au niveau cible et au programme.',
+   861→    },
+   862→    {
+   863→      icon: FileText,
+   864→      title: 'Correction intelligente des copies',
+   865→      description: "L'IA evalue les reponses ouvertes avec une precision proche de celle d'un correcteur humain, en quelques instants.",
+   866→    },
+   867→    {
+   868→      icon: Cpu,
+   869→      title: 'Analyse documentaire automatique',
+   870→      description: 'Importez vos cours et supports PDF : l\'IA extrait les concepts cles et genere des questions pertinentes.',
+   871→    },
+   872→    {
+   873→      icon: Shield,
+   874→      title: 'Detection de plagiat IA',
+   875→      description: 'Identifiez les reponses generees par ChatGPT ou d\'autres outils IA avec un taux de detection superieur a 95%.',
+   876→    },
+   877→    {
+   878→      icon: Target,
+   879→      title: 'Suggestion de bareme',
+   880→      description: "L'IA analyse la difficulte de chaque question et propose une repartition optimale des points.",
+   881→    },
+   882→  ]
+   883→
+   884→  return (
+   885→    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
+   886→      <DotGrid />
+   887→      <GlowOrb x="70%" y="50%" color="teal" />
+   888→
+   889→      <div className="relative z-10 max-w-7xl mx-auto px-6">
+   890→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+   891→          {/* Left: Text */}
+   892→          <div>
+   893→            <p className="ai-text text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
+   894→              Intelligence Artificielle
+   895→            </p>
+   896→            <h2 className="ai-text text-4xl sm:text-5xl font-bold text-white tracking-tight mb-4">
+   897→              Propulse par{' '}
+   898→              <GradientText>l'Intelligence Artificielle</GradientText>
+   899→            </h2>
+   900→            <p className="ai-text text-base text-zinc-400 leading-relaxed mb-6">
+   901→              Notre IA analyse, genere et corrige vos examens avec une precision
+   902→              inegalee. De la creation d&apos;epreuves a la correction automatique,
+   903→              chaque processus est optimise pour vous faire gagner un temps precieux.
+   904→              Les modeles sont entraines sur des millions de copies francophones et
+   905→              s&apos;adaptent a votre contexte institutionnel.
+   906→            </p>
+   907→
+   908→            {/* AI Capabilities List */}
+   909→            <div className="ai-text flex flex-col gap-3">
+   910→              {aiCapabilities.map((item, i) => (
+   911→                <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/[0.08] transition-all duration-300">
+   912→                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0 mt-0.5">
+   913→                    <item.icon className="h-4 w-4 text-emerald-400" />
+   914→                  </div>
+   915→                  <div>
+   916→                    <span className="text-sm font-medium text-zinc-200 block mb-0.5">{item.title}</span>
+   917→                    <span className="text-xs text-zinc-500 leading-relaxed">{item.description}</span>
+   918→                  </div>
+   919→                </div>
+   920→              ))}
+   921→            </div>
+   922→          </div>
+   923→
+   924→          {/* Right: Image with pulse rings */}
+   925→          <div className="relative flex items-center justify-center">
+   926→            <div ref={ringsRef} className="absolute inset-0 flex items-center justify-center pointer-events-none">
+   927→              {[0, 1, 2].map((i) => (
+   928→                <div
+   929→                  key={i}
+   930→                  className="pulse-ring absolute w-[280px] h-[280px] sm:w-[350px] sm:h-[350px] rounded-full border border-emerald-400/30"
+   931→                />
+   932→              ))}
+   933→            </div>
+   934→            <div ref={imageWrapperRef} className="relative">
+   935→              <div className="absolute -inset-8 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 rounded-3xl blur-3xl" aria-hidden />
+   936→              <div className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/10">
+   937→                <img
+   938→                  src="/hero-ai-network.png"
+   939→                  alt="Reseau neuronal IA - SECT"
+   940→                  className="w-full max-w-md h-auto block"
+   941→                />
+   942→              </div>
+   943→            </div>
+   944→          </div>
+   945→        </div>
+   946→      </div>
+   947→    </section>
+   948→  )
+   949→}
+   950→
+   951→/* ─── How It Works ─── */
+   952→function HowItWorks() {
+   953→  const sectionRef = useRef<HTMLDivElement>(null)
+   954→  const lineRef = useRef<HTMLDivElement>(null)
+   955→
+   956→  const steps = [
+   957→    {
+   958→      number: '01',
+   959→      icon: FileText,
+   960→      title: 'Importez & Creez',
+   961→      description: "Uploadez vos examens existants ou laissez l'IA les generer automatiquement a partir de vos cours.",
+   962→      subSteps: [
+   963→        'Importez vos PDF, Word ou Markdown',
+   964→        "L'IA genere des questions pertinentes",
+   965→        'Personnalisez le bareme et le timing',
+   966→        'Generez des variantes uniques par etudiant',
+   967→      ],
+   968→    },
+   969→    {
+   970→      number: '02',
+   971→      icon: Users,
+   972→      title: 'Administrez & Surveillez',
+   973→      description: 'Organisez les sessions, assignez les surveillants et securisez les epreuves avec le proctoring IA.',
+   974→      subSteps: [
+   975→        'Planifiez les sessions et les salles',
+   976→        'Activez le proctoring video et le verrouillage',
+   977→        'Suivez la progression en temps reel',
+   978→        'Recevez des alertes anti-fraude instantanees',
+   979→      ],
+   980→    },
+   981→    {
+   982→      number: '03',
+   983→      icon: BarChart3,
+   984→      title: 'Corrigez & Analysez',
+   985→      description: "Obtenez des resultats instantanes avec des insights powers par l'IA et des rapports detailles.",
+   986→      subSteps: [
+   987→        'Correction automatique QCM et IA pour copies',
+   988→        'Feedback personnalise pour chaque etudiant',
+   989→        'Statistiques detaillees par question et classe',
+   990→        'Certificats et badges generes automatiquement',
+   991→      ],
+   992→    },
+   993→  ]
+   994→
+   995→  useEffect(() => {
+   996→    const ctx = gsap.context(() => {
+   997→      // Animated connecting line
+   998→      if (lineRef.current) {
+   999→        gsap.fromTo(
+  1000→          lineRef.current,
+  1001→          { scaleX: 0 },
+  1002→          {
+  1003→            scaleX: 1,
+  1004→            duration: 1.5,
+  1005→            ease: 'power2.inOut',
+  1006→            scrollTrigger: { trigger: sectionRef.current, start: 'top 70%' },
+  1007→          }
+  1008→        )
+  1009→      }
+  1010→
+  1011→      // Steps appear sequentially
+  1012→      const stepEls = sectionRef.current?.querySelectorAll('.step-item')
+  1013→      if (stepEls) {
+  1014→        gsap.fromTo(
+  1015→          stepEls,
+  1016→          { opacity: 0, y: 40 },
+  1017→          {
+  1018→            opacity: 1,
+  1019→            y: 0,
+  1020→            duration: 0.8,
+  1021→            stagger: 0.3,
+  1022→            ease: 'power3.out',
+  1023→            scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+  1024→          }
+  1025→        )
+  1026→      }
+  1027→    })
+  1028→    return () => ctx.revert()
+  1029→  }, [])
+  1030→
+  1031→  return (
+  1032→    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b] overflow-hidden">
+  1033→      <DotGrid />
+  1034→
+  1035→      <div className="relative z-10 max-w-6xl mx-auto px-6">
+  1036→        <div className="text-center mb-8">
+  1037→          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
+  1038→            Comment ca marche
+  1039→          </p>
+  1040→          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
+  1041→            Simple comme <GradientText>1, 2, 3</GradientText>
+  1042→          </h2>
+  1043→          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+  1044→            En trois etapes, transformez completement votre processus d&apos;evaluation.
+  1045→            Pas de formation lourde, pas de migration complexe.
+  1046→          </p>
+  1047→        </div>
+  1048→
+  1049→        <div className="relative">
+  1050→          {/* Connecting line */}
+  1051→          <div className="hidden md:block absolute top-1/2 left-[16%] right-[16%] h-px bg-gradient-to-r from-emerald-500/30 via-teal-400/40 to-cyan-400/30 -translate-y-1/2">
+  1052→            <div ref={lineRef} className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 origin-left" />
+  1053→          </div>
+  1054→
+  1055→          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-6">
+  1056→            {steps.map((step, i) => (
+  1057→              <div key={i} className="step-item relative flex flex-col items-center text-center">
+  1058→                <div className="relative mb-4">
+  1059→                  <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-sm flex items-center justify-center">
+  1060→                    <step.icon className="h-7 w-7 text-emerald-400" />
+  1061→                  </div>
+  1062→                  <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-500 text-black text-xs font-bold flex items-center justify-center">
+  1063→                    {step.number}
+  1064→                  </span>
+  1065→                </div>
+  1066→                <h3 className="text-lg font-semibold text-white mb-2">{step.title}</h3>
+  1067→                <p className="text-sm text-zinc-400 leading-relaxed max-w-[280px] mb-3">
+  1068→                  {step.description}
+  1069→                </p>
+  1070→                {/* Sub-steps */}
+  1071→                <ul className="space-y-1.5 text-left w-full max-w-[260px]">
+  1072→                  {step.subSteps.map((sub, j) => (
+  1073→                    <li key={j} className="flex items-start gap-2">
+  1074→                      <span className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+  1075→                        <span className="text-[9px] font-bold text-emerald-400">{j + 1}</span>
+  1076→                      </span>
+  1077→                      <span className="text-xs text-zinc-500 leading-relaxed">{sub}</span>
+  1078→                    </li>
+  1079→                  ))}
+  1080→                </ul>
+  1081→              </div>
+  1082→            ))}
+  1083→          </div>
+  1084→        </div>
+  1085→      </div>
+  1086→    </section>
+  1087→  )
+  1088→}
+  1089→
+  1090→/* ─── Stats Section ─── */
+  1091→function StatsSection() {
+  1092→  const sectionRef = useRef<HTMLDivElement>(null)
+  1093→  const stats = [
+  1094→    { value: 50000, suffix: '+', label: 'Examens corriges', subtext: 'Par l\'IA avec une precision de 99.7%' },
+  1095→    { value: 99.7, suffix: '%', label: 'Precision IA', subtext: 'Sur la correction automatique QCM/QCU' },
+  1096→    { value: 200, suffix: '+', label: 'Institutions', subtext: 'Universites et ecoles en Afrique et Europe' },
+  1097→    { value: 15, suffix: 'min', label: 'Temps moyen', subtext: 'Pour corriger 100 copies completement' },
+  1098→    { value: 98, suffix: '%', label: 'Taux de satisfaction', subtext: 'Enseignants et administrateurs conquis' },
+  1099→    { value: 3, suffix: 'M+', label: 'Questions generees', subtext: 'Par l\'IA depuis le lancement de SECT' },
+  1100→  ]
+  1101→  const countersRef = useRef<(HTMLSpanElement | null)[]>([])
+  1102→
+  1103→  useEffect(() => {
+  1104→    const ctx = gsap.context(() => {
+  1105→      countersRef.current.forEach((el, i) => {
+  1106→        if (!el) return
+  1107→        const target = stats[i].value
+  1108→        gsap.fromTo(
+  1109→          el,
+  1110→          { textContent: '0' },
+  1111→          {
+  1112→            textContent: target,
+  1113→            duration: 2,
+  1114→            ease: 'power2.out',
+  1115→            snap: { textContent: target % 1 === 0 ? 1 : 0.1 },
+  1116→            scrollTrigger: { trigger: sectionRef.current, start: 'top 80%' },
+  1117→            delay: i * 0.15,
+  1118→          }
+  1119→        )
+  1120→      })
+  1121→    })
+  1122→    return () => ctx.revert()
+  1123→  }, [])
+  1124→
+  1125→  return (
+  1126→    <section ref={sectionRef} className="relative py-12 sm:py-14 bg-gradient-to-b from-[#09090b] via-emerald-950/20 to-[#09090b] overflow-hidden">
+  1127→      <div className="relative z-10 max-w-6xl mx-auto px-6">
+  1128→        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+  1129→          {stats.map((stat, i) => (
+  1130→            <div key={i} className="relative flex flex-col items-center text-center group">
+  1131→              {/* Glow behind number */}
+  1132→              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-24 bg-emerald-500/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" aria-hidden />
+  1133→
+  1134→              <span
+  1135→                ref={(el) => { countersRef.current[i] = el }}
+  1136→                className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-1"
+  1137→              >
+  1138→                {0}
+  1139→              </span>
+  1140→              <span className="text-emerald-400 text-sm font-semibold mb-0.5">{stat.suffix}</span>
+  1141→              <span className="text-xs text-zinc-400 uppercase tracking-wider mb-1">{stat.label}</span>
+  1142→              <span className="text-[10px] text-zinc-600 max-w-[180px] leading-relaxed">{stat.subtext}</span>
+  1143→            </div>
+  1144→          ))}
+  1145→        </div>
+  1146→      </div>
+  1147→    </section>
+  1148→  )
+  1149→}
+  1150→
+  1151→/* ─── Dashboard Preview ─── */
+  1152→function DashboardPreview() {
+  1153→  const sectionRef = useRef<HTMLDivElement>(null)
+  1154→  const imageRef = useRef<HTMLDivElement>(null)
+  1155→
+  1156→  useEffect(() => {
+  1157→    const ctx = gsap.context(() => {
+  1158→      if (imageRef.current) {
+  1159→        // Clip-path circle reveal
+  1160→        gsap.fromTo(
+  1161→          imageRef.current,
+  1162→          { clipPath: 'circle(0% at 50% 50%)' },
+  1163→          {
+  1164→            clipPath: 'circle(75% at 50% 50%)',
+  1165→            duration: 1.8,
+  1166→            ease: 'power2.inOut',
+  1167→            scrollTrigger: { trigger: sectionRef.current, start: 'top 65%' },
+  1168→          }
+  1169→        )
+  1170→      }
+  1171→    })
+  1172→    return () => ctx.revert()
+  1173→  }, [])
+  1174→
+  1175→  const callouts = [
+  1176→    { position: 'top-[12%] left-[6%]', text: 'Analytics en temps reel', description: 'KPIs et metriques live' },
+  1177→    { position: 'top-[55%] left-[4%]', text: 'Gestion des epreuves', description: 'Planification et suivi' },
+  1178→    { position: 'top-[18%] right-[4%]', text: 'IA Integration', description: 'Generation et correction' },
+  1179→    { position: 'top-[65%] right-[6%]', text: 'Rapports detailles', description: 'Export et partage' },
+  1180→    { position: 'top-[38%] left-[3%]', text: 'Monitoring sessions', description: 'Progression en direct' },
+  1181→  ]
+  1182→
+  1183→  return (
+  1184→    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
+  1185→      <DotGrid />
+  1186→      <GlowOrb x="50%" y="50%" color="emerald" />
+  1187→
+  1188→      <div className="relative z-10 max-w-7xl mx-auto px-6">
+  1189→        <div className="text-center mb-8">
+  1190→          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
+  1191→            Centre de commande
+  1192→          </p>
+  1193→          <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight">
+  1194→            Votre <GradientText>Centre de Commande</GradientText>
+  1195→          </h2>
+  1196→          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+  1197→            Un tableau de bord unifie pour piloter l&apos;ensemble de vos evaluations,
+  1198→            du planning a la certification.
+  1199→          </p>
+  1200→        </div>
+  1201→
+  1202→        <div className="relative">
+  1203→          {/* Callouts */}
+  1204→          {callouts.map((callout, i) => (
+  1205→            <div
+  1206→              key={i}
+  1207→              className={`absolute ${callout.position} hidden lg:flex flex-col items-start gap-0.5 z-20`}
+  1208→            >
+  1209→              <div className="flex items-center gap-2">
+  1210→                <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+  1211→                <span className="text-xs text-zinc-300 font-medium whitespace-nowrap px-2 py-0.5 bg-[#0a0a0a]/80 rounded border border-white/[0.06]">
+  1212→                  {callout.text}
+  1213→                </span>
+  1214→              </div>
+  1215→              <span className="text-[10px] text-zinc-600 ml-4 pl-0.5">{callout.description}</span>
+  1216→            </div>
+  1217→          ))}
+  1218→
+  1219→          <div ref={imageRef} className="relative rounded-xl border border-white/[0.08] overflow-hidden shadow-2xl shadow-emerald-500/5">
+  1220→            <img
+  1221→              src="/hero-dashboard.png"
+  1222→              alt="SECT Dashboard - Vue d'ensemble"
+  1223→              className="w-full h-auto block"
+  1224→            />
+  1225→          </div>
+  1226→        </div>
+  1227→      </div>
+  1228→    </section>
+  1229→  )
+  1230→}
+  1231→
+  1232→/* ─── Pricing Section ─── */
+  1233→function PricingSection({ onDemo }: { onDemo: () => void }) {
+  1234→  const sectionRef = useRef<HTMLDivElement>(null)
+  1235→
+  1236→  const plans = [
+  1237→    {
+  1238→      name: 'Starter',
+  1239→      price: '499',
+  1240→      description: 'Pour les petites institutions qui debutent avec l\'evaluation numerique.',
+  1241→      features: [
+  1242→        'Jusqu\'a 100 etudiants',
+  1243→        '5 examens/mois',
+  1244→        'Correction automatique QCM',
+  1245→        'Support email (48h)',
+  1246→        '1 administrateur',
+  1247→        'Rapports basiques',
+  1248→      ],
+  1249→      popular: false,
+  1250→    },
+  1251→    {
+  1252→      name: 'Professionnel',
+  1253→      price: '1299',
+  1254→      description: 'Pour les institutions en croissance qui veulent exploiter la puissance de l\'IA.',
+  1255→      features: [
+  1256→        'Jusqu\'a 2 000 etudiants',
+  1257→        'Examens illimites',
+  1258→        'IA Generative avancee',
+  1259→        'Anti-fraude & proctoring complet',
+  1260→        'Analytics detailles & exports',
+  1261→        'Support prioritaire 24/7',
+  1262→        '5 administrateurs',
+  1263→        'Certificats & badges',
+  1264→      ],
+  1265→      popular: true,
+  1266→    },
+  1267→    {
+  1268→      name: 'Entreprise',
+  1269→      price: 'Sur mesure',
+  1270→      description: 'Pour les grandes universites et reseaux multi-campus.',
+  1271→      features: [
+  1272→        'Etudiants illimites',
+  1273→        'Tout du plan Professionnel',
+  1274→        'Deploiement on-premise ou cloud prive',
+  1275→        'SSO & Integration SI (LDAP, CAS)',
+  1276→        'SLA garanti 99.9%',
+  1277→        'Account manager dedie',
+  1278→        'Multi-tenant avance',
+  1279→        'API & Webhooks personnalises',
+  1280→      ],
+  1281→      popular: false,
+  1282→    },
+  1283→  ]
+  1284→
+  1285→  // Feature comparison data
+  1286→  const comparisonFeatures = [
+  1287→    { name: 'Etudiants', starter: '100', pro: '2 000', enterprise: 'Illimites' },
+  1288→    { name: 'Examens/mois', starter: '5', pro: 'Illimites', enterprise: 'Illimites' },
+  1289→    { name: 'Generation IA', starter: false, pro: true, enterprise: true },
+  1290→    { name: 'Correction IA', starter: 'QCM', pro: 'Tous types', enterprise: 'Tous types' },
+  1291→    { name: 'Anti-fraude', starter: false, pro: true, enterprise: true },
+  1292→    { name: 'Proctoring video', starter: false, pro: true, enterprise: true },
+  1293→    { name: 'Certificats & Badges', starter: false, pro: true, enterprise: true },
+  1294→    { name: 'Analytics', starter: 'Basiques', pro: 'Avances', enterprise: 'Personnalises' },
+  1295→    { name: 'Support', starter: 'Email', pro: '24/7', enterprise: 'Dedie' },
+  1296→    { name: 'SSO / LDAP', starter: false, pro: false, enterprise: true },
+  1297→  ]
+  1298→
+  1299→  useEffect(() => {
+  1300→    const ctx = gsap.context(() => {
+  1301→      const cards = sectionRef.current?.querySelectorAll('.pricing-card')
+  1302→      if (cards) {
+  1303→        gsap.fromTo(
+  1304→          cards,
+  1305→          { opacity: 0, scale: 0.9 },
+  1306→          {
+  1307→            opacity: 1,
+  1308→            scale: 1,
+  1309→            duration: 0.8,
+  1310→            stagger: 0.15,
+  1311→            ease: 'elastic.out(1, 0.6)',
+  1312→            scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+  1313→          }
+  1314→        )
+  1315→      }
+  1316→    })
+  1317→    return () => ctx.revert()
+  1318→  }, [])
+  1319→
+  1320→  return (
+  1321→    <section id="tarifs" ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b] overflow-hidden">
+  1322→      <DotGrid />
+  1323→      <GlowOrb x="50%" y="30%" color="emerald" />
+  1324→
+  1325→      <div className="relative z-10 max-w-6xl mx-auto px-6">
+  1326→        <div className="text-center mb-8">
+  1327→          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
+  1328→            Tarifs
+  1329→          </p>
+  1330→          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
+  1331→            Un plan pour chaque{' '}
+  1332→            <GradientText>ambition</GradientText>
+  1333→          </h2>
+  1334→          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+  1335→            Que vous soyez une petite ecole ou une grande universite, SECT s&apos;adapte a vos besoins et a votre budget.
+  1336→          </p>
+  1337→        </div>
+  1338→
+  1339→        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-8">
+  1340→          {plans.map((plan, i) => (
+  1341→            <div
+  1342→              key={i}
+  1343→              className={`pricing-card relative rounded-xl border backdrop-blur-sm p-6 transition-all duration-500 ${
+  1344→                plan.popular
+  1345→                  ? 'border-emerald-500/40 bg-white/[0.04] md:-mt-4 md:mb-4 shadow-[0_0_40px_rgba(16,185,129,0.12)]'
+  1346→                  : 'border-white/[0.06] bg-white/[0.02]'
+  1347→              }`}
+  1348→            >
+  1349→              {plan.popular && (
+  1350→                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-emerald-500 rounded-full">
+  1351→                  <span className="text-xs font-bold text-black uppercase tracking-wider">Populaire</span>
+  1352→                </div>
+  1353→              )}
+  1354→
+  1355→              <div className="mb-4">
+  1356→                <h3 className="text-lg font-semibold text-white mb-1">{plan.name}</h3>
+  1357→                <p className="text-xs text-zinc-400">{plan.description}</p>
+  1358→              </div>
+  1359→
+  1360→              <div className="mb-4">
+  1361→                {plan.price === 'Sur mesure' ? (
+  1362→                  <span className="text-3xl font-bold text-white">Sur mesure</span>
+  1363→                ) : (
+  1364→                  <div className="flex items-baseline gap-1">
+  1365→                    <span className="text-4xl font-bold text-white">{plan.price}</span>
+  1366→                    <span className="text-sm text-zinc-500">MAD/mois</span>
+  1367→                  </div>
+  1368→                )}
+  1369→              </div>
+  1370→
+  1371→              <ul className="space-y-2 mb-6">
+  1372→                {plan.features.map((feature, j) => (
+  1373→                  <li key={j} className="flex items-start gap-2">
+  1374→                    <Check className="h-3.5 w-3.5 text-emerald-400 mt-0.5 shrink-0" />
+  1375→                    <span className="text-xs text-zinc-300">{feature}</span>
+  1376→                  </li>
+  1377→                ))}
+  1378→              </ul>
+  1379→
+  1380→              <MagneticButton
+  1381→                className={`w-full rounded-lg font-semibold text-sm ${
+  1382→                  plan.popular
+  1383→                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+  1384→                    : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.1]'
+  1385→                }`}
+  1386→                onClick={onDemo}
+  1387→              >
+  1388→                {plan.popular ? 'Commencer maintenant' : 'Nous contacter'}
+  1389→                <ChevronRight className="ml-1 h-4 w-4" />
+  1390→              </MagneticButton>
+  1391→            </div>
+  1392→          ))}
+  1393→        </div>
+  1394→
+  1395→        {/* Feature Comparison Table */}
+  1396→        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm overflow-hidden">
+  1397→          <div className="px-5 py-3 border-b border-white/[0.06]">
+  1398→            <h3 className="text-sm font-semibold text-white">Comparaison detaillee</h3>
+  1399→          </div>
+  1400→          <div className="overflow-x-auto">
+  1401→            <table className="w-full text-xs">
+  1402→              <thead>
+  1403→                <tr className="border-b border-white/[0.04]">
+  1404→                  <th className="text-left text-zinc-500 font-medium px-5 py-2.5">Fonctionnalite</th>
+  1405→                  <th className="text-center text-zinc-500 font-medium px-4 py-2.5">Starter</th>
+  1406→                  <th className="text-center text-emerald-400 font-medium px-4 py-2.5 bg-emerald-500/5">Pro</th>
+  1407→                  <th className="text-center text-zinc-500 font-medium px-4 py-2.5">Entreprise</th>
+  1408→                </tr>
+  1409→              </thead>
+  1410→              <tbody>
+  1411→                {comparisonFeatures.map((feat, i) => (
+  1412→                  <tr key={i} className="border-b border-white/[0.03] last:border-0">
+  1413→                    <td className="text-zinc-300 px-5 py-2">{feat.name}</td>
+  1414→                    <td className="text-center px-4 py-2 text-zinc-500">
+  1415→                      {typeof feat.starter === 'boolean' ? (
+  1416→                        feat.starter ? <Check className="h-3.5 w-3.5 text-emerald-400 mx-auto" /> : <X className="h-3.5 w-3.5 text-zinc-700 mx-auto" />
+  1417→                      ) : feat.starter}
+  1418→                    </td>
+  1419→                    <td className="text-center px-4 py-2 text-zinc-300 bg-emerald-500/5">
+  1420→                      {typeof feat.pro === 'boolean' ? (
+  1421→                        feat.pro ? <Check className="h-3.5 w-3.5 text-emerald-400 mx-auto" /> : <X className="h-3.5 w-3.5 text-zinc-700 mx-auto" />
+  1422→                      ) : feat.pro}
+  1423→                    </td>
+  1424→                    <td className="text-center px-4 py-2 text-zinc-300">
+  1425→                      {typeof feat.enterprise === 'boolean' ? (
+  1426→                        feat.enterprise ? <Check className="h-3.5 w-3.5 text-emerald-400 mx-auto" /> : <X className="h-3.5 w-3.5 text-zinc-700 mx-auto" />
+  1427→                      ) : feat.enterprise}
+  1428→                    </td>
+  1429→                  </tr>
+  1430→                ))}
+  1431→              </tbody>
+  1432→            </table>
+  1433→          </div>
+  1434→        </div>
+  1435→      </div>
+  1436→    </section>
+  1437→  )
+  1438→}
+  1439→
+  1440→/* ─── Testimonials ─── */
+  1441→function Testimonials() {
+  1442→  const sectionRef = useRef<HTMLDivElement>(null)
+  1443→
+  1444→  const testimonials = [
+  1445→    {
+  1446→      initials: 'AB',
+  1447→      name: 'Dr. Amina Benali',
+  1448→      role: 'Directrice, EMI Rabat',
+  1449→      institution: 'Ecole Mohammed V - 3 200 etudiants',
+  1450→      quote: "SECT a revolutionne notre facon de gerer les examens. La correction automatique nous fait gagner des jours entiers. Nous avons reduit notre temps de correction de 85% depuis son adoption.",
+  1451→      stars: 5,
+  1452→      result: '85% de temps economise',
+  1453→    },
+  1454→    {
+  1455→      initials: 'MK',
+  1456→      name: 'Prof. Mohammed Khalil',
+  1457→      role: 'Doyen, Faculte des Sciences',
+  1458→      institution: 'Universite Cadi Ayyad - 8 500 etudiants',
+  1459→      quote: "L'anti-fraude integre nous a donne une tranquillite d'esprit totale pendant les sessions d'examen. Le taux de fraude a chute de 92% des la premiere session.",
+  1460→      stars: 5,
+  1461→      result: '92% moins de fraude',
+  1462→    },
+  1463→    {
+  1464→      initials: 'SF',
+  1465→      name: 'Sara Fassi',
+  1466→      role: 'Responsable Pedagogique',
+  1467→      institution: 'ENSA Marrakech - 1 800 etudiants',
+  1468→      quote: "Les analytics en temps reel nous permettent d'identifier immediatement les etudiants en difficulte. Nous avons ameliore notre taux de reussite de 15% en un semestre.",
+  1469→      stars: 5,
+  1470→      result: '+15% de reussite',
+  1471→    },
+  1472→    {
+  1473→      initials: 'YE',
+  1474→      name: 'Dr. Youssef El Amrani',
+  1475→      role: 'Chef de Departement Informatique',
+  1476→      institution: 'ENSIAS Rabat - 2 400 etudiants',
+  1477→      quote: "La generation IA d'examens est bluffante de qualite. En 2 minutes, j'obtiens un sujet equilibre et complet. C'est un gain de productivite incroyable pour toute l'equipe pedagogique.",
+  1478→      stars: 5,
+  1479→      result: '2 min par sujet',
+  1480→    },
+  1481→  ]
+  1482→
+  1483→  useEffect(() => {
+  1484→    const ctx = gsap.context(() => {
+  1485→      const cards = sectionRef.current?.querySelectorAll('.testimonial-card')
+  1486→      if (cards) {
+  1487→        cards.forEach((card, i) => {
+  1488→          gsap.fromTo(
+  1489→            card,
+  1490→            { opacity: 0, x: i % 2 === 0 ? -60 : 60 },
+  1491→            {
+  1492→              opacity: 1,
+  1493→              x: 0,
+  1494→              duration: 0.9,
+  1495→              ease: 'power3.out',
+  1496→              scrollTrigger: { trigger: card, start: 'top 85%' },
+  1497→            }
+  1498→          )
+  1499→        })
+  1500→      }
+  1501→    })
+  1502→    return () => ctx.revert()
+  1503→  }, [])
+  1504→
+  1505→  return (
+  1506→    <section id="temoignages" ref={sectionRef} className="relative py-12 sm:py-16 bg-[#0a0a0a] overflow-hidden">
+  1507→      <DotGrid />
+  1508→      <GlowOrb x="70%" y="40%" color="teal" />
+  1509→
+  1510→      <div className="relative z-10 max-w-6xl mx-auto px-6">
+  1511→        <div className="text-center mb-8">
+  1512→          <p className="text-sm uppercase tracking-[0.2em] text-emerald-400 font-semibold mb-3">
+  1513→            Temoignages
+  1514→          </p>
+  1515→          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
+  1516→            Ce qu'ils en <GradientText>disent</GradientText>
+  1517→          </h2>
+  1518→          <p className="mt-3 text-zinc-500 max-w-2xl mx-auto text-sm">
+  1519→            Des centaines d&apos;institutions nous font confiance. Voici les retours de celles qui ont transforme leurs evaluations.
+  1520→          </p>
+  1521→        </div>
+  1522→
+  1523→        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  1524→          {testimonials.map((t, i) => (
+  1525→            <div
+  1526→              key={i}
+  1527→              className="testimonial-card rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 sm:p-6 transition-all duration-500 hover:border-white/[0.12] hover:bg-white/[0.04]"
+  1528→            >
+  1529→              {/* Stars & Result */}
+  1530→              <div className="flex items-center justify-between mb-3">
+  1531→                <div className="flex gap-1">
+  1532→                  {Array.from({ length: t.stars }).map((_, j) => (
+  1533→                    <Star key={j} className="h-3.5 w-3.5 fill-emerald-400 text-emerald-400" />
+  1534→                  ))}
+  1535→                </div>
+  1536→                <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+  1537→                  {t.result}
+  1538→                </span>
+  1539→              </div>
+  1540→
+  1541→              {/* Quote */}
+  1542→              <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+  1543→                &ldquo;{t.quote}&rdquo;
+  1544→              </p>
+  1545→
+  1546→              {/* Author */}
+  1547→              <div className="flex items-center gap-3">
+  1548→                <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+  1549→                  <span className="text-xs font-bold text-emerald-400">{t.initials}</span>
+  1550→                </div>
+  1551→                <div>
+  1552→                  <p className="text-sm font-medium text-white">{t.name}</p>
+  1553→                  <p className="text-xs text-zinc-500">{t.role}</p>
+  1554→                  <p className="text-[10px] text-zinc-600">{t.institution}</p>
+  1555→                </div>
+  1556→              </div>
+  1557→            </div>
+  1558→          ))}
+  1559→        </div>
+  1560→      </div>
+  1561→    </section>
+  1562→  )
+  1563→}
+  1564→
+  1565→/* ─── CTA Section ─── */
+  1566→function CTASection({ onDemo, onLogin }: { onDemo: () => void; onLogin: () => void }) {
+  1567→  const sectionRef = useRef<HTMLDivElement>(null)
+  1568→  const bgRef = useRef<HTMLDivElement>(null)
+  1569→
+  1570→  useEffect(() => {
+  1571→    const ctx = gsap.context(() => {
+  1572→      // Continuous gradient hue shift
+  1573→      if (bgRef.current) {
+  1574→        gsap.to(bgRef.current, {
+  1575→          backgroundPosition: '200% center',
+  1576→          duration: 8,
+  1577→          repeat: -1,
+  1578→          ease: 'none',
+  1579→        })
+  1580→      }
+  1581→
+  1582→      // Text reveal
+  1583→      gsap.fromTo(
+  1584→        sectionRef.current?.querySelectorAll('.cta-reveal') || [],
+  1585→        { opacity: 0, y: 30 },
+  1586→        {
+  1587→          opacity: 1,
+  1588→          y: 0,
+  1589→          duration: 0.8,
+  1590→          stagger: 0.1,
+  1591→          ease: 'power3.out',
+  1592→          scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' },
+  1593→        }
+  1594→      )
+  1595→    })
+  1596→    return () => ctx.revert()
+  1597→  }, [])
+  1598→
+  1599→  const benefits = [
+  1600→    { icon: Zap, text: 'Configuration en moins de 30 minutes' },
+  1601→    { icon: Shield, text: 'Securite de niveau entreprise des le premier jour' },
+  1602→    { icon: Brain, text: 'IA generative incluse dans tous les plans' },
+  1603→    { icon: Users, text: 'Accompagnement personnalise par notre equipe' },
+  1604→  ]
+  1605→
+  1606→  return (
+  1607→    <section ref={sectionRef} className="relative py-12 sm:py-16 bg-[#09090b] overflow-hidden">
+  1608→      {/* Gradient border at top */}
+  1609→      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
+  1610→
+  1611→      {/* Animated background */}
+  1612→      <div
+  1613→        ref={bgRef}
+  1614→        className="absolute inset-0 opacity-20 pointer-events-none"
+  1615→        style={{
+  1616→          backgroundImage:
+  1617→            'linear-gradient(90deg, transparent, rgba(16,185,129,0.15), rgba(34,211,238,0.1), rgba(16,185,129,0.15), transparent)',
+  1618→          backgroundSize: '200% 100%',
+  1619→        }}
+  1620→        aria-hidden
+  1621→      />
+  1622→
+  1623→      <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
+  1624→        <h2 className="cta-reveal text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight mb-4">
+  1625→          Pret a transformer vos{' '}
+  1626→          <GradientText>examens ?</GradientText>
+  1627→        </h2>
+  1628→        <p className="cta-reveal text-base text-zinc-400 mb-6 max-w-2xl mx-auto">
+  1629→          Rejoignez les institutions qui ont deja adopte la plateforme d&apos;examen la plus avancee.
+  1630→        </p>
+  1631→
+  1632→        {/* Benefit bullets */}
+  1633→        <div className="cta-reveal grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto mb-8">
+  1634→          {benefits.map((b, i) => (
+  1635→            <div key={i} className="flex items-center gap-2 text-left">
+  1636→              <b.icon className="h-4 w-4 text-emerald-400 shrink-0" />
+  1637→              <span className="text-sm text-zinc-300">{b.text}</span>
+  1638→            </div>
+  1639→          ))}
+  1640→        </div>
+  1641→
+  1642→        <div className="cta-reveal flex flex-col sm:flex-row items-center justify-center gap-4">
+  1643→          <MagneticButton
+  1644→            className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3.5 text-base shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] transition-all duration-300 rounded-xl"
+  1645→            onClick={onDemo}
+  1646→          >
+  1647→            Demarrer gratuitement
+  1648→            <ArrowRight className="ml-2 h-5 w-5" />
+  1649→          </MagneticButton>
+  1650→          <MagneticButton
+  1651→            variant="outline"
+  1652→            className="border-white/[0.1] text-white hover:bg-white/[0.05] px-8 py-3.5 text-base rounded-xl"
+  1653→            onClick={onLogin}
+  1654→          >
+  1655→            <Globe className="mr-2 h-4 w-4" />
+  1656→            Planifier une demo
+  1657→          </MagneticButton>
+  1658→        </div>
+  1659→      </div>
+  1660→    </section>
+  1661→  )
+  1662→}
+  1663→
+  1664→/* ─── Footer ─── */
+  1665→function Footer() {
+  1666→  const [email, setEmail] = useState('')
+  1667→
+  1668→  const columns = [
+  1669→    {
+  1670→      title: 'Produit',
+  1671→      links: ['Fonctionnalites', 'Tarifs', 'Securite', 'Roadmap', 'Changelog', 'Integrations'],
+  1672→    },
+  1673→    {
+  1674→      title: 'Ressources',
+  1675→      links: ['Documentation', 'Blog', 'Guides', 'API Reference', 'Webinaires', 'Communaute'],
+  1676→    },
+  1677→    {
+  1678→      title: 'Entreprise',
+  1679→      links: ['A propos', 'Carrieres', 'Contact', 'Partenaires', 'Presse', 'Equipe'],
+  1680→    },
+  1681→    {
+  1682→      title: 'Legal',
+  1683→      links: ['Confidentialite', 'CGU', 'Cookies', 'RGPD', 'Mentions legales', 'Conditions'],
+  1684→    },
+  1685→  ]
+  1686→
+  1687→  return (
+  1688→    <footer className="relative bg-[#09090b] border-t border-white/[0.04]">
+  1689→      <div className="max-w-7xl mx-auto px-6 py-10">
+  1690→        <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-8">
+  1691→          {/* Logo column + newsletter */}
+  1692→          <div className="col-span-2">
+  1693→            <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+  1694→              SECT
+  1695→            </span>
+  1696→            <p className="text-sm text-zinc-500 mt-2 leading-relaxed">
+  1697→              La plateforme d&apos;examen propulssee par l&apos;intelligence artificielle. Automatisez, securisez et optimisez vos evaluations.
+  1698→            </p>
+  1699→
+  1700→            {/* Newsletter */}
+  1701→            <div className="mt-4">
+  1702→              <p className="text-xs font-medium text-zinc-400 mb-2">Restez informe</p>
+  1703→              <div className="flex gap-2">
+  1704→                <input
+  1705→                  type="email"
+  1706→                  value={email}
+  1707→                  onChange={(e) => setEmail(e.target.value)}
+  1708→                  placeholder="votre@email.com"
+  1709→                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/40 transition-colors"
+  1710→                />
+  1711→                <button
+  1712→                  className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-lg text-xs font-semibold transition-colors shrink-0"
+  1713→                  aria-label="S'inscrire a la newsletter"
+  1714→                >
+  1715→                  <Mail className="h-3.5 w-3.5" />
+  1716→                </button>
+  1717→              </div>
+  1718→            </div>
+  1719→          </div>
+  1720→
+  1721→          {/* Link columns */}
+  1722→          {columns.map((col) => (
+  1723→            <div key={col.title}>
+  1724→              <h4 className="text-xs font-semibold text-white mb-3 uppercase tracking-wider">{col.title}</h4>
+  1725→              <ul className="space-y-2">
+  1726→                {col.links.map((link) => (
+  1727→                  <li key={link}>
+  1728→                    <a
+  1729→                      href="#"
+  1730→                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors duration-300"
+  1731→                    >
+  1732→                      {link}
+  1733→                    </a>
+  1734→                  </li>
+  1735→                ))}
+  1736→              </ul>
+  1737→            </div>
+  1738→          ))}
+  1739→        </div>
+  1740→
+  1741→        <div className="border-t border-white/[0.04] pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+  1742→          <div className="flex items-center gap-3">
+  1743→            <p className="text-xs text-zinc-600">
+  1744→              &copy; {new Date().getFullYear()} SECT. Tous droits reserves.
+  1745→            </p>
+  1746→            <span className="text-xs text-zinc-700">|</span>
+  1747→            <p className="text-xs text-zinc-600">
+  1748→              Built with <span className="text-red-400">&#10084;</span> in Africa
+  1749→            </p>
+  1750→          </div>
+  1751→          <div className="flex items-center gap-4">
+  1752→            {[
+  1753→              { name: 'Twitter', href: '#' },
+  1754→              { name: 'LinkedIn', href: '#' },
+  1755→              { name: 'GitHub', href: '#' },
+  1756→              { name: 'YouTube', href: '#' },
+  1757→            ].map((social) => (
+  1758→              <a
+  1759→                key={social.name}
+  1760→                href={social.href}
+  1761→                className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors duration-300"
+  1762→              >
+  1763→                {social.name}
+  1764→              </a>
+  1765→            ))}
+  1766→          </div>
+  1767→        </div>
+  1768→      </div>
+  1769→    </footer>
+  1770→  )
+  1771→}
+  1772→
+  1773→/* ═══════════════════════════════════════════════════════════════════════════
+  1774→   MAIN LANDING PAGE COMPONENT
+  1775→   ═══════════════════════════════════════════════════════════════════════════ */
+  1776→export function LandingPage({ onLogin, onDemo }: LandingPageProps) {
+  1777→  const mainRef = useRef<HTMLDivElement>(null)
+  1778→
+  1779→  useEffect(() => {
+  1780→    // Refresh ScrollTrigger on mount
+  1781→    ScrollTrigger.refresh()
+  1782→
+  1783→    return () => {
+  1784→      // Kill all ScrollTriggers on unmount
+  1785→      ScrollTrigger.getAll().forEach((t) => t.kill())
+  1786→    }
+  1787→  }, [])
+  1788→
+  1789→  return (
+  1790→    <div ref={mainRef} className="min-h-screen flex flex-col bg-[#09090b]">
+  1791→      <Navbar onLogin={onLogin} />
+  1792→      <main className="flex-1">
+  1793→        <HeroSection onDemo={onDemo} />
+  1794→        <LogoCloud />
+  1795→        <FeaturesBento />
+  1796→        <AIShowcase />
+  1797→        <HowItWorks />
+  1798→        <StatsSection />
+  1799→        <DashboardPreview />
+  1800→        <PricingSection onDemo={onDemo} />
+  1801→        <Testimonials />
+  1802→        <CTASection onDemo={onDemo} onLogin={onLogin} />
+  1803→      </main>
+  1804→      <Footer />
+  1805→    </div>
+  1806→  )
+  1807→}
+  1808→
