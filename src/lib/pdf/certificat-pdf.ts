@@ -32,8 +32,8 @@ export interface CertificatPDFData {
   dateEmission: Date | string
   verificationUrl: string
   statut: string
-  /** Name of the issuer (responsable/admin who emitted or system). Shown in signature zone. */
-  emetteParNom?: string | null
+  /** Name of the filière responsable (the pedagogical authority who signs the certificate). */
+  responsableNom?: string | null
   /** Optional per-UE template (colors, watermark, icon). */
   template?: CertificatTemplateData | null
 }
@@ -635,93 +635,71 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.setFont(font, 'normal')
   doc.text(`Émis le ${formatDate(data.dateEmission)}`, PAGE_WIDTH / 2, y, { align: 'center' })
 
-  // ─── Signature Zone ───
-  // Two-column signature area: left = "Le Responsable pédagogique"
-  // (with the issuer's name if known), right = "SECT — Système d'Évaluation"
-  // (the platform's digital signature). Adds authenticity to the document.
-  y += 16
+  // ════════════════════════════════════════════════════════════════════
+  // BOTTOM SECTION (refonte): signature + verification, clean & spacious.
+  // Replaces the cluttered previous version that had overlapping text and
+  // too many separator lines. Now: ONE signature block (responsable only),
+  // ONE compact verification block, ONE footer line. Generous spacing.
+  // ════════════════════════════════════════════════════════════════════
+
+  // ─── Signature block (single, centered) ───
+  // Show the filière responsable (the pedagogical authority), not emettePar.
+  y += 22
   const sigLineY = y
-  const sigLineLeftX = MARGIN_LEFT + 15
-  const sigLineRightX = PAGE_WIDTH - MARGIN_RIGHT - 15
-  const sigLeftCenter = MARGIN_LEFT + (CONTENT_WIDTH / 4)
-  const sigRightCenter = PAGE_WIDTH - MARGIN_RIGHT - (CONTENT_WIDTH / 4)
+  const sigLineHalfWidth = 45 // mm — wider, more elegant signature line
 
   doc.setDrawColor(...C_BORDER)
-  doc.setLineWidth(0.3)
-  // Left signature line
-  doc.line(sigLeftCenter - 30, sigLineY, sigLeftCenter + 30, sigLineY)
-  // Right signature line
-  doc.line(sigRightCenter - 30, sigLineY, sigRightCenter + 30, sigLineY)
+  doc.setLineWidth(0.4)
+  doc.line(PAGE_WIDTH / 2 - sigLineHalfWidth, sigLineY, PAGE_WIDTH / 2 + sigLineHalfWidth, sigLineY)
 
-  // Left label (issuer)
-  doc.setFontSize(8)
-  doc.setTextColor(...C_PRIMARY)
-  doc.setFont(font, 'bold')
-  doc.text('Le Responsable pédagogique', sigLeftCenter, sigLineY + 5, { align: 'center' })
-  if (data.emetteParNom && data.emetteParNom.trim() !== '') {
-    doc.setFontSize(7)
-    doc.setTextColor(...COLOR_TEXT)
-    doc.setFont(font, 'italic')
-    doc.text(data.emetteParNom, sigLeftCenter, sigLineY + 9, { align: 'center' })
+  // Responsable name ABOVE the line (the signature sits on the line)
+  if (data.responsableNom && data.responsableNom.trim() !== '') {
+    doc.setFontSize(10)
+    doc.setTextColor(...C_PRIMARY)
+    doc.setFont(font, 'bolditalic')
+    doc.text(data.responsableNom, PAGE_WIDTH / 2, sigLineY - 3, { align: 'center' })
   }
 
-  // Right label (platform)
+  // Label BELOW the line
   doc.setFontSize(8)
-  doc.setTextColor(...C_PRIMARY)
-  doc.setFont(font, 'bold')
-  doc.text('SECT — Certification officielle', sigRightCenter, sigLineY + 5, { align: 'center' })
-  doc.setFontSize(7)
   doc.setTextColor(...COLOR_TEXT)
-  doc.setFont(font, 'italic')
-  doc.text('Système d\u2019Évaluation Casse-Tête', sigRightCenter, sigLineY + 9, { align: 'center' })
+  doc.setFont(font, 'normal')
+  doc.text('Le Responsable pédagogique', PAGE_WIDTH / 2, sigLineY + 4, { align: 'center' })
 
-  void sigLineLeftX; void sigLineRightX
-
-  // ─── Verification Section ───
-  y += 18
+  // ─── Compact verification block (single line: URL + code) ───
+  // Removed the redundant "VÉRIFICATION" header and the verbose sentence —
+  // a single clean line is enough and avoids clutter.
+  y = sigLineY + 16
   doc.setDrawColor(...C_ACCENT)
   doc.setLineWidth(0.3)
-  doc.line(MARGIN_LEFT + 20, y, PAGE_WIDTH - MARGIN_RIGHT - 20, y)
+  doc.line(MARGIN_LEFT + 30, y, PAGE_WIDTH - MARGIN_RIGHT - 30, y)
 
-  y += 8
+  y += 6
   doc.setFontSize(8)
   doc.setTextColor(...COLOR_TEXT)
-  doc.setFont(font, 'bold')
-  doc.text('VÉRIFICATION', PAGE_WIDTH / 2, y, { align: 'center' })
-
-  y += 5
   doc.setFont(font, 'normal')
-  doc.text('Ce certificat peut être vérifié en ligne à l\'adresse suivante:', PAGE_WIDTH / 2, y, { align: 'center' })
-
-  y += 5
+  doc.text('Vérification en ligne :', PAGE_WIDTH / 2 - 22, y, { align: 'right' })
   doc.setTextColor(...C_PRIMARY)
   doc.setFont(font, 'bold')
-  doc.text(data.verificationUrl, PAGE_WIDTH / 2, y, { align: 'center' })
+  doc.text(data.verificationUrl, PAGE_WIDTH / 2 - 20, y, { align: 'left' })
 
   y += 5
   doc.setTextColor(...COLOR_TEXT)
   doc.setFont(font, 'normal')
-  doc.text(`Code de vérification: ${data.codeVerification}`, PAGE_WIDTH / 2, y, { align: 'center' })
+  doc.text('Code :', PAGE_WIDTH / 2 - 22, y, { align: 'right' })
+  doc.setFont(font, 'bold')
+  doc.text(data.codeVerification, PAGE_WIDTH / 2 - 20, y, { align: 'left' })
 
-  // ─── Footer ───
-  const footerY = PAGE_HEIGHT - 25
-  doc.setDrawColor(...C_BORDER)
-  doc.setLineWidth(0.3)
-  doc.line(MARGIN_LEFT + 20, footerY, PAGE_WIDTH - MARGIN_RIGHT - 20, footerY)
-
-  doc.setFontSize(7)
-  doc.setTextColor(150, 150, 150)
-  doc.setFont(font, 'italic')
+  // ─── Minimal footer (single line, no separator) ───
+  // Removed the extra separator line and the redundant "Réf:" line —
+  // the code is already shown in the verification block above.
+  doc.setFontSize(6)
+  doc.setTextColor(160, 160, 160)
+  doc.setFont(font, 'normal')
   doc.text(
-    `Document généré par SECT — Système d'Évaluation et de Certification en Ligne`,
+    `SECT — Système d\u2019Évaluation Casse-Tête · ${data.statut === 'EMIS' ? 'Certificat valide' : 'Certificat révoqué'}`,
     PAGE_WIDTH / 2,
-    footerY + 5,
-    { align: 'center' }
-  )
-  doc.text(
-    `Réf: ${data.codeVerification} — ${data.statut === 'EMIS' ? 'Certificat valide' : 'Certificat révoqué'}`,
-    PAGE_WIDTH / 2,
-    footerY + 9,
+    PAGE_HEIGHT - 14,
     { align: 'center' }
   )
 
