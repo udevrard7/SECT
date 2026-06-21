@@ -110,3 +110,31 @@ Stage Summary:
 - Lint: clean
 - KNOWN LIMITATION: no persistent local dev server between Bash tool calls (sandbox kills background processes). This does NOT affect the user's workflow because the real deployment pipeline is GitHub push → Vercel auto-deploy → Supabase sync. For local sanity checks, a transient dev boot can be run inside a single tool call.
 - Pipeline ready: any commit pushed to origin/main (GitHub) will auto-deploy to https://sect-app.vercel.app; schema changes will be synced to Supabase via `prisma db push`
+
+---
+Task ID: 5
+Agent: Main Agent (Z.ai Code)
+Task: Fix duplicate image on landing page hero + improve presentation to be very professional
+
+Work Log:
+- Read prior worklog (Task 4) to confirm SECT project was operational and pipeline (GitHub->Vercel + Supabase) was ready
+- Analyzed landing page structure: 1865-line landing-page.tsx with sections Navbar, HeroSection, LogoCloud, FeaturesBento, AIShowcase, HowItWorks, StatsSection, DashboardPreview, PricingSection, Testimonials, CTASection, Footer
+- Identified the duplicate: HeroSection used /hero-dashboard.png AND DashboardPreview used /dashboard-command-center.png — md5 sums differ (different files) but VLM (glm-4.6v) confirmed they are visually redundant: both are dark green-themed data-visualization/dashboard compositions
+- Loaded image-generation skill; generated a NEW distinct hero image (public/hero-ai-exam.png, 1344x768, 151KB) representing the 'AI reinvents exams' concept: a holographic exam paper with luminous question-mark particles orbiting it — abstract/cinematic, NO dashboard/charts/UI
+- VLM-verified the new image is abstract/artistic (not a dashboard) — confirmed distinct from the product dashboard shown later
+- Rewrote the Hero visual block:
+  - Replaced src /hero-dashboard.png -> /hero-ai-exam.png with descriptive alt text and loading="eager"
+  - Upgraded frame: layered ambient glow (emerald+cyan, two blur layers), double border via ring-1 + border, top edge light-catch gradient, cinematic top+bottom letterbox fades, rounded-2xl
+  - Curated floating badges from 4 down to 3, repositioned with more meaningful copy ('Generation IA en direct' with pulsing glow, 'Sujets uniques par etudiant', 'Anti-fraude integre')
+- Deleted obsolete public/hero-dashboard.png (no remaining references in src)
+- Landing page now shows 3 clearly distinct visuals: AI-exam concept (hero) / neural network (AIShowcase) / real product dashboard (DashboardPreview)
+- Ran `bun run lint` -> clean (no errors)
+- Transient runtime test: GET / -> 200, GET /hero-ai-exam.png -> 200 (151350 bytes), no errors in dev.log, boot ~1s
+- No Prisma schema changes -> no Supabase sync needed
+- Committed as 58125f6 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (0f0f217..58125f6) -> Vercel auto-deploy triggered on https://sect-app.vercel.app
+
+Stage Summary:
+- Duplicate image issue FIXED: hero now uses a distinct abstract AI-exam visual instead of a second dashboard screenshot
+- Hero presentation refined: premium multi-layer frame, cinematic fades, curated floating badges with pulsing live indicator
+- Commit 58125f6 pushed to GitHub by udevrard7, Vercel deployment triggered
+- Landing retains 3 distinct visuals, each with a clear narrative purpose
