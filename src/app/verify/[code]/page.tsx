@@ -26,11 +26,10 @@ import { Separator } from '@/components/ui/separator'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface CertificatData {
-  id: string
+  id?: string
   codeVerification: string
   type: 'PARTICIPATION' | 'ACCOMPLISSEMENT' | 'EXCELLENCE'
   etudiantNom: string
-  etudiantPrenom: string
   ueCode: string
   ueNom: string
   note: number
@@ -205,7 +204,7 @@ export default function VerifyCertificatePage() {
               <DetailRow
                 icon={<GraduationCap className="size-4" />}
                 label="Étudiant(e)"
-                value={`${certificat.etudiantPrenom} ${certificat.etudiantNom}`}
+                value={certificat.etudiantNom || '—'}
               />
 
               <Separator />
@@ -217,9 +216,9 @@ export default function VerifyCertificatePage() {
                 value={
                   <span>
                     <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded mr-2">
-                      {certificat.ueCode}
+                      {certificat.ueCode || '—'}
                     </span>
-                    {certificat.ueNom}
+                    {certificat.ueNom || '—'}
                   </span>
                 }
               />
@@ -232,7 +231,10 @@ export default function VerifyCertificatePage() {
                 label="Note"
                 value={
                   <span className="text-base font-bold">
-                    {certificat.note}/20
+                    {typeof certificat.note === 'number'
+                      ? certificat.note.toFixed(2).replace(/[.,]00$/, '')
+                      : '—'}
+                    <span className="text-muted-foreground font-normal">/20</span>
                   </span>
                 }
               />
@@ -243,7 +245,11 @@ export default function VerifyCertificatePage() {
               <DetailRow
                 icon={<Star className="size-4" />}
                 label="Mention"
-                value={<Badge variant="secondary" className="text-sm">{certificat.mention}</Badge>}
+                value={
+                  certificat.mention
+                    ? <Badge variant="secondary" className="text-sm">{certificat.mention}</Badge>
+                    : <span className="text-muted-foreground">—</span>
+                }
               />
 
               <Separator />
@@ -252,11 +258,15 @@ export default function VerifyCertificatePage() {
               <DetailRow
                 icon={<Calendar className="size-4" />}
                 label="Date d'émission"
-                value={new Date(certificat.dateEmission).toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                value={
+                  certificat.dateEmission
+                    ? new Date(certificat.dateEmission).toLocaleDateString('fr-FR', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })
+                    : '—'
+                }
               />
 
               <Separator />
@@ -265,7 +275,7 @@ export default function VerifyCertificatePage() {
               <DetailRow
                 icon={<Building2 className="size-4" />}
                 label="Établissement"
-                value={certificat.etablissementNom}
+                value={certificat.etablissementNom || '—'}
               />
 
               <Separator />
@@ -275,9 +285,13 @@ export default function VerifyCertificatePage() {
                 icon={<Hash className="size-4" />}
                 label="Code de vérification"
                 value={
-                  <span className="font-mono text-xs bg-muted px-2 py-1 rounded select-all">
-                    {certificat.codeVerification}
-                  </span>
+                  certificat.codeVerification ? (
+                    <span className="font-mono text-xs bg-muted px-2 py-1 rounded select-all">
+                      {certificat.codeVerification}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )
                 }
               />
             </CardContent>
