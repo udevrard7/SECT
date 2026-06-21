@@ -910,3 +910,28 @@ Stage Summary:
 - jsPDF package kept (still used for exam papers and reports)
 - 587 lines of dead code removed
 - Commit 46f551b deployed on https://sect-app.vercel.app
+
+---
+Task ID: 29
+Agent: Main Agent (Z.ai Code)
+Task: Apply exact color palette to certificate (navy + gold + specific grays)
+
+Work Log:
+- User specified exact palette: primary #1B3A5C, accent #F4B942, text #2C3E50, textLight #7F8C8D, white #FFFFFF, background #F8F9FA
+- Updated certificat-pdf-react.tsx: replaced all hardcoded colors with the palette values
+  - Page background: #FFFFFF → #F8F9FA
+  - All rgb(100,100,100) and rgb(120,120,120) → #7F8C8D (textLight)
+  - Student name #1a1a1a → #2C3E50 (text)
+  - Details value #333 → #2C3E50
+  - Border rgb(200,200,200) → #7F8C8D
+  - Footer rgb(160,160,160) → #7F8C8D
+- Default colors in resolveColors() were already #1B3A5C + #F4B942
+- Updated all 5 DB certificate templates from auto-generated colors (#1A2540/#8B5CF6) to the exact palette (#1B3A5C/#F4B942) so the palette is consistent across all UEs
+- ESLint clean
+- VLM confirms: bordures bleu marine ✓, coins or/jaune ✓, cachet or+navy ✓, titre gris foncé ✓
+- Committed as 2210dfb (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (46f551b..2210dfb)
+
+Stage Summary:
+- Exact palette applied: navy #1B3A5C + gold #F4B942 + text #2C3E50 + textLight #7F8C8D + bg #F8F9FA
+- All 5 DB templates updated to match — consistent palette across all certificates
+- Commit 2210dfb deployed on https://sect-app.vercel.app
