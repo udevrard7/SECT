@@ -518,6 +518,19 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.setFont(font, 'bold')
   doc.text(data.intitule, PAGE_WIDTH / 2, y, { align: 'center' })
 
+  // ─── Decorative color band under the title ───
+  // A thick accent line + a thin primary line below, centered, narrower than
+  // the title. Adds a "premium" feel and visually anchors the title.
+  y += 5
+  const bandWidth = 60 // mm
+  const bandX = PAGE_WIDTH / 2 - bandWidth / 2
+  doc.setDrawColor(...C_ACCENT)
+  doc.setLineWidth(1.5)
+  doc.line(bandX, y, bandX + bandWidth, y)
+  doc.setDrawColor(...C_PRIMARY)
+  doc.setLineWidth(0.4)
+  doc.line(bandX + 10, y + 2, bandX + bandWidth - 10, y + 2)
+
   // ─── Certificate Type Badge ───
   y += 10
   doc.setFontSize(11)
@@ -694,19 +707,19 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   // ════════════════════════════════════════════════════════════════════
 
   // ─── Signature block (left) + Official seal (right) ───
-  y += 10 // tight spacing from date — enough room for a physical signature/stamp
+  y += 6 // tighter spacing from date — room for a physical signature/stamp on print
   const sigLineY = y
   const sigLineHalfWidth = 35 // mm
 
   // Signature line (left-center area, shifted left to make room for seal)
   const sigCenterX = PAGE_WIDTH / 2 - 25
-  doc.setDrawColor(...C_BORDER)
-  doc.setLineWidth(0.4)
+  doc.setDrawColor(...C_PRIMARY)
+  doc.setLineWidth(0.5)
   doc.line(sigCenterX - sigLineHalfWidth, sigLineY, sigCenterX + sigLineHalfWidth, sigLineY)
 
   // Responsable name ABOVE the line
   if (data.responsableNom && data.responsableNom.trim() !== '') {
-    doc.setFontSize(10)
+    doc.setFontSize(11)
     doc.setTextColor(...C_PRIMARY)
     doc.setFont(font, 'bolditalic')
     doc.text(data.responsableNom, sigCenterX, sigLineY - 3, { align: 'center' })
@@ -718,41 +731,63 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.setFont(font, 'normal')
   doc.text('Le Responsable pédagogique', sigCenterX, sigLineY + 4, { align: 'center' })
 
-  // ─── Official SECT seal (cachet) — to the right of the signature ───
-  // A double-circle medallion with "SECT" in the center and "CERTIFIÉ ·"
-  // around the top arc. Drawn with concentric circles + text.
+  // ─── Official SECT seal (cachet) — enriched medallion ───
+  // Double-circle with tinted fill, "SECT" + star center, "CERTIFIÉ" arc text.
+  // Larger and more detailed than the previous flat version for authenticity.
   const sealCx = PAGE_WIDTH / 2 + 45
-  const sealCy = sigLineY - 2
-  const sealR = 14 // mm outer radius
+  const sealCy = sigLineY - 3
+  const sealR = 15 // mm outer radius (was 14)
 
-  // Outer ring
+  // Tinted fill behind the seal (primary color at 8% — subtle)
+  const sealTint: [number, number, number] = [
+    Math.round(C_PRIMARY[0] * 0.08 + 255 * 0.92),
+    Math.round(C_PRIMARY[1] * 0.08 + 255 * 0.92),
+    Math.round(C_PRIMARY[2] * 0.08 + 255 * 0.92),
+  ]
+  doc.setFillColor(...sealTint)
+  doc.circle(sealCx, sealCy, sealR, 'F')
+
+  // Outer ring (thick, accent color)
   doc.setDrawColor(...C_ACCENT)
-  doc.setLineWidth(1.2)
+  doc.setLineWidth(1.5)
   doc.circle(sealCx, sealCy, sealR, 'S')
-  // Inner ring
-  doc.setLineWidth(0.5)
+  // Inner ring (thin, primary color)
+  doc.setLineWidth(0.6)
   doc.setDrawColor(...C_PRIMARY)
-  doc.circle(sealCx, sealCy, sealR - 2.5, 'S')
-  // Center text "SECT"
-  doc.setFontSize(10)
+  doc.circle(sealCx, sealCy, sealR - 3, 'S')
+  // Tiny dotted ring between the two (decorative)
+  doc.setLineWidth(0.2)
+  doc.setDrawColor(...C_ACCENT)
+  for (let a = 0; a < 360; a += 8) {
+    const rad = (a * Math.PI) / 180
+    doc.circle(sealCx + (sealR - 1.5) * Math.cos(rad), sealCy + (sealR - 1.5) * Math.sin(rad), 0.3, 'F')
+  }
+
+  // Center star (5-pointed, accent fill) — above "SECT"
+  const centerStarR = 3
+  doc.setFillColor(...C_ACCENT)
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? centerStarR : centerStarR * 0.42
+    const a1 = (Math.PI / 5) * i - Math.PI / 2
+    const a2 = (Math.PI / 5) * (i + 1) - Math.PI / 2
+    doc.triangle(
+      sealCx, sealCy - 3,
+      sealCx + r * Math.cos(a1), sealCy - 3 + r * Math.sin(a1),
+      sealCx + r * Math.cos(a2), sealCy - 3 + r * Math.sin(a2),
+      'F'
+    )
+  }
+
+  // Center text "SECT" (bigger, bolder)
+  doc.setFontSize(12)
   doc.setTextColor(...C_PRIMARY)
   doc.setFont(font, 'bold')
-  doc.text('SECT', sealCx, sealCy - 1, { align: 'center' })
-  // Subtext "CERTIFIÉ"
-  doc.setFontSize(5)
+  doc.text('SECT', sealCx, sealCy + 3, { align: 'center' })
+  // Subtext "CERTIFIÉ" (bigger, 7pt instead of 5pt)
+  doc.setFontSize(7)
   doc.setTextColor(...C_ACCENT)
   doc.setFont(font, 'bold')
-  doc.text('CERTIFIÉ', sealCx, sealCy + 4, { align: 'center' })
-  // Small star at top of seal
-  doc.setFillColor(...C_ACCENT)
-  const starR = 1.5
-  const starCx = sealCx
-  const starCy = sealCy - sealR + 4
-  for (let i = 0; i < 5; i++) {
-    const a1 = (Math.PI * 2 / 5) * i - Math.PI / 2
-    const a2 = (Math.PI * 2 / 5) * (i + 2) - Math.PI / 2
-    doc.triangle(starCx, starCy, starCx + starR * Math.cos(a1), starCy + starR * Math.sin(a1), starCx + starR * Math.cos(a2), starCy + starR * Math.sin(a2), 'F')
-  }
+  doc.text('CERTIFIÉ', sealCx, sealCy + 7, { align: 'center' })
 
   // ─── Compact verification block (single line: URL + code) ───
   // Removed the redundant "VÉRIFICATION" header and the verbose sentence —
