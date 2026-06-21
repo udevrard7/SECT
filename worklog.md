@@ -998,3 +998,32 @@ Stage Summary:
 - Both backgroundImage and themeIcon filigranes render at 12% opacity behind content
 - Text readability preserved (watermark is subtle)
 - Commit 04a0fbc deployed on https://sect-app.vercel.app
+
+---
+Task ID: 32
+Agent: Main Agent (Z.ai Code)
+Task: Complete CertificatePDF.tsx with modern geometric design (ribbons, grid watermark, unified body)
+
+Work Log:
+- User provided detailed spec for the certificate design matching the reference template
+- Analyzed the reference image with VLM: confirmed 2 gold ribbons on the seal, justified body paragraph, gold-navy-gold diamonds, signature layout
+- Complete rewrite of certificat-pdf-react.tsx (454 insertions, 596 deletions):
+
+1. Central seal with TWO gold ribbons: SVG polygons for ribbon shapes with darker gold shadows, navy circle with gold border, decorative dot ring, center star, 'SECT CERTIFIÉ' text
+2. Unified body paragraph: single justified text block (was separate fields box) — matches reference template's flowing paragraph style
+3. Grid watermark: spreadsheet-style 15mm grid at 0.05 opacity, thematic for Bureautique UE
+4. Signature layout: left=empty teacher line, center=seal with ribbons, right=Responsable name+label
+5. Diamonds: gold(6pt)-navy(8pt)-gold(6pt), rotated 45°
+6. Footer: single line with date+code+URL
+
+CRITICAL BUG FIX: the grid SVG was not wrapped in a position:absolute View — SVGs in react-pdf don't honor position in their own style prop. This caused the SVG to flow in the document and push ALL content off the page (no text was rendering at all, VLM rated 4/10). Fixed by wrapping the SVG in <View style={watermarkWrapper}> with position:absolute. After fix, VLM rated 8/10 with all elements confirmed.
+
+- ESLint clean
+- VLM: 8/10 — 'titre CERTIFICAT D'ACCOMPLISSEMENT visible ✓, nom étudiant visible ✓, coins diagonaux bleu+jaune ✓, cachet central bleu avec étoile ✓, signatures visibles ✓'
+- Committed as 8a5c932 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (04a0fbc..8a5c932)
+
+Stage Summary:
+- Certificate fully redesigned per spec: modern geometric, navy+gold, mixed typography
+- Central seal with gold ribbons, grid watermark, unified body paragraph, proper signature layout
+- Critical react-pdf SVG positioning bug fixed
+- Commit 8a5c932 deployed on https://sect-app.vercel.app
