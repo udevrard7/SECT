@@ -1099,3 +1099,47 @@ Stage Summary:
 - Signature zone now print-optimized: 60pt empty space + fine light-gray line
 - Both columns (teacher + responsable) use the new signatureSpace style
 - Commit 5cdf4f9 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 35
+Agent: Main Agent (Z.ai Code)
+Task: 6 layout corrections to certificate (watermark, capitalize, grid, signatures, footer)
+
+Work Log:
+- User requested 6 precise layout corrections to the react-pdf certificate
+
+1. FILIGRANE & LISIBILITÉ:
+   - Watermark opacity 0.08 → 0.06 (more subtle)
+   - Added white overlay View (opacity 0.92) covering central text zone (top:42mm, bottom:42mm) — guarantees perfect contrast
+
+2. FORMATAGE DU NOM:
+   - Added textTransform: 'capitalize' to studentName style
+   - 'ASSANI EMILE JUNIOR' → 'Assani Emile Junior' (only first letters uppercase)
+   - Kept Great Vibes 48pt cursive
+
+3. DATA GRID (Infos UE):
+   - Replaced detailsBox with detailsGrid (3×2 grid, gap:6)
+   - Each cell: label 8pt uppercase gray (#718096, letterSpacing:1) + value 12pt bold navy
+   - Cells NOTE and MENTION use detailCellHighlight: background #EBF4FF + borderRadius 4
+   - Regular cells: background BOX_BG (#EEF2F7) + borderRadius 4
+
+4. ZONES DE SIGNATURES:
+   - signatureRow: flexDirection row, justifyContent space-between, marginTop 40, paddingHorizontal 40
+   - Each column: 60px signatureSpace + #CBD5E0 line + 9pt label
+   - Seal centered vertically
+
+5. FOOTER:
+   - bottom 5mm → 15mm (moved up)
+   - Added footerSeparator: gold (#F4B942) line at 18mm
+   - Font size 7pt → 9pt
+   - Color TEXT_LIGHT → FOOTER_GRAY (#4A5568)
+   - Centered
+
+- ESLint clean
+- VLM: 6/6 confirmed (capitalize ✓, grid 3×2 ✓, NOTE/MENTION highlight ✓, footer readable ✓, gold separator ✓, text readability ✓)
+- Committed as 1d1c0ee (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (5cdf4f9..1d1c0ee)
+
+Stage Summary:
+- All 6 layout corrections applied and VLM-verified
+- Certificate now has: subtle watermark + white overlay for readability, capitalized student name, modern 3×2 data grid with highlighted NOTE/MENTION cells, balanced flexbox signatures, improved footer with gold separator
+- Commit 1d1c0ee deployed on https://sect-app.vercel.app
