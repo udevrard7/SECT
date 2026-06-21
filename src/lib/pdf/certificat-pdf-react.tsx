@@ -1,16 +1,11 @@
 /**
- * CertificatePDF.tsx — Professional Certificate (A4 Landscape)
+ * CertificatePDF.tsx — Premium Certificate with Ornamental Design
  *
- * @react-pdf/renderer component with exact design spec:
- * - Diagonal navy/gold corner bands (SVG)
- * - Playfair Display titles + Great Vibes student name + Inter body
- * - 3×2 info grid with highlighted NOTE/MENTION cells
- * - Central badge "SECT CERTIFIÉ" with gold border
- * - Two-column signatures (70px space each)
- * - Footer with gold separator
- * - Watermark at 0.05 opacity + white overlay 0.95
+ * Inspired by the vecteezy SVG certificate template.
+ * Reproduces the essence: ornamental borders, gold (#C5A044) accents,
+ * elegant typography (Playfair + Great Vibes + Inter).
  *
- * Palette: navy #1B3A5C, gold #F4B942
+ * A4 Landscape (842×595pt) — single page, no overflow.
  */
 
 import React from 'react'
@@ -25,6 +20,10 @@ import {
   Svg,
   Polygon,
   Circle,
+  Rect,
+  Line,
+  Path,
+  G,
   renderToBuffer,
 } from '@react-pdf/renderer'
 import path from 'path'
@@ -80,15 +79,16 @@ export interface CertificatPDFData {
 
 // ═══ Constants ═══
 
+const GOLD = '#C5A044'
+const GOLD_LIGHT = '#FFF8E7'
+const GOLD_BORDER = '#E8D09A'
 const NAVY = '#1B3A5C'
-const GOLD = '#F4B942'
-const TEXT_DARK = '#2D3748'
+const TEXT_DARK = '#4A4A4A'
 const TEXT_GRAY = '#718096'
 const TEXT_FOOTER = '#4A5568'
 const WHITE = '#FFFFFF'
-const HIGHLIGHT_BG = '#EBF4FF'
-const HIGHLIGHT_BORDER = '#BEE3F8'
-const SIG_LINE = '#CBD5E0'
+const CELL_BG = '#F7FAFC'
+const SIG_LINE = '#C5A044'
 
 // ═══ Helpers ═══
 
@@ -108,7 +108,7 @@ function capitalizeName(name: string): string {
     .join(' ')
 }
 
-// ═══ Styles (exact spec) ═══
+// ═══ Styles ═══
 
 const styles = StyleSheet.create({
   page: {
@@ -118,37 +118,46 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  // Corner bands
   corner: { position: 'absolute' },
 
-  // Borders
+  // Triple border (ornamental frame)
   borderOuter: {
     position: 'absolute',
-    top: '8mm',
-    left: '8mm',
-    right: '8mm',
-    bottom: '8mm',
-    borderWidth: 1.5,
+    top: '6mm',
+    left: '6mm',
+    right: '6mm',
+    bottom: '6mm',
+    borderWidth: 2,
+    borderColor: GOLD,
+    borderStyle: 'solid',
+  },
+  borderMiddle: {
+    position: 'absolute',
+    top: '9mm',
+    left: '9mm',
+    right: '9mm',
+    bottom: '9mm',
+    borderWidth: 0.5,
     borderColor: NAVY,
     borderStyle: 'solid',
   },
   borderInner: {
     position: 'absolute',
-    top: '11mm',
-    left: '11mm',
-    right: '11mm',
-    bottom: '11mm',
-    borderWidth: 0.5,
+    top: '12mm',
+    left: '12mm',
+    right: '12mm',
+    bottom: '12mm',
+    borderWidth: 0.3,
     borderColor: GOLD,
     borderStyle: 'solid',
   },
 
-  // Content (absolute positioned, fixed dimensions = no page overflow)
+  // Content
   content: {
     position: 'absolute',
     top: '42pt',
-    left: '42pt',
-    right: '42pt',
+    left: '50pt',
+    right: '50pt',
     bottom: '42pt',
     zIndex: 10,
     display: 'flex',
@@ -157,39 +166,33 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  header: {
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  logoWrap: {
-    alignItems: 'center',
-    marginBottom: 4,
-  },
+  logoWrap: { alignItems: 'center', marginBottom: 3 },
   universityName: {
     fontSize: 10,
-    color: TEXT_GRAY,
-    letterSpacing: 2,
-    marginBottom: 2,
+    color: GOLD,
+    letterSpacing: 3,
+    marginBottom: 1,
   },
   universityCity: {
-    fontSize: 8,
+    fontSize: 9,
     color: TEXT_GRAY,
+    marginBottom: 4,
   },
 
   // Title
   titleMain: {
     fontFamily: 'PlayfairDisplay',
-    fontSize: 32,
-    color: NAVY,
+    fontSize: 36,
+    color: GOLD,
     letterSpacing: 4,
-    marginVertical: 5,
+    marginVertical: 3,
   },
   titleSub: {
     fontFamily: 'PlayfairDisplay',
-    fontSize: 22,
+    fontSize: 24,
     color: TEXT_DARK,
     letterSpacing: 2,
-    marginBottom: 15,
+    marginBottom: 8,
   },
 
   // Divider (3 diamonds)
@@ -197,81 +200,75 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
+    gap: 10,
+    marginBottom: 8,
   },
-  diamondGold: {
-    width: 8,
-    height: 8,
-    backgroundColor: GOLD,
-    transform: 'rotate(45deg)',
-  },
-  diamondNavy: {
-    width: 10,
-    height: 10,
-    backgroundColor: NAVY,
-    transform: 'rotate(45deg)',
-  },
+  diamondGold: { width: 7, height: 7, backgroundColor: GOLD, transform: 'rotate(45deg)' },
+  diamondNavy: { width: 9, height: 9, backgroundColor: NAVY, transform: 'rotate(45deg)' },
 
   // Intro
   introText: {
-    fontSize: 12,
-    color: TEXT_FOOTER,
+    fontSize: 13,
+    color: TEXT_DARK,
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
     fontStyle: 'italic',
   },
 
   // Student name
   studentName: {
     fontFamily: 'GreatVibes',
-    fontSize: 48,
-    color: NAVY,
+    fontSize: 52,
+    color: '#1A1A1A',
     textAlign: 'center',
-    marginVertical: 10,
+    marginBottom: 2,
   },
   studentInfo: {
     fontSize: 10,
     color: TEXT_GRAY,
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
 
-  // UE name
-  ueName: {
-    fontFamily: 'PlayfairDisplay',
-    fontSize: 24,
+  // UE
+  ueIntro: {
+    fontSize: 12,
     color: TEXT_DARK,
     textAlign: 'center',
-    marginBottom: 15,
+    marginBottom: 3,
+  },
+  ueName: {
+    fontFamily: 'PlayfairDisplay',
+    fontSize: 28,
+    color: GOLD,
+    textAlign: 'center',
+    marginBottom: 12,
   },
 
-  // Info grid (3 cols × 2 rows)
+  // Info grid
   infoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 15,
+    paddingHorizontal: 15,
+    marginBottom: 12,
   },
   infoCell: {
     width: '30%',
-    padding: 10,
-    marginBottom: 10,
+    padding: 8,
+    marginBottom: 8,
     borderRadius: 4,
-    textAlign: 'center',
-    backgroundColor: '#F7FAFC',
+    backgroundColor: CELL_BG,
     alignItems: 'center',
   },
   infoCellHighlighted: {
     width: '30%',
-    padding: 10,
-    marginBottom: 10,
+    padding: 8,
+    marginBottom: 8,
     borderRadius: 4,
-    textAlign: 'center',
-    backgroundColor: HIGHLIGHT_BG,
+    backgroundColor: GOLD_LIGHT,
     borderWidth: 1,
-    borderColor: HIGHLIGHT_BORDER,
+    borderColor: GOLD_BORDER,
     borderStyle: 'solid',
     alignItems: 'center',
   },
@@ -280,19 +277,17 @@ const styles = StyleSheet.create({
     color: TEXT_GRAY,
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   value: {
-    fontSize: 11,
+    fontSize: 12,
     color: NAVY,
     fontWeight: 'bold',
+    textAlign: 'center',
   },
 
-  // Badge (centered)
-  badgeWrap: {
-    alignItems: 'center',
-    marginVertical: 8,
-  },
+  // Badge
+  badgeWrap: { alignItems: 'center', marginVertical: 6 },
 
   // Signatures
   signaturesContainer: {
@@ -300,72 +295,75 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     marginTop: 20,
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
   },
-  signatureBlock: {
-    width: '30%',
-    alignItems: 'center',
-  },
+  signatureBlock: { width: '30%', alignItems: 'center' },
   signatureSpace: {
     height: 50,
     borderBottom: `1pt solid ${SIG_LINE}`,
     width: '100%',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  signatureLabel: {
-    fontSize: 9,
-    color: TEXT_GRAY,
-    textAlign: 'center',
-  },
+  signatureLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
   signatureName: {
     fontSize: 10,
-    color: TEXT_DARK,
+    color: '#2D3748',
     fontWeight: 'bold',
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: 1,
   },
 
   // Footer
   footer: {
-    marginTop: 20,
-    paddingTop: 10,
+    marginTop: 12,
+    paddingTop: 8,
     borderTop: `1pt solid ${GOLD}`,
     textAlign: 'center',
   },
-  footerText: {
-    fontSize: 9,
-    color: TEXT_FOOTER,
-    textAlign: 'center',
-  },
+  footerText: { fontSize: 9, color: TEXT_FOOTER, textAlign: 'center' },
 })
 
-// ═══ Corner Bands ═══
+// ═══ Ornamental Corner Decorations ═══
 
-function CornerBands() {
+function OrnamentalCorners() {
+  // Simplified ornamental corners inspired by the SVG:
+  // Gold L-shaped flourishes + small decorative circles
+  const s = 50 // size
   return (
     <>
-      <View style={[styles.corner, { top: 0, left: 0 }]} fixed>
-        <Svg width="170" height="170" viewBox="0 0 60 60">
-          <Polygon points="0,0 60,0 0,60" fill={NAVY} />
-          <Polygon points="0,0 38,0 0,38" fill={GOLD} />
+      {/* Top-left */}
+      <View style={[styles.corner, { top: '5mm', left: '5mm' }]} fixed>
+        <Svg width={s} height={s} viewBox="0 0 50 50">
+          {/* L-shaped gold flourish */}
+          <Path d="M0,0 L50,0 L50,3 L3,3 L3,50 L0,50 Z" fill={GOLD} />
+          {/* Inner navy accent */}
+          <Path d="M6,6 L40,6 L40,8 L8,8 L8,40 L6,40 Z" fill={NAVY} />
+          {/* Decorative dot */}
+          <Circle cx="12" cy="12" r="2" fill={GOLD} />
         </Svg>
       </View>
-      <View style={[styles.corner, { top: 0, right: 0 }]} fixed>
-        <Svg width="170" height="170" viewBox="0 0 60 60">
-          <Polygon points="60,0 60,60 0,0" fill={NAVY} />
-          <Polygon points="60,0 60,38 22,0" fill={GOLD} />
+      {/* Top-right */}
+      <View style={[styles.corner, { top: '5mm', right: '5mm' }]} fixed>
+        <Svg width={s} height={s} viewBox="0 0 50 50">
+          <Path d="M50,0 L0,0 L0,3 L47,3 L47,50 L50,50 Z" fill={GOLD} />
+          <Path d="M44,6 L10,6 L10,8 L42,8 L42,40 L44,40 Z" fill={NAVY} />
+          <Circle cx="38" cy="12" r="2" fill={GOLD} />
         </Svg>
       </View>
-      <View style={[styles.corner, { bottom: 0, left: 0 }]} fixed>
-        <Svg width="170" height="170" viewBox="0 0 60 60">
-          <Polygon points="0,60 60,60 0,0" fill={NAVY} />
-          <Polygon points="0,60 38,60 0,22" fill={GOLD} />
+      {/* Bottom-left */}
+      <View style={[styles.corner, { bottom: '5mm', left: '5mm' }]} fixed>
+        <Svg width={s} height={s} viewBox="0 0 50 50">
+          <Path d="M0,50 L50,50 L50,47 L3,47 L3,0 L0,0 Z" fill={GOLD} />
+          <Path d="M6,44 L40,44 L40,42 L8,42 L8,10 L6,10 Z" fill={NAVY} />
+          <Circle cx="12" cy="38" r="2" fill={GOLD} />
         </Svg>
       </View>
-      <View style={[styles.corner, { bottom: 0, right: 0 }]} fixed>
-        <Svg width="170" height="170" viewBox="0 0 60 60">
-          <Polygon points="60,60 0,60 60,0" fill={NAVY} />
-          <Polygon points="60,60 22,60 60,22" fill={GOLD} />
+      {/* Bottom-right */}
+      <View style={[styles.corner, { bottom: '5mm', right: '5mm' }]} fixed>
+        <Svg width={s} height={s} viewBox="0 0 50 50">
+          <Path d="M50,50 L0,50 L0,47 L47,47 L47,0 L50,0 Z" fill={GOLD} />
+          <Path d="M44,44 L10,44 L10,42 L42,42 L42,10 L44,10 Z" fill={NAVY} />
+          <Circle cx="38" cy="38" r="2" fill={GOLD} />
         </Svg>
       </View>
     </>
@@ -382,28 +380,19 @@ function CentralBadge() {
   return (
     <View style={styles.badgeWrap}>
       <Svg width={80} height={80} viewBox="0 0 70 70">
-        {/* Navy circle */}
         <Circle cx={cx} cy={cy} r={r} fill={NAVY} />
-        {/* Gold border (thick) */}
         <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="3" />
-        {/* Gold inner ring */}
         <Circle cx={cx} cy={cy} r={r - 5} fill="none" stroke={GOLD} strokeWidth="0.8" />
-
         {/* Decorative dots */}
         {Array.from({ length: 24 }).map((_, i) => {
-          const angle = (i * 360) / 24
-          const rad = (angle * Math.PI) / 180
+          const a = (i * 360) / 24
+          const rad = (a * Math.PI) / 180
           const dr = r - 2.5
-          return (
-            <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.6" fill={GOLD} />
-          )
+          return <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.6" fill={GOLD} />
         })}
-
         {/* Center star */}
         {Array.from({ length: 10 }).map((_, i) => {
-          const outerR = 6
-          const innerR = 2.5
-          const ri = i % 2 === 0 ? outerR : innerR
+          const ri = i % 2 === 0 ? 6 : 2.5
           const a1 = (Math.PI / 5) * i - Math.PI / 2
           const a2 = (Math.PI / 5) * (i + 1) - Math.PI / 2
           return (
@@ -414,8 +403,6 @@ function CentralBadge() {
             />
           )
         })}
-
-        {/* Text */}
         <Text x={cx} y={cy + 4} textAnchor="middle" fontSize="10" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</Text>
         <Text x={cx} y={cy + 11} textAnchor="middle" fontSize="5" fontFamily="Inter" fontWeight="bold" fill={GOLD}>CERTIFIÉ</Text>
       </Svg>
@@ -443,7 +430,6 @@ function Logo({ logo, nom }: { logo: string | null; nom: string }) {
 // ═══ Main Component ═══
 
 export function CertificateDocument({ data }: { data: CertificatPDFData }) {
-  // Subtitle based on the new 3-tier structure
   const subtitle = data.type === 'EXPERT'
     ? 'Niveau Expert'
     : data.type === 'AVANCE'
@@ -453,15 +439,13 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
   const studentName = capitalizeName(data.etudiantNom)
 
   const studentParts: string[] = []
-  if (data.etudiantMatricule) studentParts.push(`Matricule: ${data.etudiantMatricule}`)
-  if (data.etudiantNiveau) studentParts.push(`Niveau: ${data.etudiantNiveau}`)
+  if (data.etudiantMatricule) studentParts.push(`Matricule : ${data.etudiantMatricule}`)
+  if (data.etudiantNiveau) studentParts.push(`Niveau : ${data.etudiantNiveau}`)
 
   const sessionLabel = data.sessionType === 'RATTRAPAGE' ? 'Rattrapage' : 'Normale'
   const location = [data.etablissementVille, data.etablissementPays].filter(Boolean).join(', ')
-
   const footerText = `Émis le ${formatDate(data.dateEmission)}  |  Code: ${data.codeVerification}  |  Vérification: ${data.verificationUrl}`
 
-  // Info grid data
   const infos = [
     { label: 'CODE UE', value: data.ueCode, highlight: false },
     { label: 'FILIÈRE', value: data.filiereNom, highlight: false },
@@ -474,27 +458,26 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
   return (
     <Document>
       <Page size={[842, 595]} style={styles.page}>
-        {/* Layer 1: Corner bands */}
-        <CornerBands />
+        {/* Layer 1: Ornamental corners */}
+        <OrnamentalCorners />
 
-        {/* Layer 2: Double border */}
+        {/* Layer 2: Triple border (gold + navy + gold) */}
         <View style={styles.borderOuter} />
+        <View style={styles.borderMiddle} />
         <View style={styles.borderInner} />
 
         {/* Layer 3: Content */}
         <View style={styles.content}>
           {/* Header */}
-          <View style={styles.header}>
-            <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
-            <Text style={styles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
-            {location ? <Text style={styles.universityCity}>{location}</Text> : null}
-          </View>
+          <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
+          <Text style={styles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
+          {location ? <Text style={styles.universityCity}>{location}</Text> : null}
 
           {/* Title */}
           <Text style={styles.titleMain}>CERTIFICAT DE RÉUSSITE</Text>
           <Text style={styles.titleSub}>{subtitle}</Text>
 
-          {/* Divider (3 diamonds: gold-navy-gold) */}
+          {/* Divider */}
           <View style={styles.divider}>
             <View style={styles.diamondGold} />
             <View style={styles.diamondNavy} />
@@ -504,14 +487,15 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
           {/* Intro */}
           <Text style={styles.introText}>Nous certifions par la présente que</Text>
 
-          {/* Student name (Great Vibes, 48pt) */}
+          {/* Student name (Great Vibes, 52pt) */}
           <Text style={styles.studentName}>{studentName}</Text>
           {studentParts.length > 0 ? <Text style={styles.studentInfo}>{studentParts.join('  •  ')}</Text> : null}
 
-          {/* UE name */}
+          {/* UE */}
+          <Text style={styles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
           <Text style={styles.ueName}>{data.ueNom}</Text>
 
-          {/* Info grid (3 cols × 2 rows) */}
+          {/* Info grid */}
           <View style={styles.infoGrid}>
             {infos.map((info, i) => (
               <View key={i} style={info.highlight ? styles.infoCellHighlighted : styles.infoCell}>
@@ -521,26 +505,19 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
             ))}
           </View>
 
-          {/* Central badge */}
+          {/* Badge */}
           <CentralBadge />
 
           {/* Signatures */}
           <View style={styles.signaturesContainer}>
-            {/* Left: teacher */}
             <View style={styles.signatureBlock}>
               <View style={styles.signatureSpace} />
-              <Text style={styles.signatureLabel}>Signature de l'enseignant</Text>
+              <Text style={styles.signatureLabel}>Signature de l&apos;enseignant</Text>
             </View>
-
-            {/* Center: badge is already above, space here for layout balance */}
             <View style={{ width: '20%' }} />
-
-            {/* Right: responsable */}
             <View style={styles.signatureBlock}>
               <View style={styles.signatureSpace} />
-              {data.responsableNom ? (
-                <Text style={styles.signatureName}>{data.responsableNom}</Text>
-              ) : null}
+              {data.responsableNom ? <Text style={styles.signatureName}>{data.responsableNom}</Text> : null}
               <Text style={styles.signatureLabel}>Le Responsable pédagogique</Text>
             </View>
           </View>
@@ -555,9 +532,6 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
   )
 }
 
-/**
- * Render the certificate PDF to a Node.js Buffer.
- */
 export async function renderCertificatPDF(data: CertificatPDFData): Promise<Buffer> {
   return await renderToBuffer(<CertificateDocument data={data} />)
 }
