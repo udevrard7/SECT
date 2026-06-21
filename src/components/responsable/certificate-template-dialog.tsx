@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Award, Loader2, Save, Trash2, Upload, Download } from 'lucide-react'
+import { Award, Loader2, Save, Trash2, Upload, Download, Sparkles, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface UE {
@@ -80,6 +80,7 @@ interface Props {
 export function CertificateTemplateDialog({ ue, open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [autoGenerating, setAutoGenerating] = useState<'rules' | 'ai' | null>(null)
   const [primaryColor, setPrimaryColor] = useState(DEFAULT_PRIMARY)
   const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT)
   const [themeIcon, setThemeIcon] = useState('default')
@@ -120,6 +121,37 @@ export function CertificateTemplateDialog({ ue, open, onOpenChange }: Props) {
   useEffect(() => {
     if (open && ue) fetchTemplate()
   }, [open, ue, fetchTemplate])
+
+  const handleAutoGenerate = async (mode: 'rules' | 'ai') => {
+    if (!ue) return
+    setAutoGenerating(mode)
+    try {
+      const res = await fetch('/api/certificate-templates/auto-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ueId: ue.id, mode }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
+      const data = await res.json()
+      const tpl = data.template
+      setPrimaryColor(tpl.primaryColor)
+      setAccentColor(tpl.accentColor)
+      setThemeIcon(tpl.themeIcon)
+      setFontFamily(tpl.fontFamily)
+      toast.success('Template auto-généré', {
+        description: data.message || `Source: ${data.source}`,
+      })
+    } catch (err) {
+      toast.error('Auto-génération échouée', {
+        description: err instanceof Error ? err.message : 'Réessayez.',
+      })
+    } finally {
+      setAutoGenerating(null)
+    }
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -190,6 +222,40 @@ export function CertificateTemplateDialog({ ue, open, onOpenChange }: Props) {
             Personnalisez l&apos;apparence des certificats pour l&apos;UE « {ue?.nom} ». Les modifications s&apos;appliquent aux futurs PDF générés.
           </DialogDescription>
         </DialogHeader>
+
+        {/* ─── Auto-generate buttons ─── */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 p-3">
+          <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
+          <span className="text-xs text-violet-800 dark:text-violet-300 mr-1">Auto-générer :</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleAutoGenerate('rules')}
+            disabled={autoGenerating !== null || !ue}
+            className="h-7 text-xs border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40"
+          >
+            {autoGenerating === 'rules' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5" />
+            )}
+            Par mots-clés (instantané)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleAutoGenerate('ai')}
+            disabled={autoGenerating !== null || !ue}
+            className="h-7 text-xs border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40"
+          >
+            {autoGenerating === 'ai' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            Par IA (~3s)
+          </Button>
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
