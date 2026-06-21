@@ -1316,3 +1316,47 @@ Stage Summary:
 - Gold #C5A044 color scheme, triple border, ornamental corners, elegant typography
 - Perfect VLM score 10/10 with single-page output
 - Commit cb2ee06 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 41
+Agent: Main Agent (Z.ai Code)
+Task: Dual format certificate — landscape + portrait with toggle selector
+
+Work Log:
+- User requested the ability for students to choose between landscape and portrait format for certificate download
+
+NEW: CertificatePortrait component (595×842pt):
+- Vertical layout: content flows top-to-bottom
+- 2-column info grid (was 3 in landscape) — fits narrower width
+- Vertical signatures (stacked, one below the other — was side-by-side)
+- Compact spacing: title 36pt, student name 48pt (was 52pt), UE 26pt
+- All other elements identical: ornamental corners, triple border, badge, footer
+
+REFACTORED:
+- Renamed CertificateDocument → CertificateLandscape (existing layout)
+- New CertificatePortrait component with portrait-specific styles (portraitStyles)
+- New CertificateDocument dispatcher: chooses based on orientation prop
+- renderCertificatPDF() now accepts orientation: 'landscape'|'portrait' (default landscape)
+
+API:
+- GET /api/certificats/[id]/pdf?orientation=portrait|landscape
+- Reads searchParams, defaults to landscape
+
+FRONTEND (mes-certificats-page.tsx):
+- Added pdfOrientation state ('landscape' default)
+- Toggle selector (📐 Paysage | 📄 Portrait) above each download button
+- Download button text shows current format
+- handleDownloadPDF passes orientation to API URL
+
+VLM verification:
+  Landscape: 9/10 — all elements present, single page ✓
+  Portrait: 10/10 — all elements present, 2-col grid, vertical signatures ✓
+  Both: Pages: 1 (no overflow)
+- ESLint clean
+- Committed as 7875603 (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (cb2ee06..7875603)
+
+Stage Summary:
+- Students can now choose between landscape (default) and portrait format
+- Toggle selector on the Mes certificats page
+- Both formats produce clean single-page PDFs with all design elements
+- Commit 7875603 deployed on https://sect-app.vercel.app
