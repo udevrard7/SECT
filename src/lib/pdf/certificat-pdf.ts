@@ -421,16 +421,52 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   // Centered on the page, behind the text zone
   drawThemeWatermark(doc, tpl?.themeIcon ?? null, PAGE_WIDTH / 2, PAGE_HEIGHT / 2, C_PRIMARY)
 
-  // ─── Outer decorative border ───
+  // ─── Outer decorative border (triple: thick + thin + accent) ───
   doc.setDrawColor(...C_BORDER)
-  doc.setLineWidth(2)
+  doc.setLineWidth(2.5)
   doc.rect(10, 10, PAGE_WIDTH - 20, PAGE_HEIGHT - 20)
   doc.setLineWidth(0.5)
   doc.setDrawColor(...C_ACCENT)
-  doc.rect(12, 12, PAGE_WIDTH - 24, PAGE_HEIGHT - 24)
+  doc.rect(13, 13, PAGE_WIDTH - 26, PAGE_HEIGHT - 26)
+  doc.setLineWidth(0.3)
+  doc.setDrawColor(...C_PRIMARY)
+  doc.rect(15, 15, PAGE_WIDTH - 30, PAGE_HEIGHT - 30)
+
+  // ─── Corner flourishes (4 corners) ───
+  // Small decorative L-shaped lines in each corner, in accent color
+  const cornerSize = 8
+  const cornerOffset = 18
+  doc.setDrawColor(...C_ACCENT)
+  doc.setLineWidth(1)
+  // Top-left
+  doc.line(cornerOffset, cornerOffset, cornerOffset + cornerSize, cornerOffset)
+  doc.line(cornerOffset, cornerOffset, cornerOffset, cornerOffset + cornerSize)
+  // Top-right
+  doc.line(PAGE_WIDTH - cornerOffset, cornerOffset, PAGE_WIDTH - cornerOffset - cornerSize, cornerOffset)
+  doc.line(PAGE_WIDTH - cornerOffset, cornerOffset, PAGE_WIDTH - cornerOffset, cornerOffset + cornerSize)
+  // Bottom-left
+  doc.line(cornerOffset, PAGE_HEIGHT - cornerOffset, cornerOffset + cornerSize, PAGE_HEIGHT - cornerOffset)
+  doc.line(cornerOffset, PAGE_HEIGHT - cornerOffset, cornerOffset, PAGE_HEIGHT - cornerOffset - cornerSize)
+  // Bottom-right
+  doc.line(PAGE_WIDTH - cornerOffset, PAGE_HEIGHT - cornerOffset, PAGE_WIDTH - cornerOffset - cornerSize, PAGE_HEIGHT - cornerOffset)
+  doc.line(PAGE_WIDTH - cornerOffset, PAGE_HEIGHT - cornerOffset, PAGE_WIDTH - cornerOffset, PAGE_HEIGHT - cornerOffset - cornerSize)
+
+  // ─── Colored header band (behind establishment name) ───
+  // A subtle filled rectangle using the primary color at low opacity (via tint)
+  const headerBandY = 16
+  const headerBandH = 38
+  const bandTint: [number, number, number] = [
+    Math.round(C_PRIMARY[0] * 0.06 + 255 * 0.94),
+    Math.round(C_PRIMARY[1] * 0.06 + 255 * 0.94),
+    Math.round(C_PRIMARY[2] * 0.06 + 255 * 0.94),
+  ]
+  doc.setFillColor(...bandTint)
+  doc.setDrawColor(...C_ACCENT)
+  doc.setLineWidth(0.3)
+  doc.roundedRect(20, headerBandY, PAGE_WIDTH - 40, headerBandH, 2, 2, 'FD')
 
   // ─── Header: Logo + Establishment ───
-  y = 18
+  y = 20
   // Render the establishment logo (centered, up to 45mm wide × 22mm tall).
   // renderLogo auto-fits the image INSIDE this box while preserving aspect
   // ratio — no deformation. Returns the updated Y, or original Y if no logo.
@@ -457,14 +493,26 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
     doc.text(location, PAGE_WIDTH / 2, y, { align: 'center' })
   }
 
-  // ─── Separator line ───
+  // ─── Separator: double line (thick accent + thin primary) ───
   y += 10
   doc.setDrawColor(...C_ACCENT)
-  doc.setLineWidth(0.8)
+  doc.setLineWidth(1.2)
   doc.line(MARGIN_LEFT + 20, y, PAGE_WIDTH - MARGIN_RIGHT - 20, y)
+  doc.setDrawColor(...C_PRIMARY)
+  doc.setLineWidth(0.3)
+  doc.line(MARGIN_LEFT + 20, y + 1.5, PAGE_WIDTH - MARGIN_RIGHT - 20, y + 1.5)
 
-  // ─── Certificate Title ───
+  // ─── Certificate Title with decorative ribbon ───
   y += 18
+  // Small decorative diamond on each side of the title
+  doc.setFillColor(...C_ACCENT)
+  const titleY = y
+  const diamondOffset = doc.getTextWidth(data.intitule) / 2 + 8
+  // Left diamond
+  doc.triangle(PAGE_WIDTH / 2 - diamondOffset, titleY - 2, PAGE_WIDTH / 2 - diamondOffset + 3, titleY + 1, PAGE_WIDTH / 2 - diamondOffset, titleY + 4, 'F')
+  // Right diamond
+  doc.triangle(PAGE_WIDTH / 2 + diamondOffset, titleY - 2, PAGE_WIDTH / 2 + diamondOffset - 3, titleY + 1, PAGE_WIDTH / 2 + diamondOffset, titleY + 4, 'F')
+
   doc.setFontSize(24)
   doc.setTextColor(...C_ACCENT)
   doc.setFont(font, 'bold')
@@ -594,11 +642,14 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   const boxHeight = 42
   const boxY = y
 
-  // Draw box background
+  // Draw box background with colored left accent bar
   doc.setFillColor(...C_LIGHT)
   doc.setDrawColor(...C_BORDER)
   doc.setLineWidth(0.3)
   doc.roundedRect(boxX, boxY, boxWidth, boxHeight, 3, 3, 'FD')
+  // Colored left accent bar (3mm wide, full box height)
+  doc.setFillColor(...C_PRIMARY)
+  doc.rect(boxX, boxY, 3, boxHeight, 'F')
 
   // Box content
   const labelX = boxX + 10
@@ -636,35 +687,72 @@ export function generateCertificatPDF(data: CertificatPDFData): jsPDF {
   doc.text(`Émis le ${formatDate(data.dateEmission)}`, PAGE_WIDTH / 2, y, { align: 'center' })
 
   // ════════════════════════════════════════════════════════════════════
-  // BOTTOM SECTION (refonte): signature + verification, clean & spacious.
-  // Replaces the cluttered previous version that had overlapping text and
-  // too many separator lines. Now: ONE signature block (responsable only),
-  // ONE compact verification block, ONE footer line. Generous spacing.
+  // BOTTOM SECTION: signature + official seal + verification, clean design.
+  // The date→signature spacing is tight (10mm) so there's room to sign and
+  // stamp on a printed copy. An official SECT seal is drawn to the right of
+  // the signature area.
   // ════════════════════════════════════════════════════════════════════
 
-  // ─── Signature block (single, centered) ───
-  // Show the filière responsable (the pedagogical authority), not emettePar.
-  y += 22
+  // ─── Signature block (left) + Official seal (right) ───
+  y += 10 // tight spacing from date — enough room for a physical signature/stamp
   const sigLineY = y
-  const sigLineHalfWidth = 45 // mm — wider, more elegant signature line
+  const sigLineHalfWidth = 35 // mm
 
+  // Signature line (left-center area, shifted left to make room for seal)
+  const sigCenterX = PAGE_WIDTH / 2 - 25
   doc.setDrawColor(...C_BORDER)
   doc.setLineWidth(0.4)
-  doc.line(PAGE_WIDTH / 2 - sigLineHalfWidth, sigLineY, PAGE_WIDTH / 2 + sigLineHalfWidth, sigLineY)
+  doc.line(sigCenterX - sigLineHalfWidth, sigLineY, sigCenterX + sigLineHalfWidth, sigLineY)
 
-  // Responsable name ABOVE the line (the signature sits on the line)
+  // Responsable name ABOVE the line
   if (data.responsableNom && data.responsableNom.trim() !== '') {
     doc.setFontSize(10)
     doc.setTextColor(...C_PRIMARY)
     doc.setFont(font, 'bolditalic')
-    doc.text(data.responsableNom, PAGE_WIDTH / 2, sigLineY - 3, { align: 'center' })
+    doc.text(data.responsableNom, sigCenterX, sigLineY - 3, { align: 'center' })
   }
 
   // Label BELOW the line
   doc.setFontSize(8)
   doc.setTextColor(...COLOR_TEXT)
   doc.setFont(font, 'normal')
-  doc.text('Le Responsable pédagogique', PAGE_WIDTH / 2, sigLineY + 4, { align: 'center' })
+  doc.text('Le Responsable pédagogique', sigCenterX, sigLineY + 4, { align: 'center' })
+
+  // ─── Official SECT seal (cachet) — to the right of the signature ───
+  // A double-circle medallion with "SECT" in the center and "CERTIFIÉ ·"
+  // around the top arc. Drawn with concentric circles + text.
+  const sealCx = PAGE_WIDTH / 2 + 45
+  const sealCy = sigLineY - 2
+  const sealR = 14 // mm outer radius
+
+  // Outer ring
+  doc.setDrawColor(...C_ACCENT)
+  doc.setLineWidth(1.2)
+  doc.circle(sealCx, sealCy, sealR, 'S')
+  // Inner ring
+  doc.setLineWidth(0.5)
+  doc.setDrawColor(...C_PRIMARY)
+  doc.circle(sealCx, sealCy, sealR - 2.5, 'S')
+  // Center text "SECT"
+  doc.setFontSize(10)
+  doc.setTextColor(...C_PRIMARY)
+  doc.setFont(font, 'bold')
+  doc.text('SECT', sealCx, sealCy - 1, { align: 'center' })
+  // Subtext "CERTIFIÉ"
+  doc.setFontSize(5)
+  doc.setTextColor(...C_ACCENT)
+  doc.setFont(font, 'bold')
+  doc.text('CERTIFIÉ', sealCx, sealCy + 4, { align: 'center' })
+  // Small star at top of seal
+  doc.setFillColor(...C_ACCENT)
+  const starR = 1.5
+  const starCx = sealCx
+  const starCy = sealCy - sealR + 4
+  for (let i = 0; i < 5; i++) {
+    const a1 = (Math.PI * 2 / 5) * i - Math.PI / 2
+    const a2 = (Math.PI * 2 / 5) * (i + 2) - Math.PI / 2
+    doc.triangle(starCx, starCy, starCx + starR * Math.cos(a1), starCy + starR * Math.sin(a1), starCx + starR * Math.cos(a2), starCy + starR * Math.sin(a2), 'F')
+  }
 
   // ─── Compact verification block (single line: URL + code) ───
   // Removed the redundant "VÉRIFICATION" header and the verbose sentence —
