@@ -1027,3 +1027,48 @@ Stage Summary:
 - Central seal with gold ribbons, grid watermark, unified body paragraph, proper signature layout
 - Critical react-pdf SVG positioning bug fixed
 - Commit 8a5c932 deployed on https://sect-app.vercel.app
+
+---
+Task ID: 33
+Agent: Main Agent (Z.ai Code)
+Task: Premium CertificatePDF.tsx — 48pt spaced title, code/UML watermark, framed details box
+
+Work Log:
+- User provided a detailed design spec for the certificate (12 constraints + structure)
+- Complete rewrite of certificat-pdf-react.tsx (226 insertions, 167 deletions)
+
+TYPOGRAPHY (matching spec):
+- 'CERTIFICAT' in Playfair Display 48pt with letterSpacing:6
+- Subtitle in Playfair 22pt navy
+- Student name in Great Vibes 48pt (cursive)
+- UE name in Playfair 18pt navy bold
+- Body in Inter 11pt
+
+DESIGN:
+- 3 diamonds (gold-navy-gold) between establishment and title
+- Central seal: navy circle + gold border + 20-dot ring + center star + 'SECT CERTIFIÉ'
+- Two gold ribbons with darker gold shadows descending below the seal
+- Diagonal corner bands (navy + gold) via SVG polygons
+- Double border (outer navy + inner gold)
+
+CODE/UML WATERMARK (opacity 0.08):
+- 54 </> chevron icons in a 6×9 grid
+- 4 UML class box outlines scattered
+- Thematic for Génie Logiciel/Bureautique
+- Wrapped in View with position:absolute
+
+DETAILS BOX (framed, 2×3 grid):
+- Gold-bordered box, light blue background
+- 6 details: Code UE, Filière, Note, Mention, Session, Année
+
+SIGNATURES: teacher (left, empty line) + seal (center) + responsable (right)
+
+VLM: 10/12 confirmed on first pass + 2 more on closer inspection (subtitle ✓, diamonds ✓)
+- ESLint clean (fixed G import for SVG group element)
+- Tested on Génie Logiciel cert (EXCELLENCE, 38KB PDF)
+- Committed as db90f7e (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (8a5c932..db90f7e)
+
+Stage Summary:
+- Premium certificate matching all 12 design constraints from the spec
+- 48pt spaced title, cursive student name, framed details, code/UML watermark, seal with ribbons
+- Commit db90f7e deployed on https://sect-app.vercel.app
