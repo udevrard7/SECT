@@ -25,9 +25,6 @@ import {
   Svg,
   Polygon,
   Circle,
-  Rect,
-  Line,
-  G,
   renderToBuffer,
 } from '@react-pdf/renderer'
 import path from 'path'
@@ -115,34 +112,14 @@ function capitalizeName(name: string): string {
 
 const styles = StyleSheet.create({
   page: {
-    width: '297mm',
-    height: '210mm',
+    width: 842,
+    height: 595,
     backgroundColor: WHITE,
-    padding: '15mm',
     position: 'relative',
   },
 
   // Corner bands
   corner: { position: 'absolute' },
-
-  // Watermark
-  watermarkWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 842,
-    height: 595,
-    opacity: 0.05,
-  },
-  whiteOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: WHITE,
-    opacity: 0.95,
-  },
 
   // Borders
   borderOuter: {
@@ -166,14 +143,17 @@ const styles = StyleSheet.create({
     borderStyle: 'solid',
   },
 
-  // Content
+  // Content (absolute positioned, fixed dimensions = no page overflow)
   content: {
-    position: 'relative',
+    position: 'absolute',
+    top: '42pt',
+    left: '42pt',
+    right: '42pt',
+    bottom: '42pt',
     zIndex: 10,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    height: '100%',
   },
 
   // Header
@@ -218,7 +198,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   diamondGold: {
     width: 8,
@@ -254,16 +234,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: TEXT_GRAY,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
   },
 
   // UE name
   ueName: {
     fontFamily: 'PlayfairDisplay',
-    fontSize: 28,
+    fontSize: 24,
     color: TEXT_DARK,
     textAlign: 'center',
-    marginBottom: 25,
+    marginBottom: 15,
   },
 
   // Info grid (3 cols × 2 rows)
@@ -272,7 +252,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    marginBottom: 30,
+    marginBottom: 15,
   },
   infoCell: {
     width: '30%',
@@ -311,7 +291,7 @@ const styles = StyleSheet.create({
   // Badge (centered)
   badgeWrap: {
     alignItems: 'center',
-    marginVertical: 15,
+    marginVertical: 8,
   },
 
   // Signatures
@@ -319,7 +299,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginTop: 40,
+    marginTop: 20,
     paddingHorizontal: 30,
   },
   signatureBlock: {
@@ -327,7 +307,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signatureSpace: {
-    height: 70,
+    height: 50,
     borderBottom: `1pt solid ${SIG_LINE}`,
     width: '100%',
     marginBottom: 8,
@@ -358,32 +338,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 })
-
-// ═══ Watermark (code/UML icons at 0.05 opacity) ═══
-
-function CodeWatermark() {
-  return (
-    <View style={styles.watermarkWrapper} fixed>
-      <Svg width={842} height={595} viewBox="0 0 842 595">
-        {Array.from({ length: 5 }).map((_, row) =>
-          Array.from({ length: 8 }).map((_, col) => {
-            const cx = 60 + col * 95
-            const cy = 60 + row * 110
-            return (
-              <G key={`${row}-${col}`}>
-                <Line x1={cx - 8} y1={cy - 6} x2={cx - 3} y2={cy} stroke={NAVY} strokeWidth="1.5" />
-                <Line x1={cx - 3} y1={cy} x2={cx - 8} y2={cy + 6} stroke={NAVY} strokeWidth="1.5" />
-                <Line x1={cx + 3} y1={cy - 6} x2={cx + 8} y2={cy} stroke={NAVY} strokeWidth="1.5" />
-                <Line x1={cx + 8} y1={cy} x2={cx + 3} y2={cy + 6} stroke={NAVY} strokeWidth="1.5" />
-                <Line x1={cx - 1} y1={cy + 5} x2={cx + 1} y2={cy - 5} stroke={NAVY} strokeWidth="1" />
-              </G>
-            )
-          })
-        )}
-      </Svg>
-    </View>
-  )
-}
 
 // ═══ Corner Bands ═══
 
@@ -522,17 +476,11 @@ export function CertificateDocument({ data }: { data: CertificatPDFData }) {
         {/* Layer 1: Corner bands */}
         <CornerBands />
 
-        {/* Layer 2: Watermark (0.05 opacity) */}
-        <CodeWatermark />
-
-        {/* Layer 3: White overlay (0.95) for readability */}
-        <View style={styles.whiteOverlay} />
-
-        {/* Layer 4: Double border */}
+        {/* Layer 2: Double border */}
         <View style={styles.borderOuter} />
         <View style={styles.borderInner} />
 
-        {/* Layer 5: Content */}
+        {/* Layer 3: Content */}
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
