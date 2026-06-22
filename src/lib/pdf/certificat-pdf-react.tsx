@@ -18,7 +18,7 @@
 import React from 'react'
 import {
   Document, Page, View, Text, Image, Font, StyleSheet,
-  Svg, Polygon, Circle, renderToBuffer,
+  Svg, Polygon, Circle, Path, renderToBuffer,
 } from '@react-pdf/renderer'
 import path from 'path'
 
