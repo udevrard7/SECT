@@ -121,3 +121,152 @@ git push origin main
 - **Agent** : Z.ai (tuteur principal)
 - Clonage, migration, configuration Git/.env/dépendances, sync DB, démarrage serveur dev.
 - Résultat : environnement 100% opérationnel, serveur dev répond HTTP 200.
+
+---
+Task ID: 4 (API optimization)
+Agent: full-stack-developer (API routes)
+Task: Optimize results API routes for the teacher's Résultats & Analyses redesign
+
+Work Log:
+- Read worklog.md and the 4 target API route files to understand existing structure, Prisma schema (Epreuve.noteTotal, SessionPassation, Resultat.detailParQuestion shape), and auth helpers (withAuth, requireAdminEtablissementAccess).
+- Task 4-A: Rewrote the `epreuveId` branch in `/api/resultats/route.ts`. Added `calculateMedian()` helper (true median for even n). Single epreuve fetch that returns `enseignantId`, `noteTotal`, `enseignant.etablissementId` for both ownership check and stats. ENSEIGNANT now returns 404 when epreuve is null instead of silently skipping. Used `Promise.all` for the 4 parallel stats queries: `aggregate` (avg/min/max/count), `findMany({ select: { score }, orderBy: { score: 'asc' } })` for median, `count`, and `groupBy` on statut. Pass threshold is now `noteTotal / 2`. Added `moyennePct`, `medianePct`, `noteTotal` to stats. Added optional `?page`/`?limit` pagination with `take`/`skip`; default behavior unchanged for backward compat. Dropped `reponses` from the paginated sessions list (heavy, unused in table) but kept `resultat` + `detailParQuestion` JSON parsing. Response shape stays `{ sessions, stats }` plus new top-level `noteTotal` and `pagination`.
+- Task 4-B: Wrapped `/api/epreuves/[id]/export` GET with `withAuth(_GET, ['ADMIN','RESPONSABLE','ENSEIGNANT','ETUDIANT'])`. Adapted handler signature to `(request, context)` shape. Added `etablissementId` to the `enseignant` select. Added per-role ownership checks: ENSEIGNANT (owner only), RESPONSABLE (same establishment), ADMIN (requireAdminEtablissementAccess), ETUDIANT (must have a session for this epreuve via findFirst). For ETUDIANT, also filtered the exported sessions to only their own to prevent leaking other students' data. CSV/JSON export logic untouched.
+- Task 4-C: Created new endpoint `/api/resultats/overview/route.ts`. Auth: `withAuth(_GET, ['ENSEIGNANT','ADMIN'])`. ENSEIGNANT scopes by `user.id`; ADMIN supports optional `?enseignantId=` (with requireAdminEtablissementAccess validation) or aggregates across all APPROUVE establishments. Returns totalEpreuves/totalSessions/totalCorrigees/globalMoyenne/globalTauxReussite plus arrays: epreuves (per-exam stats), evolution (last 12 months grouped by month from dateFin), studentsAtRisk (avg < 8/20 normalized, capped at 50), topQuestions (10 lowest success rate from parsing detailParQuestion JSON). Uses 2 parallel queries via Promise.all + a single JS pass to accumulate all aggregations. All scores normalized to /20 using noteTotal. Includes emptyOverview() helper for the no-data case.
+- Task 4-D: Modified `/api/epreuves/route.ts` GET handler. At top: parsed `?statut=A,B,C` into `statuts: string[] | null` with an `applyStatutFilter(where)` helper that writes `statut: 'X'` (single, backward compat) or `statut: { in: [...] }` (multiple). Replaced the 3 inline `if (statut) where.statut = statut` calls (RESPONSABLE/ENSEIGNANT/filiere branches) with `applyStatutFilter(where)`. Added `?select=summary` parsing — when set in the ENSEIGNANT branch, returns ONLY `{ id, titre, dateDebut, dateFin, statut, noteTotal, filiere: { nom } }` per epreuve (no questions/sessions/sourceDocuments) using Prisma `select` instead of `include`. Full response preserved by default.
+- Ran `bun run lint`. First run: 1 parsing error in resultats/route.ts (a missing closing paren `})` → `}))` typo in the etudiantId branch's manualQuestions map, introduced during the Write-tool rewrite). Fixed with a targeted Edit. Re-ran lint: PASS (0 errors).
+- Wrote detailed agent-ctx file at `agent-ctx/4-api-optimization-agent.md` with notes for the main agent on the new response shapes.
+- Verified dev.log shows no compile errors after edits.
+
+Stage Summary:
+- Files modified:
+  - src/app/api/resultats/route.ts
+  - src/app/api/epreuves/[id]/export/route.ts
+  - src/app/api/epreuves/route.ts
+- Files created:
+  - src/app/api/resultats/overview/route.ts
+  - agent-ctx/4-api-optimization-agent.md
+- Bugs fixed:
+  1. Median calculation returned upper-middle for even n (off-by-half-step).
+  2. tauxReussite hardcoded to `score >= 10` — broke for noteTotal ≠ 20.
+  3. ENSEIGNANT ownership check silently skipped when epreuve was null (non-existent ID returned empty list instead of 404).
+  4. `scores.sort(...)` mutated the sessions array's scores in place.
+  5. Stats were computed on the paginated sessions array — would skew stats if pagination is used.
+  6. `/api/epreuves/[id]/export` had NO auth at all (any unauthenticated visitor could download full CSV/JSON of any exam).
+  7. ETUDIANT could export any epreuve (not just their own) via the export endpoint.
+- New endpoints:
+  - GET /api/resultats/overview — cross-exam teacher analytics (totals, per-epreuve stats, 12-month evolution, students-at-risk, top-questions).
+- Lint result: PASS (0 errors, 0 warnings)
+
+---
+Task ID: 5 (Frontend redesign — Résultats & Analyses)
+Agent: Z.ai (tuteur principal)
+Task: Refonte complète de la page Résultats & Analyses côté enseignant — design, fonctionnalités, performance, bugs
+
+Work Log:
+- Exploration approfondie de la page existante (1002 lignes, fichier unique) via sous-agent Explore
+- Identification de 23 bugs/problèmes (médiane fausse, noteTotal ignoré, race condition, auth manquante, N+1, over-fetch, TanStack Query installé mais inutilisé, code dupliqué, pas de filtres/recherche/pagination, etc.)
+- Délégation de l'optimisation des 4 routes API à un sous-agent full-stack (Task 4) :
+  * /api/resultats — médiane corrigée, noteTotal normalization, pagination, aggregate, 404 sur epreuve null
+  * /api/epreuves/[id]/export — auth withAuth + checks par rôle
+  * /api/epreuves — multi-statut (TERMINEE,CLOTUREE) + ?select=summary (léger)
+  * /api/resultats/overview — nouvel endpoint cross-exam analytics
+- Création de la fondation frontend :
+  * src/types/resultats.ts — types partagés (EpreuveSummary, ExamStats, SessionResult, OverviewResponse, etc.)
+  * src/lib/resultats-utils.ts — utilitaires noteTotal-aware (calculateMedian, normalizeTo20, getScoreColor/Bg, buildDistribution, buildQuestionSuccess, sessionsToCSV/JSON, formatDateFR)
+  * src/hooks/use-resultats.ts — hooks TanStack Query (useEpreuvesTerminees, useResultatsOverview, useExamResults, useRefreshResultats)
+- Création des composants de charts partagés (src/components/resultats/resultats-charts.tsx) :
+  * DistributionChart (histogramme cliquable, ligne seuil reçu, opacity sur barre active)
+  * QuestionSuccessChart (taux par question, tooltip enrichi avec énoncé)
+  * EvolutionChart (AreaChart 12 mois, gradient, ligne seuil)
+  * ComparisonChart (BarChart horizontal cross-exam)
+  * ChartCard wrapper
+- Création des sous-composants UI :
+  * kpi-card.tsx — cartes KPI avec 5 accents couleur, scoreOn20 optionnel
+  * resultats-skeletons.tsx — PageSkeleton, KpiSkeleton, ChartSkeleton, TableSkeleton
+  * students-at-risk.tsx — liste étudiants en difficulté (< 8/20)
+  * session-detail-dialog.tsx — dialog refondu (score circulaire SVG, synthèse 3 KPIs, barres progression, réponse attendue, commentaire)
+  * results-toolbar.tsx — recherche + filtres statut/score + reset
+  * results-table.tsx — tri, pagination, vue cards mobile, filtre par tranche (drill-down)
+  * overview-tab.tsx — vue cross-exam (4 KPIs, évolution, comparaison, étudiants en difficulté, questions difficiles, tableau toutes épreuves)
+  * exam-tab.tsx — vue par épreuve (sélecteur, 4 KPIs, 2 charts cliquables, tableau, export CSV/JSON)
+- Création de la page principale (src/components/resultats/resultats-page.tsx) :
+  * 3 onglets : Vue d'ensemble | Par épreuve | Étudiants (avec badge compteur)
+  * Bouton refresh global (invalidate toutes les queries)
+  * États : skeleton / erreur avec retry / vide / contenu
+- Mise à jour du registre page-content.tsx (import vers nouveau composant)
+- Suppression de l'ancien fichier src/components/epreuves/resultats-page.tsx
+- Nettoyage des imports inutilisés (FileText, Clock, Badge, scoreToPercentage, passThreshold, TrendingUp)
+- Vérification : lint 0 erreur, 0 erreur TypeScript dans fichiers resultats, compilation OK
+
+Stage Summary:
+- Fichiers créés (12) :
+  * src/types/resultats.ts
+  * src/lib/resultats-utils.ts
+  * src/hooks/use-resultats.ts
+  * src/components/resultats/resultats-charts.tsx
+  * src/components/resultats/resultats-skeletons.tsx
+  * src/components/resultats/kpi-card.tsx
+  * src/components/resultats/students-at-risk.tsx
+  * src/components/resultats/session-detail-dialog.tsx
+  * src/components/resultats/results-toolbar.tsx
+  * src/components/resultats/results-table.tsx
+  * src/components/resultats/overview-tab.tsx
+  * src/components/resultats/exam-tab.tsx
+  * src/components/resultats/resultats-page.tsx
+  * src/app/api/resultats/overview/route.ts (par sous-agent)
+- Fichiers modifiés (4) :
+  * src/app/api/resultats/route.ts (médiane, noteTotal, pagination, aggregate, 404)
+  * src/app/api/epreuves/[id]/export/route.ts (auth ajoutée)
+  * src/app/api/epreuves/route.ts (multi-statut + select=summary)
+  * src/components/layout/page-content.tsx (import nouveau composant)
+- Fichiers supprimés (1) :
+  * src/components/epreuves/resultats-page.tsx (ancien, 1002 lignes)
+
+Bugs corrigés :
+1. Médiane mathématiquement fausse (pair → retournait l'élément supérieur au lieu de la moyenne des 2)
+2. Échelle /20 codée en dur ignorant Epreuve.noteTotal (scores affichés à 250% pour exam /100)
+3. Race condition au changement d'épreuve (→ TanStack Query gère l'invalidation)
+4. Auth manquante sur /api/epreuves/[id]/export (n'importe qui pouvait télécharger les résultats)
+5. Check epreuve===null incomplet (→ 404 maintenant)
+6. tauxReussite hardcodé >= 10 (→ noteTotal/2 dynamique)
+7. 2 fetchs séquentiels TERMINEE+CLOTUREE (→ 1 fetch avec multi-statut)
+8. Over-fetch massif /api/epreuves (→ ?select=summary léger)
+9. scores.sort() mutait le tableau Prisma (→ copie triée)
+10. Stats calculées sur sessions paginées (→ aggregate sur ALL sessions)
+
+Performance :
+- TanStack Query activé (cache 1-5 min, dedup, refetch auto, placeholderData)
+- Requêtes en parallèle (Promise.all dans overview)
+- Prisma aggregate au lieu de findMany + reduce
+- Pagination côté serveur (take/skip)
+- ?select=summary évite l'over-fetch pour les dropdowns
+- Lazy loading des charts (ResponsiveContainer)
+- Skeletons au lieu de spinners (meilleure perception performance)
+
+Nouvelles fonctionnalités :
+- Vue d'ensemble cross-exam (toutes épreuves en un coup d'œil)
+- Évolution temporelle 12 mois (AreaChart)
+- Comparaison cross-exam (BarChart horizontal)
+- Étudiants en difficulté (< 8/20, triés)
+- Questions les plus difficiles (top 5 taux échec)
+- Filtres : recherche texte, statut, tranche de score
+- Pagination du tableau (10/page)
+- Drill-down : cliquer une barre du histogramme filtre le tableau
+- Tri asc/desc persistant
+- Vue cards responsive sur mobile
+- Export CSV + JSON côté client (rapide, sans round-trip serveur)
+- Bouton refresh global
+- États d'erreur avec retry
+- Score circulaire SVG dans le dialog de détail
+- Synthèse 3 KPIs (correctes/incorrectes/en attente) dans le dialog
+- Barres de progression par question dans le dialog
+- Affichage réponse attendue pour les questions ratées
+- Badge compteur étudiants en difficulté sur l'onglet
+
+Vérification :
+- bun run lint → 0 erreur
+- npx tsc --noEmit → 0 erreur dans fichiers resultats (erreurs préexistantes ailleurs ignorées)
+- /resultats → HTTP 307 (redirect login, normal sans session)
+- /login → HTTP 200
+- / → HTTP 200
+- dev.log : aucune erreur de compilation

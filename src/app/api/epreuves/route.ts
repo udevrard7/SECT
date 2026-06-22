@@ -295,7 +295,28 @@ async function _GET(
     const etudiantId = searchParams.get('etudiantId')
     const filiereId = searchParams.get('filiereId')
     const responsableId = searchParams.get('responsableId')
-    const statut = searchParams.get('statut')
+    const statutParam = searchParams.get('statut')
+    // ─── Multi-statut support: accept comma-separated values ───
+    // e.g. ?statut=TERMINEE,CLOTUREE → statuts: ['TERMINEE', 'CLOTUREE']
+    // A single value is also accepted for backward compat.
+    const statuts = statutParam
+      ? statutParam
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null
+    // Helper to apply the multi-statut filter to a where object.
+    const applyStatutFilter = (w: Record<string, unknown>) => {
+      if (statuts && statuts.length > 0) {
+        w.statut = statuts.length === 1 ? statuts[0] : { in: statuts }
+      }
+    }
+    // ─── Lightweight summary mode (?select=summary) ───
+    // When set, the ENSEIGNANT branch returns ONLY minimal fields per epreuve
+    // (id, titre, dates, statut, noteTotal, filiere.nom) — no questions, no
+    // sessions, no sourceDocuments. Useful for dropdowns / overview lists.
+    const selectParam = searchParams.get('select')
+    const selectSummary = selectParam === 'summary'
     const search = searchParams.get('search') || ''
     const niveauFilter = searchParams.get('niveau')
     const sessionExamenFilter = searchParams.get('sessionExamen')
@@ -381,7 +402,7 @@ async function _GET(
         : allFiliereIds
 
       const whereResp: Record<string, unknown> = { deletedAt: null }
-      if (statut) whereResp.statut = statut
+      applyStatutFilter(whereResp)
 
       whereResp.OR = [
         { sessions: { some: { etudiant: { filiereId: { in: targetFiliereIds } } } } },
@@ -458,11 +479,33 @@ async function _GET(
       }
 
       const where: Record<string, unknown> = { enseignantId, deletedAt: null }
-      if (statut) where.statut = statut
+      applyStatutFilter(where)
       if (niveauFilter) where.niveau = niveauFilter
       if (sessionExamenFilter) where.sessionExamen = sessionExamenFilter
       if (anneeAcademiqueIdFilter) where.anneeAcademiqueId = anneeAcademiqueIdFilter
       if (uniteEnseignementIdFilter) where.uniteEnseignementId = uniteEnseignementIdFilter
+
+      // ─── Lightweight summary mode (?select=summary) ───
+      // Returns ONLY { id, titre, dateDebut, dateFin, statut, noteTotal, filiere: { nom } }
+      // per epreuve. Avoids massive over-fetch when the frontend only needs a list
+      // for a dropdown selector / overview screen — no questions, sessions, or docs.
+      if (selectSummary) {
+        const summaryEpreuves = await db.epreuve.findMany({
+          where,
+          orderBy: { dateDebut: 'desc' },
+          select: {
+            id: true,
+            titre: true,
+            dateDebut: true,
+            dateFin: true,
+            statut: true,
+            noteTotal: true,
+            filiere: { select: { nom: true } },
+          },
+        })
+
+        return NextResponse.json({ epreuves: summaryEpreuves })
+      }
 
       const epreuves = await db.epreuve.findMany({
         where,
@@ -543,7 +586,7 @@ async function _GET(
       }
 
       const whereFiliere: Record<string, unknown> = { deletedAt: null }
-      if (statut) whereFiliere.statut = statut
+      applyStatutFilter(whereFiliere)
 
       whereFiliere.OR = [
         { sessions: { some: { etudiant: { filiereId } } } },

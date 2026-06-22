@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
-export async function GET(
+async function _GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: any; user: AuthenticatedUser }
 ) {
   try {
-    const { id } = await params
+    const { user } = context
+    const { id } = await context.params
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format') || 'json'
 
@@ -14,7 +17,7 @@ export async function GET(
     const epreuve = await db.epreuve.findUnique({
       where: { id },
       include: {
-        enseignant: { select: { id: true, name: true, email: true } },
+        enseignant: { select: { id: true, name: true, email: true, etablissementId: true } },
         questions: {
           include: {
             question: {
@@ -40,6 +43,58 @@ export async function GET(
 
     if (!epreuve || epreuve.deletedAt) {
       return NextResponse.json({ error: 'Épreuve non trouvée' }, { status: 404 })
+    }
+
+    // ─── Ownership / authorization checks ───
+    // ENSEIGNANT: must be the owner of the epreuve.
+    if (user.role === 'ENSEIGNANT') {
+      if (epreuve.enseignantId !== user.id) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez exporter que vos propres épreuves.' },
+          { status: 403 }
+        )
+      }
+    }
+
+    // RESPONSABLE: must be in the same establishment as the epreuve's enseignant.
+    if (user.role === 'RESPONSABLE') {
+      const eTab = epreuve.enseignant?.etablissementId
+      if (!eTab || eTab !== user.etablissementId) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous ne pouvez exporter que les épreuves de votre établissement.' },
+          { status: 403 }
+        )
+      }
+    }
+
+    // ADMIN: must have an active EtablissementAccess for the epreuve's establishment.
+    if (user.role === 'ADMIN') {
+      const eTab = epreuve.enseignant?.etablissementId
+      if (!eTab) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Établissement introuvable pour cette épreuve.' },
+          { status: 403 }
+        )
+      }
+      const accessError = await requireAdminEtablissementAccess(user, eTab)
+      if (accessError) return accessError
+    }
+
+    // ETUDIANT: only allowed if they have at least one session for this epreuve.
+    if (user.role === 'ETUDIANT') {
+      const ownSession = await db.sessionPassation.findFirst({
+        where: { epreuveId: id, etudiantId: user.id },
+        select: { id: true },
+      })
+      if (!ownSession) {
+        return NextResponse.json(
+          { error: 'Accès refusé. Vous n\'avez pas participé à cette épreuve.' },
+          { status: 403 }
+        )
+      }
+      // For ETUDIANT, restrict the exported sessions to their own to avoid leaking
+      // other students' data. (Admin/Responsable/Enseignant see all sessions.)
+      epreuve.sessions = epreuve.sessions.filter((s) => s.etudiantId === user.id)
     }
 
     // Prepare export data
@@ -150,3 +205,5 @@ function escapeCSV(value: string): string {
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50)
 }
+
+export const GET = withAuth(_GET, ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT', 'ETUDIANT'])
