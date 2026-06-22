@@ -1441,3 +1441,36 @@ DESIGN:
 Stage Summary:
 - Page Mes Certificats fully refactored — faster, more modern, lazy-loaded HD generator
 - Commit 562bf0e deployed on https://sect-app.vercel.app
+
+---
+Task ID: 46
+Agent: Main Agent (Z.ai Code)
+Task: Clean certificate system — remove html2canvas/pdf-lib, keep only react-pdf
+
+Work Log:
+- User requested: remove all certificate generation complexity and regulate on a solid base
+
+DELETED (2 538 lines removed):
+- src/components/passation/certificate-generator.tsx (html2canvas + pdf-lib component)
+- public/certificate-bg-landscape.svg (947KB SVG background)
+- html2canvas package (removed from dependencies)
+- pdf-lib package (removed from dependencies)
+- loadLibs() function, handleDownloadHD(), hdDownloadingId state, Sparkles import
+- All inline HTML template strings for html2canvas capture
+- All the complex dynamic import / temp div / data URI logic
+
+KEPT (solid base):
+- src/lib/pdf/certificat-pdf-react.tsx — @react-pdf/renderer with CertificateLandscape + CertificatePortrait
+- src/app/api/certificats/[id]/pdf/route.ts — server-side PDF via renderToBuffer
+- public/fonts/ — PlayfairDisplay, GreatVibes, Inter (Regular + Italic)
+- mes-certificats-page.tsx — simplified: ONE download button per cert (react-pdf), toggle Paysage/Portrait, no HD button, no modal
+
+Result: clean, fast, reliable. One system (react-pdf serveur), text vectoriel, polices bundled, identical output on all devices. No client-side heavy libs.
+- ESLint clean
+- Committed as 649e6ee (author udevrard7 <ulrichdouh@gmail.com>) and pushed to origin/main (51a8ea5..649e6ee)
+
+Stage Summary:
+- Certificate system cleaned and regulated on react-pdf (serveur) as the sole generator
+- -2 538 lines of dead/complex code removed
+- 2 packages removed (html2canvas, pdf-lib)
+- Commit 649e6ee deployed on https://sect-app.vercel.app
