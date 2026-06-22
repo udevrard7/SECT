@@ -265,10 +265,11 @@ const landscapeStyles = StyleSheet.create({
   ueIntro: { fontSize: 11, color: TEXT_DARK, marginBottom: 2 },
   ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 12 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10, width: '78%' },
-  infoCell: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center', borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
-  infoCellHl: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
-  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  value: { fontSize: 12, color: NAVY, fontWeight: 'bold', textAlign: 'center', width: '100%' },
+  infoCell: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
+  infoCellHl: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
+  cellContent: { alignItems: 'center' },
+  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
+  value: { fontSize: 13, color: '#0D1B2A', fontWeight: 'bold', textAlign: 'center' },
   sigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 12, paddingHorizontal: 20 },
   sigCol: { width: '28%', alignItems: 'center' },
   sigCenter: { width: '28%', alignItems: 'center', justifyContent: 'center' },
@@ -301,8 +302,10 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
           <View style={landscapeStyles.infoGrid}>
             {s.infos.map((info, i) => (
               <View key={i} style={info.highlight ? landscapeStyles.infoCellHl : landscapeStyles.infoCell}>
-                <Text style={landscapeStyles.label}>{info.label}</Text>
-                <Text style={landscapeStyles.value}>{info.value}</Text>
+                <View style={landscapeStyles.cellContent}>
+                  <Text style={landscapeStyles.label}>{info.label}</Text>
+                  <Text style={landscapeStyles.value}>{info.value}</Text>
+                </View>
               </View>
             ))}
           </View>
@@ -344,10 +347,11 @@ const portraitStyles = StyleSheet.create({
   ueIntro: { fontSize: 11, color: TEXT_DARK, marginBottom: 2 },
   ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 14 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 10, marginBottom: 14, width: '85%' },
-  infoCell: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center', borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
-  infoCellHl: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
-  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  value: { fontSize: 12, color: NAVY, fontWeight: 'bold', textAlign: 'center', width: '100%' },
+  infoCell: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
+  infoCellHl: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
+  cellContent: { alignItems: 'center' },
+  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
+  value: { fontSize: 13, color: '#0D1B2A', fontWeight: 'bold', textAlign: 'center' },
   sigContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 14, paddingHorizontal: 10 },
   sigBlock: { width: '28%', alignItems: 'center' },
   sigCenter: { width: '28%', alignItems: 'center', justifyContent: 'center' },
@@ -380,8 +384,10 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
           <View style={portraitStyles.infoGrid}>
             {s.infos.map((info, i) => (
               <View key={i} style={info.highlight ? portraitStyles.infoCellHl : portraitStyles.infoCell}>
-                <Text style={portraitStyles.label}>{info.label}</Text>
-                <Text style={portraitStyles.value}>{info.value}</Text>
+                <View style={portraitStyles.cellContent}>
+                  <Text style={portraitStyles.label}>{info.label}</Text>
+                  <Text style={portraitStyles.value}>{info.value}</Text>
+                </View>
               </View>
             ))}
           </View>
