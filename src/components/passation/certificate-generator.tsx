@@ -75,14 +75,15 @@ function base64ToUint8Array(base64DataUrl: string): Uint8Array {
   return bytes
 }
 
-// ─── Color tokens ───
+// ─── Color tokens (adapted to the new SVG template: royal blue + gold) ───
 
-const GOLD = '#C5A044'
-const NAVY = '#1B3A5C'
-const TEXT_DARK = '#4A4A4A'
-const TEXT_GRAY = '#718096'
-const GOLD_LIGHT = '#FFF8E7'
-const GOLD_BORDER = '#E8D09A'
+const GOLD = '#D4AF37'       // Or métallisé (matching the SVG's gold frame)
+const ROYAL_BLUE = '#1a3a6b' // Bleu royal (matching the SVG's outer frame)
+const NAVY = '#1a3a6b'       // Same as royal blue for consistency
+const TEXT_DARK = '#2C3E50'   // Gris foncé pour les titres
+const TEXT_GRAY = '#7F8C8D'   // Gris pour texte secondaire
+const GOLD_LIGHT = '#FFF8E1'  // Or très pâle pour les cellules mises en valeur
+const GOLD_BORDER = '#E6C84E' // Bordure dorée des cellules
 
 // ─── Component ───
 
@@ -254,7 +255,7 @@ export function CertificateGenerator({ data, onClose }: Props) {
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: isLandscape ? '50px 80px' : '60px 60px',
+              padding: isLandscape ? '60px 100px' : '70px 70px',
               boxSizing: 'border-box',
               fontFamily: 'Inter, sans-serif',
             }}
