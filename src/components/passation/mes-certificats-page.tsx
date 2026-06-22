@@ -50,6 +50,7 @@ interface Certificat {
   mention: string
   dateEmission: string
   verificationUrl?: string
+  etudiantNom?: string
 }
 
 type StatutUE = 'EN_COURS' | 'VALIDEE' | 'NON_VALIDEE'
@@ -169,6 +170,7 @@ export function MesCertificatsPage() {
             mention: typeof c.mention === 'string' ? c.mention : '',
             dateEmission: c.dateEmission ? String(c.dateEmission) : new Date().toISOString(),
             verificationUrl: code ? `${window.location.origin}/verify/${code}` : undefined,
+            etudiantNom: typeof c.etudiantNom === 'string' ? c.etudiantNom : (user?.name || ''),
           }
         })
       }
