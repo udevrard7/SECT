@@ -53,3 +53,5 @@ server.log
 # Skills directory
 /skills/*.bak
 upload/
+tool-results/
+agent-ctx/

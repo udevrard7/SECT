@@ -3,6 +3,26 @@ import { db } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 import { verifySelfAccess, requireAdminEtablissementAccess } from '@/lib/tenant-access'
 
+// ─── Helpers ───
+
+/**
+ * Compute the true median of an ALREADY sorted array of scores.
+ * - For odd n: returns the middle element.
+ * - For even n: returns the average of the two middle elements.
+ * - For empty input: returns 0.
+ *
+ * IMPORTANT: callers MUST pass a sorted copy — `Array.prototype.sort` mutates
+ * in place, so we never sort the original Prisma result array.
+ */
+function calculateMedian(sortedScores: number[]): number {
+  const n = sortedScores.length
+  if (n === 0) return 0
+  const mid = Math.floor(n / 2)
+  return n % 2 !== 0
+    ? sortedScores[mid]
+    : (sortedScores[mid - 1] + sortedScores[mid]) / 2
+}
+
 async function _GET(
   request: NextRequest,
   context: { params: any; user: AuthenticatedUser }
@@ -13,7 +33,7 @@ async function _GET(
     const etudiantId = searchParams.get('etudiantId')
     const epreuveId = searchParams.get('epreuveId')
 
-    // ─── Tenant scoping ───
+    // ─── Tenant scoping for etudiantId branch ───
     if (etudiantId) {
       // ETUDIANT: must be their own ID
       if (user.role === 'ETUDIANT') {
@@ -28,46 +48,6 @@ async function _GET(
         })
         if (student?.etablissementId) {
           const accessError = await requireAdminEtablissementAccess(user, student.etablissementId)
-          if (accessError) return accessError
-        }
-      }
-    }
-
-    if (epreuveId) {
-      // ENSEIGNANT: can only see results for their own epreuves
-      if (user.role === 'ENSEIGNANT') {
-        const epreuve = await db.epreuve.findUnique({
-          where: { id: epreuveId },
-          select: { enseignantId: true },
-        })
-        if (epreuve && epreuve.enseignantId !== user.id) {
-          return NextResponse.json(
-            { error: 'Accès refusé. Vous ne pouvez voir les résultats que de vos propres épreuves.' },
-            { status: 403 }
-          )
-        }
-      }
-      // RESPONSABLE: can see results in their establishment
-      if (user.role === 'RESPONSABLE') {
-        const epreuve = await db.epreuve.findUnique({
-          where: { id: epreuveId },
-          include: { enseignant: { select: { etablissementId: true } } },
-        })
-        if (epreuve?.enseignant?.etablissementId && epreuve.enseignant.etablissementId !== user.etablissementId) {
-          return NextResponse.json(
-            { error: 'Accès refusé. Vous ne pouvez voir les résultats que dans votre établissement.' },
-            { status: 403 }
-          )
-        }
-      }
-      // ADMIN: must have EtablissementAccess
-      if (user.role === 'ADMIN') {
-        const epreuve = await db.epreuve.findUnique({
-          where: { id: epreuveId },
-          include: { enseignant: { select: { etablissementId: true } } },
-        })
-        if (epreuve?.enseignant?.etablissementId) {
-          const accessError = await requireAdminEtablissementAccess(user, epreuve.enseignant.etablissementId)
           if (accessError) return accessError
         }
       }
@@ -161,44 +141,167 @@ async function _GET(
     }
 
     if (epreuveId) {
-      // Teacher: get all results for an exam
+      // ─── Teacher: get all results for an exam ───
+
+      // Single query for ownership check + noteTotal (default 20 if missing/legacy).
+      const epreuve = await db.epreuve.findUnique({
+        where: { id: epreuveId },
+        select: {
+          enseignantId: true,
+          noteTotal: true,
+          enseignant: { select: { etablissementId: true } },
+        },
+      })
+
+      // ENSEIGNANT: 404 if not found, 403 if not owner.
+      if (user.role === 'ENSEIGNANT') {
+        if (!epreuve) {
+          return NextResponse.json(
+            { error: 'Épreuve non trouvée.' },
+            { status: 404 }
+          )
+        }
+        if (epreuve.enseignantId !== user.id) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez voir les résultats que de vos propres épreuves.' },
+            { status: 403 }
+          )
+        }
+      }
+
+      // RESPONSABLE: must be in their establishment (skip silently if epreuve is null
+      // for backward compat — the queries below will simply return empty results).
+      if (user.role === 'RESPONSABLE' && epreuve) {
+        const eTab = epreuve.enseignant?.etablissementId
+        if (eTab && eTab !== user.etablissementId) {
+          return NextResponse.json(
+            { error: 'Accès refusé. Vous ne pouvez voir les résultats que dans votre établissement.' },
+            { status: 403 }
+          )
+        }
+      }
+
+      // ADMIN: must have EtablissementAccess for the epreuve's establishment.
+      if (user.role === 'ADMIN' && epreuve?.enseignant?.etablissementId) {
+        const accessError = await requireAdminEtablissementAccess(
+          user,
+          epreuve.enseignant.etablissementId
+        )
+        if (accessError) return accessError
+      }
+
+      const noteTotal: number = epreuve?.noteTotal ?? 20
+
+      // ─── Pagination params ───
+      // Default behaviour: no pagination (return all) for backward compatibility.
+      // If either ?page or ?limit is present, paginated mode kicks in.
+      const pageParam = searchParams.get('page')
+      const limitParam = searchParams.get('limit')
+      const hasPagination = pageParam !== null || limitParam !== null
+      const page = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+      const limit = Math.max(1, parseInt(limitParam || '50', 10) || 50)
+      const skip = (page - 1) * limit
+
+      const scoreWhere = { epreuveId, score: { not: null } }
+
+      // ─── Stats: aggregate + count + groupBy + score rows for median ───
+      // Run all independent queries in parallel.
+      const [agg, scoreRows, totalSessions, statusGroups] = await Promise.all([
+        db.sessionPassation.aggregate({
+          where: scoreWhere,
+          _avg: { score: true },
+          _min: { score: true },
+          _max: { score: true },
+          _count: { score: true },
+        }),
+        // Prisma has no native median — fetch only the `score` column (already sorted asc).
+        db.sessionPassation.findMany({
+          where: scoreWhere,
+          select: { score: true },
+          orderBy: { score: 'asc' },
+        }),
+        db.sessionPassation.count({ where: { epreuveId } }),
+        db.sessionPassation.groupBy({
+          by: ['statut'],
+          where: { epreuveId },
+          _count: { statut: true },
+        }),
+      ])
+
+      const sortedScores: number[] = scoreRows
+        .map((r) => r.score)
+        .filter((s): s is number => s !== null)
+
+      const scoredCount = agg._count.score ?? 0
+      const moyenne = agg._avg.score ?? 0
+      const min = agg._min.score ?? 0
+      const max = agg._max.score ?? 0
+      const mediane = calculateMedian(sortedScores)
+      const passThreshold = noteTotal / 2 // e.g. 10/20, 50/100
+      const reussite = sortedScores.filter((s) => s >= passThreshold).length
+      const tauxReussite = sortedScores.length > 0
+        ? Math.round((reussite / sortedScores.length) * 100)
+        : 0
+      const soumis = statusGroups.find((g) => g.statut === 'SOUMISE')?._count.statut ?? 0
+      const corriges = statusGroups.find((g) => g.statut === 'CORRIGEE')?._count.statut ?? 0
+
+      const moyennePct = noteTotal > 0
+        ? Math.round((moyenne / noteTotal) * 1000) / 10
+        : 0
+      const medianePct = noteTotal > 0
+        ? Math.round((mediane / noteTotal) * 1000) / 10
+        : 0
+
+      const stats = {
+        totalSessions,
+        soumis,
+        corriges,
+        moyenne: Math.round(moyenne * 100) / 100,
+        mediane: Math.round(mediane * 100) / 100,
+        min,
+        max,
+        tauxReussite,
+        // ─── New normalized fields ───
+        noteTotal,
+        moyennePct,
+        medianePct,
+      }
+
+      // ─── Paginated sessions list ───
+      // Keep `resultat` (needed for detail dialog), drop `reponses` (heavy, unused in table).
+      // The detail dialog can fetch reponses separately if needed.
       const sessions = await db.sessionPassation.findMany({
         where: { epreuveId },
         include: {
           etudiant: { select: { id: true, name: true, email: true, filiere: true } },
-          reponses: true,
           resultat: true,
         },
         orderBy: { score: 'desc' },
+        ...(hasPagination ? { take: limit, skip } : {}),
       })
 
-      // Calculate statistics
-      const scores = sessions
-        .filter((s) => s.score !== null)
-        .map((s) => s.score as number)
-
-      const stats = {
-        totalSessions: sessions.length,
-        soumis: sessions.filter((s) => s.statut === 'SOUMISE').length,
-        corriges: sessions.filter((s) => s.statut === 'CORRIGEE').length,
-        moyenne: scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0,
-        mediane: scores.length > 0 ? scores.sort((a, b) => a - b)[Math.floor(scores.length / 2)] : 0,
-        min: scores.length > 0 ? Math.min(...scores) : 0,
-        max: scores.length > 0 ? Math.max(...scores) : 0,
-        tauxReussite: scores.length > 0
-          ? Math.round((scores.filter((s) => s >= 10).length / scores.length) * 100)
-          : 0,
-      }
+      const totalPages = hasPagination
+        ? Math.max(1, Math.ceil(totalSessions / limit))
+        : 1
 
       return NextResponse.json({
         sessions: sessions.map((s) => ({
           ...s,
           resultat: s.resultat ? {
             ...s.resultat,
-            detailParQuestion: s.resultat.detailParQuestion ? JSON.parse(s.resultat.detailParQuestion) : null,
+            detailParQuestion: s.resultat.detailParQuestion
+              ? JSON.parse(s.resultat.detailParQuestion)
+              : null,
           } : null,
         })),
         stats,
+        noteTotal,
+        pagination: {
+          page: hasPagination ? page : 1,
+          limit: hasPagination ? limit : totalSessions,
+          total: totalSessions,
+          totalPages,
+        },
       })
     }
 
