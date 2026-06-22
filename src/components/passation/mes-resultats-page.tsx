@@ -1,852 +1,215 @@
+// ─────────────────────────────────────────────────────────────
+// Page principale "Mes Résultats" (étudiant) — refonte complète
+// 3 onglets : Vue d'ensemble | Mes épreuves | Évolution
+// ─────────────────────────────────────────────────────────────
+
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState } from 'react'
 import {
   Trophy,
-  Award,
-  Target,
+  LayoutDashboard,
   BookOpen,
-  CheckCircle2,
-  Clock,
-  Loader2,
-  Eye,
-  XCircle,
-  MinusCircle,
-  MessageSquare,
-  PenLine,
-  BarChart3,
-  Send,
+  TrendingUp,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { Separator } from '@/components/ui/separator'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Card, CardContent } from '@/components/ui/card'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { toast } from 'sonner'
-
-// ─── Types ───
-
-interface QuestionInfo {
-  id: string
-  type: string
-  enonce: string
-  difficulte: string
-}
-
-interface EpreuveQuestionInfo {
-  id: string
-  questionId: string
-  bareme: number
-  ordre: number
-  question: QuestionInfo
-}
-
-interface SessionResultat {
-  id: string
-  scoreFinal: number
-  totalPossible: number
-  detailParQuestion: Array<Record<string, unknown>> | null
-  dateCorrection: string | null
-  commentaires: string | null
-}
-
-interface ReponseInfo {
-  id: string
-  questionId: string
-  contenu: string | null
-  score: number | null
-  commentaire: string | null
-  noteIA: number | null
-  justificationIA: string | null
-  question: {
-    id: string
-    type: string
-    enonce: string
-  }
-}
-
-interface StudentSession {
-  id: string
-  etudiantId: string
-  epreuveId: string
-  statut: string
-  score: number | null
-  alertes: number
-  dateDebut: string | null
-  dateFin: string | null
-  epreuve: {
-    id: string
-    titre: string
-    description: string | null
-    duree: number
-    enseignant: { name: string }
-    questions: EpreuveQuestionInfo[]
-  }
-  reponses: ReponseInfo[]
-  resultat: SessionResultat | null
-}
-
-// ─── Utility functions ───
-
-const MONTHS_FR = [
-  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
-]
-
-const DAYS_FR = [
-  'dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi',
-]
-
-function formatDateFR(dateStr: string | Date): string {
-  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
-  return `${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`
-}
-
-function formatDateTimeFR(dateStr: string | Date): string {
-  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
-  const day = DAYS_FR[d.getDay()]
-  const hours = d.getHours().toString().padStart(2, '0')
-  const minutes = d.getMinutes().toString().padStart(2, '0')
-  return `${day} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()} à ${hours}h${minutes}`
-}
-
-function parseJsonSafe<T>(value: string | null | unknown, fallback: T): T {
-  if (!value) return fallback
-  try {
-    return JSON.parse(typeof value === 'string' ? value : JSON.stringify(value)) as T
-  } catch {
-    return fallback
-  }
-}
-
-function getScoreBadgeClasses(score: number): string {
-  if (score >= 10) {
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-  }
-  if (score >= 8) {
-    return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
-  }
-  return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
-}
-
-function getScoreColor(score: number): string {
-  if (score >= 10) return 'text-emerald-700 dark:text-emerald-400'
-  if (score >= 8) return 'text-amber-700 dark:text-amber-400'
-  return 'text-red-700 dark:text-red-400'
-}
-
-function getProgressColor(score: number): string {
-  if (score >= 10) return 'bg-emerald-500'
-  if (score >= 8) return 'bg-amber-500'
-  return 'bg-red-500'
-}
-
-function getProgressBg(score: number): string {
-  if (score >= 10) return 'bg-emerald-100 dark:bg-emerald-900/30'
-  if (score >= 8) return 'bg-amber-100 dark:bg-amber-900/30'
-  return 'bg-red-100 dark:bg-red-900/30'
-}
-
-function getQuestionTypeBadgeClasses(type: string): string {
-  switch (type?.toUpperCase()) {
-    case 'QCU':
-      return 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800'
-    case 'QCM':
-      return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
-    case 'QRC':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-    case 'TRS':
-      return 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800'
-    default:
-      return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800'
-  }
-}
-
-// ─── Component ───
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
+import { useMesResultats, useEtudiantOverview, useRefreshResultats } from '@/hooks/use-resultats'
+import { MesResultatsSkeleton, MesEpreuvesSkeleton } from '../mes-resultats/mes-resultats-skeletons'
+import { EtudiantOverviewTab } from '../mes-resultats/etudiant-overview-tab'
+import { MesEpreuvesTab } from '../mes-resultats/mes-epreuves-tab'
+import { MonResultatDialog } from '../mes-resultats/mon-resultat-dialog'
+import type { StudentSession } from '@/types/resultats'
 
 export function MesResultatsPage() {
   const user = useAuthStore((s) => s.user)
+  const [tab, setTab] = useState('overview')
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [selectedSession, setSelectedSession] = useState<StudentSession | null>(null)
 
-  const [resultats, setResultats] = useState<StudentSession[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const overviewQuery = useEtudiantOverview(user?.id)
+  const resultatsQuery = useMesResultats(user?.id)
+  const refresh = useRefreshResultats()
 
-  // Detail dialog state
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
-  const [selectedResult, setSelectedResult] = useState<StudentSession | null>(null)
-
-  // ─── Fetch results ───
-  const fetchResultats = useCallback(async () => {
-    if (!user?.id) return
-    setIsLoading(true)
-    try {
-      const res = await fetch(`/api/resultats?etudiantId=${user.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setResultats(data.resultats ?? [])
-      }
-    } catch {
-      toast.error('Erreur de chargement', {
-        description: 'Impossible de charger vos résultats.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user])
-
-  useEffect(() => {
-    fetchResultats()
-  }, [fetchResultats])
-
-  // ─── Statistics ───
-  const globalStats = useMemo(() => {
-    const normalizedScores = resultats
-      .filter(r => r.statut === 'RETOURNEE' || r.statut === 'CORRIGEE')
-      .map((r) => {
-        const rawScore = r.resultat?.scoreFinal ?? r.score ?? 0
-        const totalPossible = r.resultat?.totalPossible ?? 20
-        return totalPossible > 0 ? (rawScore / totalPossible) * 20 : 0
-      })
-      .filter((s) => s > 0)
-
-    if (normalizedScores.length === 0) {
-      return { moyenne: 0, count: 0, best: 0 }
-    }
-
-    const moyenne = normalizedScores.reduce((a, b) => a + b, 0) / normalizedScores.length
-    const best = Math.max(...normalizedScores)
-
-    return {
-      moyenne: Math.round(moyenne * 10) / 10,
-      count: resultats.length,
-      best: Math.round(best * 10) / 10,
-    }
-  }, [resultats])
-
-  // ─── Detail dialog handlers ───
-  const handleViewDetail = (result: StudentSession) => {
-    setSelectedResult(result)
-    setDetailDialogOpen(true)
+  const handleViewDetail = (session: StudentSession) => {
+    setSelectedSession(session)
+    setDetailOpen(true)
   }
 
-  // ─── Build question details for dialog ───
-  const dialogQuestionDetails = useMemo(() => {
-    if (!selectedResult) return []
+  // ─── Skeleton global tant que l'overview charge ───
+  if (overviewQuery.isLoading && !overviewQuery.data) {
+    return <MesResultatsSkeleton />
+  }
 
-    const epreuveQuestions = selectedResult.epreuve.questions || []
-    const reponses = selectedResult.reponses || []
-
-    // If we have rich epreuve.questions data (from /api/resultats), always build from it
-    // This ensures consistent format with enonce, pointsMax, pointsObtenus, etc.
-    if (epreuveQuestions.length > 0) {
-      return epreuveQuestions.map((eq, idx) => {
-        const reponse = reponses.find((r) => r.questionId === eq.questionId)
-        const pointsObtenus = reponse?.score ?? null
-        const isGraded = pointsObtenus !== null && pointsObtenus !== undefined
-
-        return {
-          index: idx + 1,
-          type: eq.question.type,
-          enonce: eq.question.enonce,
-          pointsMax: eq.bareme,
-          pointsObtenus,
-          correct: isGraded
-            ? pointsObtenus! >= eq.bareme * 0.5
-            : null,
-          reponseEtudiant: reponse?.contenu ?? null,
-          reponseAttendue: null,
-          commentaire: reponse?.commentaire ?? null,
-        }
-      })
-    }
-
-    // Fallback: try to use detailParQuestion if epreuve.questions is empty
-    // Map stored format {questionId, type, bareme, score, repondu} to frontend format
-    const details = selectedResult.resultat?.detailParQuestion
-    if (details && Array.isArray(details) && details.length > 0) {
-      return details.map((q: Record<string, unknown>, idx: number) => {
-        const score = typeof q.score === 'number' ? q.score : null
-        const bareme = typeof q.bareme === 'number' ? q.bareme : 1
-        const isGraded = score !== null
-
-        return {
-          index: idx + 1,
-          type: String(q.type || ''),
-          enonce: String(q.enonce || `Question ${idx + 1}`),
-          pointsMax: bareme,
-          pointsObtenus: score,
-          correct: isGraded ? (score! >= bareme * 0.5) : null,
-          reponseEtudiant: typeof q.reponseEtudiant === 'string' ? q.reponseEtudiant : null,
-          reponseAttendue: typeof q.reponseAttendue === 'string' ? q.reponseAttendue : null,
-          commentaire: typeof q.commentaire === 'string' ? q.commentaire : null,
-        }
-      })
-    }
-
-    return []
-  }, [selectedResult])
+  const overview = overviewQuery.data
+  const sessions = resultatsQuery.data ?? []
+  const pendingCount = sessions.filter((s) => s.statut === 'SOUMISE').length
 
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <Trophy className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
-          Mes Résultats
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Consultez vos notes et résultats
-        </p>
-      </div>
-
-      {/* ─── Statistics card ─── */}
-      {!isLoading && resultats.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="border-l-4 border-l-emerald-500">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                  <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Moyenne générale</p>
-                  <p className={`text-2xl font-bold ${getScoreColor(globalStats.moyenne)}`}>
-                    {globalStats.moyenne.toFixed(1)}<span className="text-sm text-muted-foreground">/20</span>
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-teal-500">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                  <BookOpen className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Nombre d&apos;épreuves</p>
-                  <p className="text-2xl font-bold">
-                    {globalStats.count}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-emerald-600">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                  <Award className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Meilleure note</p>
-                  <p className={`text-2xl font-bold ${getScoreColor(globalStats.best)}`}>
-                    {globalStats.best.toFixed(1)}<span className="text-sm text-muted-foreground">/20</span>
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* ─── Loading state ─── */}
-      {isLoading && (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex-1 space-y-3">
-                    <div className="h-5 w-2/3 rounded bg-muted" />
-                    <div className="h-4 w-1/2 rounded bg-muted" />
-                    <div className="h-3 w-full rounded bg-muted" />
-                  </div>
-                  <div className="h-10 w-32 rounded bg-muted" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* ─── Empty state ─── */}
-      {!isLoading && resultats.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <Trophy className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun résultat disponible</h3>
-          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-            Vous n&apos;avez pas encore passé d&apos;épreuve. Vos résultats apparaîtront ici après soumission.
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight md:text-3xl">
+            <Trophy className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+            Mes Résultats
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Consultez vos notes, suivez votre progression et analysez vos performances
           </p>
         </div>
-      )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          disabled={overviewQuery.isFetching || resultatsQuery.isFetching}
+          className="self-start sm:self-auto"
+        >
+          <RefreshCw className={`h-4 w-4 ${overviewQuery.isFetching || resultatsQuery.isFetching ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">Rafraîchir</span>
+        </Button>
+      </div>
 
-      {/* ─── Results list ─── */}
-      {!isLoading && resultats.length > 0 && (
-        <div className="space-y-4">
-          {resultats.map((session) => {
-            const score = session.resultat?.scoreFinal ?? session.score ?? 0
-            const totalPossible = session.resultat?.totalPossible ?? 20
-            const percentage = totalPossible > 0 ? Math.round((score / totalPossible) * 100) : 0
-            const isCorrected = session.statut === 'CORRIGEE'
-            const isReturned = session.statut === 'RETOURNEE'
+      {/* ─── Onglets ─── */}
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
+          <TabsTrigger value="overview" className="gap-1.5">
+            <LayoutDashboard className="h-4 w-4" />
+            <span className="hidden sm:inline">Vue d&apos;ensemble</span>
+            <span className="sm:hidden">Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="epreuves" className="gap-1.5">
+            <BookOpen className="h-4 w-4" />
+            <span className="hidden sm:inline">Mes épreuves</span>
+            <span className="sm:hidden">Épreuves</span>
+            {sessions.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center bg-emerald-100 px-1 text-xs text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                {sessions.length}
+              </Badge>
+            )}
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 justify-center bg-amber-100 px-1 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="En attente de correction">
+                {pendingCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="evolution" className="gap-1.5">
+            <TrendingUp className="h-4 w-4" />
+            <span className="hidden sm:inline">Évolution</span>
+            <span className="sm:hidden">Évol.</span>
+          </TabsTrigger>
+        </TabsList>
 
-            // Detect if this is a Scenario A (100% auto-gradable) or Scenario B (mixed) exam
-            const hasManualQuestions = session.epreuve.questions?.some(
-              (eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type)
-            )
-            const isScenarioA = !hasManualQuestions
-            const isScenarioB = !!hasManualQuestions
-
-            // Calculate auto-gradable total for partial score display (Scenario B)
-            const autoGradableTotal = session.epreuve.questions
-              ?.filter((eq) => ['QCU', 'QCM'].includes(eq.question.type))
-              .reduce((sum, eq) => sum + eq.bareme, 0) ?? 0
-            const manualQuestionCount = session.epreuve.questions
-              ?.filter((eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type))
-              .length ?? 0
-
-            // Show final score when: RETOURNEE or CORRIGEE (teacher has validated all corrections)
-            // Show partial score when: Scenario B + SOUMISE (auto-graded only, pending manual correction)
-            const canSeeFinalScore = isReturned || isCorrected
-            const canSeePartialScore = isScenarioB && !isCorrected && !isReturned && autoGradableTotal > 0
-
-            return (
-              <Card
-                key={session.id}
-                className="group transition-shadow hover:shadow-md"
-              >
-                <CardContent className="p-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    {/* Left: Result info */}
-                    <div className="flex-1 space-y-3">
-                      {/* Title row */}
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                          <Trophy className="h-6 w-6 text-teal-600 dark:text-teal-400" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-base font-semibold leading-tight">
-                            {session.epreuve.titre}
-                          </h3>
-                          <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                            {session.epreuve.enseignant.name}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Date taken */}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[60px]">
-                        {session.dateDebut && (
-                          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Clock className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-                            Passé le {formatDateTimeFR(session.dateDebut)}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Score display */}
-                      <div className="pl-[60px]">
-                        {canSeeFinalScore ? (
-                          <>
-                            <div className="flex items-center gap-3">
-                              <span className={`text-3xl font-bold ${getScoreColor(score)}`}>
-                                {score.toFixed(1)}
-                                <span className="text-lg text-muted-foreground">/{totalPossible}</span>
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className={`font-bold px-3 py-1 ${getScoreBadgeClasses(score)}`}
-                              >
-                                {percentage}%
-                              </Badge>
-                            </div>
-                            <div className="mt-2 flex items-center gap-3">
-                              <div className={`h-3 flex-1 max-w-xs overflow-hidden rounded-full ${getProgressBg(score)}`}>
-                                <div
-                                  className={`h-full rounded-full transition-all ${getProgressColor(score)}`}
-                                  style={{ width: `${percentage}%` }}
-                                />
-                              </div>
-                            </div>
-                          </>
-                        ) : canSeePartialScore ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-3">
-                              <span className={`text-2xl font-bold ${getScoreColor(score)}`}>
-                                {score.toFixed(1)}
-                                <span className="text-sm text-muted-foreground">/{autoGradableTotal}</span>
-                              </span>
-                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700 text-xs">
-                                Provisoire
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
-                              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                              <span className="text-sm text-amber-700 dark:text-amber-400">
-                                En attente de la correction manuelle de l&apos;enseignant pour {manualQuestionCount} question{manualQuestionCount > 1 ? 's' : ''} ouverte{manualQuestionCount > 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
-                            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                            <span className="text-sm text-amber-700 dark:text-amber-400">
-                              En attente de correction
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Correction status */}
-                      <div className="flex items-center gap-2 pl-[60px]">
-                        {isReturned ? (
-                          <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Rendu
-                          </Badge>
-                        ) : isCorrected ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Corrigé
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 gap-1">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            En attente
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right: Action button */}
-                    <div className="shrink-0 sm:ml-4">
-                      <Button
-                        variant="outline"
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                        onClick={() => handleViewDetail(session)}
-                      >
-                        <Eye className="h-4 w-4" />
-                        Voir détail
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ─── Result Detail Dialog ─── */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              {selectedResult?.epreuve.titre ?? 'Détail du résultat'}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedResult?.dateDebut
-                ? `Passé le ${formatDateTimeFR(selectedResult.dateDebut)} — ${selectedResult.epreuve.enseignant.name}`
-                : 'Résultat de l\'épreuve'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedResult && (() => {
-            const dialogScore = selectedResult.resultat?.scoreFinal ?? selectedResult.score ?? 0
-            const dialogTotalPossible = selectedResult.resultat?.totalPossible ?? 20
-            const dialogPercentage = dialogTotalPossible > 0 ? Math.round((dialogScore / dialogTotalPossible) * 100) : 0
-            const dialogIsCorrected = selectedResult.statut === 'CORRIGEE'
-            const dialogIsReturned = selectedResult.statut === 'RETOURNEE'
-            const dialogHasManualQuestions = selectedResult.epreuve.questions?.some(
-              (eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type)
-            )
-            const dialogIsScenarioA = !dialogHasManualQuestions
-            const dialogIsScenarioB = !!dialogHasManualQuestions
-            const dialogAutoGradableTotal = selectedResult.epreuve.questions
-              ?.filter((eq) => ['QCU', 'QCM'].includes(eq.question.type))
-              .reduce((sum, eq) => sum + eq.bareme, 0) ?? 0
-            const dialogManualQuestionCount = selectedResult.epreuve.questions
-              ?.filter((eq) => ['QRC', 'TRS', 'REFLEXION'].includes(eq.question.type))
-              .length ?? 0
-            const dialogCanSeeFinalScore = dialogIsReturned || dialogIsCorrected
-            const dialogCanSeePartialScore = dialogIsScenarioB && !dialogIsCorrected && !dialogIsReturned && dialogAutoGradableTotal > 0
-
-            return (
-            <ScrollArea className="max-h-[60vh] pr-2">
-              <div className="space-y-6 pb-4">
-                {/* Score overview */}
-                <div className="flex items-center gap-4 rounded-lg border bg-muted/30 p-4">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40">
-                    <Trophy className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="flex-1">
-                    {dialogCanSeeFinalScore ? (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <span className={`text-3xl font-bold ${getScoreColor(dialogScore)}`}>
-                            {dialogScore.toFixed(1)}
-                            <span className="text-lg text-muted-foreground">/{dialogTotalPossible}</span>
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className={getScoreBadgeClasses(dialogScore)}
-                          >
-                            {dialogPercentage}%
-                          </Badge>
-                        </div>
-                        <div className="mt-2">
-                          <div className={`h-3 w-full max-w-xs overflow-hidden rounded-full ${getProgressBg(dialogScore)}`}>
-                            <div
-                              className={`h-full rounded-full transition-all ${getProgressColor(dialogScore)}`}
-                              style={{
-                                width: `${dialogPercentage}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </>
-                    ) : dialogCanSeePartialScore ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                          <span className={`text-2xl font-bold ${getScoreColor(dialogScore)}`}>
-                            {dialogScore.toFixed(1)}
-                            <span className="text-sm text-muted-foreground">/{dialogAutoGradableTotal}</span>
-                          </span>
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700 text-xs">
-                            Provisoire
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
-                          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                          <span className="text-sm text-amber-700 dark:text-amber-400">
-                            En attente de la correction manuelle de l&apos;enseignant pour {dialogManualQuestionCount} question{dialogManualQuestionCount > 1 ? 's' : ''} ouverte{dialogManualQuestionCount > 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
-                        <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                        <span className="text-sm text-amber-700 dark:text-amber-400">
-                          En attente de correction
-                        </span>
-                      </div>
-                    )}
-                    <div className="mt-2 flex items-center gap-2">
-                      {dialogIsReturned ? (
-                        <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Rendu
-                        </Badge>
-                      ) : dialogIsCorrected ? (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Corrigé
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 gap-1">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          En attente
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+        {/* ─── Vue d'ensemble ─── */}
+        <TabsContent value="overview" className="mt-6">
+          {overviewQuery.isError ? (
+            <Card className="border-l-4 border-l-red-500">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <AlertCircle className="h-10 w-10 text-red-500" />
+                <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                  Impossible de charger vos analyses.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => overviewQuery.refetch()}
+                  className="mt-4"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Réessayer
+                </Button>
+              </CardContent>
+            </Card>
+          ) : overview && overview.totalEpreuves === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
+                  <Trophy className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
                 </div>
+                <h3 className="mt-4 text-lg font-semibold">Aucun résultat disponible</h3>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  Vous n&apos;avez pas encore passé d&apos;épreuve. Vos résultats apparaîtront ici après soumission.
+                </p>
+              </CardContent>
+            </Card>
+          ) : overview ? (
+            <EtudiantOverviewTab data={overview} />
+          ) : null}
+        </TabsContent>
 
-                <Separator />
+        {/* ─── Mes épreuves ─── */}
+        <TabsContent value="epreuves" className="mt-6">
+          {resultatsQuery.isLoading && !resultatsQuery.data ? (
+            <MesEpreuvesSkeleton />
+          ) : resultatsQuery.isError ? (
+            <Card className="border-l-4 border-l-red-500">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <AlertCircle className="h-10 w-10 text-red-500" />
+                <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                  Impossible de charger vos résultats.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => resultatsQuery.refetch()}
+                  className="mt-4"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Réessayer
+                </Button>
+              </CardContent>
+            </Card>
+          ) : sessions.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <BookOpen className="h-10 w-10 text-muted-foreground/50" />
+                <h3 className="mt-3 text-lg font-semibold">Aucune épreuve</h3>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  Vous n&apos;avez pas encore passé d&apos;épreuve.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <MesEpreuvesTab sessions={sessions} onViewDetail={handleViewDetail} />
+          )}
+        </TabsContent>
 
-                {/* Per-question breakdown */}
-                {dialogQuestionDetails.length > 0 ? (
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      Détail par question
-                    </h4>
-                    <div className="space-y-3">
-                      {dialogQuestionDetails.map((q, idx) => {
-                        const isGraded = q.pointsObtenus !== null
-                        const isCorrect = q.correct === true
-                        const isIncorrect = q.correct === false
-                        const isManual = q.type === 'QRC' || q.type === 'TRS' || q.type === 'REFLEXION'
+        {/* ─── Évolution ─── */}
+        <TabsContent value="evolution" className="mt-6">
+          {overview && overview.totalEpreuves > 0 ? (
+            <EtudiantOverviewTab data={overview} />
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <TrendingUp className="h-10 w-10 text-muted-foreground/50" />
+                <h3 className="mt-3 text-lg font-semibold">Pas encore de données</h3>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  L&apos;évolution de vos performances sera visible après vos premières épreuves corrigées.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
-                        return (
-                          <div
-                            key={idx}
-                            className={`rounded-lg border p-4 transition-colors ${
-                              isGraded && isCorrect
-                                ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20'
-                                : isGraded && isIncorrect
-                                  ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20'
-                                  : 'border-muted'
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              {/* Question number & status */}
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-bold">
-                                  {q.index ?? idx + 1}
-                                </span>
-                                {isGraded && isCorrect && (
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                )}
-                                {isGraded && isIncorrect && (
-                                  <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
-                                )}
-                                {isGraded && q.correct === null && isManual && (
-                                  <MinusCircle className="h-4 w-4 text-gray-400" />
-                                )}
-                                {!isGraded && (
-                                  <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
-                                )}
-                              </div>
-
-                              {/* Question content */}
-                              <div className="flex-1 min-w-0 space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Badge
-                                    variant="outline"
-                                    className={`text-[10px] px-1.5 py-0 ${getQuestionTypeBadgeClasses(q.type)}`}
-                                  >
-                                    {q.type}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {q.pointsMax} point{q.pointsMax > 1 ? 's' : ''}
-                                  </span>
-                                </div>
-
-                                {/* Question text */}
-                                <p className="text-sm leading-relaxed line-clamp-2">
-                                  {q.enonce || `Question ${q.index ?? idx + 1}`}
-                                </p>
-
-                                {/* Score */}
-                                {isGraded ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-semibold ${
-                                      isCorrect
-                                        ? 'text-emerald-700 dark:text-emerald-400'
-                                        : 'text-red-700 dark:text-red-400'
-                                    }`}>
-                                      {q.pointsObtenus?.toFixed(1) ?? '0'}/{q.pointsMax}
-                                    </span>
-                                    {isCorrect && (
-                                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] px-1.5 py-0">
-                                        Correct
-                                      </Badge>
-                                    )}
-                                    {isIncorrect && (
-                                      <Badge className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 text-[10px] px-1.5 py-0">
-                                        Incorrect
-                                      </Badge>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-900 dark:bg-amber-950/30">
-                                    {isManual ? (
-                                      <>
-                                        <PenLine className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                                        <span className="text-xs text-amber-700 dark:text-amber-400">
-                                          En attente de correction par l&apos;enseignant
-                                        </span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <MessageSquare className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                                        <span className="text-xs text-amber-700 dark:text-amber-400">
-                                          En attente de correction
-                                        </span>
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Student answer for QCU/QCM */}
-                                {(q.type === 'QCU' || q.type === 'QCM') && q.reponseEtudiant && (
-                                  <div className="rounded border bg-muted/30 p-2">
-                                    <p className="text-xs text-muted-foreground">
-                                      <span className="font-medium">Votre réponse :</span> {q.reponseEtudiant}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Student answer for QRC/TRS */}
-                                {(q.type === 'QRC' || q.type === 'TRS') && q.reponseEtudiant && (
-                                  <div className="rounded border bg-muted/30 p-2">
-                                    <p className="text-xs font-medium text-muted-foreground mb-1">Votre réponse :</p>
-                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                                      {q.reponseEtudiant}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Teacher comment */}
-                                {q.commentaire && (
-                                  <div className="rounded border border-emerald-200 bg-emerald-50/50 p-2 dark:border-emerald-900 dark:bg-emerald-950/20">
-                                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-1">
-                                      Commentaire de l&apos;enseignant :
-                                    </p>
-                                    <p className="text-sm leading-relaxed">
-                                      {q.commentaire}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                      <Target className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Le détail par question n&apos;est pas encore disponible.
-                    </p>
-                    {selectedResult.statut !== 'CORRIGEE' && selectedResult.statut !== 'RETOURNEE' && (
-                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                        Les détails seront accessibles une fois la correction terminée.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-            )
-          })()}
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDetailDialogOpen(false)}
-            >
-              Fermer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* ─── Dialog de détail ─── */}
+      <MonResultatDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        session={selectedSession}
+      />
     </div>
   )
 }

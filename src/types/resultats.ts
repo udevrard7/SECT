@@ -159,3 +159,98 @@ export interface QuestionSuccess {
   enonce: string
   index: number
 }
+
+// ─── Étudiant : session de résultat ───
+
+export interface EpreuveQuestionInfo {
+  id: string
+  questionId: string
+  bareme: number
+  ordre: number
+  question: {
+    id: string
+    type: string
+    enonce: string
+    difficulte?: string
+  }
+}
+
+export interface ReponseInfo {
+  id: string
+  questionId: string
+  contenu: string | null
+  score: number | null
+  commentaire: string | null
+  noteIA: number | null
+  justificationIA: string | null
+  question?: {
+    id: string
+    type: string
+    enonce: string
+  }
+}
+
+export interface StudentSessionResultat {
+  id: string
+  scoreFinal: number
+  totalPossible: number
+  detailParQuestion: Array<Record<string, unknown>> | null
+  dateCorrection: string | null
+  dateRetour?: string | null
+  commentaires: string | null
+}
+
+export interface StudentSession {
+  id: string
+  etudiantId: string
+  epreuveId: string
+  statut: string
+  score: number | null
+  alertes: number
+  penalite?: number
+  dateDebut: string | null
+  dateFin: string | null
+  epreuve: {
+    id: string
+    titre: string
+    description: string | null
+    duree: number
+    noteTotal?: number
+    dateFin?: string | null
+    contenu?: unknown
+    enseignant: { name: string }
+    questions: EpreuveQuestionInfo[]
+  }
+  reponses: ReponseInfo[]
+  resultat: StudentSessionResultat | null
+}
+
+// ─── Étudiant : overview cross-exam ───
+
+export interface EtudiantOverviewResponse {
+  totalEpreuves: number
+  totalCorrigees: number
+  moyenneGenerale: number // /20
+  meilleureNote: number // /20
+  moinsBonneNote: number // /20
+  tauxReussite: number // %
+  tendance: number // /20, positif = progression
+  evolution: EvolutionPoint[]
+  performanceParType: Array<{ type: string; moyenne: number; count: number }>
+  distribution: Array<{ label: string; count: number }>
+  recentResults: Array<{
+    id: string
+    epreuveId: string
+    titre: string
+    enseignant: string
+    statut: string
+    score: number
+    noteTotal: number
+    scoreOn20: number
+    percentage: number
+    dateFin: string | null
+    dateDebut: string | null
+    isCorrected: boolean
+    isReturned: boolean
+  }>
+}

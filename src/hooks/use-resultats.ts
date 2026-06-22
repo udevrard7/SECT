@@ -11,6 +11,8 @@ import type {
   EpreuveSummary,
   ExamResultsResponse,
   OverviewResponse,
+  StudentSession,
+  EtudiantOverviewResponse,
 } from '@/types/resultats'
 
 // ─── Clés de cache ───
@@ -89,4 +91,31 @@ export function useRefreshResultats() {
   return useCallback(() => {
     queryClient.invalidateQueries({ queryKey: resultatsKeys.all })
   }, [queryClient])
+}
+
+// ─── Étudiant : tous ses résultats ───
+
+export function useMesResultats(etudiantId: string | undefined | null) {
+  return useQuery({
+    queryKey: [...resultatsKeys.all, 'mes-resultats', etudiantId ?? 'none'],
+    queryFn: () =>
+      fetchJSON<{ resultats: StudentSession[] }>(
+        `/api/resultats?etudiantId=${etudiantId}`
+      ).then((d) => d.resultats),
+    enabled: !!etudiantId,
+    staleTime: 60 * 1000, // 1 min
+    placeholderData: (prev) => prev,
+  })
+}
+
+// ─── Étudiant : overview cross-exam ───
+
+export function useEtudiantOverview(etudiantId: string | undefined | null) {
+  return useQuery({
+    queryKey: [...resultatsKeys.all, 'etudiant-overview', etudiantId ?? 'none'],
+    queryFn: () => fetchJSON<EtudiantOverviewResponse>('/api/resultats/etudiant-overview'),
+    enabled: !!etudiantId,
+    staleTime: 2 * 60 * 1000, // 2 min
+    placeholderData: (prev) => prev,
+  })
 }
