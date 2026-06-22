@@ -1474,3 +1474,60 @@ Stage Summary:
 - -2 538 lines of dead/complex code removed
 - 2 packages removed (html2canvas, pdf-lib)
 - Commit 649e6ee deployed on https://sect-app.vercel.app
+
+---
+Task ID: 47
+Agent: Main Agent (Z.ai Code)
+Task: Certificate audit corrections — student name size, portrait footer white space, landscape info grid bug fix
+
+Work Log:
+- User asked to apply previously proposed audit corrections + improve student name font size to prevent overlap + fix portrait white space between footer and date/code/verification link
+
+VLM ANALYSIS (both orientations):
+- Ran VLM audit on user's screenshots (Paysage 2_1.png, Portrait 2_1.png) and freshly generated PDFs
+- Discovered CRITICAL bug: in landscape mode, 4 of 6 info cells (CODE UE, FILIÈRE, SESSION, ANNÉE) had values COMPLETELY MISSING from the PDF content stream — only the 2 gold-highlighted cells (NOTE, MENTION) rendered values
+- Root cause: react-pdf `flexWrap: 'wrap'` + percentage `width` on cells causes layout calculation failure — non-highlighted cells lose their inner Text content
+- Confirmed via `pdftotext` extraction: landscape PDF was missing 4 values, portrait PDF had all 6
+
+FIXES APPLIED to src/lib/pdf/certificat-pdf-react.tsx:
+
+1. InfoGrid component (NEW — shared):
+   - Created explicit-row InfoGrid component that renders rows as separate View elements (no flexWrap)
+   - Each cell uses `flex: 1` + `marginHorizontal` for equal distribution within a row
+   - Props: infos, columns (2|3), cellStyle, cellHlStyle, contentStyle, labelStyle, valueStyle, rowStyle
+   - Used by both CertificateLandscape (3 columns) and CertificatePortrait (2 columns)
+
+2. Student name font size (prevents overlap):
+   - Landscape: 48pt → 40pt
+   - Portrait: 48pt → 38pt
+   - Added `marginVertical: 6` and `lineHeight: 1.1` for breathing room
+   - Added `marginTop: 4` to studentInfo and ueIntro for separation
+
+3. Footer white space fix (portrait + landscape):
+   - Changed `marginTop: 16/10` → `marginTop: 'auto'` (flexbox auto-margin pushes footer to bottom)
+   - Added `width: '100%'` to footer
+   - Reduced `paddingTop: 8` → `6` for tighter footer
+   - This eliminates the empty gap between signatures and footer
+
+4. Info grid layout cleanup:
+   - Landscape: width 78%→82%, removed flexWrap, added infoRow style
+   - Portrait: width 85%→88%, removed flexWrap, added infoRow style
+   - Cells now use `flex: 1` instead of percentage `width`
+
+VERIFICATION:
+- pdftotext confirms ALL 6 cell values present in both landscape AND portrait PDFs
+- VLM final audit: Landscape 9/10, Portrait 9/10
+  - All 6 info cells: label + value visible ✓
+  - Student name clear, no overlap ✓
+  - Footer flush at bottom, NO white space ✓ (portrait fix confirmed)
+  - SECT seal centered ✓
+  - Single page, no overflow ✓
+- ESLint clean
+- Committed and pushed to origin/main
+
+Stage Summary:
+- 3 user requests fulfilled: audit corrections applied, student name size improved (no overlap), portrait footer white space eliminated
+- BONUS: discovered & fixed critical landscape info-grid bug (4/6 cell values were missing from PDF)
+- Both orientations now render all 6 info cells with labels + values
+- Footer pushed to bottom via marginTop:'auto' in both modes
+- Student name reduced to 40pt (landscape) / 38pt (portrait) with proper margins
