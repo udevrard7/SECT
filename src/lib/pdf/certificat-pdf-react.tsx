@@ -167,27 +167,53 @@ function Diamonds() {
 }
 
 function Seal() {
-  const cx = 35, cy = 35, r = 28
+  const cx = 40, cy = 40, r = 32
   return (
-    <View style={{ alignItems: 'center', marginVertical: 6 }}>
-      <Svg width={80} height={80} viewBox="0 0 70 70">
+    <View style={{ alignItems: 'center', marginVertical: 8 }}>
+      <Svg width={90} height={90} viewBox="0 0 80 80">
+        {/* Outer gold ring (double line) */}
         <Circle cx={cx} cy={cy} r={r} fill={NAVY} />
-        <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="3" />
-        <Circle cx={cx} cy={cy} r={r - 5} fill="none" stroke={GOLD} strokeWidth="0.8" />
-        {Array.from({ length: 24 }).map((_, i) => {
-          const a = (i * 360) / 24
+        <Circle cx={cx} cy={cy} r={r} fill="none" stroke={GOLD} strokeWidth="2.5" />
+        <Circle cx={cx} cy={cy} r={r - 3} fill="none" stroke={GOLD} strokeWidth="1" />
+        {/* Inner ring */}
+        <Circle cx={cx} cy={cy} r={r - 7} fill="none" stroke={GOLD} strokeWidth="0.6" />
+        
+        {/* Decorative dots ring (between outer and inner) */}
+        {Array.from({ length: 32 }).map((_, i) => {
+          const a = (i * 360) / 32
           const rad = (a * Math.PI) / 180
-          const dr = r - 2.5
-          return <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.6" fill={GOLD} />
+          const dr = r - 5
+          return <Circle key={i} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.5" fill={GOLD} />
         })}
+
+        {/* Top arc text "CERTIFICAT" (simulated with dots above star) */}
+        {Array.from({ length: 7 }).map((_, i) => {
+          const angle = -90 + (i - 3) * 8
+          const rad = (angle * Math.PI) / 180
+          const dr = r - 10
+          return <Circle key={`t${i}`} cx={cx + dr * Math.cos(rad)} cy={cy + dr * Math.sin(rad)} r="0.8" fill={GOLD} />
+        })}
+
+        {/* Center star (5-pointed, larger) */}
         {Array.from({ length: 10 }).map((_, i) => {
-          const ri = i % 2 === 0 ? 6 : 2.5
+          const outerR = 8
+          const innerR = 3.2
+          const ri = i % 2 === 0 ? outerR : innerR
           const a1 = (Math.PI / 5) * i - Math.PI / 2
           const a2 = (Math.PI / 5) * (i + 1) - Math.PI / 2
-          return <Polygon key={`s${i}`} points={`${cx},${cy - 8} ${cx + ri * Math.cos(a1)},${cy - 8 + ri * Math.sin(a1)} ${cx + ri * Math.cos(a2)},${cy - 8 + ri * Math.sin(a2)}`} fill={GOLD} />
+          return <Polygon key={`s${i}`} points={`${cx},${cy - 10} ${cx + ri * Math.cos(a1)},${cy - 10 + ri * Math.sin(a1)} ${cx + ri * Math.cos(a2)},${cy - 10 + ri * Math.sin(a2)}`} fill={GOLD} />
         })}
-        <Text x={cx} y={cy + 4} textAnchor="middle" fontSize="10" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</Text>
-        <Text x={cx} y={cy + 11} textAnchor="middle" fontSize="5" fontFamily="Inter" fontWeight="bold" fill={GOLD}>CERTIFIÉ</Text>
+
+        {/* SECT text */}
+        <Text x={cx} y={cy + 5} textAnchor="middle" fontSize="11" fontFamily="Inter" fontWeight="bold" fill={WHITE}>SECT</Text>
+        {/* CERTIFIÉ text */}
+        <Text x={cx} y={cy + 13} textAnchor="middle" fontSize="5.5" fontFamily="Inter" fontWeight="bold" fill={GOLD} letterSpacing="1">CERTIFIÉ</Text>
+        
+        {/* Bottom decorative line */}
+        <Path d={`M ${cx - 12} ${cy + 18} L ${cx + 12} ${cy + 18}`} stroke={GOLD} strokeWidth="0.5" />
+        {/* Small dots on each side of the line */}
+        <Circle cx={cx - 15} cy={cy + 18} r="0.8" fill={GOLD} />
+        <Circle cx={cx + 15} cy={cy + 18} r="0.8" fill={GOLD} />
       </Svg>
     </View>
   )
@@ -239,12 +265,13 @@ const landscapeStyles = StyleSheet.create({
   ueIntro: { fontSize: 11, color: TEXT_DARK, marginBottom: 2 },
   ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 12 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10, width: '78%' },
-  infoCell: { width: '30%', padding: 8, marginBottom: 6, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center' },
-  infoCellHl: { width: '30%', padding: 8, marginBottom: 6, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
-  label: { fontSize: 8, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
-  value: { fontSize: 11, color: NAVY, fontWeight: 'bold', textAlign: 'center' },
-  sigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 15, paddingHorizontal: 30 },
-  sigCol: { width: '30%', alignItems: 'center' },
+  infoCell: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center', borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
+  infoCellHl: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
+  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  value: { fontSize: 12, color: NAVY, fontWeight: 'bold', textAlign: 'center', width: '100%' },
+  sigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 12, paddingHorizontal: 20 },
+  sigCol: { width: '28%', alignItems: 'center' },
+  sigCenter: { width: '28%', alignItems: 'center', justifyContent: 'center' },
   sigSpace: { height: 45, borderBottom: `1pt solid ${SIG_LINE}`, width: '100%', marginBottom: 6 },
   sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
   sigName: { fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
@@ -279,13 +306,14 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
               </View>
             ))}
           </View>
-          <Seal />
           <View style={landscapeStyles.sigRow}>
             <View style={landscapeStyles.sigCol}>
               <View style={landscapeStyles.sigSpace} />
               <Text style={landscapeStyles.sigLabel}>Signature de l&apos;enseignant</Text>
             </View>
-            <View style={{ width: '20%' }} />
+            <View style={landscapeStyles.sigCenter}>
+              <Seal />
+            </View>
             <View style={landscapeStyles.sigCol}>
               <View style={landscapeStyles.sigSpace} />
               {data.responsableNom ? <Text style={landscapeStyles.sigName}>{data.responsableNom}</Text> : null}
@@ -316,12 +344,13 @@ const portraitStyles = StyleSheet.create({
   ueIntro: { fontSize: 11, color: TEXT_DARK, marginBottom: 2 },
   ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 14 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 10, marginBottom: 14, width: '85%' },
-  infoCell: { width: '47%', padding: 8, marginBottom: 8, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center' },
-  infoCellHl: { width: '47%', padding: 8, marginBottom: 8, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
-  label: { fontSize: 8, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
-  value: { fontSize: 11, color: NAVY, fontWeight: 'bold', textAlign: 'center' },
-  sigContainer: { flexDirection: 'column', alignItems: 'center', width: '100%', marginTop: 14 },
-  sigBlock: { flexDirection: 'column', alignItems: 'center', width: '60%', marginBottom: 22 },
+  infoCell: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: CELL_BG, alignItems: 'center', borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
+  infoCellHl: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid', alignItems: 'center' },
+  label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  value: { fontSize: 12, color: NAVY, fontWeight: 'bold', textAlign: 'center', width: '100%' },
+  sigContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', marginTop: 14, paddingHorizontal: 10 },
+  sigBlock: { width: '28%', alignItems: 'center' },
+  sigCenter: { width: '28%', alignItems: 'center', justifyContent: 'center' },
   sigSpace: { height: 45, borderBottom: `1pt solid ${SIG_LINE}`, width: '100%', marginBottom: 6 },
   sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
   sigName: { fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
@@ -356,11 +385,13 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
               </View>
             ))}
           </View>
-          <Seal />
           <View style={portraitStyles.sigContainer}>
             <View style={portraitStyles.sigBlock}>
               <View style={portraitStyles.sigSpace} />
               <Text style={portraitStyles.sigLabel}>Signature de l&apos;enseignant</Text>
+            </View>
+            <View style={portraitStyles.sigCenter}>
+              <Seal />
             </View>
             <View style={portraitStyles.sigBlock}>
               <View style={portraitStyles.sigSpace} />
