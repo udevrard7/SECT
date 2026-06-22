@@ -244,69 +244,100 @@ export function MesCertificatsPage() {
     try {
       const { html2canvas, PDFDocument } = await loadLibs()
 
-      // Build a temporary off-screen div with the certificate content
       const isLandscape = orientation === 'landscape'
       const w = isLandscape ? 1122 : 793
       const h = isLandscape ? 793 : 1122
 
-      const tempDiv = document.createElement('div')
-      tempDiv.style.cssText = `position:fixed;left:0;top:0;width:${w}px;height:${h}px;z-index:-1;opacity:1;background:#fff;overflow:hidden;`
+      // Step 1: Fetch the SVG as text and convert to data URI
+      // (html2canvas can't load <img src="*.svg"> from a different origin
+      //  reliably, so we inline it as a background-image data URI)
+      const svgRes = await fetch('/certificate-bg-landscape.svg')
+      const svgText = await svgRes.text()
+      const svgDataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`
 
-      // SVG background
-      tempDiv.innerHTML = `
-        <img src="/certificate-bg-landscape.svg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />
-        <div style="position:relative;z-index:2;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${isLandscape ? '60px 100px' : '70px 70px'};box-sizing:border-box;font-family:Inter,sans-serif;">
-          <p style="font-size:11px;color:#D4AF37;letter-spacing:3px;font-weight:600;margin:0 0 2px 0;">${(user?.etablissement?.nom || 'ÉTABLISSEMENT').toUpperCase()}</p>
-          <h1 style="font-family:Georgia,serif;font-size:${isLandscape ? 38 : 36}px;color:#D4AF37;letter-spacing:4px;margin:4px 0 2px 0;font-weight:700;">CERTIFICAT DE RÉUSSITE</h1>
-          <p style="font-family:Georgia,serif;font-size:22px;color:#2C3E50;letter-spacing:2px;margin:0 0 10px 0;">${cert.type === 'EXPERT' ? 'Niveau Expert' : cert.type === 'AVANCE' ? 'Niveau Avancé' : 'Niveau Standard'}</p>
-          <div style="display:flex;gap:12px;margin-bottom:12px;">
-            <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
-            <div style="width:10px;height:10px;background:#1a3a6b;transform:rotate(45deg);"></div>
-            <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
-          </div>
-          <p style="font-size:13px;color:#2C3E50;font-style:italic;margin:0 0 6px 0;">Nous certifions par la présente que</p>
-          <p style="font-family:'Brush Script MT',cursive;font-size:${isLandscape ? 52 : 48}px;color:#1A1A1A;margin:0 0 4px 0;line-height:1.2;">${cert.etudiantNom || user?.name || ''}</p>
-          <p style="font-size:12px;color:#2C3E50;margin:0 0 4px 0;">a validé avec succès l'unité d'enseignement</p>
-          <p style="font-family:Georgia,serif;font-size:${isLandscape ? 28 : 26}px;color:#D4AF37;font-weight:700;margin:0 0 15px 0;">${cert.ueNom}</p>
-          <div style="display:grid;grid-template-columns:repeat(${isLandscape ? 3 : 2},1fr);gap:8px;width:${isLandscape ? '70%' : '85%'};margin-bottom:15px;">
-            ${[
-              { l: 'CODE UE', v: cert.ueCode, h: false },
-              { l: 'FILIÈRE', v: user?.filiere?.nom || '', h: false },
-              { l: 'NOTE', v: cert.note.toFixed(2).replace(/[.,]00$/, '') + '/20', h: true },
-              { l: 'MENTION', v: cert.mention || '—', h: true },
-              { l: 'SESSION', v: 'Normale', h: false },
-              { l: 'ANNÉE', v: '—', h: false },
-            ].map(c => `<div style="text-align:center;padding:8px;border-radius:4px;background:${c.h ? '#FFF8E1' : '#F7FAFC'};${c.h ? 'border:1px solid #E6C84E;' : ''}"><p style="font-size:8px;color:#7F8C8D;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin:0 0 3px 0;">${c.l}</p><p style="font-size:12px;color:#1a3a6b;font-weight:700;margin:0;">${c.v}</p></div>`).join('')}
-          </div>
-          <div style="width:60px;height:60px;border-radius:50%;background:#1a3a6b;border:3px solid #D4AF37;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:15px;">
-            <span style="font-size:10px;color:#fff;font-weight:700;">SECT</span>
-            <span style="font-size:5px;color:#D4AF37;font-weight:700;">CERTIFIÉ</span>
-          </div>
-          ${isLandscape ? `
-          <div style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding:0 40px;">
+      // Step 2: Build the temp div with background-image (not <img>)
+      const tempDiv = document.createElement('div')
+      tempDiv.style.cssText = `
+        position:fixed;left:0;top:0;width:${w}px;height:${h}px;z-index:9999;
+        background:#fff url('${svgDataUri}') no-repeat center/cover;
+        overflow:hidden;
+      `
+
+      // Step 3: Build text overlay as a child div
+      const textOverlay = document.createElement('div')
+      textOverlay.style.cssText = `
+        position:relative;z-index:2;width:100%;height:100%;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        padding:${isLandscape ? '60px 100px' : '70px 70px'};box-sizing:border-box;
+        font-family:Inter,Arial,sans-serif;
+      `
+
+      const studentName = cert.etudiantNom || user?.name || ''
+      const subtitle = cert.type === 'EXPERT' ? 'Niveau Expert' : cert.type === 'AVANCE' ? 'Niveau Avancé' : 'Niveau Standard'
+      const certDate = new Date(cert.dateEmission).toLocaleDateString('fr-FR')
+
+      // Build inner HTML for text overlay
+      const gridCols = isLandscape ? 3 : 2
+      const gridWidth = isLandscape ? '70%' : '85%'
+      const infos = [
+        { l: 'CODE UE', v: cert.ueCode, h: false },
+        { l: 'FILIÈRE', v: user?.filiere?.nom || '', h: false },
+        { l: 'NOTE', v: cert.note.toFixed(2).replace(/[.,]00$/, '') + '/20', h: true },
+        { l: 'MENTION', v: cert.mention || '—', h: true },
+        { l: 'SESSION', v: 'Normale', h: false },
+        { l: 'ANNÉE', v: '—', h: false },
+      ]
+      const gridHtml = infos.map(c =>
+        `<div style="text-align:center;padding:8px;border-radius:4px;background:${c.h ? '#FFF8E1' : '#F7FAFC'};${c.h ? 'border:1px solid #E6C84E;' : ''}">
+          <p style="font-size:8px;color:#7F8C8D;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin:0 0 3px 0;">${c.l}</p>
+          <p style="font-size:12px;color:#1a3a6b;font-weight:700;margin:0;">${c.v}</p>
+        </div>`
+      ).join('')
+
+      const sigLayout = isLandscape
+        ? `<div style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding:0 40px;">
             <div style="text-align:center;width:30%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Signature de l'enseignant</p></div>
             <div style="text-align:center;width:30%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Le Responsable pédagogique</p></div>
-          </div>` : `
-          <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:20px;">
+          </div>`
+        : `<div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:20px;">
             <div style="text-align:center;width:60%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Signature de l'enseignant</p></div>
             <div style="text-align:center;width:60%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Le Responsable pédagogique</p></div>
-          </div>`}
-          <div style="position:absolute;bottom:20px;left:40px;right:40px;text-align:center;padding-top:8px;border-top:1px solid #D4AF37;">
-            <p style="font-size:8px;color:#4A5568;margin:0;">Émis le ${new Date(cert.dateEmission).toLocaleDateString('fr-FR')}  |  Code: ${cert.codeVerification}  |  Vérification: ${cert.verificationUrl || ''}</p>
-          </div>
+          </div>`
+
+      textOverlay.innerHTML = `
+        <p style="font-size:11px;color:#D4AF37;letter-spacing:3px;font-weight:600;margin:0 0 2px 0;">${(user?.etablissement?.nom || 'ÉTABLISSEMENT').toUpperCase()}</p>
+        <h1 style="font-family:Georgia,serif;font-size:${isLandscape ? 38 : 36}px;color:#D4AF37;letter-spacing:4px;margin:4px 0 2px 0;font-weight:700;">CERTIFICAT DE RÉUSSITE</h1>
+        <p style="font-family:Georgia,serif;font-size:22px;color:#2C3E50;letter-spacing:2px;margin:0 0 10px 0;">${subtitle}</p>
+        <div style="display:flex;gap:12px;margin-bottom:12px;">
+          <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
+          <div style="width:10px;height:10px;background:#1a3a6b;transform:rotate(45deg);"></div>
+          <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
+        </div>
+        <p style="font-size:13px;color:#2C3E50;font-style:italic;margin:0 0 6px 0;">Nous certifions par la présente que</p>
+        <p style="font-family:'Brush Script MT',cursive;font-size:${isLandscape ? 52 : 48}px;color:#1A1A1A;margin:0 0 4px 0;line-height:1.2;">${studentName}</p>
+        <p style="font-size:12px;color:#2C3E50;margin:0 0 4px 0;">a validé avec succès l'unité d'enseignement</p>
+        <p style="font-family:Georgia,serif;font-size:${isLandscape ? 28 : 26}px;color:#D4AF37;font-weight:700;margin:0 0 15px 0;">${cert.ueNom}</p>
+        <div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:8px;width:${gridWidth};margin-bottom:15px;">${gridHtml}</div>
+        <div style="width:60px;height:60px;border-radius:50%;background:#1a3a6b;border:3px solid #D4AF37;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:15px;">
+          <span style="font-size:10px;color:#fff;font-weight:700;">SECT</span>
+          <span style="font-size:5px;color:#D4AF37;font-weight:700;">CERTIFIÉ</span>
+        </div>
+        ${sigLayout}
+        <div style="position:absolute;bottom:20px;left:40px;right:40px;text-align:center;padding-top:8px;border-top:1px solid #D4AF37;">
+          <p style="font-size:8px;color:#4A5568;margin:0;">Émis le ${certDate}  |  Code: ${cert.codeVerification}  |  Vérification: ${cert.verificationUrl || ''}</p>
         </div>
       `
 
+      tempDiv.appendChild(textOverlay)
       document.body.appendChild(tempDiv)
 
-      // Wait for the SVG image to load
-      await new Promise(r => setTimeout(r, 500))
+      // Small delay to ensure rendering
+      await new Promise(r => setTimeout(r, 200))
 
-      // Capture with html2canvas
+      // Step 4: Capture with html2canvas
       const canvas = await html2canvas(tempDiv, {
         scale: 3,
         useCORS: true,
-        allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
         width: w,
@@ -316,14 +347,14 @@ export function MesCertificatsPage() {
       // Remove temp div
       document.body.removeChild(tempDiv)
 
-      // Convert to PNG bytes
+      // Step 5: Convert canvas to PNG bytes
       const pngDataUrl = canvas.toDataURL('image/png')
       const base64 = pngDataUrl.split(',')[1]
       const binary = atob(base64)
       const bytes = new Uint8Array(binary.length)
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
 
-      // Create PDF with pdf-lib
+      // Step 6: Create PDF with pdf-lib
       const pdfDoc = await PDFDocument.create()
       const pw = isLandscape ? 841.89 : 595.28
       const ph = isLandscape ? 595.28 : 841.89
@@ -331,12 +362,13 @@ export function MesCertificatsPage() {
       const embedded = await pdfDoc.embedPng(bytes)
       page.drawImage(embedded, { x: 0, y: 0, width: pw, height: ph })
 
+      // Step 7: Download
       const pdfBytes = await pdfDoc.save()
       const blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `Certificat_${(cert.etudiantNom || user?.name || '').replace(/\s+/g, '_')}_${cert.codeVerification}.pdf`
+      link.download = `Certificat_${studentName.replace(/\s+/g, '_')}_${cert.codeVerification}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -345,7 +377,9 @@ export function MesCertificatsPage() {
       toast.success('Certificat HD téléchargé')
     } catch (err) {
       console.error('HD download error:', err)
-      toast.error('Échec du téléchargement HD')
+      toast.error('Échec du téléchargement HD', {
+        description: err instanceof Error ? err.message : 'Erreur inconnue',
+      })
     } finally {
       setHdDownloadingId(null)
     }
