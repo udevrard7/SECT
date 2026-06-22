@@ -250,6 +250,42 @@ function buildSharedData(data: CertificatPDFData) {
   }
 }
 
+// ═══ Shared InfoGrid (explicit rows — avoids react-pdf flexWrap bug) ═══
+
+interface InfoGridProps {
+  infos: { label: string; value: string; highlight: boolean }[]
+  columns: 2 | 3
+  cellStyle: any
+  cellHlStyle: any
+  contentStyle: any
+  labelStyle: any
+  valueStyle: any
+  rowStyle: any
+}
+
+function InfoGrid({ infos, columns, cellStyle, cellHlStyle, contentStyle, labelStyle, valueStyle, rowStyle }: InfoGridProps) {
+  const rows: typeof infos[] = []
+  for (let i = 0; i < infos.length; i += columns) {
+    rows.push(infos.slice(i, i + columns))
+  }
+  return (
+    <View style={{ width: '100%' }}>
+      {rows.map((row, ri) => (
+        <View key={ri} style={rowStyle}>
+          {row.map((info, ci) => (
+            <View key={ci} style={info.highlight ? cellHlStyle : cellStyle}>
+              <View style={contentStyle}>
+                <Text style={labelStyle}>{info.label}</Text>
+                <Text style={valueStyle}>{info.value}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  )
+}
+
 // ═══ Landscape (842×595) ═══
 
 const landscapeStyles = StyleSheet.create({
@@ -259,14 +295,15 @@ const landscapeStyles = StyleSheet.create({
   universityCity: { fontSize: 9, color: TEXT_GRAY, marginBottom: 4 },
   titleMain: { fontFamily: 'PlayfairDisplay', fontSize: 32, color: NAVY, letterSpacing: 4, marginVertical: 3 },
   titleSub: { fontFamily: 'PlayfairDisplay', fontSize: 20, color: TEXT_DARK, letterSpacing: 2, marginBottom: 6 },
-  intro: { fontSize: 12, color: TEXT_DARK, fontStyle: 'italic', marginTop: 6, marginBottom: 4 },
-  studentName: { fontFamily: 'GreatVibes', fontSize: 48, color: '#1A1A1A', textAlign: 'center', marginBottom: 2 },
-  studentInfo: { fontSize: 10, color: TEXT_GRAY, marginBottom: 6 },
-  ueIntro: { fontSize: 11, color: TEXT_DARK, marginBottom: 2 },
+  intro: { fontSize: 12, color: TEXT_DARK, fontStyle: 'italic', marginTop: 6, marginBottom: 8 },
+  studentName: { fontFamily: 'GreatVibes', fontSize: 40, color: '#1A1A1A', textAlign: 'center', marginVertical: 6, lineHeight: 1.1 },
+  studentInfo: { fontSize: 10, color: TEXT_GRAY, marginTop: 4, marginBottom: 8 },
+  ueIntro: { fontSize: 11, color: TEXT_DARK, marginTop: 4, marginBottom: 2 },
   ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 12 },
-  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10, width: '78%' },
-  infoCell: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
-  infoCellHl: { width: '30%', padding: 10, marginBottom: 6, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
+  infoGrid: { width: '82%', marginBottom: 10 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, width: '100%' },
+  infoCell: { flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
+  infoCellHl: { flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
   cellContent: { alignItems: 'center' },
   label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
   value: { fontSize: 13, color: '#0D1B2A', fontWeight: 'bold', textAlign: 'center' },
@@ -276,7 +313,7 @@ const landscapeStyles = StyleSheet.create({
   sigSpace: { height: 45, borderBottom: `1pt solid ${SIG_LINE}`, width: '100%', marginBottom: 6 },
   sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
   sigName: { fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
-  footer: { marginTop: 10, paddingTop: 6, borderTop: `1pt solid ${GOLD}`, textAlign: 'center' },
+  footer: { marginTop: 'auto', paddingTop: 6, borderTop: `1pt solid ${GOLD}`, textAlign: 'center', width: '100%' },
   footerText: { fontSize: 8, color: TEXT_FOOTER, textAlign: 'center' },
 })
 
@@ -300,14 +337,16 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
           <Text style={landscapeStyles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
           <Text style={landscapeStyles.ueName}>{data.ueNom}</Text>
           <View style={landscapeStyles.infoGrid}>
-            {s.infos.map((info, i) => (
-              <View key={i} style={info.highlight ? landscapeStyles.infoCellHl : landscapeStyles.infoCell}>
-                <View style={landscapeStyles.cellContent}>
-                  <Text style={landscapeStyles.label}>{info.label}</Text>
-                  <Text style={landscapeStyles.value}>{info.value}</Text>
-                </View>
-              </View>
-            ))}
+            <InfoGrid
+              infos={s.infos}
+              columns={3}
+              cellStyle={landscapeStyles.infoCell}
+              cellHlStyle={landscapeStyles.infoCellHl}
+              contentStyle={landscapeStyles.cellContent}
+              labelStyle={landscapeStyles.label}
+              valueStyle={landscapeStyles.value}
+              rowStyle={landscapeStyles.infoRow}
+            />
           </View>
           <View style={landscapeStyles.sigRow}>
             <View style={landscapeStyles.sigCol}>
@@ -341,14 +380,15 @@ const portraitStyles = StyleSheet.create({
   universityCity: { fontSize: 9, color: TEXT_GRAY, marginBottom: 6 },
   titleMain: { fontFamily: 'PlayfairDisplay', fontSize: 30, color: NAVY, letterSpacing: 4, marginVertical: 4 },
   titleSub: { fontFamily: 'PlayfairDisplay', fontSize: 20, color: TEXT_DARK, letterSpacing: 2, marginBottom: 8 },
-  intro: { fontSize: 12, color: TEXT_DARK, fontStyle: 'italic', marginTop: 8, marginBottom: 4 },
-  studentName: { fontFamily: 'GreatVibes', fontSize: 48, color: '#1A1A1A', textAlign: 'center', marginBottom: 2 },
-  studentInfo: { fontSize: 10, color: TEXT_GRAY, marginBottom: 8 },
-  ueIntro: { fontSize: 11, color: TEXT_DARK, marginBottom: 2 },
+  intro: { fontSize: 12, color: TEXT_DARK, fontStyle: 'italic', marginTop: 8, marginBottom: 8 },
+  studentName: { fontFamily: 'GreatVibes', fontSize: 38, color: '#1A1A1A', textAlign: 'center', marginVertical: 6, lineHeight: 1.1 },
+  studentInfo: { fontSize: 10, color: TEXT_GRAY, marginTop: 4, marginBottom: 8 },
+  ueIntro: { fontSize: 11, color: TEXT_DARK, marginTop: 4, marginBottom: 2 },
   ueName: { fontFamily: 'PlayfairDisplay', fontSize: 24, color: GOLD, fontWeight: 'bold', marginBottom: 14 },
-  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 10, marginBottom: 14, width: '85%' },
-  infoCell: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
-  infoCellHl: { width: '47%', padding: 10, marginBottom: 8, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
+  infoGrid: { width: '88%', marginBottom: 14 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, width: '100%' },
+  infoCell: { flex: 1, marginHorizontal: 4, padding: 10, borderRadius: 4, backgroundColor: CELL_BG, borderWidth: 0.5, borderColor: '#E2E8F0', borderStyle: 'solid' },
+  infoCellHl: { flex: 1, marginHorizontal: 4, padding: 10, borderRadius: 4, backgroundColor: GOLD_LIGHT, borderWidth: 1, borderColor: GOLD_BORDER, borderStyle: 'solid' },
   cellContent: { alignItems: 'center' },
   label: { fontSize: 7, color: TEXT_GRAY, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
   value: { fontSize: 13, color: '#0D1B2A', fontWeight: 'bold', textAlign: 'center' },
@@ -358,7 +398,7 @@ const portraitStyles = StyleSheet.create({
   sigSpace: { height: 45, borderBottom: `1pt solid ${SIG_LINE}`, width: '100%', marginBottom: 6 },
   sigLabel: { fontSize: 9, color: TEXT_GRAY, textAlign: 'center' },
   sigName: { fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginTop: 1 },
-  footer: { marginTop: 16, paddingTop: 8, borderTop: `1pt solid ${GOLD}`, textAlign: 'center' },
+  footer: { marginTop: 'auto', paddingTop: 6, borderTop: `1pt solid ${GOLD}`, textAlign: 'center', width: '100%' },
   footerText: { fontSize: 8, color: TEXT_FOOTER, textAlign: 'center' },
 })
 
@@ -382,14 +422,16 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
           <Text style={portraitStyles.ueIntro}>a validé avec succès l&apos;unité d&apos;enseignement</Text>
           <Text style={portraitStyles.ueName}>{data.ueNom}</Text>
           <View style={portraitStyles.infoGrid}>
-            {s.infos.map((info, i) => (
-              <View key={i} style={info.highlight ? portraitStyles.infoCellHl : portraitStyles.infoCell}>
-                <View style={portraitStyles.cellContent}>
-                  <Text style={portraitStyles.label}>{info.label}</Text>
-                  <Text style={portraitStyles.value}>{info.value}</Text>
-                </View>
-              </View>
-            ))}
+            <InfoGrid
+              infos={s.infos}
+              columns={2}
+              cellStyle={portraitStyles.infoCell}
+              cellHlStyle={portraitStyles.infoCellHl}
+              contentStyle={portraitStyles.cellContent}
+              labelStyle={portraitStyles.label}
+              valueStyle={portraitStyles.value}
+              rowStyle={portraitStyles.infoRow}
+            />
           </View>
           <View style={portraitStyles.sigContainer}>
             <View style={portraitStyles.sigBlock}>
