@@ -1,24 +1,20 @@
 'use client'
 
 /**
- * MesCertificatsPage — Refonte 2026
+ * MesCertificatsPage — Version propre et simplifiée
  *
- * Design moderne, rapide et captivant :
- * - Hero compact avec dégradé navy + particules
- * - Stats inline (pas de cartes séparées — chargement plus rapide)
- * - Cartes certificats en glassmorphism avec bordure gradient au hover
- * - Toggle Paysage/Portrait global (pas par carte — moins de re-renders)
- * - Skeleton loading (pas de spinner bloquant)
- * - Lazy load du CertificateGenerator (code splitting)
- * - Tableau de progression compact
+ * Un seul système de génération PDF : @react-pdf/renderer (serveur)
+ * - Texte vectoriel (sélectionnable, net à l'impression)
+ * - Polices bundled (Great Vibes, Playfair Display, Inter)
+ * - Paysage + Portrait via toggle
+ * - Chargement rapide (skeleton, Promise.all)
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Award, Shield, FileText, CheckCircle2, XCircle, Clock,
-  Loader2, ScrollText, AlertCircle, TrendingUp, Trophy, Medal, Sparkles,
-  ChevronRight,
+  Loader2, ScrollText, AlertCircle, TrendingUp, Trophy, Medal,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,16 +22,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-
-// Lazy load heavy libs only when HD download is clicked
-let html2canvasMod: typeof import('html2canvas')['default'] | null = null
-let pdfLibMod: typeof import('pdf-lib') | null = null
-
-async function loadLibs() {
-  if (!html2canvasMod) html2canvasMod = (await import('html2canvas')).default
-  if (!pdfLibMod) pdfLibMod = await import('pdf-lib')
-  return { html2canvas: html2canvasMod, PDFDocument: pdfLibMod.PDFDocument }
-}
 
 // ─── Types ───
 
@@ -78,26 +64,20 @@ const TYPE_META: Record<CertificatType, {
   bar: string
 }> = {
   EXPERT: {
-    label: 'Expert',
-    icon: Trophy,
-    ring: 'ring-amber-400/40',
-    text: 'text-amber-600 dark:text-amber-400',
+    label: 'Expert', icon: Trophy,
+    ring: 'ring-amber-400/40', text: 'text-amber-600 dark:text-amber-400',
     badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/30',
     bar: 'from-amber-400 to-orange-500',
   },
   AVANCE: {
-    label: 'Avancé',
-    icon: Medal,
-    ring: 'ring-blue-400/40',
-    text: 'text-blue-600 dark:text-blue-400',
+    label: 'Avancé', icon: Medal,
+    ring: 'ring-blue-400/40', text: 'text-blue-600 dark:text-blue-400',
     badge: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-400/30',
     bar: 'from-blue-400 to-indigo-500',
   },
   STANDARD: {
-    label: 'Standard',
-    icon: Award,
-    ring: 'ring-emerald-400/40',
-    text: 'text-emerald-600 dark:text-emerald-400',
+    label: 'Standard', icon: Award,
+    ring: 'ring-emerald-400/40', text: 'text-emerald-600 dark:text-emerald-400',
     badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400/30',
     bar: 'from-emerald-400 to-teal-500',
   },
@@ -135,7 +115,6 @@ export function MesCertificatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
-  const [hdDownloadingId, setHdDownloadingId] = useState<string | null>(null)
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape')
   const [activeTab, setActiveTab] = useState('certificats')
 
@@ -219,7 +198,7 @@ export function MesCertificatsPage() {
     standard: certificats.filter((c) => c.type === 'STANDARD').length,
   }
 
-  // ─── Download (react-pdf server) ───
+  // ─── Download (react-pdf serveur — seul système) ───
 
   const handleDownload = async (id: string) => {
     setDownloadingId(id)
@@ -229,159 +208,11 @@ export function MesCertificatsPage() {
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       window.open(url)
-      toast.success(`Téléchargé (${orientation === 'landscape' ? 'Paysage' : 'Portrait'})`)
+      toast.success(`Certificat téléchargé (${orientation === 'landscape' ? 'Paysage' : 'Portrait'})`)
     } catch {
       toast.error('Échec du téléchargement')
     } finally {
       setDownloadingId(null)
-    }
-  }
-
-  // ─── Download HD (pdf-lib + html2canvas, NO modal) ───
-
-  const handleDownloadHD = async (cert: Certificat) => {
-    setHdDownloadingId(cert.id)
-    try {
-      const { html2canvas, PDFDocument } = await loadLibs()
-
-      const isLandscape = orientation === 'landscape'
-      const w = isLandscape ? 1122 : 793
-      const h = isLandscape ? 793 : 1122
-
-      // Step 1: Fetch the SVG as text and convert to data URI
-      // (html2canvas can't load <img src="*.svg"> from a different origin
-      //  reliably, so we inline it as a background-image data URI)
-      const svgRes = await fetch('/certificate-bg-landscape.svg')
-      const svgText = await svgRes.text()
-      const svgDataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`
-
-      // Step 2: Build the temp div with background-image (not <img>)
-      const tempDiv = document.createElement('div')
-      tempDiv.style.cssText = `
-        position:fixed;left:0;top:0;width:${w}px;height:${h}px;z-index:9999;
-        background:#fff url('${svgDataUri}') no-repeat center/cover;
-        overflow:hidden;
-      `
-
-      // Step 3: Build text overlay as a child div
-      const textOverlay = document.createElement('div')
-      textOverlay.style.cssText = `
-        position:relative;z-index:2;width:100%;height:100%;
-        display:flex;flex-direction:column;align-items:center;justify-content:center;
-        padding:${isLandscape ? '60px 100px' : '70px 70px'};box-sizing:border-box;
-        font-family:Inter,Arial,sans-serif;
-      `
-
-      const studentName = cert.etudiantNom || user?.name || ''
-      const subtitle = cert.type === 'EXPERT' ? 'Niveau Expert' : cert.type === 'AVANCE' ? 'Niveau Avancé' : 'Niveau Standard'
-      const certDate = new Date(cert.dateEmission).toLocaleDateString('fr-FR')
-
-      // Build inner HTML for text overlay
-      const gridCols = isLandscape ? 3 : 2
-      const gridWidth = isLandscape ? '70%' : '85%'
-      const infos = [
-        { l: 'CODE UE', v: cert.ueCode, h: false },
-        { l: 'FILIÈRE', v: user?.filiere?.nom || '', h: false },
-        { l: 'NOTE', v: cert.note.toFixed(2).replace(/[.,]00$/, '') + '/20', h: true },
-        { l: 'MENTION', v: cert.mention || '—', h: true },
-        { l: 'SESSION', v: 'Normale', h: false },
-        { l: 'ANNÉE', v: '—', h: false },
-      ]
-      const gridHtml = infos.map(c =>
-        `<div style="text-align:center;padding:8px;border-radius:4px;background:${c.h ? '#FFF8E1' : '#F7FAFC'};${c.h ? 'border:1px solid #E6C84E;' : ''}">
-          <p style="font-size:8px;color:#7F8C8D;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin:0 0 3px 0;">${c.l}</p>
-          <p style="font-size:12px;color:#1a3a6b;font-weight:700;margin:0;">${c.v}</p>
-        </div>`
-      ).join('')
-
-      const sigLayout = isLandscape
-        ? `<div style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding:0 40px;">
-            <div style="text-align:center;width:30%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Signature de l'enseignant</p></div>
-            <div style="text-align:center;width:30%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Le Responsable pédagogique</p></div>
-          </div>`
-        : `<div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:20px;">
-            <div style="text-align:center;width:60%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Signature de l'enseignant</p></div>
-            <div style="text-align:center;width:60%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Le Responsable pédagogique</p></div>
-          </div>`
-
-      textOverlay.innerHTML = `
-        <p style="font-size:11px;color:#D4AF37;letter-spacing:3px;font-weight:600;margin:0 0 2px 0;">${(user?.etablissement?.nom || 'ÉTABLISSEMENT').toUpperCase()}</p>
-        <h1 style="font-family:Georgia,serif;font-size:${isLandscape ? 38 : 36}px;color:#D4AF37;letter-spacing:4px;margin:4px 0 2px 0;font-weight:700;">CERTIFICAT DE RÉUSSITE</h1>
-        <p style="font-family:Georgia,serif;font-size:22px;color:#2C3E50;letter-spacing:2px;margin:0 0 10px 0;">${subtitle}</p>
-        <div style="display:flex;gap:12px;margin-bottom:12px;">
-          <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
-          <div style="width:10px;height:10px;background:#1a3a6b;transform:rotate(45deg);"></div>
-          <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
-        </div>
-        <p style="font-size:13px;color:#2C3E50;font-style:italic;margin:0 0 6px 0;">Nous certifions par la présente que</p>
-        <p style="font-family:'Brush Script MT',cursive;font-size:${isLandscape ? 52 : 48}px;color:#1A1A1A;margin:0 0 4px 0;line-height:1.2;">${studentName}</p>
-        <p style="font-size:12px;color:#2C3E50;margin:0 0 4px 0;">a validé avec succès l'unité d'enseignement</p>
-        <p style="font-family:Georgia,serif;font-size:${isLandscape ? 28 : 26}px;color:#D4AF37;font-weight:700;margin:0 0 15px 0;">${cert.ueNom}</p>
-        <div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:8px;width:${gridWidth};margin-bottom:15px;">${gridHtml}</div>
-        <div style="width:60px;height:60px;border-radius:50%;background:#1a3a6b;border:3px solid #D4AF37;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:15px;">
-          <span style="font-size:10px;color:#fff;font-weight:700;">SECT</span>
-          <span style="font-size:5px;color:#D4AF37;font-weight:700;">CERTIFIÉ</span>
-        </div>
-        ${sigLayout}
-        <div style="position:absolute;bottom:20px;left:40px;right:40px;text-align:center;padding-top:8px;border-top:1px solid #D4AF37;">
-          <p style="font-size:8px;color:#4A5568;margin:0;">Émis le ${certDate}  |  Code: ${cert.codeVerification}  |  Vérification: ${cert.verificationUrl || ''}</p>
-        </div>
-      `
-
-      tempDiv.appendChild(textOverlay)
-      document.body.appendChild(tempDiv)
-
-      // Small delay to ensure rendering
-      await new Promise(r => setTimeout(r, 200))
-
-      // Step 4: Capture with html2canvas
-      const canvas = await html2canvas(tempDiv, {
-        scale: 3,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        width: w,
-        height: h,
-      })
-
-      // Remove temp div
-      document.body.removeChild(tempDiv)
-
-      // Step 5: Convert canvas to PNG bytes
-      const pngDataUrl = canvas.toDataURL('image/png')
-      const base64 = pngDataUrl.split(',')[1]
-      const binary = atob(base64)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-
-      // Step 6: Create PDF with pdf-lib
-      const pdfDoc = await PDFDocument.create()
-      const pw = isLandscape ? 841.89 : 595.28
-      const ph = isLandscape ? 595.28 : 841.89
-      const page = pdfDoc.addPage([pw, ph])
-      const embedded = await pdfDoc.embedPng(bytes)
-      page.drawImage(embedded, { x: 0, y: 0, width: pw, height: ph })
-
-      // Step 7: Download
-      const pdfBytes = await pdfDoc.save()
-      const blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `Certificat_${studentName.replace(/\s+/g, '_')}_${cert.codeVerification}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      toast.success('Certificat HD téléchargé')
-    } catch (err) {
-      console.error('HD download error:', err)
-      toast.error('Échec du téléchargement HD', {
-        description: err instanceof Error ? err.message : 'Erreur inconnue',
-      })
-    } finally {
-      setHdDownloadingId(null)
     }
   }
 
@@ -446,7 +277,7 @@ export function MesCertificatsPage() {
         </div>
       </div>
 
-      {/* ─── Global orientation toggle ─── */}
+      {/* ─── Global orientation toggle + Tabs ─── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
@@ -460,7 +291,6 @@ export function MesCertificatsPage() {
           </TabsList>
         </Tabs>
 
-        {/* Orientation selector (global, pas par carte) */}
         <div className="flex gap-1 bg-muted/50 rounded-lg p-0.5">
           <button
             onClick={() => setOrientation('landscape')}
@@ -530,7 +360,7 @@ export function MesCertificatsPage() {
                         <span className="text-xs text-muted-foreground">{cert.mention}</span>
                       </div>
 
-                      {/* Progress bar (gradient) */}
+                      {/* Progress bar */}
                       <div className="relative h-1.5 rounded-full bg-muted overflow-hidden mb-3">
                         <div
                           className={`absolute inset-y-0 left-0 rounded-full bg-gradient-to-r ${meta.bar}`}
@@ -543,7 +373,7 @@ export function MesCertificatsPage() {
                         {new Date(cert.dateEmission).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>
 
-                      {/* Actions */}
+                      {/* Actions — un seul bouton de téléchargement */}
                       <div className="flex flex-col gap-1.5">
                         <Button
                           size="sm"
@@ -554,27 +384,15 @@ export function MesCertificatsPage() {
                           {downloadingId === cert.id
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             : <Download className="h-3.5 w-3.5" />}
-                          PDF {orientation === 'landscape' ? 'Paysage' : 'Portrait'}
+                          Télécharger PDF ({orientation === 'landscape' ? 'Paysage' : 'Portrait'})
                         </Button>
-
-                        <div className="flex gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="flex-1 gap-1 text-xs"
-                            onClick={() => handleDownloadHD(cert)}
-                            disabled={hdDownloadingId === cert.id}
-                          >
-                            {hdDownloadingId === cert.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} HD
+                        {cert.verificationUrl && (
+                          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" asChild>
+                            <a href={cert.verificationUrl} target="_blank" rel="noopener noreferrer">
+                              <Shield className="h-3.5 w-3.5" /> Vérifier en ligne
+                            </a>
                           </Button>
-                          {cert.verificationUrl && (
-                            <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" asChild>
-                              <a href={cert.verificationUrl} target="_blank" rel="noopener noreferrer">
-                                <Shield className="h-3 w-3" /> Vérifier
-                              </a>
-                            </Button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   </motion.div>
