@@ -67,6 +67,8 @@ async function _GET(
               titre: true,
               description: true,
               duree: true,
+              noteTotal: true,
+              dateFin: true,
               contenu: true,
               enseignant: { select: { name: true } },
               questions: {

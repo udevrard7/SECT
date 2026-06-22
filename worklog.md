@@ -270,3 +270,95 @@ Vérification :
 - /login → HTTP 200
 - / → HTTP 200
 - dev.log : aucune erreur de compilation
+
+---
+Task ID: QA-2 (Cron review — refonte page "Mes Résultats" étudiant)
+Agent: Z.ai (tuteur principal — cron review round)
+Task: Évaluation QA du projet + refonte de la page "Mes Résultats" côté étudiant (symétrique à la refonte enseignant)
+
+Work Log:
+- QA initiale : serveur dev stable (PID actif, HTTP 200 sur / et /login), working tree propre (dernier commit = refonte enseignant), dev.log sans erreur de compilation
+- Évaluation des candidats pour cette phase via sous-agent Explore (5 candidats analysés : mes-resultats étudiant, dashboard enseignant, dashboard étudiant, correction, login)
+- Décision : Candidate A (mes-resultats étudiant) — bug critique identique à celui corrigé chez l'enseignant (échelle /20 codée en dur), feature gap 9/10, réutilisation 60-70% de l'infra existante
+- Lecture complète de l'ancienne page (853 lignes) : 4 helpers /20 hardcodés (getScoreColor, getScoreBadgeClasses, getProgressColor, getProgressBg), ~100 lignes dupliquées entre carte et dialog, pas de TanStack Query, pas d'error UI, pas de refresh
+- Préservation de la logique Scénario A/B (score partiel pour questions auto-gradables en attente de correction manuelle) — c'est la partie réfléchie de l'ancienne page
+
+Backend :
+- Fix : ajout de noteTotal + dateFin au select epreuve de la branche etudiantId dans /api/resultats/route.ts (le frontend peut maintenant normaliser correctement)
+- Nouvel endpoint /api/resultats/etudiant-overview/route.ts : analytics cross-exam étudiant (KPIs globaux, évolution 12 mois, performance par type de question, distribution, résultats récents, tendance de progression)
+  * Auth withAuth(['ETUDIANT'])
+  * Normalisation /20 via noteTotal
+  * Tendance = comparaison 3 dernières vs 3 précédentes épreuves
+  * Performance par type agrégée depuis reponses.score / eq.bareme
+
+Frontend (fondation étendue) :
+- src/types/resultats.ts : ajout des types StudentSession, EpreuveQuestionInfo, ReponseInfo, StudentSessionResultat, EtudiantOverviewResponse
+- src/hooks/use-resultats.ts : ajout de useMesResultats (cache 1 min) et useEtudiantOverview (cache 2 min)
+
+Frontend (composants partagés) :
+- src/components/mes-resultats/score-display.tsx : composant unifié ScoreDisplay avec 3 variants (card/compact/hero)
+  * Gère Scénario A/B (noteTotal-aware via normalizeTo20, getScoreColor, getScoreBg, getBarColor)
+  * variant hero : score circulaire SVG + badge équivalent /20
+  * variant card : score + barre de progression colorée
+  * variant compact : pour listes courtes
+  * Déduplique ~100 lignes de logique entre carte et dialog
+- src/components/mes-resultats/mon-resultat-dialog.tsx : dialog refondu (ScoreDisplay hero + synthèse 3 KPIs + détail par question avec barres de progression, note IA, commentaire enseignant)
+- src/components/mes-resultats/mes-resultats-skeletons.tsx : MesResultatsSkeleton + MesEpreuvesSkeleton
+
+Frontend (vues) :
+- src/components/mes-resultats/etudiant-overview-tab.tsx : vue d'ensemble (4 KPIs + bannière tendance + évolution AreaChart + distribution + performance par type + résultats récents)
+- src/components/mes-resultats/mes-epreuves-tab.tsx : liste filtrable (recherche + filtre statut + tri date/score/titre)
+- src/components/passation/mes-resultats-page.tsx : page principale refondue (3 onglets : Vue d'ensemble | Mes épreuves | Évolution + badges compteurs + refresh global + états skeleton/erreur/vide)
+
+Bugs corrigés (côté étudiant) :
+1. Échelle /20 codée en dur dans getScoreColor/getScoreBadgeClasses/getProgressColor/getProgressBg → maintenant noteTotal-aware via les helpers partagés
+2. ~100 lignes dupliquées entre carte et dialog → extraites dans ScoreDisplay
+3. Pas de TanStack Query → useMesResultats + useEtudiantOverview (cache, dedup, refetch auto)
+4. Pas d'error UI → états d'erreur avec bouton retry sur chaque onglet
+5. Pas de refresh → bouton refresh global + invalidation
+6. Pas de filtres/recherche/tri → barre de filtres complète + tri 3 champs
+7. Pas de vue d'ensemble cross-exam → onglet dédié avec évolution + distribution + perf par type
+8. Pas de suivi de progression → bannière tendance (3 derniers vs 3 précédents)
+9. IIFE inline illisible dans le dialog → extrait dans useMemo propre
+
+Nouvelles fonctionnalités :
+- 3 onglets (Vue d'ensemble | Mes épreuves | Évolution)
+- Score circulaire SVG dans le dialog (variant hero)
+- Synthèse 3 KPIs (correctes/incorrectes/en attente) dans le dialog
+- Barres de progression par question dans le dialog
+- Note IA affichée quand disponible
+- Bannière de tendance (progression/régression/stable)
+- Évolution 12 mois (AreaChart)
+- Distribution des notes (histogramme)
+- Performance par type de question (barres horizontales)
+- Résultats récents (5 derniers avec icône score colorée)
+- Filtres : recherche texte + statut
+- Tri : date / score / titre (asc/desc)
+- Badges compteurs sur les onglets (total + en attente)
+- Skeletons de chargement dédiés
+- États d'erreur avec retry
+
+Vérification :
+- bun run lint → 0 erreur
+- npx tsc --noEmit → 0 erreur dans les nouveaux fichiers
+- /mes-resultats → HTTP 307 (redirect login, normal sans session)
+- /api/resultats/etudiant-overview → HTTP 401 (withAuth actif, normal)
+- / → HTTP 200, /login → HTTP 200
+- dev.log : aucune erreur de compilation
+
+Stage Summary:
+- Fichiers créés (7) :
+  * src/app/api/resultats/etudiant-overview/route.ts
+  * src/components/mes-resultats/score-display.tsx
+  * src/components/mes-resultats/mon-resultat-dialog.tsx
+  * src/components/mes-resultats/mes-resultats-skeletons.tsx
+  * src/components/mes-resultats/etudiant-overview-tab.tsx
+  * src/components/mes-resultats/mes-epreuves-tab.tsx
+- Fichiers modifiés (3) :
+  * src/app/api/resultats/route.ts (noteTotal + dateFin dans select etudiantId)
+  * src/types/resultats.ts (types étudiant ajoutés)
+  * src/hooks/use-resultats.ts (hooks useMesResultats + useEtudiantOverview)
+- Fichiers refondus (1) :
+  * src/components/passation/mes-resultats-page.tsx (853 lignes → page modulaire 3 onglets)
+
+État du projet : STABLE. L'arc "expérience résultats" est maintenant complet et symétrique (enseignant + étudiant). L'infra réutilisable (types, utils, hooks, charts, KpiCard, skeletons) est validée par 2 consommateurs. Prochaines priorités recommandées : (1) dashboards (enseignant/étudiant) ont stale-closure bug + console.error + pas de TanStack Query, (2) page correction 2400 lignes = risque maintenance, (3) migration middleware→proxy Next.js 16.
