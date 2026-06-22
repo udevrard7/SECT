@@ -13,7 +13,7 @@
  * - Tableau de progression compact
  */
 
-import { useState, useEffect, useCallback, Suspense, lazy } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Award, Shield, FileText, CheckCircle2, XCircle, Clock,
@@ -26,12 +26,16 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
 
-// Lazy load the heavy CertificateGenerator (pdf-lib + html2canvas)
-const CertificateGenerator = lazy(() =>
-  import('./certificate-generator').then(m => ({ default: m.CertificateGenerator }))
-)
+// Lazy load heavy libs only when HD download is clicked
+let html2canvasMod: typeof import('html2canvas')['default'] | null = null
+let pdfLibMod: typeof import('pdf-lib') | null = null
+
+async function loadLibs() {
+  if (!html2canvasMod) html2canvasMod = (await import('html2canvas')).default
+  if (!pdfLibMod) pdfLibMod = await import('pdf-lib')
+  return { html2canvas: html2canvasMod, PDFDocument: pdfLibMod.PDFDocument }
+}
 
 // ─── Types ───
 
@@ -130,8 +134,8 @@ export function MesCertificatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [hdDownloadingId, setHdDownloadingId] = useState<string | null>(null)
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape')
-  const [hdCert, setHdCert] = useState<Certificat | null>(null)
   const [activeTab, setActiveTab] = useState('certificats')
 
   // ─── Fetch ───
@@ -213,7 +217,7 @@ export function MesCertificatsPage() {
     standard: certificats.filter((c) => c.type === 'STANDARD').length,
   }
 
-  // ─── Download ───
+  // ─── Download (react-pdf server) ───
 
   const handleDownload = async (id: string) => {
     setDownloadingId(id)
@@ -228,6 +232,120 @@ export function MesCertificatsPage() {
       toast.error('Échec du téléchargement')
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  // ─── Download HD (pdf-lib + html2canvas, NO modal) ───
+
+  const handleDownloadHD = async (cert: Certificat) => {
+    setHdDownloadingId(cert.id)
+    try {
+      const { html2canvas, PDFDocument } = await loadLibs()
+
+      // Build a temporary off-screen div with the certificate content
+      const isLandscape = orientation === 'landscape'
+      const w = isLandscape ? 1122 : 793
+      const h = isLandscape ? 793 : 1122
+
+      const tempDiv = document.createElement('div')
+      tempDiv.style.cssText = `position:fixed;left:0;top:0;width:${w}px;height:${h}px;z-index:-1;opacity:1;background:#fff;overflow:hidden;`
+
+      // SVG background
+      tempDiv.innerHTML = `
+        <img src="/certificate-bg-landscape.svg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />
+        <div style="position:relative;z-index:2;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${isLandscape ? '60px 100px' : '70px 70px'};box-sizing:border-box;font-family:Inter,sans-serif;">
+          <p style="font-size:11px;color:#D4AF37;letter-spacing:3px;font-weight:600;margin:0 0 2px 0;">${(user?.etablissement?.nom || 'ÉTABLISSEMENT').toUpperCase()}</p>
+          <h1 style="font-family:Georgia,serif;font-size:${isLandscape ? 38 : 36}px;color:#D4AF37;letter-spacing:4px;margin:4px 0 2px 0;font-weight:700;">CERTIFICAT DE RÉUSSITE</h1>
+          <p style="font-family:Georgia,serif;font-size:22px;color:#2C3E50;letter-spacing:2px;margin:0 0 10px 0;">${cert.type === 'EXPERT' ? 'Niveau Expert' : cert.type === 'AVANCE' ? 'Niveau Avancé' : 'Niveau Standard'}</p>
+          <div style="display:flex;gap:12px;margin-bottom:12px;">
+            <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
+            <div style="width:10px;height:10px;background:#1a3a6b;transform:rotate(45deg);"></div>
+            <div style="width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);"></div>
+          </div>
+          <p style="font-size:13px;color:#2C3E50;font-style:italic;margin:0 0 6px 0;">Nous certifions par la présente que</p>
+          <p style="font-family:'Brush Script MT',cursive;font-size:${isLandscape ? 52 : 48}px;color:#1A1A1A;margin:0 0 4px 0;line-height:1.2;">${cert.etudiantNom || user?.name || ''}</p>
+          <p style="font-size:12px;color:#2C3E50;margin:0 0 4px 0;">a validé avec succès l'unité d'enseignement</p>
+          <p style="font-family:Georgia,serif;font-size:${isLandscape ? 28 : 26}px;color:#D4AF37;font-weight:700;margin:0 0 15px 0;">${cert.ueNom}</p>
+          <div style="display:grid;grid-template-columns:repeat(${isLandscape ? 3 : 2},1fr);gap:8px;width:${isLandscape ? '70%' : '85%'};margin-bottom:15px;">
+            ${[
+              { l: 'CODE UE', v: cert.ueCode, h: false },
+              { l: 'FILIÈRE', v: user?.filiere?.nom || '', h: false },
+              { l: 'NOTE', v: cert.note.toFixed(2).replace(/[.,]00$/, '') + '/20', h: true },
+              { l: 'MENTION', v: cert.mention || '—', h: true },
+              { l: 'SESSION', v: 'Normale', h: false },
+              { l: 'ANNÉE', v: '—', h: false },
+            ].map(c => `<div style="text-align:center;padding:8px;border-radius:4px;background:${c.h ? '#FFF8E1' : '#F7FAFC'};${c.h ? 'border:1px solid #E6C84E;' : ''}"><p style="font-size:8px;color:#7F8C8D;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin:0 0 3px 0;">${c.l}</p><p style="font-size:12px;color:#1a3a6b;font-weight:700;margin:0;">${c.v}</p></div>`).join('')}
+          </div>
+          <div style="width:60px;height:60px;border-radius:50%;background:#1a3a6b;border:3px solid #D4AF37;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:15px;">
+            <span style="font-size:10px;color:#fff;font-weight:700;">SECT</span>
+            <span style="font-size:5px;color:#D4AF37;font-weight:700;">CERTIFIÉ</span>
+          </div>
+          ${isLandscape ? `
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;padding:0 40px;">
+            <div style="text-align:center;width:30%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Signature de l'enseignant</p></div>
+            <div style="text-align:center;width:30%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Le Responsable pédagogique</p></div>
+          </div>` : `
+          <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:20px;">
+            <div style="text-align:center;width:60%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Signature de l'enseignant</p></div>
+            <div style="text-align:center;width:60%;"><div style="height:40px;"></div><div style="border-bottom:1px solid #D4AF37;margin-bottom:4px;"></div><p style="font-size:9px;color:#7F8C8D;margin:0;">Le Responsable pédagogique</p></div>
+          </div>`}
+          <div style="position:absolute;bottom:20px;left:40px;right:40px;text-align:center;padding-top:8px;border-top:1px solid #D4AF37;">
+            <p style="font-size:8px;color:#4A5568;margin:0;">Émis le ${new Date(cert.dateEmission).toLocaleDateString('fr-FR')}  |  Code: ${cert.codeVerification}  |  Vérification: ${cert.verificationUrl || ''}</p>
+          </div>
+        </div>
+      `
+
+      document.body.appendChild(tempDiv)
+
+      // Wait for the SVG image to load
+      await new Promise(r => setTimeout(r, 500))
+
+      // Capture with html2canvas
+      const canvas = await html2canvas(tempDiv, {
+        scale: 3,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        width: w,
+        height: h,
+      })
+
+      // Remove temp div
+      document.body.removeChild(tempDiv)
+
+      // Convert to PNG bytes
+      const pngDataUrl = canvas.toDataURL('image/png')
+      const base64 = pngDataUrl.split(',')[1]
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+      // Create PDF with pdf-lib
+      const pdfDoc = await PDFDocument.create()
+      const pw = isLandscape ? 841.89 : 595.28
+      const ph = isLandscape ? 595.28 : 841.89
+      const page = pdfDoc.addPage([pw, ph])
+      const embedded = await pdfDoc.embedPng(bytes)
+      page.drawImage(embedded, { x: 0, y: 0, width: pw, height: ph })
+
+      const pdfBytes = await pdfDoc.save()
+      const blob = new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Certificat_${(cert.etudiantNom || user?.name || '').replace(/\s+/g, '_')}_${cert.codeVerification}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast.success('Certificat HD téléchargé')
+    } catch (err) {
+      console.error('HD download error:', err)
+      toast.error('Échec du téléchargement HD')
+    } finally {
+      setHdDownloadingId(null)
     }
   }
 
@@ -408,9 +526,10 @@ export function MesCertificatsPage() {
                             size="sm"
                             variant="secondary"
                             className="flex-1 gap-1 text-xs"
-                            onClick={() => setHdCert(cert)}
+                            onClick={() => handleDownloadHD(cert)}
+                            disabled={hdDownloadingId === cert.id}
                           >
-                            <Sparkles className="h-3 w-3" /> HD
+                            {hdDownloadingId === cert.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} HD
                           </Button>
                           {cert.verificationUrl && (
                             <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" asChild>
@@ -501,44 +620,6 @@ export function MesCertificatsPage() {
           )}
         </motion.div>
       )}
-
-      {/* ─── HD Dialog (lazy loaded) ─── */}
-      <Dialog open={!!hdCert} onOpenChange={(o) => !o && setHdCert(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto">
-          {hdCert && (
-            <Suspense fallback={
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-              </div>
-            }>
-              <CertificateGenerator
-                data={{
-                  codeVerification: hdCert.codeVerification,
-                  type: hdCert.type,
-                  intitule: hdCert.type === 'EXPERT' ? 'Expert' : hdCert.type === 'AVANCE' ? 'Avancé' : 'Standard',
-                  mention: hdCert.mention,
-                  noteFinale: hdCert.note,
-                  etablissementNom: user?.etablissement?.nom || 'Établissement',
-                  etablissementVille: null,
-                  etablissementPays: null,
-                  filiereNom: user?.filiere?.nom || '',
-                  ueCode: hdCert.ueCode,
-                  ueNom: hdCert.ueNom,
-                  etudiantNom: user?.name || '',
-                  etudiantMatricule: null,
-                  etudiantNiveau: null,
-                  sessionType: 'NORMALE',
-                  anneeAcademique: null,
-                  dateEmission: hdCert.dateEmission,
-                  verificationUrl: hdCert.verificationUrl || '',
-                  responsableNom: null,
-                }}
-                onClose={() => setHdCert(null)}
-              />
-            </Suspense>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
