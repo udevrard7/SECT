@@ -361,3 +361,237 @@
   outline: none;
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.5);
 }
+
+/* ════════════════════════════════════════════════════════════════
+   NEON GRADIENT FUTURISTIC THEME — Devoirs
+   Palette : cyan électrique + magenta + violet néon sur fond noir bleuté
+   Encapsulé dans .ng-theme pour ne pas impacter le reste de l'app
+   ════════════════════════════════════════════════════════════════ */
+
+@keyframes ng-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+@keyframes ng-gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes ng-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes ng-bar-grow {
+  from { width: 0; opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+@keyframes ng-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ng-grid-flow {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 40px; }
+}
+
+.ng-theme {
+  /* Palette néon futuriste */
+  --ng-cyan: 34 211 238;        /* cyan-400 */
+  --ng-cyan-bright: 103 232 249; /* cyan-300 */
+  --ng-magenta: 236 72 153;     /* pink-500 */
+  --ng-magenta-bright: 244 114 182; /* pink-400 */
+  --ng-violet: 167 139 250;     /* violet-400 */
+  --ng-blue: 59 130 246;        /* blue-500 */
+  --ng-emerald: 52 211 153;     /* emerald-400 */
+  --ng-amber: 251 191 36;       /* amber-400 */
+  --ng-rose: 251 113 133;       /* rose-400 */
+  position: relative;
+  isolation: isolate;
+  /* Fond sombre bleuté forcé (panneau autoporteur lisible en clair ET sombre) */
+  color: rgb(226 240 254); /* slate-100 */
+  background:
+    radial-gradient(900px 480px at 100% -6%, rgba(34, 211, 238, 0.16), transparent 55%),
+    radial-gradient(800px 440px at -6% 106%, rgba(236, 72, 153, 0.14), transparent 55%),
+    radial-gradient(700px 400px at 50% 50%, rgba(99, 102, 241, 0.06), transparent 60%),
+    linear-gradient(180deg, rgb(8 12 24) 0%, rgb(4 7 16) 100%);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  min-height: calc(100vh - 7rem);
+  box-shadow: 0 20px 60px -20px rgba(6, 78, 99, 0.45);
+}
+
+/* Grille de fond futuriste (lignes subtiles animées) */
+.ng-theme::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: ng-grid-flow 12s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+.ng-theme > * { position: relative; z-index: 1; }
+
+/* Glassmorphism card néon */
+.ng-card {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    rgba(34, 211, 238, 0.07) 0%,
+    rgba(236, 72, 153, 0.04) 100%
+  );
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 0.75rem;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.ng-card:hover {
+  border-color: rgba(103, 232, 249, 0.45);
+  box-shadow: 0 0 24px -8px rgba(34, 211, 238, 0.5);
+}
+
+/* KPI card avec gradient animé + glow */
+.ng-kpi {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(34, 211, 238, 0.12) 0%,
+    rgba(99, 102, 241, 0.18) 50%,
+    rgba(236, 72, 153, 0.12) 100%
+  );
+  background-size: 200% 200%;
+  animation: ng-gradient-x 8s ease infinite;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.ng-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 36px -10px rgba(34, 211, 238, 0.55);
+}
+.ng-kpi::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgb(103 232 249), rgb(244 114 182), transparent);
+  opacity: 0.7;
+}
+
+/* Glow néon pour badges & accents */
+.ng-glow-cyan { box-shadow: 0 0 14px -2px rgba(34, 211, 238, 0.7); }
+.ng-glow-magenta { box-shadow: 0 0 14px -2px rgba(236, 72, 153, 0.7); }
+.ng-glow-violet { box-shadow: 0 0 14px -2px rgba(167, 139, 250, 0.7); }
+.ng-glow-emerald { box-shadow: 0 0 14px -2px rgba(52, 211, 153, 0.7); }
+.ng-glow-amber { box-shadow: 0 0 14px -2px rgba(251, 191, 36, 0.7); }
+.ng-glow-rose { box-shadow: 0 0 14px -2px rgba(251, 113, 133, 0.7); }
+.ng-glow-blue { box-shadow: 0 0 14px -2px rgba(59, 130, 246, 0.7); }
+
+/* Texte gradient néon */
+.ng-text-gradient {
+  background: linear-gradient(90deg, rgb(103 232 249) 0%, rgb(244 114 182) 50%, rgb(167 139 250) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ng-gradient-x 6s ease infinite;
+}
+
+/* Bordure gradient animée */
+.ng-border-anim {
+  position: relative;
+  background-clip: padding-box;
+}
+.ng-border-anim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgba(34, 211, 238, 0.7), rgba(236, 72, 153, 0.3), rgba(167, 139, 250, 0.6), rgba(34, 211, 238, 0.7));
+  background-size: 300% 100%;
+  animation: ng-gradient-x 5s ease infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Indicateur live pulsant */
+.ng-live {
+  animation: ng-pulse 1.8s ease-in-out infinite;
+}
+
+/* Animation slide-up pour entrées de liste */
+.ng-slide-up {
+  animation: ng-slide-up 0.35s ease-out both;
+}
+
+/* Barre de progression néon */
+.ng-progress {
+  background: linear-gradient(90deg, rgb(34 211 238), rgb(167 139 250), rgb(236 72 153));
+  background-size: 200% 100%;
+  animation: ng-gradient-x 4s ease infinite;
+}
+
+/* Float animation pour icônes */
+.ng-float { animation: ng-float 3s ease-in-out infinite; }
+
+/* Skeleton néon */
+.ng-skeleton {
+  background: linear-gradient(90deg,
+    rgba(34, 211, 238, 0.07) 25%,
+    rgba(34, 211, 238, 0.16) 50%,
+    rgba(34, 211, 238, 0.07) 75%
+  );
+  background-size: 200% 100%;
+  animation: ng-gradient-x 1.5s linear infinite;
+}
+
+/* Scrollbar néon */
+.ng-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.ng-scroll::-webkit-scrollbar-track { background: rgba(34, 211, 238, 0.05); border-radius: 999px; }
+.ng-scroll::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.35);
+  border-radius: 999px;
+}
+.ng-scroll::-webkit-scrollbar-thumb:hover { background: rgba(236, 72, 153, 0.55); }
+
+/* Focus ring néon */
+.ng-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.6);
+}
+
+/* Bouton néon principal */
+.ng-btn-primary {
+  background: linear-gradient(90deg, rgb(34 211 238), rgb(236 72 153));
+  background-size: 200% 100%;
+  color: white;
+  border: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 16px -4px rgba(34, 211, 238, 0.6);
+}
+.ng-btn-primary:hover {
+  background-position: 100% 0;
+  box-shadow: 0 0 22px -2px rgba(236, 72, 153, 0.7);
+  transform: translateY(-1px);
+}
+.ng-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
