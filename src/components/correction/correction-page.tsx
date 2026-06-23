@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   PenTool,
@@ -77,7 +77,6 @@ import {
 } from '@/lib/coding-types'
 import type {
   CorrectionSession,
-  EpreuveOption,
   GradingMode,
   RubricCriterion,
 } from '@/types/correction'
@@ -95,6 +94,15 @@ import {
   isCodingAnswer,
 } from '@/lib/correction-utils'
 import { ScoreCircle } from '@/components/correction/score-circle'
+import {
+  useEpreuvesForCorrection,
+  useCorrectionSessions,
+  useAiGrade,
+  useSaveGrade,
+  useFinalizeSession,
+  useBatchAiGrade,
+  useBatchReturn,
+} from '@/hooks/use-correction'
 
 // ─── Main Component ───
 
@@ -103,12 +111,24 @@ export function CorrectionPage() {
   const mainContentRef = useRef<HTMLDivElement>(null)
 
   // ─── Panel state ───
-  const [epreuves, setEpreuves] = useState<EpreuveOption[]>([])
   const [selectedEpreuveId, setSelectedEpreuveId] = useState<string>('')
-  const [sessions, setSessions] = useState<CorrectionSession[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [isLoadingEpreuves, setIsLoadingEpreuves] = useState(true)
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false)
+
+  // ─── Data (TanStack Query) ───
+  const epreuvesQuery = useEpreuvesForCorrection(user?.id)
+  const epreuves = epreuvesQuery.data ?? []
+  const isLoadingEpreuves = epreuvesQuery.isLoading
+
+  const sessionsQuery = useCorrectionSessions(user?.id, selectedEpreuveId || undefined)
+  const sessions = sessionsQuery.data ?? []
+  const isLoadingSessions = sessionsQuery.isLoading
+
+  // ─── Mutations (TanStack Query) ───
+  const aiGradeMutation = useAiGrade()
+  const saveGradeMutation = useSaveGrade()
+  const finalizeMutation = useFinalizeSession()
+  const batchAiGradeMutation = useBatchAiGrade()
+  const batchReturnMutation = useBatchReturn()
 
   // ─── Grading state ───
   const [gradingMode, setGradingMode] = useState<GradingMode>('par-copie')
@@ -138,67 +158,10 @@ export function CorrectionPage() {
   const [expectedAnswerOpen, setExpectedAnswerOpen] = useState(true)
   const [aiSuggestionOpen, setAiSuggestionOpen] = useState(true)
 
-  // ─── Fetch epreuves ───
-  const fetchEpreuves = useCallback(async () => {
-    if (!user?.id) return
-    setIsLoadingEpreuves(true)
-    try {
-      const res = await fetch(`/api/epreuves?enseignantId=${user.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        const allEpreuves: EpreuveOption[] = data.epreuves ?? []
-        const filtered = allEpreuves.filter(
-          (e) => ['EN_COURS', 'TERMINEE', 'CLOTUREE'].includes(e.statut)
-        )
-        setEpreuves(filtered)
-      }
-    } catch {
-      // Erreur réseau — l'UI reste sur liste vide
-    } finally {
-      setIsLoadingEpreuves(false)
-    }
-  }, [user?.id])
-
+  // ─── Reset selected session quand on change d'épreuve ───
   useEffect(() => {
-    fetchEpreuves()
-  }, [fetchEpreuves])
-
-  // ─── Fetch sessions for selected epreuve ───
-  const fetchSessions = useCallback(async () => {
-    if (!user?.id || !selectedEpreuveId) return
-    setIsLoadingSessions(true)
-    try {
-      const res = await fetch(
-        `/api/correction?enseignantId=${user.id}&epreuveId=${selectedEpreuveId}`
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setSessions(data.sessions ?? [])
-      } else {
-        toast.error('Erreur de chargement', {
-          description: `Impossible de charger les copies (erreur ${res.status}).`,
-        })
-        setSessions([])
-      }
-    } catch {
-      toast.error('Erreur réseau', {
-        description: 'Impossible de contacter le serveur pour charger les copies.',
-      })
-      setSessions([])
-    } finally {
-      setIsLoadingSessions(false)
-    }
-  }, [user?.id, selectedEpreuveId])
-
-  useEffect(() => {
-    if (selectedEpreuveId) {
-      fetchSessions()
-      setSelectedSessionId(null)
-    } else {
-      setSessions([])
-      setSelectedSessionId(null)
-    }
-  }, [selectedEpreuveId, fetchSessions])
+    setSelectedSessionId(null)
+  }, [selectedEpreuveId])
 
   // ─── Selected session ───
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null
@@ -335,20 +298,7 @@ export function CorrectionPage() {
     if (!sid || !qid) return
     setIsAiLoading(true)
     try {
-      const res = await fetch(
-        `/api/correction/${sid}/ai-grade`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ questionId: qid }),
-        }
-      )
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de l\'évaluation IA')
-      }
-      const data = await res.json()
-      await fetchSessions()
+      const data = await aiGradeMutation.mutateAsync({ sessionId: sid, questionId: qid })
       if (!sessionId && data.noteIA !== undefined && data.noteIA !== null) {
         setNoteFinale(String(data.noteIA))
       }
@@ -374,23 +324,15 @@ export function CorrectionPage() {
       setCommentaire(currentReponse.justificationIA)
     }
     try {
-      const res = await fetch(`/api/correction/${selectedSessionId}/ai-grade`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId: currentQuestion.questionId,
-          score: currentReponse.noteIA,
-          commentaire: currentReponse.justificationIA || null,
-        }),
+      await saveGradeMutation.mutateAsync({
+        sessionId: selectedSessionId,
+        questionId: currentQuestion.questionId,
+        score: currentReponse.noteIA,
+        commentaire: currentReponse.justificationIA || null,
       })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de la sauvegarde')
-      }
       toast.success('Suggestion IA appliquée', {
         description: `Note ${currentReponse.noteIA}/${currentQuestion.bareme} enregistrée.`,
       })
-      await fetchSessions()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'appliquer la suggestion.',
@@ -428,23 +370,15 @@ export function CorrectionPage() {
       setIsSaving(true)
     }
     try {
-      const res = await fetch(`/api/correction/${sid}/ai-grade`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId: qid,
-          score: finalScore,
-          commentaire: finalComment,
-        }),
+      await saveGradeMutation.mutateAsync({
+        sessionId: sid,
+        questionId: qid,
+        score: finalScore,
+        commentaire: finalComment,
       })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de la sauvegarde')
-      }
       toast.success('Note sauvegardée', {
         description: 'La correction a été enregistrée.',
       })
-      await fetchSessions()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de sauvegarder.',
@@ -464,19 +398,10 @@ export function CorrectionPage() {
     if (!sid) return
     setIsFinalizing(true)
     try {
-      const res = await fetch(`/api/correction/${sid}/ai-grade`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ finalizeAll: true }),
-      })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de la finalisation')
-      }
+      await finalizeMutation.mutateAsync({ sessionId: sid })
       toast.success('Correction finalisée et copie rendue', {
         description: 'La note finale a été calculée et la copie a été rendue à l\'étudiant.',
       })
-      await fetchSessions()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de finaliser la correction.',
@@ -491,22 +416,10 @@ export function CorrectionPage() {
     if (!selectedSessionId) return
     setIsBatchAiLoading(true)
     try {
-      const res = await fetch(
-        `/api/correction/${selectedSessionId}/ai-grade-batch`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de l\'évaluation IA')
-      }
-      const data = await res.json()
+      const data = await batchAiGradeMutation.mutateAsync({ sessionId: selectedSessionId })
       toast.success('Évaluation IA terminée', {
         description: data.message || `${data.graded} questions évaluées par l'IA`,
       })
-      await fetchSessions()
     } catch (err) {
       toast.error('Erreur IA', {
         description: err instanceof Error ? err.message : 'Impossible d\'évaluer avec l\'IA.',
@@ -521,20 +434,10 @@ export function CorrectionPage() {
     if (!selectedEpreuveId) return
     setIsBatchReturning(true)
     try {
-      const res = await fetch('/api/correction/retourner-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ epreuveId: selectedEpreuveId }),
-      })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors du retour')
-      }
-      const data = await res.json()
+      const data = await batchReturnMutation.mutateAsync({ epreuveId: selectedEpreuveId })
       toast.success('Copies retournées', {
         description: data.message || `${data.returned} copies retournées`,
       })
-      await fetchSessions()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de retourner les copies.',
@@ -589,23 +492,15 @@ export function CorrectionPage() {
     }
     setSavingSessionId(sessionId)
     try {
-      const res = await fetch(`/api/correction/${sessionId}/ai-grade`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId: horizontalCurrentQuestion.questionId,
-          score: finalScore,
-          commentaire: comment,
-        }),
+      await saveGradeMutation.mutateAsync({
+        sessionId,
+        questionId: horizontalCurrentQuestion.questionId,
+        score: finalScore,
+        commentaire: comment,
       })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Erreur lors de la sauvegarde')
-      }
       toast.success('Note sauvegardée', {
         description: 'La correction a été enregistrée.',
       })
-      await fetchSessions()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de sauvegarder.',
@@ -1983,10 +1878,9 @@ export function CorrectionPage() {
                   const rep = getReponseForSession(session, horizontalCurrentQuestion.questionId)
                   if (rep?.score === null || rep?.score === undefined) {
                     try {
-                      await fetch(`/api/correction/${session.id}/ai-grade`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ questionId: horizontalCurrentQuestion.questionId }),
+                      await aiGradeMutation.mutateAsync({
+                        sessionId: session.id,
+                        questionId: horizontalCurrentQuestion.questionId,
                       })
                       graded++
                     } catch {
@@ -1994,7 +1888,6 @@ export function CorrectionPage() {
                     }
                   }
                 }
-                await fetchSessions()
                 setIsBatchAiLoading(false)
                 toast.success('Évaluation IA terminée', {
                   description: `${graded} copies évaluées par l'IA pour cette question.`,
