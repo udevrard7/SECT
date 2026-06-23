@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import {
+  computeRiskScore,
+  riskLevelFromScore,
+  type LogEvent,
+  type SurveillanceSession,
+  type SeverityLevel,
+} from '@/lib/surveillance-types'
 
 /** Safe JSON.parse that returns fallback instead of throwing */
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
@@ -11,24 +19,89 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
+const FRAUD_TYPES = [
+  'FULLSCREEN_EXIT',
+  'TAB_SWITCH',
+  'COPY_ATTEMPT',
+  'PASTE_ATTEMPT',
+  'DEVTOOLS_ATTEMPT',
+  'PRINTSCREEN_ATTEMPT',
+  'PRINT_ATTEMPT',
+  'ALT_TAB',
+  'INACTIVITY',
+]
+
+const SUBMISSION_TYPES = ['AUTO_SUBMIT', 'MANUAL_SUBMIT', 'FORCE_SUBMIT']
+
+/**
+ * Vérifie qu'une session appartient bien à une épreuve créée par l'enseignant.
+ * Utilisé pour le scoping RBAC (anti-accès cross-tenant).
+ */
+async function sessionBelongsToTeacher(
+  sessionId: string,
+  enseignantId: string
+): Promise<boolean> {
+  const session = await db.sessionPassation.findUnique({
+    where: { id: sessionId },
+    select: { epreuve: { select: { enseignantId: true, deletedAt: true } } },
+  })
+  return (
+    !!session &&
+    session.epreuve.enseignantId === enseignantId &&
+    session.epreuve.deletedAt === null
+  )
+}
+
 // GET /api/surveillance — Fetch proctoring events for a teacher's exams
-export async function GET(request: NextRequest) {
+// Sécurisé via withAuth (résout le bug critique #1 : endpoint sans auth)
+async function _GET(
+  request: NextRequest,
+  context: { params: Record<string, string>; user: AuthenticatedUser }
+) {
   try {
+    const { user } = context
+    const enseignantId = user.id
+
     const { searchParams } = new URL(request.url)
-    const enseignantId = searchParams.get('enseignantId')
-    const epreuveId = searchParams.get('epreuveId')
+    const epreuveId = searchParams.get('epreuveId') || ''
+    // Nouveaux filtres
+    const severity = (searchParams.get('severity') || '') as SeverityLevel | ''
+    const typeFilter = searchParams.get('type') || ''
+    const search = searchParams.get('search') || ''
+    const dateFrom = searchParams.get('dateFrom') || ''
+    const dateTo = searchParams.get('dateTo') || ''
 
-    if (!enseignantId) {
-      return NextResponse.json({ error: 'Enseignant requis' }, { status: 400 })
-    }
-
-    // Find all sessions for this teacher's exams that have been started
+    // Construction du where avec filtres
     const where: Record<string, unknown> = {
       epreuve: { enseignantId, deletedAt: null },
-      // Only show sessions that have been started (not NON_COMMENCEE)
-      statut: { in: ['EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'] },
+      statut: {
+        in: ['EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'],
+      },
     }
     if (epreuveId) where.epreuveId = epreuveId
+
+    // Filtre par plage de dates (sur dateDebut)
+    if (dateFrom || dateTo) {
+      const dateFilter: Record<string, unknown> = {}
+      if (dateFrom) dateFilter.gte = new Date(dateFrom)
+      if (dateTo) {
+        // Inclure toute la journée de fin
+        const end = new Date(dateTo)
+        end.setHours(23, 59, 59, 999)
+        dateFilter.lte = end
+      }
+      where.dateDebut = dateFilter
+    }
+
+    // Filtre par nom/email d'étudiant (search)
+    if (search) {
+      where.etudiant = {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      }
+    }
 
     const sessions = await db.sessionPassation.findMany({
       where,
@@ -48,32 +121,38 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Parse logEvents and categorize events
-    const parsedSessions = sessions.map((session) => {
-      const logEvents = safeJsonParse<
-        Array<{
-          type: string
-          timestamp: string
-          details?: string
-          penalite?: number
-          imageLength?: number
-          thumbnail?: string
-        }>
-      >(session.logEvents, [])
+    // Récupère en parallèle les alertes FRAUDE déjà créées (pour marquer "flagged")
+    const epreuveIds = [...new Set(sessions.map((s) => s.epreuveId))]
+    const existingFlags = epreuveIds.length
+      ? await db.alerte.findMany({
+          where: {
+            type: 'FRAUDE',
+            epreuveId: { in: epreuveIds },
+            resolu: false,
+          },
+          select: { epreuveId: true, titre: true },
+        })
+      : []
+    const flaggedEpreuveIds = new Set(existingFlags.map((f) => f.epreuveId))
 
-      // Categorize events
-      const fraudEvents = logEvents.filter((e) =>
-        ['FULLSCREEN_EXIT', 'TAB_SWITCH', 'COPY_ATTEMPT', 'PASTE_ATTEMPT',
-         'DEVTOOLS_ATTEMPT', 'PRINTSCREEN_ATTEMPT', 'PRINT_ATTEMPT',
-         'ALT_TAB', 'INACTIVITY'].includes(e.type)
-      )
+    // Parse logEvents, catégorise, calcule le score de risque
+    let parsedSessions: SurveillanceSession[] = sessions.map((session) => {
+      const logEvents = safeJsonParse<LogEvent[]>(session.logEvents, [])
+
+      const fraudEvents = logEvents.filter((e) => FRAUD_TYPES.includes(e.type))
       const screenshotEvents = logEvents.filter((e) => e.type === 'SCREEN_CAPTURE')
       const submissionEvents = logEvents.filter((e) =>
-        ['AUTO_SUBMIT', 'MANUAL_SUBMIT', 'FORCE_SUBMIT'].includes(e.type)
+        SUBMISSION_TYPES.includes(e.type)
       )
 
-      // Calculate total penalty from events
       const totalPenalite = fraudEvents.reduce((sum, e) => sum + (e.penalite || 0), 0)
+
+      const riskScore = computeRiskScore(
+        session.alertes,
+        totalPenalite,
+        fraudEvents
+      )
+      const riskLevel = riskLevelFromScore(riskScore)
 
       return {
         id: session.id,
@@ -90,10 +169,27 @@ export async function GET(request: NextRequest) {
         screenshotEvents,
         submissionEvents,
         totalPenalite,
+        riskScore,
+        riskLevel,
+        flagged: flaggedEpreuveIds.has(session.epreuveId),
       }
     })
 
-    // Get list of epreuves with sessions that have alerts
+    // Filtre par sévérité (post-traitement car basé sur les événements)
+    if (severity) {
+      parsedSessions = parsedSessions.filter((s) =>
+        s.fraudEvents.some((e) => mapSeverity(e.type) === severity)
+      )
+    }
+
+    // Filtre par type d'événement
+    if (typeFilter && typeFilter !== 'ALL') {
+      parsedSessions = parsedSessions.filter((s) =>
+        s.logEvents.some((e) => e.type === typeFilter)
+      )
+    }
+
+    // Liste des épreuves avec sessions
     const epreuvesWithAlerts = await db.epreuve.findMany({
       where: {
         enseignantId,
@@ -101,7 +197,9 @@ export async function GET(request: NextRequest) {
         statut: { in: ['EN_COURS', 'TERMINEE', 'CLOTUREE'] },
         sessions: {
           some: {
-            statut: { in: ['EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'] },
+            statut: {
+              in: ['EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'],
+            },
           },
         },
       },
@@ -116,7 +214,9 @@ export async function GET(request: NextRequest) {
           select: {
             sessions: {
               where: {
-                statut: { in: ['EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'] },
+                statut: {
+                  in: ['EN_COURS', 'SOUMISE', 'CORRIGEE', 'RETOURNEE', 'NON_SOUMIS'],
+                },
               },
             },
           },
@@ -125,7 +225,6 @@ export async function GET(request: NextRequest) {
       orderBy: { dateDebut: 'desc' },
     })
 
-    // Add alert counts per epreuve
     const epreuveStats = epreuvesWithAlerts.map((ep) => {
       const epSessions = parsedSessions.filter((s) => s.epreuve.id === ep.id)
       const totalAlerts = epSessions.reduce((sum, s) => sum + s.alertes, 0)
@@ -150,3 +249,24 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+function mapSeverity(type: string): SeverityLevel {
+  const high = ['FULLSCREEN_EXIT', 'TAB_SWITCH', 'DEVTOOLS_ATTEMPT']
+  const medium = [
+    'COPY_ATTEMPT',
+    'PASTE_ATTEMPT',
+    'PRINTSCREEN_ATTEMPT',
+    'PRINT_ATTEMPT',
+    'ALT_TAB',
+  ]
+  if (high.includes(type)) return 'high'
+  if (medium.includes(type)) return 'medium'
+  if (type === 'INACTIVITY') return 'low'
+  return 'info'
+}
+
+export const GET = withAuth(_GET, ['ENSEIGNANT'])
+
+// Note: la fonction sessionBelongsToTeacher est exportée pour réutilisation
+// par la route /api/surveillance/[sessionId]/flag
+export { sessionBelongsToTeacher }
