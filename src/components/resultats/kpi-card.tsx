@@ -14,7 +14,7 @@ interface KpiCardProps {
   value: string | number
   suffix?: string
   subValue?: string
-  accentColor: 'emerald' | 'teal' | 'amber' | 'red' | 'sky'
+  accentColor: 'emerald' | 'teal' | 'amber' | 'red' | 'sky' | 'violet'
   scoreOn20?: number // si fourni, colore la valeur selon le score
 }
 
@@ -43,6 +43,11 @@ const accentMap = {
     border: 'border-l-sky-500',
     iconBg: 'bg-sky-100 dark:bg-sky-900/40',
     iconText: 'text-sky-600 dark:text-sky-400',
+  },
+  violet: {
+    border: 'border-l-violet-500',
+    iconBg: 'bg-violet-100 dark:bg-violet-900/40',
+    iconText: 'text-violet-600 dark:text-violet-400',
   },
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CalendarDays,
@@ -12,10 +12,10 @@ import {
   Award,
   Star,
   Check,
-  Zap,
   Target,
   RefreshCw,
-  AlertTriangle,
+  TrendingUp,
+  BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -26,9 +26,9 @@ import {
   CardDescription,
   CardContent,
 } from '@/components/ui/card'
+import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { toast } from 'sonner'
 import {
   AreaChart,
   Area,
@@ -40,17 +40,31 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { KpiCard } from '@/components/resultats/kpi-card'
+import { ChartCard } from '@/components/resultats/resultats-charts'
+import { ErrorState } from '@/components/shared/error-state'
 import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
+import {
+  useEtudiantDashboard,
+  useBadges,
+  useRecalculateBadges,
+  useRefreshDashboard,
+  type EpreuveAVenirEtudiant,
+  type EtudiantStatsData,
+} from '@/hooks/use-dashboard'
+import {
+  formatDateFR,
+  getBarColor,
+  normalizeTo20,
+} from '@/lib/resultats-utils'
 import type { BadgeWithProgress } from '@/lib/badges-engine'
 
-// --- Animation Variants ---
+// ─── Animation Variants ───
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
+    transition: { staggerChildren: 0.1 },
   },
 }
 
@@ -59,90 +73,11 @@ const itemVariants = {
   visible: {
     y: 0,
     opacity: 1,
-    transition: {
-      type: 'spring' as const,
-      stiffness: 100,
-    },
+    transition: { type: 'spring' as const, stiffness: 100 },
   },
 }
 
-// --- Types ---
-interface EpreuveAVenir {
-  id: string
-  titre: string
-  date: string
-  dateFin: string
-  duree: number
-  enseignant: string
-  nbQuestions: number
-  totalPoints: number
-}
-
-interface ResultatRecent {
-  id: string
-  epreuveId: string
-  titre: string
-  enseignant: string
-  date: string
-  score: number
-  statut: 'SOUMISE' | 'CORRIGEE' | 'RETOURNEE'
-  resultat: { scoreFinal: number; totalPossible: number } | null
-}
-
-interface EvolutionScore {
-  titre: string
-  score: number
-  date: string
-}
-
-interface PerformanceType {
-  type: 'QCU' | 'QCM' | 'QRC' | 'TRS'
-  moyenne: number
-  nbReponses: number
-}
-
-interface SessionEnCours {
-  id: string
-  epreuveId: string
-  epreuveTitre: string
-  dateDebut: string
-}
-
-interface StatsData {
-  nbEpreuvesAVenir: number
-  nbEpreuvesTerminees: number
-  moyenne: number
-  meilleureNote: number
-  epreuvesAVenir: EpreuveAVenir[]
-  resultatsRecents: ResultatRecent[]
-  evolutionScores: EvolutionScore[]
-  performanceParType: PerformanceType[]
-  sessionEnCours: SessionEnCours | null
-  badges: BadgeWithProgress[]
-}
-
-// --- Helper Functions ---
-function getScoreColor(score: number, maxScore: number = 20): string {
-  const halfMax = maxScore / 2
-  if (score >= halfMax) return '#10b981'
-  if (score >= halfMax * 0.8) return '#f59e0b'
-  return '#ef4444'
-}
-
-function formatDateFR(dateStr: string): string {
-  try {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-    })
-  } catch {
-    return dateStr
-  }
-}
-
-// --- Skeleton for Loading State ---
+// ─── Skeleton for Loading State ───
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
@@ -164,29 +99,10 @@ function DashboardSkeleton() {
   )
 }
 
-// --- Error State Component ---
-function DashboardError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/30">
-        <AlertTriangle className="h-10 w-10 text-amber-500" />
-      </div>
-      <h3 className="text-lg font-semibold text-center">Impossible de charger le tableau de bord</h3>
-      <p className="text-sm text-muted-foreground text-center max-w-sm">
-        Une erreur est survenue lors du chargement de vos données. Veuillez réessayer.
-      </p>
-      <Button variant="outline" onClick={onRetry} className="gap-2">
-        <RefreshCw className="h-4 w-4" />
-        Réessayer
-      </Button>
-    </div>
-  )
-}
-
-// --- Objective Card ---
+// ─── Objective Card ───
 function ObjectiveCard() {
-  const [objective, setObjective] = useState('Obtenir 15/20 au prochain partiel');
-  const [isEditing, setIsEditing] = useState(false);
+  const [objective, setObjective] = useState('Obtenir 15/20 au prochain partiel')
+  const [isEditing, setIsEditing] = useState(false)
 
   return (
     <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950 dark:to-teal-950 border-emerald-200 dark:border-emerald-800">
@@ -198,14 +114,16 @@ function ObjectiveCard() {
       </CardHeader>
       <CardContent>
         {isEditing ? (
-           <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <input
               type="text"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
               className="flex-grow bg-transparent border-b border-emerald-500 focus:outline-none"
             />
-            <Button size="sm" onClick={() => setIsEditing(false)}><Check className="h-4 w-4"/></Button>
+            <Button size="sm" onClick={() => setIsEditing(false)}>
+              <Check className="h-4 w-4" />
+            </Button>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
@@ -218,8 +136,8 @@ function ObjectiveCard() {
   )
 }
 
-// --- Timeline for Upcoming Exams ---
-function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
+// ─── Timeline for Upcoming Exams ───
+function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEtudiant[] }) {
   const router = useRouter()
   return (
     <Card>
@@ -228,7 +146,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
           <CalendarDays className="h-5 w-5 text-emerald-600" />
           Épreuves à venir
         </CardTitle>
-        <CardDescription>Votre planning d'examens</CardDescription>
+        <CardDescription>Votre planning d&apos;examens</CardDescription>
       </CardHeader>
       <CardContent>
         {epreuves.length === 0 ? (
@@ -239,7 +157,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
             {epreuves.map((exam) => (
               <motion.div key={exam.id} variants={itemVariants} className="mb-8">
                 <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-emerald-500 flex items-center justify-center -translate-x-1/2 ml-0.5">
-                   <CalendarDays className="h-3 w-3 text-emerald-500" />
+                  <CalendarDays className="h-3 w-3 text-emerald-500" />
                 </div>
                 <p className="font-semibold">{exam.titre}</p>
                 <p className="text-sm text-muted-foreground">Du {formatDateFR(exam.date)}</p>
@@ -259,7 +177,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenir[] }) {
   )
 }
 
-// --- Empty Dashboard (no data yet) ---
+// ─── Empty Dashboard (no data yet) ───
 function EmptyDashboard({ name }: { name: string }) {
   const router = useRouter()
   return (
@@ -302,329 +220,337 @@ export function EtudiantDashboard() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const name = user?.name ?? 'Étudiant'
+  const userId = user?.id
 
-  const [data, setData] = useState<StatsData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const statsQuery = useEtudiantDashboard(userId)
+  const badgesQuery = useBadges(userId)
   const [newlyUnlockedBadge, setNewlyUnlockedBadge] = useState<BadgeWithProgress | null>(null)
 
-  const fetchStats = async () => {
-    if (!user?.id) return
-    setLoading(true)
-    setError(false)
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
-
-      const res = await fetch(`/api/stats/etudiant?userId=${user.id}`, {
-        signal: controller.signal,
-      })
-      clearTimeout(timeoutId)
-
-      if (!res.ok) throw new Error('Erreur API')
-      const json = await res.json()
-
-      // Fetch badges from the dedicated API
-      try {
-        const badgesRes = await fetch('/api/badges')
-        if (badgesRes.ok) {
-          const badgesJson = await badgesRes.json()
-          json.badges = badgesJson.badges || []
-
-          // Show notification for newly unlocked badges
-          if (badgesJson.newlyUnlocked && badgesJson.newlyUnlocked.length > 0) {
-            setNewlyUnlockedBadge(badgesJson.newlyUnlocked[0])
-          }
-        }
-      } catch (badgeErr) {
-        console.error('Badges fetch error:', badgeErr)
-        // Don't fail the whole dashboard if badges fail
+  // POST /api/badges on mount to refresh badge progress. The onSuccess
+  // callback surfaces newly unlocked badges via the notification component
+  // (avoids setState in useEffect body, which is forbidden by
+  // react-hooks/set-state-in-effect).
+  //
+  // Combined with useBadges (GET /api/badges), TanStack Query dedups the
+  // requests so we no longer have the previous race condition between two
+  // parallel useEffects calling setData in non-deterministic order.
+  const recalculateBadges = useRecalculateBadges(userId, {
+    onSuccess: (data) => {
+      if (data.newlyUnlocked?.length) {
+        setNewlyUnlockedBadge(data.newlyUnlocked[0])
       }
+    },
+  })
+  const refresh = useRefreshDashboard()
 
-      setData(json)
-    } catch (err) {
-      console.error('Dashboard fetch error:', err)
-      setError(true)
-      // Only show toast on first load, not on retry
-      if (data === null) {
-        toast.error('Impossible de charger vos statistiques.', {
-          action: { label: 'Réessayer', onClick: () => fetchStats() },
-        })
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // Trigger the recalculation once on mount (preserves original behavior).
   useEffect(() => {
-    fetchStats()
-  }, [user?.id])
+    if (!userId) return
+    recalculateBadges.mutate()
+  }, [userId, recalculateBadges])
 
-  // Trigger badge recalculation on page load, then fetch results
+  // Auto-dismiss the badge notification with a cleanup-based timer
+  // (replaces the previous setTimeout-without-cleanup leak).
   useEffect(() => {
-    if (!user?.id) return
+    if (!newlyUnlockedBadge) return
+    const t = setTimeout(() => setNewlyUnlockedBadge(null), 5000)
+    return () => clearTimeout(t)
+  }, [newlyUnlockedBadge])
 
-    const recalculateBadges = async () => {
-      try {
-        // POST to trigger recalculation
-        const postRes = await fetch('/api/badges', { method: 'POST' })
-        if (postRes.ok) {
-          const postJson = await postRes.json()
-          // If there are newly unlocked badges, show notification
-          if (postJson.newlyUnlocked && postJson.newlyUnlocked.length > 0) {
-            setNewlyUnlockedBadge(postJson.newlyUnlocked[0])
-          }
-          // Merge the fresh badges into the existing data
-          if (data && postJson.badges) {
-            setData({ ...data, badges: postJson.badges })
-          }
-        }
-      } catch (err) {
-        console.error('Badge recalculation error:', err)
-      }
-    }
-
-    recalculateBadges()
-  }, [user?.id])
-
-  // Loading state
-  if (loading && !data) {
+  // ─── Loading ───
+  if (statsQuery.isLoading && !statsQuery.data) {
     return <DashboardSkeleton />
   }
 
-  // Error state with no cached data
-  if (error && !data) {
-    return <DashboardError onRetry={fetchStats} />
+  // ─── Error ───
+  if (statsQuery.isError && !statsQuery.data) {
+    return (
+      <div className="py-6">
+        <ErrorState
+          message="Impossible de charger vos statistiques. Veuillez réessayer."
+          onRetry={() => statsQuery.refetch()}
+        />
+      </div>
+    )
   }
 
-  // No data at all
+  const data: EtudiantStatsData | undefined = statsQuery.data
+
+  // ─── No data ───
   if (!data) {
     return <EmptyDashboard name={name} />
   }
 
-  // Check if student has no activity at all
-  const hasNoActivity = data.nbEpreuvesTerminees === 0 && data.epreuvesAVenir.length === 0 && data.resultatsRecents.length === 0
+  const hasNoActivity =
+    data.nbEpreuvesTerminees === 0 &&
+    data.epreuvesAVenir.length === 0 &&
+    data.resultatsRecents.length === 0
 
   if (hasNoActivity) {
     return <EmptyDashboard name={name} />
   }
 
-  const unlockedBadgeCount = data.badges.filter((b: BadgeWithProgress) => b.debloque).length
+  // Badges viennent de useBadges (format BadgeWithProgress), pas du champ
+  // basique `badges` renvoyé par /api/stats/etudiant.
+  const badges: BadgeWithProgress[] = badgesQuery.data?.badges ?? []
+  const unlockedBadgeCount = badges.filter((b) => b.debloque).length
+
+  // KPI: couleur dynamique de la moyenne (déjà /20).
+  const moyenneAccent =
+    data.moyenne >= 10 ? 'emerald' : data.moyenne >= 8 ? 'amber' : 'red'
 
   return (
     <motion.div
-        className="space-y-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
+      className="space-y-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
     >
-        {/* Badge unlock notification */}
-        <AnimatePresence>
-          {newlyUnlockedBadge && (
-            <BadgeUnlockNotification
-              badge={newlyUnlockedBadge}
-              onClose={() => setNewlyUnlockedBadge(null)}
-            />
-          )}
-        </AnimatePresence>
+      {/* ─── Header ─── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+          Bonjour, {name} ! Bienvenue sur votre espace.
+        </motion.h1>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          disabled={statsQuery.isFetching || badgesQuery.isFetching}
+          className="self-start sm:self-auto gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${statsQuery.isFetching || badgesQuery.isFetching ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">Rafraîchir</span>
+        </Button>
+      </div>
 
-        <AnimatePresence>
-            <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
-                Bonjour, {name} ! Bienvenue sur votre espace.
-            </motion.h1>
-        </AnimatePresence>
+      {/* ─── Quick stats KPIs ─── */}
+      <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KpiCard
+          icon={CalendarDays}
+          label="Épreuves à venir"
+          value={data.nbEpreuvesAVenir}
+          accentColor="sky"
+        />
+        <KpiCard
+          icon={Trophy}
+          label="Moyenne"
+          value={data.moyenne.toFixed(1)}
+          suffix="/20"
+          accentColor={moyenneAccent}
+          scoreOn20={data.moyenne}
+        />
+        <KpiCard
+          icon={Star}
+          label="Meilleure note"
+          value={data.meilleureNote.toFixed(1)}
+          suffix="/20"
+          accentColor="violet"
+          scoreOn20={data.meilleureNote}
+        />
+        <KpiCard
+          icon={Award}
+          label="Badges"
+          value={unlockedBadgeCount}
+          accentColor="violet"
+        />
+      </motion.div>
 
-        {/* Quick stats bar */}
-        <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                <CalendarDays className="h-5 w-5 text-emerald-600" />
+      {/* ─── In-progress session alert ─── */}
+      {data.sessionEnCours && (
+        <motion.div variants={itemVariants}>
+          <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
+                  <Clock className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-amber-800 dark:text-amber-300">Épreuve en cours</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">{data.sessionEnCours.epreuveTitre}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold">{data.nbEpreuvesAVenir}</p>
-                <p className="text-xs text-muted-foreground">Épreuve{data.nbEpreuvesAVenir !== 1 ? 's' : ''} à venir</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                <Trophy className="h-5 w-5 text-teal-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{data.moyenne.toFixed(1)}</p>
-                <p className="text-xs text-muted-foreground">Moyenne</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                <Star className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{data.meilleureNote.toFixed(1)}</p>
-                <p className="text-xs text-muted-foreground">Meilleure note</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
-                <Award className="h-5 w-5 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{unlockedBadgeCount}</p>
-                <p className="text-xs text-muted-foreground">Badge{unlockedBadgeCount !== 1 ? 's' : ''}</p>
-              </div>
-            </div>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={() => router.push(`/passation?epreuveId=${data.sessionEnCours!.epreuveId}`)}
+              >
+                <Play className="mr-2 h-4 w-4" /> Reprendre
+              </Button>
+            </CardContent>
           </Card>
         </motion.div>
+      )}
 
-        {/* In-progress session alert */}
-        {data.sessionEnCours && (
+      <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-6 space-y-6 lg:space-y-0">
+        {/* ─── Main column (2/3) ─── */}
+        <div className="lg:col-span-2 space-y-6">
           <motion.div variants={itemVariants}>
-            <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
-                    <Clock className="h-5 w-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-amber-800 dark:text-amber-300">Épreuve en cours</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-400">{data.sessionEnCours.epreuveTitre}</p>
-                  </div>
+            <ObjectiveCard />
+          </motion.div>
+
+          <motion.div variants={itemVariants}>
+            <BadgesCarousel badges={badges} />
+          </motion.div>
+
+          {/* ─── Charts ─── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <motion.div variants={itemVariants}>
+              <ChartCard
+                title="Évolution des scores"
+                icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
+              >
+                <div className="h-72">
+                  {data.evolutionScores.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.evolutionScores} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="etudiantScoreGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="titre"
+                          tick={{ fontSize: 11 }}
+                          tickLine={false}
+                          axisLine={false}
+                          interval={0}
+                          angle={-20}
+                          textAnchor="end"
+                          height={50}
+                        />
+                        <YAxis
+                          domain={[0, 20]}
+                          tick={{ fontSize: 11 }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip />
+                        <Area
+                          type="monotone"
+                          dataKey="score"
+                          stroke="#10b981"
+                          strokeWidth={2.5}
+                          fill="url(#etudiantScoreGradient)"
+                          dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }}
+                          activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      Pas encore de données
+                    </div>
+                  )}
                 </div>
-                <Button
-                  className="bg-amber-600 hover:bg-amber-700"
-                  onClick={() => router.push(`/passation?epreuveId=${data.sessionEnCours!.epreuveId}`)}
-                >
-                  <Play className="mr-2 h-4 w-4" /> Reprendre
-                </Button>
+              </ChartCard>
+            </motion.div>
+
+            <motion.div variants={itemVariants}>
+              <ChartCard
+                title="Performance par type"
+                icon={<BarChart3 className="h-4 w-4 text-teal-600" />}
+              >
+                <div className="h-72">
+                  {data.performanceParType.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.performanceParType} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
+                        <XAxis
+                          dataKey="type"
+                          tick={{ fontSize: 12, fontWeight: 600 }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          domain={[0, 20]}
+                          tick={{ fontSize: 11 }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip />
+                        {/* BUG FIX : entry.moyenne est DÉJÀ /20 (normalisé côté API).
+                            L'ancien code multipliait par 2 → affichait du vert même
+                            pour des scores < 10. Utilisation directe de getBarColor. */}
+                        <Bar dataKey="moyenne" radius={[6, 6, 0, 0]}>
+                          {data.performanceParType.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={getBarColor(entry.moyenne)} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      Pas encore de données
+                    </div>
+                  )}
+                </div>
+              </ChartCard>
+            </motion.div>
+          </div>
+        </div>
+
+        {/* ─── Sidebar (1/3) ─── */}
+        <div className="lg:col-span-1 space-y-6">
+          <motion.div variants={itemVariants}>
+            <EpreuvesTimeline epreuves={data.epreuvesAVenir} />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Résultats Récents</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.resultatsRecents.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-4">Aucun résultat pour le moment.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {data.resultatsRecents.map((result) => {
+                      const scoreFinal = result.resultat?.scoreFinal ?? result.score ?? 0
+                      const totalPossible = result.resultat?.totalPossible ?? 20
+                      const scoreOn20 = normalizeTo20(scoreFinal, totalPossible)
+                      const scorePercent = totalPossible > 0
+                        ? Math.round((scoreFinal / totalPossible) * 100)
+                        : 0
+                      const scoreColor = getBarColor(scoreOn20)
+                      return (
+                        <div key={result.id} className="flex items-center">
+                          <div
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+                            style={{
+                              backgroundColor: `${scoreColor}20`,
+                              color: scoreColor,
+                            }}
+                            title={`${scoreFinal}/${totalPossible} → ${scoreOn20.toFixed(1)}/20`}
+                          >
+                            {scorePercent}%
+                          </div>
+                          <div className="ml-4 flex-grow">
+                            <p className="font-semibold truncate">{result.titre}</p>
+                            <p className="text-sm text-muted-foreground">{formatDateFR(result.date)}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => router.push('/mes-resultats')}>
+                            <Eye className="h-4 w-4" />
+                            <span className="sr-only">Voir le résultat</span>
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-6 space-y-6 lg:space-y-0">
-
-            {/* Main column (2/3) */}
-            <div className="lg:col-span-2 space-y-6">
-                <motion.div variants={itemVariants}>
-                    <ObjectiveCard />
-                </motion.div>
-
-                <motion.div variants={itemVariants}>
-                    <BadgesCarousel badges={data.badges || []} />
-                </motion.div>
-
-                 {/* Results & Evolution */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <motion.div variants={itemVariants}>
-                        <Card>
-                            <CardHeader>
-                               <CardTitle className="flex items-center gap-2">
-                                   Évolution des scores
-                               </CardTitle>
-                            </CardHeader>
-                            <CardContent className="h-72">
-                              {data.evolutionScores.length > 0 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={data.evolutionScores}>
-                                        <defs>
-                                          <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
-                                          </linearGradient>
-                                        </defs>
-                                        <XAxis dataKey="titre" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                                        <YAxis domain={[0, 20]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                                        <Tooltip />
-                                        <Area type="monotone" dataKey="score" stroke="#10b981" strokeWidth={2.5} fill="url(#scoreGradient)" />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                                  Pas encore de données
-                                </div>
-                              )}
-                            </CardContent>
-                        </Card>
-                    </motion.div>
-
-                    <motion.div variants={itemVariants}>
-                         <Card>
-                            <CardHeader>
-                               <CardTitle className="flex items-center gap-2">
-                                   Performance par type
-                               </CardTitle>
-                            </CardHeader>
-                            <CardContent className="h-72">
-                              {data.performanceParType.length > 0 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={data.performanceParType}>
-                                         <XAxis dataKey="type" tick={{ fontSize: 12, fontWeight: 600 }} tickLine={false} axisLine={false} />
-                                         <YAxis domain={[0, 20]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                                         <Tooltip />
-                                         <Bar dataKey="moyenne" radius={[6, 6, 0, 0]}>
-                                              {data.performanceParType.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={getScoreColor(entry.moyenne * 2)} />
-                                              ))}
-                                         </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                                  Pas encore de données
-                                </div>
-                              )}
-                            </CardContent>
-                        </Card>
-                    </motion.div>
-                </div>
-            </div>
-
-            {/* Sidebar (1/3) */}
-            <div className="lg:col-span-1 space-y-6">
-                <motion.div variants={itemVariants}>
-                    <EpreuvesTimeline epreuves={data.epreuvesAVenir} />
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Résultats Récents</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {data.resultatsRecents.length === 0 ? (
-                                <p className="text-muted-foreground text-center py-4">Aucun résultat pour le moment.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                {data.resultatsRecents.map(result => {
-                                    const scoreFinal = result.resultat?.scoreFinal ?? result.score ?? 0
-                                    const totalPossible = result.resultat?.totalPossible ?? 20
-                                    const scorePercent = totalPossible > 0 ? Math.round((scoreFinal / totalPossible) * 100) : 0
-                                    return (
-                                    <div key={result.id} className="flex items-center">
-                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs" style={{backgroundColor: `${getScoreColor(scoreFinal, totalPossible)}20`, color: getScoreColor(scoreFinal, totalPossible)}}>
-                                            {scorePercent}%
-                                        </div>
-                                        <div className="ml-4 flex-grow">
-                                            <p className="font-semibold truncate">{result.titre}</p>
-                                            <p className="text-sm text-muted-foreground">{formatDateFR(result.date)}</p>
-                                        </div>
-                                        <Button variant="ghost" size="sm" onClick={() => router.push('/mes-resultats')}>
-                                            <Eye className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                )})}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </motion.div>
-            </div>
         </div>
+      </div>
+
+      {/* ─── Badge Unlock Notification ─── */}
+      <AnimatePresence>
+        {newlyUnlockedBadge && (
+          <BadgeUnlockNotification
+            badge={newlyUnlockedBadge}
+            onClose={() => setNewlyUnlockedBadge(null)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
