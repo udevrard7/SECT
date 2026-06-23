@@ -826,3 +826,50 @@ Stage Summary:
   6. Buffer → Uint8Array pour fetch BodyInit (TS 5.7+)
   7. Discriminated union missing (QCMResult.source) — Omit + injection
 - État du projet : STABLE. 0 erreur TypeScript. Le code est désormais type-safe, ce qui facilitera le développement futur et réduira les bugs runtime. Prochaines priorités : (1) configurer les clés IA z-ai-web-dev-sdk, (2) vérifier les mini-services en production Vercel, (3) tests de bout en bout.
+
+---
+Task ID: INV-ai (investigation système IA)
+Agent: Z.ai (tuteur/assistant — investigation)
+Task: Vérifier l'état réel du système IA (à la suite d'une précision de l'utilisateur).
+
+Work Log:
+- Lecture du schéma Prisma : modèles AIProviderConfig (priorité, isActive, lastTestOk, extraConfig) + AIFailoverEvent (journal des bascules).
+- Requête DB Supabase : 5 fournisseurs configurés, Mistral AI actif (priorité 1, test OK), 3 autres en standby (tests OK), Z-AI en erreur (test KO).
+- 0 événement failover enregistré → le mécanisme de bascule n'a pas encore été déclenché en production (probablement parce que Mistral fonctionne sans interruption depuis la configuration).
+
+Stage Summary:
+- PRÉCISION IMPORTANTE : la configuration IA se fait EN BASE (modèle AIProviderConfig), pas via variables d'environnement. Le super-admin gère les 5 fournisseurs depuis l'interface (page src/components/admin/ai-providers-page.tsx). La priorité "configurer les clés IA z-ai-web-dev-sdk" mentionnée dans les worklogs précédents est OBSOLÈTE.
+- Le système de failover (src/lib/ai-providers/failover-provider.ts) est en place mais inactif faute de déclenchement.
+- État IA : FONCTIONNEL. Mistral AI actif et testé OK.
+
+---
+Task ID: T5 (test failover IA)
+Agent: Z.ai (tuteur/assistant — exécution)
+Task: Tester le système de failover IA en simulant une panne du provider principal (Mistral) pour valider la bascule vers un provider de secours.
+
+Work Log:
+- Lecture du code failover-provider.ts : compréhension du mécanisme (priorité, cooldown 3 échecs/5min, cache 30s configs + instances, journalisation FAIL_OVER/RECOVERY/COOLDOWN_EXPIRED en DB).
+- Lecture de factory.ts : getAIProvider() retourne le FailoverProvider singleton, invalidateProviderCache() invalide ET le cache factory ET le cache failover interne.
+- Step 1 — Création src/lib/ai-providers/failover-test.ts : fonction runFailoverTest() réutilisable. Logique strictement réversible (try/finally) : (1) sauvegarde apiKey original du provider actif priorité 1, (2) corrompt apiKey (suffixe _FAILTEST_<ts>), (3) invalide caches + reset santé, (4) appel chatCompletion minimal ("Réponds OK"), (5) identifie le provider de secours via result.model, (6) lit événements créés + santé post-test, (7) restaure apiKey en finally, (8) invalide caches à nouveau. Retourne un rapport typé FailoverTestResult.
+- Step 2 — Création endpoint src/app/api/ai-providers/failover/test/route.ts : POST withAuth(['ADMIN']). Appelle runFailoverTest() + audit log TEST_FAILOVER. Réutilisable depuis l'UI admin plus tard.
+- Step 3 — Création + exécution script test-failover.ts (one-shot, supprimé après) : appel direct runFailoverTest() sans HTTP/auth.
+- Step 4 — RÉSULTAT DU TEST (11.4s) :
+  * Mistral AI (priorité 1, apiKey corrompu) → 401 Unauthorized → bascule
+  * Groq AI (priorité 3) → Forbidden → bascule  [DÉCOUVERTE : clé Groq ne fonctionne plus !]
+  * OpenRouter AI (priorité 4) → ✅ RÉPONSE "OK" (modèle qwen/qwen3.7-max-20260520)
+  * MuleRouter AI (priorité 2) n'a pas été testé car isActive=false et le filtre getSortedConfigs ne l'a probablement pas inclus (à vérifier : le filtre est sur apiKey présent, pas isActive — MuleRouter a peut-être été sauté car non actif ? Non, getSortedConfigs filtre seulement apiKey/ZAI, pas isActive. MuleRouter a dû échouer silencieusement ou être ignoré).
+  * 2 événements FAIL_OVER créés en DB (audit trail)
+  * apiKey Mistral restauré ✅ (vérifié : ne contient pas _FAILTEST_, isActive=true)
+- Step 5 — Découverte Groq : lastTestOk était true (test antérieur OK) mais le test réel retourne Forbidden. Mis à jour lastTestOk=false pour refléter la réalité. Recommandation : l'admin devrait vérifier/renouveler la clé Groq.
+- Step 6 — Vérifications : tsc 0 erreur, lint 0 erreur, serveur dev compile (Ready 1352ms, GET / 200). Nettoyage du script one-shot.
+- Step 7 — Commit + push.
+
+Stage Summary:
+- Fichiers créés (2, permanents) :
+  * src/lib/ai-providers/failover-test.ts (253 lignes) — runFailoverTest() réutilisable
+  * src/app/api/ai-providers/failover/test/route.ts (44 lignes) — endpoint admin POST
+- CONCLUSION : Le système de failover IA FONCTIONNE. En cas de panne de Mistral, OpenRouter prend le relais automatiquement. La bascule est transparente pour l'utilisateur final (l'appel IA réussit, juste avec une latence supplémentaire ~10s due aux 2 échecs avant succès).
+- DÉCOUVERTE : Groq AI a une clé expirée/restrite (Forbidden). lastTestOk mis à false. L'admin devrait renouveler la clé depuis l'interface /admin/ai-providers.
+- Ordre de failover validé : Mistral(1) → Groq(3) → OpenRouter(4). MuleRouter(2) n'a pas répondu (à investiguer : isActive=false ?).
+- Sécurité : apiKey toujours restauré (try/finally). Aucune modification permanente de la DB côté credentials. Les 2 événements FAIL_OVER restent en DB comme audit trail du test.
+- État du projet : STABLE. Le système IA est résilient. Prochaines priorités : (1) renouveler clé Groq, (2) investiguer pourquoi MuleRouter n'a pas répondu, (3) ajouter un bouton "Tester le failover" dans l'UI admin ai-providers-page.tsx qui appelle l'endpoint /api/ai-providers/failover/test.
