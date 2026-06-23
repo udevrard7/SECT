@@ -69,6 +69,7 @@ export interface CertificatPDFData {
   verificationUrl: string
   statut: string
   responsableNom?: string | null
+  qrCodeDataUri?: string | null
 }
 
 // ═══ Constants ═══
@@ -226,6 +227,84 @@ function Logo({ logo, nom }: { logo: string | null; nom: string }) {
   return <View style={{ alignItems: 'center', marginBottom: 3 }}><Image src={logo} style={{ width: 120, height: 50, objectFit: 'contain' as const }} alt="" /></View>
 }
 
+// ═══ QR Code Box ═══
+
+function QRCodeBox({ dataUri, code }: { dataUri: string | null | undefined; code: string }) {
+  if (!dataUri) {
+    return (
+      <View style={{ alignItems: 'center', padding: 8, borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 4, backgroundColor: WHITE }}>
+        <Text style={{ fontSize: 6, color: TEXT_GRAY, textAlign: 'center', marginBottom: 4 }}>Vérifiez ce certificat :</Text>
+        <Text style={{ fontSize: 7, fontFamily: 'Inter', fontWeight: 'bold', color: NAVY, textAlign: 'center' }}>{code}</Text>
+      </View>
+    )
+  }
+  return (
+    <View style={{ alignItems: 'center', padding: 8, borderWidth: 1, borderColor: GOLD_BORDER, borderRadius: 4, backgroundColor: WHITE }}>
+      <Image src={dataUri} style={{ width: 80, height: 80 }} />
+      <Text style={{ fontSize: 7, fontFamily: 'Inter', fontWeight: 'bold', color: NAVY, marginTop: 4 }}>{code}</Text>
+      <Text style={{ fontSize: 5, color: TEXT_GRAY }}>Scannez pour vérifier</Text>
+    </View>
+  )
+}
+
+// ═══ Grade Bar ═══
+
+function GradeBar({ note, max }: { note: number; max: number }) {
+  const pct = Math.max(0, Math.min(100, (note / max) * 100))
+  const barW = 80
+  const barH = 12
+  const fillW = (pct / 100) * barW
+  const fillColor = pct >= 80 ? '#16A34A' : pct >= 50 ? '#EAB308' : pct >= 30 ? '#F97316' : '#EF4444'
+
+  return (
+    <View style={{ alignItems: 'center', gap: 4 }}>
+      <Svg width={barW + 4} height={barH + 16} viewBox={`0 0 ${barW + 4} ${barH + 16}`}>
+        {/* Background */}
+        <Path d={`M2,14 L${barW + 2},14 L${barW + 2},${barH + 14} L2,${barH + 14} Z`} fill="#E2E8F0" />
+        {/* Fill */}
+        {fillW > 0 && (
+          <Path d={`M2,14 L${fillW + 2},14 L${fillW + 2},${barH + 14} L2,${barH + 14} Z`} fill={fillColor} />
+        )}
+        {/* Border */}
+        <Path d={`M1,13 L${barW + 3},13 L${barW + 3},${barH + 15} L1,${barH + 15} Z`} fill="none" stroke={NAVY} strokeWidth="0.5" />
+        {/* Percentage text */}
+        <Text x={barW / 2 + 2} y={barH / 2 + 17} textAnchor="middle" fontSize={7} fontFamily="Inter" fontWeight="bold" fill={pct >= 50 ? WHITE : TEXT_DARK}>{Math.round(pct)}%</Text>
+      </Svg>
+      <Text style={{ fontSize: 10, fontWeight: 'bold', color: TEXT_DARK }}>{formatNote(note)}/{max}</Text>
+    </View>
+  )
+}
+
+// ═══ Watermark Background ═══
+
+function WatermarkBackground() {
+  const diamonds: React.ReactElement[] = []
+  const spacing = 80
+  for (let x = 0; x < 12; x++) {
+    for (let y = 0; y < 10; y++) {
+      diamonds.push(
+        <View
+          key={`w-${x}-${y}`}
+          style={{
+            position: 'absolute',
+            left: x * spacing,
+            top: y * spacing,
+            width: 20,
+            height: 20,
+            transform: 'rotate(45deg)',
+            opacity: 0.03,
+          }}
+        >
+          <Svg width="20" height="20" viewBox="0 0 20 20">
+            <Path d="M0,10 L10,0 L20,10 L10,20 Z" fill={NAVY} />
+          </Svg>
+        </View>
+      )
+    }
+  }
+  return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>{diamonds}</View>
+}
+
 // ═══ Shared data builder ═══
 
 function buildSharedData(data: CertificatPDFData) {
@@ -322,9 +401,14 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
   return (
     <Document>
       <Page size={[842, 595]} style={landscapeStyles.page}>
+        <WatermarkBackground />
         <CornerOrnaments />
         <TripleBorder />
         <View style={landscapeStyles.content}>
+          {/* QR Code — top-right */}
+          <View style={{ position: 'absolute', top: -10, right: -10, zIndex: 20 }}>
+            <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
+          </View>
           <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
           <Text style={landscapeStyles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
           {s.location ? <Text style={landscapeStyles.universityCity}>{s.location}</Text> : null}
@@ -347,6 +431,10 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
               valueStyle={landscapeStyles.value}
               rowStyle={landscapeStyles.infoRow}
             />
+          </View>
+          {/* Jauge de note */}
+          <View style={{ marginTop: 4, marginBottom: 8 }}>
+            <GradeBar note={data.noteFinale} max={20} />
           </View>
           <View style={landscapeStyles.sigRow}>
             <View style={landscapeStyles.sigCol}>
@@ -407,9 +495,14 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
   return (
     <Document>
       <Page size={[595, 842]} style={portraitStyles.page}>
+        <WatermarkBackground />
         <CornerOrnaments />
         <TripleBorder />
         <View style={portraitStyles.content}>
+          {/* QR Code — top-right */}
+          <View style={{ position: 'absolute', top: -8, right: -8, zIndex: 20 }}>
+            <QRCodeBox dataUri={data.qrCodeDataUri} code={data.codeVerification} />
+          </View>
           <Logo logo={data.etablissementLogo} nom={data.etablissementNom} />
           <Text style={portraitStyles.universityName}>{data.etablissementNom.toUpperCase()}</Text>
           {s.location ? <Text style={portraitStyles.universityCity}>{s.location}</Text> : null}
@@ -432,6 +525,10 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
               valueStyle={portraitStyles.value}
               rowStyle={portraitStyles.infoRow}
             />
+          </View>
+          {/* Jauge de note */}
+          <View style={{ marginTop: 6, marginBottom: 10 }}>
+            <GradeBar note={data.noteFinale} max={20} />
           </View>
           <View style={portraitStyles.sigContainer}>
             <View style={portraitStyles.sigBlock}>
