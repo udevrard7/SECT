@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 
+/**
+ * Next.js 16 Proxy (anciennement `middleware.ts`).
+ *
+ * Auth gate binaire : vérifie la présence d'un JWT NextAuth valide et que le
+ * compte est actif. Les routes publiques (landing, login, vérif certificat,
+ * routes NextAuth, crons avec auth dédiée) sont laissées passer.
+ *
+ * La logique rôle/tenant n'est PAS gérée ici — elle l'est par :
+ *   - `src/lib/auth-session.ts` (`withAuth` côté API)
+ *   - `src/lib/tenant-access.ts` (filtrage multi-établissement)
+ *   - la sidebar client (`NAV_CATEGORIES[role]`)
+ *
+ * Migration : `src/middleware.ts` a été supprimé en faveur de ce proxy stable
+ * Next.js 16 (l'API `middleware` est dépréciée depuis Next 16).
+ */
+
 // Public routes that don't require authentication
 const PUBLIC_PATHS = [
   '/',               // Landing page (page.tsx handles auth redirect internally)
@@ -21,7 +37,7 @@ const PUBLIC_PATHS = [
 // API routes that should return 401 instead of redirecting
 const API_PREFIX = '/api'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow public paths
