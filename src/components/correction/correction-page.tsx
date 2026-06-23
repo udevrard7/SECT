@@ -75,267 +75,26 @@ import {
   type CodingAnswer,
   parseCodingAnswer,
 } from '@/lib/coding-types'
-
-// ─── Types ───
-
-interface CorrectionSession {
-  id: string
-  statut: string
-  score: number | null
-  alertes: number
-  needsCorrectionCount: number
-  allCorrected: boolean
-  autoGradedScore: number
-  autoGradedTotal: number
-  etudiant: { id: string; name: string; email: string }
-  epreuve: {
-    id: string
-    titre: string
-    questions: Array<{
-      id: string
-      questionId: string
-      bareme: number
-      ordre: number
-      question: {
-        id: string
-        type: string
-        enonce: string
-        propositions: string[] | null
-        reponseCorrecte: string | string[] | null
-        difficulte: string
-        // CODE-specific fields (extracted from reponseCorrecte JSON)
-        langage?: string
-        codeInitial?: string
-        fonctionSignature?: string
-        testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
-        testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
-      }
-    }>
-  }
-  reponses: Array<{
-    id: string
-    questionId: string
-    contenu: string | null
-    score: number | null
-    noteIA: number | null
-    justificationIA: string | null
-    commentaire: string | null
-  }>
-  resultat: {
-    id: string
-    scoreFinal: number
-    detailParQuestion: unknown
-    dateCorrection: string | null
-  } | null
-}
-
-interface EpreuveOption {
-  id: string
-  titre: string
-  statut: string
-  dateDebut: string
-  dateFin: string
-}
-
-type GradingMode = 'par-copie' | 'par-question'
-
-interface RubricCriterion {
-  id: string
-  label: string
-  points: number
-}
-
-// ─── Utility functions ───
-
-function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return fallback
-  }
-}
-
-function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return d.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-}
-
-function getQuestionTypeLabel(type: string): string {
-  switch (type) {
-    case 'QRC': return 'Rép. courte'
-    case 'TRS': return 'Travail struct.'
-    case 'REFLEXION': return 'Réflexion'
-    case 'QCM': return 'QCM'
-    case 'QCU': return 'QCU'
-    case 'CODE': return 'Code'
-    default: return type
-  }
-}
-
-function isAutoGradedType(type: string): boolean {
-  return type === 'QCM' || type === 'QCU'
-}
-
-function isSemiAutoGradedType(type: string): boolean {
-  return type === 'CODE'
-}
-
-function getCorrectionBadge(type: string): { label: string; classes: string } {
-  if (isAutoGradedType(type)) {
-    return {
-      label: 'Auto',
-      classes: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800',
-    }
-  }
-  if (isSemiAutoGradedType(type)) {
-    return {
-      label: 'Auto+',
-      classes: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800',
-    }
-  }
-  return {
-    label: 'Manuel',
-    classes: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
-  }
-}
-
-function getDifficulteLabel(diff: string): string {
-  switch (diff) {
-    case 'FACILE': return 'Facile'
-    case 'MOYEN': return 'Moyen'
-    case 'DIFFICILE': return 'Difficile'
-    case 'EXPERT': return 'Expert'
-    default: return diff
-  }
-}
-
-function getDifficulteDotColor(diff: string): string {
-  switch (diff) {
-    case 'FACILE': return 'bg-emerald-500'
-    case 'MOYEN': return 'bg-amber-500'
-    case 'DIFFICILE': return 'bg-orange-500'
-    case 'EXPERT': return 'bg-rose-500'
-    default: return 'bg-muted-foreground'
-  }
-}
-
-function getScoreColor(score: number, total: number): string {
-  if (total === 0) return 'text-muted-foreground'
-  const pct = score / total
-  if (pct >= 0.5) return 'text-emerald-600 dark:text-emerald-400'
-  if (pct >= 0.4) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
-}
-
-function getScoreCircleColor(score: number, total: number): string {
-  if (total === 0) return 'bg-muted text-muted-foreground border-border'
-  const pct = score / total
-  if (pct >= 0.5) return 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
-  if (pct >= 0.4) return 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700'
-  return 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700'
-}
-
-function getStudentStatusDot(session: CorrectionSession): { color: string; label: string } {
-  if (session.statut === 'RETOURNEE') return { color: 'bg-teal-500', label: 'Rendue' }
-  if (session.allCorrected) return { color: 'bg-emerald-500', label: 'Corrigée' }
-  if (session.needsCorrectionCount > 0) return { color: 'bg-amber-500', label: 'À corriger' }
-  return { color: 'bg-muted-foreground', label: 'En attente' }
-}
-
-// ─── Rubric Criteria Generation ───
-
-function generateRubricCriteria(type: string, bareme: number): RubricCriterion[] {
-  const n = bareme
-  switch (type) {
-    case 'QRC':
-      return [
-        { id: 'qrc-complete', label: `Réponse complète (+${Math.round(n * 0.6 * 10) / 10})`, points: Math.round(n * 0.6 * 10) / 10 },
-        { id: 'qrc-partielle', label: `Réponse partielle (+${Math.round(n * 0.3 * 10) / 10})`, points: Math.round(n * 0.3 * 10) / 10 },
-        { id: 'qrc-motcle', label: `Mot-clé présent (+${Math.round(n * 0.1 * 10) / 10})`, points: Math.round(n * 0.1 * 10) / 10 },
-        { id: 'qrc-hors', label: 'Hors sujet (0)', points: 0 },
-      ]
-    case 'REFLEXION':
-      return [
-        { id: 'ref-analyse', label: `Analyse approfondie (+${Math.round(n * 0.4 * 10) / 10})`, points: Math.round(n * 0.4 * 10) / 10 },
-        { id: 'ref-arguments', label: `Arguments pertinents (+${Math.round(n * 0.3 * 10) / 10})`, points: Math.round(n * 0.3 * 10) / 10 },
-        { id: 'ref-exemples', label: `Exemples concrets (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
-        { id: 'ref-conclusion', label: `Conclusion pertinente (+${Math.round(n * 0.1 * 10) / 10})`, points: Math.round(n * 0.1 * 10) / 10 },
-      ]
-    case 'TRS':
-      return [
-        { id: 'trs-structure', label: `Structure correcte (+${Math.round(n * 0.3 * 10) / 10})`, points: Math.round(n * 0.3 * 10) / 10 },
-        { id: 'trs-contenu', label: `Contenu pertinent (+${Math.round(n * 0.3 * 10) / 10})`, points: Math.round(n * 0.3 * 10) / 10 },
-        { id: 'trs-exemples', label: `Exemples/appuis (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
-        { id: 'trs-redaction', label: `Rédaction soignée (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
-      ]
-    case 'CODE':
-      return [
-        { id: 'code-logique', label: `Logique correcte (+${Math.round(n * 0.4 * 10) / 10})`, points: Math.round(n * 0.4 * 10) / 10 },
-        { id: 'code-syntaxe', label: `Syntaxe correcte (+${Math.round(n * 0.2 * 10) / 10})`, points: Math.round(n * 0.2 * 10) / 10 },
-        { id: 'code-tests', label: `Tests passés (+${Math.round(n * 0.3 * 10) / 10})`, points: Math.round(n * 0.3 * 10) / 10 },
-        { id: 'code-style', label: `Bon style de code (+${Math.round(n * 0.1 * 10) / 10})`, points: Math.round(n * 0.1 * 10) / 10 },
-      ]
-    default:
-      return [
-        { id: 'def-complete', label: `Réponse complète (+${n})`, points: n },
-        { id: 'def-zero', label: 'Hors sujet (0)', points: 0 },
-      ]
-  }
-}
-
-// ─── Parse student answer content ───
-
-function parseAnswerContent(raw: string | null | undefined): string {
-  if (!raw) return 'Aucune réponse fournie'
-  try {
-    const obj = JSON.parse(raw)
-    // Handle CodingAnswer objects: { code, language, testResultsPublics, ... }
-    if (typeof obj === 'object' && obj !== null && typeof obj.code === 'string') {
-      const lines = obj.code.split('\n').length
-      const lang = obj.language || 'unknown'
-      const passedTests = obj.testResultsPublics?.filter?.((t: any) => t.passed)?.length ?? '?'
-      const totalTests = obj.testResultsPublics?.length ?? '?'
-      return `[${lang}] Code soumis (${lines} lignes, ${passedTests}/${totalTests} tests publics réussis)\n\n${obj.code}`
-    }
-    if (Array.isArray(obj)) return obj.join(', ')
-    if (typeof obj === 'string') return obj
-    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
-    return JSON.stringify(obj, null, 2)
-  } catch {
-    return raw
-  }
-}
-
-/** Check if the raw answer content is a coding answer (JSON with .code) */
-function isCodingAnswer(raw: string | null | undefined): boolean {
-  if (!raw) return false
-  try {
-    const obj = JSON.parse(raw)
-    return typeof obj === 'object' && obj !== null && typeof obj.code === 'string'
-  } catch {
-    return false
-  }
-}
-
-// ─── Sub-Components ───
-
-/** Score circle indicator */
-function ScoreCircle({ score, total, size = 'md' }: { score: number | null; total: number; size?: 'sm' | 'md' | 'lg' }) {
-  const displayScore = score ?? 0
-  const sizeClasses = size === 'sm' ? 'h-7 w-7 text-[11px]' : size === 'lg' ? 'h-12 w-12 text-base' : 'h-9 w-9 text-xs'
-  const colorClasses = score !== null ? getScoreCircleColor(displayScore, total) : 'bg-muted text-muted-foreground border-border'
-
-  return (
-    <div className={`flex items-center justify-center rounded-full border-2 font-bold shrink-0 ${sizeClasses} ${colorClasses}`}>
-      {score !== null ? displayScore : '—'}
-    </div>
-  )
-}
+import type {
+  CorrectionSession,
+  EpreuveOption,
+  GradingMode,
+  RubricCriterion,
+} from '@/types/correction'
+import {
+  getQuestionTypeLabel,
+  isAutoGradedType,
+  isSemiAutoGradedType,
+  getCorrectionBadge,
+  getDifficulteLabel,
+  getDifficulteDotColor,
+  getScoreColor,
+  getStudentStatusDot,
+  generateRubricCriteria,
+  parseAnswerContent,
+  isCodingAnswer,
+} from '@/lib/correction-utils'
+import { ScoreCircle } from '@/components/correction/score-circle'
 
 // ─── Main Component ───
 
@@ -392,11 +151,9 @@ export function CorrectionPage() {
           (e) => ['EN_COURS', 'TERMINEE', 'CLOTUREE'].includes(e.statut)
         )
         setEpreuves(filtered)
-      } else {
-        console.error('[correction] Failed to fetch epreuves:', res.status, await res.text().catch(() => ''))
       }
-    } catch (err) {
-      console.error('[correction] Error fetching epreuves:', err)
+    } catch {
+      // Erreur réseau — l'UI reste sur liste vide
     } finally {
       setIsLoadingEpreuves(false)
     }
@@ -418,15 +175,12 @@ export function CorrectionPage() {
         const data = await res.json()
         setSessions(data.sessions ?? [])
       } else {
-        const errorText = await res.text().catch(() => '')
-        console.error('[correction] Failed to fetch sessions:', res.status, errorText)
         toast.error('Erreur de chargement', {
           description: `Impossible de charger les copies (erreur ${res.status}).`,
         })
         setSessions([])
       }
-    } catch (err) {
-      console.error('[correction] Error fetching sessions:', err)
+    } catch {
       toast.error('Erreur réseau', {
         description: 'Impossible de contacter le serveur pour charger les copies.',
       })
@@ -867,15 +621,35 @@ export function CorrectionPage() {
   }
 
   // ─── Keyboard shortcuts ───
+  // Refs vers les dernières valeurs/handlers pour éviter les stale closures :
+  // l'event listener global s'attache une seule fois (deps []) et lit les refs.
+  const handleSaveRef = useRef(handleSave)
+  handleSaveRef.current = handleSave
+  const goToQuestionRef = useRef(goToQuestion)
+  goToQuestionRef.current = goToQuestion
+  const kbStateRef = useRef({
+    gradingMode,
+    currentQuestionIndex,
+    horizontalQuestionIndex,
+    horizontalQuestionsLength: horizontalQuestions.length,
+  })
+  kbStateRef.current = {
+    gradingMode,
+    currentQuestionIndex,
+    horizontalQuestionIndex,
+    horizontalQuestionsLength: horizontalQuestions.length,
+  }
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const { gradingMode, currentQuestionIndex, horizontalQuestionIndex, horizontalQuestionsLength } = kbStateRef.current
       // Ignore if user is typing in an input/textarea
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         // Allow Ctrl+S even in inputs
         if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault()
-          handleSave()
+          handleSaveRef.current()
         }
         return
       }
@@ -883,26 +657,26 @@ export function CorrectionPage() {
       if (e.key === 'ArrowLeft') {
         e.preventDefault()
         if (gradingMode === 'par-copie') {
-          goToQuestion(currentQuestionIndex - 1)
+          goToQuestionRef.current(currentQuestionIndex - 1)
         } else {
           setHorizontalQuestionIndex(Math.max(0, horizontalQuestionIndex - 1))
         }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         if (gradingMode === 'par-copie') {
-          goToQuestion(currentQuestionIndex + 1)
+          goToQuestionRef.current(currentQuestionIndex + 1)
         } else {
-          setHorizontalQuestionIndex(Math.min(horizontalQuestions.length - 1, horizontalQuestionIndex + 1))
+          setHorizontalQuestionIndex(Math.min(horizontalQuestionsLength - 1, horizontalQuestionIndex + 1))
         }
       } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault()
-        handleSave()
+        handleSaveRef.current()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentQuestionIndex, gradingMode, horizontalQuestionIndex, horizontalQuestions.length])
+  }, [])
 
   // ─── Select a session ───
   const selectSession = (id: string) => {
@@ -1419,7 +1193,7 @@ export function CorrectionPage() {
                     scoreFinal={currentReponse?.score ?? undefined}
                     commentaireEnseignant={currentReponse?.commentaire ?? undefined}
                     onSaveScore={async (_questionId, score, comment) => {
-                      await handleSave(selectedSessionId, _questionId, score, comment)
+                      await handleSave(selectedSessionId ?? undefined, _questionId, score, comment)
                     }}
                   />
                 ) : (
