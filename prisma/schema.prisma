@@ -65,6 +65,14 @@ model Etablissement {
   exempleMatricule String?
   formatMatricule  String?
   regexMatricule   String?
+
+  // ─── Configuration filigrane certificat (responsable) ───
+  certWatermarkText     String?  @default("ORIGINAL")
+  certWatermarkEnabled  Boolean   @default(true)
+  certWatermarkOpacity  Float     @default(0.04)
+  certWatermarkColor    String?   @default("#1B3A5C")
+  certWatermarkPattern  String?   @default("diamond")
+
   abonnements      Abonnement[]
   adminAccess      EtablissementAccess[]
   anneesAcademiques AnneeAcademique[]

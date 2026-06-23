@@ -74,6 +74,40 @@ async function _GET(
       console.warn('QR code generation failed, continuing without:', qrErr)
     }
 
+    // Fetch watermark config from establishment
+    const etablissement = await db.etablissement.findUnique({
+      where: { id: certificat.etablissementNom }, // fallback: try by name
+      select: {
+        certWatermarkText: true,
+        certWatermarkEnabled: true,
+        certWatermarkOpacity: true,
+        certWatermarkColor: true,
+        certWatermarkPattern: true,
+      },
+    }).catch(() => null)
+
+    // Also try to get it from the validationUE → UE → filiere → etablissement chain
+    const ueEtab = etablissement ?? await db.etablissement.findFirst({
+      where: {
+        filieres: {
+          some: {
+            unitesEnseignement: {
+              some: {
+                validationsUE: { some: { id: certificat.validationUEId } },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        certWatermarkText: true,
+        certWatermarkEnabled: true,
+        certWatermarkOpacity: true,
+        certWatermarkColor: true,
+        certWatermarkPattern: true,
+      },
+    }).catch(() => null)
+
     // Build the data object for the React component
     const pdfData: CertificatPDFData = {
       codeVerification: certificat.codeVerification,
@@ -104,6 +138,13 @@ async function _GET(
           ? certificat.emettePar.name
           : null),
       qrCodeDataUri,
+      watermarkConfig: ueEtab ? {
+        text: ueEtab.certWatermarkText ?? 'ORIGINAL',
+        enabled: ueEtab.certWatermarkEnabled,
+        opacity: ueEtab.certWatermarkOpacity,
+        color: ueEtab.certWatermarkColor ?? '#1B3A5C',
+        pattern: ueEtab.certWatermarkPattern ?? 'diamond',
+      } : null,
     }
 
     // Render the React component to a PDF buffer (via @react-pdf/renderer)
