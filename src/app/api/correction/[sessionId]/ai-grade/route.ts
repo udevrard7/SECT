@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { verifyCorrectionOwnership } from '@/lib/correction-access'
 
 export const maxDuration = 60
 
@@ -48,11 +50,12 @@ function findQuestionData(
 }
 
 // AI-grade a single QRC or TRS answer
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
+export const POST = withAuth(
+  async (
+    request: NextRequest,
+    { params, user }: { params: Promise<{ sessionId: string }>; user: AuthenticatedUser }
+  ) => {
+    try {
     const { sessionId } = await params
     const body = await request.json()
     const { questionId } = body
@@ -93,6 +96,10 @@ export async function POST(
     if (!reponse) {
       return NextResponse.json({ error: 'Réponse non trouvée' }, { status: 404 })
     }
+
+    // ─── Ownership check : l'utilisateur doit posséder/avoir accès à l'épreuve ───
+    const ownershipError = await verifyCorrectionOwnership(user, reponse.session.epreuve.enseignantId)
+    if (ownershipError) return ownershipError
 
     // Find question data from relations or contenu JSONB
     const questionData = findQuestionData(reponse.session.epreuve as any, questionId)
@@ -274,8 +281,8 @@ Réponds UNIQUEMENT en JSON:
     // Audit log
     await db.auditLog.create({
       data: {
-        userId: 'system',
-        userEmail: 'system',
+        userId: user.id,
+        userEmail: user.email,
         action: 'AI_GRADE_RESPONSE',
         entite: 'Reponse',
         entiteId: `${sessionId}_${questionId}`,
@@ -296,14 +303,17 @@ Réponds UNIQUEMENT en JSON:
       { status: 500 }
     )
   }
-}
+  },
+  ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT']
+)
 
 // Teacher validates/adjusts a grade or finalizes correction
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
+export const PATCH = withAuth(
+  async (
+    request: NextRequest,
+    { params, user }: { params: Promise<{ sessionId: string }>; user: AuthenticatedUser }
+  ) => {
+    try {
     const { sessionId } = await params
     const body = await request.json()
     const { questionId, score, commentaire, finalizeAll } = body
@@ -330,6 +340,10 @@ export async function PATCH(
       if (!session) {
         return NextResponse.json({ error: 'Session non trouvée' }, { status: 404 })
       }
+
+      // ─── Ownership check (finalizeAll branch) ───
+      const ownershipError = await verifyCorrectionOwnership(user, session.epreuve.enseignantId)
+      if (ownershipError) return ownershipError
 
       // Build unified questions from both formats
       type UnifiedQ = { questionId: string; bareme: number; type: string }
@@ -415,8 +429,8 @@ export async function PATCH(
       // Audit log — finalize & return correction
       await db.auditLog.create({
         data: {
-          userId: 'system',
-          userEmail: 'system',
+          userId: user.id,
+          userEmail: user.email,
           action: 'FINALIZE_AND_RETURN_CORRECTION',
           entite: 'SessionPassation',
           entiteId: sessionId,
@@ -438,6 +452,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Question requise' }, { status: 400 })
     }
 
+    // ─── Ownership check (individual update branch) ───
+    // On doit charger la session pour vérifier l'appartenance de l'épreuve.
+    const session = await db.sessionPassation.findUnique({
+      where: { id: sessionId },
+      select: { epreuve: { select: { enseignantId: true } } },
+    })
+    if (!session) {
+      return NextResponse.json({ error: 'Session non trouvée' }, { status: 404 })
+    }
+    const ownershipError = await verifyCorrectionOwnership(user, session.epreuve.enseignantId)
+    if (ownershipError) return ownershipError
+
     const updateData: Record<string, unknown> = {}
     if (score !== undefined) updateData.score = score
     if (commentaire !== undefined) updateData.commentaire = commentaire
@@ -457,4 +483,6 @@ export async function PATCH(
       { status: 500 }
     )
   }
-}
+  },
+  ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT']
+)

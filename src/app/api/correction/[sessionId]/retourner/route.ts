@@ -1,22 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { verifyCorrectionOwnership } from '@/lib/correction-access'
 
 // Return graded copies to students (CORRIGEE → RETOURNEE)
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
+export const POST = withAuth(
+  async (
+    request: NextRequest,
+    { params, user }: { params: Promise<{ sessionId: string }>; user: AuthenticatedUser }
+  ) => {
+    try {
     const { sessionId } = await params
 
     const session = await db.sessionPassation.findUnique({
       where: { id: sessionId },
-      include: { resultat: true },
+      include: {
+        resultat: true,
+        epreuve: { select: { enseignantId: true } },
+      },
     })
 
     if (!session) {
       return NextResponse.json({ error: 'Session non trouvée' }, { status: 404 })
     }
+
+    // ─── Ownership check ───
+    const ownershipError = await verifyCorrectionOwnership(user, session.epreuve.enseignantId)
+    if (ownershipError) return ownershipError
 
     if (session.statut !== 'CORRIGEE') {
       return NextResponse.json(
@@ -42,8 +52,8 @@ export async function POST(
     // Audit log
     await db.auditLog.create({
       data: {
-        userId: 'system',
-        userEmail: 'system',
+        userId: user.id,
+        userEmail: user.email,
         action: 'RETURN_COPIES',
         entite: 'SessionPassation',
         entiteId: sessionId,
@@ -62,4 +72,6 @@ export async function POST(
       { status: 500 }
     )
   }
-}
+  },
+  ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT']
+)

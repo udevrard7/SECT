@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { verifyCorrectionOwnership } from '@/lib/correction-access'
 
 export const maxDuration = 60
 
 // AI-grade a homework submission
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
+export const POST = withAuth(
+  async (
+    request: NextRequest,
+    { params, user }: { params: Promise<{ id: string }>; user: AuthenticatedUser }
+  ) => {
+    try {
     const { id } = await params
 
     // Get the submission with devoir info
@@ -29,6 +32,10 @@ export async function POST(
     if (!soumission) {
       return NextResponse.json({ error: 'Soumission non trouvée' }, { status: 404 })
     }
+
+    // ─── Ownership check : le devoir doit appartenir à l'enseignant (ou accessible) ───
+    const ownershipError = await verifyCorrectionOwnership(user, soumission.Devoir.enseignantId)
+    if (ownershipError) return ownershipError
 
     if (!soumission.contenuTexte && !soumission.fichiersSoumis) {
       return NextResponse.json({ error: 'Aucun contenu à évaluer' }, { status: 400 })
@@ -115,8 +122,8 @@ Réponds UNIQUEMENT en JSON:
     // Audit log
     await db.auditLog.create({
       data: {
-        userId: 'system',
-        userEmail: 'system',
+        userId: user.id,
+        userEmail: user.email,
         action: 'AI_GRADE_HOMEWORK',
         entite: 'Soumission',
         entiteId: id,
@@ -139,4 +146,6 @@ Réponds UNIQUEMENT en JSON:
       { status: 500 }
     )
   }
-}
+  },
+  ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT']
+)
