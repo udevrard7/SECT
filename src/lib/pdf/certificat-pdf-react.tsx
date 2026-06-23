@@ -70,6 +70,13 @@ export interface CertificatPDFData {
   statut: string
   responsableNom?: string | null
   qrCodeDataUri?: string | null
+  watermarkConfig?: {
+    text: string
+    enabled: boolean
+    opacity: number
+    color: string
+    pattern: string // 'diamond' | 'circle' | 'text' | 'none'
+  } | null
 }
 
 // ═══ Constants ═══
@@ -299,26 +306,39 @@ function GradeBar({ note, max }: { note: number; max: number }) {
 
 // ═══ Watermark Background ═══
 
-function WatermarkBackground() {
+function WatermarkBackground({ config }: { config?: CertificatPDFData['watermarkConfig'] }) {
+  if (config && (!config.enabled || config.pattern === 'none')) return null
+  const pattern = config?.pattern ?? 'diamond'
+  const color = config?.color ?? NAVY
+  const opacity = config?.opacity ?? 0.03
+
+  if (pattern === 'text') return null // text watermark handled by OriginalWatermark
+  if (pattern === 'circle') {
+    const circles: React.ReactElement[] = []
+    const spacing = 70
+    for (let x = 0; x < 14; x++) {
+      for (let y = 0; y < 12; y++) {
+        circles.push(
+          <View key={`wc-${x}-${y}`} style={{ position: 'absolute', left: x * spacing, top: y * spacing, width: 16, height: 16, opacity }}>
+            <Svg width="16" height="16" viewBox="0 0 16 16">
+              <Circle cx="8" cy="8" r="6" fill="none" stroke={color} strokeWidth="1" />
+            </Svg>
+          </View>
+        )
+      }
+    }
+    return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>{circles}</View>
+  }
+
+  // diamond (default)
   const diamonds: React.ReactElement[] = []
   const spacing = 80
   for (let x = 0; x < 12; x++) {
     for (let y = 0; y < 10; y++) {
       diamonds.push(
-        <View
-          key={`w-${x}-${y}`}
-          style={{
-            position: 'absolute',
-            left: x * spacing,
-            top: y * spacing,
-            width: 20,
-            height: 20,
-            transform: 'rotate(45deg)',
-            opacity: 0.03,
-          }}
-        >
+        <View key={`w-${x}-${y}`} style={{ position: 'absolute', left: x * spacing, top: y * spacing, width: 20, height: 20, transform: 'rotate(45deg)', opacity }}>
           <Svg width="20" height="20" viewBox="0 0 20 20">
-            <Path d="M0,10 L10,0 L20,10 L10,20 Z" fill={NAVY} />
+            <Path d="M0,10 L10,0 L20,10 L10,20 Z" fill={color} />
           </Svg>
         </View>
       )
@@ -329,11 +349,16 @@ function WatermarkBackground() {
 
 // ═══ Original / Copy Watermark ═══
 
-function OriginalWatermark({ isOriginal }: { isOriginal: boolean }) {
+function OriginalWatermark({ config }: { config?: CertificatPDFData['watermarkConfig'] }) {
+  if (config && !config.enabled) return null
+  const text = config?.text ?? 'ORIGINAL'
+  const color = config?.color ?? NAVY
+  const opacity = config?.opacity ? Math.min(config.opacity * 2, 0.1) : 0.04 // slightly more visible than background
+
   return (
-    <View style={{ position: 'absolute', top: '40%', left: '50%', zIndex: 5, opacity: 0.04, transform: 'translate(-50%, -50%) rotate(-20deg)' }}>
-      <Text style={{ fontSize: 80, fontFamily: 'PlayfairDisplay', color: NAVY, fontWeight: 'bold', letterSpacing: 10 }}>
-        {isOriginal ? 'ORIGINAL' : 'COPIE'}
+    <View style={{ position: 'absolute', top: '40%', left: '50%', zIndex: 5, opacity, transform: 'translate(-50%, -50%) rotate(-20deg)' }}>
+      <Text style={{ fontSize: 80, fontFamily: 'PlayfairDisplay', color, fontWeight: 'bold', letterSpacing: 10 }}>
+        {text}
       </Text>
     </View>
   )
@@ -435,8 +460,8 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
   return (
     <Document>
       <Page size={[842, 595]} style={landscapeStyles.page}>
-        <WatermarkBackground />
-        <OriginalWatermark isOriginal={true} />
+        <WatermarkBackground config={data.watermarkConfig} />
+        <OriginalWatermark config={data.watermarkConfig} />
         <CornerOrnaments />
         <TripleBorder />
         <View style={landscapeStyles.content}>
@@ -527,8 +552,8 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
   return (
     <Document>
       <Page size={[595, 842]} style={portraitStyles.page}>
-        <WatermarkBackground />
-        <OriginalWatermark isOriginal={true} />
+        <WatermarkBackground config={data.watermarkConfig} />
+        <OriginalWatermark config={data.watermarkConfig} />
         <CornerOrnaments />
         <TripleBorder />
         <View style={portraitStyles.content}>
