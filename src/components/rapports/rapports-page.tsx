@@ -408,11 +408,13 @@ export function RapportsPage() {
       let yPos = margin
 
       // ─── Color palette (matching app theme) ───
-      const emerald = [16, 185, 129]  // #10b981
-      const teal = [20, 184, 166]     // #14b8a6
-      const dark = [30, 41, 59]       // slate-800
-      const muted = [100, 116, 139]   // slate-500
-      const light = [241, 245, 249]   // slate-100
+      // Typés en tuples [r, g, b] car jspdf setTextColor(r,g,b) et jspdf-autotable
+      // fillColor attendent un Color = string | [number, number, number] (pas number[]).
+      const emerald: [number, number, number] = [16, 185, 129]  // #10b981
+      const teal: [number, number, number] = [20, 184, 166]     // #14b8a6
+      const dark: [number, number, number] = [30, 41, 59]       // slate-800
+      const muted: [number, number, number] = [100, 116, 139]   // slate-500
+      const light: [number, number, number] = [241, 245, 249]   // slate-100
 
       // ─── Helper: add page footer ───
       const addFooter = () => {
@@ -471,7 +473,7 @@ export function RapportsPage() {
       yPos = 40
 
       // KPI Cards row
-      const kpis = [
+      const kpis: { label: string; value: string; color: [number, number, number] }[] = [
         { label: 'Moyenne Generale', value: `${stats.moyenneGenerale}/20`, color: emerald },
         { label: 'Taux de Reussite', value: `${stats.tauxReussiteGlobal}%`, color: teal },
         { label: 'Evaluations', value: `${stats.nbEvaluations}`, color: [245, 158, 11] },

@@ -431,8 +431,8 @@ function GradientButton({ children, onClick, disabled, className, btnRef }: {
     return () => {
       wrapper.removeEventListener('mousemove', handleMouseMove)
       wrapper.removeEventListener('mouseleave', handleMouseLeave)
-      xTo.kill?.()
-      yTo.kill?.()
+      xTo.tween.kill()
+      yTo.tween.kill()
     }
   }, [btnRef])
 
@@ -669,10 +669,10 @@ export function LoginForm({ onBack }: LoginFormProps) {
       // Logo glow pulse
       if (logoGlowRef.current) {
         gsap.to(logoGlowRef.current, {
-          boxShadow: [
-            '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)',
-            '0 0 40px rgba(16,185,129,0.4), inset 0 0 30px rgba(16,185,129,0.15)',
-            '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)',
+          keyframes: [
+            { boxShadow: '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)' },
+            { boxShadow: '0 0 40px rgba(16,185,129,0.4), inset 0 0 30px rgba(16,185,129,0.15)' },
+            { boxShadow: '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)' },
           ],
           duration: 3,
           repeat: -1,
@@ -1253,13 +1253,16 @@ export function LoginForm({ onBack }: LoginFormProps) {
                           </motion.div>
                         </AnimatePresence>
                         <Input
-                          ref={identifierInputRef}
                           id="identifier"
                           type={isPersonnel ? 'email' : 'text'}
                           placeholder={identifierPlaceholder}
                           autoComplete={isPersonnel ? 'email' : 'off'}
                           className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2 transition-all duration-300"
-                          {...form.register('identifier')}
+                          {...form.register('identifier', { setValueAs: undefined })}
+                          ref={(e) => {
+                            identifierInputRef.current = e
+                            form.register('identifier').ref(e)
+                          }}
                           aria-invalid={!!form.formState.errors.identifier}
                         />
                       </div>
@@ -1289,12 +1292,15 @@ export function LoginForm({ onBack }: LoginFormProps) {
                       <div className="relative group">
                         <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25 group-focus-within:text-emerald-400 transition-colors duration-300" />
                         <Input
-                          ref={passwordInputRef}
                           id="password"
                           type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           className="pl-10 pr-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2 transition-all duration-300"
                           {...form.register('password')}
+                          ref={(e) => {
+                            passwordInputRef.current = e
+                            form.register('password').ref(e)
+                          }}
                           aria-invalid={!!form.formState.errors.password}
                         />
                         <motion.button

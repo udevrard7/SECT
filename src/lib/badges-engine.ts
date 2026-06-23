@@ -695,13 +695,13 @@ export async function collectResponsableMetrics(userId: string, etablissementId:
   if (!etablissementId) return {}
 
   const [nbEvaluations, nbEtudiants, nbFilieres, sessionsData] = await Promise.all([
-    withRetry(() => db.epreuve.count({ where: { etablissementId, deletedAt: null } })),
+    withRetry(() => db.epreuve.count({ where: { enseignant: { etablissementId }, deletedAt: null } })),
     withRetry(() => db.user.count({ where: { etablissementId, role: 'ETUDIANT', actif: true } })),
     withRetry(() => db.filiere.count({ where: { etablissementId } })),
     withRetry(() =>
       db.sessionPassation.findMany({
         where: {
-          epreuve: { etablissementId, deletedAt: null },
+          epreuve: { enseignant: { etablissementId }, deletedAt: null },
           score: { not: null },
         },
         select: { score: true, epreuve: { select: { noteTotal: true } } },

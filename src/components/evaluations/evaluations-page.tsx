@@ -990,7 +990,7 @@ export function EvaluationsPage() {
                   {(() => {
                     const gc = detailEpreuve.groupesCibles
                     if (!gc) return null
-                    const isObj = typeof gc === 'object' && !Array.isArray(gc) && 'groupes' in (gc as Record<string, unknown>)
+                    const isObj = typeof gc === 'object' && gc !== null && !Array.isArray(gc) && 'groupes' in gc
                     const groupes: string[] = isObj ? ((gc as { groupes: string[] }).groupes) : Array.isArray(gc) ? (gc as string[]) : []
                     const niveau: string | null = isObj ? ((gc as { niveau?: string | null }).niveau ?? null) : null
                     const hasContent = groupes.length > 0 || niveau

@@ -116,6 +116,12 @@ async function handler(
           explication?: string | null
           difficulte?: string
           bareme: number
+          // CODE-specific fields
+          langage?: string
+          codeInitial?: string
+          fonctionSignature?: string
+          testsPublics?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
+          testsPrives?: Array<{ nom: string; entree: string; sortieAttendue: string; description?: string }>
         }>
         consignes?: string
         baremeTotal?: number

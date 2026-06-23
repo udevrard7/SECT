@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { StatutSession } from '@prisma/client'
 import { execFile } from 'child_process'
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -245,7 +246,7 @@ async function _POST(
     const penalite = session.penalite || 0
     const scoreAfterPenalty = Math.max(0, autoGradedScore - penalite)
 
-    let newStatut: string
+    let newStatut: StatutSession
     let correctionMessage: string | null = null
 
     if (scenario.type === 'A') {

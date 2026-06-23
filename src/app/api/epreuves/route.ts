@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 import { requireAdminEtablissementAccess, verifySelfAccess } from '@/lib/tenant-access'
@@ -144,7 +145,7 @@ async function _POST(
 
     // Build create data
     const validSessionExamen = ['NORMALE', 'RATTRAPAGE', 'SPECIALE', 'EXCEPTIONNELLE', 'DIFFERE']
-    const createData: Record<string, unknown> = {
+    const createData: Prisma.EpreuveUncheckedCreateInput = {
       enseignantId,
       titre,
       description: description || null,
@@ -190,7 +191,7 @@ async function _POST(
         questions: sanitizedQuestions,
         consignes: contenu.consignes || '',
         baremeTotal: contenu.baremeTotal || sanitizedQuestions.reduce((sum: number, q) => sum + (q.bareme as number), 0),
-      }
+      } as Prisma.InputJsonValue
     }
 
     // Handle old format: EpreuveQuestion join table

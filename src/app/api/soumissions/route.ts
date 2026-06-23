@@ -221,12 +221,13 @@ async function _GET(
           if (accessError) return accessError
         }
       } else if (devoirId) {
+        // Note: in the Devoir model, the relation to the teacher (enseignant) is named `User`.
         const devoir = await db.devoir.findUnique({
           where: { id: devoirId },
-          select: { enseignant: { select: { etablissementId: true } } },
+          select: { User: { select: { etablissementId: true } } },
         })
-        if (devoir?.enseignant?.etablissementId) {
-          const accessError = await requireAdminEtablissementAccess(user, devoir.enseignant.etablissementId)
+        if (devoir?.User?.etablissementId) {
+          const accessError = await requireAdminEtablissementAccess(user, devoir.User.etablissementId)
           if (accessError) return accessError
         }
       }

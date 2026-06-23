@@ -903,7 +903,7 @@ export function generateFeuilleReponsesPDF(data: EpreuvePDFData): jsPDF {
         // Replace __CIRCLE__ with empty string so it doesn't render as text
         if (hookData.cell.raw === '__CIRCLE__') {
           hookData.cell.raw = ''
-          hookData.cell.text = ''  // Clear text content to prevent any rendering
+          hookData.cell.text = []  // Clear text content to prevent any rendering
           ;(hookData.cell as any)._isCircle = true
         }
       },
