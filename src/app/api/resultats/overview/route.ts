@@ -271,7 +271,7 @@ async function _GET(
       const ep = epreuveStatsMap.get(s.epreuveId)
       if (ep) {
         ep.nbSessions++
-        if (s.statut === 'CORRIGEE') ep.nbCorrigees++
+        if (s.statut === 'CORRIGEE' || s.statut === 'RETOURNEE') ep.nbCorrigees++
       }
 
       const noteTotal = s.epreuve?.noteTotal ?? 20
@@ -448,7 +448,8 @@ async function _GET(
     return NextResponse.json({
       totalEpreuves: epreuves.length,
       totalSessions: sessions.length,
-      totalCorrigees: sessions.filter((s) => s.statut === 'CORRIGEE').length,
+      // RETOURNEE = also fully corrected (teacher clicked "Finaliser" → direct SOUMISE→RETOURNEE)
+    totalCorrigees: sessions.filter((s) => s.statut === 'CORRIGEE' || s.statut === 'RETOURNEE').length,
       globalMoyenne,
       globalTauxReussite,
       epreuves: epreuvesOut,

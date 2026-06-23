@@ -245,7 +245,10 @@ async function _GET(
         ? Math.round((reussite / sortedScores.length) * 100)
         : 0
       const soumis = statusGroups.find((g) => g.statut === 'SOUMISE')?._count.statut ?? 0
-      const corriges = statusGroups.find((g) => g.statut === 'CORRIGEE')?._count.statut ?? 0
+      // RETOURNEE = fully corrected copies too (teacher finalized → direct SOUMISE→RETOURNEE)
+      const corrigeesGroup = statusGroups.find((g) => g.statut === 'CORRIGEE')?._count.statut ?? 0
+      const retourneesGroup = statusGroups.find((g) => g.statut === 'RETOURNEE')?._count.statut ?? 0
+      const corriges = corrigeesGroup + retourneesGroup
 
       const moyennePct = noteTotal > 0
         ? Math.round((moyenne / noteTotal) * 1000) / 10
