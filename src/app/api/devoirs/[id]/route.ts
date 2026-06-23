@@ -157,7 +157,7 @@ export async function PATCH(
     if (data.datePublication !== undefined) updateData.datePublication = data.datePublication ? new Date(data.datePublication) : null
     if (data.dateLimite !== undefined) updateData.dateLimite = new Date(data.dateLimite)
     if (data.noteMax !== undefined) updateData.noteMax = data.noteMax
-    if (data.renduFichiers !== undefined) updateData.renduFichiers = JSON.stringify(data.renduFichiers)
+    if (data.renduFichiers !== undefined) updateData.renduFichiers = data.renduFichiers != null ? JSON.stringify(data.renduFichiers) : null
     if (data.soumissionGroupe !== undefined) updateData.soumissionGroupe = data.soumissionGroupe
     if (data.nbMaxFichiers !== undefined) updateData.nbMaxFichiers = data.nbMaxFichiers
     if (data.tailleMaxFichier !== undefined) updateData.tailleMaxFichier = data.tailleMaxFichier
