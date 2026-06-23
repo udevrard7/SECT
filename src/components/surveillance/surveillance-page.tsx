@@ -905,7 +905,7 @@ function SessionsTab({
               <SelectTrigger className="sv-focus border-violet-500/30 bg-violet-500/5 text-violet-100">
                 <SelectValue placeholder="Toutes les épreuves" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dark border-violet-500/40">
                 <SelectItem value="all">Toutes les épreuves</SelectItem>
                 {epreuves.map((ep) => (
                   <SelectItem key={ep.id} value={ep.id}>
@@ -928,7 +928,7 @@ function SessionsTab({
               <SelectTrigger className="sv-focus border-violet-500/30 bg-violet-500/5 text-violet-100">
                 <SelectValue placeholder="Toutes sévérités" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dark border-violet-500/40">
                 <SelectItem value="all">Toutes sévérités</SelectItem>
                 <SelectItem value="high">Critique</SelectItem>
                 <SelectItem value="medium">Important</SelectItem>
@@ -950,7 +950,7 @@ function SessionsTab({
               <SelectTrigger className="sv-focus border-violet-500/30 bg-violet-500/5 text-violet-100">
                 <SelectValue placeholder="Tous les types" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dark border-violet-500/40">
                 <SelectItem value="all">Tous les types</SelectItem>
                 {Object.entries(EVENT_LABELS).map(([type, label]) => (
                   <SelectItem key={type} value={type}>
@@ -1626,7 +1626,7 @@ function DetailSheet({
 }) {
   return (
     <Sheet open={!!session} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent className="sv-gaming border-violet-500/30 bg-violet-950/95 backdrop-blur-xl sv-scroll w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent className="border-violet-500/30 bg-violet-950/95 text-violet-50 backdrop-blur-xl sv-scroll w-full overflow-y-auto sm:max-w-2xl">
         {session && (
           <>
             <SheetHeader>
@@ -1824,7 +1824,7 @@ function ScreenshotViewer({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sv-gaming border-violet-500/30 bg-violet-950/95 backdrop-blur-xl sm:max-w-4xl">
+      <DialogContent className="border-violet-500/30 bg-violet-950/95 text-violet-50 backdrop-blur-xl sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-2 text-violet-100">
             <span>

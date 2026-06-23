@@ -188,7 +188,7 @@
 }
 
 .sv-gaming {
-  /* Palette violet gaming — works on light & dark but optimized for dark */
+  /* Palette violet gaming */
   --sv-violet: 168 85 247;      /* violet-500 */
   --sv-fuchsia: 217 70 239;     /* fuchsia-500 */
   --sv-purple: 147 51 234;      /* purple-600 */
@@ -198,6 +198,21 @@
   --sv-emerald: 16 185 129;     /* emerald-500 */
   --sv-amber: 245 158 11;       /* amber-500 */
   position: relative;
+  isolation: isolate;
+  /* ── Force un contexte sombre quel que soit le thème de l'app ──
+     L'esthétique "Violet Gaming" nécessite un fond sombre pour que
+     les néons, glows et dégradés ressortent. On force donc un panneau
+     sombre autoporteur, lisible en mode clair ET sombre. */
+  color: rgb(245 232 255); /* violet-50 — texte par défaut lisible */
+  background:
+    radial-gradient(1100px 560px at 100% -8%, rgba(168, 85, 247, 0.20), transparent 55%),
+    radial-gradient(900px 480px at -8% 108%, rgba(217, 70, 239, 0.14), transparent 55%),
+    linear-gradient(180deg, rgb(16 10 26) 0%, rgb(9 6 18) 100%);
+  border: 1px solid rgba(168, 85, 247, 0.22);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  min-height: calc(100vh - 7rem);
+  box-shadow: 0 20px 60px -20px rgba(88, 28, 135, 0.4);
 }
 
 /* Glassmorphism card */
