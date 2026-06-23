@@ -16,6 +16,7 @@ import {
   Download, Award, Shield, FileText, CheckCircle2, XCircle, Clock,
   Loader2, ScrollText, AlertCircle, TrendingUp, Trophy, Medal,
   Share2, Printer, Search, Copy, ChevronDown, Sparkles, Filter,
+  FolderDown,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -122,6 +123,9 @@ export function MesCertificatsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<CertificatType | 'all'>('all')
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
+  const [previewHoverId, setPreviewHoverId] = useState<string | null>(null)
+
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false)
 
   // ─── Fetch ───
 
@@ -263,6 +267,41 @@ export function MesCertificatsPage() {
     }
   }
 
+  // ─── Batch download all certificates as ZIP ───
+
+  const handleBatchDownload = async () => {
+    if (filteredCertificats.length === 0) return
+    setIsBatchDownloading(true)
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+
+      const downloads = await Promise.all(
+        filteredCertificats.map(async (cert) => {
+          const res = await fetch(`/api/certificats/${cert.id}/pdf?orientation=${orientation}`)
+          if (!res.ok) throw new Error(`Échec certificat ${cert.ueCode}`)
+          const blob = await res.blob()
+          const name = `certificat_${cert.ueCode}_${cert.ueNom.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30)}.pdf`
+          return { name, blob }
+        })
+      )
+
+      downloads.forEach(({ name, blob }) => zip.file(name, blob))
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `certificats_sect_${new Date().toISOString().slice(0, 10)}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Téléchargement groupé', { description: `${downloads.length} certificats dans le ZIP.` })
+    } catch (err) {
+      toast.error('Échec du téléchargement groupé', { description: err instanceof Error ? err.message : 'Réessayez.' })
+    } finally {
+      setIsBatchDownloading(false)
+    }
+  }
+
   // ─── Filtered certificates ───
 
   const filteredCertificats = useMemo(() => {
@@ -364,6 +403,20 @@ export function MesCertificatsPage() {
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'portrait' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground'}`}
           >📄 Portrait</button>
         </div>
+
+        {/* Batch download */}
+        {certificats.length > 1 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={handleBatchDownload}
+            disabled={isBatchDownloading}
+          >
+            {isBatchDownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderDown className="h-3.5 w-3.5" />}
+            Tout télécharger ({orientation === 'landscape' ? 'Paysage' : 'Portrait'})
+          </Button>
+        )}
       </div>
 
       {/* ─── Certificats tab ─── */}
@@ -447,6 +500,38 @@ export function MesCertificatsPage() {
                           <Icon className="h-5 w-5 text-white" />
                         </div>
                         <Badge variant="outline" className={meta.badge}>{meta.label}</Badge>
+                      </div>
+
+                      {/* Miniature aperçu certificat */}
+                      <div
+                        className="relative mb-3 cursor-pointer overflow-hidden rounded-lg border-2 border-double bg-gradient-to-br from-white to-muted/30 dark:from-card dark:to-muted/10 p-3 transition-all hover:scale-[1.02]"
+                        onMouseEnter={() => setPreviewHoverId(cert.id)}
+                        onMouseLeave={() => setPreviewHoverId(null)}
+                      >
+                        {/* Mini border effect */}
+                        <div className="absolute inset-1 border border-gold/20 rounded" />
+                        <div className="relative text-center space-y-1">
+                          <p className="text-[8px] uppercase tracking-[2px] text-amber-600/60 dark:text-amber-400/40 font-semibold">Certificat de réussite</p>
+                          <p className="text-[9px] font-bold text-muted-foreground/80 truncate">{cert.etudiantNom || user?.name || '—'}</p>
+                          <p className="text-[10px] font-bold text-foreground/90">{cert.ueCode}</p>
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-xs font-black text-foreground">{cert.note.toFixed(1)}</span>
+                            <span className="text-[8px] text-muted-foreground">/20</span>
+                          </div>
+                          <div className="h-1 rounded-full bg-muted mx-2 overflow-hidden">
+                            <div className={`h-full rounded-full bg-gradient-to-r ${meta.bar}`} style={{ width: `${(cert.note / 20) * 100}%` }} />
+                          </div>
+                          {cert.mention && (
+                            <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{cert.mention}</Badge>
+                          )}
+                        </div>
+                        {/* QR code miniature */}
+                        <div className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded border border-muted-foreground/10 overflow-hidden">
+                          <div className="grid grid-cols-2 h-full w-full gap-px">
+                            <div className="bg-foreground/40" /><div className="bg-foreground/20" />
+                            <div className="bg-foreground/10" /><div className="bg-foreground/40" />
+                          </div>
+                        </div>
                       </div>
 
                       {/* UE */}

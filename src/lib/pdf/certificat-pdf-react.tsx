@@ -227,6 +227,28 @@ function Logo({ logo, nom }: { logo: string | null; nom: string }) {
   return <View style={{ alignItems: 'center', marginBottom: 3 }}><Image src={logo} style={{ width: 120, height: 50, objectFit: 'contain' as const }} alt="" /></View>
 }
 
+function SignatureBlock({ name, role, color }: { name?: string | null; role: string; color?: string }) {
+  const lineColor = color || SIG_LINE
+  return (
+    <View style={{ alignItems: 'center' }}>
+      {/* Decorative signature area */}
+      <View style={{ height: 50, justifyContent: 'flex-end', alignItems: 'center', marginBottom: 6 }}>
+        <Svg width="140" height="50" viewBox="0 0 140 50">
+          {/* Decorative scroll ends */}
+          <Path d="M10,45 Q5,45 5,40 Q5,35 10,35" fill="none" stroke={lineColor} strokeWidth="0.5" />
+          <Path d="M130,45 Q135,45 135,40 Q135,35 130,35" fill="none" stroke={lineColor} strokeWidth="0.5" />
+          {/* Main signature line */}
+          <Path d="M15,40 L125,40" fill="none" stroke={lineColor} strokeWidth="0.8" />
+          {/* Subtle underline */}
+          <Path d="M20,45 L120,45" fill="none" stroke={lineColor} strokeWidth="0.3" />
+        </Svg>
+      </View>
+      {name && <Text style={{ fontSize: 10, color: TEXT_DARK, fontWeight: 'bold', textAlign: 'center', marginBottom: 1 }}>{name}</Text>}
+      <Text style={{ fontSize: 9, color: TEXT_GRAY, textAlign: 'center' }}>{role}</Text>
+    </View>
+  )
+}
+
 // ═══ QR Code Box ═══
 
 function QRCodeBox({ dataUri, code }: { dataUri: string | null | undefined; code: string }) {
@@ -303,6 +325,18 @@ function WatermarkBackground() {
     }
   }
   return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>{diamonds}</View>
+}
+
+// ═══ Original / Copy Watermark ═══
+
+function OriginalWatermark({ isOriginal }: { isOriginal: boolean }) {
+  return (
+    <View style={{ position: 'absolute', top: '40%', left: '50%', zIndex: 5, opacity: 0.04, transform: 'translate(-50%, -50%) rotate(-20deg)' }}>
+      <Text style={{ fontSize: 80, fontFamily: 'PlayfairDisplay', color: NAVY, fontWeight: 'bold', letterSpacing: 10 }}>
+        {isOriginal ? 'ORIGINAL' : 'COPIE'}
+      </Text>
+    </View>
+  )
 }
 
 // ═══ Shared data builder ═══
@@ -402,6 +436,7 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
     <Document>
       <Page size={[842, 595]} style={landscapeStyles.page}>
         <WatermarkBackground />
+        <OriginalWatermark isOriginal={true} />
         <CornerOrnaments />
         <TripleBorder />
         <View style={landscapeStyles.content}>
@@ -438,16 +473,13 @@ export function CertificateLandscape({ data }: { data: CertificatPDFData }) {
           </View>
           <View style={landscapeStyles.sigRow}>
             <View style={landscapeStyles.sigCol}>
-              <View style={landscapeStyles.sigSpace} />
-              <Text style={landscapeStyles.sigLabel}>Signature de l&apos;enseignant</Text>
+              <SignatureBlock role="Signature de l'enseignant" />
             </View>
             <View style={landscapeStyles.sigCenter}>
               <Seal />
             </View>
             <View style={landscapeStyles.sigCol}>
-              <View style={landscapeStyles.sigSpace} />
-              {data.responsableNom ? <Text style={landscapeStyles.sigName}>{data.responsableNom}</Text> : null}
-              <Text style={landscapeStyles.sigLabel}>Le Responsable pédagogique</Text>
+              <SignatureBlock name={data.responsableNom} role="Le Responsable pédagogique" />
             </View>
           </View>
           <View style={landscapeStyles.footer}>
@@ -496,6 +528,7 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
     <Document>
       <Page size={[595, 842]} style={portraitStyles.page}>
         <WatermarkBackground />
+        <OriginalWatermark isOriginal={true} />
         <CornerOrnaments />
         <TripleBorder />
         <View style={portraitStyles.content}>
@@ -532,16 +565,13 @@ export function CertificatePortrait({ data }: { data: CertificatPDFData }) {
           </View>
           <View style={portraitStyles.sigContainer}>
             <View style={portraitStyles.sigBlock}>
-              <View style={portraitStyles.sigSpace} />
-              <Text style={portraitStyles.sigLabel}>Signature de l&apos;enseignant</Text>
+              <SignatureBlock role="Signature de l'enseignant" />
             </View>
             <View style={portraitStyles.sigCenter}>
               <Seal />
             </View>
             <View style={portraitStyles.sigBlock}>
-              <View style={portraitStyles.sigSpace} />
-              {data.responsableNom ? <Text style={portraitStyles.sigName}>{data.responsableNom}</Text> : null}
-              <Text style={portraitStyles.sigLabel}>Le Responsable pédagogique</Text>
+              <SignatureBlock name={data.responsableNom} role="Le Responsable pédagogique" />
             </View>
           </View>
           <View style={portraitStyles.footer}>
