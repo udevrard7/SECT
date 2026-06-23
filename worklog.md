@@ -502,3 +502,40 @@ Stage Summary:
   * Pour étudiant, AreaChart "Évolution des scores" conservé inline (au lieu d'EvolutionChart partagé) car evolutionScores a une shape per-exam {titre, score, date} ≠ EvolutionPoint {mois, moyenne, count}. Modifier /api/stats/etudiant pour retourner une évolution mensuelle aurait cassé l'UX (l'étudiant voit ses scores par épreuve, pas par mois). Le chart inline utilise néanmoins ChartCard + ResponsiveContainer avec un gradient identique à l'ancien, et le BarChart "Performance par type" utilise désormais getBarColor (au lieu du getScoreColor(*2) bugué).
   * Le champ `badges` basique retourné par /api/stats/* est typé `unknown` dans EnseignantStatsData et EtudiantStatsData, et ignoré par le frontend (commentaire de tête de use-dashboard.ts). Les badges affichés proviennent exclusivement de useBadges (format BadgeWithProgress attendu par BadgesCarousel). Aucune modification d'API n'a été nécessaire.
 - État du projet : STABLE. Le sous-système dashboards est désormais aligné avec les conventions TanStack Query des refontes précédentes (resultats/mes-resultats). Les 2 bugs critiques étudiant (branche morte + moyenne*2) sont résolus. Prochaines priorités recommandées : (1) page correction (~2400 lignes) à modulariser (cf. INV-c), (2) nettoyer les 103 erreurs tsc préexistantes.
+
+---
+Task ID: T2 (phases 1+2)
+Agent: Z.ai (tuteur/assistant — exécution)
+Task: Modularisation page correction (2403 lignes) — phases 1 (quick wins) + 2 (data layer TanStack Query). Phase 3 (UI split) reportée à une session dédiée.
+
+Work Log:
+Phase 1 (commit aef60a0) — Quick wins, low risk :
+- Création src/types/correction.ts : extraction des types (CorrectionSession, EpreuveOption, GradingMode, RubricCriterion) depuis le monolithe.
+- Création src/lib/correction-utils.ts : extraction des 14 helpers purs (getQuestionTypeLabel, isAutoGradedType, getCorrectionBadge, getScoreColor, generateRubricCriteria, parseAnswerContent, isCodingAnswer, etc.). Note de divergence documentée : getScoreColor est ratio-based (différent de resultats-utils.getScoreColor qui est scoreOn20-based).
+- Création src/components/correction/score-circle.tsx : extraction du composant ScoreCircle.
+- formatDate local (code mort, jamais appelé) supprimé.
+- BUG CORRIGÉ : stale-closure du keyboard handler (L870) — handleSave et goToQuestion n'étaient pas dans les deps du useEffect → Ctrl+S et flèches utilisaient des valeurs stale. Fix via refs (handleSaveRef, goToQuestionRef, kbStateRef) : l'event listener s'attache une seule fois (deps []) et lit les refs mises à jour à chaque render.
+- 4 console.error supprimés (toast.error couvre déjà l'UX).
+- 1 erreur TS préexistante corrigée (selectedSessionId string|null → ?? undefined).
+- Vérification : bunx eslint → 0 erreur ; bunx tsc --noEmit → 0 erreur sur les fichiers touchés.
+- correction-page.tsx : 2403 → 2177 lignes.
+
+Phase 2 (commit b0b428d) — Data layer TanStack Query, medium risk :
+- Création src/hooks/use-correction.ts : 8 hooks (useEpreuvesForCorrection, useCorrectionSessions, useAiGrade, useSaveGrade, useFinalizeSession, useBatchAiGrade, useBatchReturn, useRefreshCorrection). Pattern aligné sur use-resultats.ts/use-dashboard.ts (fetchJSON helper, queryKey factory, staleTime 30-60s, placeholderData, enabled).
+- Migration de fetchEpreuves/fetchSessions (useCallback) → useEpreuvesForCorrection/useCorrectionSessions. Les useState epreuves/sessions/isLoadingEpreuves/isLoadingSessions supprimés (dérivés des hooks).
+- Migration de 7 handlers de mutation (handleAiGrade, handleApplyAi, handleSave, handleFinalize, handleBatchAiGrade, handleBatchReturn, handleHorizontalSave + boucle batch custom par-question) → mutateAsync. Tous les 'await fetchSessions()' supprimés (invalidateQueries en onSuccess des mutations rafraîchit la liste automatiquement).
+- Imports nettoyés : useCallback et EpreuveOption devenus inutiles.
+- Vérification : bunx eslint → 0 erreur ; bunx tsc --noEmit → 0 erreur sur les fichiers touchés.
+- correction-page.tsx : 2177 → 2070 lignes.
+
+Stage Summary:
+- Fichiers créés (4) :
+  * src/types/correction.ts (types)
+  * src/lib/correction-utils.ts (14 helpers)
+  * src/components/correction/score-circle.tsx (composant)
+  * src/hooks/use-correction.ts (8 hooks TanStack Query)
+- Fichiers modifiés (1) :
+  * src/components/correction/correction-page.tsx (2403 → 2070 lignes, -333 lignes)
+- Bugs corrigés : 1 stale-closure critique (keyboard handler), 1 erreur TS préexistante, 4 console.error supprimés.
+- Migration TanStack Query : cache, dedup, refetch auto, invalidation automatique post-mutation. Cohérent avec le pattern resultats/mes-resultats/dashboards.
+- Phase 3 (UI split en 9 composants + orchestrator ~350 lignes) REPORTÉE : c'est la partie la plus volumineuse et risquée (28 useState partagés entre 2 vues, ~500 lignes dupliquées pour AI-suggestion + grading-form). Mérite une session dédiée pour préserver le rendu visuel identique. Le monolithe restant (2070 lignes) est désormais : imports + 1 composant avec state/hooks/handlers + 8 render functions inline (renderToolbar, renderStudentSidebar, renderQuestionSidebar, renderQuestionHeader, renderParCopieContent, renderParQuestionContent, loading/empty states, main render).
