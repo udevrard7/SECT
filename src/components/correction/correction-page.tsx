@@ -9,8 +9,6 @@ import {
   Check,
   AlertTriangle,
   Loader2,
-  ClipboardList,
-  FileCheck,
   Sparkles,
   Save,
   User,
@@ -18,12 +16,9 @@ import {
   Award,
   MessageSquare,
   FileText,
-  Search,
-  Send,
   Zap,
   LayoutGrid,
   List,
-  X,
   Wand2,
   ThumbsUp,
   ThumbsDown,
@@ -32,7 +27,6 @@ import {
   Eye,
   PanelLeftClose,
   PanelLeftOpen,
-  Keyboard,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -40,17 +34,9 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Sheet,
   SheetContent,
@@ -85,8 +71,6 @@ import {
   isAutoGradedType,
   isSemiAutoGradedType,
   getCorrectionBadge,
-  getDifficulteLabel,
-  getDifficulteDotColor,
   getScoreColor,
   getStudentStatusDot,
   generateRubricCriteria,
@@ -94,6 +78,11 @@ import {
   isCodingAnswer,
 } from '@/lib/correction-utils'
 import { ScoreCircle } from '@/components/correction/score-circle'
+import { CorrectionToolbar } from '@/components/correction/correction-toolbar'
+import { StudentSidebar } from '@/components/correction/student-sidebar'
+import { QuestionSidebar } from '@/components/correction/question-sidebar'
+import { QuestionHeader } from '@/components/correction/question-header'
+import { CorrectionLoadingSkeleton, CorrectionEmptyState } from '@/components/correction/correction-skeletons'
 import {
   useEpreuvesForCorrection,
   useCorrectionSessions,
@@ -580,331 +569,6 @@ export function CorrectionPage() {
     setMobileSheetOpen(false)
   }
 
-  // ─── RENDER: Toolbar ───
-  const renderToolbar = () => (
-    <div className="border-b border-border bg-card px-4 py-2.5">
-      <div className="flex items-center gap-3 flex-wrap">
-        {/* Epreuve selector */}
-        <Select
-          value={selectedEpreuveId}
-          onValueChange={setSelectedEpreuveId}
-        >
-          <SelectTrigger className="w-[200px] h-8 text-sm">
-            <SelectValue placeholder="Sélectionnez une épreuve" />
-          </SelectTrigger>
-          <SelectContent>
-            {epreuves.map((e) => (
-              <SelectItem key={e.id} value={e.id}>
-                {e.titre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Grading mode toggle */}
-        {selectedEpreuveId && (
-          <Tabs value={gradingMode} onValueChange={(v) => setGradingMode(v as GradingMode)}>
-            <TabsList className="h-8">
-              <TabsTrigger value="par-copie" className="text-xs gap-1 px-3 h-7">
-                <List className="h-3 w-3" />
-                Par copie
-              </TabsTrigger>
-              <TabsTrigger value="par-question" className="text-xs gap-1 px-3 h-7">
-                <LayoutGrid className="h-3 w-3" />
-                Par question
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-
-        {/* Progress */}
-        {selectedEpreuveId && sessions.length > 0 && (
-          <div className="flex items-center gap-2 ml-auto">
-            <Progress value={globalProgress} className="w-24 h-2" />
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {Math.round(globalProgress)}%
-            </span>
-          </div>
-        )}
-
-        {/* Search */}
-        {selectedEpreuveId && gradingMode === 'par-copie' && (
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="pl-7 h-8 w-40 text-sm"
-            />
-            {searchFilter && (
-              <button
-                onClick={() => setSearchFilter('')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2"
-              >
-                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Batch actions */}
-        {selectedEpreuveId && (
-          <div className="flex items-center gap-2">
-            {selectedSessionId && gradingMode === 'par-copie' && needsCorrectionCount > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleBatchAiGrade}
-                      disabled={isBatchAiLoading}
-                      className="h-8 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
-                    >
-                      {isBatchAiLoading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                      ) : (
-                        <Sparkles className="h-3.5 w-3.5 mr-1" />
-                      )}
-                      Batch IA
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Évaluer toutes les questions avec l&apos;IA</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
-            {sessions.some(s => s.statut === 'CORRIGEE') && (
-              <Button
-                size="sm"
-                className="h-8 text-xs bg-teal-600 hover:bg-teal-700"
-                onClick={handleBatchReturn}
-                disabled={isBatchReturning}
-              >
-                {isBatchReturning ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                ) : (
-                  <Send className="h-3.5 w-3.5 mr-1" />
-                )}
-                Rendre copies ({sessions.filter(s => s.statut === 'CORRIGEE').length})
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* Keyboard shortcut hint */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="hidden md:flex items-center gap-1 text-muted-foreground">
-                <Keyboard className="h-3.5 w-3.5" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent className="text-xs">
-              <p>← → Navigation questions</p>
-              <p>Ctrl+S Sauvegarder</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-    </div>
-  )
-
-  // ─── RENDER: Sidebar (Student list for par-copie mode) ───
-  const renderSidebar = () => {
-    if (gradingMode === 'par-question') {
-      return renderQuestionSidebar()
-    }
-    return renderStudentSidebar()
-  }
-
-  const renderStudentSidebar = () => {
-    const pending = filteredSessions.filter(s => s.statut !== 'RETOURNEE')
-    const returned = filteredSessions.filter(s => s.statut === 'RETOURNEE')
-
-    return (
-      <div className="flex flex-col h-full">
-        {/* Section: En attente */}
-        {pending.length > 0 && (
-          <div className="pb-2">
-            <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider px-3 py-1.5 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              À corriger ({pending.length})
-            </p>
-            <div className="space-y-0.5 px-1">
-              {pending.map((session) => {
-                const isSelected = session.id === selectedSessionId
-                const status = getStudentStatusDot(session)
-                return (
-                  <button
-                    key={session.id}
-                    onClick={() => selectSession(session.id)}
-                    className={`w-full text-left rounded-md px-2.5 py-2 transition-all flex items-center gap-2.5 group ${
-                      isSelected
-                        ? 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700'
-                        : 'hover:bg-muted/60'
-                    }`}
-                  >
-                    <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${status.color}`} title={status.label} />
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
-                        {session.etudiant.name}
-                      </p>
-                    </div>
-                    {session.alertes > 0 && (
-                      <span className="shrink-0 flex h-4 w-4 items-center justify-center rounded-full bg-rose-100 text-rose-700 text-[9px] font-bold dark:bg-rose-900/40 dark:text-rose-300">
-                        {session.alertes}
-                      </span>
-                    )}
-                    {session.score !== null && (
-                      <span className={`text-xs font-semibold shrink-0 ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
-                        {session.score.toFixed(1)}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Section: Rendues */}
-        {returned.length > 0 && (
-          <div className="pb-2">
-            <p className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider px-3 py-1.5 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
-              Rendues ({returned.length})
-            </p>
-            <div className="space-y-0.5 px-1">
-              {returned.map((session) => {
-                const isSelected = session.id === selectedSessionId
-                return (
-                  <button
-                    key={session.id}
-                    onClick={() => selectSession(session.id)}
-                    className={`w-full text-left rounded-md px-2.5 py-2 transition-all flex items-center gap-2.5 group opacity-70 ${
-                      isSelected
-                        ? 'bg-teal-50 dark:bg-teal-950/30 ring-1 ring-teal-300 dark:ring-teal-700 opacity-100'
-                        : 'hover:bg-muted/60'
-                    }`}
-                  >
-                    <span className="h-2.5 w-2.5 rounded-full bg-teal-500 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
-                        {session.etudiant.name}
-                      </p>
-                    </div>
-                    {session.score !== null && (
-                      <span className={`text-xs font-semibold shrink-0 ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
-                        {session.score.toFixed(1)}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {filteredSessions.length === 0 && !isLoadingSessions && (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <FileCheck className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Aucune copie
-            </p>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const renderQuestionSidebar = () => {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="space-y-0.5 px-1">
-          {horizontalQuestions.map((q, idx) => {
-            const isCurrent = idx === horizontalQuestionIndex
-            const graded = sessions.filter((s) => {
-              const rep = s.reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
-              return rep?.score !== null && rep?.score !== undefined
-            }).length
-            const total = sessions.length
-            const isComplete = graded === total
-            const isAutoGraded = isAutoGradedType(q.question.type)
-
-            return (
-              <button
-                key={q.id}
-                onClick={() => setHorizontalQuestionIndex(idx)}
-                className={`w-full text-left rounded-md px-2.5 py-2 transition-all flex items-center gap-2.5 ${
-                  isCurrent
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700'
-                    : 'hover:bg-muted/60'
-                }`}
-              >
-                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                  isAutoGraded ? 'bg-sky-500' : isComplete ? 'bg-emerald-500' : graded > 0 ? 'bg-amber-500' : 'bg-muted-foreground/40'
-                }`} />
-                <div className="min-w-0 flex-1">
-                  <p className={`text-sm truncate ${isCurrent ? 'font-semibold' : 'font-medium'}`}>
-                    Q{idx + 1} — {getQuestionTypeLabel(q.question.type)}
-                  </p>
-                </div>
-                <span className="text-[10px] text-muted-foreground shrink-0">
-                  {graded}/{total}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        {horizontalQuestions.length === 0 && !isLoadingSessions && (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <FileCheck className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Aucune question</p>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ─── RENDER: Compact question header ───
-  const renderQuestionHeader = () => {
-    if (!currentQuestion) return null
-    const q = currentQuestion.question
-    const correctionBadge = getCorrectionBadge(q.type)
-    const expectedAnswer = typeof q.reponseCorrecte === 'string'
-      ? q.reponseCorrecte
-      : Array.isArray(q.reponseCorrecte)
-        ? q.reponseCorrecte.join(', ')
-        : ''
-
-    return (
-      <div className="border-b border-border bg-card px-4 py-2.5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-foreground">Q{currentQuestionIndex + 1}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-xs text-muted-foreground">{getQuestionTypeLabel(q.type)}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{currentQuestion.bareme}pts</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="flex items-center gap-1 text-xs">
-            <span className={`h-1.5 w-1.5 rounded-full ${getDifficulteDotColor(q.difficulte)}`} />
-            {getDifficulteLabel(q.difficulte)}
-          </span>
-          <Badge variant="outline" className={`text-[10px] h-5 ml-auto ${correctionBadge.classes}`}>
-            {isAutoGradedType(q.type) ? <Zap className="h-2.5 w-2.5 mr-0.5" /> : <PenTool className="h-2.5 w-2.5 mr-0.5" />}
-            {correctionBadge.label}
-          </Badge>
-        </div>
-      </div>
-    )
-  }
-
   // ─── RENDER: Par copie main content ───
   const renderParCopieContent = () => {
     if (!selectedSession) {
@@ -1031,7 +695,10 @@ export function CorrectionPage() {
         </div>
 
         {/* Question header */}
-        {renderQuestionHeader()}
+        <QuestionHeader
+          currentQuestion={currentQuestion}
+          currentQuestionIndex={currentQuestionIndex}
+        />
 
         {/* Scrollable content */}
         <ScrollArea className="flex-1 min-h-0" ref={mainContentRef}>
@@ -1910,32 +1577,31 @@ export function CorrectionPage() {
 
   // ─── RENDER: Loading state ───
   if (isLoadingEpreuves) {
-    return (
-      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-600 mx-auto" />
-          <p className="mt-3 text-sm text-muted-foreground">Chargement des épreuves...</p>
-        </div>
-      </div>
-    )
+    return <CorrectionLoadingSkeleton />
   }
 
   // ─── RENDER: No epreuves ───
   if (epreuves.length === 0) {
-    return (
-      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
-        <div className="text-center">
-          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
-            <ClipboardList className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="mt-3 text-base font-semibold">Aucune épreuve disponible</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Créez une épreuve pour commencer à corriger.
-          </p>
-        </div>
-      </div>
-    )
+    return <CorrectionEmptyState />
   }
+
+  // ─── Sidebar content (variable réutilisée desktop + mobile) ───
+  const sidebarContent = gradingMode === 'par-question' ? (
+    <QuestionSidebar
+      horizontalQuestions={horizontalQuestions}
+      horizontalQuestionIndex={horizontalQuestionIndex}
+      sessions={sessions}
+      onSelectQuestion={setHorizontalQuestionIndex}
+      isLoadingSessions={isLoadingSessions}
+    />
+  ) : (
+    <StudentSidebar
+      filteredSessions={filteredSessions}
+      selectedSessionId={selectedSessionId}
+      onSelectSession={selectSession}
+      isLoadingSessions={isLoadingSessions}
+    />
+  )
 
   // ─── Main render ───
   const mainContent = gradingMode === 'par-copie' ? renderParCopieContent() : renderParQuestionContent()
@@ -1943,7 +1609,24 @@ export function CorrectionPage() {
   return (
     <div className="flex flex-col rounded-xl border border-border bg-background overflow-hidden h-[calc(100vh-10rem)]">
       {/* Toolbar */}
-      {renderToolbar()}
+      <CorrectionToolbar
+        selectedEpreuveId={selectedEpreuveId}
+        setSelectedEpreuveId={setSelectedEpreuveId}
+        epreuves={epreuves}
+        gradingMode={gradingMode}
+        setGradingMode={setGradingMode}
+        sessions={sessions}
+        globalProgress={globalProgress}
+        searchFilter={searchFilter}
+        setSearchFilter={setSearchFilter}
+        selectedSessionId={selectedSessionId}
+        needsCorrectionCount={needsCorrectionCount}
+        isLoadingSessions={isLoadingSessions}
+        onBatchAiGrade={handleBatchAiGrade}
+        isBatchAiLoading={isBatchAiLoading}
+        onBatchReturn={handleBatchReturn}
+        isBatchReturning={isBatchReturning}
+      />
 
       {/* Body: Sidebar + Main */}
       <div className="flex flex-1 min-h-0">
@@ -2028,7 +1711,7 @@ export function CorrectionPage() {
                     ))}
                   </div>
                 ) : (
-                  renderSidebar()
+                  sidebarContent
                 )}
               </div>
             </ScrollArea>
@@ -2053,7 +1736,7 @@ export function CorrectionPage() {
               </SheetTitle>
               <ScrollArea className="flex-1 h-[calc(100vh-6rem)]">
                 <div className="py-2">
-                  {renderSidebar()}
+                  {sidebarContent}
                 </div>
               </ScrollArea>
             </SheetContent>
