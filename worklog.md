@@ -436,3 +436,69 @@ Stage Summary:
 - Migration low-risk terminée : 94 lignes, logique auth-only identique, API proxy stable en next@16.1.3 (confirmé par node_modules/next/dist/lib/constants.js).
 - L'avertissement de dépréation "middleware is deprecated" disparaîtra au prochain build Vercel.
 - 1 nouveau fichier (src/proxy.ts) + 1 suppression (src/middleware.ts).
+
+---
+Task ID: T1
+Agent: full-stack-developer
+Task: Refonte dashboards enseignant + étudiant (TanStack Query + fix bugs critiques)
+
+Work Log:
+- Lecture complète de worklog.md sect-project (438 lignes) pour absorber les conventions des refontes précédentes (resultats Task 5, mes-resultats QA-2, surveillance, devoirs, certificats). Lecture de my-project/worklog.md (251 lignes) avec focus sur INV-b qui détaille les bugs des 2 dashboards.
+- Step 1 — Composants partagés :
+  * Ajout de l'accent `violet` à `accentMap` dans src/components/resultats/kpi-card.tsx (border-l-violet-500, bg-violet-100/900, text-violet-600/400). Nécessaire pour la KPI "Meilleure note" + "Badges" côté étudiant.
+  * Création de src/components/shared/error-state.tsx : composant ErrorState réutilisable (Card border-l-4 rouge, AlertTriangle, message paramétrable, bouton retry). Export nommé + default.
+- Step 2 — Hooks TanStack Query (src/hooks/use-dashboard.ts, 237 lignes) :
+  * dashboardKeys factory (all/enseignant/etudiant/badges) — pattern identique à resultatsKeys.
+  * fetchJSON helper (même signature que use-resultats.ts).
+  * Types complets EnseignantStatsData, EtudiantStatsData, BadgesResponse + sous-types (PendingCorrection, RecentEpreuve, PerformanceData, EvolutionMoyenne, EpreuveAVenir*, ResultatRecent, EvolutionScore, PerformanceType, SessionEnCours).
+  * useEnseignantDashboard(userId) — GET /api/stats/enseignant, staleTime 1 min, placeholderData(prev).
+  * useEtudiantDashboard(userId) — GET /api/stats/etudiant, staleTime 1 min, placeholderData(prev).
+  * useBadges(userId) — GET /api/badges (format BadgeWithProgress), staleTime 2 min.
+  * useRecalculateBadges(userId, options?) — POST /api/badges, invalide dashboardKeys.badges, accepte onSuccess/onError callbacks (pour surface notification sans setState synchrone dans useEffect).
+  * useRefreshDashboard() — invalide tout le dashboard (bouton refresh global).
+- Step 3 — Refonte enseignant-dashboard.tsx (706 → 530 lignes) :
+  * Remplacement fetch+useState par useEnseignantDashboard + useBadges + useRecalculateBadges + useRefreshDashboard.
+  * 4 KPIs inline → KpiCard (FileText emerald, BookOpen teal, CalendarDays amber, ClipboardPen red).
+  * AreaChart "Évolution des moyennes" → EvolutionChart (transformation evolutionMoyennes → EvolutionPoint[]).
+  * BarChart "Performance par épreuve" → ComparisonChart (transformation performanceParEpreuve → ComparisonBar[]).
+  * Header : ajout bouton RefreshCw (animate-spin si isFetching sur stats ou badges).
+  * Erreur : composant ErrorState partagé avec retry.
+  * Loading : DashboardSkeleton local conservé (cohérent avec KpiSkeleton).
+  * Suppression : 2 console.error, helpers dupliqués (getScoreColor/formatDateFR/timeAgo/formatMonth → imports depuis resultats-utils), window.location.href → router.push('/correction').
+  * setTimeout sans cleanup (L407) → useEffect avec cleanup (setNewlyUnlockedBadge depuis mutation.onSuccess, dismiss timer dans useEffect avec cleanup).
+- Step 4 — Refonte etudiant-dashboard.tsx (630 → 556 lignes) :
+  * Remplacement fetch+useState par useEtudiantDashboard + useBadges + useRecalculateBadges + useRefreshDashboard.
+  * **BUG CRITIQUE L378 (branche morte) CORRIGÉ** : `if (data && postJson.badges)` avait `data === null` à cause d'une stale closure → le recalcul badges n'était JAMAIS affiché. Désormais les badges proviennent de useBadges (Query déduplique GET et POST).
+  * **BUG VISUEL L572 CORRIGÉ** : `getScoreColor(entry.moyenne * 2)` mettait la moyenne /20 sur /40 → graphique "Performance par type" toujours vert. Maintenant `getBarColor(entry.moyenne)` (moyenne déjà /20).
+  * **L609 CORRIGÉ** : `getScoreColor(scoreFinal, totalPossible)` (ratio local) → `getBarColor(normalizeTo20(scoreFinal, totalPossible))` (échelle /20 cohérente avec resultats-utils).
+  * 4 KPIs inline → KpiCard (CalendarDays sky, Trophy moyenne [couleur dynamique emerald/amber/red selon score], Star meilleure note violet, Award badges violet).
+  * ChartCard partagé pour wrapper les 2 charts (AreaChart "Évolution des scores" conservé inline car evolutionScores a une shape per-exam {titre, score, date} ≠ EvolutionPoint {mois, moyenne, count} ; BarChart "Performance par type" conservé inline avec getBarColor fix).
+  * Header : bouton RefreshCw global.
+  * Erreur : ErrorState partagé.
+  * Suppression : 3 console.error, helpers dupliqués, import useMemo mort (L3), commentaire mensonger "Only show toast on first load" (L349).
+- Step 5 — Vérifications :
+  * `bunx eslint` sur les 5 fichiers (enseignant-dashboard, etudiant-dashboard, use-dashboard, error-state, kpi-card) → 0 erreur, 0 warning.
+  * `bun run lint` (full project) → 0 erreur, 1 warning préexistant (jsx-a11y/alt-text dans certificat-pdf-react.tsx — déjà mentionné dans worklog SETUP-1).
+  * `bunx tsc --noEmit` → 103 erreurs préexistantes dans d'autres fichiers (rapports-page, affectations-page, niveaux-page, programme-academique-page, badges-engine, certificat-pdf-react, epreuve-pdf, validation-ue-engine). **0 erreur dans les 5 fichiers nouveaux/modifiés de cette tâche**.
+  * Vérifications grep : 0 occurrence de "console.error" dans les 2 dashboards, 0 occurrence de "moyenne * 2", 0 occurrence de "if (data && postJson", 0 occurrence de "window.location.href", 0 occurrence de "fetchBadges" (l'ancienne fonction manuelle), 0 occurrence de "useMemo" dans etudiant-dashboard.
+- Step 6 — Commit + push :
+  * 1 commit `8011c5c` sur main : 5 fichiers (3 modifiés + 2 créés), 766 insertions / 729 suppressions.
+  * Push vers origin/main réussi (7262ddf → 8011c5c). Vercel déploie automatiquement.
+
+Stage Summary:
+- Fichiers créés (2) :
+  * src/hooks/use-dashboard.ts (237 lignes) — hooks TanStack Query (useEnseignantDashboard, useEtudiantDashboard, useBadges, useRecalculateBadges, useRefreshDashboard)
+  * src/components/shared/error-state.tsx (45 lignes) — ErrorState réutilisable
+- Fichiers modifiés (3) :
+  * src/components/dashboard/enseignant-dashboard.tsx (706 → 530 lignes, -176)
+  * src/components/dashboard/etudiant-dashboard.tsx (630 → 556 lignes, -74)
+  * src/components/resultats/kpi-card.tsx (+accent violet dans accentMap et type union)
+- Bugs critiques étudiant corrigés (2) :
+  1. Branche morte `if (data && postJson.badges)` (L378) → useBadges + useRecalculateBadges (TanStack Query déduplique GET et POST).
+  2. Bug visuel `getScoreColor(entry.moyenne * 2)` (L572) → `getBarColor(entry.moyenne)` (la moyenne est déjà /20).
+- Bugs communs corrigés : 5 console.error supprimés, helpers dupliqués supprimés, window.location.href → router.push, setTimeout sans cleanup → useEffect avec cleanup, ajout bouton RefreshCw global.
+- Décisions d'architecture imprévues :
+  * useRecalculateBadges étendu pour accepter des callbacks `onSuccess`/`onError`. Cela permet au composant de réagir aux nouveaux badges débloqués SANS faire de setState synchrone dans un useEffect (interdit par la règle eslint react-hooks/set-state-in-effect introduite dans React 19/Next 16). L'approche initiale (setState dans useEffect watchant `recalculateBadges.data`) déclenchait cette erreur de lint.
+  * Pour étudiant, AreaChart "Évolution des scores" conservé inline (au lieu d'EvolutionChart partagé) car evolutionScores a une shape per-exam {titre, score, date} ≠ EvolutionPoint {mois, moyenne, count}. Modifier /api/stats/etudiant pour retourner une évolution mensuelle aurait cassé l'UX (l'étudiant voit ses scores par épreuve, pas par mois). Le chart inline utilise néanmoins ChartCard + ResponsiveContainer avec un gradient identique à l'ancien, et le BarChart "Performance par type" utilise désormais getBarColor (au lieu du getScoreColor(*2) bugué).
+  * Le champ `badges` basique retourné par /api/stats/* est typé `unknown` dans EnseignantStatsData et EtudiantStatsData, et ignoré par le frontend (commentaire de tête de use-dashboard.ts). Les badges affichés proviennent exclusivement de useBadges (format BadgeWithProgress attendu par BadgesCarousel). Aucune modification d'API n'a été nécessaire.
+- État du projet : STABLE. Le sous-système dashboards est désormais aligné avec les conventions TanStack Query des refontes précédentes (resultats/mes-resultats). Les 2 bugs critiques étudiant (branche morte + moyenne*2) sont résolus. Prochaines priorités recommandées : (1) page correction (~2400 lignes) à modulariser (cf. INV-c), (2) nettoyer les 103 erreurs tsc préexistantes.
