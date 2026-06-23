@@ -10,16 +10,18 @@
  * - Chargement rapide (skeleton, Promise.all)
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Award, Shield, FileText, CheckCircle2, XCircle, Clock,
   Loader2, ScrollText, AlertCircle, TrendingUp, Trophy, Medal,
+  Share2, Printer, Search, Copy, ChevronDown, Sparkles, Filter,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 
@@ -117,6 +119,9 @@ export function MesCertificatsPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape')
   const [activeTab, setActiveTab] = useState('certificats')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<CertificatType | 'all'>('all')
+  const [expandedCard, setExpandedCard] = useState<string | null>(null)
 
   // ─── Fetch ───
 
@@ -216,6 +221,61 @@ export function MesCertificatsPage() {
     }
   }
 
+  // ─── Share ───
+
+  const handleShare = async (cert: Certificat) => {
+    const url = cert.verificationUrl || `${window.location.origin}/verify/${cert.id}`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Certificat SECT — ${cert.ueNom}`, text: `Mon certificat ${cert.ueCode} (${cert.note}/20)`, url })
+        toast.success('Lien partagé')
+      } catch {
+        // User cancelled — no toast needed
+      }
+    } else {
+      await navigator.clipboard.writeText(url)
+      toast.success('Lien copié', { description: 'URL de vérification copiée dans le presse-papier.' })
+    }
+  }
+
+  // ─── Print ───
+
+  const handlePrint = async (id: string) => {
+    setDownloadingId(id)
+    try {
+      const res = await fetch(`/api/certificats/${id}/pdf?orientation=${orientation}`)
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const iframe = document.createElement('iframe')
+      iframe.style.display = 'none'
+      iframe.src = url
+      document.body.appendChild(iframe)
+      iframe.onload = () => {
+        iframe.contentWindow?.print()
+        setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 1000)
+      }
+      toast.success('Impression lancée')
+    } catch {
+      toast.error("Échec de l'impression")
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  // ─── Filtered certificates ───
+
+  const filteredCertificats = useMemo(() => {
+    return certificats.filter(c => {
+      if (typeFilter !== 'all' && c.type !== typeFilter) return false
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        return c.ueCode.toLowerCase().includes(q) || c.ueNom.toLowerCase().includes(q) || c.mention?.toLowerCase().includes(q)
+      }
+      return true
+    })
+  }, [certificats, typeFilter, searchQuery])
+
   // ─── Loading ───
 
   if (loading) {
@@ -285,8 +345,11 @@ export function MesCertificatsPage() {
               <Award className="h-3.5 w-3.5" /> Certificats
               {stats.total > 0 && <span className="ml-1 px-1.5 rounded-full bg-primary/15 text-[10px] font-bold">{stats.total}</span>}
             </TabsTrigger>
+            <TabsTrigger value="timeline" className="gap-1.5 text-xs">
+              <TrendingUp className="h-3.5 w-3.5" /> Parcours
+            </TabsTrigger>
             <TabsTrigger value="progression" className="gap-1.5 text-xs">
-              <TrendingUp className="h-3.5 w-3.5" /> Progression UE
+              <FileText className="h-3.5 w-3.5" /> Progression UE
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -305,6 +368,38 @@ export function MesCertificatsPage() {
 
       {/* ─── Certificats tab ─── */}
       {activeTab === 'certificats' && (
+        <>
+          {/* Search & filter bar */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher par UE, code ou mention..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-sm"
+              />
+            </div>
+            <div className="flex gap-1.5">
+              {(['all', 'STANDARD', 'AVANCE', 'EXPERT'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTypeFilter(t)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    typeFilter === t
+                      ? t === 'EXPERT' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                      : t === 'AVANCE' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                      : t === 'STANDARD' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-muted text-foreground'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {t === 'all' ? 'Tous' : TYPE_META[t].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -320,8 +415,17 @@ export function MesCertificatsPage() {
                   Vos certificats apparaîtront ici une fois vos épreuves validées.
                 </p>
               </div>
+            ) : filteredCertificats.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-16">
+                <Search className="h-10 w-10 text-muted-foreground" />
+                <p className="text-lg font-semibold mt-4">Aucun résultat</p>
+                <p className="text-sm text-muted-foreground mt-1">Essayez d&apos;autres filtres.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearchQuery(''); setTypeFilter('all') }}>
+                  Réinitialiser les filtres
+                </Button>
+              </div>
             ) : (
-              certificats.map((cert, i) => {
+              filteredCertificats.map((cert, i) => {
                 const meta = TYPE_META[cert.type]
                 const Icon = meta.icon
                 return (
@@ -373,11 +477,11 @@ export function MesCertificatsPage() {
                         {new Date(cert.dateEmission).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>
 
-                      {/* Actions — un seul bouton de téléchargement */}
+                      {/* Actions — télécharger / partager / imprimer */}
                       <div className="flex flex-col gap-1.5">
                         <Button
                           size="sm"
-                          className="w-full gap-1.5 text-xs"
+                          className="w-full gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700"
                           onClick={() => handleDownload(cert.id)}
                           disabled={downloadingId === cert.id}
                         >
@@ -386,13 +490,14 @@ export function MesCertificatsPage() {
                             : <Download className="h-3.5 w-3.5" />}
                           Télécharger PDF ({orientation === 'landscape' ? 'Paysage' : 'Portrait'})
                         </Button>
-                        {cert.verificationUrl && (
-                          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" asChild>
-                            <a href={cert.verificationUrl} target="_blank" rel="noopener noreferrer">
-                              <Shield className="h-3.5 w-3.5" /> Vérifier en ligne
-                            </a>
+                        <div className="flex gap-1.5">
+                          <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" onClick={() => handleShare(cert)}>
+                            <Share2 className="h-3 w-3" /> Partager
                           </Button>
-                        )}
+                          <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" onClick={() => handlePrint(cert.id)} disabled={downloadingId === cert.id}>
+                            <Printer className="h-3 w-3" /> Imprimer
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -400,6 +505,84 @@ export function MesCertificatsPage() {
               })
             )}
           </AnimatePresence>
+        </motion.div>
+        </>
+      )}
+
+      {/* ─── Timeline tab ─── */}
+      {activeTab === 'timeline' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+          {certificats.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-3">
+                <TrendingUp className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-lg font-semibold">Aucun parcours</p>
+              <p className="text-sm text-muted-foreground mt-1">Votre parcours apparaîtra ici après vos premières certifications.</p>
+            </div>
+          ) : (
+            <div className="relative">
+              {/* Vertical line */}
+              <div className="absolute left-6 top-0 bottom-0 w-px bg-gradient-to-b from-emerald-500 via-teal-500 to-transparent" />
+              <div className="space-y-4 pl-14">
+                {[...certificats]
+                  .sort((a, b) => new Date(a.dateEmission).getTime() - new Date(b.dateEmission).getTime())
+                  .map((cert, i) => {
+                    const meta = TYPE_META[cert.type]
+                    const Icon = meta.icon
+                    const date = new Date(cert.dateEmission)
+                    return (
+                      <motion.div
+                        key={cert.id}
+                        initial={{ opacity: 0, x: -12 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.06, duration: 0.3 }}
+                        className="relative"
+                      >
+                        {/* Dot on timeline */}
+                        <div className={`absolute -left-11 top-1.5 h-4 w-4 rounded-full border-2 border-background shadow-sm ${
+                          cert.type === 'EXPERT' ? 'bg-amber-500' : cert.type === 'AVANCE' ? 'bg-blue-500' : 'bg-emerald-500'
+                        }`}>
+                          <div className="absolute inset-0 rounded-full animate-ping opacity-30 bg-current" style={{ animationDuration: '3s' }} />
+                        </div>
+                        {/* Card */}
+                        <Card className="border-l-4 hover:shadow-md transition-shadow" style={{
+                          borderLeftColor: cert.type === 'EXPERT' ? '#F59E0B' : cert.type === 'AVANCE' ? '#3B82F6' : '#10B981'
+                        }}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${meta.bar} shrink-0`}>
+                                  <Icon className="h-4 w-4 text-white" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold truncate">{cert.ueNom}</p>
+                                  <p className="text-xs text-muted-foreground">{cert.ueCode} · {meta.label}</p>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className={`text-lg font-bold ${cert.note >= 14 ? 'text-emerald-600' : cert.note >= 10 ? 'text-amber-600' : 'text-red-500'}`}>{cert.note.toFixed(1)}<span className="text-xs text-muted-foreground">/20</span></p>
+                                {cert.mention && <p className="text-[10px] text-muted-foreground">{cert.mention}</p>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Clock className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">
+                                {date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                              </span>
+                              <div className="flex-1" />
+                              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => handleDownload(cert.id)} disabled={downloadingId === cert.id}>
+                                <Download className="h-3 w-3 mr-1" />PDF
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
 

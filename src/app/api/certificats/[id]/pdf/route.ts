@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
+import { generateQRDataUri } from '@/lib/qr-code'
 import { renderCertificatPDF, type CertificatPDFData } from '@/lib/pdf/certificat-pdf-react'
 
 // ─── GET /api/certificats/[id]/pdf ───
@@ -65,6 +66,14 @@ async function _GET(
     // Build verification URL
     const verificationUrl = `https://sect-app.vercel.app/verify/${certificat.codeVerification}`
 
+    // Generate QR code for verification
+    let qrCodeDataUri: string | null = null
+    try {
+      qrCodeDataUri = await generateQRDataUri(verificationUrl, 150)
+    } catch (qrErr) {
+      console.warn('QR code generation failed, continuing without:', qrErr)
+    }
+
     // Build the data object for the React component
     const pdfData: CertificatPDFData = {
       codeVerification: certificat.codeVerification,
@@ -94,6 +103,7 @@ async function _GET(
         (certificat.emettePar?.name && certificat.emetteParId !== certificat.etudiantId
           ? certificat.emettePar.name
           : null),
+      qrCodeDataUri,
     }
 
     // Render the React component to a PDF buffer (via @react-pdf/renderer)
