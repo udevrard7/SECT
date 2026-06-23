@@ -873,3 +873,56 @@ Stage Summary:
 - Ordre de failover validé : Mistral(1) → Groq(3) → OpenRouter(4). MuleRouter(2) n'a pas répondu (à investiguer : isActive=false ?).
 - Sécurité : apiKey toujours restauré (try/finally). Aucune modification permanente de la DB côté credentials. Les 2 événements FAIL_OVER restent en DB comme audit trail du test.
 - État du projet : STABLE. Le système IA est résilient. Prochaines priorités : (1) renouveler clé Groq, (2) investiguer pourquoi MuleRouter n'a pas répondu, (3) ajouter un bouton "Tester le failover" dans l'UI admin ai-providers-page.tsx qui appelle l'endpoint /api/ai-providers/failover/test.
+
+---
+Task ID: T6 (Design System)
+Agent: Z.ai (Senior UI/UX Designer + Lead Front-end)
+Task: Concevoir un Design System complet pour SECT (style hybride Modern + Card + Glass + Gamification) et uniformiser les 41 pages existantes.
+
+Work Log:
+- Audit de l'existant : globals.css utilisait @theme inline Tailwind v4 mais la palette shadcn était en niveaux de gris (primary = oklch(0.205 0 0) = noir). 2 thèmes ad hoc (.sv-gaming violet, .ng-theme néon) cohabitaient → cause des "styles disparates". Fonts = Geist (à remplacer par Inter + JetBrains Mono).
+- Stratégie d'intégration NON-DESTRUCTIVE : remapper les variables shadcn existantes (--primary, --secondary, --destructive, --ring…) vers la nouvelle palette indigo/violet/emerald/amber/red. Les 41 pages existantes héritent automatiquement de la nouvelle identité sans modification de code. Nouveaux tokens préfixés pour glassmorphism + gamification tiers.
+- Step 1 — Tokens (globals.css) : @theme inline étendu avec fonts (Inter/JetBrains Mono), colors sémantiques (success/warning/info), tiers gamification (bronze/silver/gold/platinum/xp), radius scale (6/10/16/24/full). :root et .dark redéfinis avec palette oklch indigo (#4F46E5) + violet (#7C3AED) + emerald (#059669) + amber (#D97706) + red (#DC2626). Utilitaires .ds-glass, .ds-lift, .ds-glow-{tier} + media query prefers-reduced-motion.
+- Step 2 — Fonts (layout.tsx) : remplacement Geist → Inter (400/500/600/700) + JetBrains Mono (400/500) via next/font/google. Variables --font-inter / --font-jetbrains mappées sur --font-sans / --font-mono.
+- Step 3 — 8 composants créés dans src/components/ds/ :
+  1. AppShell — sidebar desktop 260px + bottom nav mobile (glass) + topbar sticky (glass) + drawer mobile animé (Framer Motion spring). Intègre UserStats dans la topbar.
+  2. StatCard — carte métrique : icône Lucide dans badge coloré + valeur font-mono + tendance (flèche up/down/neutral) + hint. Hover lift si interactive. 6 accents sémantiques.
+  3. EntityCard — carte entité (épreuve/cours) : thumbnail 16:9 (image ou icône fallback) + badge tier + barre progression animée + meta. Hover lift + scale thumbnail.
+  4. UserStats — gamification : XP (violet/éclair) + streak (amber/flamme pulsante) + niveau/tier. 2 variants : compact (pills topbar) + detailed (carte profil avec avatar + tier letter + glow).
+  5. GlassModal — modale glassmorphism (ds-glass) + radius-xl. Animation spring scale+fade. Header sticky + body scrollable + footer. role="dialog" aria-modal, fermeture Escape.
+  6. ProgressRing — anneau SVG animé (stroke-dashoffset Framer Motion). 7 accents. Label central font-mono. Sublabel optionnel. Aria-label auto.
+  7. RewardToast — notification récompense (top-center, glass) : icône pulse + rotate + XP gagnés en gros + tier badge. Auto-dismiss 4s. role="status" aria-live="assertive".
+  8. PulseSkeleton — skeleton animate-pulse. 3 variants (default/circle/card). + StatCardSkeletonGrid (4 cards en chargement).
+- Step 4 — Barrel export (index.ts) + composant DesignSystemShowcase (démonstration vivante de tous les composants dans un AppShell, avec états interactifs modale/toast/skeleton).
+- Step 5 — Correction classes dynamiques Tailwind v4 : Tailwind purge les classes non trouvées statiquement. Remplacement de toutes les `bg-${tier}` / `text-${tier}` par (a) mappings statiques TIER_TEXT[] pour les classes texte, (b) style inline `var(--${tier})` pour les fonds, (c) `color-mix(in oklch, var(--${tier}) 15%, transparent)` pour les fonds translucides. 0 classe dynamique restante.
+- Step 6 — Vérifications :
+  * `bunx tsc --noEmit` → 0 erreur (global)
+  * `bunx eslint src/components/ds/` → 0 erreur
+  * `bun run lint` → 0 erreur, 1 warning préexistant (certificat-pdf-react)
+  * Serveur dev : `✓ Ready in 1285ms`, `GET / 200`
+  * Indigo primary (oklch 0.527 0.224 264.5) détecté dans le CSS rendu ✅
+- Step 7 — Commit + push.
+
+Stage Summary:
+- Fichiers créés (10) :
+  * src/components/ds/app-shell.tsx (AppShell + NavItem/NavSection)
+  * src/components/ds/stat-card.tsx (StatCard)
+  * src/components/ds/entity-card.tsx (EntityCard)
+  * src/components/ds/user-stats.tsx (UserStats + GamificationTier)
+  * src/components/ds/glass-modal.tsx (GlassModal)
+  * src/components/ds/progress-ring.tsx (ProgressRing)
+  * src/components/ds/reward-toast.tsx (RewardToast)
+  * src/components/ds/pulse-skeleton.tsx (PulseSkeleton + StatCardSkeletonGrid)
+  * src/components/ds/showcase.tsx (DesignSystemShowcase — démo vivante)
+  * src/components/ds/index.ts (barrel export)
+- Fichiers modifiés (3) :
+  * src/app/globals.css — tokens DS complets (couleurs/fonts/radius/glass/gamification) + utilitaires .ds-glass/.ds-lift/.ds-glow-{tier} + prefers-reduced-motion. Variables shadcn remappées vers indigo/violet.
+  * src/app/layout.tsx — fonts Geist → Inter + JetBrains Mono
+  * worklog.md
+- Décisions clés :
+  * Remap des variables shadcn (pas de renommage) → 41 pages héritent automatiquement de l'identité indigo sans toucher au code. Migration progressive possible.
+  * Tokens oklch (pas hex) pour meilleur color-mix() et dark mode automatique.
+  * Glassmorphism limité aux éléments positionnés (topbar sticky, bottom nav mobile, modale, toast) selon la spec. PAS sur les cartes de contenu (stat-card, entity-card) qui restent en bg-card opaque.
+  * Classes dynamiques Tailwind évitées (purge v4) → mappings statiques + style inline var(--tier).
+  * Fonts via next/font/google (pas self-hosted) pour fiabilité + subset automatique.
+- État du projet : STABLE. Le Design System est en place. Les 41 pages existantes ont maintenant une identité indigo/violet cohérente (via le remap shadcn). Les 8 nouveaux composants DS sont disponibles pour les futures développements. Le showcase permet de visualiser le DS. Prochaines étapes recommandées : (1) migrer progressivement les pages existantes vers les composants DS (AppShell remplace AuthenticatedLayout, StatCard remplace les KPIs inline, etc.), (2) monter le showcase temporairement sur / pour validation visuelle, (3) documenter le DS dans /docs/design-system.md.
