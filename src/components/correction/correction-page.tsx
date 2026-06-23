@@ -1,38 +1,14 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
-  PenTool,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  AlertTriangle,
-  Loader2,
-  Save,
-  User,
-  Mail,
-  Award,
-  MessageSquare,
-  FileText,
-  Zap,
-  LayoutGrid,
   List,
-  Wand2,
-  ChevronDown,
-  Eye,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
   SheetContent,
@@ -40,23 +16,12 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { CodingCorrection } from '@/components/coding/coding-correction'
-import {
-  type CodingLanguage,
-  type CodingAnswer,
-  parseCodingAnswer,
-} from '@/lib/coding-types'
 import type {
   CorrectionSession,
   GradingMode,
@@ -64,23 +29,15 @@ import type {
 } from '@/types/correction'
 import {
   getQuestionTypeLabel,
-  isAutoGradedType,
-  isSemiAutoGradedType,
-  getCorrectionBadge,
-  getScoreColor,
   getStudentStatusDot,
   generateRubricCriteria,
-  parseAnswerContent,
-  isCodingAnswer,
 } from '@/lib/correction-utils'
-import { ScoreCircle } from '@/components/correction/score-circle'
-import { AiSuggestionPanel } from '@/components/correction/ai-suggestion-panel'
-import { GradingForm } from '@/components/correction/grading-form'
 import { CorrectionToolbar } from '@/components/correction/correction-toolbar'
 import { StudentSidebar } from '@/components/correction/student-sidebar'
 import { QuestionSidebar } from '@/components/correction/question-sidebar'
-import { QuestionHeader } from '@/components/correction/question-header'
 import { CorrectionLoadingSkeleton, CorrectionEmptyState } from '@/components/correction/correction-skeletons'
+import { ParCopieView } from '@/components/correction/par-copie-view'
+import { ParQuestionView } from '@/components/correction/par-question-view'
 import {
   useEpreuvesForCorrection,
   useCorrectionSessions,
@@ -567,747 +524,6 @@ export function CorrectionPage() {
     setMobileSheetOpen(false)
   }
 
-  // ─── RENDER: Par copie main content ───
-  const renderParCopieContent = () => {
-    if (!selectedSession) {
-      return (
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div className="text-center">
-            <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
-              <PenTool className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="mt-3 text-base font-semibold">Sélectionnez une copie</h3>
-            <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-              Choisissez un étudiant dans le panneau latéral pour commencer la correction.
-            </p>
-          </div>
-        </div>
-      )
-    }
-
-    if (selectedSession.statut === 'RETOURNEE') {
-      return (
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div className="text-center max-w-sm">
-            <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-              <Check className="h-8 w-8 text-teal-500 dark:text-teal-400" />
-            </div>
-            <h3 className="mt-3 text-base font-semibold">Copie rendue</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              La copie de {selectedSession.etudiant.name} a été corrigée et rendue.
-            </p>
-            <div className="mt-3 rounded-lg border border-border bg-muted/50 p-3">
-              <p className="text-sm">
-                Score final :{' '}
-                <span className={`font-bold ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
-                  {selectedSession.score?.toFixed(1) ?? '—'} pts
-                </span>
-              </p>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    if (totalQuestions === 0) {
-      return (
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div className="text-center">
-            <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-              <Check className="h-8 w-8 text-emerald-500 dark:text-emerald-400" />
-            </div>
-            <h3 className="mt-3 text-base font-semibold">Toutes les questions sont corrigées</h3>
-            <Button
-              className="mt-4 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => handleFinalize()}
-              disabled={isFinalizing}
-            >
-              {isFinalizing ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Check className="h-4 w-4 mr-1.5" />}
-              Finaliser et rendre
-            </Button>
-          </div>
-        </div>
-      )
-    }
-
-    const q = currentQuestion?.question
-    if (!q || !currentQuestion) return null
-
-    const answerContent = parseAnswerContent(currentReponse?.contenu)
-    const expectedAnswer = typeof q.reponseCorrecte === 'string'
-      ? q.reponseCorrecte
-      : Array.isArray(q.reponseCorrecte)
-        ? q.reponseCorrecte.join(', ')
-        : ''
-
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        {/* Student info bar */}
-        <div className="border-b border-border bg-card px-4 py-2 flex items-center gap-3 flex-wrap shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-              <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold leading-tight">{selectedSession.etudiant.name}</p>
-              <p className="text-[10px] text-muted-foreground">{selectedSession.etudiant.email}</p>
-            </div>
-          </div>
-          <Separator orientation="vertical" className="h-6 hidden sm:block" />
-          <Badge
-            variant="outline"
-            className={
-              selectedSession.statut === 'CORRIGEE'
-                ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 text-[10px] h-5'
-                : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800 text-[10px] h-5'
-            }
-          >
-            {selectedSession.statut === 'CORRIGEE' ? 'Corrigée' : 'En correction'}
-          </Badge>
-          <div className="flex items-center gap-1.5 text-xs">
-            <Award className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>
-              <span className={`font-bold ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
-                {selectedSession.score !== null ? selectedSession.score.toFixed(1) : '—'}
-              </span>
-              <span className="text-muted-foreground"> pts</span>
-            </span>
-          </div>
-          {selectedSession.autoGradedTotal > 0 && (
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Zap className="h-3 w-3 text-sky-500" />
-              Auto: {selectedSession.autoGradedScore.toFixed(1)}/{selectedSession.autoGradedTotal.toFixed(1)}
-            </div>
-          )}
-          {selectedSession.alertes > 0 && (
-            <Badge variant="destructive" className="text-[10px] h-5 gap-0.5">
-              <AlertTriangle className="h-3 w-3" />
-              {selectedSession.alertes}
-            </Badge>
-          )}
-          {/* Progress */}
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">{manualCorrectedCount}/{totalQuestions}</span>
-            <Progress value={totalQuestions > 0 ? (manualCorrectedCount / totalQuestions) * 100 : 0} className="w-16 h-1.5" />
-          </div>
-        </div>
-
-        {/* Question header */}
-        <QuestionHeader
-          currentQuestion={currentQuestion}
-          currentQuestionIndex={currentQuestionIndex}
-        />
-
-        {/* Scrollable content */}
-        <ScrollArea className="flex-1 min-h-0" ref={mainContentRef}>
-          <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`content-${currentQuestionIndex}-${selectedSessionId}`}
-                initial={{ opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -12 }}
-                transition={{ duration: 0.15 }}
-                className="space-y-4"
-              >
-                {/* Énoncé */}
-                <div className="rounded-lg bg-muted/50 border border-border p-3">
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{q.enonce}</p>
-                </div>
-
-                {/* Réponse attendue (collapsible) */}
-                {expectedAnswer && (
-                  <Collapsible open={expectedAnswerOpen} onOpenChange={setExpectedAnswerOpen}>
-                    <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30 transition-colors">
-                      <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                        Réponse attendue
-                      </span>
-                      <ChevronDown className={`h-3.5 w-3.5 ml-auto text-emerald-600 dark:text-emerald-400 transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="rounded-b-lg border border-t-0 border-emerald-200 bg-emerald-50/30 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/10">
-                        <p className="text-sm whitespace-pre-wrap text-emerald-900 dark:text-emerald-100">
-                          {expectedAnswer}
-                        </p>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
-
-                {/* Réponse de l'étudiant */}
-                {q.type === 'CODE' ? (
-                  <CodingCorrection
-                    questionId={currentQuestion.questionId}
-                    enonce={q.enonce}
-                    langage={(q.langage || 'python') as CodingLanguage}
-                    fonctionSignature={q.fonctionSignature || ''}
-                    testsPublics={q.testsPublics || []}
-                    testsPrives={q.testsPrives || []}
-                    bareme={currentQuestion.bareme}
-                    reponseCorrecte={typeof q.reponseCorrecte === 'string' ? q.reponseCorrecte : ''}
-                    studentAnswer={parseCodingAnswer(currentReponse?.contenu || null)}
-                    scoreAuto={currentReponse?.score ?? undefined}
-                    noteIA={currentReponse?.noteIA ?? undefined}
-                    justificationIA={currentReponse?.justificationIA ?? undefined}
-                    scoreFinal={currentReponse?.score ?? undefined}
-                    commentaireEnseignant={currentReponse?.commentaire ?? undefined}
-                    onSaveScore={async (_questionId, score, comment) => {
-                      await handleSave(selectedSessionId ?? undefined, _questionId, score, comment)
-                    }}
-                  />
-                ) : (
-                  <div className="rounded-lg border border-border bg-card p-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs font-semibold text-foreground">
-                          Réponse de l&apos;étudiant
-                        </span>
-                      </div>
-                      {currentReponse?.score !== null && currentReponse?.score !== undefined && (
-                        <ScoreCircle score={currentReponse.score} total={currentQuestion.bareme} size="sm" />
-                      )}
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap text-foreground leading-relaxed">
-                      {answerContent}
-                    </p>
-                  </div>
-                )}
-
-                {/* Existing commentaire */}
-                {currentReponse?.commentaire && (
-                  <div className="rounded-lg border border-teal-200 bg-teal-50 p-2.5 dark:border-teal-800 dark:bg-teal-950/20">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <MessageSquare className="h-3 w-3 text-teal-600 dark:text-teal-400" />
-                      <span className="text-[10px] font-semibold text-teal-700 dark:text-teal-300">
-                        Commentaire existant
-                      </span>
-                    </div>
-                    <p className="text-xs text-teal-900 dark:text-teal-100 whitespace-pre-wrap">
-                      {currentReponse.commentaire}
-                    </p>
-                  </div>
-                )}
-
-                {/* AI Suggestion (collapsible) */}
-                {showAiSuggestion && currentReponse?.noteIA !== null && currentReponse?.noteIA !== undefined && !isAutoGradedType(q.type) && (
-                  <AiSuggestionPanel
-                    variant="collapsible"
-                    noteIA={currentReponse.noteIA}
-                    bareme={currentQuestion.bareme}
-                    justificationIA={currentReponse.justificationIA}
-                    onApply={handleApplyAi}
-                    isApplying={isApplyingAi}
-                    isOpen={aiSuggestionOpen}
-                    onOpenChange={setAiSuggestionOpen}
-                    onDismiss={handleDismissAi}
-                  />
-                )}
-
-                {/* Auto-graded notice */}
-                {isAutoGradedType(q.type) && (
-                  <div className="flex items-center gap-2.5 p-3 rounded-lg bg-sky-50 border border-sky-200 dark:bg-sky-950/20 dark:border-sky-800">
-                    <Zap className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold text-sky-800 dark:text-sky-200">Question auto-corrigée</p>
-                      <p className="text-[10px] text-sky-600 dark:text-sky-300">
-                        Score automatique : {currentReponse?.score ?? '—'} / {currentQuestion.bareme}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Semi-auto (CODE) notice — CodingCorrection handles the grading UI */}
-                {isSemiAutoGradedType(q.type) && currentReponse?.score !== null && currentReponse?.score !== undefined && (
-                  <div className="flex items-center gap-2.5 p-3 rounded-lg bg-violet-50 border border-violet-200 dark:bg-violet-950/20 dark:border-violet-800">
-                    <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">Question auto+corrigée</p>
-                      <p className="text-[10px] text-violet-600 dark:text-violet-300">
-                        Score auto-calculé : {currentReponse.score} / {currentQuestion.bareme} — Vous pouvez modifier la note ci-dessus
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Grading section — only for non-auto, non-CODE questions */}
-                {!isAutoGradedType(q.type) && !isSemiAutoGradedType(q.type) && (
-                  <GradingForm
-                    variant="par-copie"
-                    bareme={currentQuestion.bareme}
-                    rubricCriteria={currentRubricCriteria}
-                    selectedCriteria={selectedCriteria}
-                    onToggleCriterion={handleToggleCriterion}
-                    noteFinale={noteFinale}
-                    onNoteChange={setNoteFinale}
-                    commentaire={commentaire}
-                    onCommentChange={setCommentaire}
-                    computedScore={computedScore}
-                    onSave={() => handleSave()}
-                    isSaving={isSaving}
-                    onAiGrade={() => handleAiGrade()}
-                    isAiLoading={isAiLoading}
-                  />
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </ScrollArea>
-
-        {/* Sticky bottom navigation */}
-        <div className="border-t border-border bg-card px-4 py-2 flex items-center justify-between shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => goToQuestion(currentQuestionIndex - 1)}
-            disabled={currentQuestionIndex === 0}
-            className="h-7 text-xs gap-1"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Préc.
-          </Button>
-
-          {/* Question dots */}
-          <div className="flex items-center gap-1 overflow-x-auto max-w-[60%] px-2">
-            {questions.map((q, idx) => {
-              const rep = selectedSession?.reponses.find((r) => r.questionId === q.questionId || r.questionId === q.id)
-              const isCurrent = idx === currentQuestionIndex
-              const isCorrected = rep?.score !== null && rep?.score !== undefined
-
-              let dotClass = 'bg-muted text-muted-foreground border-border'
-              if (isCurrent) {
-                dotClass = 'bg-emerald-600 text-white border-emerald-600'
-              } else if (!isCorrected) {
-                dotClass = 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700'
-              } else {
-                dotClass = 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
-              }
-
-              return (
-                <button
-                  key={q.id}
-                  onClick={() => goToQuestion(idx)}
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold transition-colors ${dotClass}`}
-                  title={`Question ${idx + 1}`}
-                >
-                  {idx + 1}
-                </button>
-              )
-            })}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => goToQuestion(currentQuestionIndex + 1)}
-            disabled={currentQuestionIndex >= totalQuestions - 1}
-            className="h-7 text-xs gap-1"
-          >
-            Suiv.
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-
-        {/* Finalize bar */}
-        {selectedSession.allCorrected && selectedSession.statut !== 'RETOURNEE' && (
-          <div className="border-t border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 px-4 py-2 flex items-center justify-between">
-            <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
-              Toutes les questions sont corrigées
-            </span>
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => handleFinalize()}
-              disabled={isFinalizing}
-            >
-              {isFinalizing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />}
-              Finaliser et rendre
-            </Button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ─── RENDER: Par question main content ───
-  const renderParQuestionContent = () => {
-    if (sessions.length === 0) {
-      return (
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div className="text-center">
-            <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
-              <LayoutGrid className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="mt-3 text-base font-semibold">Correction par question</h3>
-            <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-              Sélectionnez une épreuve pour corriger toutes les copies question par question.
-            </p>
-          </div>
-        </div>
-      )
-    }
-
-    if (!horizontalCurrentQuestion) return null
-
-    const hq = horizontalCurrentQuestion.question
-    const totalSessions = sessions.length
-    const progressPct = totalSessions > 0 ? (horizontalGradedCount / totalSessions) * 100 : 0
-    const expectedAnswer = typeof hq.reponseCorrecte === 'string'
-      ? hq.reponseCorrecte
-      : Array.isArray(hq.reponseCorrecte)
-        ? hq.reponseCorrecte.join(', ')
-        : ''
-
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        {/* Question info header (non-scrollable) */}
-        <div className="border-b border-border bg-card px-4 py-2 space-y-1.5 shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-bold">Q{horizontalQuestionIndex + 1}</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-xs text-muted-foreground">{getQuestionTypeLabel(hq.type)}</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{horizontalCurrentQuestion.bareme}pts</span>
-            <Badge variant="outline" className={`text-[10px] h-5 ${getCorrectionBadge(hq.type).classes}`}>
-              {getCorrectionBadge(hq.type).label}
-            </Badge>
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">{horizontalGradedCount}/{totalSessions}</span>
-              <Progress value={progressPct} className="w-16 h-1.5" />
-            </div>
-          </div>
-          <p className="text-xs text-foreground whitespace-pre-wrap line-clamp-2">{hq.enonce}</p>
-        </div>
-
-        {/* Student answer cards (scrollable) */}
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="p-4 space-y-4 max-w-4xl mx-auto">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`hq-${horizontalQuestionIndex}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="space-y-4"
-              >
-                {/* Expected answer panel (collapsible, at top of scroll area) */}
-                {expectedAnswer && (
-                  <Collapsible open={expectedAnswerOpen} onOpenChange={setExpectedAnswerOpen}>
-                    <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30 transition-colors">
-                      <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                        Réponse attendue
-                      </span>
-                      <ChevronDown className={`h-3.5 w-3.5 ml-auto text-emerald-600 dark:text-emerald-400 transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="rounded-b-lg border border-t-0 border-emerald-200 bg-emerald-50/30 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/10">
-                        <p className="text-sm whitespace-pre-wrap text-emerald-900 dark:text-emerald-100">
-                          {expectedAnswer}
-                        </p>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
-
-                {/* Student answer cards */}
-                {sessions.map((session) => {
-                  const rep = getReponseForSession(session, horizontalCurrentQuestion.questionId)
-                  const criteria = generateRubricCriteria(hq.type, horizontalCurrentQuestion.bareme)
-                  const activeCriteria = horizontalCriteria[session.id] ?? new Set()
-                  const answerContent = parseAnswerContent(rep?.contenu)
-
-                  let criteriaScore = 0
-                  activeCriteria.forEach((id) => {
-                    const c = criteria.find((cr) => cr.id === id)
-                    if (c) criteriaScore += c.points
-                  })
-                  criteriaScore = Math.min(criteriaScore, horizontalCurrentQuestion.bareme)
-
-                  const scoreValue = horizontalScores[session.id] ?? (rep?.score !== null && rep?.score !== undefined ? String(rep.score) : '')
-                  const commentValue = horizontalComments[session.id] ?? (rep?.commentaire ?? '')
-                  const isSavingRow = savingSessionId === session.id
-                  const statusDot = getStudentStatusDot(session)
-
-                  return (
-                    <motion.div
-                      key={session.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="rounded-xl border border-border bg-card shadow-sm overflow-hidden"
-                    >
-                      {/* Card header: Student name + Score circle + Status + Alerts */}
-                      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-muted/30">
-                        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${statusDot.color}`} title={statusDot.label} />
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
-                            <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                          </div>
-                          <p className="text-sm font-semibold truncate">{session.etudiant.name}</p>
-                        </div>
-                        <ScoreCircle
-                          score={rep?.score ?? null}
-                          total={horizontalCurrentQuestion.bareme}
-                          size="sm"
-                        />
-                        {session.alertes > 0 && (
-                          <Badge variant="destructive" className="text-[10px] h-5 gap-0.5 shrink-0">
-                            <AlertTriangle className="h-3 w-3" />
-                            {session.alertes}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Answer section: Full answer text, NO truncation */}
-                      <div className="px-4 py-3 border-b border-border">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-xs font-semibold text-foreground">Réponse</span>
-                        </div>
-                        {hq.type === 'CODE' && isCodingAnswer(rep?.contenu) ? (
-                          <div className="space-y-2">
-                            {(() => {
-                              const codingAns = parseCodingAnswer(rep?.contenu || null)
-                              if (!codingAns) return <span className="text-sm text-muted-foreground">Aucun code</span>
-                              const passedTests = codingAns.testResultsPublics?.filter?.(t => t.passed)?.length ?? '?'
-                              const totalTests = codingAns.testResultsPublics?.length ?? '?'
-                              return (
-                                <>
-                                  <div className="flex items-center gap-2 text-xs">
-                                    <Badge variant="outline" className="text-[10px] h-5 border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
-                                      {(hq.langage || codingAns.language || 'python').toUpperCase()}
-                                    </Badge>
-                                    <span className="text-muted-foreground">{codingAns.code.split('\n').length} lignes</span>
-                                    <span className="text-muted-foreground">Tests: {passedTests}/{totalTests}</span>
-                                  </div>
-                                  <pre className="text-xs font-mono bg-slate-50 dark:bg-slate-900 rounded-md p-3 overflow-x-auto whitespace-pre-wrap border border-slate-200 dark:border-slate-800">
-                                    {codingAns.code}
-                                  </pre>
-                                </>
-                              )
-                            })()}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                            {answerContent}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* AI Suggestion (if available) */}
-                      {rep?.noteIA !== null && rep?.noteIA !== undefined && !isAutoGradedType(hq.type) && (
-                        <AiSuggestionPanel
-                          variant="flat"
-                          noteIA={rep.noteIA}
-                          bareme={horizontalCurrentQuestion.bareme}
-                          justificationIA={rep.justificationIA}
-                          onApply={() => {
-                            setHorizontalScores((prev) => ({ ...prev, [session.id]: String(rep.noteIA) }))
-                            if (rep.justificationIA) {
-                              setHorizontalComments((prev) => ({ ...prev, [session.id]: rep.justificationIA ?? '' }))
-                            }
-                            handleHorizontalSave(session.id)
-                          }}
-                          onCopyNote={() => {
-                            setHorizontalScores((prev) => ({ ...prev, [session.id]: String(rep.noteIA) }))
-                            if (rep.justificationIA) {
-                              setHorizontalComments((prev) => ({ ...prev, [session.id]: rep.justificationIA ?? '' }))
-                            }
-                          }}
-                        />
-                      )}
-
-                      {/* Auto-graded notice */}
-                      {isAutoGradedType(hq.type) && (
-                        <div className="px-4 py-3 border-b border-border">
-                          <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-sky-50 border border-sky-200 dark:bg-sky-950/20 dark:border-sky-800">
-                            <Zap className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                            <div>
-                              <p className="text-xs font-semibold text-sky-800 dark:text-sky-200">Auto-corrigée</p>
-                              <p className="text-[10px] text-sky-600 dark:text-sky-300">
-                                Score automatique : {rep?.score ?? '—'} / {horizontalCurrentQuestion.bareme}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Semi-auto (CODE) notice */}
-                      {isSemiAutoGradedType(hq.type) && (
-                        <div className="px-4 py-3 border-b border-border">
-                          <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-violet-50 border border-violet-200 dark:bg-violet-950/20 dark:border-violet-800">
-                            <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
-                            <div>
-                              <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">Auto+corrigée</p>
-                              <p className="text-[10px] text-violet-600 dark:text-violet-300">
-                                Score auto-calculé : {rep?.score ?? '—'} / {horizontalCurrentQuestion.bareme} — Vous pouvez modifier la note ci-dessous
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Grading section — for manual questions */}
-                      {!isAutoGradedType(hq.type) && !isSemiAutoGradedType(hq.type) && (
-                        <GradingForm
-                          variant="par-question"
-                          bareme={horizontalCurrentQuestion.bareme}
-                          rubricCriteria={criteria}
-                          selectedCriteria={activeCriteria}
-                          onToggleCriterion={(criterionId) => handleHorizontalToggleCriterion(session.id, criterionId, criteria)}
-                          noteFinale={scoreValue}
-                          onNoteChange={(value) => setHorizontalScores((prev) => ({ ...prev, [session.id]: value }))}
-                          commentaire={commentValue}
-                          onCommentChange={(value) => setHorizontalComments((prev) => ({ ...prev, [session.id]: value }))}
-                          computedScore={criteriaScore}
-                          onSave={() => handleHorizontalSave(session.id)}
-                          isSaving={isSavingRow}
-                          onAiGrade={() => handleAiGrade(session.id, horizontalCurrentQuestion.questionId)}
-                          isAiLoading={isAiLoading}
-                        />
-                      )}
-
-                      {/* Semi-auto grading section (CODE) — override option */}
-                      {isSemiAutoGradedType(hq.type) && (
-                        <div className="rounded-b-xl border-t border-border bg-muted/30 p-4 space-y-3">
-                          <div className="flex items-center gap-3">
-                            <Label className="text-sm font-bold whitespace-nowrap">Note</Label>
-                            <ScoreCircle
-                              score={scoreValue !== '' ? parseFloat(scoreValue) || 0 : (rep?.score ?? 0)}
-                              total={horizontalCurrentQuestion.bareme}
-                              size="md"
-                            />
-                            <Input
-                              type="number"
-                              min={0}
-                              max={horizontalCurrentQuestion.bareme}
-                              step={0.5}
-                              value={scoreValue}
-                              onChange={(e) => setHorizontalScores((prev) => ({ ...prev, [session.id]: e.target.value }))}
-                              placeholder={rep?.score != null ? String(rep.score) : '0'}
-                              className="w-24 h-9 text-base font-bold"
-                            />
-                            <span className="text-base font-semibold text-muted-foreground">/ {horizontalCurrentQuestion.bareme}</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                              Commentaire
-                            </Label>
-                            <Textarea
-                              value={commentValue}
-                              onChange={(e) => setHorizontalComments((prev) => ({ ...prev, [session.id]: e.target.value }))}
-                              placeholder="Ajoutez votre commentaire..."
-                              rows={2}
-                              className="resize-none text-sm"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleHorizontalSave(session.id)}
-                              disabled={isSavingRow}
-                              className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 px-4"
-                            >
-                              {isSavingRow ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-                              Sauvegarder
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </motion.div>
-                  )
-                })}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </ScrollArea>
-
-        {/* Sticky bottom navigation */}
-        <div className="border-t border-border bg-card px-4 py-2 flex items-center justify-between shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setHorizontalQuestionIndex(Math.max(0, horizontalQuestionIndex - 1))}
-            disabled={horizontalQuestionIndex === 0}
-            className="h-7 text-xs gap-1"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Préc.
-          </Button>
-
-          <div className="flex items-center gap-1 overflow-x-auto max-w-[60%] px-2">
-            {horizontalQuestions.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setHorizontalQuestionIndex(idx)}
-                className={`h-6 w-6 shrink-0 rounded border text-[10px] font-bold transition-colors ${
-                  idx === horizontalQuestionIndex
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-muted text-muted-foreground border-border hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
-                }`}
-              >
-                {idx + 1}
-              </button>
-            ))}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setHorizontalQuestionIndex(Math.min(horizontalQuestions.length - 1, horizontalQuestionIndex + 1))}
-            disabled={horizontalQuestionIndex >= horizontalQuestions.length - 1}
-            className="h-7 text-xs gap-1"
-          >
-            Suiv.
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-
-        {/* Batch AI for this question */}
-        {!isAutoGradedType(hq.type) && (
-          <div className="border-t border-border px-4 py-2 shrink-0">
-            <Button
-              variant="outline"
-              className="w-full h-8 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
-              onClick={async () => {
-                setIsBatchAiLoading(true)
-                let graded = 0
-                for (const session of sessions) {
-                  const rep = getReponseForSession(session, horizontalCurrentQuestion.questionId)
-                  if (rep?.score === null || rep?.score === undefined) {
-                    try {
-                      await aiGradeMutation.mutateAsync({
-                        sessionId: session.id,
-                        questionId: horizontalCurrentQuestion.questionId,
-                      })
-                      graded++
-                    } catch {
-                      // Continue
-                    }
-                  }
-                }
-                setIsBatchAiLoading(false)
-                toast.success('Évaluation IA terminée', {
-                  description: `${graded} copies évaluées par l'IA pour cette question.`,
-                })
-              }}
-              disabled={isBatchAiLoading}
-            >
-              {isBatchAiLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-              ) : (
-                <Wand2 className="h-3.5 w-3.5 mr-1" />
-              )}
-              Évaluer toutes les copies avec l&apos;IA (cette question)
-            </Button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   // ─── RENDER: Loading state ───
   if (isLoadingEpreuves) {
     return <CorrectionLoadingSkeleton />
@@ -1337,7 +553,67 @@ export function CorrectionPage() {
   )
 
   // ─── Main render ───
-  const mainContent = gradingMode === 'par-copie' ? renderParCopieContent() : renderParQuestionContent()
+  const mainContent = gradingMode === 'par-copie' ? (
+    <ParCopieView
+      selectedSession={selectedSession}
+      selectedSessionId={selectedSessionId}
+      questions={questions}
+      currentQuestion={currentQuestion}
+      currentQuestionIndex={currentQuestionIndex}
+      currentReponse={currentReponse}
+      totalQuestions={totalQuestions}
+      manualCorrectedCount={manualCorrectedCount}
+      noteFinale={noteFinale}
+      commentaire={commentaire}
+      selectedCriteria={selectedCriteria}
+      currentRubricCriteria={currentRubricCriteria}
+      computedScore={computedScore}
+      showAiSuggestion={showAiSuggestion}
+      aiSuggestionOpen={aiSuggestionOpen}
+      expectedAnswerOpen={expectedAnswerOpen}
+      isAiLoading={isAiLoading}
+      isSaving={isSaving}
+      isApplyingAi={isApplyingAi}
+      isFinalizing={isFinalizing}
+      mainContentRef={mainContentRef}
+      setNoteFinale={setNoteFinale}
+      setCommentaire={setCommentaire}
+      setAiSuggestionOpen={setAiSuggestionOpen}
+      setExpectedAnswerOpen={setExpectedAnswerOpen}
+      handleToggleCriterion={handleToggleCriterion}
+      handleAiGrade={handleAiGrade}
+      handleSave={handleSave}
+      handleApplyAi={handleApplyAi}
+      handleDismissAi={handleDismissAi}
+      handleFinalize={handleFinalize}
+      goToQuestion={goToQuestion}
+    />
+  ) : (
+    <ParQuestionView
+      sessions={sessions}
+      horizontalQuestions={horizontalQuestions}
+      horizontalCurrentQuestion={horizontalCurrentQuestion}
+      horizontalQuestionIndex={horizontalQuestionIndex}
+      setHorizontalQuestionIndex={setHorizontalQuestionIndex}
+      horizontalGradedCount={horizontalGradedCount}
+      horizontalScores={horizontalScores}
+      setHorizontalScores={setHorizontalScores}
+      horizontalComments={horizontalComments}
+      setHorizontalComments={setHorizontalComments}
+      horizontalCriteria={horizontalCriteria}
+      expectedAnswerOpen={expectedAnswerOpen}
+      setExpectedAnswerOpen={setExpectedAnswerOpen}
+      isAiLoading={isAiLoading}
+      isBatchAiLoading={isBatchAiLoading}
+      savingSessionId={savingSessionId}
+      setIsBatchAiLoading={setIsBatchAiLoading}
+      handleHorizontalToggleCriterion={handleHorizontalToggleCriterion}
+      handleHorizontalSave={handleHorizontalSave}
+      handleAiGrade={handleAiGrade}
+      getReponseForSession={getReponseForSession}
+      aiGradeMutation={aiGradeMutation}
+    />
+  )
 
   return (
     <div className="flex flex-col rounded-xl border border-border bg-background overflow-hidden h-[calc(100vh-10rem)]">
