@@ -9,7 +9,6 @@ import {
   Check,
   AlertTriangle,
   Loader2,
-  Sparkles,
   Save,
   User,
   Mail,
@@ -20,9 +19,6 @@ import {
   LayoutGrid,
   List,
   Wand2,
-  ThumbsUp,
-  ThumbsDown,
-  CircleDot,
   ChevronDown,
   Eye,
   PanelLeftClose,
@@ -78,6 +74,8 @@ import {
   isCodingAnswer,
 } from '@/lib/correction-utils'
 import { ScoreCircle } from '@/components/correction/score-circle'
+import { AiSuggestionPanel } from '@/components/correction/ai-suggestion-panel'
+import { GradingForm } from '@/components/correction/grading-form'
 import { CorrectionToolbar } from '@/components/correction/correction-toolbar'
 import { StudentSidebar } from '@/components/correction/student-sidebar'
 import { QuestionSidebar } from '@/components/correction/question-sidebar'
@@ -794,60 +792,17 @@ export function CorrectionPage() {
 
                 {/* AI Suggestion (collapsible) */}
                 {showAiSuggestion && currentReponse?.noteIA !== null && currentReponse?.noteIA !== undefined && !isAutoGradedType(q.type) && (
-                  <Collapsible open={aiSuggestionOpen} onOpenChange={setAiSuggestionOpen}>
-                    <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border-2 border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 px-3 py-2 hover:from-violet-100 hover:to-purple-100 dark:border-violet-800 dark:from-violet-950/30 dark:to-purple-950/20 dark:hover:from-violet-950/40 dark:hover:to-purple-950/30 transition-colors">
-                      <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                      <span className="text-xs font-semibold text-violet-800 dark:text-violet-200">
-                        Suggestion IA
-                      </span>
-                      <span className="text-xs font-bold text-violet-900 dark:text-violet-100">
-                        {currentReponse.noteIA}/{currentQuestion.bareme}
-                      </span>
-                      {(() => {
-                        const pct = currentQuestion.bareme > 0 ? (currentReponse.noteIA! / currentQuestion.bareme) * 100 : 0
-                        const confidence = pct >= 70 ? 'Élevée' : pct >= 40 ? 'Moyenne' : 'Faible'
-                        const confColor = pct >= 70 ? 'text-emerald-600 dark:text-emerald-400' : pct >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
-                        return (
-                          <Badge variant="outline" className={`text-[9px] h-4 ${confColor}`}>
-                            {confidence}
-                          </Badge>
-                        )
-                      })()}
-                      <ChevronDown className={`h-3.5 w-3.5 ml-auto text-violet-600 dark:text-violet-400 transition-transform ${aiSuggestionOpen ? 'rotate-180' : ''}`} />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="rounded-b-lg border-2 border-t-0 border-violet-200 bg-violet-50/50 px-3 py-3 space-y-2.5 dark:border-violet-800 dark:bg-violet-950/10">
-                        {currentReponse.justificationIA && (
-                          <div className="rounded-md bg-white/60 dark:bg-white/5 p-2.5">
-                            <p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-0.5">Justification</p>
-                            <p className="text-xs text-violet-900 dark:text-violet-100 whitespace-pre-wrap leading-relaxed">
-                              {currentReponse.justificationIA}
-                            </p>
-                          </div>
-                        )}
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={handleApplyAi}
-                            disabled={isApplyingAi}
-                            className="flex-1 h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
-                          >
-                            {isApplyingAi ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ThumbsUp className="h-3 w-3 mr-1" />}
-                            Appliquer
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleDismissAi}
-                            className="h-7 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950"
-                          >
-                            <ThumbsDown className="h-3 w-3 mr-1" />
-                            Ignorer
-                          </Button>
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
+                  <AiSuggestionPanel
+                    variant="collapsible"
+                    noteIA={currentReponse.noteIA}
+                    bareme={currentQuestion.bareme}
+                    justificationIA={currentReponse.justificationIA}
+                    onApply={handleApplyAi}
+                    isApplying={isApplyingAi}
+                    isOpen={aiSuggestionOpen}
+                    onOpenChange={setAiSuggestionOpen}
+                    onDismiss={handleDismissAi}
+                  />
                 )}
 
                 {/* Auto-graded notice */}
@@ -878,116 +833,22 @@ export function CorrectionPage() {
 
                 {/* Grading section — only for non-auto, non-CODE questions */}
                 {!isAutoGradedType(q.type) && !isSemiAutoGradedType(q.type) && (
-                  <div className="rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-gradient-to-b from-emerald-50/60 to-emerald-50/20 dark:from-emerald-950/20 dark:to-emerald-950/5 shadow-sm">
-                    {/* Grading header */}
-                    <div className="px-3 py-2 border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-900/20 rounded-t-xl flex items-center gap-2">
-                      <PenTool className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
-                      <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 uppercase tracking-wider">
-                        Notation
-                      </span>
-                      <span className="ml-auto text-xs text-emerald-600 dark:text-emerald-400">
-                        {currentQuestion.bareme} pts dispo.
-                      </span>
-                    </div>
-                    {/* Critères de notation */}
-                    <div className="p-3 space-y-3">
-                      <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        Critères
-                      </Label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {currentRubricCriteria.map((c) => {
-                          const isSelected = selectedCriteria.has(c.id)
-                          return (
-                            <motion.button
-                              key={c.id}
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => handleToggleCriterion(c.id)}
-                              className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-all ${
-                                isSelected
-                                  ? 'border-emerald-400 bg-emerald-50 text-emerald-800 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
-                                  : 'border-border bg-background text-muted-foreground hover:border-emerald-200 hover:bg-emerald-50/50 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20'
-                              }`}
-                            >
-                              {isSelected ? (
-                                <Check className="h-2.5 w-2.5" />
-                              ) : (
-                                <CircleDot className="h-2.5 w-2.5 opacity-40" />
-                              )}
-                              {c.label}
-                            </motion.button>
-                          )
-                        })}
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Note + Commentaire + Actions */}
-                    <div className="p-3 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <Label className="text-sm font-bold whitespace-nowrap">Note</Label>
-                        <ScoreCircle
-                          score={noteFinale !== '' ? parseFloat(noteFinale) || 0 : computedScore}
-                          total={currentQuestion.bareme}
-                          size="md"
-                        />
-                        <Input
-                          type="number"
-                          min={0}
-                          max={currentQuestion.bareme}
-                          step={0.5}
-                          value={noteFinale}
-                          onChange={(e) => setNoteFinale(e.target.value)}
-                          placeholder={String(Math.round(computedScore * 10) / 10)}
-                          className="w-24 h-9 text-base font-bold"
-                        />
-                        <span className="text-base font-semibold text-muted-foreground">/ {currentQuestion.bareme}</span>
-                        {noteFinale !== '' && parseFloat(noteFinale) !== computedScore && (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                            (auto : {Math.round(computedScore * 10) / 10})
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          Commentaire pour l&apos;étudiant
-                        </Label>
-                        <Textarea
-                          value={commentaire}
-                          onChange={(e) => setCommentaire(e.target.value)}
-                          placeholder="Ajoutez votre commentaire..."
-                          rows={2}
-                          className="resize-none text-sm"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleAiGrade()}
-                          disabled={isAiLoading}
-                          className="h-9 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
-                        >
-                          {isAiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Wand2 className="h-3.5 w-3.5 mr-1.5" />}
-                          Suggérer une note
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSave()}
-                          disabled={isSaving}
-                          className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 px-4"
-                        >
-                          {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-                          Sauvegarder
-                        </Button>
-                        <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          Ctrl+S
-                        </kbd>
-                      </div>
-                    </div>
-                  </div>
+                  <GradingForm
+                    variant="par-copie"
+                    bareme={currentQuestion.bareme}
+                    rubricCriteria={currentRubricCriteria}
+                    selectedCriteria={selectedCriteria}
+                    onToggleCriterion={handleToggleCriterion}
+                    noteFinale={noteFinale}
+                    onNoteChange={setNoteFinale}
+                    commentaire={commentaire}
+                    onCommentChange={setCommentaire}
+                    computedScore={computedScore}
+                    onSave={() => handleSave()}
+                    isSaving={isSaving}
+                    onAiGrade={() => handleAiGrade()}
+                    isAiLoading={isAiLoading}
+                  />
                 )}
               </motion.div>
             </AnimatePresence>
@@ -1237,59 +1098,25 @@ export function CorrectionPage() {
 
                       {/* AI Suggestion (if available) */}
                       {rep?.noteIA !== null && rep?.noteIA !== undefined && !isAutoGradedType(hq.type) && (
-                        <div className="px-4 py-3 border-b border-border bg-violet-50/50 dark:bg-violet-950/10">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                            <span className="text-xs font-semibold text-violet-800 dark:text-violet-200">Suggestion IA</span>
-                            <span className="text-xs font-bold text-violet-900 dark:text-violet-100">
-                              {rep.noteIA}/{horizontalCurrentQuestion.bareme}
-                            </span>
-                            {(() => {
-                              const pct = horizontalCurrentQuestion.bareme > 0 ? (rep.noteIA! / horizontalCurrentQuestion.bareme) * 100 : 0
-                              const confidence = pct >= 70 ? 'Élevée' : pct >= 40 ? 'Moyenne' : 'Faible'
-                              const confColor = pct >= 70 ? 'text-emerald-600 dark:text-emerald-400' : pct >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
-                              return (
-                                <Badge variant="outline" className={`text-[9px] h-4 ${confColor}`}>
-                                  {confidence}
-                                </Badge>
-                              )
-                            })()}
-                          </div>
-                          {rep.justificationIA && (
-                            <p className="text-xs text-violet-900 dark:text-violet-100 whitespace-pre-wrap mb-2 rounded-md bg-white/60 dark:bg-white/5 p-2">
-                              {rep.justificationIA}
-                            </p>
-                          )}
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setHorizontalScores((prev) => ({ ...prev, [session.id]: String(rep.noteIA) }))
-                                if (rep.justificationIA) {
-                                  setHorizontalComments((prev) => ({ ...prev, [session.id]: rep.justificationIA ?? '' }))
-                                }
-                                handleHorizontalSave(session.id)
-                              }}
-                              className="h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
-                            >
-                              <ThumbsUp className="h-3 w-3 mr-1" />
-                              Appliquer
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setHorizontalScores((prev) => ({ ...prev, [session.id]: String(rep.noteIA) }))
-                                if (rep.justificationIA) {
-                                  setHorizontalComments((prev) => ({ ...prev, [session.id]: rep.justificationIA ?? '' }))
-                                }
-                              }}
-                              className="h-7 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950"
-                            >
-                              Copier note
-                            </Button>
-                          </div>
-                        </div>
+                        <AiSuggestionPanel
+                          variant="flat"
+                          noteIA={rep.noteIA}
+                          bareme={horizontalCurrentQuestion.bareme}
+                          justificationIA={rep.justificationIA}
+                          onApply={() => {
+                            setHorizontalScores((prev) => ({ ...prev, [session.id]: String(rep.noteIA) }))
+                            if (rep.justificationIA) {
+                              setHorizontalComments((prev) => ({ ...prev, [session.id]: rep.justificationIA ?? '' }))
+                            }
+                            handleHorizontalSave(session.id)
+                          }}
+                          onCopyNote={() => {
+                            setHorizontalScores((prev) => ({ ...prev, [session.id]: String(rep.noteIA) }))
+                            if (rep.justificationIA) {
+                              setHorizontalComments((prev) => ({ ...prev, [session.id]: rep.justificationIA ?? '' }))
+                            }
+                          }}
+                        />
                       )}
 
                       {/* Auto-graded notice */}
@@ -1324,116 +1151,22 @@ export function CorrectionPage() {
 
                       {/* Grading section — for manual questions */}
                       {!isAutoGradedType(hq.type) && !isSemiAutoGradedType(hq.type) && (
-                        <div className="rounded-b-xl border-t-2 border-emerald-300 dark:border-emerald-700 bg-gradient-to-b from-emerald-50/60 to-emerald-50/20 dark:from-emerald-950/20 dark:to-emerald-950/5">
-                          {/* Grading header */}
-                          <div className="px-4 py-2 border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-900/20 flex items-center gap-2">
-                            <PenTool className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
-                            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 uppercase tracking-wider">
-                              Notation
-                            </span>
-                            <span className="ml-auto text-xs text-emerald-600 dark:text-emerald-400">
-                              {horizontalCurrentQuestion.bareme} pts dispo.
-                            </span>
-                          </div>
-
-                          <div className="p-4 space-y-3">
-                            {/* Criteria buttons */}
-                            <div>
-                              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                                Critères
-                              </Label>
-                              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                {criteria.map((c) => {
-                                  const isActive = activeCriteria.has(c.id)
-                                  return (
-                                    <motion.button
-                                      key={c.id}
-                                      whileTap={{ scale: 0.96 }}
-                                      onClick={() => handleHorizontalToggleCriterion(session.id, c.id, criteria)}
-                                      className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-all ${
-                                        isActive
-                                          ? 'border-emerald-400 bg-emerald-50 text-emerald-800 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
-                                          : 'border-border bg-background text-muted-foreground hover:border-emerald-200 hover:bg-emerald-50/50 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20'
-                                      }`}
-                                    >
-                                      {isActive ? (
-                                        <Check className="h-2.5 w-2.5" />
-                                      ) : (
-                                        <CircleDot className="h-2.5 w-2.5 opacity-40" />
-                                      )}
-                                      {c.label}
-                                    </motion.button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-
-                            <Separator />
-
-                            {/* Note input */}
-                            <div className="flex items-center gap-3">
-                              <Label className="text-sm font-bold whitespace-nowrap">Note</Label>
-                              <ScoreCircle
-                                score={scoreValue !== '' ? parseFloat(scoreValue) || 0 : criteriaScore}
-                                total={horizontalCurrentQuestion.bareme}
-                                size="md"
-                              />
-                              <Input
-                                type="number"
-                                min={0}
-                                max={horizontalCurrentQuestion.bareme}
-                                step={0.5}
-                                value={scoreValue}
-                                onChange={(e) => setHorizontalScores((prev) => ({ ...prev, [session.id]: e.target.value }))}
-                                placeholder={String(Math.round(criteriaScore * 10) / 10)}
-                                className="w-24 h-9 text-base font-bold"
-                              />
-                              <span className="text-base font-semibold text-muted-foreground">/ {horizontalCurrentQuestion.bareme}</span>
-                              {scoreValue !== '' && parseFloat(scoreValue) !== criteriaScore && criteriaScore > 0 && (
-                                <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                                  (auto : {Math.round(criteriaScore * 10) / 10})
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Comment textarea */}
-                            <div className="space-y-1.5">
-                              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                Commentaire pour l&apos;étudiant
-                              </Label>
-                              <Textarea
-                                value={commentValue}
-                                onChange={(e) => setHorizontalComments((prev) => ({ ...prev, [session.id]: e.target.value }))}
-                                placeholder="Ajoutez votre commentaire..."
-                                rows={2}
-                                className="resize-none text-sm"
-                              />
-                            </div>
-
-                            {/* Action buttons */}
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleAiGrade(session.id, horizontalCurrentQuestion.questionId)}
-                                disabled={isAiLoading}
-                                className="h-9 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
-                              >
-                                {isAiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Wand2 className="h-3.5 w-3.5 mr-1.5" />}
-                                Suggérer note IA
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => handleHorizontalSave(session.id)}
-                                disabled={isSavingRow}
-                                className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 px-4"
-                              >
-                                {isSavingRow ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-                                Sauvegarder
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
+                        <GradingForm
+                          variant="par-question"
+                          bareme={horizontalCurrentQuestion.bareme}
+                          rubricCriteria={criteria}
+                          selectedCriteria={activeCriteria}
+                          onToggleCriterion={(criterionId) => handleHorizontalToggleCriterion(session.id, criterionId, criteria)}
+                          noteFinale={scoreValue}
+                          onNoteChange={(value) => setHorizontalScores((prev) => ({ ...prev, [session.id]: value }))}
+                          commentaire={commentValue}
+                          onCommentChange={(value) => setHorizontalComments((prev) => ({ ...prev, [session.id]: value }))}
+                          computedScore={criteriaScore}
+                          onSave={() => handleHorizontalSave(session.id)}
+                          isSaving={isSavingRow}
+                          onAiGrade={() => handleAiGrade(session.id, horizontalCurrentQuestion.questionId)}
+                          isAiLoading={isAiLoading}
+                        />
                       )}
 
                       {/* Semi-auto grading section (CODE) — override option */}
