@@ -539,3 +539,79 @@ Stage Summary:
 - Bugs corrigés : 1 stale-closure critique (keyboard handler), 1 erreur TS préexistante, 4 console.error supprimés.
 - Migration TanStack Query : cache, dedup, refetch auto, invalidation automatique post-mutation. Cohérent avec le pattern resultats/mes-resultats/dashboards.
 - Phase 3 (UI split en 9 composants + orchestrator ~350 lignes) REPORTÉE : c'est la partie la plus volumineuse et risquée (28 useState partagés entre 2 vues, ~500 lignes dupliquées pour AI-suggestion + grading-form). Mérite une session dédiée pour préserver le rendu visuel identique. Le monolithe restant (2070 lignes) est désormais : imports + 1 composant avec state/hooks/handlers + 8 render functions inline (renderToolbar, renderStudentSidebar, renderQuestionSidebar, renderQuestionHeader, renderParCopieContent, renderParQuestionContent, loading/empty states, main render).
+
+---
+Task ID: setup-2
+Agent: Z.ai (tuteur/assistant — re-configuration session)
+Task: Re-cloner le dépôt SECT depuis GitHub et reconfigurer l'environnement de travail (suite à une nouvelle session) pour poursuivre le développement.
+
+Work Log:
+- Clonage du dépôt GitHub `udevrard7/SECT` vers `/home/z/sect-project` (branche `main`, HEAD = 1766cab).
+- Configuration identité Git globale + locale : `udevrard7 <ulrichdouh@gmail.com>`.
+- Remote `origin` authentifié par token PAT (push → déploiement Vercel automatique).
+- Création du fichier `.env` (gitignored) avec identifiants Supabase corrigés (2 coquilles du brief corrigées : espace avant `@` + `:` manquant dans DIRECT_URL). Mot de passe URL-encodé `Victoire%401993%23`.
+  * DATABASE_URL (pooler PgBouncer port 6543, transaction mode)
+  * DIRECT_URL (pooler port 5432, session mode, pour migrations)
+  * DATABASE_URL_PG (override forçant PostgreSQL dans lib/db.ts)
+  * NEXTAUTH_SECRET (généré), NEXTAUTH_URL=https://sect-app.vercel.app
+  * CRON_SECRET (généré)
+- `bun install` : 1064 packages installés.
+- `bun run db:generate` : Prisma Client v6.19.2 généré.
+- `bun run db:push` : base Supabase déjà synchronisée avec le schéma Prisma (aucun changement).
+- Vérification connexion Supabase : OK. Données présentes (18 utilisateurs : 1 ADMIN, 1 RESPONSABLE, 1 ENSEIGNANT, 15 ETUDIANTS ; 1 établissement ; 5 épreuves).
+- `bun run lint` : 0 erreur, 1 warning préexistant (jsx-a11y/alt-text dans certificat-pdf-react.tsx — déjà documenté).
+- Décision : le projet reste dans `/home/z/sect-project` (séparé du template sandbox `/home/z/my-project`). Le déploiement/preview se fait via Vercel (sect-app.vercel.app), pas via le serveur dev local. L'utilisateur a explicitement demandé d'éviter la vérification agent-browser.
+
+Stage Summary:
+- Environnement 100% opérationnel à `/home/z/sect-project`.
+- Workflow établi : éditer → `bun run lint` → `git add/commit` (identité udevrard7) → `git push origin main` → Vercel déploie → `bun run db:push` si schéma modifié.
+- État Git : `main` à jour avec origin, working tree clean.
+- Priorités recommandées (reprises du worklog) :
+  1. Phase 3 modularisation correction (UI split en 9 composants — reportée de T2)
+  2. Nettoyer les erreurs tsc préexistantes (~103)
+  3. Configuration clés IA (z-ai-web-dev-sdk) quand l'utilisateur fournira les clés
+  4. Vérification mini-services (closure-watcher, ai-proxy) en production Vercel
+  5. Tests de bout en bout des flux critiques
+
+---
+Task ID: T3 (phase 3 — finalisation)
+Agent: Z.ai (tuteur/assistant — exécution)
+Task: Finaliser la phase 3 de modularisation de la page Correction : extraire le contrôleur (state + handlers + keyboard) et le layout sidebar de l'orchestrateur, pour atteindre la cible ~350 lignes.
+
+Work Log:
+- Lecture du worklog (sessions T1, T2 phases 1+2, T3 commits 1-3) pour comprendre l'état : les 9 composants de présentation étaient DÉJÀ extraits (Toolbar, StudentSidebar, QuestionSidebar, QuestionHeader, ParCopieView, ParQuestionView, GradingForm, AiSuggestionPanel, Skeletons, ScoreCircle). L'orchestrateur `correction-page.tsx` faisait encore 762 lignes (cible ~350).
+- Analyse des blocs volumineux restants dans l'orchestrateur :
+  * ~45 lignes de useState (28 états)
+  * ~15 lignes de hooks TanStack Query (queries + mutations)
+  * ~75 lignes de valeurs calculées/memo (selectedSession, questions, currentQuestion, currentReponse, rubricCriteria, computedScore, filteredSessions, stats, globalProgress, horizontalQuestions, horizontalCurrentQuestion, horizontalGradedCount)
+  * ~28 lignes d'effects (reset champs quand question/session change)
+  * ~230 lignes de handlers (handleToggleCriterion, handleAiGrade, handleApplyAi, handleDismissAi, handleSave, handleFinalize, handleBatchAiGrade, handleBatchReturn, goToQuestion, handleHorizontalToggleCriterion, handleHorizontalSave, getReponseForSession)
+  * ~57 lignes de raccourcis clavier (refs anti-stale-closure + useEffect global)
+  * ~145 lignes de layout sidebar (desktop collapsed/expanded + mobile Sheet)
+- Step 1 — Création src/hooks/use-correction-state.ts (603 lignes) : hook contrôleur qui encapsule TOUTE la logique métier (28 useState, queries, mutations, computed memos, effects, 13 handlers, raccourcis clavier avec refs). Retourne un objet groupé (data / mutations / grading state / UI state / handlers). Le `mainContentRef` (useRef) vit dans le hook et est retourné pour passer à ParCopieView. Interface `CurrentUser` minimale ({ id: string }) — structurellement compatible avec `AuthUser` du store.
+- Step 2 — Création src/components/correction/correction-sidebar.tsx (191 lignes) : composant qui gère les 3 variantes de sidebar : (1) desktop expanded 280px avec `sidebarContent` en prop (StudentSidebar ou QuestionSidebar), (2) desktop collapsed 48px avec icônes compacts (dots étudiants / numéros questions) + tooltips, (3) mobile Sheet (drawer gauche). Le header (titre + bouton collapse) et le skeleton de chargement sont gérés ici.
+- Step 3 — Réécriture src/components/correction/correction-page.tsx (762 → 177 lignes, -585) : orchestrateur purement présentationnel. Appelle `useCorrectionState(user)`, gère les guards (loading/empty), construit `sidebarContent` (QuestionSidebar ou StudentSidebar selon le mode), construit `mainContent` (ParCopieView ou ParQuestionView selon le mode), et render le shell : CorrectionToolbar + CorrectionSidebar + mainContent. Plus AUCUNE logique métier — seulement du wiring de props.
+- Step 4 — Vérifications :
+  * `bun run lint` → 0 erreur, 1 warning préexistant (jsx-a11y/alt-text dans certificat-pdf-react.tsx — non lié).
+  * `bunx tsc --noEmit` → 0 erreur dans les 3 fichiers modifiés (correction-page, use-correction-state, correction-sidebar). Les 102 erreurs restantes sont toutes préexistantes dans d'autres fichiers (rapports, affectations, niveaux, programme-academique, devoirs, epreuves, etc. — aucune dans le module correction).
+  * Serveur dev SECT démarré sur port 3000 : `✓ Ready in 1474ms`, `GET / 200`, `GET /correction 307` (redirect auth normal). Aucune erreur de compilation dans le log.
+- Step 5 — Commit + push.
+
+Stage Summary:
+- Fichiers créés (2) :
+  * src/hooks/use-correction-state.ts (603 lignes) — hook contrôleur (state + queries + mutations + computed + effects + 13 handlers + raccourcis clavier)
+  * src/components/correction/correction-sidebar.tsx (191 lignes) — sidebar desktop (collapsed/expanded) + mobile Sheet
+- Fichiers modifiés (1) :
+  * src/components/correction/correction-page.tsx (762 → 177 lignes, -585 lignes, -77%)
+- Architecture finale du module correction (3344 lignes au total) :
+  * Orchestrateur : correction-page.tsx (177 lignes) — présentationnel, wiring de props uniquement
+  * Contrôleur : use-correction-state.ts (603 lignes) — toute la logique métier
+  * Layout : correction-sidebar.tsx (191 lignes) — 3 variantes de sidebar
+  * 9 composants de présentation (déjà extraits en T3 commits 1-3) : toolbar (204), par-copie-view (484), par-question-view (492), grading-form (231), ai-suggestion-panel (151), question-header (52), student-sidebar (125), question-sidebar (76), correction-skeletons (38), score-circle (37)
+  * Support : types/correction.ts (73), lib/correction-utils.ts (191), hooks/use-correction.ts (219)
+- Décisions d'architecture :
+  * Un seul hook contrôleur `useCorrectionState` plutôt que plusieurs hooks spécialisés : les handlers dépendent des données (selectedSessionId, currentQuestion…) donc les séparer créerait du couplage. Le pattern "container hook" est standard en React et la taille (603 lignes) est justifiée par la richesse fonctionnelle (2 modes de correction, 13 handlers, raccourcis clavier).
+  * Le `mainContentRef` (useRef) vit dans le hook car `goToQuestion` l'utilise pour scroller le viewport. Retourné dans l'objet pour passage à ParCopieView.
+  * L'interface `CurrentUser` ({ id: string }) est volontairement minimale pour éviter un import circulaire avec auth-store.ts. TypeScript structural typing rend AuthUser compatible.
+  * La sidebar reçoit `sidebarContent` en prop (ReactNode) plutôt que de construire elle-même StudentSidebar/QuestionSidebar : cela sépare le layout (sidebar shell) du contenu (liste étudiante/question), et permet de réutiliser le même shell pour les deux modes.
+- État du projet : STABLE. La phase 3 de modularisation de la page Correction est TERMINÉE. L'orchestrateur (177 lignes) est bien sous la cible ~350. Le module correction suit désormais le pattern MVC : Model (types + utils + hooks use-correction), View (10 composants présentationnels), Controller (use-correction-state). Prochaines priorités recommandées : (1) nettoyer les 102 erreurs tsc préexistantes, (2) configurer les clés IA z-ai-web-dev-sdk, (3) vérifier les mini-services en production Vercel.
