@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
+import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { verifyCorrectionOwnership } from '@/lib/correction-access'
 
 export const maxDuration = 120
 
@@ -26,11 +28,12 @@ function getQuestionsFromContenu(contenu: unknown): Array<{
   }))
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
+export const POST = withAuth(
+  async (
+    request: NextRequest,
+    { params, user }: { params: Promise<{ sessionId: string }>; user: AuthenticatedUser }
+  ) => {
+    try {
     const { sessionId } = await params
 
     // Get session with all responses
@@ -53,6 +56,10 @@ export async function POST(
     if (!session) {
       return NextResponse.json({ error: 'Session non trouvée' }, { status: 404 })
     }
+
+    // ─── Ownership check ───
+    const ownershipError = await verifyCorrectionOwnership(user, session.epreuve.enseignantId)
+    if (ownershipError) return ownershipError
 
     // Build unified questions list
     type UnifiedQ = {
@@ -198,8 +205,8 @@ Réponds UNIQUEMENT en JSON:
     // Audit log
     await db.auditLog.create({
       data: {
-        userId: 'system',
-        userEmail: 'system',
+        userId: user.id,
+        userEmail: user.email,
         action: 'AI_BATCH_GRADE',
         entite: 'SessionPassation',
         entiteId: sessionId,
@@ -220,4 +227,6 @@ Réponds UNIQUEMENT en JSON:
       { status: 500 }
     )
   }
-}
+  },
+  ['ADMIN', 'RESPONSABLE', 'ENSEIGNANT']
+)

@@ -362,3 +362,77 @@ Stage Summary:
   * src/components/passation/mes-resultats-page.tsx (853 lignes → page modulaire 3 onglets)
 
 État du projet : STABLE. L'arc "expérience résultats" est maintenant complet et symétrique (enseignant + étudiant). L'infra réutilisable (types, utils, hooks, charts, KpiCard, skeletons) est validée par 2 consommateurs. Prochaines priorités recommandées : (1) dashboards (enseignant/étudiant) ont stale-closure bug + console.error + pas de TanStack Query, (2) page correction 2400 lignes = risque maintenance, (3) migration middleware→proxy Next.js 16.
+
+---
+Task ID: SETUP-1
+Agent: Z.ai (tuteur/assistant — session de prise en main)
+Task: Cloner le projet SECT depuis GitHub, configurer l'identité Git, connecter Supabase, vérifier la synchronisation du schéma et établir le workflow de travail (push GitHub → déploiement Vercel auto + sync DB Supabase).
+
+Work Log:
+- Clonage du dépôt https://github.com/udevrard7/SECT.git vers /home/z/sect-project (branche main, HEAD = 70a183c)
+- Branche secondaire détectée : origin/feat/responsable-dashboard-modules
+- Configuration de l'identité Git locale au projet : user.name=udevrard7, user.email=ulrichdouh@gmail.com (tous les futurs commits porteront cette identité)
+- Création du fichier .env (gitignoré, non versionné) avec les credentials Supabase corrigés :
+  * DATABASE_URL (pooler transaction mode, port 6543, pgbouncer=true)
+  * DIRECT_URL (pooler session mode, port 5432, pour migrations)
+  * Corrections appliquées : espace parasite supprimé après le mot de passe, deux-points manquant restauré entre username et password (coquilles dans les URLs fournies)
+  * NEXTAUTH_SECRET/URL ajoutés (valeurs dev locales)
+- bun install → 1064 packages installés (5.32s)
+- prisma generate → client Prisma v6.19.2 généré
+- Test connexion Supabase : prisma migrate status → connexion OK (base non gérée par migrations, utilise db push — cohérent avec les scripts package.json)
+- Introspection DB distante (prisma db pull --print) → 39 modèles
+- Comparaison : 39 modèles locaux vs 39 modèles distants, noms strictement identiques (diff vide) → schéma local parfaitement synchronisé avec la DB Supabase de production
+- bun run lint → 0 erreur, 1 warning préexistant (jsx-a11y/alt-text dans certificat-pdf-react.tsx)
+
+Stage Summary:
+- Environnement de travail opérationnel : dépôt cloné, identité Git configurée, dépendances installées, connexion Supabase validée, schéma DB vérifié synchronisé.
+- Workflow établi : modifications → (prisma db push si schéma modifié) → commit (auteur udevrard7 <ulrichdouh@gmail.com>) → push vers origin/main → déploiement Vercel automatique → sync DB Supabase.
+- Aucun changement de code effectué cette session (setup uniquement). Working tree propre.
+- Prochaines priorités recommandées (issues du worklog précédent QA-2) :
+  1. Dashboards enseignant/étudiant : stale-closure bug + console.error + pas de TanStack Query
+  2. Page correction (~2400 lignes) : risque maintenance, à modulariser
+  3. Migration middleware → proxy Next.js 16
+- Le fichier .env reste strictement local (gitignoré). Les credentials Supabase doivent être régénérés côté utilisateur car ils ont été partagés en clair.
+
+---
+Task ID: T0
+Agent: Z.ai (tuteur/assistant — exécution)
+Task: Sécuriser les endpoints de correction non authentifiés (faille de production critique identifiée lors de l'investigation INV-c).
+
+Work Log:
+- Création du helper partagé src/lib/correction-access.ts exportant verifyCorrectionOwnership(user, enseignantId) qui centralise la logique d'ownership :
+  * ENSEIGNANT : doit posséder la ressource (enseignantId === user.id)
+  * RESPONSABLE : même établissement que l'enseignant
+  * ADMIN : EtablissementAccess requis pour l'établissement de l'enseignant
+  * Autres rôles (ETUDIANT…) : refusé
+- Sécurisation de 5 endpoints (tous wrappés avec withAuth(['ADMIN','RESPONSABLE','ENSEIGNANT']) + verifyCorrectionOwnership) :
+  1. src/app/api/correction/[sessionId]/ai-grade/route.ts — POST (correction IA unitaire) + PATCH (finalizeAll OU update note individuelle). Pour la branche "update individuelle" qui ne chargeait pas la session, ajout d'une query pour récupérer epreuve.enseignantId avant l'update.
+  2. src/app/api/correction/[sessionId]/ai-grade-batch/route.ts — POST (correction IA batch d'une session). Ownership vérifié sur session.epreuve.enseignantId.
+  3. src/app/api/correction/[sessionId]/retourner/route.ts — POST (retourner une copie corrigée). Ajout de epreuve: { select: { enseignantId: true } } dans l'include session.
+  4. src/app/api/correction/retourner-batch/route.ts — POST (retourner toutes les copies corrigées d'une épreuve). Reçoit epreuveId dans le body → ajout d'une query db.epreuve.findUnique pour récupérer enseignantId avant vérification.
+  5. src/app/api/soumissions/[id]/ai-grade/route.ts — POST (correction IA d'un devoir). Ownership vérifié sur soumission.Devoir.enseignantId.
+- Bonus qualité : tous les audit logs de ces endpoints passent de userId/userEmail = 'system' à user.id/user.email réels (traçabilité réelle de qui a corrigé/retourné).
+- Vérification : bunx tsc --noEmit → 0 erreur sur les 6 fichiers ; bunx eslint → 0 erreur.
+
+Stage Summary:
+- Faille de production critique corrigée : 5 endpoints d'écriture (notes + retour copies) étaient accessibles sans authentification. Désormais protégés par withAuth + ownership check multi-rôles.
+- 1 nouveau fichier (src/lib/correction-access.ts) + 5 endpoints édités.
+- Aucun changement de schéma DB → pas de prisma db push nécessaire.
+- La logique d'ownership est centralisée et réutilisable pour T2 (modularisation correction).
+
+---
+Task ID: T3
+Agent: Z.ai (tuteur/assistant — exécution)
+Task: Migrer middleware.ts vers proxy.ts (API stable Next.js 16, remplace l'API middleware dépréciée).
+
+Work Log:
+- Création de src/proxy.ts : copie verbatim de la logique de src/middleware.ts (PUBLIC_PATHS, bypass static files, getToken NextAuth, 401 JSON pour API / 307 redirect pour pages, 403/AccountDisabled pour comptes désactivés).
+- Seul changement : export `middleware` → `proxy` (requis par Next 16). Le `config.matcher` est conservé à l'identique.
+- Ajout d'un doc-comment en tête de fichier expliquant la migration et rappelant que la logique rôle/tenant n'est PAS gérée ici (renvoi vers auth-session.ts / tenant-access.ts / NAV_CATEGORIES).
+- Suppression de src/middleware.ts (Next 16 refuse la coexistence des deux fichiers — sinon ProxyMissingExportError ou doublon).
+- Vérification : bunx eslint src/proxy.ts → 0 erreur. Aucune autre dépendance à src/middleware.ts dans le codebase (grep confirmé par l'investigation INV-a : le middleware n'était importé nulle part, il est auto-détecté par Next).
+
+Stage Summary:
+- Migration low-risk terminée : 94 lignes, logique auth-only identique, API proxy stable en next@16.1.3 (confirmé par node_modules/next/dist/lib/constants.js).
+- L'avertissement de dépréation "middleware is deprecated" disparaîtra au prochain build Vercel.
+- 1 nouveau fichier (src/proxy.ts) + 1 suppression (src/middleware.ts).
