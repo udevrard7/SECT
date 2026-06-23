@@ -140,10 +140,25 @@ async function _DELETE(
     }
 
     // ─── Verify ownership or EtablissementAccess before delete ───
+    // The Question model exposes only `auteurId` (scalar) and no relation to its author,
+    // so we resolve each author's `etablissementId` via a batched User lookup.
     const questionsToDelete = await db.question.findMany({
       where: { id: { in: ids } },
-      select: { id: true, auteurId: true, auteur: { select: { etablissementId: true } } },
+      select: { id: true, auteurId: true },
     })
+
+    const auteurIds = Array.from(
+      new Set(questionsToDelete.map((q) => q.auteurId).filter((id): id is string => Boolean(id)))
+    )
+    const auteurs = auteurIds.length > 0
+      ? await db.user.findMany({
+          where: { id: { in: auteurIds } },
+          select: { id: true, etablissementId: true },
+        })
+      : []
+    const auteurEtabMap = new Map(auteurs.map((a) => [a.id, a.etablissementId]))
+    const getAuteurEtabId = (q: { auteurId: string | null }) =>
+      q.auteurId ? auteurEtabMap.get(q.auteurId) : undefined
 
     if (user.role === 'ENSEIGNANT') {
       // ENSEIGNANT: can only delete their own questions
@@ -156,7 +171,7 @@ async function _DELETE(
       }
     } else if (user.role === 'RESPONSABLE') {
       // RESPONSABLE: can delete questions in their establishment
-      const notInEtab = questionsToDelete.filter(q => q.auteur?.etablissementId !== user.etablissementId)
+      const notInEtab = questionsToDelete.filter(q => getAuteurEtabId(q) !== user.etablissementId)
       if (notInEtab.length > 0) {
         return NextResponse.json(
           { error: 'Accès refusé. Vous ne pouvez supprimer que les questions de votre établissement.' },
@@ -165,7 +180,11 @@ async function _DELETE(
       }
     } else if (user.role === 'ADMIN') {
       // ADMIN: must have EtablissementAccess for the questions' establishments
-      const etabIds = new Set(questionsToDelete.map(q => q.auteur?.etablissementId).filter(Boolean) as string[])
+      const etabIds = new Set(
+        questionsToDelete
+          .map((q) => getAuteurEtabId(q))
+          .filter((id): id is string => Boolean(id))
+      )
       for (const etabId of etabIds) {
         const accessError = await requireAdminEtablissementAccess(user, etabId)
         if (accessError) return accessError

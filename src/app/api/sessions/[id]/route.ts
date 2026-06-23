@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { StatutSession } from '@prisma/client'
 import { db } from '@/lib/db'
 import {
   parsePropositionMappings,
@@ -167,7 +168,7 @@ async function _POST(
     const penalite = session.penalite || 0
     const finalScore = Math.max(0, autoGradedScore - penalite)
 
-    let newStatut: string
+    let newStatut: StatutSession
     if (scenario.type === 'A') {
       newStatut = 'CORRIGEE'
     } else {

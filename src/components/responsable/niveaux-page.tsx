@@ -292,7 +292,8 @@ export function NiveauxPage() {
   const fetchFilieres = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
@@ -313,7 +314,8 @@ export function NiveauxPage() {
   const fetchUEs = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
@@ -328,7 +330,8 @@ export function NiveauxPage() {
   const fetchAffectations = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/affectations?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()

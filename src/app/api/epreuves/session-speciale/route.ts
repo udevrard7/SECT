@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma, SessionExamen } from '@prisma/client'
 import { db } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 import { requireAdminEtablissementAccess } from '@/lib/tenant-access'
@@ -79,6 +80,9 @@ async function _POST(
         return NextResponse.json({ error: 'Accès refusé. Vous ne pouvez agir que sur les épreuves de votre établissement.' }, { status: 403 })
       }
     } else if (user.role === 'ADMIN') {
+      if (!epreuveOrigine.enseignant.etablissementId) {
+        return NextResponse.json({ error: 'Accès refusé. L\'épreuve d\'origine n\'est rattachée à aucun établissement.' }, { status: 403 })
+      }
       const accessError = await requireAdminEtablissementAccess(user, epreuveOrigine.enseignant.etablissementId)
       if (accessError) return accessError
     }
@@ -123,7 +127,7 @@ async function _POST(
     }
 
     // ─── Determine sessionExamen for the derived epreuve ───
-    const sessionExamenMap: Record<string, string> = {
+    const sessionExamenMap: Record<string, SessionExamen> = {
       RATTRAPAGE: 'RATTRAPAGE',
       EXCEPTIONNELLE: 'EXCEPTIONNELLE',
       DIFFERE: 'DIFFERE',
@@ -133,7 +137,7 @@ async function _POST(
     const derivedTitre = titre || `[${type}] ${epreuveOrigine.titre}`
     const derivedDuree = duree || epreuveOrigine.duree
 
-    const createData: Record<string, unknown> = {
+    const createData: Prisma.EpreuveUncheckedCreateInput = {
       enseignantId: epreuveOrigine.enseignantId,
       titre: derivedTitre,
       description: epreuveOrigine.description,
@@ -157,7 +161,7 @@ async function _POST(
       epreuveOrigineId: epreuveOrigineId,
       etudiantsAutorises: JSON.stringify(etudiantsCibles),
       // Copy contenu (filtered if partial)
-      contenu: contenu || undefined,
+      contenu: (contenu as Prisma.InputJsonValue) || undefined,
     }
 
     // Copy source documents
@@ -270,6 +274,9 @@ async function _GET(
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
     if (user.role === 'ADMIN') {
+      if (!epreuve.enseignant.etablissementId) {
+        return NextResponse.json({ error: 'Accès refusé. L\'épreuve n\'est rattachée à aucun établissement.' }, { status: 403 })
+      }
       const accessError = await requireAdminEtablissementAccess(user, epreuve.enseignant.etablissementId)
       if (accessError) return accessError
     }

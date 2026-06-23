@@ -214,6 +214,7 @@ interface SessionEpreuve {
   uniteEnseignement?: { id: string; nom: string; code: string | null } | null
   epreuveOrigineId?: string | null
   etudiantsAutorises?: string[] | null
+  [key: string]: unknown
 }
 
 type TabId = 'modeles' | 'sessions'

@@ -320,13 +320,14 @@ export function PassationPage() {
 
         // Check for existing session first (to get sessionId for consistent proposition ordering)
         let activeSessionId: string | null = null
+        let activeSession: ExamSession | null = null
         if (user?.id) {
           const sessionRes = await fetch(`/api/sessions?etudiantId=${user.id}&epreuveId=${epreuveId}`)
           if (sessionRes.ok) {
             const sessionsData = await sessionRes.json()
-            const activeSession = sessionsData.find(
+            activeSession = sessionsData.find(
               (s: ExamSession) => s.statut === 'EN_COURS' || s.statut === 'NON_COMMENCEE'
-            )
+            ) ?? null
             if (activeSession) {
               activeSessionId = activeSession.id
               setSession(activeSession)

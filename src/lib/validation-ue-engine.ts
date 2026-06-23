@@ -6,6 +6,7 @@
  */
 
 import { db, withRetry } from '@/lib/db'
+import { TypeCertificat } from '@prisma/client'
 
 // ─── Types ───
 
@@ -52,7 +53,7 @@ function getMention(noteFinale: number): string | null {
  *   AVANCE   — 12–15.99 → Assez Bien/Bien → Bleu Roi / Losange ◆
  *   STANDARD — 10–11.99 → Passable       → Vert / Carré ■
  */
-function getCertificateType(noteFinale: number, statut: string): string | null {
+function getCertificateType(noteFinale: number, statut: string): TypeCertificat | null {
   if (statut !== 'VALIDEE') return null
   if (noteFinale >= 16) return 'EXPERT'
   if (noteFinale >= 12) return 'AVANCE'

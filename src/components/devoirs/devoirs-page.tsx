@@ -1288,7 +1288,7 @@ function DevoirCard({
           <span className="inline-flex items-center gap-1">
             <Star className="h-3 w-3 text-amber-300" />/{devoir.noteMax}
           </span>
-          {devoir.renduFichiers && (
+          {!!devoir.renduFichiers && (
             <span className="inline-flex items-center gap-1">
               <Paperclip className="h-3 w-3 text-cyan-300" />Fichiers
             </span>

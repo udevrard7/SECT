@@ -150,7 +150,10 @@ async function _GET(
     // Render the React component to a PDF buffer (via @react-pdf/renderer)
     const pdfBuffer = await renderCertificatPDF(pdfData, orientation)
 
-    return new NextResponse(pdfBuffer, {
+    // Wrap Buffer in a Uint8Array view so the payload satisfies the BodyInit
+    // contract expected by NextResponse (Buffer<ArrayBufferLike> is not directly
+    // assignable to BodyInit under TS 5.7+ strict DOM typings).
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="certificat-${certificat.codeVerification}.pdf"`,

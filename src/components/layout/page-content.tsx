@@ -99,7 +99,6 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
 // ─── Legacy redirect mappings ───
 const LEGACY_REDIRECTS: Partial<Record<PageId, { component: React.ComponentType<any>; props?: any }>> = {
   'banque-epreuves': { component: EpreuvesPage },
-  'banque-questions': { component: EpreuvesPage },
   niveaux: { component: ProgrammeAcademiquePage, props: { defaultView: 'overview' } },
   'unites-enseignement': { component: ProgrammeAcademiquePage, props: { defaultView: 'detail' } },
 }

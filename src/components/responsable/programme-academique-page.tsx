@@ -298,7 +298,8 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   const fetchFilieres = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       params.set('actif', 'true')
       const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
@@ -311,7 +312,8 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   const fetchUEs = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       params.set('actif', 'true')
       const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
       if (res.ok) {
@@ -324,7 +326,8 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   const fetchAffectations = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/affectations?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()

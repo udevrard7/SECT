@@ -312,6 +312,7 @@ export async function POST(request: NextRequest) {
 
       const newInvitation = await db.invitation.create({
         data: {
+          id: crypto.randomUUID(),
           token,
           email: responsableEmail,
           role: 'RESPONSABLE',

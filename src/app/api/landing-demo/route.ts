@@ -63,7 +63,9 @@ Ne mets aucun markdown, aucun \`\`\`, juste le JSON brut.`
 /* ─── Local fallback QCM generator (deterministic, no AI) ─── */
 // A curated bank of ready-made questions for common academic topics.
 // Used ONLY when the AI is unavailable, so the demo never breaks.
-const LOCAL_BANK: Array<{ keywords: string[]; qcm: QCMResult }> = [
+// The `source` field is intentionally omitted here and injected by `generateLocal`
+// (or `generateWithAI` for AI-generated entries) so each QCMResult carries its origin.
+const LOCAL_BANK: Array<{ keywords: string[]; qcm: Omit<QCMResult, 'source'> }> = [
   {
     keywords: ['photosynthèse', 'photosynthese', 'plante', 'biologie', 'végétal', 'vegetal', 'chlorophylle'],
     qcm: {

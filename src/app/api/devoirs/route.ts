@@ -319,13 +319,14 @@ async function _GET(
       }
     } else if (user.role === 'ENSEIGNANT') {
       // ENSEIGNANT: Can only see devoirs they created or in their establishment
-      const authorizedUes = await db.uniteEnseignement.findMany({
-        where: {
-          filiere: { etablissementId: user.etablissementId },
-        },
-        select: { id: true },
-      })
-      const authorizedUeIds = authorizedUes.map((u) => u.id)
+      const authorizedUeIds = user.etablissementId
+        ? (await db.uniteEnseignement.findMany({
+            where: {
+              filiere: { etablissementId: user.etablissementId },
+            },
+            select: { id: true },
+          })).map((u) => u.id)
+        : []
 
       if (uniteEnseignementId) {
         if (!authorizedUeIds.includes(uniteEnseignementId)) {
@@ -343,13 +344,14 @@ async function _GET(
       }
     } else if (user.role === 'RESPONSABLE') {
       // RESPONSABLE: Can see devoirs in their establishment
-      const authorizedUes = await db.uniteEnseignement.findMany({
-        where: {
-          filiere: { etablissementId: user.etablissementId },
-        },
-        select: { id: true },
-      })
-      const authorizedUeIds = authorizedUes.map((u) => u.id)
+      const authorizedUeIds = user.etablissementId
+        ? (await db.uniteEnseignement.findMany({
+            where: {
+              filiere: { etablissementId: user.etablissementId },
+            },
+            select: { id: true },
+          })).map((u) => u.id)
+        : []
 
       if (uniteEnseignementId) {
         if (!authorizedUeIds.includes(uniteEnseignementId)) {

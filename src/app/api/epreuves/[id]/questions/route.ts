@@ -44,6 +44,7 @@ async function _GET(
         melangeQuestions: true,
         melangePropositions: true,
         contenu: true,
+        deletedAt: true,
         questions: {
           include: {
             question: {

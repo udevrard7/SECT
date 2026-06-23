@@ -248,7 +248,8 @@ export function AffectationsPage() {
   const fetchFilieres = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/filieres?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
@@ -265,11 +266,12 @@ export function AffectationsPage() {
 
   // ─── Fetch affectations ───
   const fetchAffectations = useCallback(async () => {
-    if (!user?.etablissementId && !user?.etablissement?.id) return
+    const etabId = user?.etablissementId || user?.etablissement?.id
+    if (!etabId) return
     setIsLoading(true)
     try {
       const params = new URLSearchParams()
-      params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      params.set('etablissementId', etabId)
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (niveauFilter !== 'all') params.set('niveau', niveauFilter)
       if (statutFilter !== 'all') params.set('statut', statutFilter)
@@ -289,10 +291,11 @@ export function AffectationsPage() {
 
   // ─── Fetch UE list ───
   const fetchUEs = useCallback(async () => {
-    if (!user?.etablissementId && !user?.etablissement?.id) return
+    const etabId = user?.etablissementId || user?.etablissement?.id
+    if (!etabId) return
     try {
       const params = new URLSearchParams()
-      params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      params.set('etablissementId', etabId)
       params.set('actif', 'true')
 
       const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
@@ -307,13 +310,14 @@ export function AffectationsPage() {
 
   // ─── Fetch enseignants ───
   const fetchEnseignants = useCallback(async () => {
-    if (!user?.etablissementId && !user?.etablissement?.id) return
+    const etabId = user?.etablissementId || user?.etablissement?.id
+    if (!etabId) return
     try {
       const params = new URLSearchParams()
       params.set('role', 'ENSEIGNANT')
       params.set('limit', '200')
       params.set('actif', 'true')
-      if (user?.etablissementId || user?.etablissement?.id) params.set('etablissementId', user?.etablissementId || user?.etablissement?.id)
+      params.set('etablissementId', etabId)
 
       const res = await fetch(`/api/users?${params.toString()}`)
       if (res.ok) {
@@ -450,7 +454,7 @@ export function AffectationsPage() {
         acc[sharedKey].push(ue)
       }
       return acc
-    })
+    }, {})
 
     // Build matrix rows
     const rows = ues.map((ue) => {
