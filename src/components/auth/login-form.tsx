@@ -305,17 +305,18 @@ export function LoginForm() {
           }}
         />
 
-        {/* ── Bande kente verticale (bord droit, 4 couleurs, plus large) ── */}
+        {/* ── Bande kente verticale (bord droit, 4 couleurs, élargie) ── */}
         <div
-          className="absolute top-0 bottom-0 right-0 w-4 z-20"
+          className="absolute top-0 bottom-0 right-0 w-3 z-20"
           style={{
             backgroundImage: `repeating-linear-gradient(
               0deg,
-              #84CC16 0px, #84CC16 60px,
-              #C2410C 60px, #C2410C 120px,
-              #F59E0B 120px, #F59E0B 180px,
-              #1E1B4B 180px, #1E1B4B 240px
+              #84CC16 0px, #84CC16 50px,
+              #C2410C 50px, #C2410C 100px,
+              #F59E0B 100px, #F59E0B 150px,
+              #1E1B4B 150px, #1E1B4B 200px
             )`,
+            boxShadow: '-4px 0 12px rgba(0,0,0,0.15)',
           }}
         />
 
@@ -376,7 +377,7 @@ export function LoginForm() {
             transition={{ duration: 0.6, ease: 'easeOut' }}
             className="flex items-center gap-3"
           >
-            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center shadow-xl shadow-[#84CC16]/30">
+            <div className="ds-logo-glow h-14 w-14 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
               <GraduationCap className="h-8 w-8 text-[#1E1B4B]" />
             </div>
             <div>
@@ -397,7 +398,7 @@ export function LoginForm() {
               <h2 className="text-4xl xl:text-5xl font-bold text-white leading-tight tracking-tight mb-4">
                 L'évaluation
                 <br />
-                <span className="bg-gradient-to-r from-[#84CC16] via-[#F59E0B] to-[#C2410C] bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-[#84CC16] via-[#FBBF24] to-[#C2410C] bg-clip-text text-transparent">
                   réinventée par l'IA
                 </span>
               </h2>
@@ -454,11 +455,11 @@ export function LoginForm() {
               ].map((stat) => (
                 <div key={stat.label} className="flex items-center gap-1.5">
                   <stat.icon className="h-3.5 w-3.5 text-[#84CC16]" />
-                  <span className="text-xs text-white/40 font-medium">{stat.label}</span>
+                  <span className="text-xs text-white/55 font-medium">{stat.label}</span>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-white/25">
+            <p className="text-xs text-white/40">
               © 2025 SECT 🇨🇮
             </p>
           </motion.div>
@@ -509,7 +510,7 @@ export function LoginForm() {
 
           {/* ── Logo mobile ── */}
           <div className="lg:hidden flex items-center gap-2.5 mb-5 justify-center">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
+            <div className="ds-logo-glow h-10 w-10 rounded-lg bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
               <GraduationCap className="h-6 w-6 text-[#1E1B4B]" />
             </div>
             <span className="text-xl font-bold text-[#1E1B4B]">SECT</span>
@@ -639,7 +640,7 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => { setResetDialogOpen(true); setResetSent(false); setResetEmail('') }}
-                className="text-xs font-medium text-[#1E1B4B]/60 hover:text-[#C2410C] transition-colors underline-offset-2 hover:underline"
+                className="text-xs font-medium text-[#1E1B4B]/70 hover:text-[#C2410C] transition-colors underline-offset-2 hover:underline"
               >
                 Mot de passe oublié ?
               </button>
@@ -654,7 +655,7 @@ export function LoginForm() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2"
+                className="ds-shimmer w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2"
               >
                 {isLoading ? (
                   <><Loader2 className="h-5 w-5 animate-spin mr-2" /> Connexion...</>
