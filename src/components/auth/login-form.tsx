@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -16,6 +16,12 @@ import {
   GraduationCap,
   Briefcase,
   Sparkles,
+  Zap,
+  Shield,
+  Users,
+  TrendingUp,
+  Award,
+  CheckCircle2,
 } from 'lucide-react'
 import { useAuthStore, type LoginError } from '@/stores/auth-store'
 import { toast } from 'sonner'
@@ -32,7 +38,7 @@ import {
 } from '@/components/ui/dialog'
 
 // ═══════════════════════════════════════════════════════════════
-// TYPES & VALIDATION
+// TYPES & VALIDATION (préservé de l'ancien)
 // ═══════════════════════════════════════════════════════════════
 
 type LoginMode = 'personnel' | 'etudiant'
@@ -51,7 +57,72 @@ type PersonnelFormValues = z.infer<typeof personnelSchema>
 type EtudiantFormValues = z.infer<typeof etudiantSchema>
 
 // ═══════════════════════════════════════════════════════════════
-// LOGIN FORM — Savane EdTech
+// COMPOSANT : Particule flottante animée
+// ═══════════════════════════════════════════════════════════════
+
+function FloatingParticle({ delay, duration, x, y, size, color }: { delay: number; duration: number; x: string; y: string; size: number; color: string }) {
+  return (
+    <motion.div
+      className="absolute rounded-full pointer-events-none"
+      style={{ left: x, top: y, width: size, height: size, backgroundColor: color, filter: 'blur(1px)' }}
+      animate={{
+        y: [0, -30, 0],
+        opacity: [0, 0.6, 0],
+        scale: [0.5, 1, 0.5],
+      }}
+      transition={{
+        duration,
+        delay,
+        repeat: Infinity,
+        ease: 'easeInOut',
+      }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMPOSANT : Counter animé (compte de 0 à value)
+// ═══════════════════════════════════════════════════════════════
+
+function AnimatedCounter({ value, suffix = '', duration = 1.5 }: { value: number; suffix?: string; duration?: number }) {
+  const [count, setCount] = useState(0)
+  const ref = useRef<HTMLSpanElement>(null)
+  const started = useRef(false)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !started.current) {
+          started.current = true
+          const steps = 60
+          const increment = value / steps
+          let current = 0
+          const interval = setInterval(() => {
+            current += increment
+            if (current >= value) {
+              setCount(value)
+              clearInterval(interval)
+            } else {
+              setCount(Math.floor(current))
+            }
+          }, (duration * 1000) / steps)
+        }
+      },
+      { threshold: 0.3 }
+    )
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [value, duration])
+
+  return (
+    <span ref={ref} className="font-mono tabular-nums">
+      {count}{suffix}
+    </span>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LOGIN FORM — SECT "Savane EdTech"
 // ═══════════════════════════════════════════════════════════════
 
 export function LoginForm() {
@@ -78,7 +149,6 @@ export function LoginForm() {
     defaultValues: { identifier: '', password: '' },
   })
 
-  // Reset form when mode changes
   const handleModeChange = useCallback((newMode: LoginMode) => {
     if (newMode === loginMode) return
     setLoginMode(newMode)
@@ -86,7 +156,6 @@ export function LoginForm() {
     form.reset({ identifier: '', password: '' })
   }, [loginMode, form])
 
-  // Submit handler
   const onSubmit = useCallback(async (data: PersonnelFormValues | EtudiantFormValues) => {
     setLoginError(null)
     try {
@@ -168,131 +237,268 @@ export function LoginForm() {
   const isPersonnel = loginMode === 'personnel'
   const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule ou Email'
 
+  // Données pour les stats animées
+  const stats = [
+    { icon: Users, value: 500, suffix: '+', label: 'Étudiants', color: '#84CC16' },
+    { icon: Zap, value: 200, suffix: '+', label: 'Examens corrigés', color: '#F59E0B' },
+    { icon: Shield, value: 98, suffix: '%', label: 'Précision IA', color: '#84CC16' },
+    { icon: Award, value: 4, suffix: '', label: 'Rôles', color: '#F59E0B' },
+  ]
+
+  // Témoignages
+  const testimonials = [
+    { text: 'Mes corrections passent de 2 semaines à 2 minutes. Incroyable !', author: 'Pr. Aïcha K.', role: 'Université Félix Houphouët-Boigny' },
+    { text: "L'IA génère mes QCM à partir de mes cours. Un gain de temps énorme.", author: 'Dr. Konan Y.', role: 'ENS Abidjan' },
+  ]
+  const [activeTestimonial, setActiveTestimonial] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveTestimonial((prev) => (prev + 1) % testimonials.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [testimonials.length])
+
   return (
     <div className="min-h-screen flex bg-[#1E1B4B]">
-      {/* ════════ CÔTÉ GAUCHE (60%) — Bleu nuit + Kente + Branding ════════ */}
-      <div className="hidden lg:flex lg:w-[60%] relative flex-col justify-between p-12 overflow-hidden">
-        {/* Motif Kente subtil en filigrane */}
+      {/* ════════════════════════════════════════════════════════════════
+          CÔTÉ GAUCHE (60%) — Bleu nuit + Kente riche + SECT branding
+          ════════════════════════════════════════════════════════════════ */}
+      <div className="hidden lg:flex lg:w-[60%] relative flex-col overflow-hidden">
+        {/* ── Fond : dégradé bleu nuit profond ── */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1E1B4B] via-[#1a1740] to-[#0f0d2e]" />
+
+        {/* ── Motif Kente riche (multi-couches, inspiration tissage traditionnel) ── */}
+        {/* Couche 1 : bandes verticales kente tricolores */}
         <div
-          className="absolute inset-0 opacity-[0.08] pointer-events-none"
+          className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{
             backgroundImage: `
-              repeating-linear-gradient(45deg, transparent 0, transparent 20px, #84CC16 20px, #84CC16 24px, transparent 24px, transparent 44px, #F59E0B 44px, #F59E0B 48px),
-              repeating-linear-gradient(-45deg, transparent 0, transparent 20px, #C2410C 20px, #C2410C 24px, transparent 24px, transparent 44px, #F59E0B 44px, #F59E0B 48px)
+              repeating-linear-gradient(90deg,
+                transparent 0, transparent 60px,
+                #84CC16 60px, #84CC16 64px,
+                transparent 64px, transparent 68px,
+                #F59E0B 68px, #F59E0B 70px,
+                transparent 70px, transparent 74px,
+                #C2410C 74px, #C2410C 76px,
+                transparent 76px, transparent 120px
+              )
             `,
           }}
         />
-
-        {/* Motifs géométriques dorés en coins */}
-        <div className="absolute top-8 right-8 w-24 h-24 opacity-20 pointer-events-none">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="50,5 95,50 50,95 5,50" stroke="#F59E0B" strokeWidth="2" fill="none" />
-            <polygon points="50,20 80,50 50,80 20,50" stroke="#F59E0B" strokeWidth="1.5" fill="none" />
-            <circle cx="50" cy="50" r="8" fill="#F59E0B" opacity="0.5" />
-          </svg>
-        </div>
-        <div className="absolute bottom-8 left-8 w-32 h-32 opacity-15 pointer-events-none">
-          <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="60,10 110,60 60,110 10,60" stroke="#84CC16" strokeWidth="2" fill="none" />
-            <polygon points="60,30 90,60 60,90 30,60" stroke="#84CC16" strokeWidth="1.5" fill="none" />
-          </svg>
-        </div>
-
-        {/* Bande kente verticale décorative sur le bord droit */}
+        {/* Couche 2 : losanges diagonaux (motif bogolan) */}
         <div
-          className="absolute top-0 bottom-0 right-0 w-2 opacity-60"
+          className="absolute inset-0 opacity-[0.04] pointer-events-none"
+          style={{
+            backgroundImage: `
+              repeating-linear-gradient(45deg, transparent 0, transparent 30px, #F59E0B 30px, #F59E0B 34px, transparent 34px, transparent 60px),
+              repeating-linear-gradient(-45deg, transparent 0, transparent 30px, #84CC16 30px, #84CC16 34px, transparent 34px, transparent 60px)
+            `,
+          }}
+        />
+        {/* Couche 3 : points dorés (motif mandala) */}
+        <div
+          className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(circle, #F59E0B 1px, transparent 1px)`,
+            backgroundSize: '24px 24px',
+          }}
+        />
+
+        {/* ── Bande kente décorative verticale (bord droit, 4 couleurs) ── */}
+        <div
+          className="absolute top-0 bottom-0 right-0 w-3 z-20"
           style={{
             backgroundImage: `repeating-linear-gradient(
               0deg,
-              #84CC16 0px, #84CC16 40px,
-              #C2410C 40px, #C2410C 80px,
-              #F59E0B 80px, #F59E0B 120px,
-              #1E1B4B 120px, #1E1B4B 160px
+              #84CC16 0px, #84CC16 50px,
+              #C2410C 50px, #C2410C 100px,
+              #F59E0B 100px, #F59E0B 150px,
+              #1E1B4B 150px, #1E1B4B 200px
             )`,
           }}
         />
 
-        {/* Logo + Brand en haut */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center shadow-lg">
-            <GraduationCap className="h-7 w-7 text-[#1E1B4B]" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[#F59E0B] tracking-tight">Savane EdTech</h1>
-            <p className="text-xs text-white/50">SECT — Système d'Évaluation</p>
-          </div>
-        </div>
+        {/* ── Particules flottantes dorées/vertes ── */}
+        <FloatingParticle delay={0} duration={4} x="15%" y="30%" size={4} color="#F59E0B" />
+        <FloatingParticle delay={1} duration={5} x="80%" y="20%" size={3} color="#84CC16" />
+        <FloatingParticle delay={2} duration={3.5} x="25%" y="70%" size={5} color="#F59E0B" />
+        <FloatingParticle delay={0.5} duration={4.5} x="70%" y="60%" size={3} color="#84CC16" />
+        <FloatingParticle delay={1.5} duration={3} x="50%" y="15%" size={4} color="#C2410C" />
+        <FloatingParticle delay={2.5} duration={4} x="90%" y="80%" size={3} color="#F59E0B" />
 
-        {/* Illustration centrale — baobab + étudiant stylisé */}
-        <div className="relative z-10 flex-1 flex items-center justify-center">
+        {/* ── Motifs géométriques africains en coins (losanges concentriques) ── */}
+        <motion.div
+          className="absolute top-6 right-12 w-28 h-28 pointer-events-none z-10"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
+        >
+          <svg viewBox="0 0 100 100" fill="none">
+            <polygon points="50,5 95,50 50,95 5,50" stroke="#F59E0B" strokeWidth="1.5" fill="none" opacity="0.3" />
+            <polygon points="50,20 80,50 50,80 20,50" stroke="#F59E0B" strokeWidth="1" fill="none" opacity="0.2" />
+            <polygon points="50,35 65,50 50,65 35,50" stroke="#84CC16" strokeWidth="1" fill="none" opacity="0.15" />
+          </svg>
+        </motion.div>
+        <motion.div
+          className="absolute bottom-12 left-12 w-36 h-36 pointer-events-none z-10"
+          animate={{ rotate: -360 }}
+          transition={{ duration: 80, repeat: Infinity, ease: 'linear' }}
+        >
+          <svg viewBox="0 0 120 120" fill="none">
+            <polygon points="60,5 115,60 60,115 5,60" stroke="#84CC16" strokeWidth="1.5" fill="none" opacity="0.25" />
+            <polygon points="60,25 95,60 60,95 25,60" stroke="#84CC16" strokeWidth="1" fill="none" opacity="0.15" />
+            <circle cx="60" cy="60" r="8" fill="#F59E0B" opacity="0.1" />
+          </svg>
+        </motion.div>
+
+        {/* ── Halo lumineux (glow) derrière le contenu ── */}
+        <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full bg-[#84CC16] opacity-[0.04] blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-[#F59E0B] opacity-[0.03] blur-[100px] pointer-events-none" />
+
+        {/* ═══ Contenu du côté gauche ═══ */}
+        <div className="relative z-20 flex flex-col justify-between h-full p-12 xl:p-16">
+
+          {/* ── Header : Logo SECT ── */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="text-center"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            className="flex items-center gap-3"
           >
-            {/* Baobab géométrique stylisé */}
-            <svg width="280" height="240" viewBox="0 0 280 240" fill="none" className="mx-auto mb-6">
-              {/* Tronc */}
-              <rect x="125" y="120" width="30" height="100" rx="4" fill="#C2410C" opacity="0.8" />
-              {/* Branches */}
-              <path d="M140 120 Q100 80 70 60" stroke="#C2410C" strokeWidth="6" strokeLinecap="round" fill="none" opacity="0.7" />
-              <path d="M140 120 Q180 80 210 60" stroke="#C2410C" strokeWidth="6" strokeLinecap="round" fill="none" opacity="0.7" />
-              <path d="M140 120 Q120 70 110 40" stroke="#C2410C" strokeWidth="5" strokeLinecap="round" fill="none" opacity="0.6" />
-              <path d="M140 120 Q160 70 170 40" stroke="#C2410C" strokeWidth="5" strokeLinecap="round" fill="none" opacity="0.6" />
-              {/* Feuillage — cercles dorés */}
-              <circle cx="70" cy="55" r="22" fill="#F59E0B" opacity="0.25" />
-              <circle cx="210" cy="55" r="22" fill="#F59E0B" opacity="0.25" />
-              <circle cx="110" cy="35" r="18" fill="#F59E0B" opacity="0.2" />
-              <circle cx="170" cy="35" r="18" fill="#F59E0B" opacity="0.2" />
-              <circle cx="140" cy="25" r="25" fill="#84CC16" opacity="0.2" />
-              {/* Étudiant avec ordinateur — silhouette simple */}
-              <circle cx="140" cy="195" r="12" fill="#84CC16" opacity="0.6" />
-              <rect x="128" y="210" width="24" height="6" rx="2" fill="#84CC16" opacity="0.5" />
-              {/* Sol */}
-              <ellipse cx="140" cy="225" rx="50" ry="6" fill="#F59E0B" opacity="0.1" />
-            </svg>
-
-            <h2 className="text-3xl font-bold text-white mb-3 tracking-tight">
-              L'évaluation réinventée
-            </h2>
-            <p className="text-white/60 max-w-md mx-auto leading-relaxed">
-              Générez vos sujets par IA, surveillez les examens en ligne et corrigez
-              automatiquement. Conçu pour les universités d'Afrique de l'Ouest.
-            </p>
-
-            {/* Points forts */}
-            <div className="flex items-center justify-center gap-6 mt-8">
-              {[
-                { icon: Sparkles, label: 'IA Intégrée', value: '98%' },
-                { icon: KeyRound, label: 'Anti-Triche', value: '24/7' },
-                { icon: GraduationCap, label: 'Multi-rôles', value: '4' },
-              ].map((f, i) => (
-                <motion.div
-                  key={f.label}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 + i * 0.1 }}
-                  className="flex flex-col items-center gap-1"
-                >
-                  <f.icon className="h-5 w-5 text-[#F59E0B]" />
-                  <span className="text-xs font-mono font-bold text-[#84CC16]">{f.value}</span>
-                  <span className="text-[10px] text-white/40 uppercase tracking-wider">{f.label}</span>
-                </motion.div>
-              ))}
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center shadow-xl shadow-[#84CC16]/20">
+              <GraduationCap className="h-8 w-8 text-[#1E1B4B]" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-white tracking-tight">SECT</h1>
+              <p className="text-xs text-[#F59E0B]/70 font-medium tracking-wider uppercase">Système d'Évaluation</p>
             </div>
           </motion.div>
-        </div>
 
-        {/* Footer gauche */}
-        <div className="relative z-10 text-center">
-          <p className="text-xs text-white/30">
-            © 2025 Savane EdTech — Conçu en Côte d'Ivoire 🇨🇮
+          {/* ── Section centrale : titre + stats + témoignage ── */}
+          <div className="flex-1 flex flex-col justify-center max-w-xl">
+
+            {/* Titre principal animé */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
+            >
+              <h2 className="text-4xl xl:text-5xl font-bold text-white leading-tight tracking-tight mb-4">
+                L'évaluation
+                <br />
+                <span className="bg-gradient-to-r from-[#84CC16] via-[#F59E0B] to-[#C2410C] bg-clip-text text-transparent">
+                  réinventée par l'IA
+                </span>
+              </h2>
+              <p className="text-white/50 text-lg leading-relaxed max-w-md">
+                Générez vos sujets, surveillez les examens en ligne et corrigez
+                automatiquement. Conçu pour les universités d'Afrique de l'Ouest.
+              </p>
+            </motion.div>
+
+            {/* Stats animées (compteurs) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.5, ease: 'easeOut' }}
+              className="grid grid-cols-4 gap-4 mt-10"
+            >
+              {stats.map((stat, i) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.6 + i * 0.1, type: 'spring', damping: 15 }}
+                  className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
+                >
+                  <stat.icon className="h-5 w-5" style={{ color: stat.color }} />
+                  <span className="text-xl font-bold text-white">
+                    <AnimatedCounter value={stat.value} suffix={stat.suffix} />
+                  </span>
+                  <span className="text-[10px] text-white/40 uppercase tracking-wider text-center">{stat.label}</span>
+                </motion.div>
+              ))}
+            </motion.div>
+
+            {/* Témoignage rotatif */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.7, delay: 1 }}
+              className="mt-8 p-5 rounded-2xl bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm"
+            >
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTestimonial}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <p className="text-white/70 text-sm italic leading-relaxed mb-3">
+                    "{testimonials[activeTestimonial].text}"
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#F59E0B] to-[#C2410C] flex items-center justify-center text-xs font-bold text-white">
+                      {testimonials[activeTestimonial].author.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">{testimonials[activeTestimonial].author}</p>
+                      <p className="text-[10px] text-white/40">{testimonials[activeTestimonial].role}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+              {/* Indicateurs */}
+              <div className="flex gap-1.5 mt-3">
+                {testimonials.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveTestimonial(i)}
+                    className={`h-1 rounded-full transition-all ${i === activeTestimonial ? 'w-6 bg-[#84CC16]' : 'w-2 bg-white/20'}`}
+                    aria-label={`Témoignage ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          </div>
+
+          {/* ── Features badges (bas) ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 1.2 }}
+            className="flex items-center gap-6 mt-8"
+          >
+            {[
+              { icon: Sparkles, label: 'IA Intégrée' },
+              { icon: Shield, label: 'Anti-Triche' },
+              { icon: TrendingUp, label: 'Analytics' },
+              { icon: CheckCircle2, label: 'Multi-rôles' },
+            ].map((feature, i) => (
+              <motion.div
+                key={feature.label}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.3 + i * 0.1 }}
+                className="flex items-center gap-2"
+              >
+                <feature.icon className="h-4 w-4 text-[#F59E0B]" />
+                <span className="text-xs text-white/50 font-medium">{feature.label}</span>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* ── Footer ── */}
+          <p className="text-xs text-white/25 mt-6">
+            © 2025 SECT — Conçu en Côte d'Ivoire 🇨🇮
           </p>
         </div>
       </div>
 
-      {/* ════════ CÔTÉ DROIT (40%) — Formulaire sur fond blanc ════════ */}
+      {/* ════════════════════════════════════════════════════════════════
+          CÔTÉ DROIT (40%) — Formulaire sur fond clair
+          ════════════════════════════════════════════════════════════════ */}
       <div className="w-full lg:w-[40%] flex items-center justify-center bg-[#F8FAFC] p-6 sm:p-12 relative">
         {/* Motifs géométriques dorés dans les coins */}
         <div className="absolute top-6 right-6 w-16 h-16 opacity-10 pointer-events-none">
@@ -307,13 +513,18 @@ export function LoginForm() {
           </svg>
         </div>
 
-        <div className="w-full max-w-sm">
-          {/* Logo mobile (visible seulement sur petit écran) */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+          className="w-full max-w-sm"
+        >
+          {/* Logo mobile */}
           <div className="lg:hidden flex items-center gap-2.5 mb-8 justify-center">
             <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
               <GraduationCap className="h-6 w-6 text-[#1E1B4B]" />
             </div>
-            <span className="text-xl font-bold text-[#F59E0B]">Savane EdTech</span>
+            <span className="text-xl font-bold text-[#1E1B4B]">SECT</span>
           </div>
 
           {/* Toggle Personnel / Étudiant */}
@@ -321,19 +532,14 @@ export function LoginForm() {
             <motion.div
               className="absolute top-1 bottom-1 rounded-lg bg-[#84CC16] shadow-md"
               initial={false}
-              animate={{
-                left: isPersonnel ? '4px' : '50%',
-                width: 'calc(50% - 4px)',
-              }}
+              animate={{ left: isPersonnel ? '4px' : '50%', width: 'calc(50% - 4px)' }}
               transition={{ type: 'spring', damping: 24, stiffness: 300 }}
             />
             <button
               type="button"
               onClick={() => handleModeChange('personnel')}
               aria-pressed={isPersonnel}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${
-                isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'
-              }`}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
             >
               <Briefcase className="w-4 h-4" />
               Personnel
@@ -342,9 +548,7 @@ export function LoginForm() {
               type="button"
               onClick={() => handleModeChange('etudiant')}
               aria-pressed={!isPersonnel}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${
-                !isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'
-              }`}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${!isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
             >
               <GraduationCap className="w-4 h-4" />
               Étudiant
@@ -450,30 +654,8 @@ export function LoginForm() {
             </Button>
           </form>
 
-          {/* Séparateur doré */}
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#F59E0B]/30 to-transparent" />
-            <span className="text-xs text-[#1E1B4B]/40 font-medium">ou</span>
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#F59E0B]/30 to-transparent" />
-          </div>
-
-          {/* Bouton secondaire Google (placeholder) */}
-          <button
-            type="button"
-            className="w-full h-12 rounded-xl border border-[#C2410C]/30 bg-white text-[#C2410C] font-medium text-sm hover:bg-[#C2410C]/5 transition-all duration-300 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2410C] focus-visible:ring-offset-2"
-            onClick={() => toast.info('Bientôt disponible', { description: 'L\'authentification Google arrivera prochainement.' })}
-          >
-            <svg className="h-5 w-5" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-            Continuer avec Google
-          </button>
-
           {/* Retour landing */}
-          <div className="mt-6 text-center">
+          <div className="mt-8 text-center">
             <a
               href="/"
               className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/50 hover:text-[#1E1B4B] transition-colors"
@@ -482,7 +664,7 @@ export function LoginForm() {
               Retour à l'accueil
             </a>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* ════════ DIALOG : Mot de passe oublié ════════ */}
@@ -513,11 +695,7 @@ export function LoginForm() {
                 />
               </div>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setResetDialogOpen(false)}
-                  className="rounded-xl border-[#1E1B4B]/15"
-                >
+                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-[#1E1B4B]/15">
                   Annuler
                 </Button>
                 <Button
@@ -561,11 +739,7 @@ export function LoginForm() {
                 </div>
               </div>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setResetDialogOpen(false)}
-                  className="rounded-xl border-[#1E1B4B]/15"
-                >
+                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-[#1E1B4B]/15">
                   Annuler
                 </Button>
                 <Button
