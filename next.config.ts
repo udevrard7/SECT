@@ -2,10 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* Vercel handles build output automatically - no standalone output needed */
+  // ── Type safety : le build Vercel échoue en cas d'erreur TypeScript.
+  //    Audit : 0 erreur TS au passage en strict, donc safe d'activer.
+  //    Précédemment à true, ce qui laissait passer des bugs de typage en prod.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  // ── Strict Mode React : détecte les effets de bord, APIs dépréciées et
+  //    bugs subtils (double-render en dev). Précédemment à false.
+  reactStrictMode: true,
   // Allow large document uploads (50MB)
   serverExternalPackages: ['unpdf', 'pdfjs-dist', 'mammoth'],
   // ── next/image : autorise les URLs externes (avatars Supabase, thumbnails) ──
@@ -19,18 +24,6 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
     ],
   },
-  // Allow cross-origin requests from preview
-  allowedDevOrigins: [
-    '.space-z.ai',
-    '*.space-z.ai',
-    'preview-chat-b61af912-02fe-46ad-825a-4ef8ed9cc364.space-z.ai',
-    '127.0.0.1',
-    'localhost',
-    '21.0.3.198',
-    '21.0.8.105',
-    '21.0.8.90',
-    '21.0.10.175',
-  ],
 };
 
 export default nextConfig;
