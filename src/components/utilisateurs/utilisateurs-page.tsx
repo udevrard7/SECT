@@ -820,7 +820,7 @@ export function UtilisateursPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
               <Users className="h-5 w-5 text-success" />
@@ -831,7 +831,7 @@ export function UtilisateursPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-info">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/15">
               <UserCheck className="h-5 w-5 text-info" />
@@ -854,7 +854,7 @@ export function UtilisateursPage() {
           </CardContent>
         </Card>
         {isAdmin ? (
-          <Card className="border-l-4 border-l-warning">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
                 <Building2 className="h-5 w-5 text-warning" />
@@ -866,7 +866,7 @@ export function UtilisateursPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-l-4 border-l-warning">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
                 <Shield className="h-5 w-5 text-warning" />

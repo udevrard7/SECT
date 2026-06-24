@@ -698,7 +698,7 @@ export function NotificationsAdminPage() {
 
       {/* ─── Stats Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-warning">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
               <EyeOff className="h-5 w-5 text-warning" />
@@ -709,7 +709,7 @@ export function NotificationsAdminPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <Megaphone className="h-5 w-5 text-success" />
@@ -720,7 +720,7 @@ export function NotificationsAdminPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <CheckCheck className="h-5 w-5 text-success" />
@@ -731,7 +731,7 @@ export function NotificationsAdminPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-info">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
               <Clock className="h-5 w-5 text-info" />
@@ -930,7 +930,7 @@ export function NotificationsAdminPage() {
                     key={notif.id}
                     className={`transition-all hover:shadow-md cursor-pointer group ${
                       !notif.lu
-                        ? 'border-l-4 border-l-success bg-success/10'
+                        ? 'border-l-4 border-l-primary bg-success/10'
                         : 'border-l-4 border-l-transparent'
                     }`}
                     onClick={() => {

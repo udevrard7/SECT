@@ -811,7 +811,7 @@ export function FacturationPage() {
       {/* ─── KPI Stats Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {/* Revenus totaux */}
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
               <DollarSign className="h-5 w-5 text-success" />
@@ -824,7 +824,7 @@ export function FacturationPage() {
         </Card>
 
         {/* En attente */}
-        <Card className="border-l-4 border-l-warning">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/10">
               <Clock className="h-5 w-5 text-warning" />
@@ -838,7 +838,7 @@ export function FacturationPage() {
         </Card>
 
         {/* Payées */}
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
               <CheckCircle2 className="h-5 w-5 text-success" />
@@ -851,7 +851,7 @@ export function FacturationPage() {
         </Card>
 
         {/* En retard */}
-        <Card className="border-l-4 border-l-destructive">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
               <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -865,7 +865,7 @@ export function FacturationPage() {
         </Card>
 
         {/* Montant moyen */}
-        <Card className="border-l-4 border-l-info">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/10">
               <BarChart3 className="h-5 w-5 text-info" />

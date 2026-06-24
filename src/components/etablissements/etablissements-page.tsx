@@ -350,7 +350,7 @@ export function EtablissementsPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="border-l-4 border-l-success ds-lift">
+        <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
               <Building2 className="h-5 w-5 text-success" />
@@ -361,7 +361,7 @@ export function EtablissementsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-info ds-lift">
+        <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/15">
               <Users className="h-5 w-5 text-info" />
@@ -372,7 +372,7 @@ export function EtablissementsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning ds-lift">
+        <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
               <GraduationCap className="h-5 w-5 text-warning" />

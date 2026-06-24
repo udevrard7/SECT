@@ -937,7 +937,7 @@ export function AIProvidersPage() {
                       transition={{ delay: index * 0.03 }}
                       className={`relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 py-3 transition-colors ${
                         provider.isActive
-                          ? 'bg-secondary/10 border-l-[3px] border-l-secondary'
+                          ? 'bg-secondary/10 border-l-[3px] border-l-primary'
                           : 'border-l-[3px] border-l-transparent hover:bg-muted/30'
                       } ${index < providers.length - 1 ? 'border-b border-border/50' : ''}`}
                     >
