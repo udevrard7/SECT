@@ -2543,3 +2543,26 @@ Stage Summary:
 - Replacements: 778 total (text-primary-text: 31 [30 + 1 /60], text-success-text: 740 [730 + 9 /80 + 1 /15], text-xp-text: 7) — 23 occurrences *-foreground correctement préservées
 - tsc --noEmit: 0 errors ; eslint: 0 errors, 1 pre-existing warning unrelated (jsx-a11y/alt-text)
 - Remaining bare text-primary/success/xp (excluding -text and -foreground variants): 0 / 0 / 0
+
+---
+Task ID: 4
+Agent: Prisma index specialist
+Task: Add 37 missing foreign key indexes to prisma/schema.prisma
+
+Work Log:
+- Read /home/z/my-project/worklog.md to understand prior state (env operational, Prisma 6.19.2, Supabase synced).
+- Read prisma/schema.prisma (1000 lines, 40 models) fully and inventoried existing @@index directives to avoid duplication.
+- Captured baseline count of single-column FK indexes matching `%_Id_idx` on live Supabase DB: 11 indexes (PasswordReset_userId, SessionSpeciale_{creeParId,epreuveDeriveeId,epreuveOrigineId}, BadgeProgression_{badgeDefinitionId,userId}, Epreuve_{anneeAcademiqueId,epreuveOrigineId}, ValidationUE_{etudiantId,uniteEnseignementId}, Certificat_etudiantId).
+- Edited 25 models in prisma/schema.prisma via a single atomic MultiEdit (25 operations) adding exactly 37 new `@@index([<fkColumn>])` directives, placed after the last field/relation and before the closing `}` of each model. Only @@index directives were added — no field, relation, type, or name changes.
+- Ran `bunx prisma format` to validate schema syntax (formatted in 44ms, no errors).
+- Ran `bun run db:push` → output: "🚀 Your database is now in sync with your Prisma schema. Done in 13.72s" + Prisma Client regenerated (v6.19.2). No data-loss warning.
+- Re-ran the verification query: AFTER count = 48 (= 11 baseline + 37 new). All 37 expected index names present in pg_indexes.
+- Ran ESLint on schema.prisma: 0 errors, 1 info warning ("File ignored because no matching configuration was supplied" — normal: ESLint has no .prisma parser configured). Effectively clean.
+- Did NOT commit per instructions.
+
+Stage Summary:
+- Produced: 37 new single-column B-tree indexes on FK columns across 25 models in prisma/schema.prisma, applied live to Supabase PostgreSQL (public schema).
+- Models updated: User (2), Filiere (2), EnseignantFiliere (1), UniteEnseignement (1), UniteEnseignementFiliere (1), Affectation (1), Document (2), Question (1), Epreuve (1 — only uniteEnseignementId; composite indexes for filiereId/enseignantId/anneeAcademiqueId/epreuveOrigineId already existed and were left untouched), EpreuveQuestion (1), EpreuveDocument (1), SessionPassation (2), Alerte (3), Abonnement (2), EtablissementAccess (1), Devoir (2), Invitation (3 — appended next to existing @@index([email]) / @@index([token])), Soumission (1), Facture (2), NotificationAdmin (1), IpWhitelist (1), AnneeAcademique (1), ValidationUE (1 — anneeAcademiqueId; existing @@index for etudiantId/uniteEnseignementId/statut untouched), Certificat (2 — emetteParId, validationUEId; existing 4 indexes untouched), PushSubscription (1).
+- No duplications: pre-existing single-column indexes on those exact columns existed for NONE of the 37 target columns; the existing @@index directives on Epreuve, Invitation, ValidationUE, Certificat were on different columns (or composites) and were preserved.
+- Decision: kept every existing @@unique and @@index directive unchanged; added new directives with a blank line separating them from existing block-level attributes for readability (matches Prisma format output).
+- Verification: index count went from 11 → 48 (delta +37, exact match). No data loss warning from db:push. Ready for parent agent to commit & push.
