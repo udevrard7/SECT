@@ -1536,3 +1536,29 @@ Stage Summary:
   * src/app/api/badges/route.ts (trigger push badge unlock)
   * src/components/passation/passation-page.tsx (useOfflineSubmission + bannière offline + badge)
 - État du projet : STABLE. Push notifications opérationnelles (VAPID + 3 triggers métier). Background sync opérationnel (outbox IndexedDB + SW sync + fallback iOS). PWA complète : installable + offline pages + offline soumission + push.
+
+---
+Task ID: FIX-vercel (échec déploiement Vercel fe017de + 6b6acf7)
+Agent: Z.ai (tuteur/assistant — diagnostic + fix)
+Task: Corriger l'échec de déploiement Vercel des commits fe017de et 6b6acf7.
+
+Work Log:
+- Diagnostic : récupération des logs de build Vercel via l'API REST (token fourni). Endpoint : GET /v3/deployments/{id}/events. Les 2 déploiements échouaient avec la même erreur :
+  ```
+  useSearchParams() should be wrapped in a suspense boundary at page "/"
+  Error occurred prerendering page "/"
+  Export encountered an error on /page: /, exiting the build
+  ```
+- Cause racine : l'ajout de useSearchParams() dans src/app/page.tsx (commit 6b6acf7, pour le mode ?preview=ds) sans <Suspense> boundary. Next.js 14+ exige que useSearchParams soit enveloppé dans Suspense pour permettre le prerendering statique (CSR bailout sinon).
+- Correction : refactor de page.tsx en 2 composants :
+  * Home (default export) : wrapper qui enveloppe HomeContent dans <Suspense fallback={<Loader2/>}>.
+  * HomeContent : contient toute la logique (useSession, useSearchParams, useEffect, états). useSearchParams() est maintenant dans le Suspense boundary → le prerender réussit.
+- Pattern aligné avec src/app/invitation/page.tsx qui utilise déjà ce pattern correctement.
+- Vérifications : tsc 0 erreur, eslint 0 erreur (1 warning préexistant).
+- La logique fonctionnelle est inchangée : ?preview=ds affiche toujours la showcase, la landing reste par défaut.
+
+Stage Summary:
+- Fichier modifié (1) : src/app/page.tsx (refactor Suspense, logique inchangée).
+- Cause : useSearchParams sans Suspense → CSR bailout → build Vercel échec.
+- Fix : pattern standard Next.js (Suspense wrapper + sous-composant).
+- Les 2 déploiements échoués (6b6acf7, fe017de) seront résolus par ce commit.
