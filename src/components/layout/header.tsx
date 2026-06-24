@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LogOut, User, Settings, ChevronRight,
-  Search, Loader2,
+  Search,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Input } from '@/components/ui/input'
 import { SidebarControl } from '@/components/layout/sidebar-control'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { ThemeToggle } from '@/components/ds'
@@ -36,7 +35,9 @@ const ROLE_LABELS: Record<UserRole, string> = {
 function useClock() {
   const [now, setNow] = useState(new Date())
   useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000)
+    // Tick 30s : l'affichage ne montre que HH:MM, inutile de re-rendre chaque seconde.
+    // Divise par 30 le nombre de re-renders du header (60/min -> 2/min).
+    const interval = setInterval(() => setNow(new Date()), 30000)
     return () => clearInterval(interval)
   }, [])
   return now
