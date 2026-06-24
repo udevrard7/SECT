@@ -33,8 +33,6 @@ import { PAGE_ROUTES } from'@/lib/routes'
 import {
  Card,
  CardContent,
- CardHeader,
- CardTitle,
 } from'@/components/ui/card'
 import { Button } from'@/components/ui/button'
 import { Badge } from'@/components/ui/badge'
@@ -68,7 +66,7 @@ import {
 } from'@/components/ui/alert-dialog'
 import { Separator } from'@/components/ui/separator'
 import { ScrollArea } from'@/components/ui/scroll-area'
-import { PulseSkeleton } from '@/components/ds'
+import { EntityCard } from '@/components/ds'
 import { Checkbox } from'@/components/ui/checkbox'
 import { toast } from'sonner'
 import { CODING_LANGUAGES, getDefaultStarterCode, type CodingLanguage } from'@/lib/coding-types'
@@ -203,9 +201,6 @@ export function BanqueQuestionsPage() {
  const [formCodeInitial, setFormCodeInitial] = useState('')
  const [formSolutionCode, setFormSolutionCode] = useState('')
 
- // ─── Expanded questions ───
- const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set())
-
  // ─── Multi-select state ───
  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
  const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false)
@@ -285,16 +280,6 @@ export function BanqueQuestionsPage() {
  setPage(1)
  setSelectedIds(new Set())
  }, [typeFilter, difficulteFilter, valideeFilter, documentFilter, debouncedSearch])
-
- // ─── Toggle question expansion ───
- const toggleExpand = (id: string) => {
- setExpandedQuestions((prev) => {
- const next = new Set(prev)
- if (next.has(id)) next.delete(id)
- else next.add(id)
- return next
- })
- }
 
  // ─── Open detail dialog ───
  const handleViewDetail = (q: Question) => {
@@ -1124,20 +1109,9 @@ export function BanqueQuestionsPage() {
 
  {/* ─── Loading state ─── */}
  {isLoading && (
- <div className="space-y-3">
- {Array.from({ length: 5 }).map((_, i) => (
- <Card key={i} className="animate-pulse">
- <CardContent className="p-4">
- <div className="flex items-start gap-3">
- <PulseSkeleton className="h-6 w-12 rounded-full" />
- <PulseSkeleton className="h-6 w-16 rounded-full" />
- <div className="flex-1 space-y-2">
- <PulseSkeleton className="h-4 w-full" />
- <PulseSkeleton className="h-4 w-2/3" />
- </div>
- </div>
- </CardContent>
- </Card>
+ <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+ {Array.from({ length: 6 }).map((_, i) => (
+ <EntityCard key={i} loading title="" />
  ))}
  </div>
  )}
@@ -1227,35 +1201,57 @@ export function BanqueQuestionsPage() {
 
  {/* ─── Question cards ─── */}
  {!isLoading && questions.length > 0 && (
- <div className="space-y-3">
- {questions.map((q) => {
+ <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+ {questions.map((q, idx) => {
  const typeBadge = getTypeBadgeConfig(q.type)
  const diffBadge = getDifficulteBadgeConfig(q.difficulte)
- const isExpanded = expandedQuestions.has(q.id)
  const isSelected = selectedIds.has(q.id)
 
+ const typeVariant =
+ q.type === 'QCU' ? 'primary' as const
+ : q.type === 'QCM' ? 'warning' as const
+ : q.type === 'QRC' ? 'success' as const
+ : q.type === 'TRS' ? 'danger' as const
+ : 'secondary' as const
+
+ const thumbnailIcon = q.document ? FileText : q.documentId === null ? Pencil : Hash
+ const subtitle = q.document
+ ? q.document.nomFichier.length > 40
+ ? q.document.nomFichier.slice(0, 37) + '...'
+ : q.document.nomFichier
+ : q.documentId === null
+ ? 'Création manuelle'
+ : undefined
+
+ const meta = `${diffBadge.label}${q.scoreQualite !== null ? ` · ${q.scoreQualite}/100` : ''} · ${formatDate(q.createdAt)}`
+
  return (
- <Card
+ <div
  key={q.id}
- className={`group transition-shadow hover:shadow-md ${
- isSelected
- ?'border-destructive/40 bg-destructive/50'
- :''
+ className={`relative rounded-lg ${
+ isSelected ? 'ring-2 ring-destructive' : ''
  }`}
  >
- <CardContent className="p-4 md:p-5">
- {/* Top row: checkbox + badges + actions */}
- <div className="flex flex-wrap items-start justify-between gap-2">
- <div className="flex flex-wrap items-center gap-2">
+ {/* Checkbox overlay */}
+ <div className="absolute top-2 left-2 z-20">
  <Checkbox
  checked={isSelected}
  onCheckedChange={() => toggleSelect(q.id)}
- className="h-4 w-4 shrink-0"
+ className="h-4 w-4 bg-background/80 backdrop-blur-sm"
  />
- <Badge variant="outline" className={typeBadge.className}>
- {typeBadge.label}
- </Badge>
- <Badge variant="outline" className={diffBadge.className}>
+ </div>
+
+ <EntityCard
+ index={idx}
+ title={q.enonce}
+ subtitle={subtitle}
+ thumbnailIcon={thumbnailIcon}
+ badge={{ label: typeBadge.label, variant: typeVariant }}
+ meta={meta}
+ >
+ {/* Validated + score + difficulté badges */}
+ <div className="mt-3 flex flex-wrap items-center gap-2">
+ <Badge variant="outline" className={`text-xs ${diffBadge.className}`}>
  {diffBadge.label}
  </Badge>
  {q.validee ? (
@@ -1277,7 +1273,28 @@ export function BanqueQuestionsPage() {
  )}
  </div>
 
- <div className="flex items-center gap-1">
+ {/* Themes */}
+ {q.themes && q.themes.length > 0 && (
+ <div className="mt-2 flex flex-wrap items-center gap-1">
+ {q.themes.slice(0, 3).map((theme, i) => (
+ <Badge
+ key={i}
+ variant="secondary"
+ className="text-[10px] bg-info/10 text-info"
+ >
+ {theme}
+ </Badge>
+ ))}
+ {q.themes.length > 3 && (
+ <Badge variant="secondary" className="text-[10px]">
+ +{q.themes.length - 3}
+ </Badge>
+ )}
+ </div>
+ )}
+
+ {/* Action buttons */}
+ <div className="mt-3 flex flex-wrap items-center gap-1">
  <Button
  variant="ghost"
  size="sm"
@@ -1309,66 +1326,8 @@ export function BanqueQuestionsPage() {
  Supprimer
  </Button>
  </div>
+ </EntityCard>
  </div>
-
- {/* Question text */}
- <div
- className="mt-3 cursor-pointer"
- onClick={() => toggleExpand(q.id)}
- >
- <p className={`text-sm leading-relaxed ${!isExpanded ?'line-clamp-2' :''}`}>
- {q.type ==='TRS' ? q.enonce : q.enonce}
- </p>
- {!isExpanded && q.enonce.length > 120 && (
- <button className="mt-1 text-xs text-success hover:text-success">
- Cliquer pour voir la suite...
- </button>
- )}
- </div>
-
- {/* Bottom row: document + themes */}
- <div className="mt-3 flex flex-wrap items-center gap-2">
- {q.document && (
- <span className="flex items-center gap-1 text-xs text-muted-foreground">
- <FileText className="h-3 w-3" />
- {q.document.nomFichier.length > 30
- ? q.document.nomFichier.slice(0, 27) +'...'
- : q.document.nomFichier}
- </span>
- )}
- {!q.document && q.documentId === null && (
- <span className="flex items-center gap-1 text-xs text-muted-foreground">
- <Pencil className="h-3 w-3" />
- Création manuelle
- </span>
- )}
- {q.themes && q.themes.length > 0 && (
- <>
- {q.document && <span className="text-xs text-muted-foreground">·</span>}
- <div className="flex flex-wrap items-center gap-1">
- {q.themes.slice(0, 3).map((theme, i) => (
- <Badge
- key={i}
- variant="secondary"
- className="text-[10px] bg-info/10 text-info"
- >
- {theme}
- </Badge>
- ))}
- {q.themes.length > 3 && (
- <Badge variant="secondary" className="text-[10px]">
- +{q.themes.length - 3}
- </Badge>
- )}
- </div>
- </>
- )}
- <span className="ml-auto text-xs text-muted-foreground">
- {formatDate(q.createdAt)}
- </span>
- </div>
- </CardContent>
- </Card>
  )
  })}
  </div>

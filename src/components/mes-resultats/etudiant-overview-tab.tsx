@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { KpiCard } from '@/components/resultats/kpi-card'
+import { StatCard } from '@/components/ds'
 import { ChartCard, EvolutionChart, DistributionChart } from '@/components/resultats/resultats-charts'
 import {
   formatMonthShortFR,
@@ -102,35 +102,35 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
+        <StatCard
           icon={Target}
           label="Moyenne générale"
           value={data.moyenneGenerale.toFixed(1)}
           suffix="/20"
-          accentColor="emerald"
+          accent="success"
           scoreOn20={data.moyenneGenerale}
         />
-        <KpiCard
+        <StatCard
           icon={BookOpen}
           label="Épreuves passées"
           value={data.totalEpreuves}
-          subValue={`${data.totalCorrigees} corrigée${data.totalCorrigees > 1 ? 's' : ''}`}
-          accentColor="teal"
+          hint={`${data.totalCorrigees} corrigée${data.totalCorrigees > 1 ? 's' : ''}`}
+          accent="primary"
         />
-        <KpiCard
+        <StatCard
           icon={Award}
           label="Meilleure note"
           value={data.meilleureNote.toFixed(1)}
           suffix="/20"
-          accentColor="sky"
+          accent="info"
           scoreOn20={data.meilleureNote}
         />
-        <KpiCard
+        <StatCard
           icon={Trophy}
           label="Taux de réussite"
           value={data.tauxReussite}
           suffix="%"
-          accentColor={data.tauxReussite >= 50 ? 'emerald' : 'amber'}
+          accent={data.tauxReussite >= 50 ? 'success' : 'warning'}
         />
       </div>
 

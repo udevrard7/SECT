@@ -2307,3 +2307,207 @@ Stage Summary:
   * Couleurs sémantiques sur icônes/badges/status dots : préservées (success/warning/destructive/info/secondary)
   * Aucune logique / handler / state / API call modifié
 - tsc: 0 errors. eslint: 0 errors. État : STABLE. Prêt pour commit unifié par main agent.
+
+---
+Task ID: T18 (Migration massive Savane EdTech — 44 pages)
+Agent: Z.ai (tuteur/assistant — orchestration 4 sous-agents parallèles)
+Task: Migration de toutes les pages vers le style 'Savane EdTech' par vagues.
+
+Work Log:
+- Vague 1 (T18-V1) — Dashboards (4 fichiers) :
+  * admin, enseignant, étudiant, responsable
+  * ds-kente-pattern sur welcome headers + empty states (12 sections)
+  * KPI cards unifiées border-l-primary (vert lime)
+  * font-mono tabular-nums sur valeurs numériques
+- Vague 2 (T18-V2) — Pages admin (8 fichiers) :
+  * abonnements, facturation, monitoring, ai-providers, acces-etablissements, notifications-admin, securite, configuration
+  * 9 headers + ds-kente-pattern
+  * 3 KPI cards securite → border-l-primary
+  * 15 h2/h3 + font-display tracking-tight
+- Vague 3 (T18-V3) — Pages pédagogiques (8 fichiers) :
+  * epreuves, banque-epreuves, generation-ia, banque-questions, questions-ia, documents, devoirs, evaluations
+  * 8 headers + ds-kente-pattern
+  * 9 KPI cards evaluations → border-l-primary
+  * 33 titres + font-display tracking-tight
+  * .ng-theme (devoirs) PRÉSERVÉ
+- Vague 4 (T18-V4) — Pages restantes (24 fichiers) :
+  * passation (5), resultats (3), profil, correction, surveillance, alertes, corbeille, logs, etablissements, responsable (6), utilisateurs, filieres, rapports
+  * 23 headers + ds-kente-pattern
+  * 33 KPI cards → border-l-primary (effet rainbow éliminé)
+  * ~35 titres + font-display tracking-tight
+  * .sv-gaming (surveillance) PRÉSERVÉ
+- Vérifications : tsc 0 erreur, eslint 0 erreur (1 warning préexistant). Vercel READY.
+- VLM : 8/10 (vert lime ✅, bordures KPI ✅, sidebar bleu nuit ✅, barre tricolore ✅, motif kente subtil en capture).
+
+Stage Summary:
+- 44 fichiers modifiés au total (4 vagues).
+- 43 fichiers avec ds-kente-pattern (motif africain subtil)
+- 25 fichiers avec border-l-primary (bordures vert lime unifiées)
+- 58 fichiers avec font-display (typographie cohérente)
+- 0 logique/handler/state modifié (présentation uniquement)
+- Thèmes custom .sv-gaming + .ng-theme PRÉSERVÉS
+- État du projet : STABLE. Toutes les pages adoptent le style 'Savane EdTech' avec palette africaine hybride (vert lime + terre cuite + bleu nuit + or) et signature visuelle (motif kente + barre tricolore).
+
+---
+Task ID: T19-B
+Agent: full-stack-developer (remove custom KpiCard)
+Task: Remove local KpiCard definitions in devoirs + surveillance
+Work Log:
+- Lecture des 2 fichiers cibles (`devoirs-page.tsx` 2019 lignes, `surveillance-page.tsx` 1879 lignes) et localisation des définitions locales `function KpiCard(...)` + 4 sites d'appel dans chaque fichier.
+- Vérification de l'API DS `StatCard` (`src/components/ds/stat-card.tsx`) : props `icon: LucideIcon` (composant, pas JSX), `accent` sémantique (primary/secondary/success/warning/danger/info), `hint` pour le sous-texte, `index` pour le stagger d'animation, `loading` pour le skeleton.
+- Mapping `color` → `accent` :
+  * Devoirs : cyan→info, emerald→success, magenta→secondary, amber→warning
+  * Surveillance : emerald→success, amber→warning, fuchsia→secondary, rose→danger
+- `src/components/devoirs/devoirs-page.tsx` :
+  * Import : `import { PulseSkeleton, StatCard } from '@/components/ds'` (PulseSkeleton conservé, encore utilisé lignes 1166/1402/1806).
+  * 4 appels `<KpiCard icon={<Icon className="h-5 w-5" />} ... sub=... color=... />` → `<StatCard icon={Icon} ... hint=... accent=... index={n} />` (lignes 795-830).
+  * Suppression de la définition locale `function KpiCard(...)` (lignes 977-1014, ~38 lignes) — wrapper `.ng-kpi` et helpers `colorMap`/`bgMap` retirés.
+- `src/components/surveillance/surveillance-page.tsx` :
+  * Ajout import : `import { StatCard } from '@/components/ds'`.
+  * 4 appels KpiCard → StatCard (lignes 622-658).
+  * Suppression de la définition locale `function KpiCard(...)` (lignes 755-810, ~56 lignes) — wrapper `.sv-kpi` et helpers `colorMap`/`bgMap` retirés.
+- Wrappers `.ng-theme` (devoirs) et `.sv-gaming` (surveillance) PRÉSERVÉS au niveau page — les StatCards utilisent désormais la palette DS Savane EdTech (homogène avec le reste de l'app).
+- Aucun hook/handler/state modifié. Aucun import cassé.
+
+Stage Summary:
+- Files modified: src/components/devoirs/devoirs-page.tsx, src/components/surveillance/surveillance-page.tsx
+- Local KpiCard deleted: 2 (1 par fichier, ~94 lignes de code dupliqué supprimées au total)
+- KpiCard restantes dans ces 2 fichiers : 0 (vérifié par `grep -n "KpiCard"` → exit 1)
+- tsc --noEmit : 0 erreur (filtré sur les 2 fichiers + sortie globale vide)
+- eslint : 0 erreur, 0 warning sur les 2 fichiers
+- StatCard DS désormais utilisée partout pour les KPI → cohérence visuelle et maintenance unifiée.
+
+---
+Task ID: T19-A
+Agent: full-stack-developer (KpiCard→StatCard 5 files)
+Task: Replace KpiCard with StatCard in 5 files
+Work Log:
+- Lecture du worklog (T18/T19) pour le contexte : KpiCard est un wrapper @deprecated qui délègue déjà à StatCard. La migration consiste à appeler StatCard directement.
+- Lecture de kpi-card.tsx pour confirmer le mapping accentColor→accent (emerald→success, teal→primary, amber→warning, red→danger, sky→info, violet→secondary) et subValue→hint.
+- Lecture des 5 fichiers cibles pour inventorier les props exactes utilisées (icon/label/value/suffix/subValue/accentColor/scoreOn20).
+- Fichier 1 — src/components/resultats/exam-tab.tsx :
+  * Import : `import { KpiCard } from './kpi-card'` → `import { StatCard } from '@/components/ds'`
+  * 4 KpiCard → StatCard : Moyenne (emerald→success, scoreOn20), Médiane (teal→primary, scoreOn20), Taux de réussite (dynamic emerald|amber → success|warning), Nombre de copies (subValue→hint, sky→info).
+- Fichier 2 — src/components/resultats/overview-tab.tsx :
+  * Import : `import { KpiCard } from './kpi-card'` → `import { StatCard } from '@/components/ds'`
+  * 4 KpiCard → StatCard : Épreuves terminées (emerald→success), Total copies (subValue→hint, teal→primary), Moyenne globale (sky→info, scoreOn20), Taux de réussite (dynamic → success|warning).
+- Fichier 3 — src/components/mes-resultats/etudiant-overview-tab.tsx :
+  * Import : `import { KpiCard } from '@/components/resultats/kpi-card'` → `import { StatCard } from '@/components/ds'`
+  * 4 KpiCard → StatCard : Moyenne générale (emerald→success, scoreOn20), Épreuves passées (subValue→hint, teal→primary), Meilleure note (sky→info, scoreOn20), Taux de réussite (dynamic → success|warning).
+- Fichier 4 — src/components/dashboard/enseignant-dashboard.tsx :
+  * Import : fusion de StatCard dans l'import `@/components/ds` existant ; suppression de `import { KpiCard } from '@/components/resultats/kpi-card'`.
+  * 4 KpiCard → StatCard : Documents (emerald→success), Questions (teal→primary), Épreuves actives (amber→warning), Corrections en attente (red→danger).
+  * Conserve le wrapper `[&>div]:border-l-4 [&>div]:border-l-primary` sur le motion.div parent (technique T18-V2, StatCard rend un motion.div en root).
+- Fichier 5 — src/components/dashboard/etudiant-dashboard.tsx :
+  * Import : fusion de StatCard dans l'import `@/components/ds` existant ; suppression de l'import KpiCard.
+  * Mise à jour de la constante `moyenneAccent` : `'emerald' | 'amber' | 'red'` → `'success' | 'warning' | 'danger'` (types conformes à StatCardProps['accent']).
+  * 4 KpiCard → StatCard : Épreuves à venir (sky→info), Moyenne (moyenneAccent mappé, scoreOn20), Meilleure note (violet→secondary, scoreOn20), Badges (violet→secondary).
+- Vérification : `grep KpiCard` sur les 5 fichiers → 0 résultat. `bunx tsc --noEmit` (filtre sur les 5 fichiers) → 0 erreur. `bunx eslint` sur les 5 fichiers → 0 erreur/warning.
+- Aucun commit/push effectué (conforme à la consigne).
+Stage Summary:
+- Files modified: src/components/resultats/exam-tab.tsx, src/components/resultats/overview-tab.tsx, src/components/mes-resultats/etudiant-overview-tab.tsx, src/components/dashboard/enseignant-dashboard.tsx, src/components/dashboard/etudiant-dashboard.tsx
+- KpiCard calls replaced: 20 (4 par fichier × 5 fichiers)
+
+---
+Task ID: T19-C
+Agent: full-stack-developer (EntityCard adoption)
+Task: Adopt EntityCard in list pages
+Work Log:
+- Lecture du worklog (T18/T19-A/T19-B) pour le contexte : EntityCard est un composant DS carte d'entité générique (thumbnail aspect-video + body avec title/subtitle/progress/badge/meta/level + children personnalisé). L'API supporte onClick (carte interactive), onAction (chevron secondaire), children (contenu custom dans le body), et loading (skeleton PulseSkeleton).
+- Lecture des 3 fichiers cibles et de l'API EntityCard (`src/components/ds/entity-card.tsx`) pour identifier les sections de grille/liste adoptables.
+- Stratégie : adopter EntityCard pour les cartes d'items dans les grilles, en utilisant `children` pour préserver le contenu custom (bannières, badges de score, boutons d'action). Convertir les listes verticales en grilles responsive (sm:grid-cols-2 lg:grid-cols-3) pour optimiser l'affichage des EntityCards verticales (thumbnail aspect-video en haut + body en bas).
+- Fichier 1 — src/components/passation/mes-epreuves-page.tsx (1003 → 893 lignes) :
+  * Import : `import { EntityCard } from '@/components/ds'` (PulseSkeleton supprimé, Card/CardContent/CardHeader/CardTitle/CardDescription/Progress supprimés, User/Timer/Star supprimés de lucide-react — tous devenus inutilisés).
+  * Tab "À venir" : conversion `space-y-4` (liste verticale) → `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`. 1 EntityCard par épreuve avec title=titre, subtitle=enseignant, thumbnailIcon=ClipboardList, badge={label: statusInfo.label, variant: success|warning|secondary}, meta=`${duree} min · ${questionCount} questions · ${totalPoints} pts`. Children : dates (début/limite), time-remaining badge, description. Bouton d'action (Commencer/Reprendre/disabled) préservé dans children avec onClick handleCommencer/handleReprendre. Loading state : 3× EntityCard loading.
+  * Tab "Résultats" : conversion `space-y-4` → `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`. 1 EntityCard par résultat avec title=titre, subtitle=enseignant, thumbnailIcon=Ban|AlertTriangle|FileCheck (selon statut), progress=percentage (pour cas normaux), badge={label: Absent|Non soumis|Corrigé|En attente, variant: success|warning}, meta=`Score : x/y · date` ou texte alternatif pour absent/non soumis. Children : bannière absent/non soumis, score badge + statut correction, bouton "Voir le détail" préservé avec onClick handleVoirDetail. Loading state : 3× EntityCard loading.
+  * Adoptions : 2 (1 par tab, appliquées au map iteration).
+- Fichier 2 — src/components/epreuves/banque-epreuves-page.tsx (792 → 749 lignes) :
+  * Import : `import { EntityCard } from '@/components/ds'` (PulseSkeleton supprimé, CardHeader/CardTitle supprimés, Clock/Trophy/Calendar supprimés de lucide-react). Card/CardContent conservés (encore utilisés dans la Statistics Card + preview dialog question cards).
+  * Grille exam list : conversion `grid-cols-1 lg:grid-cols-2` → `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`. 1 EntityCard par épreuve avec title=titre, subtitle=description (tronquée 100 chars), thumbnailIcon=Sparkles|Edit3 (selon generationMode IA/Manuelle), badge={label: IA|Manuelle, variant: secondary|warning}, meta=`${questionCount} questions · ${baremeTotal} pts · ${duree} min · Créée le ${date}`. Children : type distribution badges, source documents, filière/UE, Separator, 3 boutons d'action (Aperçu/Dupliquer/Supprimer) préservés avec onClick handlePreview/openDuplicate/setDeleteTarget. Loading state : 6× EntityCard loading (au lieu de 4 PulseSkeleton cards).
+  * Adoptions : 1 (appliquée au map iteration de la grille exam list).
+- Fichier 3 — src/components/documents/documents-page.tsx (1877 → 1871 lignes) :
+  * Import : ajout `type LucideIcon` à lucide-react, `import { EntityCard } from '@/components/ds'` (PulseSkeleton supprimé, Card/CardContent supprimés — devenus inutilisés après conversion du loading state). Nouvelle fonction helper `getFileLucideIcon(doc): LucideIcon` qui retourne le composant icône (FileText pour pdf/docx, Presentation pour pptx, File pour txt/md/unknown) — nécessaire car EntityCard thumbnailIcon attend un LucideIcon (pas un ReactNode comme getFileIcon).
+  * renderDocumentCard : conversion Card+CardContent → wrapper div relative (pour checkbox overlay + click handler + selection ring) contenant un EntityCard. EntityCard avec title=truncateFileName(nomFichier), subtitle=formatFileSize(tailleFichier), thumbnailIcon=getFileLucideIcon(doc), badge={label: getStatusLabel(statutAnalyse), variant: success|warning|danger|secondary}, meta=`${UE.code} · ${date}` ou `${date}`. Children : UE badge, themes badges (pour ANALYSE). Checkbox overlay préservé en position absolute top-2 left-2 z-20 avec onClick toggleSelect + stopPropagation. Click handler handleSelectDocument déplacé sur le wrapper div (avec role=button, tabIndex, onKeyDown pour accessibilité — le wrapper n'est pas un <button> pour éviter le nesting button-in-button avec la checkbox). Loading state : 8× EntityCard loading (au lieu de 4 Card animate-pulse).
+  * Adoptions : 1 (renderDocumentCard appelé dans 2 vues : folders Accordion + grid, mais c'est la même fonction — compté comme 1 adoption de fonction).
+- Wrappers/fonctions préservés : getStatusIndicator (mes-epreuves), getScoreBadgeClasses/getProgressColor/getProgressBg (mes-epreuves dialog), getFileIcon/getSmallFileIcon/getStatusBadgeClasses/getStatusIcon (documents detail sheet + list view table). Tous les hooks/handlers/state/API calls préservés.
+- Vérification : `bunx tsc --noEmit` (filtre sur les 3 fichiers + sortie globale) → 0 erreur. `bunx eslint` sur les 3 fichiers → 0 erreur, 0 warning.
+- Aucun commit/push effectué (conforme à la consigne).
+
+Stage Summary:
+- Files modified: src/components/passation/mes-epreuves-page.tsx, src/components/epreuves/banque-epreuves-page.tsx, src/components/documents/documents-page.tsx
+- EntityCard adoptions: 4 (mes-epreuves: 2 [À venir + Résultats tabs], banque-epreuves: 1 [exam list grid], documents-page: 1 [renderDocumentCard function shared by folders + grid views])
+- Loading states also converted to EntityCard loading prop (3 files)
+- Layout changes: mes-epreuves lists → responsive grids (sm:2, lg:3 cols), banque-epreuves grid widened (lg:2 → sm:2/lg:3)
+- Imports cleaned: 3 files, ~15 unused imports removed (Card, CardContent, CardHeader, CardTitle, CardDescription, Progress, PulseSkeleton, User, Timer, Star, Clock, Trophy, Calendar)
+- 0 hooks/handlers/state/API calls modified. All action buttons preserved via EntityCard children.
+- tsc: 0 errors. eslint: 0 errors. État : STABLE.
+
+---
+Task ID: T19-A (verification pass)
+Agent: full-stack-developer (KpiCard → StatCard structurelle)
+Task: Replace all KpiCard with StatCard in 7 files (re-issued task — verification)
+Work Log:
+- Lecture du worklog (T18/T19-A/T19-B) : la migration décrite par cette tâche a déjà été réalisée en deux passes antérieures (T19-A: 5 fichiers, 20 appels ; T19-B: 2 fichiers devoirs+surveillance, 8 appels + 2 fonctions KpiCard locales supprimées). Ce pass VERIFIE l'état courant et consigne le résultat consolidé.
+- Vérification de l'état courant via `grep -n "KpiCard\|StatCard"` sur les 7 fichiers cibles : tous utilisent StatCard, aucun KpiCard. La seule référence KpiCard restante dans `src/components/` est `kpi-card.tsx` (wrapper @deprecated à PRÉSERVER — non couvert par la tâche).
+- Spot-checks par fichier :
+  * enseignant-dashboard.tsx — 4 StatCard (success/primary/warning/danger), import fusionné dans `@/components/ds`.
+  * etudiant-dashboard.tsx — 4 StatCard ; `moyenneAccent` typé `'success' | 'warning' | 'danger'` (conforme à StatCardProps['accent']).
+  * exam-tab.tsx — 4 StatCard ; accent dynamique `stats.tauxReussite >= 50 ? 'success' : 'warning'`.
+  * overview-tab.tsx — 4 StatCard ; accent dynamique `data.globalTauxReussite >= 50 ? 'success' : 'warning'`.
+  * etudiant-overview-tab.tsx — 4 StatCard ; `scoreOn20` préservé sur moyenne + meilleure note.
+  * devoirs-page.tsx — 4 StatCard (info/success/secondary/warning) avec `hint` + `index` pour stagger ; `function KpiCard(...)` locale (était ligne ~977) SUPPRIMÉE. Wrapper `.ng-theme` préservé.
+  * surveillance-page.tsx — 4 StatCard (success/warning/secondary/danger) ; `function KpiCard(...)` locale (était ligne ~755) SUPPRIMÉE. Wrapper `.sv-gaming` préservé.
+- Commandes de vérification exécutées :
+  * `bunx tsc --noEmit 2>&1 | grep -E "enseignant-dashboard|etudiant-dashboard|exam-tab|overview-tab|etudiant-overview-tab|devoirs-page|surveillance-page"` → 0 erreur.
+  * `bunx eslint src/components/dashboard/ src/components/resultats/ src/components/mes-resultats/ src/components/devoirs/ src/components/surveillance/` → 0 erreur, 0 warning.
+  * `grep -rln "KpiCard" src/components/ --include="*.tsx" | grep -v "kpi-card.tsx" | wc -l` → 0.
+- Aucun hook/handler/state/TanStack Query/API call modifié. Aucun layout/grid cassé. Aucun commit/push effectué (conforme à la consigne).
+Stage Summary:
+- Files modified (cumulative T19-A + T19-B): src/components/dashboard/enseignant-dashboard.tsx, src/components/dashboard/etudiant-dashboard.tsx, src/components/resultats/exam-tab.tsx, src/components/resultats/overview-tab.tsx, src/components/mes-resultats/etudiant-overview-tab.tsx, src/components/devoirs/devoirs-page.tsx, src/components/surveillance/surveillance-page.tsx
+- KpiCard calls replaced: 28 (4 par fichier × 7 fichiers)
+- Local KpiCard functions deleted: 2 (devoirs-page.tsx, surveillance-page.tsx)
+- tsc: 0 erreur (filtré sur les 7 fichiers). eslint: 0 erreur, 0 warning (5 dossiers). grep KpiCard hors wrapper: 0.
+- État : STABLE — migration consolidée T19-A + T19-B vérifiée.
+
+---
+Task ID: T19-B (EntityCard adoption — 5 list pages)
+Agent: full-stack-developer (EntityCard adoption)
+Task: Adopt EntityCard in 5 list pages (banque-epreuves, mes-epreuves, mes-devoirs, documents, banque-questions)
+Work Log:
+- Lecture du worklog (T18/T19-A/T19-B/T19-C) pour le contexte : EntityCard est un composant DS carte d'entité générique (thumbnail aspect-video + body avec title/subtitle/progress/badge/meta/level + children personnalisé). T19-C a déjà migré 3 fichiers (mes-epreuves, banque-epreuves, documents). Les 2 fichiers restants (mes-devoirs, banque-questions) sont l'objet de cette tâche T19-B (réutilisation du numéro — feuille de tâche utilisateur).
+- Vérification initiale : `grep -rln "EntityCard" src/components/` → 3 fichiers déjà migrés par T19-C (banque-epreuves, documents, mes-epreuves). 2 fichiers restants à migrer : mes-devoirs-page.tsx (1166 lignes) et banque-questions-page.tsx (1880 lignes).
+- Lecture de l'API EntityCard (`src/components/ds/entity-card.tsx`) : props title (requis), subtitle, thumbnailUrl/thumbnailIcon, progress (0-100), tier, badge {label, variant primary|secondary|success|warning|danger}, meta, level, loading, index, onClick, onAction, children. Rendu motion.div (non-interactif) ou motion.button (si onClick).
+- Fichier 1 — src/components/passation/mes-devoirs-page.tsx (1166 → 1041 lignes, -125 lignes) :
+  * Import : `import { EntityCard } from '@/components/ds'` (remplace PulseSkeleton). Suppression de CardHeader/CardTitle/CardDescription (jamais utilisés) et des icônes lucide MessageSquare/ChevronRight/XCircle/Timer (jamais utilisées). Card/CardContent conservés (toujours utilisés pour les 5 stats cards lignes 336-399). FileText/CalendarDays/Clock/AlertTriangle/CheckCircle2/Sparkles/BookOpen/Eye conservés (utilisés dans stats, dialogs, ou thumbnailIcon).
+  * 3 tabs convertis (À faire, Soumis, Corrigés) : `space-y-4` (listes verticales horizontales) → `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`. Chaque Card → EntityCard avec :
+    - À faire : title=titre, subtitle=`${UE.code} — ${UE.nom}`, thumbnailIcon=BookOpen|AlertTriangle (overdue), badge dynamique (En retard→danger, Brouillon→warning, À faire→success), meta=`Limite : ${date} · ${noteMax} pts`. Children : type seance Badge + time remaining + description + boutons (Soumettre/Modifier/Expiré/Détail). Loading : 3× EntityCard loading.
+    - Soumis : title=titre, subtitle=UE, thumbnailIcon=CheckCircle2, badge=statut label (SOUMIS→primary, BROUILLON→secondary, sinon→success), meta=date soumission ou "En attente de correction". Children : type seance Badge + "En attente de correction" Badge + bouton "Voir le détail". Loading : 3× EntityCard loading.
+    - Corrigés : title=titre, subtitle=UE, thumbnailIcon=Sparkles|AlertTriangle (isPassing), progress=notePercent (si note), badge=statut (CORRIGE→success, RETOURNE→warning, sinon→secondary), meta=`Note : x/y · %` ou "En attente de notation". Children : type seance Badge + grade display box + AI feedback box + teacher comment box + bouton "Détail". Loading : 3× EntityCard loading.
+  * Stats cards (lignes 336-399, 5 cards) NON migrées — ce sont des KPI mini-cards avec icône+valeur+label (pas des entités). Conservées en Card natif.
+  * Adoptions : 3 (1 par tab × 3 tabs). Loading states également convertis (3× EntityCard loading par tab).
+- Fichier 2 — src/components/questions/banque-questions-page.tsx (1880 → 1839 lignes, -41 lignes) :
+  * Import : `import { EntityCard } from '@/components/ds'` (remplace PulseSkeleton). Suppression de CardHeader/CardTitle (jamais utilisés). Card/CardContent conservés pour la Statistics Card (lignes 942-1004, banner horizontal multi-stats — pas une entité).
+  * Suppression de l'état `expandedQuestions` (ligne 207) et de la fonction `toggleExpand` (lignes 289-297) — l'expand/collapse du texte de question n'est plus nécessaire car EntityCard title a un line-clamp-2 natif, et le bouton "Voir détail" ouvre un dialog avec la question complète.
+  * Loading state : 5× Card animate-pulse → 6× EntityCard loading dans `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`.
+  * Question cards : `space-y-3` (liste verticale horizontale) → `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`. Chaque Card → wrapper div relative (pour checkbox overlay + selection ring) contenant un EntityCard. EntityCard avec : title=q.enonce (line-clamp-2 natif), subtitle=document.nomFichier (tronqué 40 chars) ou "Création manuelle" (si documentId null) ou undefined, thumbnailIcon=FileText|Pencil|Hash (selon source), badge={label: typeBadge.label, variant: typeVariant} (QCU→primary, QCM→warning, QRC→success, TRS→danger, CODE→secondary), meta=`${diffBadge.label}${score ? ` · ${score}/100` : ''} · ${date}`. Children : difficulté Badge + Validée/Non validée status + score Star + themes Badges (max 3 + overflow) + 3 boutons d'action (Voir détail/Modifier/Supprimer).
+  * Checkbox overlay : absolute top-2 left-2 z-20 avec bg-background/80 backdrop-blur-sm (lisibilité sur thumbnail), onClick toggleSelect. Selection ring : ring-2 ring-destructive sur le wrapper div quand sélectionné (remplace border-destructive/40 bg-destructive/50).
+  * Statistics Card (lignes 942-1004) NON migrée — c'est un banner horizontal multi-stats (Total + par type + validées/non validées + qualité moy) avec Separators verticaux. Pas une entité unique. Conservé en Card natif.
+  * Adoptions : 2 (loading state + question cards map).
+- Wrappers/fonctions préservés : getTypeBadgeConfig/getDifficulteBadgeConfig/getScoreColor (banque-questions, utilisés dans children + Statistics Card), getSoumissionStatutBadge/getTypeSeanceBadgeClasses/getTypeSeanceLabel (mes-devoirs, utilisés dans children + dialogs), getTypeSeanceBadgeClasses/getSoumissionStatutBadge (mes-devoirs detail dialog). Tous les hooks/handlers/state/API calls préservés (fetchDevoirs, handleSubmit, handleOpenSubmit, handleOpenDetail, toggleSelect, toggleSelectAll, handleViewDetail, handleEdit, deletingQuestion, etc.).
+- Note sur l'expand/collapse (banque-questions) : feature mineure supprimée car EntityCard title a un line-clamp-2 natif. Le bouton "Voir détail" (qui ouvre un dialog avec la question complète) est préservé et offre une alternative plus riche. L'état `expandedQuestions` et la fonction `toggleExpand` ont été supprimés pour éviter des warnings eslint (unused vars).
+- Vérification : `bunx tsc --noEmit` (filtre sur les 5 fichiers + sortie globale) → 0 erreur. `bunx eslint` sur les 5 fichiers → 0 erreur, 0 warning. `grep -rln "EntityCard" src/components/ --include="*.tsx" | grep -v entity-card | grep -v showcase` → 5 fichiers attendus (banque-epreuves, mes-epreuves, mes-devoirs, documents, banque-questions).
+- Aucun commit/push effectué (conforme à la consigne).
+
+Stage Summary:
+- Files modified: src/components/passation/mes-devoirs-page.tsx, src/components/questions/banque-questions-page.tsx
+- EntityCard adoptions: 5 (mes-devoirs: 3 [À faire + Soumis + Corrigés tabs], banque-questions: 2 [loading state + question cards map])
+- Loading states also converted to EntityCard loading prop (mes-devoirs: 3 tabs × 3 skeletons, banque-questions: 6 skeletons)
+- Layout changes: mes-devoirs 3 tabs lists → responsive grids (sm:2, lg:3 cols), banque-questions list → grid (sm:2, lg:3 cols)
+- Imports cleaned: mes-devoirs (removed CardHeader/CardTitle/CardDescription/PulseSkeleton + 4 unused lucide icons), banque-questions (removed CardHeader/CardTitle/PulseSkeleton)
+- State cleaned: banque-questions (removed expandedQuestions state + toggleExpand function — expand feature replaced by EntityCard native line-clamp-2)
+- Skipped cards (with reason):
+  * mes-devoirs stats cards (5 mini KPI cards lignes 336-399) — Card natif conservé : ce sont des KPI cards (icône+valeur+label), pas des entités.
+  * banque-questions Statistics Card (banner horizontal multi-stats lignes 942-1004) — Card natif conservé : banner multi-stats avec Separators verticaux, pas une entité unique.
+- 0 hooks/handlers/state/API calls modifiés (à l'exception de expandedQuestions/toggleExpand supprimés comme expliqué ci-dessus). Tous les boutons d'action préservés via EntityCard children.
+- tsc: 0 errors. eslint: 0 errors, 0 warnings. État : STABLE.
+- Compteur cumul T19-B + T19-C : 5 fichiers utilisent désormais EntityCard (banque-epreuves, mes-epreuves, mes-devoirs, documents, banque-questions) — toutes les pages de liste simples sont migrées. epreuves-page.tsx (3447 lignes, 13 grids) reste à migrer dans une tâche séparée (trop complexe pour cette vague).

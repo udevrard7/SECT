@@ -35,7 +35,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '@/components/ui/sheet'
 import { Slider } from '@/components/ui/slider'
-import { PulseSkeleton } from '@/components/ds'
+import { PulseSkeleton, StatCard } from '@/components/ds'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   Tooltip as RechartsTooltip, CartesianGrid,
@@ -792,37 +792,41 @@ export function DevoirsPage() {
 
       {/* ─── KPI Grid ─── */}
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard
-          icon={<FileText className="h-5 w-5" />}
+        <StatCard
+          icon={FileText}
           label="Total devoirs"
           value={kpis.total}
-          sub={`${kpis.brouillons} brouillons`}
-          color="cyan"
+          hint={`${kpis.brouillons} brouillons`}
+          accent="info"
           loading={isLoading && !stats}
+          index={0}
         />
-        <KpiCard
-          icon={<Send className="h-5 w-5" />}
+        <StatCard
+          icon={Send}
           label="Publiés"
           value={kpis.publies}
-          sub={`${kpis.fermes} fermés`}
-          color="emerald"
+          hint={`${kpis.fermes} fermés`}
+          accent="success"
           loading={isLoading && !stats}
+          index={1}
         />
-        <KpiCard
-          icon={<Users className="h-5 w-5" />}
+        <StatCard
+          icon={Users}
           label="Soumissions"
           value={kpis.totalSoumissions}
-          sub={`${kpis.soumissionsCorrigees} corrigées`}
-          color="magenta"
+          hint={`${kpis.soumissionsCorrigees} corrigées`}
+          accent="secondary"
           loading={isLoading && !stats}
+          index={2}
         />
-        <KpiCard
-          icon={<TrendingUp className="h-5 w-5" />}
+        <StatCard
+          icon={TrendingUp}
           label="Note moyenne"
           value={stats?.moyenneNotes ?? '—'}
-          sub={stats?.moyenneNotes !== null && stats?.moyenneNotes !== undefined ? '/ 20' : 'aucune note'}
-          color="amber"
+          hint={stats?.moyenneNotes !== null && stats?.moyenneNotes !== undefined ? '/ 20' : 'aucune note'}
+          accent="warning"
           loading={isLoading && !stats}
+          index={3}
         />
       </section>
 
@@ -972,46 +976,6 @@ export function DevoirsPage() {
 // ═══════════════════════════════════════════
 //  SOUS-COMPOSANTS
 // ═══════════════════════════════════════════
-
-// ─── KPI Card ───
-function KpiCard({
-  icon, label, value, sub, color, loading,
-}: {
-  icon: React.ReactNode; label: string; value: number | string
-  sub: string; color: 'cyan' | 'emerald' | 'magenta' | 'amber'
-  loading: boolean
-}) {
-  const colorMap = {
-    cyan: 'text-cyan-200 ng-glow-cyan',
-    emerald: 'text-emerald-200 ng-glow-emerald',
-    magenta: 'text-pink-200 ng-glow-magenta',
-    amber: 'text-amber-200 ng-glow-amber',
-  }
-  const bgMap = {
-    cyan: 'bg-cyan-400/15', emerald: 'bg-emerald-400/15',
-    magenta: 'bg-pink-400/15', amber: 'bg-amber-400/15',
-  }
-  return (
-    <div className="ng-kpi p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-xs font-medium uppercase tracking-wider text-slate-300/60">{label}</p>
-          {loading ? (
-            <PulseSkeleton className="mt-2 h-8 w-20" />
-          ) : (
-            <p className="mt-1 bg-gradient-to-br from-white to-cyan-100 bg-clip-text text-3xl font-bold text-transparent font-mono tabular-nums sm:text-4xl">
-              {value}
-            </p>
-          )}
-          <p className="mt-1 truncate text-xs text-slate-300/50">{sub}</p>
-        </div>
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${bgMap[color]} ${colorMap[color]}`}>
-          {icon}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Tab Button ───
 function TabButton({

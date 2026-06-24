@@ -74,7 +74,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
-import { PulseSkeleton } from '@/components/ds'
+import { PulseSkeleton, StatCard } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
@@ -698,50 +698,10 @@ export function NotificationsAdminPage() {
 
       {/* ─── Stats Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-              <EyeOff className="h-5 w-5 text-warning" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Non lues</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{unreadCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Megaphone className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Diffusions envoyées</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{broadcastCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <CheckCheck className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Taux de lecture</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{readRate}%</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
-              <Clock className="h-5 w-5 text-info" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Aujourd&apos;hui</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{todayNotifications}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={EyeOff} label="Non lues" value={unreadCount} accent="primary" index={0} />
+        <StatCard icon={Megaphone} label="Diffusions envoyées" value={broadcastCount} accent="primary" index={1} />
+        <StatCard icon={CheckCheck} label="Taux de lecture" value={`${readRate}%`} accent="primary" index={2} />
+        <StatCard icon={Clock} label="Aujourd'hui" value={todayNotifications} accent="primary" index={3} />
       </div>
 
       {/* ─── Main Content Tabs ─── */}

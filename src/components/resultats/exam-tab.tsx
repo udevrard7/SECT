@@ -42,7 +42,7 @@ import {
   sessionsToJSON,
   formatDateFR,
 } from '@/lib/resultats-utils'
-import { KpiCard } from './kpi-card'
+import { StatCard } from '@/components/ds'
 import { ChartCard, DistributionChart, QuestionSuccessChart } from './resultats-charts'
 import { ResultsTable } from './results-table'
 import { KpiSkeleton, ChartSkeleton, TableSkeleton } from './resultats-skeletons'
@@ -294,35 +294,35 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
         <>
           {/* KPIs */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
+            <StatCard
               icon={Target}
               label="Moyenne"
               value={stats.moyenne.toFixed(1)}
               suffix={`/${noteTotal}`}
-              accentColor="emerald"
+              accent="success"
               scoreOn20={(stats.moyenne / noteTotal) * 20}
             />
-            <KpiCard
+            <StatCard
               icon={BarChart2}
               label="Médiane"
               value={stats.mediane.toFixed(1)}
               suffix={`/${noteTotal}`}
-              accentColor="teal"
+              accent="primary"
               scoreOn20={(stats.mediane / noteTotal) * 20}
             />
-            <KpiCard
+            <StatCard
               icon={Trophy}
               label="Taux de réussite"
               value={stats.tauxReussite}
               suffix="%"
-              accentColor={stats.tauxReussite >= 50 ? 'emerald' : 'amber'}
+              accent={stats.tauxReussite >= 50 ? 'success' : 'warning'}
             />
-            <KpiCard
+            <StatCard
               icon={Users}
               label="Nombre de copies"
               value={stats.totalSessions}
-              subValue={`${stats.corriges} corrigée${stats.corriges > 1 ? 's' : ''}`}
-              accentColor="sky"
+              hint={`${stats.corriges} corrigée${stats.corriges > 1 ? 's' : ''}`}
+              accent="info"
             />
           </div>
 

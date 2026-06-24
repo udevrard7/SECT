@@ -47,7 +47,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { PulseSkeleton } from '@/components/ds'
+import { PulseSkeleton, StatCard } from '@/components/ds'
 
 // ─── Types ───
 
@@ -432,61 +432,11 @@ export function EvaluationsPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <ClipboardCheck className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total</p>
-              <p className="font-mono text-xl font-bold tabular-nums">{totalEvaluations}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Activity className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">En cours</p>
-              <p className="font-mono text-xl font-bold tabular-nums">{enCoursCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-              <Calendar className="h-5 w-5 text-warning" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Planifiées</p>
-              <p className="font-mono text-xl font-bold tabular-nums">{planifieesCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/10">
-              <Trophy className="h-5 w-5 text-secondary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Terminées</p>
-              <p className="font-mono text-xl font-bold tabular-nums">{termineesCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Alertes</p>
-              <p className="font-mono text-xl font-bold tabular-nums">{totalAlerts}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={ClipboardCheck} label="Total" value={totalEvaluations} accent="primary" index={0} />
+        <StatCard icon={Activity} label="En cours" value={enCoursCount} accent="primary" index={1} />
+        <StatCard icon={Calendar} label="Planifiées" value={planifieesCount} accent="primary" index={2} />
+        <StatCard icon={Trophy} label="Terminées" value={termineesCount} accent="primary" index={3} />
+        <StatCard icon={AlertTriangle} label="Alertes" value={totalAlerts} accent="primary" index={4} />
       </div>
 
       {/* ─── Filter toolbar ─── */}
@@ -870,44 +820,10 @@ export function EvaluationsPage() {
 
                   {/* Info grid */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Card className="border-l-4 border-l-primary">
-                      <CardContent className="p-3">
-                        <p className="text-xs text-muted-foreground">Durée</p>
-                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-success" />
-                          {detailEpreuve.duree} min
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-l-4 border-l-primary">
-                      <CardContent className="p-3">
-                        <p className="text-xs text-muted-foreground">Questions</p>
-                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
-                          <HelpCircle className="h-3.5 w-3.5 text-secondary" />
-                          {detailEpreuve.questions && detailEpreuve.questions.length > 0 ? detailEpreuve.questions.length : (detailEpreuve.questionCount ?? 0)}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-l-4 border-l-primary">
-                      <CardContent className="p-3">
-                        <p className="text-xs text-muted-foreground">Points total</p>
-                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
-                          <Trophy className="h-3.5 w-3.5 text-warning" />
-                          {detailEpreuve.questions != null && detailEpreuve.questions.length > 0
-                            ? detailEpreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
-                            : (detailEpreuve.totalPoints ?? detailEpreuve.noteTotal ?? 0)}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-l-4 border-l-primary">
-                      <CardContent className="p-3">
-                        <p className="text-xs text-muted-foreground">Participants</p>
-                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
-                          <Users className="h-3.5 w-3.5 text-info" />
-                          {detailEpreuve.sessions?.length ?? 0}
-                        </p>
-                      </CardContent>
-                    </Card>
+                    <StatCard icon={Clock} label="Durée" value={`${detailEpreuve.duree} min`} accent="primary" index={0} />
+                    <StatCard icon={HelpCircle} label="Questions" value={detailEpreuve.questions && detailEpreuve.questions.length > 0 ? detailEpreuve.questions.length : (detailEpreuve.questionCount ?? 0)} accent="primary" index={1} />
+                    <StatCard icon={Trophy} label="Points total" value={detailEpreuve.questions != null && detailEpreuve.questions.length > 0 ? detailEpreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0) : (detailEpreuve.totalPoints ?? detailEpreuve.noteTotal ?? 0)} accent="primary" index={2} />
+                    <StatCard icon={Users} label="Participants" value={detailEpreuve.sessions?.length ?? 0} accent="primary" index={3} />
                   </div>
 
                   {/* Date range */}
