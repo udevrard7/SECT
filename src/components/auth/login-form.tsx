@@ -1,35 +1,24 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import gsap from 'gsap'
 import {
   Mail,
   Lock,
-  Loader2,
   Eye,
   EyeOff,
   ArrowLeft,
   KeyRound,
-  CheckCircle2,
-  Sparkles,
-  Shield,
+  Loader2,
   GraduationCap,
-  Users,
-  Brain,
-  ChevronRight,
-  Zap,
-  Globe,
-  TrendingUp,
-  Hash,
   Briefcase,
+  Sparkles,
 } from 'lucide-react'
 import { useAuthStore, type LoginError } from '@/stores/auth-store'
 import { toast } from 'sonner'
-
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -62,875 +51,74 @@ type PersonnelFormValues = z.infer<typeof personnelSchema>
 type EtudiantFormValues = z.infer<typeof etudiantSchema>
 
 // ═══════════════════════════════════════════════════════════════
-// FEATURE DATA
+// LOGIN FORM — Savane EdTech
 // ═══════════════════════════════════════════════════════════════
 
-const features = [
-  { icon: Brain, label: 'IA Intégrée', desc: 'Questions auto-générées', stat: '98%' },
-  { icon: Zap, label: 'Temps Réel', desc: 'Correction instantanée', stat: '<1s' },
-  { icon: Shield, label: 'Anti-Triche', desc: 'Proctoring intelligent', stat: '24/7' },
-  { icon: Globe, label: 'Multi-tenant', desc: 'Établissements illimités', stat: '∞' },
-]
-
-const typewriterWords = ['Intelligence Artificielle', 'Automatisation', 'Précision', 'Innovation']
-
-// ═══════════════════════════════════════════════════════════════
-// GSAP FLOATING PARTICLES — 30 particles
-// ═══════════════════════════════════════════════════════════════
-
-function FloatingParticles() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const particlesRef = useRef<HTMLDivElement[]>([])
-
-  useEffect(() => {
-    if (!containerRef.current) return
-    const els = particlesRef.current.filter(Boolean)
-    if (els.length === 0) return
-
-    const ctx = gsap.context(() => {
-      els.forEach((el, i) => {
-        gsap.to(el, {
-          y: -(30 + Math.random() * 50),
-          opacity: 0.7,
-          scale: 1.2,
-          duration: 4 + Math.random() * 3,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-          delay: i * 0.15,
-        })
-        gsap.to(el, {
-          x: (Math.random() - 0.5) * 50,
-          duration: 3 + Math.random() * 4,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-          delay: i * 0.1,
-        })
-      })
-    }, containerRef)
-
-    return () => ctx.revert()
-  }, [])
-
-  const particles = useMemo(() =>
-    Array.from({ length: 30 }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 3 + 1,
-      isIndigo: Math.random() > 0.5,
-    })),
-  [])
-
-  return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((p, i) => (
-        <div
-          key={p.id}
-          ref={(el) => { if (el) particlesRef.current[i] = el }}
-          className={`absolute rounded-full ${p.isIndigo ? 'bg-indigo-400' : 'bg-white'}`}
-          style={{
-            width: p.size,
-            height: p.size,
-            left: `${p.x}%`,
-            top: `${p.y}%`,
-            opacity: 0,
-            scale: 0.3,
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// GSAP AURORA GRADIENT — continuous rotation
-// ═══════════════════════════════════════════════════════════════
-
-function AuroraEffect() {
-  const auroraRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!auroraRef.current) return
-    const anim = gsap.to(auroraRef.current, {
-      rotation: 360,
-      duration: 20,
-      repeat: -1,
-      ease: 'none',
-      transformOrigin: 'center center',
-    })
-    return () => { anim.kill() }
-  }, [])
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div
-        ref={auroraRef}
-        className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] rounded-full opacity-20"
-        style={{
-          background: 'conic-gradient(from 0deg, transparent 0%, rgba(16,185,129,0.5) 8%, transparent 16%, rgba(6,182,212,0.35) 24%, transparent 32%, rgba(16,185,129,0.3) 40%, transparent 50%)',
-        }}
-      />
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// GSAP GLOWING ORBS — floating at different speeds
-// ═══════════════════════════════════════════════════════════════
-
-function GlowingOrbs() {
-  const orb1Ref = useRef<HTMLDivElement>(null)
-  const orb2Ref = useRef<HTMLDivElement>(null)
-  const orb3Ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      if (orb1Ref.current) {
-        gsap.to(orb1Ref.current, {
-          y: -50, x: 35, scale: 1.2,
-          duration: 8, repeat: -1, yoyo: true, ease: 'sine.inOut',
-        })
-      }
-      if (orb2Ref.current) {
-        gsap.to(orb2Ref.current, {
-          y: 40, x: -25, scale: 0.85,
-          duration: 11, repeat: -1, yoyo: true, ease: 'sine.inOut',
-        })
-      }
-      if (orb3Ref.current) {
-        gsap.to(orb3Ref.current, {
-          y: -30, scale: 1.15,
-          duration: 14, repeat: -1, yoyo: true, ease: 'sine.inOut',
-        })
-      }
-    })
-    return () => ctx.revert()
-  }, [])
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div
-        ref={orb1Ref}
-        className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.3) 0%, transparent 65%)' }}
-      />
-      <div
-        ref={orb2Ref}
-        className="absolute top-1/4 -right-24 w-[400px] h-[400px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 65%)' }}
-      />
-      <div
-        ref={orb3Ref}
-        className="absolute -bottom-32 left-1/3 w-[350px] h-[350px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.18) 0%, transparent 65%)' }}
-      />
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TYPEWRITER HOOK
-// ═══════════════════════════════════════════════════════════════
-
-function useTypewriter(words: string[], typingSpeed = 80, deletingSpeed = 40, pauseTime = 2000) {
-  const [text, setText] = useState('')
-  const [wordIndex, setWordIndex] = useState(0)
-  const [isDeleting, setIsDeleting] = useState(false)
-
-  useEffect(() => {
-    const currentWord = words[wordIndex]
-    const timeout = setTimeout(() => {
-      if (!isDeleting) {
-        setText(currentWord.substring(0, text.length + 1))
-        if (text.length === currentWord.length) {
-          setTimeout(() => setIsDeleting(true), pauseTime)
-        }
-      } else {
-        setText(currentWord.substring(0, text.length - 1))
-        if (text.length === 0) {
-          setIsDeleting(false)
-          setWordIndex((prev) => (prev + 1) % words.length)
-        }
-      }
-    }, isDeleting ? deletingSpeed : typingSpeed)
-
-    return () => clearTimeout(timeout)
-  }, [text, isDeleting, wordIndex, words, typingSpeed, deletingSpeed, pauseTime])
-
-  return text
-}
-
-// ═══════════════════════════════════════════════════════════════
-// GSAP 3D TILT FEATURE CARD
-// ═══════════════════════════════════════════════════════════════
-
-function FeatureCard({ feature, index }: { feature: typeof features[0]; index: number }) {
-  const cardRef = useRef<HTMLDivElement>(null)
-  const iconRef = useRef<HTMLDivElement>(null)
-  const [hovered, setHovered] = useState(false)
-
-  useEffect(() => {
-    if (!cardRef.current) return
-    const card = cardRef.current
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const rect = card.getBoundingClientRect()
-      const x = e.clientX - rect.left - rect.width / 2
-      const y = e.clientY - rect.top - rect.height / 2
-      const rotateX = (y / rect.height) * -14
-      const rotateY = (x / rect.width) * 14
-
-      gsap.to(card, {
-        rotateX,
-        rotateY,
-        duration: 0.25,
-        ease: 'power2.out',
-        transformPerspective: 500,
-      })
-    }
-
-    const handleMouseLeave = () => {
-      gsap.to(card, {
-        rotateX: 0,
-        rotateY: 0,
-        duration: 0.6,
-        ease: 'elastic.out(1, 0.5)',
-        transformPerspective: 500,
-      })
-      setHovered(false)
-    }
-
-    const handleMouseEnter = () => {
-      setHovered(true)
-      if (iconRef.current) {
-        gsap.to(iconRef.current, {
-          scale: 1.2,
-          rotation: 10,
-          duration: 0.3,
-          ease: 'back.out(2)',
-        })
-      }
-    }
-
-    card.addEventListener('mousemove', handleMouseMove)
-    card.addEventListener('mouseleave', handleMouseLeave)
-    card.addEventListener('mouseenter', handleMouseEnter)
-
-    return () => {
-      card.removeEventListener('mousemove', handleMouseMove)
-      card.removeEventListener('mouseleave', handleMouseLeave)
-      card.removeEventListener('mouseenter', handleMouseEnter)
-    }
-  }, [index])
-
-  useEffect(() => {
-    if (!hovered && iconRef.current) {
-      gsap.to(iconRef.current, {
-        scale: 1,
-        rotation: 0,
-        duration: 0.4,
-        ease: 'power2.out',
-      })
-    }
-  }, [hovered])
-
-  return (
-    <div
-      ref={cardRef}
-      className={`flex items-center gap-3 rounded-xl px-3.5 py-3 border transition-colors duration-300 cursor-default ${
-        hovered
-          ? 'bg-white/[0.12] backdrop-blur-xl border-white/20 shadow-lg shadow-indigo-500/10'
-          : 'bg-white/[0.04] backdrop-blur-sm border-white/[0.08] hover:bg-white/[0.08]'
-      }`}
-      style={{ opacity: 0, transform: 'translateY(20px) rotateX(15deg)' }}
-    >
-      <div
-        ref={iconRef}
-        className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/10 flex items-center justify-center shrink-0 border border-indigo-400/20"
-      >
-        <feature.icon className="w-4 h-4 text-indigo-300" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-white/90">{feature.label}</p>
-          <span className="text-[9px] font-bold text-indigo-300/80 bg-indigo-400/15 px-1.5 py-0.5 rounded-full">
-            {feature.stat}
-          </span>
-        </div>
-        <p className="text-[10px] text-white/40 mt-0.5">{feature.desc}</p>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// GSAP ANIMATED GRADIENT BORDER BUTTON with MAGNETIC HOVER
-// ═══════════════════════════════════════════════════════════════
-
-function GradientButton({ children, onClick, disabled, className, btnRef }: {
-  children: React.ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  className?: string
-  btnRef?: React.RefObject<HTMLDivElement | null>
-}) {
-  const borderRef = useRef<HTMLDivElement>(null)
-  const shineRef = useRef<HTMLDivElement>(null)
-
-  // Animated gradient border position
-  useEffect(() => {
-    if (!borderRef.current) return
-    const anim = gsap.to(borderRef.current, {
-      backgroundPosition: '300% 300%',
-      duration: 3,
-      repeat: -1,
-      ease: 'none',
-    })
-    return () => { anim.kill() }
-  }, [])
-
-  // Shine sweep effect
-  useEffect(() => {
-    if (!shineRef.current) return
-    const anim = gsap.to(shineRef.current, {
-      x: '250%',
-      duration: 1.8,
-      repeat: -1,
-      repeatDelay: 1.2,
-      ease: 'power2.inOut',
-    })
-    return () => { anim.kill() }
-  }, [])
-
-  // Magnetic hover via gsap.quickTo
-  useEffect(() => {
-    const wrapper = btnRef?.current
-    if (!wrapper) return
-
-    const xTo = gsap.quickTo(wrapper, 'x', { duration: 0.3, ease: 'power2.out' })
-    const yTo = gsap.quickTo(wrapper, 'y', { duration: 0.3, ease: 'power2.out' })
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const rect = wrapper.getBoundingClientRect()
-      const x = e.clientX - rect.left - rect.width / 2
-      const y = e.clientY - rect.top - rect.height / 2
-      xTo(x * 0.2)
-      yTo(y * 0.2)
-    }
-
-    const handleMouseLeave = () => {
-      xTo(0)
-      yTo(0)
-    }
-
-    wrapper.addEventListener('mousemove', handleMouseMove)
-    wrapper.addEventListener('mouseleave', handleMouseLeave)
-
-    return () => {
-      wrapper.removeEventListener('mousemove', handleMouseMove)
-      wrapper.removeEventListener('mouseleave', handleMouseLeave)
-      xTo.tween.kill()
-      yTo.tween.kill()
-    }
-  }, [btnRef])
-
-  return (
-    <div ref={btnRef} className="relative rounded-xl p-[1.5px] overflow-hidden group">
-      {/* Animated gradient border */}
-      <div
-        ref={borderRef}
-        className="absolute inset-0"
-        style={{
-          background: 'linear-gradient(135deg, #10b981, #14b8a6, #06b6d4, #10b981)',
-          backgroundSize: '300% 300%',
-          backgroundPosition: '0% 0%',
-        }}
-      />
-      <Button
-        type="submit"
-        onClick={onClick}
-        disabled={disabled}
-        className={`relative w-full h-12 rounded-[10px] bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/25 hover:shadow-indigo-500/40 transition-all duration-300 text-sm ${className || ''}`}
-      >
-        {children}
-      </Button>
-      {/* Shine sweep */}
-      <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-        <div
-          ref={shineRef}
-          className="absolute inset-0"
-          style={{
-            background: 'linear-gradient(105deg, transparent 38%, rgba(255,255,255,0.12) 43%, rgba(255,255,255,0.28) 50%, rgba(255,255,255,0.12) 57%, transparent 62%)',
-            transform: 'translateX(-120%)',
-          }}
-        />
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// GSAP MODE TOGGLE — indigo sliding pill
-// ═══════════════════════════════════════════════════════════════
-
-function LoginModeToggle({ mode, onModeChange }: {
-  mode: LoginMode
-  onModeChange: (mode: LoginMode) => void
-}) {
-  const indicatorRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!indicatorRef.current) return
-    gsap.to(indicatorRef.current, {
-      left: mode === 'personnel' ? '3px' : '50%',
-      width: 'calc(50% - 3px)',
-      duration: 0.45,
-      ease: 'elastic.out(1, 0.55)',
-    })
-  }, [mode])
-
-  return (
-    <div className="relative flex rounded-xl bg-white/[0.04] p-[3px] mb-7 border border-white/[0.06]">
-      {/* Sliding indicator — indigo pill */}
-      <div
-        ref={indicatorRef}
-        className="absolute top-[3px] bottom-[3px] rounded-[9px] bg-gradient-to-r from-indigo-600/90 to-violet-600/90 shadow-lg shadow-indigo-500/20"
-        style={{ left: '3px', width: 'calc(50% - 3px)' }}
-      />
-
-      <button
-        type="button"
-        onClick={() => onModeChange('personnel')}
-        aria-pressed={mode === 'personnel'}
-        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-          mode === 'personnel'
-            ? 'text-white'
-            : 'text-white/40 hover:text-white/60'
-        }`}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={mode === 'personnel' ? 'briefcase-active' : 'briefcase'}
-            initial={{ opacity: 0, scale: 0.6, rotate: -90 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.6, rotate: 90 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Briefcase className="w-4 h-4" />
-          </motion.div>
-        </AnimatePresence>
-        Personnel
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onModeChange('etudiant')}
-        aria-pressed={mode === 'etudiant'}
-        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-          mode === 'etudiant'
-            ? 'text-white'
-            : 'text-white/40 hover:text-white/60'
-        }`}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={mode === 'etudiant' ? 'grad-active' : 'grad'}
-            initial={{ opacity: 0, scale: 0.6, rotate: -90 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.6, rotate: 90 }}
-            transition={{ duration: 0.2 }}
-          >
-            <GraduationCap className="w-4 h-4" />
-          </motion.div>
-        </AnimatePresence>
-        Étudiant
-      </button>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DOT GRID PATTERN for RIGHT PANEL
-// ═══════════════════════════════════════════════════════════════
-
-function DotGrid() {
-  return (
-    <div
-      className="absolute inset-0 pointer-events-none opacity-[0.35]"
-      style={{
-        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)',
-        backgroundSize: '24px 24px',
-      }}
-    />
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════
-
-interface LoginFormProps {
-  onBack?: () => void
-}
-
-export function LoginForm({ onBack }: LoginFormProps) {
+export function LoginForm() {
   const [loginMode, setLoginMode] = useState<LoginMode>('personnel')
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
-  const login = useAuthStore((state) => state.login)
-  const loginStudent = useAuthStore((state) => state.loginStudent)
-  const isLoading = useAuthStore((state) => state.isLoading)
 
-  // Typewriter
-  const typedText = useTypewriter(typewriterWords)
-
-  // Password Reset state
+  // Password reset state
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetSending, setResetSending] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [resetToken, setResetToken] = useState<string | null>(null)
-
-  // Password Reset Confirm state
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [confirmToken, setConfirmToken] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [confirmSubmitting, setConfirmSubmitting] = useState(false)
-  const [confirmSuccess, setConfirmSuccess] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmSending, setConfirmSending] = useState(false)
 
-  // GSAP refs
-  const pageRef = useRef<HTMLDivElement>(null)
-  const leftPanelRef = useRef<HTMLDivElement>(null)
-  const rightPanelRef = useRef<HTMLDivElement>(null)
-  const bgImgRef = useRef<HTMLDivElement>(null)
-  const logoBoxRef = useRef<HTMLDivElement>(null)
-  const logoGlowRef = useRef<HTMLDivElement>(null)
-  const logoSparkRef = useRef<HTMLDivElement>(null)
-  const titleRef = useRef<HTMLHeadingElement>(null)
-  const subtitleRef = useRef<HTMLParagraphElement>(null)
-  const taglineRef = useRef<HTMLDivElement>(null)
-  const featuresGridRef = useRef<HTMLDivElement>(null)
-  const statsRef = useRef<HTMLDivElement>(null)
-  const formCardRef = useRef<HTMLDivElement>(null)
-  const mobileLogoRef = useRef<HTMLDivElement>(null)
-  const identifierInputRef = useRef<HTMLInputElement>(null)
-  const identifierLabelRef = useRef<HTMLLabelElement>(null)
-  const passwordInputRef = useRef<HTMLInputElement>(null)
-  const passwordLabelRef = useRef<HTMLLabelElement>(null)
-  const submitBtnRef = useRef<HTMLDivElement>(null)
-  const cursorRef = useRef<HTMLSpanElement>(null)
+  const login = useAuthStore((state) => state.login)
+  const loginStudent = useAuthStore((state) => state.loginStudent)
+  const isLoading = useAuthStore((state) => state.isLoading)
 
-  const form = useForm({
+  const form = useForm<PersonnelFormValues | EtudiantFormValues>({
     resolver: zodResolver(loginMode === 'personnel' ? personnelSchema : etudiantSchema),
     defaultValues: { identifier: '', password: '' },
   })
 
   // Reset form when mode changes
-  useEffect(() => {
-    form.reset({ identifier: '', password: '' })
+  const handleModeChange = useCallback((newMode: LoginMode) => {
+    if (newMode === loginMode) return
+    setLoginMode(newMode)
     setLoginError(null)
+    form.reset({ identifier: '', password: '' })
   }, [loginMode, form])
 
-  // ═══════════════════════════════════════════════════════════
-  // GSAP ANIMATION 1: Page Entrance
-  // ═══════════════════════════════════════════════════════════
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
-
-      // Left panel slides in from left
-      if (leftPanelRef.current) {
-        tl.fromTo(leftPanelRef.current,
-          { x: -60, opacity: 0 },
-          { x: 0, opacity: 1, duration: 1 },
-          0
-        )
-      }
-
-      // Right panel slides in from right
-      if (rightPanelRef.current) {
-        tl.fromTo(rightPanelRef.current,
-          { x: 60, opacity: 0 },
-          { x: 0, opacity: 1, duration: 1 },
-          0.15
-        )
-      }
-
-      // ANIMATION 3: Logo entrance with scale bounce
-      if (logoBoxRef.current) {
-        tl.fromTo(logoBoxRef.current,
-          { scale: 1.2, opacity: 0, rotation: -15 },
-          { scale: 1, opacity: 1, rotation: 0, duration: 0.8, ease: 'elastic.out(1, 0.5)' },
-          0.4
-        )
-      }
-
-      // Logo glow pulse
-      if (logoGlowRef.current) {
-        gsap.to(logoGlowRef.current, {
-          keyframes: [
-            { boxShadow: '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)' },
-            { boxShadow: '0 0 40px rgba(16,185,129,0.4), inset 0 0 30px rgba(16,185,129,0.15)' },
-            { boxShadow: '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)' },
-          ],
-          duration: 3,
-          repeat: -1,
-          ease: 'sine.inOut',
-        })
-      }
-
-      // Logo sparkle rotation
-      if (logoSparkRef.current) {
-        gsap.to(logoSparkRef.current, {
-          scale: 1.4,
-          rotation: 15,
-          duration: 2.5,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-        })
-      }
-
-      // Title stagger
-      if (titleRef.current) {
-        tl.fromTo(titleRef.current,
-          { x: -30, opacity: 0 },
-          { x: 0, opacity: 1, duration: 0.6 },
-          0.55
-        )
-      }
-
-      if (subtitleRef.current) {
-        tl.fromTo(subtitleRef.current,
-          { opacity: 0, y: 10 },
-          { opacity: 1, y: 0, duration: 0.6 },
-          0.7
-        )
-      }
-
-      // Tagline
-      if (taglineRef.current) {
-        tl.fromTo(taglineRef.current,
-          { y: 15, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.6 },
-          0.75
-        )
-      }
-
-      // ANIMATION 4: Feature pills stagger with rotationX
-      if (featuresGridRef.current) {
-        const cards = featuresGridRef.current.querySelectorAll('[data-feature-card]')
-        tl.fromTo(cards,
-          { y: 25, opacity: 0, rotationX: 15 },
-          {
-            y: 0, opacity: 1, rotationX: 0,
-            duration: 0.5,
-            stagger: 0.1,
-            ease: 'power2.out',
-          },
-          0.8
-        )
-      }
-
-      // Bottom stats
-      if (statsRef.current) {
-        const statEls = statsRef.current.querySelectorAll('[data-stat]')
-        tl.fromTo(statEls,
-          { scale: 0.5, opacity: 0 },
-          { scale: 1, opacity: 1, duration: 0.4, stagger: 0.12, ease: 'back.out(2)' },
-          1.2
-        )
-      }
-
-      // ANIMATION 6: Form card entrance with scale
-      if (formCardRef.current) {
-        tl.fromTo(formCardRef.current,
-          { scale: 0.96, opacity: 0 },
-          { scale: 1, opacity: 1, duration: 0.7, ease: 'power2.out' },
-          0.3
-        )
-      }
-
-      // ANIMATION 7: Input fields stagger from bottom
-      const inputs = formCardRef.current?.querySelectorAll('[data-form-field]')
-      if (inputs && inputs.length > 0) {
-        tl.fromTo(inputs,
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out' },
-          0.6
-        )
-      }
-
-      // Mobile logo slow rotate
-      if (mobileLogoRef.current) {
-        gsap.to(mobileLogoRef.current, {
-          rotation: 360,
-          duration: 25,
-          repeat: -1,
-          ease: 'none',
-        })
-      }
-
-      // Cursor blink
-      if (cursorRef.current) {
-        gsap.to(cursorRef.current, {
-          opacity: 0,
-          duration: 0.5,
-          repeat: -1,
-          yoyo: true,
-          ease: 'steps(1)',
-        })
-      }
-    }, pageRef)
-
-    return () => ctx.revert()
-  }, [])
-
-  // ═══════════════════════════════════════════════════════════
-  // GSAP ANIMATION 2: Ken Burns on background
-  // ═══════════════════════════════════════════════════════════
-
-  useEffect(() => {
-    if (!bgImgRef.current) return
-    const anim = gsap.to(bgImgRef.current, {
-      scale: 1.12,
-      duration: 25,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut',
-    })
-    return () => { anim.kill() }
-  }, [])
-
-  // ═══════════════════════════════════════════════════════════
-  // GSAP Logo gentle float
-  // ═══════════════════════════════════════════════════════════
-
-  useEffect(() => {
-    if (!logoBoxRef.current) return
-    const anim = gsap.to(logoBoxRef.current, {
-      y: -6,
-      duration: 3,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut',
-    })
-    return () => { anim.kill() }
-  }, [])
-
-  // ═══════════════════════════════════════════════════════════
-  // GSAP Input Focus Label Animation
-  // ═══════════════════════════════════════════════════════════
-
-  useEffect(() => {
-    const idInput = identifierInputRef.current
-    const idLabel = identifierLabelRef.current
-    const pwInput = passwordInputRef.current
-    const pwLabel = passwordLabelRef.current
-
-    const setupFloat = (input: HTMLInputElement | null, label: HTMLLabelElement | null) => {
-      if (!input || !label) return
-
-      const onFocus = () => {
-        gsap.to(label, {
-          y: -2,
-          scale: 1.03,
-          color: '#10b981',
-          duration: 0.25,
-          ease: 'power2.out',
-        })
-      }
-      const onBlur = () => {
-        gsap.to(label, {
-          y: 0,
-          scale: 1,
-          color: '',
-          duration: 0.25,
-          ease: 'power2.out',
-        })
-      }
-
-      input.addEventListener('focus', onFocus)
-      input.addEventListener('blur', onBlur)
-
-      return () => {
-        input.removeEventListener('focus', onFocus)
-        input.removeEventListener('blur', onBlur)
-      }
-    }
-
-    const cleanupId = setupFloat(idInput, idLabel)
-    const cleanupPw = setupFloat(pwInput, pwLabel)
-
-    return () => {
-      cleanupId?.()
-      cleanupPw?.()
-    }
-  }, [loginMode])
-
-  // ═══════════════════════════════════════════════════════════
-  // LOGIN HANDLER
-  // ═══════════════════════════════════════════════════════════
-
-  const onSubmit = useCallback(async (data: { identifier: string; password: string }) => {
+  // Submit handler
+  const onSubmit = useCallback(async (data: PersonnelFormValues | EtudiantFormValues) => {
     setLoginError(null)
-
     try {
-      let success: boolean
+      let success = false
       if (loginMode === 'etudiant') {
         success = await loginStudent(data.identifier, data.password)
       } else {
         success = await login(data.identifier, data.password)
       }
-
       if (!success) {
         setLoginError('Identifiants incorrects. Veuillez réessayer.')
       }
-    } catch (err: unknown) {
+    } catch (err) {
       const loginErr = err as LoginError
       if (loginErr?.status === 500) {
         setLoginError('Erreur serveur. Veuillez réessayer plus tard.')
-        toast.error('Erreur serveur', {
-          description: 'Une erreur technique est survenue. Veuillez réessayer dans quelques instants.',
-        })
       } else if (loginErr?.status === 403) {
         setLoginError(loginErr.message || 'Votre compte a été désactivé.')
-        toast.error('Accès refusé', {
-          description: loginErr.message,
-        })
       } else if (loginErr?.status === 0) {
-        setLoginError('Erreur de connexion. Vérifiez votre réseau.')
-        toast.error('Erreur réseau', {
-          description: 'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
-        })
+        setLoginError('Problème de connexion. Vérifiez votre réseau.')
       } else {
         const errorMsg = loginMode === 'etudiant'
-          ? 'Matricule, email ou mot de passe incorrect.'
-          : 'Identifiants incorrects. Veuillez réessayer.'
+          ? 'Matricule/email ou mot de passe incorrect.'
+          : 'Email ou mot de passe incorrect.'
         setLoginError(errorMsg)
-        toast.error('Échec de la connexion', {
-          description: errorMsg,
-        })
       }
     }
   }, [loginMode, login, loginStudent])
 
-  const handleModeChange = useCallback((newMode: LoginMode) => {
-    setLoginMode(newMode)
-  }, [])
-
-  // ═══════════════════════════════════════════════════════════
-  // PASSWORD RESET HANDLERS
-  // ═══════════════════════════════════════════════════════════
-
-  const handleResetRequest = async () => {
-    if (!resetEmail.trim()) {
-      toast.error('Champ requis', { description: 'Veuillez entrer votre adresse email.' })
-      return
-    }
+  // Password reset handlers
+  const handleResetRequest = useCallback(async () => {
+    if (!resetEmail.trim()) return
     setResetSending(true)
     try {
       const res = await fetch('/api/auth/password-reset', {
@@ -938,687 +126,461 @@ export function LoginForm({ onBack }: LoginFormProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail.trim() }),
       })
-      const data = await res.json()
-      setResetSent(true)
-      if (data.token) setResetToken(data.token)
-      toast.success('Demande envoyée', {
-        description: data.message || 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.',
-      })
+      if (res.ok) {
+        setResetSent(true)
+        toast.success('Email envoyé', { description: 'Vérifiez votre boîte de réception.' })
+      } else {
+        toast.error('Erreur', { description: 'Impossible d\'envoyer l\'email.' })
+      }
     } catch {
-      toast.error('Erreur', { description: 'Impossible d\'envoyer la demande. Veuillez réessayer.' })
+      toast.error('Erreur', { description: 'Vérifiez votre connexion.' })
     } finally {
       setResetSending(false)
     }
-  }
+  }, [resetEmail])
 
-  const handleResetConfirm = async () => {
-    if (!confirmToken.trim()) {
-      toast.error('Champ requis', { description: 'Veuillez entrer le token de réinitialisation.' })
-      return
-    }
-    if (!confirmPassword || confirmPassword.length < 6) {
-      toast.error('Mot de passe invalide', { description: 'Le mot de passe doit contenir au moins 6 caractères.' })
-      return
-    }
-    setConfirmSubmitting(true)
+  const handleResetConfirm = useCallback(async () => {
+    if (!resetToken?.trim() || !newPassword.trim()) return
+    setConfirmSending(true)
     try {
       const res = await fetch('/api/auth/password-reset/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: confirmToken.trim(), password: confirmPassword }),
+        body: JSON.stringify({ token: resetToken.trim(), newPassword: newPassword.trim() }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erreur lors de la réinitialisation')
-      setConfirmSuccess(true)
-      toast.success('Mot de passe réinitialisé', {
-        description: 'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
-      })
-    } catch (err) {
-      toast.error('Erreur', {
-        description: err instanceof Error ? err.message : 'Impossible de réinitialiser le mot de passe.',
-      })
+      if (res.ok) {
+        toast.success('Mot de passe réinitialisé', { description: 'Vous pouvez vous connecter.' })
+        setConfirmDialogOpen(false)
+        setResetDialogOpen(false)
+        setResetSent(false)
+        setResetToken(null)
+        setNewPassword('')
+      } else {
+        toast.error('Erreur', { description: 'Token invalide ou expiré.' })
+      }
+    } catch {
+      toast.error('Erreur', { description: 'Vérifiez votre connexion.' })
     } finally {
-      setConfirmSubmitting(false)
+      setConfirmSending(false)
     }
-  }
+  }, [resetToken, newPassword])
 
-  const openResetDialog = () => {
-    setResetEmail('')
-    setResetSent(false)
-    setResetToken(null)
-    setResetDialogOpen(true)
-  }
-
-  const openConfirmDialog = (token?: string) => {
-    setConfirmToken(token || '')
-    setConfirmPassword('')
-    setConfirmSuccess(false)
-    setConfirmDialogOpen(true)
-  }
-
-  // Derived values
   const isPersonnel = loginMode === 'personnel'
   const identifierLabel = isPersonnel ? 'Adresse email' : 'Matricule ou Email'
-  const identifierPlaceholder = isPersonnel ? 'votre.email@universite.fr' : 'Ex: 2024-INFO-001 ou email'
-  const IdentifierIcon = isPersonnel ? Mail : Hash
-
-  // ═══════════════════════════════════════════════════════════
-  // RENDER
-  // ═══════════════════════════════════════════════════════════
 
   return (
-    <>
-      <div ref={pageRef} className="min-h-screen flex flex-col lg:flex-row bg-[#09090b] overflow-hidden">
-
-        {/* ═══════════════════════════════════════════════════════ */}
-        {/* LEFT PANEL — Dark cinematic branding with premium bg   */}
-        {/* ═══════════════════════════════════════════════════════ */}
+    <div className="min-h-screen flex bg-[#1E1B4B]">
+      {/* ════════ CÔTÉ GAUCHE (60%) — Bleu nuit + Kente + Branding ════════ */}
+      <div className="hidden lg:flex lg:w-[60%] relative flex-col justify-between p-12 overflow-hidden">
+        {/* Motif Kente subtil en filigrane */}
         <div
-          ref={leftPanelRef}
-          className="hidden lg:flex lg:w-[45%] relative overflow-hidden flex-col justify-between"
-          style={{ opacity: 0 }}
-        >
-          {/* ANIMATION 2: Ken Burns background image */}
-          <div className="absolute inset-0" ref={bgImgRef} style={{ scale: 1 }}>
-            <img
-              src="/login-bg-premium.jpg"
-              alt=""
-              className="w-full h-full object-cover"
-              style={{ filter: 'brightness(0.25) saturate(1.4) contrast(1.1)' }}
-            />
+          className="absolute inset-0 opacity-[0.08] pointer-events-none"
+          style={{
+            backgroundImage: `
+              repeating-linear-gradient(45deg, transparent 0, transparent 20px, #84CC16 20px, #84CC16 24px, transparent 24px, transparent 44px, #F59E0B 44px, #F59E0B 48px),
+              repeating-linear-gradient(-45deg, transparent 0, transparent 20px, #C2410C 20px, #C2410C 24px, transparent 24px, transparent 44px, #F59E0B 44px, #F59E0B 48px)
+            `,
+          }}
+        />
+
+        {/* Motifs géométriques dorés en coins */}
+        <div className="absolute top-8 right-8 w-24 h-24 opacity-20 pointer-events-none">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="50,5 95,50 50,95 5,50" stroke="#F59E0B" strokeWidth="2" fill="none" />
+            <polygon points="50,20 80,50 50,80 20,50" stroke="#F59E0B" strokeWidth="1.5" fill="none" />
+            <circle cx="50" cy="50" r="8" fill="#F59E0B" opacity="0.5" />
+          </svg>
+        </div>
+        <div className="absolute bottom-8 left-8 w-32 h-32 opacity-15 pointer-events-none">
+          <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="60,10 110,60 60,110 10,60" stroke="#84CC16" strokeWidth="2" fill="none" />
+            <polygon points="60,30 90,60 60,90 30,60" stroke="#84CC16" strokeWidth="1.5" fill="none" />
+          </svg>
+        </div>
+
+        {/* Bande kente verticale décorative sur le bord droit */}
+        <div
+          className="absolute top-0 bottom-0 right-0 w-2 opacity-60"
+          style={{
+            backgroundImage: `repeating-linear-gradient(
+              0deg,
+              #84CC16 0px, #84CC16 40px,
+              #C2410C 40px, #C2410C 80px,
+              #F59E0B 80px, #F59E0B 120px,
+              #1E1B4B 120px, #1E1B4B 160px
+            )`,
+          }}
+        />
+
+        {/* Logo + Brand en haut */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center shadow-lg">
+            <GraduationCap className="h-7 w-7 text-[#1E1B4B]" />
           </div>
-
-          {/* Multi-layer dark overlay with indigo tints */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-indigo-950/50 to-black/80" />
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/30" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/30" />
-
-          {/* ANIMATION 10: Aurora gradient */}
-          <AuroraEffect />
-
-          {/* ANIMATION 11: Particles */}
-          <FloatingParticles />
-
-          {/* ANIMATION 12: Glowing orbs */}
-          <GlowingOrbs />
-
-          {/* Back button */}
-          {onBack && (
-            <div className="relative z-10 p-6">
-              <button
-                onClick={onBack}
-                className="flex items-center gap-2 text-white/50 hover:text-white transition-all duration-300 group px-3 py-1.5 rounded-lg hover:bg-white/5"
-              >
-                <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-                <span className="text-sm font-medium">Retour</span>
-              </button>
-            </div>
-          )}
-
-          {/* Central branding content */}
-          <div className="relative z-10 flex-1 flex flex-col justify-center max-w-xl px-8 xl:px-10">
-
-            {/* ANIMATION 3: Logo with bounce + glow */}
-            <div className="flex items-center gap-5 mb-10">
-              <div ref={logoBoxRef} className="relative" style={{ opacity: 0 }}>
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600/30 to-violet-600/20 backdrop-blur-xl border border-indigo-400/20 flex items-center justify-center shadow-2xl">
-                  <img
-                    src="/sect-logo.png"
-                    alt="SECT"
-                    className="w-9 h-9 object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.style.display = 'none'
-                      if (target.nextElementSibling) {
-                        (target.nextElementSibling as HTMLElement).style.display = 'flex'
-                      }
-                    }}
-                  />
-                  <span className="text-white font-black text-2xl tracking-tighter hidden items-center justify-center w-full h-full absolute inset-0">S</span>
-                </div>
-                {/* Glow ring */}
-                <div
-                  ref={logoGlowRef}
-                  className="absolute -inset-1.5 rounded-2xl border-2 border-indigo-400/25"
-                  style={{ boxShadow: '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)' }}
-                />
-                {/* Sparkle badge */}
-                <div
-                  ref={logoSparkRef}
-                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 border-2 border-indigo-900 flex items-center justify-center shadow-lg shadow-yellow-500/30"
-                >
-                  <Sparkles className="w-3 h-3 text-yellow-900" />
-                </div>
-              </div>
-              <div>
-                <h1
-                  ref={titleRef}
-                  className="text-5xl xl:text-6xl font-black text-white tracking-tighter"
-                  style={{ opacity: 0 }}
-                >
-                  SECT
-                </h1>
-                <p
-                  ref={subtitleRef}
-                  className="text-indigo-400/70 text-[10px] font-bold tracking-[0.3em] uppercase mt-1"
-                  style={{ opacity: 0 }}
-                >
-                  Système d&apos;Évaluation Casse-Tête
-                </p>
-              </div>
-            </div>
-
-            {/* Tagline with typewriter */}
-            <div
-              ref={taglineRef}
-              className="mb-12"
-              style={{ opacity: 0 }}
-            >
-              <p className="text-xl xl:text-2xl text-white/80 font-light leading-relaxed">
-                L&apos;évaluation réinventée par l&apos;{' '}
-                <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-violet-200 to-cyan-300 inline-block min-h-[2rem]">
-                  {typedText}
-                  <span
-                    ref={cursorRef}
-                    className="inline-block w-0.5 h-6 bg-indigo-300 ml-1 align-middle"
-                    style={{ opacity: 1 }}
-                  />
-                </span>
-              </p>
-            </div>
-
-            {/* ANIMATION 4: Feature pills with stagger + 3D tilt */}
-            <div
-              ref={featuresGridRef}
-              className="grid grid-cols-2 gap-2.5"
-            >
-              {features.map((feature, index) => (
-                <div key={feature.label} data-feature-card>
-                  <FeatureCard feature={feature} index={index} />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Bottom stats + copyright */}
-          <div
-            ref={statsRef}
-            className="relative z-10 flex items-center gap-8 px-8 pb-6 pt-4"
-          >
-            {[
-              { value: '4', label: 'Rôles', icon: Users },
-              { value: '25+', label: 'Modèles', icon: TrendingUp },
-              { value: '80+', label: 'API Routes', icon: Zap },
-            ].map((stat) => (
-              <div key={stat.label} data-stat className="text-center">
-                <div className="flex items-center justify-center gap-1.5">
-                  <stat.icon className="w-3 h-3 text-indigo-500/50" />
-                  <p className="text-xl font-black text-white/80">{stat.value}</p>
-                </div>
-                <p className="text-[9px] text-white/30 font-semibold uppercase tracking-wider">{stat.label}</p>
-              </div>
-            ))}
-            <div className="ml-auto">
-              <p className="text-[9px] text-white/20 font-medium">&copy; 2026 SECT &middot; v2.0</p>
-            </div>
+          <div>
+            <h1 className="text-2xl font-bold text-[#F59E0B] tracking-tight">Savane EdTech</h1>
+            <p className="text-xs text-white/50">SECT — Système d'Évaluation</p>
           </div>
         </div>
 
-        {/* ═══════════════════════════════════════════════════════ */}
-        {/* RIGHT PANEL — Dark form with glassmorphism card         */}
-        {/* ═══════════════════════════════════════════════════════ */}
-        <div
-          ref={rightPanelRef}
-          className="flex-1 flex flex-col min-h-screen lg:min-h-0 bg-[#09090b] relative"
-          style={{ opacity: 0 }}
-        >
-          {/* Dot grid background */}
-          <DotGrid />
+        {/* Illustration centrale — baobab + étudiant stylisé */}
+        <div className="relative z-10 flex-1 flex items-center justify-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            className="text-center"
+          >
+            {/* Baobab géométrique stylisé */}
+            <svg width="280" height="240" viewBox="0 0 280 240" fill="none" className="mx-auto mb-6">
+              {/* Tronc */}
+              <rect x="125" y="120" width="30" height="100" rx="4" fill="#C2410C" opacity="0.8" />
+              {/* Branches */}
+              <path d="M140 120 Q100 80 70 60" stroke="#C2410C" strokeWidth="6" strokeLinecap="round" fill="none" opacity="0.7" />
+              <path d="M140 120 Q180 80 210 60" stroke="#C2410C" strokeWidth="6" strokeLinecap="round" fill="none" opacity="0.7" />
+              <path d="M140 120 Q120 70 110 40" stroke="#C2410C" strokeWidth="5" strokeLinecap="round" fill="none" opacity="0.6" />
+              <path d="M140 120 Q160 70 170 40" stroke="#C2410C" strokeWidth="5" strokeLinecap="round" fill="none" opacity="0.6" />
+              {/* Feuillage — cercles dorés */}
+              <circle cx="70" cy="55" r="22" fill="#F59E0B" opacity="0.25" />
+              <circle cx="210" cy="55" r="22" fill="#F59E0B" opacity="0.25" />
+              <circle cx="110" cy="35" r="18" fill="#F59E0B" opacity="0.2" />
+              <circle cx="170" cy="35" r="18" fill="#F59E0B" opacity="0.2" />
+              <circle cx="140" cy="25" r="25" fill="#84CC16" opacity="0.2" />
+              {/* Étudiant avec ordinateur — silhouette simple */}
+              <circle cx="140" cy="195" r="12" fill="#84CC16" opacity="0.6" />
+              <rect x="128" y="210" width="24" height="6" rx="2" fill="#84CC16" opacity="0.5" />
+              {/* Sol */}
+              <ellipse cx="140" cy="225" rx="50" ry="6" fill="#F59E0B" opacity="0.1" />
+            </svg>
 
-          {/* Subtle gradient accents */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-indigo-500/[0.03] blur-[100px]" />
-            <div className="absolute -bottom-40 -left-40 w-[400px] h-[400px] rounded-full bg-violet-500/[0.03] blur-[100px]" />
-          </div>
+            <h2 className="text-3xl font-bold text-white mb-3 tracking-tight">
+              L'évaluation réinventée
+            </h2>
+            <p className="text-white/60 max-w-md mx-auto leading-relaxed">
+              Générez vos sujets par IA, surveillez les examens en ligne et corrigez
+              automatiquement. Conçu pour les universités d'Afrique de l'Ouest.
+            </p>
 
-          {/* Mobile header */}
-          <div className="lg:hidden p-4 flex items-center justify-between border-b border-white/[0.06] relative z-10">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="flex items-center gap-1.5 text-white/50 hover:text-white/80 transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="text-sm font-medium">Retour</span>
-              </button>
-            )}
-            <div className="flex items-center gap-2 ml-auto">
-              <div
-                ref={mobileLogoRef}
-                className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600/80 to-violet-600/80 flex items-center justify-center"
-              >
-                <span className="text-white font-bold text-sm">S</span>
-              </div>
-              <span className="text-lg font-bold text-white">SECT</span>
+            {/* Points forts */}
+            <div className="flex items-center justify-center gap-6 mt-8">
+              {[
+                { icon: Sparkles, label: 'IA Intégrée', value: '98%' },
+                { icon: KeyRound, label: 'Anti-Triche', value: '24/7' },
+                { icon: GraduationCap, label: 'Multi-rôles', value: '4' },
+              ].map((f, i) => (
+                <motion.div
+                  key={f.label}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 + i * 0.1 }}
+                  className="flex flex-col items-center gap-1"
+                >
+                  <f.icon className="h-5 w-5 text-[#F59E0B]" />
+                  <span className="text-xs font-mono font-bold text-[#84CC16]">{f.value}</span>
+                  <span className="text-[10px] text-white/40 uppercase tracking-wider">{f.label}</span>
+                </motion.div>
+              ))}
             </div>
-          </div>
+          </motion.div>
+        </div>
 
-          {/* Form content */}
-          <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
-            <div className="w-full max-w-[440px] space-y-7">
-
-              {/* Header */}
-              <div className="text-center lg:text-left">
-                <div className="lg:hidden flex items-center justify-center gap-3 mb-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600/80 to-violet-600/80 flex items-center justify-center shadow-xl shadow-indigo-500/20">
-                    <GraduationCap className="w-7 h-7 text-white" />
-                  </div>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  Bon retour
-                  <span className="inline-block ml-1.5 text-indigo-400">✦</span>
-                </h2>
-                <p className="mt-2 text-white/40 text-sm sm:text-base">
-                  Connectez-vous pour accéder à votre espace
-                </p>
-              </div>
-
-              {/* ANIMATION 6: Form Card with glassmorphism */}
-              <div ref={formCardRef} style={{ opacity: 0 }}>
-                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-2xl p-6 sm:p-8 shadow-2xl shadow-black/30">
-
-                  {/* Mode Toggle */}
-                  <LoginModeToggle mode={loginMode} onModeChange={handleModeChange} />
-
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-
-                    {/* ─── Identifier Field ─── */}
-                    <div data-form-field className="space-y-2" style={{ opacity: 0 }}>
-                      <Label
-                        ref={identifierLabelRef}
-                        htmlFor="identifier"
-                        className="text-xs font-semibold text-white/50 transition-colors duration-200 origin-left uppercase tracking-wider"
-                      >
-                        {identifierLabel}
-                      </Label>
-                      <div className="relative group">
-                        <AnimatePresence mode="wait">
-                          <motion.div
-                            key={loginMode}
-                            className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                            initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
-                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                            exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <IdentifierIcon className="h-4 w-4 text-white/25 group-focus-within:text-indigo-400 transition-colors duration-300" />
-                          </motion.div>
-                        </AnimatePresence>
-                        <Input
-                          id="identifier"
-                          type={isPersonnel ? 'email' : 'text'}
-                          placeholder={identifierPlaceholder}
-                          autoComplete={isPersonnel ? 'email' : 'off'}
-                          className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2 transition-all duration-300"
-                          {...form.register('identifier', { setValueAs: undefined })}
-                          ref={(e) => {
-                            identifierInputRef.current = e
-                            form.register('identifier').ref(e)
-                          }}
-                          aria-invalid={!!form.formState.errors.identifier}
-                        />
-                      </div>
-                      <AnimatePresence>
-                        {form.formState.errors.identifier && (
-                          <motion.p
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            className="text-xs text-rose-400 flex items-center gap-1"
-                          >
-                            {form.formState.errors.identifier.message}
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* ─── Password Field ─── */}
-                    <div data-form-field className="space-y-2" style={{ opacity: 0 }}>
-                      <Label
-                        ref={passwordLabelRef}
-                        htmlFor="password"
-                        className="text-xs font-semibold text-white/50 transition-colors duration-200 origin-left uppercase tracking-wider"
-                      >
-                        Mot de passe
-                      </Label>
-                      <div className="relative group">
-                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25 group-focus-within:text-indigo-400 transition-colors duration-300" />
-                        <Input
-                          id="password"
-                          type={showPassword ? 'text' : 'password'}
-                          placeholder="••••••••"
-                          className="pl-10 pr-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2 transition-all duration-300"
-                          {...form.register('password')}
-                          ref={(e) => {
-                            passwordInputRef.current = e
-                            form.register('password').ref(e)
-                          }}
-                          aria-invalid={!!form.formState.errors.password}
-                        />
-                        <motion.button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors p-0.5 rounded-md hover:bg-white/[0.05]"
-                          aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                          whileTap={{ scale: 0.85 }}
-                        >
-                          <AnimatePresence mode="wait">
-                            <motion.div
-                              key={showPassword ? 'hide' : 'show'}
-                              initial={{ opacity: 0, rotate: -90 }}
-                              animate={{ opacity: 1, rotate: 0 }}
-                              exit={{ opacity: 0, rotate: 90 }}
-                              transition={{ duration: 0.15 }}
-                            >
-                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </motion.div>
-                          </AnimatePresence>
-                        </motion.button>
-                      </div>
-                      <AnimatePresence>
-                        {form.formState.errors.password && (
-                          <motion.p
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            className="text-xs text-rose-400 flex items-center gap-1"
-                          >
-                            {form.formState.errors.password.message}
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* ─── Forgot Password Link ─── */}
-                    <div data-form-field className="flex justify-end" style={{ opacity: 0 }}>
-                      <button
-                        type="button"
-                        onClick={openResetDialog}
-                        className="text-xs font-semibold text-indigo-400/80 hover:text-indigo-300 transition-colors duration-200"
-                      >
-                        Mot de passe oublié ?
-                      </button>
-                    </div>
-
-                    {/* ─── Error Message with red glow ─── */}
-                    <AnimatePresence>
-                      {loginError && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                          animate={{ opacity: 1, height: 'auto', marginTop: 4 }}
-                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <motion.div
-                            className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] backdrop-blur-sm px-4 py-3 text-sm text-rose-300 flex items-center gap-2.5"
-                            animate={{ x: [0, -4, 4, -4, 0] }}
-                            transition={{ duration: 0.4, delay: 0.1 }}
-                            style={{ boxShadow: '0 0 20px rgba(239,68,68,0.1)' }}
-                          >
-                            <motion.div
-                              className="w-2 h-2 rounded-full bg-rose-500 shrink-0"
-                              animate={{ scale: [1, 1.4, 1] }}
-                              transition={{ duration: 0.6, repeat: Infinity }}
-                              style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}
-                            />
-                            {loginError}
-                          </motion.div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* ─── Submit with gradient border + magnetic hover ─── */}
-                    <div data-form-field style={{ opacity: 0 }}>
-                      <GradientButton disabled={isLoading} btnRef={submitBtnRef}>
-                        {isLoading ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Connexion en cours...
-                          </span>
-                        ) : (
-                          <span className="flex items-center justify-center gap-2">
-                            Se connecter
-                            <ChevronRight className="w-4 h-4" />
-                          </span>
-                        )}
-                      </GradientButton>
-                    </div>
-                  </form>
-                </div>
-              </div>
-
-              {/* Footer text */}
-              <div className="text-center">
-                <p className="text-[11px] text-white/25">
-                  {loginMode === 'personnel' ? (
-                    <>Connexion réservée au personnel administratif et enseignant</>
-                  ) : (
-                    <>Connexion réservée aux étudiants via leur matricule ou email</>
-                  )}
-                </p>
-              </div>
-            </div>
-          </main>
+        {/* Footer gauche */}
+        <div className="relative z-10 text-center">
+          <p className="text-xs text-white/30">
+            © 2025 Savane EdTech — Conçu en Côte d'Ivoire 🇨🇮
+          </p>
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════ */}
-      {/* PASSWORD RESET REQUEST DIALOG                           */}
-      {/* ═══════════════════════════════════════════════════════ */}
-      <Dialog open={resetDialogOpen} onOpenChange={(open) => { if (!open) setResetDialogOpen(false) }}>
-        <DialogContent className="sm:max-w-md rounded-2xl bg-[#0a0a0a] border-white/[0.08] text-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2.5 text-lg text-white">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
-                <KeyRound className="w-4 h-4 text-indigo-400" />
+      {/* ════════ CÔTÉ DROIT (40%) — Formulaire sur fond blanc ════════ */}
+      <div className="w-full lg:w-[40%] flex items-center justify-center bg-[#F8FAFC] p-6 sm:p-12 relative">
+        {/* Motifs géométriques dorés dans les coins */}
+        <div className="absolute top-6 right-6 w-16 h-16 opacity-10 pointer-events-none">
+          <svg viewBox="0 0 60 60" fill="none">
+            <polygon points="30,5 55,30 30,55 5,30" stroke="#F59E0B" strokeWidth="1.5" fill="none" />
+          </svg>
+        </div>
+        <div className="absolute bottom-6 left-6 w-20 h-20 opacity-10 pointer-events-none">
+          <svg viewBox="0 0 80 80" fill="none">
+            <polygon points="40,5 75,40 40,75 5,40" stroke="#84CC16" strokeWidth="1.5" fill="none" />
+            <polygon points="40,20 60,40 40,60 20,40" stroke="#84CC16" strokeWidth="1" fill="none" />
+          </svg>
+        </div>
+
+        <div className="w-full max-w-sm">
+          {/* Logo mobile (visible seulement sur petit écran) */}
+          <div className="lg:hidden flex items-center gap-2.5 mb-8 justify-center">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
+              <GraduationCap className="h-6 w-6 text-[#1E1B4B]" />
+            </div>
+            <span className="text-xl font-bold text-[#F59E0B]">Savane EdTech</span>
+          </div>
+
+          {/* Toggle Personnel / Étudiant */}
+          <div className="relative flex bg-[#1E1B4B]/5 rounded-xl p-1 mb-8 border border-[#1E1B4B]/10">
+            <motion.div
+              className="absolute top-1 bottom-1 rounded-lg bg-[#84CC16] shadow-md"
+              initial={false}
+              animate={{
+                left: isPersonnel ? '4px' : '50%',
+                width: 'calc(50% - 4px)',
+              }}
+              transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+            />
+            <button
+              type="button"
+              onClick={() => handleModeChange('personnel')}
+              aria-pressed={isPersonnel}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${
+                isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'
+              }`}
+            >
+              <Briefcase className="w-4 h-4" />
+              Personnel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleModeChange('etudiant')}
+              aria-pressed={!isPersonnel}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${
+                !isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'
+              }`}
+            >
+              <GraduationCap className="w-4 h-4" />
+              Étudiant
+            </button>
+          </div>
+
+          {/* Titre */}
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-[#1E1B4B] tracking-tight">
+              Bon retour ! 👋
+            </h2>
+            <p className="text-sm text-[#1E1B4B]/50 mt-1">
+              Accédez à votre espace d'apprentissage
+            </p>
+          </div>
+
+          {/* Erreur */}
+          <AnimatePresence>
+            {loginError && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mb-4 px-4 py-3 rounded-lg bg-[#C2410C]/10 border border-[#C2410C]/20 text-sm text-[#C2410C] font-medium"
+              >
+                {loginError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Formulaire */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            {/* Email / Matricule */}
+            <div className="space-y-1.5">
+              <Label htmlFor="identifier" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+                {identifierLabel}
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B]" />
+                <Input
+                  id="identifier"
+                  type={isPersonnel ? 'email' : 'text'}
+                  placeholder={isPersonnel ? 'votre.email@universite.fr' : 'ETU-XXXXXX ou email'}
+                  className="pl-10 h-12 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 focus-visible:ring-[#84CC16]/20 transition-all"
+                  {...form.register('identifier')}
+                />
               </div>
-              Réinitialiser le mot de passe
-            </DialogTitle>
-            <DialogDescription className="text-sm text-white/40">
-              Entrez votre adresse email pour recevoir un token de réinitialisation.
+              {form.formState.errors.identifier && (
+                <p className="text-xs text-[#C2410C]">{form.formState.errors.identifier.message}</p>
+              )}
+            </div>
+
+            {/* Mot de passe */}
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+                Mot de passe
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B]" />
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  className="pl-10 pr-10 h-12 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 focus-visible:ring-[#84CC16]/20 transition-all"
+                  {...form.register('password')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1E1B4B]/40 hover:text-[#1E1B4B] transition-colors"
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {form.formState.errors.password && (
+                <p className="text-xs text-[#C2410C]">{form.formState.errors.password.message}</p>
+              )}
+            </div>
+
+            {/* Lien mot de passe oublié */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => { setResetDialogOpen(true); setResetSent(false); setResetEmail('') }}
+                className="text-xs font-medium text-[#1E1B4B] hover:text-[#C2410C] transition-colors underline-offset-2 hover:underline"
+              >
+                Mot de passe oublié ?
+              </button>
+            </div>
+
+            {/* Bouton principal */}
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2"
+            >
+              {isLoading ? (
+                <><Loader2 className="h-5 w-5 animate-spin mr-2" /> Connexion...</>
+              ) : (
+                'Se connecter'
+              )}
+            </Button>
+          </form>
+
+          {/* Séparateur doré */}
+          <div className="flex items-center gap-3 my-6">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#F59E0B]/30 to-transparent" />
+            <span className="text-xs text-[#1E1B4B]/40 font-medium">ou</span>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#F59E0B]/30 to-transparent" />
+          </div>
+
+          {/* Bouton secondaire Google (placeholder) */}
+          <button
+            type="button"
+            className="w-full h-12 rounded-xl border border-[#C2410C]/30 bg-white text-[#C2410C] font-medium text-sm hover:bg-[#C2410C]/5 transition-all duration-300 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2410C] focus-visible:ring-offset-2"
+            onClick={() => toast.info('Bientôt disponible', { description: 'L\'authentification Google arrivera prochainement.' })}
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+            </svg>
+            Continuer avec Google
+          </button>
+
+          {/* Retour landing */}
+          <div className="mt-6 text-center">
+            <a
+              href="/"
+              className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/50 hover:text-[#1E1B4B] transition-colors"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Retour à l'accueil
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* ════════ DIALOG : Mot de passe oublié ════════ */}
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent className="max-w-md rounded-2xl border-[#1E1B4B]/10">
+          <DialogHeader>
+            <DialogTitle className="text-[#1E1B4B] font-bold">Réinitialiser le mot de passe</DialogTitle>
+            <DialogDescription className="text-[#1E1B4B]/50">
+              {resetSent
+                ? 'Entrez le token reçu par email et votre nouveau mot de passe.'
+                : 'Entrez votre adresse email pour recevoir un lien de réinitialisation.'}
             </DialogDescription>
           </DialogHeader>
 
           {!resetSent ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="reset-email" className="text-xs font-semibold text-white/50 uppercase tracking-wider">Adresse email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25" />
-                  <Input
-                    id="reset-email"
-                    type="email"
-                    placeholder="votre.email@universite.fr"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2"
-                    onKeyDown={(e) => e.key === 'Enter' && handleResetRequest()}
-                  />
-                </div>
-              </div>
-              <DialogFooter className="gap-2 sm:gap-2 pt-2">
-                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl h-10 border-white/[0.08] bg-transparent text-white/60 hover:text-white hover:bg-white/[0.05]">
-                  Annuler
-                </Button>
-                <Button onClick={handleResetRequest} disabled={resetSending} className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white">
-                  {resetSending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Envoi...
-                    </>
-                  ) : (
-                    'Envoyer le token'
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-4 text-center"
-              >
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <CheckCircle2 className="w-10 h-10 text-indigo-400 mx-auto mb-2" />
-                </motion.div>
-                <p className="text-sm font-medium text-indigo-300">
-                  Demande envoyée avec succès
-                </p>
-                <p className="text-xs text-indigo-400/50 mt-1">
-                  Vérifiez votre boîte mail pour le token de réinitialisation.
-                </p>
-              </motion.div>
-
-              {resetToken && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="space-y-3"
-                >
-                  <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-                    <p className="text-xs font-medium text-white/40 mb-1">Token reçu :</p>
-                    <code className="text-sm font-mono bg-white/[0.06] px-2 py-1 rounded break-all text-indigo-300">{resetToken}</code>
-                  </div>
-                  <Button
-                    onClick={() => openConfirmDialog(resetToken)}
-                    className="w-full rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white"
-                  >
-                    Définir un nouveau mot de passe
-                  </Button>
-                </motion.div>
-              )}
-
-              <DialogFooter className="gap-2 sm:gap-2 pt-2">
-                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl h-10 border-white/[0.08] bg-transparent text-white/60 hover:text-white hover:bg-white/[0.05]">
-                  Fermer
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setResetSent(false)
-                    setResetToken(null)
-                    setResetEmail('')
-                  }}
-                  className="rounded-xl h-10 text-white/40 hover:text-white hover:bg-white/[0.05]"
-                >
-                  Renvoyer
-                </Button>
-                {!resetToken && (
-                  <Button
-                    onClick={() => openConfirmDialog()}
-                    className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white"
-                  >
-                    J&apos;ai déjà un token
-                  </Button>
-                )}
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ═══════════════════════════════════════════════════════ */}
-      {/* PASSWORD RESET CONFIRM DIALOG                           */}
-      {/* ═══════════════════════════════════════════════════════ */}
-      <Dialog open={confirmDialogOpen} onOpenChange={(open) => { if (!open) setConfirmDialogOpen(false) }}>
-        <DialogContent className="sm:max-w-md rounded-2xl bg-[#0a0a0a] border-white/[0.08] text-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2.5 text-lg text-white">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
-                <Lock className="w-4 h-4 text-indigo-400" />
-              </div>
-              Nouveau mot de passe
-            </DialogTitle>
-            <DialogDescription className="text-sm text-white/40">
-              Entrez votre token et choisissez un nouveau mot de passe.
-            </DialogDescription>
-          </DialogHeader>
-
-          {!confirmSuccess ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="confirm-token" className="text-xs font-semibold text-white/50 uppercase tracking-wider">Token de réinitialisation</Label>
+            <>
+              <div className="space-y-2 py-2">
+                <Label htmlFor="reset-email" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+                  Adresse email
+                </Label>
                 <Input
-                  id="confirm-token"
-                  type="text"
-                  placeholder="Entrez le token ici"
-                  value={confirmToken}
-                  onChange={(e) => setConfirmToken(e.target.value)}
-                  className="h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2"
+                  id="reset-email"
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="votre.email@universite.fr"
+                  className="h-11 rounded-xl border-[#1E1B4B]/15 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password" className="text-xs font-semibold text-white/50 uppercase tracking-wider">Nouveau mot de passe</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25" />
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setResetDialogOpen(false)}
+                  className="rounded-xl border-[#1E1B4B]/15"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  onClick={handleResetRequest}
+                  disabled={resetSending || !resetEmail.trim()}
+                  className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
+                >
+                  {resetSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Envoyer
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="reset-token" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+                    Token de réinitialisation
+                  </Label>
                   <Input
-                    id="confirm-password"
+                    id="reset-token"
+                    type="text"
+                    value={resetToken ?? ''}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Collez le token reçu par email"
+                    className="h-11 rounded-xl border-[#1E1B4B]/15 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-password" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+                    Nouveau mot de passe
+                  </Label>
+                  <Input
+                    id="reset-password"
                     type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2"
-                    onKeyDown={(e) => e.key === 'Enter' && handleResetConfirm()}
+                    className="h-11 rounded-xl border-[#1E1B4B]/15 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20"
                   />
                 </div>
               </div>
-              <DialogFooter className="gap-2 sm:gap-2 pt-2">
-                <Button variant="outline" onClick={() => setConfirmDialogOpen(false)} className="rounded-xl h-10 border-white/[0.08] bg-transparent text-white/60 hover:text-white hover:bg-white/[0.05]">
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setResetDialogOpen(false)}
+                  className="rounded-xl border-[#1E1B4B]/15"
+                >
                   Annuler
                 </Button>
-                <Button onClick={handleResetConfirm} disabled={confirmSubmitting} className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white">
-                  {confirmSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Mise à jour...
-                    </>
-                  ) : (
-                    'Confirmer'
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-4 text-center"
-              >
-                <CheckCircle2 className="w-10 h-10 text-indigo-400 mx-auto mb-2" />
-                <p className="text-sm font-medium text-indigo-300">
-                  Mot de passe mis à jour avec succès !
-                </p>
-              </motion.div>
-              <DialogFooter className="pt-2">
                 <Button
-                  onClick={() => {
-                    setConfirmDialogOpen(false)
-                    setResetDialogOpen(false)
-                  }}
-                  className="w-full rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white"
+                  onClick={handleResetConfirm}
+                  disabled={confirmSending || !resetToken?.trim() || !newPassword.trim()}
+                  className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
                 >
-                  Retour à la connexion
+                  {confirmSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Réinitialiser
                 </Button>
               </DialogFooter>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }
