@@ -56,7 +56,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
+import { useSidebarModeStore } from '@/stores/sidebar-store'
 import { NAV_CATEGORIES, PAGE_ROUTES, getPageContext, type PageId } from '@/lib/routes'
+import { useSidebar } from '@/components/ui/sidebar'
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -102,6 +104,8 @@ export function AppSidebar() {
   const router = useRouter()
   const pathname = usePathname()
   const { user } = useAuthStore()
+  const mode = useSidebarModeStore((s) => s.mode)
+  const { setOpen, isMobile } = useSidebar()
 
   if (!user) return null
 
@@ -111,6 +115,17 @@ export function AppSidebar() {
   // mappé à 3 PageId différents, seul le dernier gagne de manière fragile).
   const { pageId: currentPageId } = getPageContext(pathname, user.role)
   const categories = NAV_CATEGORIES[user.role] ?? []
+
+  // Handlers de survol — actifs uniquement en mode 'hover' sur desktop.
+  // Au survol du rail d'icônes, la sidebar s'étend (setOpen(true)) ; à la
+  // sortie, elle se réduit (setOpen(false)). Les props onMouseEnter /
+  // onMouseLeave sont étendues par <Sidebar> sur son conteneur fixe.
+  const handleMouseEnter = () => {
+    if (!isMobile && mode === 'hover') setOpen(true)
+  }
+  const handleMouseLeave = () => {
+    if (!isMobile && mode === 'hover') setOpen(false)
+  }
 
   const initials = user.name
     .split(' ')
@@ -125,7 +140,12 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+    <Sidebar
+      collapsible="icon"
+      className="border-r border-sidebar-border"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       {/* ─── Header : Logo SECT + motif kente ─── */}
       <SidebarHeader className="p-0 border-b border-sidebar-border">
         <div className="flex items-center gap-2.5 px-4 py-3 ds-kente-pattern">

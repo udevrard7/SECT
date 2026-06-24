@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { PanelLeftClose, PanelLeftOpen, PanelLeftDashed, Check } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, PanelLeftDashed } from 'lucide-react'
 import { useSidebar } from '@/components/ui/sidebar'
+import { useSidebarModeStore, type SidebarMode } from '@/stores/sidebar-store'
 import { cn } from '@/lib/utils'
-
-type SidebarMode = 'expanded' | 'collapsed' | 'hover'
 
 const MODES: { id: SidebarMode; label: string; icon: typeof PanelLeftClose; description: string }[] = [
   { id: 'expanded', label: 'Étendu', icon: PanelLeftClose, description: 'Sidebar toujours visible' },
@@ -31,12 +30,22 @@ const MODES: { id: SidebarMode; label: string; icon: typeof PanelLeftClose; desc
  * Placement : dans le header, à gauche (avant le breadcrumb).
  */
 export function SidebarControl({ className }: { className?: string }) {
-  const { state, setOpen, toggleSidebar } = useSidebar()
-  const [mode, setMode] = useState<SidebarMode>('expanded')
+  const { state, setOpen } = useSidebar()
+  const mode = useSidebarModeStore((s) => s.mode)
+  const setMode = useSidebarModeStore((s) => s.setMode)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Sync mode avec l'état réel de la sidebar (sans useEffect pour éviter cascading renders)
+  // Au montage et à chaque changement de mode, on synchronise l'état `open`
+  // de la sidebar avec le mode persisté. Ne dépend volontairement que de
+  // `mode` : les handlers de survol (mode 'hover') appellent `setOpen`
+  // directement sans déclencher cet effet.
+  useEffect(() => {
+    setOpen(mode === 'expanded')
+  }, [mode])
+
+  // Sync mode avec l'état réel de la sidebar : en mode 'hover' le radio
+  // reste sur 'Survol' même quand la sidebar s'ouvre au survol.
   const currentMode: SidebarMode = mode === 'hover' ? 'hover' : (state === 'expanded' ? 'expanded' : 'collapsed')
 
   // Fermeture au clic extérieur
@@ -58,18 +67,19 @@ export function SidebarControl({ className }: { className?: string }) {
     }
   }, [dropdownOpen])
 
-  // Applique le mode sélectionné
+  // Applique le mode sélectionné : persiste le mode dans le store et bascule
+  // l'état `open` de la sidebar. Le comportement de survol (mode 'hover') est
+  // géré par les handlers onMouseEnter/onMouseLeave d'AppSidebar.
   const applyMode = (newMode: SidebarMode) => {
     setMode(newMode)
     setDropdownOpen(false)
 
     if (newMode === 'expanded') {
       setOpen(true)
-    } else if (newMode === 'collapsed') {
-      setOpen(false)
-    } else if (newMode === 'hover') {
-      // En mode hover, on réduit la sidebar (icônes uniquement)
-      // Le survol sera géré par le wrapper hover-area
+    } else {
+      // 'collapsed' ET 'hover' démarrent en mode réduit (rail d'icônes).
+      // Pour 'hover', le survol de la sidebar rouvre celle-ci via les
+      // handlers d'AppSidebar.
       setOpen(false)
     }
   }
