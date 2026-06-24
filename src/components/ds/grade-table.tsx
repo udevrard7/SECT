@@ -208,7 +208,7 @@ export function GradeTable({
                   onClick={interactive ? () => onRowClick(grade) : undefined}
                   aria-label={`${grade.subject} — ${grade.examTitle} : ${grade.score}/${grade.maxScore}`}
                   className={cn(
-                    'border-b transition-colors',
+                    'border-b transition-colors h-14',
                     interactive &&
                       'ds-lift cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                     !interactive && 'hover:bg-muted/30'
@@ -314,7 +314,7 @@ export function GradeTable({
                 }
               }}
               className={cn(
-                'rounded-lg border border-border bg-card p-4 shadow-sm',
+                'rounded-lg border border-border bg-card p-4 shadow-sm ds-kente-top',
                 interactive &&
                   'ds-lift cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
               )}

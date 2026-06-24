@@ -241,7 +241,7 @@ export function DesignSystemShowcase() {
               <ProgressRing value={87} accent="success" sublabel="Réussite" index={0} />
               <ProgressRing value={62} accent="primary" sublabel="Progression" index={1} />
               <ProgressRing value={35} accent="warning" sublabel="À risque" index={2} />
-              <ProgressRing value={95} accent="xp" sublabel="XP" size={60} index={3} />
+              <ProgressRing value={95} accent="xp" sublabel="XP" index={3} />
             </div>
           </div>
           {/* UserStats détaillé */}

@@ -402,7 +402,7 @@ export function LoginForm() {
                   réinventée par l'IA
                 </span>
               </h2>
-              <p className="text-white/50 text-lg leading-relaxed max-w-md">
+              <p className="text-white/65 text-lg leading-relaxed max-w-md">
                 Générez, surveillez et corrigez vos examens en quelques minutes.
                 Conçu pour les universités d'Afrique de l'Ouest.
               </p>
@@ -433,7 +433,7 @@ export function LoginForm() {
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-white">{advantage.title}</h3>
-                    <p className="text-xs text-white/45 mt-0.5 leading-relaxed">{advantage.desc}</p>
+                    <p className="text-xs text-white/60 mt-0.5 leading-relaxed">{advantage.desc}</p>
                   </div>
                 </motion.div>
               ))}
@@ -498,7 +498,7 @@ export function LoginForm() {
         >
           {/* ── Bande kente supérieure (signature) ── */}
           <div
-            className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl"
+            className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl opacity-60"
             style={{
               backgroundImage: `repeating-linear-gradient(90deg,
                 #84CC16 0px, #84CC16 20px,
@@ -548,7 +548,7 @@ export function LoginForm() {
               type="button"
               onClick={() => handleModeChange('personnel')}
               aria-pressed={isPersonnel}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/55 hover:text-[#1E1B4B]/60'}`}
             >
               <Briefcase className="w-4 h-4" />
               Personnel
@@ -557,7 +557,7 @@ export function LoginForm() {
               type="button"
               onClick={() => handleModeChange('etudiant')}
               aria-pressed={!isPersonnel}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${!isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${!isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/55 hover:text-[#1E1B4B]/60'}`}
             >
               <GraduationCap className="w-4 h-4" />
               Étudiant
@@ -589,16 +589,26 @@ export function LoginForm() {
           >
             {/* Email / Matricule */}
             <div className="space-y-1.5">
-              <Label htmlFor="identifier" className="text-xs font-semibold text-[#1E1B4B]/60 uppercase tracking-wider">
-                {identifierLabel}
-              </Label>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={identifierLabel}
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 5 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Label htmlFor="identifier" className="text-xs font-semibold text-[#1E1B4B]/60 uppercase tracking-wider">
+                    {identifierLabel}
+                  </Label>
+                </motion.div>
+              </AnimatePresence>
               <div className="relative group">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
                 <Input
                   id="identifier"
                   type={isPersonnel ? 'email' : 'text'}
                   placeholder={isPersonnel ? 'votre.email@universite.fr' : 'ETU-XXXXXX ou email'}
-                  className="pl-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/25 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
+                  className="pl-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/60 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
                   {...form.register('identifier')}
                 />
               </div>
@@ -618,13 +628,13 @@ export function LoginForm() {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
-                  className="pl-10 pr-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/25 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
+                  className="pl-10 pr-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/60 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
                   {...form.register('password')}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#1E1B4B]/35 hover:text-[#1E1B4B] transition-colors"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#1E1B4B]/55 hover:text-[#1E1B4B] transition-colors"
                   aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -670,7 +680,7 @@ export function LoginForm() {
           <div className="mt-5 pt-4 border-t border-[#1E1B4B]/8 text-center">
             <a
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/45 hover:text-[#1E1B4B] transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/60 hover:text-[#1E1B4B] transition-colors"
             >
               <ArrowLeft className="h-3 w-3" />
               Retour à l'accueil
