@@ -51,18 +51,18 @@ export function getCorrectionBadge(type: string): { label: string; classes: stri
   if (isAutoGradedType(type)) {
     return {
       label: 'Auto',
-      classes: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800',
+      classes: 'bg-info/10 text-info border-info/20',
     }
   }
   if (isSemiAutoGradedType(type)) {
     return {
       label: 'Auto+',
-      classes: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800',
+      classes: 'bg-secondary/10 text-secondary border-secondary/20',
     }
   }
   return {
     label: 'Manuel',
-    classes: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
+    classes: 'bg-warning/10 text-warning border-warning/20',
   }
 }
 
@@ -80,10 +80,10 @@ export function getDifficulteLabel(diff: string): string {
 
 export function getDifficulteDotColor(diff: string): string {
   switch (diff) {
-    case 'FACILE': return 'bg-emerald-500'
-    case 'MOYEN': return 'bg-amber-500'
-    case 'DIFFICILE': return 'bg-orange-500'
-    case 'EXPERT': return 'bg-rose-500'
+    case 'FACILE': return 'bg-success'
+    case 'MOYEN': return 'bg-warning'
+    case 'DIFFICILE': return 'bg-warning'
+    case 'EXPERT': return 'bg-destructive'
     default: return 'bg-muted-foreground'
   }
 }
@@ -93,25 +93,25 @@ export function getDifficulteDotColor(diff: string): string {
 export function getScoreColor(score: number, total: number): string {
   if (total === 0) return 'text-muted-foreground'
   const pct = score / total
-  if (pct >= 0.5) return 'text-emerald-600 dark:text-emerald-400'
-  if (pct >= 0.4) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
+  if (pct >= 0.5) return 'text-success'
+  if (pct >= 0.4) return 'text-warning'
+  return 'text-destructive'
 }
 
 export function getScoreCircleColor(score: number, total: number): string {
   if (total === 0) return 'bg-muted text-muted-foreground border-border'
   const pct = score / total
-  if (pct >= 0.5) return 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
-  if (pct >= 0.4) return 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700'
-  return 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700'
+  if (pct >= 0.5) return 'bg-success/10 text-success border-success/20'
+  if (pct >= 0.4) return 'bg-warning/10 text-warning border-warning/20'
+  return 'bg-destructive/10 text-destructive border-destructive/20'
 }
 
 // ─── Student status ───
 
 export function getStudentStatusDot(session: CorrectionSession): { color: string; label: string } {
-  if (session.statut === 'RETOURNEE') return { color: 'bg-teal-500', label: 'Rendue' }
-  if (session.allCorrected) return { color: 'bg-emerald-500', label: 'Corrigée' }
-  if (session.needsCorrectionCount > 0) return { color: 'bg-amber-500', label: 'À corriger' }
+  if (session.statut === 'RETOURNEE') return { color: 'bg-tech', label: 'Rendue' }
+  if (session.allCorrected) return { color: 'bg-success', label: 'Corrigée' }
+  if (session.needsCorrectionCount > 0) return { color: 'bg-warning', label: 'À corriger' }
   return { color: 'bg-muted-foreground', label: 'En attente' }
 }
 

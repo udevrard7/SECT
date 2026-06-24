@@ -26,6 +26,11 @@ export interface StatCardProps {
   }
   /** Sous-texte optionnel sous la valeur */
   hint?: string
+  /** Suffixe optionnel après la valeur (ex: "/20", "%", "pts") */
+  suffix?: string
+  /** Score normalisé sur 20 : si fourni, colore dynamiquement la valeur
+   *  (≥16 success, ≥10 warning, <10 danger) — override l'accent pour la valeur */
+  scoreOn20?: number
   /** État de chargement (affiche un skeleton) */
   loading?: boolean
   /** Délai d'animation en stagger (ms) */
@@ -76,12 +81,24 @@ export function StatCard({
   accent = 'primary',
   trend,
   hint,
+  suffix,
+  scoreOn20,
   loading = false,
   index = 0,
   onClick,
 }: StatCardProps) {
   const accentMeta = ACCENT_MAP[accent]
   const isInteractive = !!onClick
+
+  // Coloration dynamique de la valeur si scoreOn20 fourni (priorité sur l'accent)
+  const valueColorClass =
+    scoreOn20 !== undefined
+      ? scoreOn20 >= 16
+        ? 'text-success'
+        : scoreOn20 >= 10
+          ? 'text-warning'
+          : 'text-destructive'
+      : undefined
 
   const content = (
     <motion.div
@@ -127,8 +144,9 @@ export function StatCard({
       {loading ? (
         <PulseSkeleton className="h-8 w-24" />
       ) : (
-        <p className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
+        <p className={cn('font-mono text-2xl font-semibold tabular-nums tracking-tight', valueColorClass)}>
           {value}
+          {suffix && <span className="ml-0.5 text-sm font-normal text-muted-foreground">{suffix}</span>}
         </p>
       )}
 

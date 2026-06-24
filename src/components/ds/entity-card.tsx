@@ -23,6 +23,9 @@ export interface EntityCardProps {
   badge?: { label: string; variant?: 'primary' | 'secondary' | 'success' | 'warning' | 'danger' }
   /** Métadonnées en footer (ex: "12 questions · 45 min") */
   meta?: string
+  /** Niveau d'apprentissage du cours/module (ex: 3 sur 5) — affiché
+   *  comme un badge "Niveau X" + icône. Permet la gamification par cours. */
+  level?: { current: number; max: number; label?: string }
   /** État de chargement */
   loading?: boolean
   /** Index pour stagger d'animation */
@@ -68,6 +71,7 @@ export function EntityCard({
   tier,
   badge,
   meta,
+  level,
   loading = false,
   index = 0,
   onClick,
@@ -182,6 +186,29 @@ export function EntityCard({
 
         {/* Children (contenu personnalisé) */}
         {children}
+
+        {/* Niveau d'apprentissage (gamification par cours/module) */}
+        {level && !loading && (
+          <div className="mt-3 flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              {level.label ?? 'Niveau'}
+            </span>
+            <div className="flex gap-0.5">
+              {Array.from({ length: level.max }).map((_, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    i < level.current ? 'bg-primary' : 'bg-muted'
+                  )}
+                />
+              ))}
+            </div>
+            <span className="font-mono text-[10px] font-semibold tabular-nums text-primary ml-0.5">
+              {level.current}/{level.max}
+            </span>
+          </div>
+        )}
 
         {/* Meta footer */}
         {meta && !loading && (
