@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { SidebarTrigger } from '@/components/ui/sidebar'
+import { SidebarControl } from '@/components/layout/sidebar-control'
 import { ThemeToggle } from '@/components/ds'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
@@ -70,8 +70,8 @@ export function AppHeader() {
 
       {/* Header compact h-12 — fond bleu nuit */}
       <div className="flex h-12 items-center gap-2 bg-sidebar border-b border-sidebar-border px-3">
-        {/* Sidebar toggle */}
-        <SidebarTrigger className="-ml-1 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-lg" />
+        {/* Sidebar control (collapse/expand) */}
+        <SidebarControl className="-ml-1" />
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
