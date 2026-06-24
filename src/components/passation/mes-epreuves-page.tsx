@@ -7,10 +7,7 @@ import {
   Play,
   RotateCcw,
   CalendarDays,
-  User,
-  Timer,
   HelpCircle,
-  Star,
   Eye,
   CheckCircle2,
   AlertCircle,
@@ -28,17 +25,9 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PAGE_ROUTES } from '@/lib/routes'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -50,7 +39,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { PulseSkeleton } from '@/components/ds'
+import { EntityCard } from '@/components/ds'
 
 // ─── Types ───
 
@@ -411,22 +400,9 @@ export function MesEpreuvesPage() {
         {/* ─── À venir tab ─── */}
         <TabsContent value="a-venir">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="p-6 rounded-lg border border-border bg-card">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex-1 space-y-3">
-                      <PulseSkeleton className="h-5 w-2/3" />
-                      <PulseSkeleton className="h-4 w-1/2" />
-                      <div className="flex gap-4">
-                        <PulseSkeleton className="h-3 w-24" />
-                        <PulseSkeleton className="h-3 w-20" />
-                        <PulseSkeleton className="h-3 w-16" />
-                      </div>
-                    </div>
-                    <PulseSkeleton className="h-10 w-32" />
-                  </div>
-                </div>
+                <EntityCard key={i} loading title="" />
               ))}
             </div>
           ) : upcomingEpreuves.length === 0 ? (
@@ -440,140 +416,92 @@ export function MesEpreuvesPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {upcomingEpreuves.map((ep) => {
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {upcomingEpreuves.map((ep, idx) => {
                 const availability = getExamAvailability(ep)
                 const statusInfo = getStatusIndicator(availability)
                 const activeSession = ep.sessions.find((s) => s.statut === 'EN_COURS')
                 const canStart = availability === 'disponible'
                 const canResume = availability === 'en_cours'
+                const rem = getTimeRemaining(ep.dateFin)
+                const badgeVariant =
+                  availability === 'disponible' ? 'success' as const
+                  : availability === 'en_cours' ? 'warning' as const
+                  : 'secondary' as const
 
                 return (
-                  <Card
+                  <EntityCard
                     key={ep.id}
-                    className="group transition-shadow hover:shadow-md ds-lift"
+                    index={idx}
+                    title={ep.titre}
+                    subtitle={ep.enseignant.name}
+                    thumbnailIcon={ClipboardList}
+                    badge={{ label: statusInfo.label, variant: badgeVariant }}
+                    meta={`${ep.duree} min · ${ep.questionCount} question${ep.questionCount > 1 ? 's' : ''} · ${ep.totalPoints} pts`}
                   >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        {/* Left: Exam info */}
-                        <div className="flex-1 space-y-3">
-                          {/* Title row */}
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
-                              <ClipboardList className="h-5 w-5 text-success" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight">
-                                {ep.titre}
-                              </h3>
-                              <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <User className="h-3.5 w-3.5" />
-                                {ep.enseignant.name}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Meta info */}
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
-                            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <CalendarDays className="h-3.5 w-3.5 text-success" />
-                              Début : {formatDateTimeFR(ep.dateDebut)}
-                            </span>
-                            <span className={`flex items-center gap-1.5 text-sm font-medium ${(() => {
-                              const rem = getTimeRemaining(ep.dateFin)
-                              return rem.urgent ? 'text-destructive' : 'text-warning'
-                            })()}`}>
-                              <AlertCircle className="h-3.5 w-3.5" />
-                              Limite : {formatDateTimeFR(ep.dateFin)}
-                            </span>
-                            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <Timer className="h-3.5 w-3.5 text-secondary" />
-                              <span className="font-mono tabular-nums">{ep.duree}</span> min
-                            </span>
-                            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <HelpCircle className="h-3.5 w-3.5 text-warning" />
-                              <span className="font-mono tabular-nums">{ep.questionCount}</span> question{ep.questionCount > 1 ? 's' : ''}
-                            </span>
-                            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <Star className="h-3.5 w-3.5 text-secondary" />
-                              <span className="font-mono tabular-nums">{ep.totalPoints}</span> point{ep.totalPoints > 1 ? 's' : ''}
-                            </span>
-                          </div>
-
-                          {/* Time remaining indicator */}
-                          {(() => {
-                            const rem = getTimeRemaining(ep.dateFin)
-                            if (availability === 'terminee') return null
-                            return (
-                              <div className="pl-[52px]">
-                                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                  rem.urgent
-                                    ? 'bg-destructive/10 text-destructive'
-                                    : 'bg-warning/10 text-warning'
-                                }`}>
-                                  <Clock className="h-3 w-3" />
-                                  {rem.text}
-                                </span>
-                              </div>
-                            )
-                          })()}
-
-                          {/* Status indicator */}
-                          <div className="flex items-center gap-2 pl-[52px]">
-                            <span className={`h-2 w-2 rounded-full ${statusInfo.dotClass}`} />
-                            <span className={`text-sm font-medium ${statusInfo.textClass}`}>
-                              {statusInfo.label}
-                            </span>
-                            {availability === 'pas_encore' && (
-                              <span className="text-xs text-muted-foreground">
-                                (disponible le {formatDateFR(ep.dateDebut)} à {formatTime(ep.dateDebut)})
-                              </span>
-                            )}
-                            {availability === 'en_cours' && activeSession?.dateDebut && (
-                              <span className="text-xs text-muted-foreground">
-                                (débuté le {formatDateTimeFR(activeSession.dateDebut)})
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Description */}
-                          {ep.description && (
-                            <p className="line-clamp-2 text-sm text-muted-foreground pl-[52px]">
-                              {ep.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Right: Action button */}
-                        <div className="flex shrink-0 items-center gap-2 sm:ml-4">
-                          {canStart && (
-                            <Button
-                              className="bg-success hover:bg-success/90"
-                              onClick={() => handleCommencer(ep.id)}
-                            >
-                              <Play className="h-4 w-4" />
-                              Commencer
-                            </Button>
-                          )}
-                          {canResume && (
-                            <Button
-                              className="bg-warning hover:bg-warning/90"
-                              onClick={() => handleReprendre(ep.id)}
-                            >
-                              <RotateCcw className="h-4 w-4" />
-                              Reprendre
-                            </Button>
-                          )}
-                          {!canStart && !canResume && (
-                            <Button variant="outline" disabled>
-                              <Clock className="h-4 w-4" />
-                              {availability === 'pas_encore' ? 'Pas encore disponible' : 'Terminée'}
-                            </Button>
-                          )}
-                        </div>
+                    {/* Dates + time remaining + status */}
+                    <div className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <CalendarDays className="h-3 w-3 text-success" />
+                        <span>Début : {formatDateTimeFR(ep.dateDebut)}</span>
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div className={`flex items-center gap-1.5 ${rem.urgent ? 'text-destructive' : 'text-warning'}`}>
+                        <AlertCircle className="h-3 w-3" />
+                        <span>Limite : {formatDateTimeFR(ep.dateFin)}</span>
+                      </div>
+                      {availability !== 'terminee' && (
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          rem.urgent
+                            ? 'bg-destructive/10 text-destructive'
+                            : 'bg-warning/10 text-warning'
+                        }`}>
+                          <Clock className="h-3 w-3" />
+                          {rem.text}
+                        </span>
+                      )}
+                      {availability === 'pas_encore' && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Disponible le {formatDateFR(ep.dateDebut)} à {formatTime(ep.dateDebut)}
+                        </p>
+                      )}
+                      {availability === 'en_cours' && activeSession?.dateDebut && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Débuté le {formatDateTimeFR(activeSession.dateDebut)}
+                        </p>
+                      )}
+                      {ep.description && (
+                        <p className="line-clamp-2 pt-1">{ep.description}</p>
+                      )}
+                    </div>
+
+                    {/* Action button */}
+                    <div className="mt-3">
+                      {canStart && (
+                        <Button
+                          className="w-full bg-success hover:bg-success/90"
+                          onClick={() => handleCommencer(ep.id)}
+                        >
+                          <Play className="h-4 w-4" />
+                          Commencer
+                        </Button>
+                      )}
+                      {canResume && (
+                        <Button
+                          className="w-full bg-warning hover:bg-warning/90"
+                          onClick={() => handleReprendre(ep.id)}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          Reprendre
+                        </Button>
+                      )}
+                      {!canStart && !canResume && (
+                        <Button variant="outline" disabled className="w-full">
+                          <Clock className="h-4 w-4" />
+                          {availability === 'pas_encore' ? 'Pas encore disponible' : 'Terminée'}
+                        </Button>
+                      )}
+                    </div>
+                  </EntityCard>
                 )
               })}
             </div>
@@ -583,18 +511,9 @@ export function MesEpreuvesPage() {
         {/* ─── Résultats tab ─── */}
         <TabsContent value="resultats">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="p-6 rounded-lg border border-border bg-card">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex-1 space-y-3">
-                      <PulseSkeleton className="h-5 w-2/3" />
-                      <PulseSkeleton className="h-4 w-1/2" />
-                      <PulseSkeleton className="h-3 w-full" />
-                    </div>
-                    <PulseSkeleton className="h-10 w-32" />
-                  </div>
-                </div>
+                <EntityCard key={i} loading title="" />
               ))}
             </div>
           ) : completedEpreuves.length === 0 ? (
@@ -608,8 +527,8 @@ export function MesEpreuvesPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {completedEpreuves.map((ep) => {
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {completedEpreuves.map((ep, idx) => {
                 const session = ep.sessions.find(
                   (s) => s.statut === 'SOUMISE' || s.statut === 'CORRIGEE' || s.statut === 'RETOURNEE' || s.statut === 'ABSENT' || s.statut === 'NON_SOUMIS'
                 )
@@ -634,131 +553,99 @@ export function MesEpreuvesPage() {
                   : false
                 )
 
+                const thumbnailIcon = isAbsent ? Ban : isNonSoumis ? AlertTriangle : FileCheck
+                const badgeLabel = isAbsent
+                  ? 'Absent'
+                  : isNonSoumis
+                    ? 'Non soumis'
+                    : isCorrected
+                      ? 'Corrigé'
+                      : 'En attente'
+                const badgeVariant =
+                  isCorrected ? 'success' as const
+                  : (isAbsent || isNonSoumis) ? 'warning' as const
+                  : 'warning' as const
+
                 return (
-                  <Card
+                  <EntityCard
                     key={ep.id}
-                    className="group transition-shadow hover:shadow-md ds-lift"
+                    index={idx}
+                    title={ep.titre}
+                    subtitle={ep.enseignant.name}
+                    thumbnailIcon={thumbnailIcon}
+                    progress={isAbsent || isNonSoumis ? undefined : percentage}
+                    badge={{ label: badgeLabel, variant: badgeVariant }}
+                    meta={
+                      isAbsent
+                        ? 'Absent(e) à l\'épreuve'
+                        : isNonSoumis
+                          ? 'Brouillon sauvegardé'
+                          : `Score : ${score.toFixed(1)}/${maxScore} · ${session.dateDebut ? formatDateTimeFR(session.dateDebut) : ''}`
+                    }
                   >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        {/* Left: Result info */}
-                        <div className="flex-1 space-y-3">
-                          {/* Title row */}
-                          <div className="flex items-start gap-3">
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${isAbsent ? 'bg-muted' : isNonSoumis ? 'bg-warning/10' : 'bg-secondary/10'}`}>
-                              {isAbsent ? (
-                                <Ban className="h-5 w-5 text-muted-foreground" />
-                              ) : isNonSoumis ? (
-                                <AlertTriangle className="h-5 w-5 text-warning" />
-                              ) : (
-                                <FileCheck className="h-5 w-5 text-secondary" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight">
-                                {ep.titre}
-                              </h3>
-                              <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <User className="h-3.5 w-3.5" />
-                                {ep.enseignant.name}
-                              </p>
-                            </div>
-                          </div>
+                    {/* Absent/Non soumis banner */}
+                    {isAbsent && (
+                      <div className="mt-2 rounded-md border border-border bg-muted/50 p-3">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Absent(e) — Vous n&apos;avez pas commencé cette épreuve.
+                        </p>
+                      </div>
+                    )}
+                    {isNonSoumis && (
+                      <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 p-3">
+                        <p className="text-xs font-medium text-warning">
+                          Non soumis — Votre brouillon a été sauvegardé automatiquement à la clôture de l&apos;épreuve.
+                        </p>
+                      </div>
+                    )}
 
-                          {/* Absent/Non soumis banner */}
-                          {isAbsent && (
-                            <div className="pl-[52px]">
-                              <div className="rounded-md border border-border bg-muted/50 p-3">
-                                <p className="text-sm font-medium text-muted-foreground">
-                                  Absent(e) — Vous n&apos;avez pas commencé cette épreuve.
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                          {isNonSoumis && (
-                            <div className="pl-[52px]">
-                              <div className="rounded-md border border-warning/20 bg-warning/10 p-3">
-                                <p className="text-sm font-medium text-warning">
-                                  Non soumis — Votre brouillon a été sauvegardé automatiquement à la clôture de l&apos;épreuve.
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Date taken */}
-                          {!isAbsent && session.dateDebut && (
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
-                              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5 text-secondary" />
-                                Passé le {formatDateTimeFR(session.dateDebut)}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Score display */}
-                          {!isAbsent && !isNonSoumis && (
-                          <div className="pl-[52px]">
-                            <div className="flex items-center gap-3">
-                              <Badge
-                                variant="outline"
-                                className={`font-mono text-sm font-bold tabular-nums px-3 py-1 ${getScoreBadgeClasses(score)}`}
-                              >
-                                {score.toFixed(1)}/{maxScore}
-                              </Badge>
-                              <span className="font-mono text-sm text-muted-foreground tabular-nums">
-                                {percentage}%
-                              </span>
-                            </div>
-                            <div className="mt-2 flex items-center gap-3">
-                              <div className={`h-2.5 flex-1 max-w-xs overflow-hidden rounded-full ${getProgressBg(score)}`}>
-                                <div
-                                  className={`h-full rounded-full transition-all ${getProgressColor(score)}`}
-                                  style={{ width: `${percentage}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          )}
-
-                          {/* Session status */}
-                          <div className="flex items-center gap-2 pl-[52px]">
-                            {isCorrected ? (
-                              <>
-                                <CheckCircle2 className="h-4 w-4 text-success" />
-                                <span className="text-sm font-medium text-success">
-                                  Corrigé
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <Loader2 className="h-4 w-4 text-warning animate-spin" />
-                                <span className="text-sm font-medium text-warning">
-                                  En attente de correction
-                                </span>
-                              </>
-                            )}
-                            {!allGraded && isCorrected && (
-                              <span className="text-xs text-muted-foreground">
-                                (certaines questions sont encore en attente)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Right: Action button */}
-                        <div className="shrink-0 sm:ml-4">
-                          <Button
+                    {/* Score badge + correction status for normal cases */}
+                    {!isAbsent && !isNonSoumis && (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Badge
                             variant="outline"
-                            className="border-success/30 text-success hover:bg-success/10"
-                            onClick={() => handleVoirDetail(ep, session)}
+                            className={`font-mono text-xs font-bold tabular-nums px-2 py-0.5 ${getScoreBadgeClasses(score)}`}
                           >
-                            <Eye className="h-4 w-4" />
-                            Voir le détail
-                          </Button>
+                            {score.toFixed(1)}/{maxScore}
+                          </Badge>
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                            {percentage}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          {isCorrected ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                              <span className="font-medium text-success">Corrigé</span>
+                            </>
+                          ) : (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 text-warning animate-spin" />
+                              <span className="font-medium text-warning">En attente de correction</span>
+                            </>
+                          )}
+                          {!allGraded && isCorrected && (
+                            <span className="text-[10px] text-muted-foreground">
+                              (certaines questions en attente)
+                            </span>
+                          )}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    )}
+
+                    {/* Action button */}
+                    <div className="mt-3">
+                      <Button
+                        variant="outline"
+                        className="w-full border-success/30 text-success hover:bg-success/10"
+                        onClick={() => handleVoirDetail(ep, session)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        Voir le détail
+                      </Button>
+                    </div>
+                  </EntityCard>
                 )
               })}
             </div>

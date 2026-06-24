@@ -6,6 +6,7 @@ import {
   FileText,
   File,
   Presentation,
+  type LucideIcon,
   Plus,
   Upload,
   X,
@@ -36,10 +37,6 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { PAGE_ROUTES } from '@/lib/routes'
-import {
-  Card,
-  CardContent,
-} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -103,7 +100,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
-import { PulseSkeleton } from '@/components/ds'
+import { EntityCard } from '@/components/ds'
 
 // ─── Types ───
 
@@ -284,6 +281,21 @@ function getSmallFileIcon(doc: Document | { nomFichier: string; typeMime: string
       return <File className="h-4 w-4 text-gray-500 dark:text-gray-400" />
     default:
       return <File className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+  }
+}
+
+function getFileLucideIcon(doc: Document | { nomFichier: string; typeMime: string | null }): LucideIcon {
+  const type = doc.typeMime ? getFileTypeFromMime(doc.typeMime) : getFileTypeFromName(doc.nomFichier)
+  switch (type) {
+    case 'pdf':
+    case 'docx':
+      return FileText
+    case 'pptx':
+      return Presentation
+    case 'txt':
+    case 'md':
+    default:
+      return File
   }
 }
 
@@ -888,20 +900,35 @@ export function DocumentsPage() {
   // ─── Document Card (reusable for grid/folder views) ───
   const renderDocumentCard = (doc: Document) => {
     const isSelected = selectedIds.has(doc.id)
+    const isClickable = doc.statutAnalyse !== 'EN_COURS'
+    const statusVariant =
+      doc.statutAnalyse === 'ANALYSE' ? 'success' as const
+      : doc.statutAnalyse === 'EN_COURS' ? 'warning' as const
+      : doc.statutAnalyse === 'ERREUR' ? 'danger' as const
+      : 'secondary' as const
+
     return (
-      <Card
+      <div
         key={doc.id}
-        className={`group relative transition-shadow hover:shadow-md ${
-          doc.statutAnalyse !== 'EN_COURS' ? 'cursor-pointer' : ''
-        } ${isSelected ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background' : ''}`}
-        onClick={() => handleSelectDocument(doc)}
+        className={`group relative rounded-lg ${
+          isSelected ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background' : ''
+        }`}
+        onClick={isClickable ? () => handleSelectDocument(doc) : undefined}
+        role={isClickable ? 'button' : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+        onKeyDown={isClickable ? (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleSelectDocument(doc)
+          }
+        } : undefined}
       >
         {/* Checkbox overlay */}
         <div
-          className="absolute top-2 left-2 z-10"
+          className="absolute top-2 left-2 z-20"
           onClick={(e) => toggleSelect(doc.id, e)}
         >
-          <div className={`rounded-md p-0.5 transition-colors ${
+          <div className={`rounded-md p-0.5 transition-colors bg-card/80 backdrop-blur-sm ${
             isSelected
               ? 'text-emerald-600 dark:text-emerald-400'
               : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-muted-foreground'
@@ -910,48 +937,33 @@ export function DocumentsPage() {
           </div>
         </div>
 
-        <CardContent className="flex flex-col gap-3 pt-0">
-          {/* File info row */}
-          <div className="flex items-start gap-3">
-            {getFileIcon(doc)}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium" title={doc.nomFichier}>
-                {truncateFileName(doc.nomFichier)}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {doc.tailleFichier ? formatFileSize(doc.tailleFichier) : 'Taille inconnue'}
-              </p>
+        <EntityCard
+          title={truncateFileName(doc.nomFichier)}
+          subtitle={doc.tailleFichier ? formatFileSize(doc.tailleFichier) : 'Taille inconnue'}
+          thumbnailIcon={getFileLucideIcon(doc)}
+          badge={{ label: getStatusLabel(doc.statutAnalyse), variant: statusVariant }}
+          meta={
+            doc.uniteEnseignement
+              ? `${doc.uniteEnseignement.code} · ${formatDate(doc.dateUpload)}`
+              : formatDate(doc.dateUpload)
+          }
+        >
+          {/* UE badge */}
+          {doc.uniteEnseignement && (
+            <div className="mt-2">
+              <Badge
+                variant="outline"
+                className="gap-1 text-[9px] px-1 py-0 border-success/30 text-emerald-700 dark:border-success dark:text-emerald-300"
+              >
+                <BookOpen className="h-2.5 w-2.5" />
+                {doc.uniteEnseignement.code}
+              </Badge>
             </div>
-          </div>
-
-          {/* UE badge + Date + status */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              {doc.uniteEnseignement && (
-                <Badge
-                  variant="outline"
-                  className="gap-1 text-[9px] px-1 py-0 border-success/30 text-emerald-700 dark:border-success dark:text-emerald-300 shrink-0"
-                >
-                  <BookOpen className="h-2.5 w-2.5" />
-                  {doc.uniteEnseignement.code}
-                </Badge>
-              )}
-              <span className="text-xs text-muted-foreground truncate">
-                {formatDate(doc.dateUpload)}
-              </span>
-            </div>
-            <Badge
-              variant="outline"
-              className={`gap-1 text-[10px] px-1.5 py-0 shrink-0 ${getStatusBadgeClasses(doc.statutAnalyse)}`}
-            >
-              {getStatusIcon(doc.statutAnalyse)}
-              {getStatusLabel(doc.statutAnalyse)}
-            </Badge>
-          </div>
+          )}
 
           {/* Quick preview for analyzed docs */}
           {doc.statutAnalyse === 'ANALYSE' && (
-            <div className="flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1">
               {parseJsonSafe<string[]>(doc.themesDetectes, [])
                 .slice(0, 3)
                 .map((theme, i) => (
@@ -970,8 +982,8 @@ export function DocumentsPage() {
               )}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </EntityCard>
+      </div>
     )
   }
 
@@ -1356,19 +1368,8 @@ export function DocumentsPage() {
       {/* ─── Loading state ─── */}
       {isLoading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="flex flex-col gap-3 pt-0">
-                <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-muted" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-3/4 rounded bg-muted" />
-                    <div className="h-3 w-1/2 rounded bg-muted" />
-                  </div>
-                </div>
-                <div className="h-3 w-1/3 rounded bg-muted" />
-              </CardContent>
-            </Card>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <EntityCard key={i} loading title="" />
           ))}
         </div>
       )}

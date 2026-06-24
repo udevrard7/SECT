@@ -8,8 +8,6 @@ import {
   Eye,
   Copy,
   Trash2,
-  Clock,
-  Trophy,
   HelpCircle,
   FileText,
   Sparkles,
@@ -19,7 +17,6 @@ import {
   ChevronUp,
   X,
   Loader2,
-  Calendar,
   BookOpen,
   Hash,
   AlertTriangle,
@@ -30,8 +27,6 @@ import { PAGE_ROUTES } from '@/lib/routes'
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -66,7 +61,7 @@ import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { PulseSkeleton } from '@/components/ds'
+import { EntityCard } from '@/components/ds'
 import { OrphanEpreuvesAlert } from './orphan-epreuves-alert'
 
 // ─── Types ───
@@ -432,17 +427,9 @@ export function BanqueEpreuvesPage() {
 
       {/* ─── Loading state ─── */}
       {isLoading && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="p-6 space-y-3 rounded-lg border border-border bg-card">
-              <PulseSkeleton className="h-5 w-48" />
-              <PulseSkeleton className="h-3 w-32" />
-              <div className="flex gap-3">
-                <PulseSkeleton className="h-6 w-16" variant="circle" />
-                <PulseSkeleton className="h-6 w-16" variant="circle" />
-                <PulseSkeleton className="h-6 w-20" variant="circle" />
-              </div>
-            </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <EntityCard key={i} loading title="" />
           ))}
         </div>
       )}
@@ -483,51 +470,28 @@ export function BanqueEpreuvesPage() {
 
       {/* ─── Exam list ─── */}
       {!isLoading && epreuves.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {epreuves.map((epreuve) => {
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {epreuves.map((epreuve, idx) => {
             const typeEntries = Object.entries(epreuve.typeDistribution)
 
             return (
-              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md ds-lift">
-                <CardContent className="flex flex-col gap-3 p-6">
-                  {/* Title + mode badge */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
-                      {epreuve.description && (
-                        <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-                          {epreuve.description.length > 100 ? epreuve.description.slice(0, 100) + '...' : epreuve.description}
-                        </p>
-                      )}
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={epreuve.generationMode === 'IA_ASSISTEE'
-                        ? 'gap-1 bg-secondary/10 text-secondary border-secondary/20'
-                        : 'gap-1 bg-warning/10 text-warning border-warning/20'
-                      }
-                    >
-                      {epreuve.generationMode === 'IA_ASSISTEE' ? <><Sparkles className="h-3 w-3" /> IA</> : <><Edit3 className="h-3 w-3" /> Manuelle</>}
-                    </Badge>
-                  </div>
-
-                  {/* Meta info */}
-                  <div className="flex flex-wrap gap-3">
-                    <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
-                      <HelpCircle className="h-3 w-3" />
-                      <span className="font-mono tabular-nums">{epreuve.questionCount}</span> question{epreuve.questionCount > 1 ? 's' : ''}
-                    </Badge>
-                    <Badge variant="secondary" className="gap-1 bg-secondary/10 text-secondary">
-                      <Trophy className="h-3 w-3" />
-                      <span className="font-mono tabular-nums">{epreuve.baremeTotal}</span> pts
-                    </Badge>
-                    <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
-                      <Clock className="h-3 w-3" />
-                      <span className="font-mono tabular-nums">{epreuve.duree}</span> min
-                    </Badge>
-                  </div>
-
-                  {/* Type distribution */}
+              <EntityCard
+                key={epreuve.id}
+                index={idx}
+                title={epreuve.titre}
+                subtitle={epreuve.description
+                  ? (epreuve.description.length > 100 ? epreuve.description.slice(0, 100) + '...' : epreuve.description)
+                  : undefined
+                }
+                thumbnailIcon={epreuve.generationMode === 'IA_ASSISTEE' ? Sparkles : Edit3}
+                badge={{
+                  label: epreuve.generationMode === 'IA_ASSISTEE' ? 'IA' : 'Manuelle',
+                  variant: epreuve.generationMode === 'IA_ASSISTEE' ? 'secondary' : 'warning',
+                }}
+                meta={`${epreuve.questionCount} question${epreuve.questionCount > 1 ? 's' : ''} · ${epreuve.baremeTotal} pts · ${epreuve.duree} min · Créée le ${formatDate(epreuve.createdAt)}`}
+              >
+                {/* Type distribution + source docs + filière/UE + actions */}
+                <div className="mt-2 space-y-2">
                   {typeEntries.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {typeEntries.map(([type, count]) => (
@@ -538,27 +502,23 @@ export function BanqueEpreuvesPage() {
                     </div>
                   )}
 
-                  {/* Source documents */}
                   {epreuve.sourceDocuments.length > 0 && (
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <FileText className="h-3 w-3" />
-                      {epreuve.sourceDocuments.map((d) => d.nomFichier).join(', ')}
+                      <FileText className="h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                        {epreuve.sourceDocuments.map((d) => d.nomFichier).join(', ')}
+                      </span>
                     </div>
                   )}
 
-                  {/* Filère / UE */}
                   {(epreuve.filiere || epreuve.uniteEnseignement) && (
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Hash className="h-3 w-3" />
-                      {epreuve.filiere?.nom}{epreuve.filiere && epreuve.uniteEnseignement ? ' · ' : ''}{epreuve.uniteEnseignement?.nom}
+                      <Hash className="h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                        {epreuve.filiere?.nom}{epreuve.filiere && epreuve.uniteEnseignement ? ' · ' : ''}{epreuve.uniteEnseignement?.nom}
+                      </span>
                     </div>
                   )}
-
-                  {/* Creation date */}
-                  <div className="text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3 inline mr-1" />
-                    Créée le {formatDate(epreuve.createdAt)}
-                  </div>
 
                   <Separator />
 
@@ -591,8 +551,8 @@ export function BanqueEpreuvesPage() {
                       Supprimer
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </EntityCard>
             )
           })}
         </div>

@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button'
 import {
   PulseSkeleton,
   StatCardSkeletonGrid,
+  StatCard,
   AcademicCalendar,
   type CalendarEvent,
 } from '@/components/ds'
@@ -45,7 +46,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { KpiCard } from '@/components/resultats/kpi-card'
 import { ChartCard } from '@/components/resultats/resultats-charts'
 import { ErrorState } from '@/components/shared/error-state'
 import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
@@ -344,7 +344,7 @@ export function EtudiantDashboard() {
 
   // KPI: couleur dynamique de la moyenne (déjà /20).
   const moyenneAccent =
-    data.moyenne >= 10 ? 'emerald' : data.moyenne >= 8 ? 'amber' : 'red'
+    data.moyenne >= 10 ? 'success' : data.moyenne >= 8 ? 'warning' : 'danger'
 
   return (
     <motion.div
@@ -372,33 +372,33 @@ export function EtudiantDashboard() {
 
       {/* ─── Quick stats KPIs ─── */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:border-l-4 [&>div]:border-l-primary">
-        <KpiCard
+        <StatCard
           icon={CalendarDays}
           label="Épreuves à venir"
           value={data.nbEpreuvesAVenir}
-          accentColor="sky"
+          accent="info"
         />
-        <KpiCard
+        <StatCard
           icon={Trophy}
           label="Moyenne"
           value={data.moyenne.toFixed(1)}
           suffix="/20"
-          accentColor={moyenneAccent}
+          accent={moyenneAccent}
           scoreOn20={data.moyenne}
         />
-        <KpiCard
+        <StatCard
           icon={Star}
           label="Meilleure note"
           value={data.meilleureNote.toFixed(1)}
           suffix="/20"
-          accentColor="violet"
+          accent="secondary"
           scoreOn20={data.meilleureNote}
         />
-        <KpiCard
+        <StatCard
           icon={Award}
           label="Badges"
           value={unlockedBadgeCount}
-          accentColor="violet"
+          accent="secondary"
         />
       </motion.div>
 

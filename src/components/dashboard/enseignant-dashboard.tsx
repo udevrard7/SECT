@@ -29,8 +29,7 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { PulseSkeleton, StatCardSkeletonGrid, AcademicCalendar, type CalendarEvent } from '@/components/ds'
-import { KpiCard } from '@/components/resultats/kpi-card'
+import { PulseSkeleton, StatCardSkeletonGrid, StatCard, AcademicCalendar, type CalendarEvent } from '@/components/ds'
 import { EvolutionChart, ComparisonChart, ChartCard } from '@/components/resultats/resultats-charts'
 import { ErrorState } from '@/components/shared/error-state'
 import { BadgesCarousel, BadgeUnlockNotification } from '@/components/shared/badges-carousel'
@@ -403,29 +402,29 @@ export function EnseignantDashboard() {
 
       {/* ─── Quick stats KPIs ─── */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:border-l-4 [&>div]:border-l-primary">
-        <KpiCard
+        <StatCard
           icon={FileText}
           label="Documents"
           value={data.nbDocuments}
-          accentColor="emerald"
+          accent="success"
         />
-        <KpiCard
+        <StatCard
           icon={BookOpen}
           label="Questions"
           value={data.nbQuestionsTotal}
-          accentColor="teal"
+          accent="primary"
         />
-        <KpiCard
+        <StatCard
           icon={CalendarDays}
           label="Épreuves actives"
           value={data.nbEpreuvesActives}
-          accentColor="amber"
+          accent="warning"
         />
-        <KpiCard
+        <StatCard
           icon={ClipboardPen}
           label="Corrections en attente"
           value={data.nbCorrectionsEnAttente}
-          accentColor="red"
+          accent="danger"
         />
       </motion.div>
 

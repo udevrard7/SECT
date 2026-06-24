@@ -15,7 +15,7 @@ import {
   Calendar,
   GitCompare,
 } from 'lucide-react'
-import { KpiCard } from './kpi-card'
+import { StatCard } from '@/components/ds'
 import { StudentsAtRiskList } from './students-at-risk'
 import {
   ChartCard,
@@ -61,33 +61,33 @@ export function OverviewTab({ data }: OverviewTabProps) {
     <div className="space-y-6">
       {/* KPIs globaux */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
+        <StatCard
           icon={GraduationCap}
           label="Épreuves terminées"
           value={data.totalEpreuves}
-          accentColor="emerald"
+          accent="success"
         />
-        <KpiCard
+        <StatCard
           icon={Users}
           label="Total copies"
           value={data.totalSessions}
-          subValue={`${data.totalCorrigees} corrigées`}
-          accentColor="teal"
+          hint={`${data.totalCorrigees} corrigées`}
+          accent="primary"
         />
-        <KpiCard
+        <StatCard
           icon={Target}
           label="Moyenne globale"
           value={data.globalMoyenne.toFixed(1)}
           suffix="/20"
-          accentColor="sky"
+          accent="info"
           scoreOn20={data.globalMoyenne}
         />
-        <KpiCard
+        <StatCard
           icon={Trophy}
           label="Taux de réussite"
           value={data.globalTauxReussite}
           suffix="%"
-          accentColor={data.globalTauxReussite >= 50 ? 'emerald' : 'amber'}
+          accent={data.globalTauxReussite >= 50 ? 'success' : 'warning'}
         />
       </div>
 

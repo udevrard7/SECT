@@ -75,6 +75,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { toast } from 'sonner'
+import { StatCard } from '@/components/ds'
 import {
   type SurveillanceSession,
   type EpreuveOption,
@@ -619,37 +620,41 @@ export function SurveillancePage() {
 
       {/* ─── KPI Grid ─── */}
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard
-          icon={<Monitor className="h-5 w-5" />}
+        <StatCard
+          icon={Monitor}
           label="Sessions actives"
           value={kpis.activeSessions}
-          sub={`${kpis.totalSessions} au total`}
-          color="emerald"
+          hint={`${kpis.totalSessions} au total`}
+          accent="success"
           loading={loading}
+          index={0}
         />
-        <KpiCard
-          icon={<AlertTriangle className="h-5 w-5" />}
+        <StatCard
+          icon={AlertTriangle}
           label="Alertes fraude"
           value={kpis.totalAlerts}
-          sub={`${kpis.sessionsWithAlerts} sessions concernées`}
-          color="amber"
+          hint={`${kpis.sessionsWithAlerts} sessions concernées`}
+          accent="warning"
           loading={loading}
+          index={1}
         />
-        <KpiCard
-          icon={<Zap className="h-5 w-5" />}
+        <StatCard
+          icon={Zap}
           label="Pénalités totales"
           value={kpis.totalPenalite}
-          sub="points déduits"
-          color="fuchsia"
+          hint="points déduits"
+          accent="secondary"
           loading={loading}
+          index={2}
         />
-        <KpiCard
-          icon={<Flag className="h-5 w-5" />}
+        <StatCard
+          icon={Flag}
           label="Sessions signalées"
           value={kpis.flaggedSessions}
-          sub={`${kpis.screenshots} captures`}
-          color="rose"
+          hint={`${kpis.screenshots} captures`}
+          accent="danger"
           loading={loading}
+          index={3}
         />
       </section>
 
@@ -750,64 +755,6 @@ export function SurveillancePage() {
 // ════════════════════════════════════════════════════════════════
 // SOUS-COMPOSANTS
 // ════════════════════════════════════════════════════════════════
-
-// ─── KPI Card ───
-function KpiCard({
-  icon,
-  label,
-  value,
-  sub,
-  color,
-  loading,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
-  sub: string
-  color: 'emerald' | 'amber' | 'fuchsia' | 'rose' | 'violet' | 'cyan'
-  loading: boolean
-}) {
-  const colorMap = {
-    emerald: 'text-emerald-300 sv-glow-emerald',
-    amber: 'text-amber-300 sv-glow-amber',
-    fuchsia: 'text-fuchsia-300 sv-glow-fuchsia',
-    rose: 'text-rose-300 sv-glow-rose',
-    violet: 'text-violet-300 sv-glow-violet',
-    cyan: 'text-cyan-300 sv-glow-cyan',
-  }
-  const bgMap = {
-    emerald: 'bg-success/15',
-    amber: 'bg-amber-500/15',
-    fuchsia: 'bg-fuchsia-500/15',
-    rose: 'bg-destructive/15',
-    violet: 'bg-violet-500/15',
-    cyan: 'bg-cyan-500/15',
-  }
-  return (
-    <div className="sv-kpi p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-xs font-medium uppercase tracking-wider text-violet-200/60">
-            {label}
-          </p>
-          {loading ? (
-            <div className="mt-2 h-8 w-20 rounded sv-skeleton" />
-          ) : (
-            <p className="mt-1 bg-gradient-to-br from-white to-violet-200 bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
-              {value}
-            </p>
-          )}
-          <p className="mt-1 truncate text-xs text-violet-200/50">{sub}</p>
-        </div>
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${bgMap[color]} ${colorMap[color]}`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Tab Button ───
 function TabButton({

@@ -11,21 +11,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
-  MessageSquare,
-  ChevronRight,
-  XCircle,
   Eye,
   Sparkles,
-  Timer,
   Type,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -45,7 +38,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { PulseSkeleton } from '@/components/ds'
+import { EntityCard } from '@/components/ds'
 
 // ─── Types ───
 
@@ -455,22 +448,9 @@ export function MesDevoirsPage() {
         {/* ─── À faire tab ─── */}
         <TabsContent value="a-faire">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="p-6 rounded-lg border border-border bg-card">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex-1 space-y-3">
-                      <PulseSkeleton className="h-5 w-2/3" />
-                      <PulseSkeleton className="h-4 w-1/2" />
-                      <div className="flex gap-4">
-                        <PulseSkeleton className="h-3 w-24" />
-                        <PulseSkeleton className="h-3 w-20" />
-                        <PulseSkeleton className="h-3 w-16" />
-                      </div>
-                    </div>
-                    <PulseSkeleton className="h-10 w-32" />
-                  </div>
-                </div>
+                <EntityCard key={i} loading title="" />
               ))}
             </div>
           ) : devoirsAFaire.length === 0 ? (
@@ -484,142 +464,86 @@ export function MesDevoirsPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {devoirsAFaire.filter(filterBySearch).map((devoir) => {
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {devoirsAFaire.filter(filterBySearch).map((devoir, idx) => {
                 const overdue = isOverdue(devoir.dateLimite)
                 const timeRemaining = getTimeRemaining(devoir.dateLimite)
                 const isDraft = devoir.soumission?.statut === 'BROUILLON'
                 const canSubmit = devoir.statut === 'PUBLIE' && !overdue
 
+                const badgeLabel = overdue ? 'En retard' : isDraft ? 'Brouillon' : 'À faire'
+                const badgeVariant = overdue ? 'danger' as const : isDraft ? 'warning' as const : 'success' as const
+                const thumbnailIcon = overdue ? AlertTriangle : BookOpen
+
                 return (
-                  <Card
+                  <EntityCard
                     key={devoir.id}
-                    className={`group transition-shadow hover:shadow-md ds-lift ${
-                      overdue ? 'border-destructive/20' : ''
-                    }`}
+                    index={idx}
+                    title={devoir.titre}
+                    subtitle={`${devoir.uniteEnseignement.code} — ${devoir.uniteEnseignement.nom}`}
+                    thumbnailIcon={thumbnailIcon}
+                    badge={{ label: badgeLabel, variant: badgeVariant }}
+                    meta={`Limite : ${formatDateTimeFR(devoir.dateLimite)} · ${devoir.noteMax} pts`}
                   >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        {/* Left: Devoir info */}
-                        <div className="flex-1 space-y-3">
-                          {/* Title row */}
-                          <div className="flex items-start gap-3">
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                              overdue
-                                ? 'bg-destructive/10'
-                                : 'bg-success/10'
-                            }`}>
-                              <BookOpen className={`h-5 w-5 ${
-                                overdue
-                                  ? 'text-destructive'
-                                  : 'text-success'
-                              }`} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight tracking-tight">
-                                {devoir.titre}
-                              </h3>
-                              <p className="mt-0.5 text-sm text-muted-foreground">
-                                {devoir.uniteEnseignement.code} — {devoir.uniteEnseignement.nom}
-                              </p>
-                            </div>
-                          </div>
+                    {/* Type seance + time remaining */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${getTypeSeanceBadgeClasses(devoir.typeSeance)}`}
+                      >
+                        {getTypeSeanceLabel(devoir.typeSeance)}
+                      </Badge>
+                      {overdue ? (
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                          <AlertTriangle className="h-3 w-3" />
+                          {timeRemaining}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3 text-success" />
+                          {timeRemaining}
+                        </span>
+                      )}
+                    </div>
 
-                          {/* Meta info */}
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
-                            <span className={`flex items-center gap-1.5 text-sm ${
-                              overdue
-                                ? 'text-destructive font-medium'
-                                : 'text-muted-foreground'
-                            }`}>
-                              <CalendarDays className={`h-3.5 w-3.5 ${
-                                overdue
-                                  ? 'text-destructive'
-                                  : 'text-success'
-                              }`} />
-                              {formatDateTimeFR(devoir.dateLimite)}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={`text-xs ${getTypeSeanceBadgeClasses(devoir.typeSeance)}`}
-                            >
-                              {getTypeSeanceLabel(devoir.typeSeance)}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className="text-xs bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800"
-                            >
-                              {devoir.noteMax} pts
-                            </Badge>
-                          </div>
+                    {/* Description */}
+                    {devoir.description && (
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                        {devoir.description}
+                      </p>
+                    )}
 
-                          {/* Time remaining */}
-                          <div className="pl-[52px]">
-                            {overdue ? (
-                              <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                                {timeRemaining}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <Clock className="h-3.5 w-3.5 text-success" />
-                                {timeRemaining}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Draft indicator */}
-                          {isDraft && (
-                            <div className="pl-[52px]">
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-warning/10 text-warning border-warning/20"
-                              >
-                                <FileText className="h-3 w-3" />
-                                Brouillon en cours
-                              </Badge>
-                            </div>
-                          )}
-
-                          {/* Description */}
-                          {devoir.description && (
-                            <p className="line-clamp-2 text-sm text-muted-foreground pl-[52px]">
-                              {devoir.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Right: Action buttons */}
-                        <div className="flex shrink-0 items-center gap-2 sm:ml-4">
-                          {canSubmit && (
-                            <Button
-                              className="bg-success hover:bg-success"
-                              onClick={() => handleOpenSubmit(devoir)}
-                            >
-                              <Send className="h-4 w-4" />
-                              {isDraft ? 'Modifier' : 'Soumettre'}
-                            </Button>
-                          )}
-                          {overdue && !isDraft && (
-                            <Button variant="outline" disabled>
-                              <Clock className="h-4 w-4" />
-                              Expiré
-                            </Button>
-                          )}
-                          {devoir.soumission && (
-                            <Button
-                              variant="outline"
-                              className="border-success/30 text-success hover:bg-success/10"
-                              onClick={() => handleOpenDetail(devoir)}
-                            >
-                              <Eye className="h-4 w-4" />
-                              Détail
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    {/* Action buttons */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {canSubmit && (
+                        <Button
+                          size="sm"
+                          className="bg-success hover:bg-success"
+                          onClick={() => handleOpenSubmit(devoir)}
+                        >
+                          <Send className="h-4 w-4" />
+                          {isDraft ? 'Modifier' : 'Soumettre'}
+                        </Button>
+                      )}
+                      {overdue && !isDraft && (
+                        <Button size="sm" variant="outline" disabled>
+                          <Clock className="h-4 w-4" />
+                          Expiré
+                        </Button>
+                      )}
+                      {devoir.soumission && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-success/30 text-success hover:bg-success/10"
+                          onClick={() => handleOpenDetail(devoir)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Détail
+                        </Button>
+                      )}
+                    </div>
+                  </EntityCard>
                 )
               })}
             </div>
@@ -629,18 +553,9 @@ export function MesDevoirsPage() {
         {/* ─── Soumis tab ─── */}
         <TabsContent value="soumis">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="p-6 rounded-lg border border-border bg-card">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex-1 space-y-3">
-                      <PulseSkeleton className="h-5 w-2/3" />
-                      <PulseSkeleton className="h-4 w-1/2" />
-                      <PulseSkeleton className="h-3 w-full" />
-                    </div>
-                    <PulseSkeleton className="h-10 w-32" />
-                  </div>
-                </div>
+                <EntityCard key={i} loading title="" />
               ))}
             </div>
           ) : devoirsSoumis.length === 0 ? (
@@ -654,81 +569,60 @@ export function MesDevoirsPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {devoirsSoumis.filter(filterBySearch).map((devoir) => {
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {devoirsSoumis.filter(filterBySearch).map((devoir, idx) => {
                 const soumission = devoir.soumission!
                 const statutInfo = getSoumissionStatutBadge(soumission.statut)
 
+                const badgeVariant =
+                  soumission.statut === 'SOUMIS' ? 'primary' as const
+                  : soumission.statut === 'BROUILLON' ? 'secondary' as const
+                  : 'success' as const
+
                 return (
-                  <Card
+                  <EntityCard
                     key={devoir.id}
-                    className="group transition-shadow hover:shadow-md ds-lift"
+                    index={idx}
+                    title={devoir.titre}
+                    subtitle={`${devoir.uniteEnseignement.code} — ${devoir.uniteEnseignement.nom}`}
+                    thumbnailIcon={CheckCircle2}
+                    badge={{ label: statutInfo.label, variant: badgeVariant }}
+                    meta={
+                      soumission.renduAt
+                        ? `Soumis le ${formatDateTimeFR(soumission.renduAt)}`
+                        : 'En attente de correction'
+                    }
                   >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        {/* Left: Devoir info */}
-                        <div className="flex-1 space-y-3">
-                          {/* Title row */}
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/10">
-                              <CheckCircle2 className="h-5 w-5 text-secondary" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight tracking-tight">
-                                {devoir.titre}
-                              </h3>
-                              <p className="mt-0.5 text-sm text-muted-foreground">
-                                {devoir.uniteEnseignement.code} — {devoir.uniteEnseignement.nom}
-                              </p>
-                            </div>
-                          </div>
+                    {/* Type seance + status badges */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${getTypeSeanceBadgeClasses(devoir.typeSeance)}`}
+                      >
+                        {getTypeSeanceLabel(devoir.typeSeance)}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="text-xs bg-info/10 text-info border-info/20"
+                      >
+                        <Clock className="h-3 w-3" />
+                        En attente de correction
+                      </Badge>
+                    </div>
 
-                          {/* Submission meta */}
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
-                            {soumission.renduAt && (
-                              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5 text-secondary" />
-                                Soumis le {formatDateTimeFR(soumission.renduAt)}
-                              </span>
-                            )}
-                            <Badge
-                              variant="outline"
-                              className={`text-xs ${getTypeSeanceBadgeClasses(devoir.typeSeance)}`}
-                            >
-                              {getTypeSeanceLabel(devoir.typeSeance)}
-                            </Badge>
-                          </div>
-
-                          {/* Status */}
-                          <div className="flex flex-wrap items-center gap-3 pl-[52px]">
-                            <Badge variant="outline" className={`text-xs ${statutInfo.classes}`}>
-                              {statutInfo.icon}
-                              {statutInfo.label}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className="text-xs bg-info/10 text-info border-info/20"
-                            >
-                              <Clock className="h-3 w-3" />
-                              En attente de correction
-                            </Badge>
-                          </div>
-                        </div>
-
-                        {/* Right: Action button */}
-                        <div className="shrink-0 sm:ml-4">
-                          <Button
-                            variant="outline"
-                            className="border-success/30 text-success hover:bg-success/10"
-                            onClick={() => handleOpenDetail(devoir)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Voir le détail
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    {/* Action button */}
+                    <div className="mt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-success/30 text-success hover:bg-success/10"
+                        onClick={() => handleOpenDetail(devoir)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        Voir le détail
+                      </Button>
+                    </div>
+                  </EntityCard>
                 )
               })}
             </div>
@@ -738,12 +632,9 @@ export function MesDevoirsPage() {
         {/* ─── Corrigés tab ─── */}
         <TabsContent value="corriges">
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="p-6 rounded-lg border border-border bg-card">
-                  <PulseSkeleton className="h-5 w-2/3" />
-                  <PulseSkeleton className="h-4 w-1/2 mt-3" />
-                </div>
+                <EntityCard key={i} loading title="" />
               ))}
             </div>
           ) : devoirsCorriges.filter(filterBySearch).length === 0 ? (
@@ -757,130 +648,114 @@ export function MesDevoirsPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {devoirsCorriges.filter(filterBySearch).map((devoir) => {
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {devoirsCorriges.filter(filterBySearch).map((devoir, idx) => {
                 const soumission = devoir.soumission!
                 const statutInfo = getSoumissionStatutBadge(soumission.statut)
                 const notePercent = soumission.note !== null ? Math.round((soumission.note / devoir.noteMax) * 100) : 0
                 const isPassing = soumission.note !== null && soumission.note >= devoir.noteMax / 2
 
+                const badgeVariant =
+                  soumission.statut === 'CORRIGE' ? 'success' as const
+                  : soumission.statut === 'RETOURNE' ? 'warning' as const
+                  : 'secondary' as const
+                const thumbnailIcon = isPassing ? Sparkles : AlertTriangle
+
                 return (
-                  <Card
+                  <EntityCard
                     key={devoir.id}
-                    className={`group transition-shadow hover:shadow-md ds-lift ${
-                      isPassing ? 'border-success/20' : 'border-destructive/20'
-                    }`}
+                    index={idx}
+                    title={devoir.titre}
+                    subtitle={`${devoir.uniteEnseignement.code} — ${devoir.uniteEnseignement.nom}`}
+                    thumbnailIcon={thumbnailIcon}
+                    progress={soumission.note !== null ? notePercent : undefined}
+                    badge={{ label: statutInfo.label, variant: badgeVariant }}
+                    meta={
+                      soumission.note !== null
+                        ? `Note : ${soumission.note.toFixed(1)} / ${devoir.noteMax} · ${notePercent}%`
+                        : 'En attente de notation'
+                    }
                   >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        {/* Left: Devoir info */}
-                        <div className="flex-1 space-y-3">
-                          <div className="flex items-start gap-3">
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                              isPassing
-                                ? 'bg-success/10'
-                                : 'bg-destructive/10'
+                    {/* Type seance + status */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className={`text-xs ${getTypeSeanceBadgeClasses(devoir.typeSeance)}`}>
+                        {getTypeSeanceLabel(devoir.typeSeance)}
+                      </Badge>
+                    </div>
+
+                    {/* Grade display */}
+                    {soumission.note !== null && (
+                      <div className="mt-3">
+                        <div className={`rounded-lg border p-3 ${
+                          isPassing
+                            ? 'border-success/20 bg-success/15'
+                            : 'border-destructive/20 bg-destructive/15'
+                        }`}>
+                          <div className="flex items-center gap-3">
+                            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
+                              isPassing ? 'bg-success/10' : 'bg-destructive/10'
                             }`}>
-                              <Sparkles className={`h-5 w-5 ${
+                              <span className={`text-base font-bold ${
                                 isPassing ? 'text-success' : 'text-destructive'
-                              }`} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight tracking-tight">{devoir.titre}</h3>
-                              <p className="mt-0.5 text-sm text-muted-foreground">
-                                {devoir.uniteEnseignement.code} — {devoir.uniteEnseignement.nom}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Meta */}
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
-                            <Badge variant="outline" className={`text-xs ${getTypeSeanceBadgeClasses(devoir.typeSeance)}`}>
-                              {getTypeSeanceLabel(devoir.typeSeance)}
-                            </Badge>
-                            <Badge variant="outline" className={`text-xs ${statutInfo.classes}`}>
-                              {statutInfo.icon}
-                              {statutInfo.label}
-                            </Badge>
-                          </div>
-
-                          {/* Grade display */}
-                          {soumission.note !== null && (
-                            <div className="pl-[52px]">
-                              <div className={`rounded-lg border p-4 ${
-                                isPassing
-                                  ? 'border-success/20 bg-success/15'
-                                  : 'border-destructive/20 bg-destructive/15'
                               }`}>
-                                <div className="flex items-center gap-4">
-                                  <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${
-                                    isPassing
-                                      ? 'bg-success/10'
-                                      : 'bg-destructive/10'
-                                  }`}>
-                                    <span className={`text-lg font-bold ${
-                                      isPassing ? 'text-success' : 'text-destructive'
-                                    }`}>
-                                      {soumission.note.toFixed(1)}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-medium">
-                                      Note : {soumission.note.toFixed(1)} / {devoir.noteMax}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">{notePercent}%</p>
-                                  </div>
-                                </div>
-                              </div>
+                                {soumission.note.toFixed(1)}
+                              </span>
                             </div>
-                          )}
-
-                          {/* AI feedback */}
-                          {soumission.noteIA !== null && soumission.noteIA !== undefined && (
-                            <div className="pl-[52px]">
-                              <div className="rounded-lg border border-secondary/20 bg-secondary/15 p-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Sparkles className="h-4 w-4 text-secondary" />
-                                  <span className="text-xs font-medium text-secondary">
-                                    Évaluation IA : {soumission.noteIA.toFixed(1)}/{devoir.noteMax}
-                                  </span>
-                                </div>
-                                {soumission.justificationIA && (
-                                  <p className="text-xs text-secondary whitespace-pre-wrap">
-                                    {soumission.justificationIA}
-                                  </p>
-                                )}
-                              </div>
+                            <div>
+                              <p className="text-xs font-medium">
+                                Note : {soumission.note.toFixed(1)} / {devoir.noteMax}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">{notePercent}%</p>
                             </div>
-                          )}
-
-                          {/* Teacher comment */}
-                          {soumission.commentaireEnseignant && (
-                            <div className="pl-[52px]">
-                              <div className="rounded-lg border border-success/20 bg-success/15 p-3">
-                                <p className="text-xs font-medium text-success mb-1">
-                                  Commentaire de l&apos;enseignant
-                                </p>
-                                <p className="text-sm">{soumission.commentaireEnseignant}</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Right: Action button */}
-                        <div className="shrink-0 sm:ml-4">
-                          <Button
-                            variant="outline"
-                            className="border-success/30 text-success hover:bg-success/10"
-                            onClick={() => handleOpenDetail(devoir)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Détail
-                          </Button>
+                          </div>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    )}
+
+                    {/* AI feedback */}
+                    {soumission.noteIA !== null && soumission.noteIA !== undefined && (
+                      <div className="mt-2">
+                        <div className="rounded-lg border border-secondary/20 bg-secondary/15 p-2.5">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Sparkles className="h-3.5 w-3.5 text-secondary" />
+                            <span className="text-[11px] font-medium text-secondary">
+                              IA : {soumission.noteIA.toFixed(1)}/{devoir.noteMax}
+                            </span>
+                          </div>
+                          {soumission.justificationIA && (
+                            <p className="text-[11px] text-secondary line-clamp-3 whitespace-pre-wrap">
+                              {soumission.justificationIA}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Teacher comment */}
+                    {soumission.commentaireEnseignant && (
+                      <div className="mt-2">
+                        <div className="rounded-lg border border-success/20 bg-success/15 p-2.5">
+                          <p className="text-[11px] font-medium text-success mb-1">
+                            Commentaire de l&apos;enseignant
+                          </p>
+                          <p className="text-xs line-clamp-3">{soumission.commentaireEnseignant}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action button */}
+                    <div className="mt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-success/30 text-success hover:bg-success/10"
+                        onClick={() => handleOpenDetail(devoir)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        Détail
+                      </Button>
+                    </div>
+                  </EntityCard>
                 )
               })}
             </div>
