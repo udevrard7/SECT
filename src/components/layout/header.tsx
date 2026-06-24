@@ -32,6 +32,26 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ETUDIANT: 'Étudiant',
 }
 
+/**
+ * Page de paramètres dédiée au rôle, ou `null` si le rôle n'en a pas.
+ *
+ * - ADMIN → /configuration (configuration du système PaaS/SaaS)
+ * - RESPONSABLE → /parametres (paramètres de l'établissement)
+ * - ENSEIGNANT / ÉTUDIANT → null (pas de page dédiée ; l'item « Paramètres »
+ *   est masqué du dropdown utilisateur pour éviter la redirection trompeuse
+ *   vers /profil, déjà couvert par l'item « Mon profil »)
+ */
+function getSettingsPageId(role: UserRole): PageId | null {
+  switch (role) {
+    case 'ADMIN':
+      return 'configuration'
+    case 'RESPONSABLE':
+      return 'parametres'
+    default:
+      return null
+  }
+}
+
 // ─── Horloge temps réel ───
 function useClock() {
   const [now, setNow] = useState(new Date())
@@ -80,6 +100,9 @@ export function AppHeader() {
   // parente. Évite les collisions de ROUTE_TO_PAGE (plusieurs PageId mappés
   // vers la même route) en partant de NAV_CATEGORIES[user.role].
   const { pageTitle, parentCategory } = getPageContext(pathname, user.role)
+
+  // Page de paramètres dédiée au rôle (null pour ENSEIGNANT/ÉTUDIANT → item masqué)
+  const settingsPageId = getSettingsPageId(user.role)
 
   const navigateTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
@@ -203,16 +226,15 @@ export function AppHeader() {
                   <User className="mr-2 h-4 w-4" />
                   <span>Mon profil</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    const settingsPage = user.role === 'ADMIN' ? 'configuration' : user.role === 'RESPONSABLE' ? 'parametres' : 'profil'
-                    navigateTo(settingsPage)
-                  }}
-                  className="cursor-pointer rounded-md"
-                >
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Paramètres</span>
-                </DropdownMenuItem>
+                {settingsPageId && (
+                  <DropdownMenuItem
+                    onClick={() => navigateTo(settingsPageId)}
+                    className="cursor-pointer rounded-md"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Paramètres</span>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-destructive focus:text-destructive rounded-md">
