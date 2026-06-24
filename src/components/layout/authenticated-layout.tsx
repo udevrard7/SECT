@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/sidebar'
 import { AppHeader } from '@/components/layout/header'
+import { SwitchAccountDialog } from '@/components/layout/switch-account-dialog'
 import { PageContent } from '@/components/layout/page-content'
 import { ForceChangePasswordPage } from '@/components/auth/force-change-password-page'
 import { AIAssistant } from '@/components/ds'
@@ -116,6 +117,9 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
           return data.response as string
         }}
       />
+      {/* Dialog « Changer de compte » — singleton contrôlé par store, ouvert
+          depuis le header (bouton Switch) ou la carte utilisateur de la sidebar. */}
+      <SwitchAccountDialog />
     </SidebarProvider>
   )
 }
