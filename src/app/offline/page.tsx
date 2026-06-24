@@ -20,7 +20,7 @@ export const metadata = {
 export default function OfflinePage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-6">
-      <div className="max-w-md w-full text-center space-y-6">
+      <div className="max-w-md w-full text-center space-y-6 ds-kente-watermark rounded-2xl p-8">
         {/* Icône */}
         <div className="flex justify-center">
           <div className="h-20 w-20 rounded-full bg-warning/10 flex items-center justify-center">

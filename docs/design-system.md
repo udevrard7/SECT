@@ -109,17 +109,23 @@ Définis dans `globals.css` via `@theme inline` (Tailwind v4). Utilisables en cl
 
 ## 3. Palette de couleurs
 
-### Palette sémantique complète
+### Palette sémantique complète — "Savane EdTech"
 
 | Token | Light | Dark | Hex | Usage |
 |-------|-------|------|-----|-------|
-| `--primary` | oklch(0.527 0.224 264.5) | oklch(0.585 0.217 273) | **#4F46E5** / #6366F1 | Indigo — confiance, CTA, actions principales |
-| `--secondary` | oklch(0.541 0.24 293.5) | oklch(0.606 0.25 292.7) | **#7C3AED** / #8B5CF6 | Violet — innovation, accents, badges avancés |
-| `--success` | oklch(0.596 0.145 163.2) | oklch(0.696 0.17 162.5) | **#059669** / #10B981 | Emerald — réussite, score élevé, validation |
-| `--warning` | oklch(0.666 0.179 58.3) | oklch(0.769 0.188 70.1) | **#D97706** / #F59E0B | Amber — alertes, délais, streaks |
-| `--destructive` | oklch(0.577 0.245 27.3) | oklch(0.704 0.191 22.2) | **#DC2626** / #EF4444 | Red — erreurs, score faible, danger |
-| `--info` | oklch(0.623 0.214 259.8) | oklch(0.623 0.214 259.8) | **#2563EB** / #3B82F6 | Blue — information, liens |
-| `--tech` | oklch(0.715 0.143 194.7) | oklch(0.78 0.13 194.7) | **#06B6D4** / #22D3EE | Cyan — technologie, IA, data, assistant IA |
+| `--primary` | oklch(0.78 0.19 125) | oklch(0.82 0.2 125) | **#84CC16** | Vert lime — BOUTONS et FONDS uniquement (texte bleu nuit dessus = 8:1 ✅) |
+| `--primary-text` | oklch(0.38 0.12 125) | oklch(0.82 0.2 125) | **#3F6212** / #84CC16 | Vert foncé — TEXTE sur fond clair (7:1 ✅ AA). En dark = vert lime vif. |
+| `--secondary` | oklch(0.55 0.15 35) | oklch(0.62 0.17 35) | **#C2410C** | Terre cuite — accents, badges secondaires |
+| `--success` | oklch(0.78 0.19 125) | oklch(0.82 0.2 125) | **#84CC16** | Vert lime — FONDS success (texte sombre dessus) |
+| `--success-text` | oklch(0.38 0.12 125) | oklch(0.82 0.2 125) | **#3F6212** / #84CC16 | Vert foncé — TEXTE success sur fond clair (7:1 ✅ AA) |
+| `--warning` | oklch(0.76 0.16 70) | oklch(0.8 0.16 70) | **#F5A623** | Orange soleil — alertes, délais, streaks |
+| `--destructive` | oklch(0.55 0.22 27) | oklch(0.65 0.22 27) | **#D0021B** | Red — erreurs, score faible |
+| `--info` | oklch(0.55 0.12 250) | oklch(0.6 0.12 250) | **#1E1B4B** | Bleu nuit — information |
+| `--tech` | oklch(0.715 0.143 194.7) | oklch(0.78 0.13 194.7) | **#06B6D4** | Cyan — technologie, IA, assistant |
+| `--xp` | oklch(0.78 0.19 125) | oklch(0.82 0.2 125) | **#84CC16** | Vert lime — FONDS XP |
+| `--xp-text` | oklch(0.38 0.12 125) | oklch(0.82 0.2 125) | **#3F6212** / #84CC16 | Vert foncé — TEXTE XP sur fond clair |
+
+> **⚠️ RÈGLE CRITIQUE** : Ne JAMAIS utiliser `text-primary` (vert lime #84CC16) pour du texte sur fond clair — contraste 2:1 (illisible). Utiliser `text-primary-text` (vert foncé #3F6212, contraste 7:1 ✅). En mode sombre, `primary-text = primary` (vert lime vif lisible sur fond sombre).
 
 ### Tiers de gamification
 

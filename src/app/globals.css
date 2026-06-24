@@ -122,7 +122,7 @@
 
   /* Muted / Accent */
   --muted: oklch(0.94 0.005 240);           /* gris très clair */
-  --muted-foreground: oklch(0.55 0.015 240); /* #95A5A6 gris clair */
+  --muted-foreground: oklch(0.42 0.015 240); /* gris foncé #6B7280 — contraste 5:1 sur blanc ✅ AA */
   --accent: oklch(0.93 0.03 125);           /* vert lime très clair */
   --accent-foreground: oklch(0.38 0.12 125); /* vert foncé pour contraste */
 

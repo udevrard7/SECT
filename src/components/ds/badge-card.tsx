@@ -106,6 +106,7 @@ export function BadgeCard({ badge, index = 0 }: BadgeCardProps) {
   const { title, description, tier, icon: Icon, unlocked, unlockedAt, progress } = badge
 
   const hasProgress = !unlocked && progress !== undefined && progress >= 0
+  const showProgressBar = !unlocked && (progress === undefined || progress === 0)
   const clampedProgress = Math.min(Math.max(progress ?? 0, 0), 100)
 
   const cardClasses = cn(
@@ -214,6 +215,23 @@ export function BadgeCard({ badge, index = 0 }: BadgeCardProps) {
                   delay: index * 0.06 + 0.15,
                   ease: 'easeOut',
                 }}
+              />
+            </div>
+          </div>
+        ) : showProgressBar ? (
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Progression
+              </span>
+              <span className={cn('font-mono text-[10px] font-semibold tabular-nums', TIER_TEXT[tier])}>
+                0%
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full opacity-30"
+                style={{ backgroundColor: `var(--${tier})`, width: '2%' }}
               />
             </div>
           </div>
