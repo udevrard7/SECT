@@ -96,12 +96,12 @@ export function AppShell({
     <div className="min-h-screen bg-background flex">
       {/* ════════ SIDEBAR (desktop) ════════ */}
       <aside
-        className="hidden md:flex w-[260px] shrink-0 flex-col border-r border-border bg-card"
+        className="hidden md:flex w-[260px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar"
         role="navigation"
         aria-label="Navigation principale"
       >
-        {/* Brand */}
-        <div className="flex h-16 items-center gap-2.5 px-5 border-b border-border">
+        {/* Brand — avec motif kente subtil */}
+        <div className="flex h-16 items-center gap-2.5 px-5 border-b border-sidebar-border ds-kente-pattern">
           {brand.logo ?? (
             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
               {brand.name.slice(0, 2).toUpperCase()}
@@ -169,8 +169,10 @@ export function AppShell({
 
       {/* ════════ MAIN COLUMN ════════ */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* ── Topbar (sticky, glassmorphism) ── */}
-        <header className="sticky top-0 z-30 h-16 bg-card border-b border-border flex items-center gap-3 px-4 md:px-6">
+        {/* ── Topbar (sticky) — avec barre décorative africaine ── */}
+        <header className="sticky top-0 z-30 flex flex-col">
+          <div className="h-[3px] w-full ds-african-divider" />
+          <div className="h-16 bg-card border-b border-border flex items-center gap-3 px-4 md:px-6">
           {/* Mobile menu trigger */}
           <Button
             variant="ghost"
@@ -221,6 +223,7 @@ export function AppShell({
                 {user.name.slice(0, 2).toUpperCase()}
               </div>
             )}
+          </div>
           </div>
         </header>
 
