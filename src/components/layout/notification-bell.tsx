@@ -27,7 +27,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import {
   Popover,
   PopoverContent,
@@ -499,10 +499,10 @@ export function NotificationBell() {
           <div className="px-4 py-3 space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="flex gap-3">
-                <Skeleton className="h-8 w-8 rounded-lg flex-shrink-0" />
+                <PulseSkeleton className="h-8 w-8 rounded-lg flex-shrink-0" variant="card" />
                 <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3.5 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
+                  <PulseSkeleton className="h-3.5 w-3/4" />
+                  <PulseSkeleton className="h-3 w-1/2" />
                 </div>
               </div>
             ))}

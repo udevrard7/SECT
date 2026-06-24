@@ -63,11 +63,11 @@ export function GradingForm({
 }) {
   const isParCopie = variant === 'par-copie'
   const containerClass = isParCopie
-    ? 'rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-gradient-to-b from-emerald-50/60 to-emerald-50/20 dark:from-emerald-950/20 dark:to-emerald-950/5 shadow-sm'
-    : 'rounded-b-xl border-t-2 border-emerald-300 dark:border-emerald-700 bg-gradient-to-b from-emerald-50/60 to-emerald-50/20 dark:from-emerald-950/20 dark:to-emerald-950/5'
+    ? 'rounded-xl border-2 border-success/30 bg-gradient-to-b from-success/10 to-success/10 shadow-sm'
+    : 'rounded-b-xl border-t-2 border-success/30 bg-gradient-to-b from-success/10 to-success/10'
   const headerClass = isParCopie
-    ? 'px-3 py-2 border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-900/20 rounded-t-xl flex items-center gap-2'
-    : 'px-4 py-2 border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-900/20 flex items-center gap-2'
+    ? 'px-3 py-2 border-b border-success/20 bg-success/15 rounded-t-xl flex items-center gap-2'
+    : 'px-4 py-2 border-b border-success/20 bg-success/15 flex items-center gap-2'
   const bodyClass = isParCopie ? 'p-3 space-y-3' : 'p-4 space-y-3'
   const criteriaBtnTextClass = isParCopie ? 'text-[11px]' : 'text-xs'
   const aiButtonLabel = isParCopie ? 'Suggérer une note' : 'Suggérer note IA'
@@ -83,11 +83,11 @@ export function GradingForm({
     <div className={containerClass}>
       {/* Grading header */}
       <div className={headerClass}>
-        <PenTool className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
-        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 uppercase tracking-wider">
+        <PenTool className="h-3.5 w-3.5 text-success" />
+        <span className="text-xs font-bold text-success uppercase tracking-wider">
           Notation
         </span>
-        <span className="ml-auto text-xs text-emerald-600 dark:text-emerald-400">
+        <span className="ml-auto text-xs text-success font-mono tabular-nums">
           {bareme} pts dispo.
         </span>
       </div>
@@ -109,8 +109,8 @@ export function GradingForm({
                     onClick={() => onToggleCriterion(c.id)}
                     className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 ${criteriaBtnTextClass} font-medium transition-all ${
                       isSelected
-                        ? 'border-emerald-400 bg-emerald-50 text-emerald-800 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
-                        : 'border-border bg-background text-muted-foreground hover:border-emerald-200 hover:bg-emerald-50/50 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20'
+                        ? 'border-success/40 bg-success/10 text-success shadow-sm'
+                        : 'border-border bg-background text-muted-foreground hover:border-success/20 hover:bg-success/10'
                     }`}
                   >
                     {isSelected ? (
@@ -139,8 +139,8 @@ export function GradingForm({
                     onClick={() => onToggleCriterion(c.id)}
                     className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 ${criteriaBtnTextClass} font-medium transition-all ${
                       isActive
-                        ? 'border-emerald-400 bg-emerald-50 text-emerald-800 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
-                        : 'border-border bg-background text-muted-foreground hover:border-emerald-200 hover:bg-emerald-50/50 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20'
+                        ? 'border-success/40 bg-success/10 text-success shadow-sm'
+                        : 'border-border bg-background text-muted-foreground hover:border-success/20 hover:bg-success/10'
                     }`}
                   >
                     {isActive ? (
@@ -174,11 +174,11 @@ export function GradingForm({
             value={noteFinale}
             onChange={(e) => onNoteChange(e.target.value)}
             placeholder={String(Math.round(computedScore * 10) / 10)}
-            className="w-24 h-9 text-base font-bold"
+            className="w-24 h-9 text-base font-bold font-mono tabular-nums"
           />
-          <span className="text-base font-semibold text-muted-foreground">/ {bareme}</span>
+          <span className="text-base font-semibold text-muted-foreground font-mono tabular-nums">/ {bareme}</span>
           {showAutoHint && (
-            <span className="text-[10px] text-amber-600 dark:text-amber-400">
+            <span className="text-[10px] text-warning font-mono tabular-nums">
               (auto : {Math.round(computedScore * 10) / 10})
             </span>
           )}
@@ -205,7 +205,7 @@ export function GradingForm({
             size="sm"
             onClick={onAiGrade}
             disabled={isAiLoading}
-            className="h-9 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
+            className="h-9 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
           >
             {isAiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Wand2 className="h-3.5 w-3.5 mr-1.5" />}
             {aiButtonLabel}
@@ -214,7 +214,7 @@ export function GradingForm({
             size="sm"
             onClick={onSave}
             disabled={isSaving}
-            className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 px-4"
+            className="h-9 text-xs bg-success hover:bg-success/90 px-4"
           >
             {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
             Sauvegarder

@@ -5,7 +5,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 
 export function KpiSkeleton() {
   return (
@@ -14,10 +14,10 @@ export function KpiSkeleton() {
         <Card key={i} className="overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
+              <PulseSkeleton className="h-10 w-10 shrink-0 rounded-lg" variant="card" />
               <div className="flex-1 space-y-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-7 w-16" />
+                <PulseSkeleton className="h-3 w-20" />
+                <PulseSkeleton className="h-7 w-16" />
               </div>
             </div>
           </CardContent>
@@ -31,11 +31,11 @@ export function ChartSkeleton() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <Skeleton className="h-5 w-48" />
-        <Skeleton className="mt-1 h-3 w-32" />
+        <PulseSkeleton className="h-5 w-48" />
+        <PulseSkeleton className="mt-1 h-3 w-32" />
       </CardHeader>
       <CardContent className="pt-0">
-        <Skeleton className="h-64 w-full rounded-md" />
+        <PulseSkeleton className="h-64 w-full rounded-md" />
       </CardContent>
     </Card>
   )
@@ -47,17 +47,17 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="space-y-2">
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-3 w-56" />
+            <PulseSkeleton className="h-5 w-40" />
+            <PulseSkeleton className="h-3 w-56" />
           </div>
-          <Skeleton className="h-8 w-32" />
+          <PulseSkeleton className="h-8 w-32" />
         </div>
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-2">
-          <Skeleton className="h-10 w-full" />
+          <PulseSkeleton className="h-10 w-full" />
           {Array.from({ length: rows }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <PulseSkeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       </CardContent>
@@ -84,13 +84,13 @@ export function PageSkeleton() {
       {/* Header skeleton */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2">
-          <Skeleton className="h-8 w-72" />
-          <Skeleton className="h-4 w-56" />
+          <PulseSkeleton className="h-8 w-72" />
+          <PulseSkeleton className="h-4 w-56" />
         </div>
-        <Skeleton className="h-9 w-28" />
+        <PulseSkeleton className="h-9 w-28" />
       </div>
       {/* Tabs skeleton */}
-      <Skeleton className="h-10 w-96" />
+      <PulseSkeleton className="h-10 w-96" />
       <OverviewSkeleton />
     </div>
   )

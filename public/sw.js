@@ -24,6 +24,7 @@ const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 // Ressources à pré-cacher à l'install (app shell minimal)
 const PRECACHE_URLS = [
   '/',
+  '/offline',
   '/manifest.json',
   '/favicon.ico',
   '/favicon-32x32.png',
@@ -105,8 +106,8 @@ self.addEventListener('fetch', (event) => {
           return response
         })
         .catch(() => {
-          // Offline : retourne la page cachée, ou la racine pré-cachée
-          return caches.match(request).then((cached) => cached || caches.match('/'))
+          // Offline : retourne la page cachée, sinon la page /offline pré-cachée
+          return caches.match(request).then((cached) => cached || caches.match('/offline'))
         })
     )
     return

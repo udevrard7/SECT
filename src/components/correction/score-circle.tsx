@@ -29,7 +29,7 @@ export function ScoreCircle({
 
   return (
     <div
-      className={`flex items-center justify-center rounded-full border-2 font-bold shrink-0 ${sizeClasses} ${colorClasses}`}
+      className={`flex items-center justify-center rounded-full border-2 font-bold font-mono tabular-nums shrink-0 ${sizeClasses} ${colorClasses}`}
     >
       {score !== null ? displayScore : '—'}
     </div>

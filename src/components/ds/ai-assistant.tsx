@@ -287,7 +287,7 @@ export function AIAssistant({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Fermer l'assistant"
-                className="shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 h-9 w-9 rounded-md flex items-center justify-center text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="h-4 w-4" />
               </button>

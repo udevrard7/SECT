@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, type LucideIcon } from 'lucide-react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { UserStats, type UserStatsData } from './user-stats'
@@ -208,9 +209,11 @@ export function AppShell({
               )}
             </div>
             {user.avatarUrl ? (
-              <img
+              <Image
                 src={user.avatarUrl}
                 alt={user.name}
+                width={32}
+                height={32}
                 className="h-8 w-8 rounded-full object-cover border border-border"
               />
             ) : (
@@ -242,6 +245,7 @@ export function AppShell({
                 onClick={() => handleItemClick(item)}
                 className={cn(
                   'flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-md',
                   isActive ? 'text-primary' : 'text-muted-foreground'
                 )}
                 aria-current={isActive ? 'page' : undefined}
@@ -306,6 +310,7 @@ export function AppShell({
                               onClick={() => handleItemClick(item)}
                               className={cn(
                                 'w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
                                 isActive
                                   ? 'bg-primary text-primary-foreground'
                                   : 'text-foreground/70 hover:bg-accent'

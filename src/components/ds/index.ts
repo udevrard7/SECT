@@ -51,3 +51,8 @@ export {
   type ProgressBarAccent,
   type ProgressBarProps,
 } from './progress-bar'
+export {
+  WeeklyGoals,
+  type WeeklyGoal,
+  type WeeklyGoalsProps,
+} from './weekly-goals'

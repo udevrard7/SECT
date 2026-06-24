@@ -74,7 +74,6 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import {
   type SurveillanceSession,

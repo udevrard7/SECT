@@ -112,7 +112,7 @@ export function CorrectionToolbar({
         {selectedEpreuveId && sessions.length > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             <Progress value={globalProgress} className="w-24 h-2" />
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="text-xs text-muted-foreground whitespace-nowrap font-mono tabular-nums">
               {Math.round(globalProgress)}%
             </span>
           </div>
@@ -151,7 +151,7 @@ export function CorrectionToolbar({
                       variant="outline"
                       onClick={onBatchAiGrade}
                       disabled={isBatchAiLoading}
-                      className="h-8 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
+                      className="h-8 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
                     >
                       {isBatchAiLoading ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
@@ -169,7 +169,7 @@ export function CorrectionToolbar({
             {sessions.some(s => s.statut === 'CORRIGEE') && (
               <Button
                 size="sm"
-                className="h-8 text-xs bg-teal-600 hover:bg-teal-700"
+                className="h-8 text-xs bg-tech hover:bg-tech/90"
                 onClick={onBatchReturn}
                 disabled={isBatchReturning}
               >
@@ -178,7 +178,7 @@ export function CorrectionToolbar({
                 ) : (
                   <Send className="h-3.5 w-3.5 mr-1" />
                 )}
-                Rendre copies ({sessions.filter(s => s.statut === 'CORRIGEE').length})
+                Rendre copies (<span className="font-mono tabular-nums">{sessions.filter(s => s.statut === 'CORRIGEE').length}</span>)
               </Button>
             )}
           </div>

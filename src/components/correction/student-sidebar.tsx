@@ -31,9 +31,9 @@ export function StudentSidebar({
       {/* Section: En attente */}
       {pending.length > 0 && (
         <div className="pb-2">
-          <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider px-3 py-1.5 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            À corriger ({pending.length})
+          <p className="text-[10px] font-semibold text-warning uppercase tracking-wider px-3 py-1.5 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+            À corriger (<span className="font-mono tabular-nums">{pending.length}</span>)
           </p>
           <div className="space-y-0.5 px-1">
             {pending.map((session) => {
@@ -45,7 +45,7 @@ export function StudentSidebar({
                   onClick={() => onSelectSession(session.id)}
                   className={`w-full text-left rounded-md px-2.5 py-2 transition-all flex items-center gap-2.5 group ${
                     isSelected
-                      ? 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700'
+                      ? 'bg-success/10 ring-1 ring-success/30'
                       : 'hover:bg-muted/60'
                   }`}
                 >
@@ -56,12 +56,12 @@ export function StudentSidebar({
                     </p>
                   </div>
                   {session.alertes > 0 && (
-                    <span className="shrink-0 flex h-4 w-4 items-center justify-center rounded-full bg-rose-100 text-rose-700 text-[9px] font-bold dark:bg-rose-900/40 dark:text-rose-300">
+                    <span className="shrink-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive/15 text-destructive text-[9px] font-bold font-mono tabular-nums">
                       {session.alertes}
                     </span>
                   )}
                   {session.score !== null && (
-                    <span className={`text-xs font-semibold shrink-0 ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
+                    <span className={`text-xs font-semibold shrink-0 font-mono tabular-nums ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
                       {session.score.toFixed(1)}
                     </span>
                   )}
@@ -75,9 +75,9 @@ export function StudentSidebar({
       {/* Section: Rendues */}
       {returned.length > 0 && (
         <div className="pb-2">
-          <p className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider px-3 py-1.5 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
-            Rendues ({returned.length})
+          <p className="text-[10px] font-semibold text-tech uppercase tracking-wider px-3 py-1.5 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-tech" />
+            Rendues (<span className="font-mono tabular-nums">{returned.length}</span>)
           </p>
           <div className="space-y-0.5 px-1">
             {returned.map((session) => {
@@ -88,18 +88,18 @@ export function StudentSidebar({
                   onClick={() => onSelectSession(session.id)}
                   className={`w-full text-left rounded-md px-2.5 py-2 transition-all flex items-center gap-2.5 group opacity-70 ${
                     isSelected
-                      ? 'bg-teal-50 dark:bg-teal-950/30 ring-1 ring-teal-300 dark:ring-teal-700 opacity-100'
+                      ? 'bg-tech/10 ring-1 ring-tech/30 opacity-100'
                       : 'hover:bg-muted/60'
                   }`}
                 >
-                  <span className="h-2.5 w-2.5 rounded-full bg-teal-500 shrink-0" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-tech shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
                       {session.etudiant.name}
                     </p>
                   </div>
                   {session.score !== null && (
-                    <span className={`text-xs font-semibold shrink-0 ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
+                    <span className={`text-xs font-semibold shrink-0 font-mono tabular-nums ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
                       {session.score.toFixed(1)}
                     </span>
                   )}
