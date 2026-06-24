@@ -9,7 +9,7 @@
  * Tokens & utilitaires CSS : voir src/app/globals.css (section DESIGN SYSTEM).
  *   - Couleurs sémantiques : bg-primary, text-success, border-warning…
  *   - Tiers gamification : bg-bronze, text-gold, ds-glow-platinum…
- *   - Glassmorphism : classe .ds-glass
+ *   - Glassmorphism : SUPPRIMÉ (remplacé par fonds opaques bg-card pour lisibilité)
  *   - Hover lift : classe .ds-lift
  *   - Fonts : font-sans (Inter), font-mono (JetBrains Mono), font-display
  *   - Radius : rounded-sm/md/lg/xl/full (6/10/16/24px)

@@ -119,7 +119,7 @@ export function EntityCard({
             {tier && (
               <span
                 className={cn(
-                  'h-6 min-w-[1.5rem] px-2 rounded-full text-[10px] font-bold flex items-center justify-center gap-1 capitalize backdrop-blur-sm shadow-sm',
+                  'h-6 min-w-[1.5rem] px-2 rounded-full text-[10px] font-bold flex items-center justify-center gap-1 capitalize shadow-sm',
                   `ds-glow-${tier}`
                 )}
                 style={{

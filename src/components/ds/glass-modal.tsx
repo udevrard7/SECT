@@ -31,19 +31,19 @@ const SIZE_MAP = {
 } as const
 
 /**
- * GlassModal — Modale avec overlay glassmorphism et animation d'entrée.
+ * GlassModal — Modale avec overlay assombri et animation d'entrée.
  *
  * Design :
- *   - Overlay : backdrop-blur + bg-black/50 (assombrit le fond)
- *   - Modale : glassmorphism (ds-glass) + radius-xl (24px)
+ *   - Overlay : bg-black/60 (assombrit le fond, pas de blur pour lisibilité)
+ *   - Modale : fond opaque bg-card + border + radius-xl (24px) + shadow-2xl
  *   - Animation : scale + fade à l'entrée (spring), fade à la sortie
  *   - Header sticky avec titre + bouton close
  *   - Body scrollable
  *   - Footer optionnel
  *
- * Glassmorphism :
- *   - La modale est un élément positionné (fixed), donc le glassmorphism
- *     est approprié ici selon les règles du design system.
+ * Note : Le glassmorphism (backdrop-blur + transparence) a été supprimé
+ *   pour garantir une lisibilité maximale (WCAG AA). La modale utilise
+ *   désormais un fond opaque bg-card.
  *
  * Accessibilité :
  *   - role="dialog" aria-modal="true"
@@ -84,17 +84,17 @@ export function GlassModal({
             }
           }}
         >
-          {/* Overlay — assombri + blur pour focus sur la modale */}
+          {/* Overlay — assombri pour focus sur la modale (sans blur, lisibilité) */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            className="absolute inset-0 bg-black/60"
             onClick={closeOnOverlayClick ? onClose : undefined}
           />
 
-          {/* Modale — glass renforcé (opacité 90% + blur 16px) pour contraste WCAG */}
+          {/* Modale — fond opaque pour lisibilité maximale */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -102,7 +102,7 @@ export function GlassModal({
             transition={{ type: 'spring', damping: 26, stiffness: 300, duration: 0.25 }}
             className={cn(
               'relative w-full rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
-              'bg-card/95 dark:bg-card/90 backdrop-blur-xl border border-border',
+              'bg-card border border-border',
               SIZE_MAP[size]
             )}
           >

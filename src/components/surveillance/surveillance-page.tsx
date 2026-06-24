@@ -1625,7 +1625,7 @@ function DetailSheet({
 }) {
   return (
     <Sheet open={!!session} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent className="border-violet-500/30 bg-violet-950/95 text-violet-50 backdrop-blur-xl sv-scroll w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent className="border-violet-500/30 bg-violet-950 text-violet-50 sv-scroll w-full overflow-y-auto sm:max-w-2xl">
         {session && (
           <>
             <SheetHeader>
@@ -1823,7 +1823,7 @@ function ScreenshotViewer({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="border-violet-500/30 bg-violet-950/95 text-violet-50 backdrop-blur-xl sm:max-w-4xl">
+      <DialogContent className="border-violet-500/30 bg-violet-950 text-violet-50 sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-2 text-violet-100">
             <span>

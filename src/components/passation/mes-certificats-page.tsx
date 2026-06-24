@@ -352,7 +352,7 @@ export function MesCertificatsPage() {
         <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-white/10 blur-3xl translate-x-1/3 -translate-y-1/3" />
         <div className="relative flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20">
               <ScrollText className="h-6 w-6" />
             </div>
             <div>
@@ -367,7 +367,7 @@ export function MesCertificatsPage() {
               { n: stats.avance, label: 'Avancé', icon: Medal, color: 'text-info' },
               { n: stats.standard, label: 'Standard', icon: Award, color: 'text-success' },
             ] as const).map((s, i) => (
-              <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 backdrop-blur">
+              <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10">
                 <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
                 <span className="text-sm font-bold font-mono tabular-nums">{s.n}</span>
                 <span className="text-[10px] text-white/80 hidden sm:inline">{s.label}</span>

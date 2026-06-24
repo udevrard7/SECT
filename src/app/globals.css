@@ -14,7 +14,7 @@
    indigo/violet. Les 41 pages existantes héritent donc automatiquement
    de la nouvelle identité sans modification de code. Les nouveaux
    tokens préfixés --ds-* couvrent ce que shadcn n'offre pas
-   (glassmorphism, tiers de gamification, XP).
+   (fonds opaques pour lisibilité, tiers de gamification, XP).
    ════════════════════════════════════════════════════════════════════ */
 
 @theme inline {
@@ -143,11 +143,6 @@
   --platinum: oklch(0.84 0.02 250);          /* #E5E4E2 */
   --xp: oklch(0.541 0.24 293.5);             /* violet = XP */
 
-  /* ── Nouveaux : glassmorphism (subtil, light) ── */
-  --glass-bg: oklch(1 0 0 / 0.7);
-  --glass-border: oklch(1 0 0 / 0.2);
-  --glass-blur: 12px;
-
   /* Charts (alignés sur la palette DS) */
   --chart-1: oklch(0.527 0.224 264.5);   /* indigo */
   --chart-2: oklch(0.541 0.24 293.5);    /* violet */
@@ -214,10 +209,6 @@
   --platinum: oklch(0.88 0.02 250);
   --xp: oklch(0.606 0.25 292.7);
 
-  /* Glassmorphism dark */
-  --glass-bg: oklch(0.279 0.041 260 / 0.6);
-  --glass-border: oklch(1 0 0 / 0.12);
-
   /* Charts dark */
   --chart-1: oklch(0.585 0.217 273);
   --chart-2: oklch(0.606 0.25 292.7);
@@ -239,14 +230,6 @@
 /* ════════════════════════════════════════════════════════════════════
    UTILITAIRES DESIGN SYSTEM
    ════════════════════════════════════════════════════════════════════ */
-
-/* ── Glassmorphism — résérvé aux éléments positionnés (sticky/fixed/absolute) ── */
-.ds-glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-}
 
 /* ── Hover lift pour cartes interactives (translateY -2px) ── */
 .ds-lift {

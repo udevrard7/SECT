@@ -1790,7 +1790,7 @@ export function GenerationIAPage() {
 
                 {/* ─── Summary bar at bottom ─── */}
                 <motion.div variants={itemVariants}>
-                  <div className="flex items-center justify-between rounded-xl border bg-background/95 backdrop-blur-sm p-3 shadow-sm">
+                  <div className="flex items-center justify-between rounded-xl border bg-background p-3 shadow-sm">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 text-sm shrink-0">
                         <FileText className="h-4 w-4 text-success" />

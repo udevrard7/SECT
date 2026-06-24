@@ -1005,7 +1005,7 @@ export function BanqueQuestionsPage() {
  )}
 
  {/* ─── Search & Filters (sticky) ─── */}
- <div className="sticky top-0 z-10 -mx-4 border-b bg-background/95 px-4 pb-4 pt-2 backdrop-blur-sm md:-mx-6 md:px-6">
+ <div className="sticky top-0 z-10 -mx-4 border-b bg-background px-4 pb-4 pt-2 md:-mx-6 md:px-6">
  <div className="flex flex-col gap-3">
  <div className="flex flex-col gap-3 sm:flex-row">
  {/* Search */}
