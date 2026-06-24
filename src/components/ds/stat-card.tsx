@@ -106,7 +106,7 @@ export function StatCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: index * 0.05, ease: 'easeOut' }}
       className={cn(
-        'relative p-5 rounded-lg border border-border bg-card shadow-sm',
+        'relative p-5 rounded-lg border border-border bg-card shadow-sm ds-kente-top',
         isInteractive && 'ds-lift cursor-pointer',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
       )}

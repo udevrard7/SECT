@@ -89,6 +89,8 @@ export function EntityCard({
 
   const inner = (
     <>
+      {/* Bande kente tricolore en haut de la card (signature africaine) */}
+      <div className="ds-kente-strip" aria-hidden="true" />
       {/* Thumbnail */}
       <div className="relative aspect-video bg-muted overflow-hidden">
         {loading ? (

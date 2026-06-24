@@ -1,5 +1,6 @@
 'use client'
 
+import { getGreeting } from '@/lib/micro-copy'
 import { useEffect, useState, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import {
@@ -397,7 +398,7 @@ export function AdminDashboard() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 ds-kente-pattern rounded-lg px-4 py-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl">
-            Bonjour, {user?.name ?? 'Administrateur'}
+            {getGreeting()}, {user?.name ?? 'Administrateur'}
           </h1>
           <Badge
             className="w-fit bg-success text-success-foreground hover:bg-success/90"

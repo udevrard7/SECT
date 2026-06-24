@@ -68,7 +68,7 @@ export function WeeklyGoals({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: index * 0.05, ease: 'easeOut' }}
-      className="p-5 rounded-lg border border-border bg-card shadow-sm"
+      className="p-5 rounded-lg border border-border bg-card shadow-sm ds-kente-top"
     >
       {/* ── Header : titre + streak ── */}
       <div className="flex items-center justify-between gap-3 mb-4">
