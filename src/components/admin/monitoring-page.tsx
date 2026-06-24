@@ -845,7 +845,7 @@ export function MonitoringPage() {
       {/* ─── Health Status Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Uptime Card */}
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <HeartPulse className="h-5 w-5 text-success" />
@@ -861,7 +861,7 @@ export function MonitoringPage() {
         </Card>
 
         {/* Response Time Card */}
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <Timer className="h-5 w-5 text-success" />
@@ -876,7 +876,7 @@ export function MonitoringPage() {
         </Card>
 
         {/* Active Errors Card */}
-        <Card className="border-l-4 border-l-destructive">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
               <XCircle className="h-5 w-5 text-destructive" />
@@ -903,7 +903,7 @@ export function MonitoringPage() {
         </Card>
 
         {/* Critical Events Card */}
-        <Card className="border-l-4 border-l-secondary">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/10">
               <AlertOctagon className="h-5 w-5 text-secondary" />
