@@ -497,9 +497,9 @@ export function LoginForm() {
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
-          CÔTÉ DROIT (40%) — Formulaire sur fond clair
+          CÔTÉ DROIT (40%) — Formulaire sur fond clair, centré verticalement
           ════════════════════════════════════════════════════════════════ */}
-      <div className="w-full lg:w-[40%] flex items-center justify-center bg-[#F8FAFC] p-6 sm:p-12 relative">
+      <div className="w-full lg:w-[40%] flex flex-col items-center justify-center bg-[#F8FAFC] px-8 py-10 sm:px-12 relative">
         {/* Motifs géométriques dorés dans les coins */}
         <div className="absolute top-6 right-6 w-16 h-16 opacity-10 pointer-events-none">
           <svg viewBox="0 0 60 60" fill="none">
@@ -514,13 +514,13 @@ export function LoginForm() {
         </div>
 
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="w-full max-w-sm"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3, ease: 'easeOut' }}
+          className="w-full max-w-[360px] flex flex-col"
         >
           {/* Logo mobile */}
-          <div className="lg:hidden flex items-center gap-2.5 mb-8 justify-center">
+          <div className="lg:hidden flex items-center gap-2.5 mb-6 justify-center">
             <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
               <GraduationCap className="h-6 w-6 text-[#1E1B4B]" />
             </div>
@@ -528,7 +528,7 @@ export function LoginForm() {
           </div>
 
           {/* Toggle Personnel / Étudiant */}
-          <div className="relative flex bg-[#1E1B4B]/5 rounded-xl p-1 mb-8 border border-[#1E1B4B]/10">
+          <div className="relative flex bg-[#1E1B4B]/5 rounded-xl p-1 mb-6 border border-[#1E1B4B]/10">
             <motion.div
               className="absolute top-1 bottom-1 rounded-lg bg-[#84CC16] shadow-md"
               initial={false}
@@ -539,7 +539,7 @@ export function LoginForm() {
               type="button"
               onClick={() => handleModeChange('personnel')}
               aria-pressed={isPersonnel}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
             >
               <Briefcase className="w-4 h-4" />
               Personnel
@@ -548,20 +548,20 @@ export function LoginForm() {
               type="button"
               onClick={() => handleModeChange('etudiant')}
               aria-pressed={!isPersonnel}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${!isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 ${!isPersonnel ? 'text-[#1E1B4B]' : 'text-[#1E1B4B]/40 hover:text-[#1E1B4B]/60'}`}
             >
               <GraduationCap className="w-4 h-4" />
               Étudiant
             </button>
           </div>
 
-          {/* Titre */}
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-[#1E1B4B] tracking-tight">
-              Bon retour ! 👋
+          {/* Titre + sous-titre */}
+          <div className="mb-5">
+            <h2 className="text-2xl font-bold text-[#1E1B4B] tracking-tight leading-tight">
+              Connexion
             </h2>
-            <p className="text-sm text-[#1E1B4B]/50 mt-1">
-              Accédez à votre espace d'apprentissage
+            <p className="text-sm text-[#1E1B4B]/50 mt-1.5">
+              Accédez à votre espace d'évaluation
             </p>
           </div>
 
@@ -572,7 +572,7 @@ export function LoginForm() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mb-4 px-4 py-3 rounded-lg bg-[#C2410C]/10 border border-[#C2410C]/20 text-sm text-[#C2410C] font-medium"
+                className="mb-3 px-3 py-2.5 rounded-lg bg-[#C2410C]/10 border border-[#C2410C]/20 text-sm text-[#C2410C] font-medium"
               >
                 {loginError}
               </motion.div>
@@ -580,7 +580,7 @@ export function LoginForm() {
           </AnimatePresence>
 
           {/* Formulaire */}
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             {/* Email / Matricule */}
             <div className="space-y-1.5">
               <Label htmlFor="identifier" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
@@ -592,7 +592,7 @@ export function LoginForm() {
                   id="identifier"
                   type={isPersonnel ? 'email' : 'text'}
                   placeholder={isPersonnel ? 'votre.email@universite.fr' : 'ETU-XXXXXX ou email'}
-                  className="pl-10 h-12 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 focus-visible:ring-[#84CC16]/20 transition-all"
+                  className="pl-10 h-11 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 transition-all"
                   {...form.register('identifier')}
                 />
               </div>
@@ -612,7 +612,7 @@ export function LoginForm() {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
-                  className="pl-10 pr-10 h-12 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 focus-visible:ring-[#84CC16]/20 transition-all"
+                  className="pl-10 pr-10 h-11 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 transition-all"
                   {...form.register('password')}
                 />
                 <button
@@ -630,7 +630,7 @@ export function LoginForm() {
             </div>
 
             {/* Lien mot de passe oublié */}
-            <div className="flex justify-end">
+            <div className="flex justify-end -mt-1">
               <button
                 type="button"
                 onClick={() => { setResetDialogOpen(true); setResetSent(false); setResetEmail('') }}
@@ -644,7 +644,7 @@ export function LoginForm() {
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2"
+              className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 mt-1"
             >
               {isLoading ? (
                 <><Loader2 className="h-5 w-5 animate-spin mr-2" /> Connexion...</>
@@ -655,7 +655,7 @@ export function LoginForm() {
           </form>
 
           {/* Retour landing */}
-          <div className="mt-8 text-center">
+          <div className="mt-6 text-center">
             <a
               href="/"
               className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/50 hover:text-[#1E1B4B] transition-colors"
