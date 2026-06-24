@@ -37,6 +37,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { PAGE_ROUTES } from '@/lib/routes'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 // ─── Types ───
 
@@ -273,7 +274,7 @@ function alerteToUnified(a: AlerteItem): UnifiedNotification {
 
 // ─── Main Component ───
 
-export function NotificationBell() {
+export function NotificationBell({ className }: { className?: string }) {
   const { user } = useAuthStore()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -451,7 +452,7 @@ export function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+        <Button variant="ghost" size="icon" className={cn("relative", className)} aria-label="Notifications">
           <Bell className="h-4 w-4" />
           {/* Unread badge */}
           {unreadCount > 0 && (
