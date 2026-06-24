@@ -108,7 +108,7 @@ export function CorrectionSidebar({
                           onClick={() => selectSession(session.id)}
                           className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
                             isSelected
-                              ? 'bg-emerald-50 ring-1 ring-emerald-300 dark:bg-emerald-950/30 dark:ring-emerald-700'
+                              ? 'bg-success/10 ring-1 ring-success/30'
                               : 'hover:bg-muted/60'
                           }`}
                         >
@@ -127,9 +127,9 @@ export function CorrectionSidebar({
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => setHorizontalQuestionIndex(idx)}
-                        className={`h-7 w-7 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors ${
+                        className={`h-7 w-7 rounded-md flex items-center justify-center text-[10px] font-bold font-mono tabular-nums transition-colors ${
                           idx === horizontalQuestionIndex
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                            ? 'bg-success/15 text-success'
                             : 'hover:bg-muted/60 text-muted-foreground'
                         }`}
                       >

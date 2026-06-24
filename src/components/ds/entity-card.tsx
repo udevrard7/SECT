@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { type LucideIcon, ChevronRight } from 'lucide-react'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { PulseSkeleton } from './pulse-skeleton'
 import type { GamificationTier } from './user-stats'
@@ -89,11 +90,12 @@ export function EntityCard({
         {loading ? (
           <PulseSkeleton className="h-full w-full" variant="card" />
         ) : thumbnailUrl ? (
-          <img
+          <Image
             src={thumbnailUrl}
             alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : ThumbnailIcon ? (
           <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-secondary/10">
@@ -218,7 +220,7 @@ export function EntityCard({
             onAction()
           }}
           aria-label={`Action sur ${title}`}
-          className="absolute bottom-3 right-3 h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute bottom-3 right-3 h-9 w-9 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

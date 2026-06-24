@@ -53,33 +53,33 @@ export function AiSuggestionPanel({
   const confidence = pct >= 70 ? 'Élevée' : pct >= 40 ? 'Moyenne' : 'Faible'
   const confColor =
     pct >= 70
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-success'
       : pct >= 40
-        ? 'text-amber-600 dark:text-amber-400'
-        : 'text-red-600 dark:text-red-400'
+        ? 'text-warning'
+        : 'text-destructive'
 
   if (variant === 'collapsible') {
     return (
       <Collapsible open={isOpen} onOpenChange={onOpenChange}>
-        <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border-2 border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 px-3 py-2 hover:from-violet-100 hover:to-purple-100 dark:border-violet-800 dark:from-violet-950/30 dark:to-purple-950/20 dark:hover:from-violet-950/40 dark:hover:to-purple-950/30 transition-colors">
-          <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-          <span className="text-xs font-semibold text-violet-800 dark:text-violet-200">
+        <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border-2 border-secondary/20 bg-gradient-to-r from-secondary/10 to-secondary/10 px-3 py-2 hover:from-secondary/15 hover:to-secondary/15 transition-colors">
+          <Sparkles className="h-3.5 w-3.5 text-secondary" />
+          <span className="text-xs font-semibold text-secondary">
             Suggestion IA
           </span>
-          <span className="text-xs font-bold text-violet-900 dark:text-violet-100">
+          <span className="text-xs font-bold text-secondary font-mono tabular-nums">
             {noteIA}/{bareme}
           </span>
           <Badge variant="outline" className={`text-[9px] h-4 ${confColor}`}>
             {confidence}
           </Badge>
-          <ChevronDown className={`h-3.5 w-3.5 ml-auto text-violet-600 dark:text-violet-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`h-3.5 w-3.5 ml-auto text-secondary transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="rounded-b-lg border-2 border-t-0 border-violet-200 bg-violet-50/50 px-3 py-3 space-y-2.5 dark:border-violet-800 dark:bg-violet-950/10">
+          <div className="rounded-b-lg border-2 border-t-0 border-secondary/20 bg-secondary/10 px-3 py-3 space-y-2.5">
             {justificationIA && (
               <div className="rounded-md bg-white/60 dark:bg-white/5 p-2.5">
-                <p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-0.5">Justification</p>
-                <p className="text-xs text-violet-900 dark:text-violet-100 whitespace-pre-wrap leading-relaxed">
+                <p className="text-[10px] font-medium text-secondary mb-0.5">Justification</p>
+                <p className="text-xs text-secondary whitespace-pre-wrap leading-relaxed">
                   {justificationIA}
                 </p>
               </div>
@@ -89,7 +89,7 @@ export function AiSuggestionPanel({
                 size="sm"
                 onClick={onApply}
                 disabled={isApplying}
-                className="flex-1 h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+                className="flex-1 h-7 text-xs bg-secondary hover:bg-secondary/90 text-white"
               >
                 {isApplying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ThumbsUp className="h-3 w-3 mr-1" />}
                 Appliquer
@@ -98,7 +98,7 @@ export function AiSuggestionPanel({
                 size="sm"
                 variant="outline"
                 onClick={onDismiss}
-                className="h-7 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950"
+                className="h-7 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
               >
                 <ThumbsDown className="h-3 w-3 mr-1" />
                 Ignorer
@@ -112,11 +112,11 @@ export function AiSuggestionPanel({
 
   // variant === 'flat'
   return (
-    <div className="px-4 py-3 border-b border-border bg-violet-50/50 dark:bg-violet-950/10">
+    <div className="px-4 py-3 border-b border-border bg-secondary/10">
       <div className="flex items-center gap-2 mb-2">
-        <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-        <span className="text-xs font-semibold text-violet-800 dark:text-violet-200">Suggestion IA</span>
-        <span className="text-xs font-bold text-violet-900 dark:text-violet-100">
+        <Sparkles className="h-3.5 w-3.5 text-secondary" />
+        <span className="text-xs font-semibold text-secondary">Suggestion IA</span>
+        <span className="text-xs font-bold text-secondary font-mono tabular-nums">
           {noteIA}/{bareme}
         </span>
         <Badge variant="outline" className={`text-[9px] h-4 ${confColor}`}>
@@ -124,7 +124,7 @@ export function AiSuggestionPanel({
         </Badge>
       </div>
       {justificationIA && (
-        <p className="text-xs text-violet-900 dark:text-violet-100 whitespace-pre-wrap mb-2 rounded-md bg-white/60 dark:bg-white/5 p-2">
+        <p className="text-xs text-secondary whitespace-pre-wrap mb-2 rounded-md bg-white/60 dark:bg-white/5 p-2">
           {justificationIA}
         </p>
       )}
@@ -132,7 +132,7 @@ export function AiSuggestionPanel({
         <Button
           size="sm"
           onClick={onApply}
-          className="h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+          className="h-7 text-xs bg-secondary hover:bg-secondary/90 text-white"
         >
           <ThumbsUp className="h-3 w-3 mr-1" />
           Appliquer
@@ -141,7 +141,7 @@ export function AiSuggestionPanel({
           size="sm"
           variant="outline"
           onClick={onCopyNote}
-          className="h-7 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950"
+          className="h-7 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
         >
           Copier note
         </Button>

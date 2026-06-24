@@ -120,7 +120,7 @@ export function ParQuestionView({
           <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
             <LayoutGrid className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="mt-3 text-base font-semibold">Correction par question</h3>
+          <h3 className="mt-3 text-base font-semibold font-display">Correction par question</h3>
           <p className="mt-1 text-sm text-muted-foreground max-w-xs">
             Sélectionnez une épreuve pour corriger toutes les copies question par question.
           </p>
@@ -172,12 +172,12 @@ export function ParQuestionView({
           <span className="text-muted-foreground">·</span>
           <span className="text-xs text-muted-foreground">{getQuestionTypeLabel(hq.type)}</span>
           <span className="text-muted-foreground">·</span>
-          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{horizontalCurrentQuestion.bareme}pts</span>
+          <span className="text-xs font-semibold text-success font-mono tabular-nums">{horizontalCurrentQuestion.bareme}pts</span>
           <Badge variant="outline" className={`text-[10px] h-5 ${getCorrectionBadge(hq.type).classes}`}>
             {getCorrectionBadge(hq.type).label}
           </Badge>
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">{horizontalGradedCount}/{totalSessions}</span>
+            <span className="text-[10px] text-muted-foreground font-mono tabular-nums">{horizontalGradedCount}/{totalSessions}</span>
             <Progress value={progressPct} className="w-16 h-1.5" />
           </div>
         </div>
@@ -199,16 +199,16 @@ export function ParQuestionView({
               {/* Expected answer panel (collapsible, at top of scroll area) */}
               {expectedAnswer && (
                 <Collapsible open={expectedAnswerOpen} onOpenChange={setExpectedAnswerOpen}>
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30 transition-colors">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-success/20 bg-success/10 px-3 py-2 hover:bg-success/10 transition-colors">
+                    <Check className="h-3.5 w-3.5 text-success" />
+                    <span className="text-xs font-semibold text-success">
                       Réponse attendue
                     </span>
-                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-emerald-600 dark:text-emerald-400 transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-success transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="rounded-b-lg border border-t-0 border-emerald-200 bg-emerald-50/30 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/10">
-                      <p className="text-sm whitespace-pre-wrap text-emerald-900 dark:text-emerald-100">
+                    <div className="rounded-b-lg border border-t-0 border-success/20 bg-success/10 px-3 py-2">
+                      <p className="text-sm whitespace-pre-wrap text-success">
                         {expectedAnswer}
                       </p>
                     </div>
@@ -246,8 +246,8 @@ export function ParQuestionView({
                     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-muted/30">
                       <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${statusDot.color}`} title={statusDot.label} />
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
-                          <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 shrink-0">
+                          <User className="h-3.5 w-3.5 text-success" />
                         </div>
                         <p className="text-sm font-semibold truncate">{session.etudiant.name}</p>
                       </div>
@@ -280,7 +280,7 @@ export function ParQuestionView({
                             return (
                               <>
                                 <div className="flex items-center gap-2 text-xs">
-                                  <Badge variant="outline" className="text-[10px] h-5 border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
+                                  <Badge variant="outline" className="text-[10px] h-5 border-secondary/30 text-secondary">
                                     {(hq.langage || codingAns.language || 'python').toUpperCase()}
                                   </Badge>
                                   <span className="text-muted-foreground">{codingAns.code.split('\n').length} lignes</span>
@@ -326,11 +326,11 @@ export function ParQuestionView({
                     {/* Auto-graded notice */}
                     {isAutoGradedType(hq.type) && (
                       <div className="px-4 py-3 border-b border-border">
-                        <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-sky-50 border border-sky-200 dark:bg-sky-950/20 dark:border-sky-800">
-                          <Zap className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                        <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-info/10 border border-info/20">
+                          <Zap className="h-4 w-4 text-info shrink-0" />
                           <div>
-                            <p className="text-xs font-semibold text-sky-800 dark:text-sky-200">Auto-corrigée</p>
-                            <p className="text-[10px] text-sky-600 dark:text-sky-300">
+                            <p className="text-xs font-semibold text-info">Auto-corrigée</p>
+                            <p className="text-[10px] text-info font-mono tabular-nums">
                               Score automatique : {rep?.score ?? '—'} / {horizontalCurrentQuestion.bareme}
                             </p>
                           </div>
@@ -341,11 +341,11 @@ export function ParQuestionView({
                     {/* Semi-auto (CODE) notice */}
                     {isSemiAutoGradedType(hq.type) && (
                       <div className="px-4 py-3 border-b border-border">
-                        <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-violet-50 border border-violet-200 dark:bg-violet-950/20 dark:border-violet-800">
-                          <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                        <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-secondary/10 border border-secondary/20">
+                          <Zap className="h-4 w-4 text-secondary shrink-0" />
                           <div>
-                            <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">Auto+corrigée</p>
-                            <p className="text-[10px] text-violet-600 dark:text-violet-300">
+                            <p className="text-xs font-semibold text-secondary">Auto+corrigée</p>
+                            <p className="text-[10px] text-secondary font-mono tabular-nums">
                               Score auto-calculé : {rep?.score ?? '—'} / {horizontalCurrentQuestion.bareme} — Vous pouvez modifier la note ci-dessous
                             </p>
                           </div>
@@ -391,9 +391,9 @@ export function ParQuestionView({
                             value={scoreValue}
                             onChange={(e) => setHorizontalScores((prev) => ({ ...prev, [session.id]: e.target.value }))}
                             placeholder={rep?.score != null ? String(rep.score) : '0'}
-                            className="w-24 h-9 text-base font-bold"
+                            className="w-24 h-9 text-base font-bold font-mono tabular-nums"
                           />
-                          <span className="text-base font-semibold text-muted-foreground">/ {horizontalCurrentQuestion.bareme}</span>
+                          <span className="text-base font-semibold text-muted-foreground font-mono tabular-nums">/ {horizontalCurrentQuestion.bareme}</span>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -412,7 +412,7 @@ export function ParQuestionView({
                             size="sm"
                             onClick={() => handleHorizontalSave(session.id)}
                             disabled={isSavingRow}
-                            className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 px-4"
+                            className="h-9 text-xs bg-success hover:bg-success/90 px-4"
                           >
                             {isSavingRow ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
                             Sauvegarder
@@ -446,10 +446,10 @@ export function ParQuestionView({
             <button
               key={idx}
               onClick={() => setHorizontalQuestionIndex(idx)}
-              className={`h-6 w-6 shrink-0 rounded border text-[10px] font-bold transition-colors ${
+              className={`h-6 w-6 shrink-0 rounded border text-[10px] font-bold font-mono tabular-nums transition-colors ${
                 idx === horizontalQuestionIndex
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-muted text-muted-foreground border-border hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+                  ? 'bg-success text-white border-success'
+                  : 'bg-muted text-muted-foreground border-border hover:bg-success/15'
               }`}
             >
               {idx + 1}
@@ -474,7 +474,7 @@ export function ParQuestionView({
         <div className="border-t border-border px-4 py-2 shrink-0">
           <Button
             variant="outline"
-            className="w-full h-8 text-xs border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950"
+            className="w-full h-8 text-xs border-secondary/30 text-secondary hover:bg-secondary/10"
             onClick={handleBatchAiForQuestion}
             disabled={isBatchAiLoading}
           >

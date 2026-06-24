@@ -262,7 +262,7 @@ export function AcademicCalendar({
           type="button"
           onClick={goToPrevMonth}
           aria-label="Mois précédent"
-          className="h-9 w-9 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 w-11 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -275,7 +275,7 @@ export function AcademicCalendar({
           type="button"
           onClick={goToNextMonth}
           aria-label="Mois suivant"
-          className="h-9 w-9 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 w-11 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </button>

@@ -36,7 +36,7 @@ export function QuestionHeader({
         <span className="text-muted-foreground">·</span>
         <span className="text-xs text-muted-foreground">{getQuestionTypeLabel(q.type)}</span>
         <span className="text-muted-foreground">·</span>
-        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{currentQuestion.bareme}pts</span>
+        <span className="text-xs font-semibold text-success font-mono tabular-nums">{currentQuestion.bareme}pts</span>
         <span className="text-muted-foreground">·</span>
         <span className="flex items-center gap-1 text-xs">
           <span className={`h-1.5 w-1.5 rounded-full ${getDifficulteDotColor(q.difficulte)}`} />

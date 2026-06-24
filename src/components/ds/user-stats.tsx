@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { Flame, Star, Zap, type LucideIcon } from 'lucide-react'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 /**
@@ -154,9 +155,11 @@ export function UserStats({ stats, compact = true, avatarUrl, userName }: UserSt
     <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card ds-lift">
       <div className="relative">
         {avatarUrl ? (
-          <img
+          <Image
             src={avatarUrl}
             alt={userName ?? ''}
+            width={48}
+            height={48}
             className={cn(
               'h-12 w-12 rounded-full object-cover ring-2',
               tier ? tierMeta?.ring : 'ring-primary/30'

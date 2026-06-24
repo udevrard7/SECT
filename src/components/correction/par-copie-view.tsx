@@ -129,7 +129,7 @@ export function ParCopieView({
           <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
             <PenTool className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="mt-3 text-base font-semibold">Sélectionnez une copie</h3>
+          <h3 className="mt-3 text-base font-semibold font-display">Sélectionnez une copie</h3>
           <p className="mt-1 text-sm text-muted-foreground max-w-xs">
             Choisissez un étudiant dans le panneau latéral pour commencer la correction.
           </p>
@@ -142,17 +142,17 @@ export function ParCopieView({
     return (
       <div className="flex-1 flex items-center justify-center min-h-0">
         <div className="text-center max-w-sm">
-          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-            <Check className="h-8 w-8 text-teal-500 dark:text-teal-400" />
+          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-tech/10">
+            <Check className="h-8 w-8 text-tech" />
           </div>
-          <h3 className="mt-3 text-base font-semibold">Copie rendue</h3>
+          <h3 className="mt-3 text-base font-semibold font-display">Copie rendue</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             La copie de {selectedSession.etudiant.name} a été corrigée et rendue.
           </p>
           <div className="mt-3 rounded-lg border border-border bg-muted/50 p-3">
             <p className="text-sm">
               Score final :{' '}
-              <span className={`font-bold ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
+              <span className={`font-bold font-mono tabular-nums ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
                 {selectedSession.score?.toFixed(1) ?? '—'} pts
               </span>
             </p>
@@ -166,12 +166,12 @@ export function ParCopieView({
     return (
       <div className="flex-1 flex items-center justify-center min-h-0">
         <div className="text-center">
-          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <Check className="h-8 w-8 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-success/10">
+            <Check className="h-8 w-8 text-success" />
           </div>
-          <h3 className="mt-3 text-base font-semibold">Toutes les questions sont corrigées</h3>
+          <h3 className="mt-3 text-base font-semibold font-display">Toutes les questions sont corrigées</h3>
           <Button
-            className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+            className="mt-4 bg-success hover:bg-success/90"
             onClick={() => handleFinalize()}
             disabled={isFinalizing}
           >
@@ -198,8 +198,8 @@ export function ParCopieView({
       {/* Student info bar */}
       <div className="border-b border-border bg-card px-4 py-2 flex items-center gap-3 flex-wrap shrink-0">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-            <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15">
+            <User className="h-3.5 w-3.5 text-success" />
           </div>
           <div>
             <p className="text-sm font-semibold leading-tight">{selectedSession.etudiant.name}</p>
@@ -211,16 +211,16 @@ export function ParCopieView({
           variant="outline"
           className={
             selectedSession.statut === 'CORRIGEE'
-              ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 text-[10px] h-5'
-              : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800 text-[10px] h-5'
+              ? 'bg-success/15 text-success border-success/20 text-[10px] h-5'
+              : 'bg-warning/15 text-warning border-warning/20 text-[10px] h-5'
           }
         >
           {selectedSession.statut === 'CORRIGEE' ? 'Corrigée' : 'En correction'}
         </Badge>
         <div className="flex items-center gap-1.5 text-xs">
-          <Award className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+          <Award className="h-3.5 w-3.5 text-success" />
           <span>
-            <span className={`font-bold ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
+            <span className={`font-bold font-mono tabular-nums ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
               {selectedSession.score !== null ? selectedSession.score.toFixed(1) : '—'}
             </span>
             <span className="text-muted-foreground"> pts</span>
@@ -228,8 +228,8 @@ export function ParCopieView({
         </div>
         {selectedSession.autoGradedTotal > 0 && (
           <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Zap className="h-3 w-3 text-sky-500" />
-            Auto: {selectedSession.autoGradedScore.toFixed(1)}/{selectedSession.autoGradedTotal.toFixed(1)}
+            <Zap className="h-3 w-3 text-info" />
+            Auto: <span className="font-mono tabular-nums">{selectedSession.autoGradedScore.toFixed(1)}/{selectedSession.autoGradedTotal.toFixed(1)}</span>
           </div>
         )}
         {selectedSession.alertes > 0 && (
@@ -240,7 +240,7 @@ export function ParCopieView({
         )}
         {/* Progress */}
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">{manualCorrectedCount}/{totalQuestions}</span>
+          <span className="text-[10px] text-muted-foreground font-mono tabular-nums">{manualCorrectedCount}/{totalQuestions}</span>
           <Progress value={totalQuestions > 0 ? (manualCorrectedCount / totalQuestions) * 100 : 0} className="w-16 h-1.5" />
         </div>
       </div>
@@ -271,16 +271,16 @@ export function ParCopieView({
               {/* Réponse attendue (collapsible) */}
               {expectedAnswer && (
                 <Collapsible open={expectedAnswerOpen} onOpenChange={setExpectedAnswerOpen}>
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30 transition-colors">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-success/20 bg-success/10 px-3 py-2 hover:bg-success/10 transition-colors">
+                    <Check className="h-3.5 w-3.5 text-success" />
+                    <span className="text-xs font-semibold text-success">
                       Réponse attendue
                     </span>
-                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-emerald-600 dark:text-emerald-400 transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-success transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="rounded-b-lg border border-t-0 border-emerald-200 bg-emerald-50/30 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/10">
-                      <p className="text-sm whitespace-pre-wrap text-emerald-900 dark:text-emerald-100">
+                    <div className="rounded-b-lg border border-t-0 border-success/20 bg-success/10 px-3 py-2">
+                      <p className="text-sm whitespace-pre-wrap text-success">
                         {expectedAnswer}
                       </p>
                     </div>
@@ -330,14 +330,14 @@ export function ParCopieView({
 
               {/* Existing commentaire */}
               {currentReponse?.commentaire && (
-                <div className="rounded-lg border border-teal-200 bg-teal-50 p-2.5 dark:border-teal-800 dark:bg-teal-950/20">
+                <div className="rounded-lg border border-tech/20 bg-tech/10 p-2.5">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <MessageSquare className="h-3 w-3 text-teal-600 dark:text-teal-400" />
-                    <span className="text-[10px] font-semibold text-teal-700 dark:text-teal-300">
+                    <MessageSquare className="h-3 w-3 text-tech" />
+                    <span className="text-[10px] font-semibold text-tech">
                       Commentaire existant
                     </span>
                   </div>
-                  <p className="text-xs text-teal-900 dark:text-teal-100 whitespace-pre-wrap">
+                  <p className="text-xs text-tech whitespace-pre-wrap">
                     {currentReponse.commentaire}
                   </p>
                 </div>
@@ -360,11 +360,11 @@ export function ParCopieView({
 
               {/* Auto-graded notice */}
               {isAutoGradedType(q.type) && (
-                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-sky-50 border border-sky-200 dark:bg-sky-950/20 dark:border-sky-800">
-                  <Zap className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-info/10 border border-info/20">
+                  <Zap className="h-4 w-4 text-info shrink-0" />
                   <div>
-                    <p className="text-xs font-semibold text-sky-800 dark:text-sky-200">Question auto-corrigée</p>
-                    <p className="text-[10px] text-sky-600 dark:text-sky-300">
+                    <p className="text-xs font-semibold text-info">Question auto-corrigée</p>
+                    <p className="text-[10px] text-info font-mono tabular-nums">
                       Score automatique : {currentReponse?.score ?? '—'} / {currentQuestion.bareme}
                     </p>
                   </div>
@@ -373,11 +373,11 @@ export function ParCopieView({
 
               {/* Semi-auto (CODE) notice — CodingCorrection handles the grading UI */}
               {isSemiAutoGradedType(q.type) && currentReponse?.score !== null && currentReponse?.score !== undefined && (
-                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-violet-50 border border-violet-200 dark:bg-violet-950/20 dark:border-violet-800">
-                  <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-secondary/10 border border-secondary/20">
+                  <Zap className="h-4 w-4 text-secondary shrink-0" />
                   <div>
-                    <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">Question auto+corrigée</p>
-                    <p className="text-[10px] text-violet-600 dark:text-violet-300">
+                    <p className="text-xs font-semibold text-secondary">Question auto+corrigée</p>
+                    <p className="text-[10px] text-secondary font-mono tabular-nums">
                       Score auto-calculé : {currentReponse.score} / {currentQuestion.bareme} — Vous pouvez modifier la note ci-dessus
                     </p>
                   </div>
@@ -430,18 +430,18 @@ export function ParCopieView({
 
             let dotClass = 'bg-muted text-muted-foreground border-border'
             if (isCurrent) {
-              dotClass = 'bg-emerald-600 text-white border-emerald-600'
+              dotClass = 'bg-success text-white border-success'
             } else if (!isCorrected) {
-              dotClass = 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700'
+              dotClass = 'bg-warning/15 text-warning border-warning/30'
             } else {
-              dotClass = 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+              dotClass = 'bg-success/15 text-success border-success/30'
             }
 
             return (
               <button
                 key={q.id}
                 onClick={() => goToQuestion(idx)}
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold transition-colors ${dotClass}`}
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold font-mono tabular-nums transition-colors ${dotClass}`}
                 title={`Question ${idx + 1}`}
               >
                 {idx + 1}
@@ -464,13 +464,13 @@ export function ParCopieView({
 
       {/* Finalize bar */}
       {selectedSession.allCorrected && selectedSession.statut !== 'RETOURNEE' && (
-        <div className="border-t border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 px-4 py-2 flex items-center justify-between">
-          <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+        <div className="border-t border-success/20 bg-success/10 px-4 py-2 flex items-center justify-between">
+          <span className="text-xs text-success font-medium">
             Toutes les questions sont corrigées
           </span>
           <Button
             size="sm"
-            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
+            className="h-7 text-xs bg-success hover:bg-success/90"
             onClick={() => handleFinalize()}
             disabled={isFinalizing}
           >

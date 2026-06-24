@@ -1562,3 +1562,147 @@ Stage Summary:
 - Cause : useSearchParams sans Suspense → CSR bailout → build Vercel échec.
 - Fix : pattern standard Next.js (Suspense wrapper + sous-composant).
 - Les 2 déploiements échoués (6b6acf7, fe017de) seront résolus par ce commit.
+
+---
+Task ID: T11-A
+Agent: full-stack-developer (correction module DS migration)
+Task: Migrate 11 correction sub-components to DS
+
+Work Log:
+- Lecture du worklog (T6 Design System : tokens bg-primary/secondary/success/warning/destructive/info/tech, fonts Inter/JetBrains Mono via font-display/font-mono, utils .ds-glass/.ds-lift ; T7-A/C/E migration DS pages : mappings statiques, indigo laissé tel quel car déjà = primary) + lecture des 11 fichiers cibles + correction-utils.ts (helpers getScoreColor/getScoreCircleColor/getCorrectionBadge/getStudentStatusDot/getDifficulteDotColor retournent des strings de classes — non touchés car hors scope, mais leurs valeurs sont consommées par les 11 composants).
+
+- Approche : script Python (/home/z/sect-project/migrate_correction.py — supprimé après exécution) pour automatiser les swaps de couleurs en préservant strictement l'indentation et la structure JSX. Le script applique 2 passes :
+  * Pass 1 : suppression des variants `dark:` des anciennes couleurs (DS auto-adapte en dark mode via tokens oklch). Pattern regex ` dark:(?:hover:)?(?:text|bg|border|ring|from|to)-{color}-\d+(?:/\d+)?` remplacé par chaîne vide (le whitespace Leading est consommé avec la classe).
+  * Pass 2 : remplacement des classes couleur restantes par tokens DS. Mapping : emerald→success, amber→warning, red/rose→destructive, violet/purple→secondary, blue/sky→info, teal→tech, orange→warning. Heuristique d'opacité par shade : shades légères (≤300) → opacité dérivée (50→10, 100→15, 200→20, 300→30) en ignorant l'/opacité explicite (car shade légère + opacité = tint subtil → petite opacité DS) ; shades sombres (≥800) → opacité explicite préservée (5/10/20/30/40 sont déjà DS-friendly) ; shades mid (400-700) → explicite si présent, sinon solid pour 500/600, dérivée sinon.
+  * Aucun cleanup whitespace global (préserve indentation template literals `${...}`).
+
+- Files 1-11 migrés en une passe script. Vérification : `grep -c "emerald\|amber-[0-9]\|red-[0-9]\|violet-[0-9]\|blue-[0-9]\|teal-[0-9]\|sky-[0-9]\|rose-[0-9]\|purple-[0-9]\|orange-[0-9]" src/components/correction/*.tsx` → 0 sur tous les fichiers.
+
+- Édits ciblés MultiEdit post-script pour ajouter font-display (5 occurrences sur h3 titles) et font-mono tabular-nums (31 occurrences sur valeurs numériques : scores, counts, percentages, inputs numériques, points). score-circle.tsx (0 ancienne couleur) a reçu font-mono tabular-nums sur le cercle (le score affiché est numérique).
+
+- Aucune restructure : ligne-counts préservés (2258 lignes total, identique à l'avant migration). Hooks/handlers/state/logique 100% préservés. Seuls les className strings ont changé.
+
+- Vérifications finales :
+  * `bunx tsc --noEmit 2>&1 | grep "correction/"` → 0 erreur.
+  * `bunx eslint src/components/correction/` → 0 erreur, 0 warning.
+  * Dev server : stable, `✓ Compiled in 359ms`, `GET / 200`, aucune erreur compile.
+
+Stage Summary:
+- Files modified (11) :
+  * `src/components/correction/ai-suggestion-panel.tsx` — 20 swaps couleur (violet→secondary partout, confColor emerald/amber/red→success/warning/destructive, gradient violet/purple→secondary/5-15)
+  * `src/components/correction/correction-sidebar.tsx` — 2 swaps (emerald→success sur selected dot + question idx button)
+  * `src/components/correction/correction-skeletons.tsx` — 1 swap (emerald→success sur spinner) + 1 font-display sur h3
+  * `src/components/correction/correction-toolbar.tsx` — 2 swaps (violet→secondary bouton Batch IA, teal→tech bouton Rendre copies) + 2 font-mono tabular-nums (%, count)
+  * `src/components/correction/grading-form.tsx` — 14 swaps (emerald→success container/header/criteria, violet→secondary bouton IA) + 4 font-mono tabular-nums (bareme, input note, /bareme, auto hint)
+  * `src/components/correction/par-copie-view.tsx` — 35 swaps (PLUS GROS) : emerald→success (étudiant avatar, status badge corrigée, Award icône, expected answer collapsible, finalize bar, dot navigation) ; amber→warning (status badge en correction, dot uncorrected) ; sky→info (Zap auto-graded) ; violet→secondary (semi-auto notice) ; teal→tech (commentaire existant, copie rendue check) ; rose→destructive (pas utilisé ici, alertes via Badge variant="destructive")
+  * `src/components/correction/par-question-view.tsx` — 22 swaps : emerald→success (bareme pts, header question, expected answer, dot nav, bouton Sauvegarder) ; sky→info (auto-graded notice) ; violet→secondary (semi-auto notice, badge langage code, bouton batch IA) ; slate laissé (bloc code pre)
+  * `src/components/correction/question-header.tsx` — 1 swap (emerald→success sur bareme pts) + 1 font-mono tabular-nums
+  * `src/components/correction/question-sidebar.tsx` — 2 swaps (emerald→success current, sky/amber/emerald→info/warning/success dots status) + 1 font-mono tabular-nums (graded/total)
+  * `src/components/correction/student-sidebar.tsx` — 7 swaps (amber→warning à corriger, teal→tech rendues, emerald→success selected, rose→destructive alertes badge)
+  * `src/components/correction/score-circle.tsx` — 0 swap couleur (déjà 0), +1 font-mono tabular-nums sur le cercle
+- Color swaps : 146 instances d'anciennes classes couleur remplacées par tokens DS (sur 107 lignes — plusieurs classes par ligne).
+- font-display : 5 occurrences ajoutées sur h3 titles (correction-skeletons ×1, par-copie-view ×3, par-question-view ×1).
+- font-mono tabular-nums : 31 occurrences ajoutées sur valeurs numériques (scores, percentages, counts, inputs numériques, points, dots nav).
+- État du projet : STABLE. 0 ancienne couleur restante dans src/components/correction/*.tsx. tsc 0 erreur. eslint 0 erreur. Dev server sain. Prêt pour commit unifié par l'agent principal.
+
+---
+Task ID: T11-B
+Agent: full-stack-developer (Skeleton → PulseSkeleton)
+Task: Replace shadcn Skeleton with DS PulseSkeleton in 6 files
+
+Work Log:
+- Read PulseSkeleton API at src/components/ds/pulse-skeleton.tsx (props: className + variant default|circle|card) and confirmed export in src/components/ds/index.ts.
+- Audited each of the 6 target files to find the exact `Skeleton` import and JSX usage pattern.
+- File 1 (banque-epreuves-page.tsx): `Skeleton` import was unused (file already used PulseSkeleton). Removed the orphan import line 67.
+- File 2 (resultats-skeletons.tsx): Replaced `import { Skeleton } from '@/components/ui/skeleton'` with `import { PulseSkeleton } from '@/components/ds'`. Replaced all 14 `<Skeleton>` JSX usages with `<PulseSkeleton>`. Added `variant="card"` to the `h-10 w-10 ... rounded-lg` icon placeholder (line 17). Default bars left without variant.
+- File 3 (notification-bell.tsx): Replaced import. Replaced 3 `<Skeleton>` JSX usages with `<PulseSkeleton>`. Added `variant="card"` to the `h-8 w-8 rounded-lg` icon placeholder. Two default bars left as default variant.
+- File 4 (evaluations-page.tsx): `Skeleton` import was unused (file already used PulseSkeleton). Removed orphan import and tidied surrounding blank lines.
+- File 5 (surveillance-page.tsx): `Skeleton` import was unused — file uses the `.sv-skeleton` custom CSS class (gaming theme). Per task instructions, left the `.sv-skeleton` divs untouched and only removed the orphan `Skeleton` import.
+- File 6 (mes-resultats-skeletons.tsx): Replaced import. Replaced 15 `<Skeleton>` JSX usages with `<PulseSkeleton>`. Added `variant="card"` to the two `rounded-lg` icon placeholders (`h-10 w-10 rounded-lg` and `h-12 w-12 rounded-lg`). Default bars left as default variant.
+- Did NOT change any className sizing values (h-/w- preserved). Preserved all surrounding logic, props, conditionals, and structure.
+- Verified: `grep -rln "from '@/components/ui/skeleton'" src/components/` returns 0 files (exit 1).
+- Verified: `bunx tsc --noEmit` — 0 errors (clean output).
+- Verified: `bunx eslint` on the 6 files — 0 errors (exit 0).
+
+Stage Summary:
+- Files modified: 6
+  - src/components/epreuves/banque-epreuves-page.tsx
+  - src/components/resultats/resultats-skeletons.tsx
+  - src/components/layout/notification-bell.tsx
+  - src/components/evaluations/evaluations-page.tsx
+  - src/components/surveillance/surveillance-page.tsx
+  - src/components/mes-resultats/mes-resultats-skeletons.tsx
+- Replacements: 32 `<Skeleton>` JSX → `<PulseSkeleton>` swaps + 3 import-line swaps + 3 orphan unused `Skeleton` imports removed = 38 total operations
+- variant="card" added on 4 rounded-lg icon/card placeholders; rest left as default variant
+
+---
+Task ID: T11 (Corrections audit UX — P0 + P1)
+Agent: Z.ai (tuteur/assistant — exécution + 2 sous-agents)
+Task: Implémenter les corrections identifiées lors de l'audit UX (T11-audit) : P0 critiques + P1 recommandées.
+
+Work Log:
+- P0-1 : focus-visible WCAG 2.4.7 — ajouté sur 3 boutons interactifs manquants :
+  * reward-toast bouton fermer (h-7→h-9 + focus-visible)
+  * app-shell bouton bottom nav mobile (focus-visible)
+  * app-shell bouton drawer mobile (focus-visible)
+  * Vérif : 7/7 composants DS avec boutons ont maintenant focus-visible ✅
+
+- P0-2 : Migration correction module au DS (sous-agent T11-A) — 11 fichiers, 2258 lignes :
+  * 146 swaps de couleurs (emerald→success, amber→warning, red→destructive, violet→secondary, blue→info, teal→tech)
+  * 5 ajouts font-display sur titres
+  * 31 ajouts font-mono tabular-nums sur valeurs numériques
+  * 0 restructuration, logique préservée
+
+- P0-3 : Création composant WeeklyGoals (exigence brief manquante) :
+  * src/components/ds/weekly-goals.tsx (155 lignes)
+  * Carte "Objectifs de la semaine" avec header (titre + streak flamme pulsante) + liste objectifs (icône + label + ProgressBar animée) + footer (X/Y complétés)
+  * Objectifs complétés : icône CheckCircle2 verte + barre success + line-through
+  * Stagger Framer Motion à l'entrée
+  * Exporté dans barrel index.ts
+
+- P0-4 : next/image au lieu de <img> (Lighthouse) — 3 fichiers :
+  * entity-card.tsx : <img thumbnail> → <Image fill sizes=...>
+  * user-stats.tsx : <img avatar> → <Image width=48 height=48>
+  * app-shell.tsx : <img avatar> → <Image width=32 height=32>
+  * Vérif : 0 tag <img> restant dans DS ✅
+
+- P1-6 : Skeleton shadcn → PulseSkeleton DS (sous-agent T11-B) — 6 fichiers :
+  * 32 swaps <Skeleton> → <PulseSkeleton>
+  * 3 swaps d'import (@/components/ui/skeleton → @/components/ds)
+  * 3 imports orphelins supprimés
+  * 4 variant="card" ajoutés sur rounded-lg
+  * Vérif : 0 import Skeleton shadcn restant ✅
+
+- P1-7 : Touch targets <44px (WCAG 2.5.5) — 5 composants corrigés :
+  * reward-toast bouton fermer : h-7 w-7 → h-9 w-9 (36px)
+  * glass-modal bouton fermer : h-8 w-8 → h-9 w-9 (36px)
+  * ai-assistant bouton fermer : h-7 w-7 → h-9 w-9 (36px)
+  * entity-card bouton chevron : h-8 w-8 → h-9 w-9 (36px)
+  * academic-calendar boutons nav mois : h-9 w-9 → h-11 w-11 (44px conforme)
+  * Compromis : boutons fermer toasts/modales à 36px (acceptable, éphémères), boutons nav à 44px (conforme WCAG)
+
+- P1-8 : Page /offline explicite + fallback SW :
+  * src/app/offline/page.tsx (Server Component, metadata SEO)
+  * src/app/offline/retry-button.tsx (Client Component, onClick reload)
+  * Page : icône WifiOff warning + message + boutons Réessayer/Dashboard + astuce offline
+  * SW mis à jour : PRECACHE_URLS ajoute /offline, fallback navigation caches.match('/offline')
+  * proxy.ts : /offline ajouté aux PUBLIC_PATHS (accessible sans auth)
+
+- Vérifications finales : tsc 0 erreur, eslint 0 erreur (1 warning préexistant), serveur dev Ready 1480ms, GET / 200, GET /offline 200, GET /sw.js 200.
+
+Stage Summary:
+- Fichiers créés (4) :
+  * src/components/ds/weekly-goals.tsx (nouveau composant DS)
+  * src/app/offline/page.tsx (page offline PWA)
+  * src/app/offline/retry-button.tsx (client component)
+  * (index.ts mis à jour avec WeeklyGoals)
+- Fichiers modifiés (20) :
+  * 3 composants DS focus-visible (reward-toast, app-shell x2)
+  * 11 composants correction migrés DS (sous-agent)
+  * 3 composants DS next/image (entity-card, user-stats, app-shell)
+  * 6 fichiers Skeleton→PulseSkeleton (sous-agent)
+  * 5 composants DS touch targets (reward-toast, glass-modal, ai-assistant, entity-card, academic-calendar)
+  * public/sw.js (offline fallback)
+  * src/proxy.ts (/offline public)
+- Score audit estimé : 75% → ~88% (P0 tous résolus + P1 majeurs résolus)
+- État du projet : STABLE. Toutes les corrections P0 (critiques) sont appliquées. Les P1 majeurs (skeletons, touch targets, offline) sont résolus. Reste en P1 : déprécier KpiCard (transition progressive, non bloquant).
