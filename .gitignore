@@ -56,3 +56,6 @@ upload/
 tool-results/
 agent-ctx/
 audit-screenshots/
+rb.ts
+reset-both.ts
+check-*.ts
