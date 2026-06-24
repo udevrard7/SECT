@@ -1,5 +1,6 @@
 'use client'
 
+import { getGreeting } from '@/lib/micro-copy'
 import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -233,7 +234,7 @@ function EmptyDashboard({ name }: { name: string }) {
       animate="visible"
     >
       <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl ds-kente-pattern rounded-lg px-4 py-3">
-        Bonjour, {name} ! Bienvenue sur votre espace.
+        {getGreeting()}, {name} ! Bienvenue sur votre espace.
       </motion.h1>
       <ObjectiveCard />
       <Card className="border-dashed ds-kente-pattern">
@@ -386,7 +387,7 @@ export function EnseignantDashboard() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern rounded-lg px-4 py-3">
         <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
-          Bonjour, {name} ! Bienvenue sur votre espace.
+          {getGreeting()}, {name} ! Bienvenue sur votre espace.
         </motion.h1>
         <Button
           variant="outline"

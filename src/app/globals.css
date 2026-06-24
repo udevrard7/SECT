@@ -289,6 +289,73 @@
   border-radius: var(--radius-full);
 }
 
+/* ── Bande kente horizontale (pour headers de cards/dashboard) ──
+   Bande de 6px avec motif kente tricolore (vert/terre/or).
+   Utiliser en haut d'une card ou en séparateur de section. */
+.ds-kente-strip {
+  height: 6px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--primary) 0,
+      var(--primary) 10px,
+      var(--secondary) 10px,
+      var(--secondary) 20px,
+      var(--gold) 20px,
+      var(--gold) 30px
+    );
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+/* ── Bordure supérieure kente pour cards (1px tricolore) ── */
+.ds-kente-top {
+  border-top: 3px solid;
+  border-image: linear-gradient(
+    90deg,
+    var(--primary) 0%,
+    var(--primary) 33%,
+    var(--secondary) 33%,
+    var(--secondary) 66%,
+    var(--gold) 66%,
+    var(--gold) 100%
+  ) 1;
+}
+
+/* ── Badge kente (petit accent décoratif pour récompenses) ── */
+.ds-kente-badge {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--primary) 0,
+      var(--primary) 3px,
+      var(--gold) 3px,
+      var(--gold) 6px,
+      var(--secondary) 6px,
+      var(--secondary) 9px
+    );
+}
+
+/* ── Watermark kente pour empty states (très subtil, full-bg) ── */
+.ds-kente-watermark {
+  position: relative;
+}
+.ds-kente-watermark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-conic-gradient(
+      from 0deg at 50% 50%,
+      oklch(0.78 0.19 125 / 0.02) 0deg,
+      transparent 30deg,
+      oklch(0.75 0.14 80 / 0.015) 60deg,
+      transparent 90deg
+    );
+  background-size: 60px 60px;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
 /* ── Hover lift pour cartes interactives (translateY -2px) ── */
 .ds-lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
