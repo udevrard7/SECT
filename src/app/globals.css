@@ -4,17 +4,19 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM — SECT EdTech
-   Style hybride : Modern Clean Dashboard + Card-Based + Glassmorphism
-   (subtil) + Gamification légère.
+   DESIGN SYSTEM v3 — SECT "Savane EdTech"
+   Identité hybride : Flat Dashboard + Gamification + Signature africaine.
    Voir /docs/design-system pour la doc complète.
 
-   Stratégie d'intégration : les variables shadcn existantes (--primary,
-   --secondary, --destructive…) sont REMAPPÉES vers la nouvelle palette
-   indigo/violet. Les 41 pages existantes héritent donc automatiquement
-   de la nouvelle identité sans modification de code. Les nouveaux
-   tokens préfixés --ds-* couvrent ce que shadcn n'offre pas
-   (fonds opaques pour lisibilité, tiers de gamification, XP).
+   Palette "Savane EdTech" :
+   - Primary : Vert lime #7ED321 (engagement, croissance, savane)
+   - Secondary : Terre cuite #C2410C (accent chaud, terre d'Afrique)
+   - Sidebar : Bleu nuit #2C3E50 (profondeur, sérieux académique)
+   - Gold : #D4A017 (récompenses, soleil africain)
+   - Fond : #F0F2F5 (gris très clair, respiration)
+
+   Stratégie : les variables shadcn sont remappées vers cette palette.
+   Les 47 pages existantes héritent automatiquement de l'identité.
    ════════════════════════════════════════════════════════════════════ */
 
 @theme inline {
@@ -88,148 +90,204 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────
-   LIGHT THEME — Background #F8FAFC, Surface #FFFFFF
-   Palette : Indigo (primary), Violet (secondary), Emerald (success),
-   Amber (warning), Red (danger), Gray (neutral).
+   LIGHT THEME — Savane EdTech
+   Fond #F0F2F5, Cards #FFFFFF, Bleu nuit #2C3E50, Vert lime #7ED321
    ══════════════════════════════════════════════════════════════════ */
 :root {
-  /* Radius de base conservé pour rétro-compat shadcn (0.625rem ≈ 10px) */
-  --radius: 0.625rem;
+  /* Radius — plus généreux pour convivialité africaine */
+  --radius: 0.75rem; /* 12px (vs 10px avant) */
 
   /* Surfaces & fond */
-  --background: oklch(0.984 0.003 247.9);   /* #F8FAFC slate-50 */
-  --foreground: oklch(0.208 0.042 265.1);   /* #0F172A slate-900 */
+  --background: oklch(0.95 0.005 240);       /* #F0F2F5 gris très clair */
+  --foreground: oklch(0.33 0.03 250);       /* #2C3E50 bleu nuit */
   --card: oklch(1 0 0);                      /* #FFFFFF */
-  --card-foreground: oklch(0.208 0.042 265.1);
+  --card-foreground: oklch(0.33 0.03 250);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.208 0.042 265.1);
+  --popover-foreground: oklch(0.33 0.03 250);
 
-  /* Primary — Indigo 600 #4F46E5 */
-  --primary: oklch(0.527 0.224 264.5);
-  --primary-foreground: oklch(0.985 0 0);    /* blanc */
+  /* Primary — Vert lime #7ED321 (engagement, croissance, savane) */
+  --primary: oklch(0.78 0.19 125);
+  --primary-foreground: oklch(0.2 0.02 125); /* texte sombre sur vert lime (contraste) */
 
-  /* Secondary — Violet 600 #7C3AED */
-  --secondary: oklch(0.541 0.24 293.5);
+  /* Secondary — Terre cuite #C2410C (terre d'Afrique de l'Ouest) */
+  --secondary: oklch(0.55 0.15 35);
   --secondary-foreground: oklch(0.985 0 0);
 
-  /* Muted / Accent (gris neutre) */
-  --muted: oklch(0.967 0.001 286.4);         /* gray-100 */
-  --muted-foreground: oklch(0.551 0.027 264.4); /* gray-500 #6B7280 */
-  --accent: oklch(0.96 0.018 271);           /* indigo-50 */
-  --accent-foreground: oklch(0.527 0.224 264.5);
+  /* Muted / Accent */
+  --muted: oklch(0.94 0.005 240);           /* gris très clair */
+  --muted-foreground: oklch(0.55 0.015 240); /* #95A5A6 gris clair */
+  --accent: oklch(0.93 0.03 125);           /* vert lime très clair */
+  --accent-foreground: oklch(0.45 0.12 125);
 
-  /* Danger — Red 600 #DC2626 */
-  --destructive: oklch(0.577 0.245 27.3);
-  --border: oklch(0.929 0.013 255.5);        /* gray-200 */
-  --input: oklch(0.929 0.013 255.5);
-  --ring: oklch(0.527 0.224 264.5);          /* indigo pour focus */
+  /* Danger — Red #D0021B */
+  --destructive: oklch(0.55 0.22 27);
+  --border: oklch(0.91 0.005 240);          /* #E0E0E0 */
+  --input: oklch(0.91 0.005 240);
+  --ring: oklch(0.78 0.19 125);             /* vert lime pour focus */
 
-  /* ── Nouveaux : statut sémantique ── */
-  --success: oklch(0.596 0.145 163.2);       /* emerald-600 #059669 */
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.666 0.179 58.3);        /* amber-600 #D97706 */
-  --warning-foreground: oklch(0.985 0 0);
-  --info: oklch(0.623 0.214 259.8);          /* blue-600 */
+  /* ── Statut sémantique ── */
+  --success: oklch(0.78 0.19 125);          /* vert lime = succès/croissance */
+  --success-foreground: oklch(0.2 0.02 125);
+  --warning: oklch(0.76 0.16 70);           /* #F5A623 orange = soleil */
+  --warning-foreground: oklch(0.2 0.02 70);
+  --info: oklch(0.55 0.12 250);             /* bleu nuit info */
   --info-foreground: oklch(0.985 0 0);
 
-  /* ── Cyan (technologie) — #06B6D4 cyan-500 ── */
-  --tech: oklch(0.715 0.143 194.7);
+  /* ── Cyan (technologie/IA) ── */
+  --tech: oklch(0.715 0.143 194.7);         /* #06B6D4 */
   --tech-foreground: oklch(0.985 0 0);
 
-  /* ── Nouveaux : tiers de gamification ── */
-  --bronze: oklch(0.665 0.151 54.5);         /* #CD7F32 */
-  --silver: oklch(0.72 0.015 250);           /* #C0C0C0 */
-  --gold: oklch(0.745 0.151 84.5);           /* #FFD700 */
-  --platinum: oklch(0.84 0.02 250);          /* #E5E4E2 */
-  --xp: oklch(0.541 0.24 293.5);             /* violet = XP */
+  /* ── Tiers gamification — palette africaine ── */
+  --bronze: oklch(0.6 0.09 55);             /* terre brune */
+  --silver: oklch(0.72 0.01 240);           /* argent */
+  --gold: oklch(0.75 0.14 80);              /* #D4A017 or africain (soleil) */
+  --platinum: oklch(0.85 0.015 240);
+  --xp: oklch(0.78 0.19 125);               /* vert lime = XP croissance */
 
-  /* Charts (alignés sur la palette DS) */
-  --chart-1: oklch(0.527 0.224 264.5);   /* indigo */
-  --chart-2: oklch(0.541 0.24 293.5);    /* violet */
-  --chart-3: oklch(0.596 0.145 163.2);   /* emerald */
-  --chart-4: oklch(0.666 0.179 58.3);    /* amber */
-  --chart-5: oklch(0.577 0.245 27.3);    /* red */
+  /* Charts (alignés sur la palette) */
+  --chart-1: oklch(0.78 0.19 125);          /* vert lime */
+  --chart-2: oklch(0.55 0.15 35);           /* terre cuite */
+  --chart-3: oklch(0.75 0.14 80);           /* or */
+  --chart-4: oklch(0.76 0.16 70);           /* orange */
+  --chart-5: oklch(0.55 0.22 27);           /* rouge */
 
-  /* Sidebar (hérite de l'identité indigo) */
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.208 0.042 265.1);
-  --sidebar-primary: oklch(0.527 0.224 264.5);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.96 0.018 271);
-  --sidebar-accent-foreground: oklch(0.527 0.224 264.5);
-  --sidebar-border: oklch(0.929 0.013 255.5);
-  --sidebar-ring: oklch(0.527 0.224 264.5);
+  /* Sidebar — bleu nuit #2C3E50 (profondeur, sérieux) */
+  --sidebar: oklch(0.33 0.03 250);
+  --sidebar-foreground: oklch(0.95 0.005 240); /* texte clair sur fond sombre */
+  --sidebar-primary: oklch(0.78 0.19 125);     /* vert lime actif */
+  --sidebar-primary-foreground: oklch(0.2 0.02 125);
+  --sidebar-accent: oklch(0.4 0.03 250);       /* bleu nuit plus clair */
+  --sidebar-accent-foreground: oklch(0.95 0.005 240);
+  --sidebar-border: oklch(1 0 0 / 0.1);
+  --sidebar-ring: oklch(0.78 0.19 125);
 }
 
 /* ────────────────────────────────────────────────────────────────────
-   DARK THEME — Background #0F172A, Surface #1E293B
+   DARK THEME — Savane EdTech Night
+   Fond bleu nuit profond, cards plus claires, accents lumineux
    ══════════════════════════════════════════════════════════════════ */
 .dark {
-  --background: oklch(0.208 0.042 265.1);   /* #0F172A slate-900 */
-  --foreground: oklch(0.984 0.003 247.9);   /* slate-50 */
-  --card: oklch(0.279 0.041 260);           /* #1E293B slate-800 */
-  --card-foreground: oklch(0.984 0.003 247.9);
-  --popover: oklch(0.279 0.041 260);
-  --popover-foreground: oklch(0.984 0.003 247.9);
+  --background: oklch(0.2 0.02 250);        /* bleu nuit profond */
+  --foreground: oklch(0.95 0.005 240);      /* gris clair */
+  --card: oklch(0.28 0.025 250);            /* bleu nuit plus clair */
+  --card-foreground: oklch(0.95 0.005 240);
+  --popover: oklch(0.28 0.025 250);
+  --popover-foreground: oklch(0.95 0.005 240);
 
-  /* Primary — Indigo 500 (plus lumineux en dark) */
-  --primary: oklch(0.585 0.217 273);        /* indigo-500 #6366F1 */
-  --primary-foreground: oklch(0.985 0 0);
+  /* Primary — vert lime plus lumineux en dark */
+  --primary: oklch(0.82 0.2 125);
+  --primary-foreground: oklch(0.15 0.02 125);
 
-  /* Secondary — Violet 500 */
-  --secondary: oklch(0.606 0.25 292.7);     /* violet-500 #8B5CF6 */
+  /* Secondary — terre cuite plus lumineuse */
+  --secondary: oklch(0.62 0.17 35);
   --secondary-foreground: oklch(0.985 0 0);
 
-  --muted: oklch(0.279 0.041 260);
-  --muted-foreground: oklch(0.708 0 0);     /* slate-300 */
-  --accent: oklch(0.328 0.05 263);          /* indigo-900/800 */
-  --accent-foreground: oklch(0.585 0.217 273);
+  --muted: oklch(0.28 0.025 250);
+  --muted-foreground: oklch(0.65 0.01 240);
+  --accent: oklch(0.35 0.05 125);
+  --accent-foreground: oklch(0.82 0.2 125);
 
-  --destructive: oklch(0.704 0.191 22.2);   /* red-500 */
+  --destructive: oklch(0.65 0.22 27);
   --border: oklch(1 0 0 / 0.1);
   --input: oklch(1 0 0 / 0.15);
-  --ring: oklch(0.585 0.217 273);
+  --ring: oklch(0.82 0.2 125);
 
   /* Statut sémantique dark */
-  --success: oklch(0.696 0.17 162.48);      /* emerald-500 */
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(0.769 0.188 70.08);      /* amber-500 */
-  --warning-foreground: oklch(0.145 0 0);
-  --info: oklch(0.623 0.214 259.8);
+  --success: oklch(0.82 0.2 125);
+  --success-foreground: oklch(0.15 0.02 125);
+  --warning: oklch(0.8 0.16 70);
+  --warning-foreground: oklch(0.15 0.02 70);
+  --info: oklch(0.6 0.12 250);
   --info-foreground: oklch(0.985 0 0);
 
-  /* Cyan dark — plus lumineux */
-  --tech: oklch(0.78 0.13 194.7);           /* cyan-400 */
-  --tech-foreground: oklch(0.145 0 0);
+  /* Cyan dark */
+  --tech: oklch(0.78 0.13 194.7);
+  --tech-foreground: oklch(0.15 0 0);
 
-  /* Tiers gamification dark (légèrement plus lumineux) */
-  --bronze: oklch(0.72 0.16 54.5);
-  --silver: oklch(0.78 0.015 250);
-  --gold: oklch(0.8 0.155 84.5);
-  --platinum: oklch(0.88 0.02 250);
-  --xp: oklch(0.606 0.25 292.7);
+  /* Tiers gamification dark */
+  --bronze: oklch(0.68 0.1 55);
+  --silver: oklch(0.78 0.01 240);
+  --gold: oklch(0.82 0.15 80);
+  --platinum: oklch(0.88 0.015 240);
+  --xp: oklch(0.82 0.2 125);
 
   /* Charts dark */
-  --chart-1: oklch(0.585 0.217 273);
-  --chart-2: oklch(0.606 0.25 292.7);
-  --chart-3: oklch(0.696 0.17 162.48);
-  --chart-4: oklch(0.769 0.188 70.08);
-  --chart-5: oklch(0.704 0.191 22.2);
+  --chart-1: oklch(0.82 0.2 125);
+  --chart-2: oklch(0.62 0.17 35);
+  --chart-3: oklch(0.82 0.15 80);
+  --chart-4: oklch(0.8 0.16 70);
+  --chart-5: oklch(0.65 0.22 27);
 
-  /* Sidebar dark */
-  --sidebar: oklch(0.279 0.041 260);
-  --sidebar-foreground: oklch(0.984 0.003 247.9);
-  --sidebar-primary: oklch(0.585 0.217 273);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.328 0.05 263);
-  --sidebar-accent-foreground: oklch(0.585 0.217 273);
+  /* Sidebar dark — même bleu nuit, plus profond */
+  --sidebar: oklch(0.22 0.02 250);
+  --sidebar-foreground: oklch(0.95 0.005 240);
+  --sidebar-primary: oklch(0.82 0.2 125);
+  --sidebar-primary-foreground: oklch(0.15 0.02 125);
+  --sidebar-accent: oklch(0.3 0.03 250);
+  --sidebar-accent-foreground: oklch(0.95 0.005 240);
   --sidebar-border: oklch(1 0 0 / 0.08);
-  --sidebar-ring: oklch(0.585 0.217 273);
+  --sidebar-ring: oklch(0.82 0.2 125);
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   UTILITAIRES DESIGN SYSTEM
+   UTILITAIRES DESIGN SYSTEM — Savane EdTech
    ════════════════════════════════════════════════════════════════════ */
+
+/* ── Motif géométrique africain (inspiration bogolan/kente) ──
+   Pattern subtil de losanges/triangles en filigrane.
+   Utiliser sur des sections hero, headers de cartes, ou backgrounds.
+   Opacité très faible pour ne pas distraire. */
+.ds-kente-pattern {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent 0,
+      transparent 8px,
+      oklch(0.78 0.19 125 / 0.03) 8px,
+      oklch(0.78 0.19 125 / 0.03) 12px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0,
+      transparent 8px,
+      oklch(0.55 0.15 35 / 0.02) 8px,
+      oklch(0.55 0.15 35 / 0.02) 12px
+    );
+}
+
+/* ── Variant plus marquée pour headers/bannières ── */
+.ds-kente-pattern-strong {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent 0,
+      transparent 6px,
+      oklch(0.78 0.19 125 / 0.06) 6px,
+      oklch(0.78 0.19 125 / 0.06) 10px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0,
+      transparent 6px,
+      oklch(0.75 0.14 80 / 0.04) 6px,
+      oklch(0.75 0.14 80 / 0.04) 10px
+    );
+}
+
+/* ── Bordure décorative africaine (ligne de séparation avec motif) ── */
+.ds-african-divider {
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--primary) 0,
+    var(--primary) 8px,
+    var(--secondary) 8px,
+    var(--secondary) 16px,
+    var(--gold) 16px,
+    var(--gold) 24px
+  );
+  border-radius: var(--radius-full);
+}
 
 /* ── Hover lift pour cartes interactives (translateY -2px) ── */
 .ds-lift {

@@ -71,11 +71,11 @@ export function AppHeader() {
 
   return (
     <header className="flex flex-col shrink-0 sticky top-0 z-30">
-      {/* ─── Accent bar unifiée indigo (DS) ─── */}
-      <div className="h-[2px] w-full bg-gradient-to-r from-primary via-secondary to-primary" />
+      {/* ─── Accent bar : motif africain (vert lime + terre cuite + or) ─── */}
+      <div className="h-[3px] w-full ds-african-divider" />
 
       {/* ─── Header content — fond opaque pour lisibilité ─── */}
-      <div className="flex h-14 items-center gap-2 bg-background border-b border-border px-4">
+      <div className="flex h-14 items-center gap-2 bg-card border-b border-border px-4">
         {/* Sidebar toggle */}
         <SidebarTrigger className="-ml-1 hover:bg-muted/60" />
         <div className="h-5 w-px bg-border mx-1" />
