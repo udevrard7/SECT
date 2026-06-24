@@ -134,7 +134,7 @@ function getStatutBadge(statut: string) {
       )
     case 'APPROUVE':
       return (
-        <Badge className="bg-success/10 text-success border-success/30">
+        <Badge className="bg-success/10 text-success-text border-success/30">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Approuvé
         </Badge>
@@ -345,7 +345,7 @@ export function AccesEtablissementsPage() {
       {/* ─── Header ─── */}
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-          <KeyRound className="h-7 w-7 text-success" />
+          <KeyRound className="h-7 w-7 text-success-text" />
           Accès aux Établissements
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -373,7 +373,7 @@ export function AccesEtablissementsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <ShieldCheck className="h-5 w-5 text-success" />
+              <ShieldCheck className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Autorisations actives</p>
@@ -406,7 +406,7 @@ export function AccesEtablissementsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Building2 className="h-5 w-5 text-success" />
+              <Building2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Établissements disponibles</p>
@@ -444,7 +444,7 @@ export function AccesEtablissementsPage() {
           ) : accessRecords.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <KeyRound className="h-10 w-10 text-success" />
+                <KeyRound className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune autorisation</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -477,7 +477,7 @@ export function AccesEtablissementsPage() {
                       <TableRow key={record.id} className="group">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                               {record.etablissement.nom.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -512,7 +512,7 @@ export function AccesEtablissementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 text-success hover:text-success hover:bg-success/10"
+                              className="h-8 text-success-text hover:text-success-text hover:bg-success/10"
                               onClick={() =>
                                 toast.info('Navigation', {
                                   description: `Accès aux données de ${record.etablissement.nom} (à venir).`,
@@ -560,7 +560,7 @@ export function AccesEtablissementsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg font-display">
-                <Send className="h-5 w-5 text-success" />
+                <Send className="h-5 w-5 text-success-text" />
                 Demander un accès
               </CardTitle>
               <CardDescription>
@@ -573,7 +573,7 @@ export function AccesEtablissementsPage() {
               {availableEtablissements.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                    <Building2 className="h-8 w-8 text-success" />
+                    <Building2 className="h-8 w-8 text-success-text" />
                   </div>
                   <h3 className="mt-4 font-semibold font-display tracking-tight">Aucun établissement disponible</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -699,7 +699,7 @@ export function AccesEtablissementsPage() {
           ) : authorizedEtablissements.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <ShieldCheck className="h-10 w-10 text-success" />
+                <ShieldCheck className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun accès autorisé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -729,7 +729,7 @@ export function AccesEtablissementsPage() {
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-sm font-bold text-success">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-sm font-bold text-success-text">
                             {etab.nom.charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -766,7 +766,7 @@ export function AccesEtablissementsPage() {
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                         <Badge
-                          className="bg-success/10 text-success border-success/30 text-xs"
+                          className="bg-success/10 text-success-text border-success/30 text-xs"
                         >
                           Abonné
                         </Badge>
@@ -785,7 +785,7 @@ export function AccesEtablissementsPage() {
                       {/* Data visibility badges */}
                       <div className="flex flex-wrap gap-1.5">
                         <Badge
-                          className="bg-success/10 text-success border-success/30 text-[10px]"
+                          className="bg-success/10 text-success-text border-success/30 text-[10px]"
                         >
                           <FileText className="h-2.5 w-2.5 mr-1" />
                           Données utilisateurs
@@ -797,7 +797,7 @@ export function AccesEtablissementsPage() {
                           Évaluations
                         </Badge>
                         <Badge
-                          className="bg-success/10 text-success border-success/30 text-[10px]"
+                          className="bg-success/10 text-success-text border-success/30 text-[10px]"
                         >
                           <BarChart3Icon className="h-2.5 w-2.5 mr-1" />
                           Résultats

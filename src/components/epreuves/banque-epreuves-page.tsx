@@ -109,12 +109,12 @@ interface BanqueEpreuve {
 const TYPE_COLORS: Record<string, string> = {
   QCU: 'bg-info/10 text-info border-info/20',
   QCM: 'bg-warning/10 text-warning border-warning/20',
-  QRC: 'bg-success/10 text-success border-success/20',
+  QRC: 'bg-success/10 text-success-text border-success/20',
   REFLEXION: 'bg-secondary/10 text-secondary border-secondary/20',
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
-  FACILE: 'bg-success/10 text-success border-success/20',
+  FACILE: 'bg-success/10 text-success-text border-success/20',
   MOYEN: 'bg-warning/10 text-warning border-warning/20',
   DIFFICILE: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300',
   EXPERT: 'bg-destructive/10 text-destructive border-destructive/20',
@@ -302,16 +302,16 @@ export function BanqueEpreuvesPage() {
               <span
                 className={`flex h-5 w-5 shrink-0 items-center justify-center rounded font-mono text-xs font-bold ${
                   isCorrect
-                    ? 'bg-success/20 text-success'
+                    ? 'bg-success/20 text-success-text'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {String.fromCharCode(65 + idx)}
               </span>
-              <span className={isCorrect ? 'font-medium text-success' : ''}>
+              <span className={isCorrect ? 'font-medium text-success-text' : ''}>
                 {typeof prop === 'string' ? prop : prop.text}
               </span>
-              {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success" />}
+              {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success-text" />}
             </div>
           )
         })}
@@ -331,7 +331,7 @@ export function BanqueEpreuvesPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Library className="h-7 w-7 text-success" />
+            <Library className="h-7 w-7 text-success-text" />
             Banque d&apos;Épreuves
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -341,7 +341,7 @@ export function BanqueEpreuvesPage() {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className="border-success/30 text-success hover:bg-success/10"
+            className="border-success/30 text-success-text hover:bg-success/10"
             onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
           >
             <Sparkles className="h-4 w-4" />
@@ -359,7 +359,7 @@ export function BanqueEpreuvesPage() {
           <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
             <div className="flex items-center gap-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
-                <Library className="h-4 w-4 text-success" />
+                <Library className="h-4 w-4 text-success-text" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Épreuves</p>
@@ -438,7 +438,7 @@ export function BanqueEpreuvesPage() {
       {!isLoading && epreuves.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <Library className="h-10 w-10 text-success" />
+            <Library className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucune épreuve dans la banque</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -450,7 +450,7 @@ export function BanqueEpreuvesPage() {
             {!search && modeFilter === 'TOUS' && (
               <Button
                 variant="outline"
-                className="border-success/30 text-success hover:bg-success/10"
+                className="border-success/30 text-success-text hover:bg-success/10"
                 onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
               >
                 <Sparkles className="h-4 w-4" />
@@ -527,7 +527,7 @@ export function BanqueEpreuvesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-success/30 text-success hover:bg-success/10"
+                      className="border-success/30 text-success-text hover:bg-success/10"
                       onClick={() => handlePreview(epreuve)}
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -563,7 +563,7 @@ export function BanqueEpreuvesPage() {
         <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display">
-              <Eye className="h-5 w-5 text-success" />
+              <Eye className="h-5 w-5 text-success-text" />
               Aperçu de l&apos;épreuve
             </DialogTitle>
             {previewEpreuve && (
@@ -592,7 +592,7 @@ export function BanqueEpreuvesPage() {
                     <CardContent className="p-4">
                       {/* Header */}
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 font-mono text-xs font-bold text-success">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 font-mono text-xs font-bold text-success-text">
                           {idx + 1}
                         </span>
                         <Badge variant="outline" className={`text-xs font-mono ${TYPE_COLORS[q.type] || ''}`}>
@@ -713,7 +713,7 @@ export function BanqueEpreuvesPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display">
-              <Copy className="h-5 w-5 text-success" />
+              <Copy className="h-5 w-5 text-success-text" />
               Dupliquer l&apos;épreuve
             </DialogTitle>
             <DialogDescription>

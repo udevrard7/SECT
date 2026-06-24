@@ -294,7 +294,7 @@ export function ConfigurationPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-                <Globe className="h-5 w-5 text-success" />
+                <Globe className="h-5 w-5 text-success-text" />
                 Paramètres généraux
               </CardTitle>
               <CardDescription>
@@ -437,7 +437,7 @@ export function ConfigurationPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-                <Shield className="h-5 w-5 text-success" />
+                <Shield className="h-5 w-5 text-success-text" />
                 Paramètres de sécurité
               </CardTitle>
               <CardDescription>
@@ -483,7 +483,7 @@ export function ConfigurationPage() {
                         }}
                         className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                           isSelected
-                            ? 'bg-success/15 text-success border-success/40'
+                            ? 'bg-success/15 text-success-text border-success/40'
                             : 'bg-muted text-muted-foreground border-border hover:bg-accent'
                         }`}
                       >
@@ -515,11 +515,11 @@ export function ConfigurationPage() {
 
               {/* Security summary */}
               <div className="rounded-lg border border-success/30 bg-success/10 p-4">
-                <h4 className="text-sm font-display font-semibold text-success mb-2 flex items-center gap-2">
+                <h4 className="text-sm font-display font-semibold text-success-text mb-2 flex items-center gap-2">
                   <Lock className="h-4 w-4" />
                   Résumé de la configuration sécurité
                 </h4>
-                <ul className="text-sm text-success space-y-1 font-mono tabular-nums">
+                <ul className="text-sm text-success-text space-y-1 font-mono tabular-nums">
                   <li>• Taille max fichiers : {config.security.maxUploadSizeMB} MB</li>
                   <li>• Types autorisés : {config.security.allowedFileTypes.join(', ')}</li>
                   <li>• Proctoring : {config.security.proctoringEnabled ? 'Activé' : 'Désactivé'}</li>
@@ -547,7 +547,7 @@ export function ConfigurationPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-                <Bell className="h-5 w-5 text-success" />
+                <Bell className="h-5 w-5 text-success-text" />
                 Paramètres de notifications
               </CardTitle>
               <CardDescription>
@@ -618,7 +618,7 @@ export function ConfigurationPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-                <Sparkles className="h-5 w-5 text-success" />
+                <Sparkles className="h-5 w-5 text-success-text" />
                 Paramètres IA
               </CardTitle>
               <CardDescription>
@@ -690,11 +690,11 @@ export function ConfigurationPage() {
 
               {/* IA Summary */}
               <div className="rounded-lg border border-success/30 bg-success/10 p-4">
-                <h4 className="text-sm font-display font-semibold text-success mb-2 flex items-center gap-2">
+                <h4 className="text-sm font-display font-semibold text-success-text mb-2 flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   Résumé de la configuration IA
                 </h4>
-                <ul className="text-sm text-success space-y-1">
+                <ul className="text-sm text-success-text space-y-1">
                   <li>• Génération de questions : {config.ia.aiGenerationEnabled ? 'Activée' : 'Désactivée'}</li>
                   <li>• Correction automatique : {config.ia.aiCorrectionEnabled ? 'Activée' : 'Désactivée'}</li>
                 </ul>

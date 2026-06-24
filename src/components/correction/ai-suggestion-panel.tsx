@@ -53,7 +53,7 @@ export function AiSuggestionPanel({
   const confidence = pct >= 70 ? 'Élevée' : pct >= 40 ? 'Moyenne' : 'Faible'
   const confColor =
     pct >= 70
-      ? 'text-success'
+      ? 'text-success-text'
       : pct >= 40
         ? 'text-warning'
         : 'text-destructive'

@@ -123,7 +123,7 @@ function getTypeSeanceBadgeClasses(type: string): string {
     case 'CM':
       return 'bg-info/10 text-info border-info/20'
     case 'TD':
-      return 'bg-success/10 text-success border-success/20'
+      return 'bg-success/10 text-success-text border-success/20'
     case 'TP':
       return 'bg-warning/10 text-warning border-warning/20'
     default:
@@ -142,7 +142,7 @@ function getSoumissionStatutBadge(statut: string): { label: string; classes: str
     case 'SOUMIS':
       return {
         label: 'Soumis',
-        classes: 'bg-success/10 text-success border-success/20',
+        classes: 'bg-success/10 text-success-text border-success/20',
         icon: <CheckCircle2 className="h-3 w-3" />,
       }
     case 'CORRIGE':
@@ -330,7 +330,7 @@ export function MesDevoirsPage() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
-                <BookOpen className="h-4 w-4 text-success" />
+                <BookOpen className="h-4 w-4 text-success-text" />
               </div>
               <div>
                 <p className="font-mono text-2xl font-bold tabular-nums">{devoirsAFaire.length}</p>
@@ -413,7 +413,7 @@ export function MesDevoirsPage() {
             {devoirsAFaire.filter(filterBySearch).length > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-success/10 text-success"
+                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-success/10 text-success-text"
               >
                 {devoirsAFaire.filter(filterBySearch).length}
               </Badge>
@@ -456,7 +456,7 @@ export function MesDevoirsPage() {
           ) : devoirsAFaire.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <BookOpen className="h-10 w-10 text-success" />
+                <BookOpen className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucun devoir à faire</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -500,7 +500,7 @@ export function MesDevoirsPage() {
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3 text-success" />
+                          <Clock className="h-3 w-3 text-success-text" />
                           {timeRemaining}
                         </span>
                       )}
@@ -535,7 +535,7 @@ export function MesDevoirsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="border-success/30 text-success hover:bg-success/10"
+                          className="border-success/30 text-success-text hover:bg-success/10"
                           onClick={() => handleOpenDetail(devoir)}
                         >
                           <Eye className="h-4 w-4" />
@@ -615,7 +615,7 @@ export function MesDevoirsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="border-success/30 text-success hover:bg-success/10"
+                        className="border-success/30 text-success-text hover:bg-success/10"
                         onClick={() => handleOpenDetail(devoir)}
                       >
                         <Eye className="h-4 w-4" />
@@ -696,7 +696,7 @@ export function MesDevoirsPage() {
                               isPassing ? 'bg-success/10' : 'bg-destructive/10'
                             }`}>
                               <span className={`text-base font-bold ${
-                                isPassing ? 'text-success' : 'text-destructive'
+                                isPassing ? 'text-success-text' : 'text-destructive'
                               }`}>
                                 {soumission.note.toFixed(1)}
                               </span>
@@ -735,7 +735,7 @@ export function MesDevoirsPage() {
                     {soumission.commentaireEnseignant && (
                       <div className="mt-2">
                         <div className="rounded-lg border border-success/20 bg-success/15 p-2.5">
-                          <p className="text-[11px] font-medium text-success mb-1">
+                          <p className="text-[11px] font-medium text-success-text mb-1">
                             Commentaire de l&apos;enseignant
                           </p>
                           <p className="text-xs line-clamp-3">{soumission.commentaireEnseignant}</p>
@@ -748,7 +748,7 @@ export function MesDevoirsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="border-success/30 text-success hover:bg-success/10"
+                        className="border-success/30 text-success-text hover:bg-success/10"
                         onClick={() => handleOpenDetail(devoir)}
                       >
                         <Eye className="h-4 w-4" />
@@ -768,7 +768,7 @@ export function MesDevoirsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-success" />
+              <BookOpen className="h-5 w-5 text-success-text" />
               {selectedDevoir?.titre ?? 'Soumettre un devoir'}
             </DialogTitle>
             <DialogDescription>
@@ -858,7 +858,7 @@ export function MesDevoirsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-success" />
+              <BookOpen className="h-5 w-5 text-success-text" />
               {detailDevoir?.titre ?? 'Détail du devoir'}
             </DialogTitle>
             <DialogDescription>
@@ -916,7 +916,7 @@ export function MesDevoirsPage() {
                 {detailDevoir.soumission ? (
                   <div className="space-y-4">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-success" />
+                      <FileText className="h-4 w-4 text-success-text" />
                       Votre soumission
                     </h4>
 
@@ -942,7 +942,7 @@ export function MesDevoirsPage() {
                       <div className="rounded-lg border bg-muted/30 p-4">
                         <div className="flex items-center gap-4">
                           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-success/10">
-                            <span className="text-lg font-bold text-success">
+                            <span className="text-lg font-bold text-success-text">
                               {detailDevoir.soumission.note?.toFixed(1) ?? '—'}
                             </span>
                           </div>
@@ -983,7 +983,7 @@ export function MesDevoirsPage() {
                     {/* Teacher comment */}
                     {detailDevoir.soumission.commentaireEnseignant && (
                       <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-success">
+                        <p className="text-xs font-medium text-success-text">
                           Commentaire de l&apos;enseignant
                         </p>
                         <div className="rounded-lg border border-success/20 bg-success/15 p-3 text-sm">

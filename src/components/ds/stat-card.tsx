@@ -40,16 +40,16 @@ export interface StatCardProps {
 }
 
 const ACCENT_MAP = {
-  primary: { iconBg: 'bg-primary/10', iconText: 'text-primary', ring: 'ring-primary/20' },
+  primary: { iconBg: 'bg-primary/10', iconText: 'text-primary-text', ring: 'ring-primary/20' },
   secondary: { iconBg: 'bg-secondary/10', iconText: 'text-secondary', ring: 'ring-secondary/20' },
-  success: { iconBg: 'bg-success/10', iconText: 'text-success', ring: 'ring-success/20' },
+  success: { iconBg: 'bg-success/10', iconText: 'text-success-text', ring: 'ring-success/20' },
   warning: { iconBg: 'bg-warning/10', iconText: 'text-warning', ring: 'ring-warning/20' },
   danger: { iconBg: 'bg-destructive/10', iconText: 'text-destructive', ring: 'ring-destructive/20' },
   info: { iconBg: 'bg-info/10', iconText: 'text-info', ring: 'ring-info/20' },
 } as const
 
 const TREND_MAP = {
-  up: { icon: ArrowUpRight, color: 'text-success', bg: 'bg-success/10' },
+  up: { icon: ArrowUpRight, color: 'text-success-text', bg: 'bg-success/10' },
   down: { icon: ArrowDownRight, color: 'text-destructive', bg: 'bg-destructive/10' },
   neutral: { icon: Minus, color: 'text-muted-foreground', bg: 'bg-muted' },
 } as const
@@ -94,7 +94,7 @@ export function StatCard({
   const valueColorClass =
     scoreOn20 !== undefined
       ? scoreOn20 >= 16
-        ? 'text-success'
+        ? 'text-success-text'
         : scoreOn20 >= 10
           ? 'text-warning'
           : 'text-destructive'

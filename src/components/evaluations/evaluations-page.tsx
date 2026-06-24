@@ -169,7 +169,7 @@ function getStatutBadge(statut: string) {
       )
     case 'EN_COURS':
       return (
-        <Badge variant="outline" className="gap-1 bg-success/10 text-success border-success/20">
+        <Badge variant="outline" className="gap-1 bg-success/10 text-success-text border-success/20">
           <Activity className="h-3 w-3" />
           En cours
         </Badge>
@@ -194,13 +194,13 @@ function getStatutBadge(statut: string) {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 10) return 'text-success'
+  if (score >= 10) return 'text-success-text'
   if (score >= 8) return 'text-warning'
   return 'text-destructive'
 }
 
 function getScoreBadgeClasses(score: number): string {
-  if (score >= 10) return 'bg-success/10 text-success border-success/20'
+  if (score >= 10) return 'bg-success/10 text-success-text border-success/20'
   if (score >= 8) return 'bg-warning/10 text-warning border-warning/20'
   return 'bg-destructive/10 text-destructive border-destructive/20'
 }
@@ -212,7 +212,7 @@ function getSessionBadge(statut: string) {
     case 'SOUMISE':
       return <Badge variant="outline" className="bg-info/10 text-info border-info/20">Soumise</Badge>
     case 'CORRIGEE':
-      return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Corrigée</Badge>
+      return <Badge variant="outline" className="bg-success/10 text-success-text border-success/20">Corrigée</Badge>
     case 'RETOURNEE':
       return <Badge variant="outline" className="bg-secondary/10 text-secondary border-secondary/20">Retournée</Badge>
     case 'NON_COMMENCEE':
@@ -422,7 +422,7 @@ export function EvaluationsPage() {
       {/* ─── Header ─── */}
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <ClipboardCheck className="h-7 w-7 text-success" />
+          <ClipboardCheck className="h-7 w-7 text-success-text" />
           Suivi des Évaluations
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -500,7 +500,7 @@ export function EvaluationsPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-success hover:text-success"
+              className="text-success-text hover:text-success-text"
               onClick={resetFilters}
             >
               <X className="h-3.5 w-3.5 mr-1" />
@@ -597,7 +597,7 @@ export function EvaluationsPage() {
       {!isLoading && filteredEpreuves.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <ClipboardCheck className="h-10 w-10 text-success" />
+            <ClipboardCheck className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucune évaluation trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -608,7 +608,7 @@ export function EvaluationsPage() {
           {hasActiveFilters && (
             <Button
               variant="outline"
-              className="mt-6 border-success/30 text-success hover:bg-success/10"
+              className="mt-6 border-success/30 text-success-text hover:bg-success/10"
               onClick={resetFilters}
             >
               Réinitialiser les filtres
@@ -649,7 +649,7 @@ export function EvaluationsPage() {
                     )}
                     {epreuve.filiere && (
                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <ClipboardCheck className="h-3.5 w-3.5 text-success" />
+                        <ClipboardCheck className="h-3.5 w-3.5 text-success-text" />
                         <span>{epreuve.filiere.nom}</span>
                       </div>
                     )}
@@ -658,7 +658,7 @@ export function EvaluationsPage() {
                   {/* Duration + Date range */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-success" />
+                      <Clock className="h-3.5 w-3.5 text-success-text" />
                       {epreuve.duree} min
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -669,7 +669,7 @@ export function EvaluationsPage() {
 
                   {/* Question count + total points + participants + completion */}
                   <div className="flex flex-wrap gap-3">
-                    <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+                    <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
                       <HelpCircle className="h-3 w-3" />
                       {stats.questionCount} question{stats.questionCount > 1 ? 's' : ''}
                     </Badge>
@@ -720,7 +720,7 @@ export function EvaluationsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-success/30 text-success hover:bg-success/10"
+                      className="border-success/30 text-success-text hover:bg-success/10"
                       onClick={() => handleOpenDetail(epreuve)}
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -752,7 +752,7 @@ export function EvaluationsPage() {
             <DialogTitle className="flex items-center gap-2">
               {dialogMode === 'details' ? (
                 <>
-                  <Eye className="h-5 w-5 text-success" />
+                  <Eye className="h-5 w-5 text-success-text" />
                   Détails de l’évaluation
                 </>
               ) : (
@@ -886,7 +886,7 @@ export function EvaluationsPage() {
                                 </Badge>
                                 {eq.question.difficulte && (
                                   <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
-                                    eq.question.difficulte === 'FACILE' ? 'text-success' :
+                                    eq.question.difficulte === 'FACILE' ? 'text-success-text' :
                                     eq.question.difficulte === 'MOYEN' ? 'text-warning' : 'text-destructive'
                                   }`}>
                                     {eq.question.difficulte}
@@ -1000,7 +1000,7 @@ export function EvaluationsPage() {
                           <Card className="border-l-4 border-l-emerald-500">
                             <CardContent className="p-3">
                               <p className="text-xs text-muted-foreground">Réussis</p>
-                              <p className="text-sm font-semibold text-success">{passedCount}</p>
+                              <p className="text-sm font-semibold text-success-text">{passedCount}</p>
                             </CardContent>
                           </Card>
                           <Card className="border-l-4 border-l-red-500">

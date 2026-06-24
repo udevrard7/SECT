@@ -198,11 +198,11 @@ const STATUS_CONFIG: Record<MonitoringEvent['statut'], { label: string; color: s
   },
   RESOLU: {
     label: 'Résolu',
-    color: 'text-success',
+    color: 'text-success-text',
     bg: 'bg-success/10',
     border: 'border-success/30',
     darkBg: 'dark:bg-success/40',
-    darkColor: 'dark:text-success/80',
+    darkColor: 'dark:text-success-text/80',
     darkBorder: 'dark:border-success/70',
   },
   IGNORE: {
@@ -224,8 +224,8 @@ const SERVICE_STATUS_CONFIG: Record<ServiceHealth['status'], { label: string; do
     borderColor: 'border-success/30',
     darkBgColor: 'dark:bg-success/20',
     darkBorderColor: 'dark:border-success/70',
-    textColor: 'text-success',
-    darkTextColor: 'dark:text-success/80',
+    textColor: 'text-success-text',
+    darkTextColor: 'dark:text-success-text/80',
   },
   DEGRADE: {
     label: 'Dégradé',
@@ -293,7 +293,7 @@ function HealthGauge({ score, size = 180 }: { score: number; size?: number }) {
   const center = size / 2
 
   const getColor = (s: number) => {
-    if (s >= 80) return { stroke: '#10b981', text: 'text-success', label: 'Excellent' }
+    if (s >= 80) return { stroke: '#10b981', text: 'text-success-text', label: 'Excellent' }
     if (s >= 60) return { stroke: '#f59e0b', text: 'text-warning', label: 'Correct' }
     if (s >= 40) return { stroke: '#f97316', text: 'text-warning', label: 'Dégradé' }
     return { stroke: '#ef4444', text: 'text-destructive', label: 'Critique' }
@@ -428,13 +428,13 @@ function ServiceHealthCard({ service }: { service: ServiceHealth }) {
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
             <p className="text-muted-foreground mb-0.5">Uptime</p>
-            <p className={`font-semibold ${service.uptime >= 99 ? 'text-success' : service.uptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
+            <p className={`font-semibold ${service.uptime >= 99 ? 'text-success-text' : service.uptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
               {service.uptime.toFixed(2)}%
             </p>
           </div>
           <div>
             <p className="text-muted-foreground mb-0.5">Temps rép. moyen</p>
-            <p className={`font-semibold ${service.avgResponseTime <= 200 ? 'text-success' : service.avgResponseTime <= 500 ? 'text-warning' : 'text-destructive'}`}>
+            <p className={`font-semibold ${service.avgResponseTime <= 200 ? 'text-success-text' : service.avgResponseTime <= 500 ? 'text-warning' : 'text-destructive'}`}>
               {service.avgResponseTime}ms
             </p>
           </div>
@@ -500,7 +500,7 @@ function AlertCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs gap-1 border-success/30 text-success hover:bg-success/10"
+                className="h-7 text-xs gap-1 border-success/30 text-success-text hover:bg-success/10"
                 onClick={() => onResolve(event)}
               >
                 <CheckCircle2 className="h-3 w-3" />
@@ -808,7 +808,7 @@ export function MonitoringPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <Activity className="h-7 w-7 text-success" />
+            <Activity className="h-7 w-7 text-success-text" />
             Monitoring & Santé Plateforme
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -848,7 +848,7 @@ export function MonitoringPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <HeartPulse className="h-5 w-5 text-success" />
+              <HeartPulse className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Uptime</p>
@@ -864,7 +864,7 @@ export function MonitoringPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Timer className="h-5 w-5 text-success" />
+              <Timer className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Temps de réponse moyen</p>
@@ -1014,7 +1014,7 @@ export function MonitoringPage() {
           {!isLoading && filteredEvents.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <Activity className="h-10 w-10 text-success" />
+                <Activity className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun événement trouvé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1095,7 +1095,7 @@ export function MonitoringPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                                  className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
                                   onClick={() => {
                                     setResolveTarget(event)
                                     setResolveNotes('')
@@ -1116,7 +1116,7 @@ export function MonitoringPage() {
                               </>
                             )}
                             {event.statut === 'RESOLU' && (
-                              <span className="text-xs text-success flex items-center gap-1">
+                              <span className="text-xs text-success-text flex items-center gap-1">
                                 <CheckCircle2 className="h-3 w-3" />
                                 Résolu
                                 {event.resoluPar && (
@@ -1151,7 +1151,7 @@ export function MonitoringPage() {
             <Card className="lg:col-span-1">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-lg font-display">
-                  <HeartPulse className="h-5 w-5 text-success" />
+                  <HeartPulse className="h-5 w-5 text-success-text" />
                   Santé globale
                 </CardTitle>
                 <CardDescription>
@@ -1161,14 +1161,14 @@ export function MonitoringPage() {
               <CardContent className="flex flex-col items-center justify-center py-4">
                 {isLoading ? (
                   <div className="flex items-center justify-center h-[180px] w-[180px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-success" />
+                    <Loader2 className="h-8 w-8 animate-spin text-success-text" />
                   </div>
                 ) : (
                   <HealthGauge score={platformHealthScore} size={180} />
                 )}
                 <div className="mt-4 grid grid-cols-3 gap-4 w-full text-center">
                   <div>
-                    <p className="text-lg font-bold text-success font-mono tabular-nums">{serviceHealths.filter((s) => s.status === 'OPERATIONNEL').length}
+                    <p className="text-lg font-bold text-success-text font-mono tabular-nums">{serviceHealths.filter((s) => s.status === 'OPERATIONNEL').length}
                     </p>
                     <p className="text-xs text-muted-foreground">Opérationnels</p>
                   </div>
@@ -1226,7 +1226,7 @@ export function MonitoringPage() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
-                <BellRing className="h-5 w-5 text-success" />
+                <BellRing className="h-5 w-5 text-success-text" />
                 Alertes actives
                 {activeAlerts.length > 0 && (
                   <Badge className="bg-destructive/10 text-destructive border-destructive/30">
@@ -1258,7 +1258,7 @@ export function MonitoringPage() {
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                    <CheckCircle2 className="h-8 w-8 text-success" />
+                    <CheckCircle2 className="h-8 w-8 text-success-text" />
                   </div>
                   <h3 className="mt-3 text-lg font-semibold font-display tracking-tight">Aucune alerte active</h3>
                   <p className="mt-1 max-w-sm text-sm text-muted-foreground">
@@ -1290,7 +1290,7 @@ export function MonitoringPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
-                  <Settings2 className="h-5 w-5 text-success" />
+                  <Settings2 className="h-5 w-5 text-success-text" />
                   Règles d&apos;alertes
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
@@ -1323,7 +1323,7 @@ export function MonitoringPage() {
                             </div>
                             <div className="flex items-center gap-1">
                               <span>Actuel :</span>
-                              <span className={`font-mono font-semibold ${isExceeded ? 'text-destructive' : 'text-success'}`}>
+                              <span className={`font-mono font-semibold ${isExceeded ? 'text-destructive' : 'text-success-text'}`}>
                                 {rule.current}
                               </span>
                             </div>
@@ -1366,7 +1366,7 @@ export function MonitoringPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
               Résoudre l&apos;événement
             </DialogTitle>
             <DialogDescription>

@@ -105,7 +105,7 @@ function ObjectiveCard() {
   return (
     <Card className="bg-gradient-to-br from-success/10 to-primary/10 border-success/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-success font-display tracking-tight">
+        <CardTitle className="flex items-center gap-2 text-success-text font-display tracking-tight">
           <Target className="h-5 w-5" />
           Mon Objectif
         </CardTitle>
@@ -140,7 +140,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEnseignant[] })
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-          <CalendarDays className="h-5 w-5 text-success" />
+          <CalendarDays className="h-5 w-5 text-success-text" />
           Épreuves à venir
         </CardTitle>
         <CardDescription>Votre planning d&apos;examens</CardDescription>
@@ -154,7 +154,7 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEnseignant[] })
             {epreuves.map((exam) => (
               <motion.div key={exam.id} variants={itemVariants} className="mb-8 last:mb-0">
                 <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-success flex items-center justify-center -translate-x-1/2 ml-0.5">
-                  <CalendarDays className="h-3 w-3 text-success" />
+                  <CalendarDays className="h-3 w-3 text-success-text" />
                 </div>
                 <p className="font-semibold truncate" title={exam.titre}>{exam.titre}</p>
                 <p className="text-sm text-muted-foreground">Du {formatDateFR(exam.date)}</p>
@@ -181,7 +181,7 @@ function RecentEpreuves({ epreuves }: { epreuves: RecentEpreuve[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-          <FileText className="h-5 w-5 text-success" />
+          <FileText className="h-5 w-5 text-success-text" />
           Épreuves Récentes
         </CardTitle>
       </CardHeader>
@@ -240,7 +240,7 @@ function EmptyDashboard({ name }: { name: string }) {
       <Card className="border-dashed ds-kente-pattern">
         <CardContent className="flex flex-col items-center justify-center py-12">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <ClipboardPen className="h-10 w-10 text-success" />
+            <ClipboardPen className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Bienvenue sur SECT !</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -474,7 +474,7 @@ export function EnseignantDashboard() {
             <motion.div variants={itemVariants}>
               <ChartCard
                 title="Évolution des moyennes"
-                icon={<TrendingUp className="h-4 w-4 text-success" />}
+                icon={<TrendingUp className="h-4 w-4 text-success-text" />}
               >
                 <div className="h-72">
                   <EvolutionChart data={evolutionData} height={288} />
@@ -485,7 +485,7 @@ export function EnseignantDashboard() {
             <motion.div variants={itemVariants}>
               <ChartCard
                 title="Performance par épreuve"
-                icon={<BarChart3 className="h-4 w-4 text-primary" />}
+                icon={<BarChart3 className="h-4 w-4 text-primary-text" />}
               >
                 <div className="h-72">
                   <ComparisonChart data={comparisonData} height={288} color="#14b8a6" />
@@ -507,7 +507,7 @@ export function EnseignantDashboard() {
               <CardContent className="max-h-[300px] overflow-y-auto">
                 {data.pendingCorrections.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center py-6 ds-kente-pattern rounded-lg">
-                    <CheckCircle className="h-10 w-10 text-success mb-2" />
+                    <CheckCircle className="h-10 w-10 text-success-text mb-2" />
                     <p className="font-semibold">Boîte de réception vide</p>
                     <p className="text-sm text-muted-foreground">Aucune nouvelle soumission à corriger.</p>
                   </div>

@@ -83,11 +83,11 @@ export function GradingForm({
     <div className={containerClass}>
       {/* Grading header */}
       <div className={headerClass}>
-        <PenTool className="h-3.5 w-3.5 text-success" />
-        <span className="text-xs font-bold text-success uppercase tracking-wider">
+        <PenTool className="h-3.5 w-3.5 text-success-text" />
+        <span className="text-xs font-bold text-success-text uppercase tracking-wider">
           Notation
         </span>
-        <span className="ml-auto text-xs text-success font-mono tabular-nums">
+        <span className="ml-auto text-xs text-success-text font-mono tabular-nums">
           {bareme} pts dispo.
         </span>
       </div>
@@ -109,7 +109,7 @@ export function GradingForm({
                     onClick={() => onToggleCriterion(c.id)}
                     className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 ${criteriaBtnTextClass} font-medium transition-all ${
                       isSelected
-                        ? 'border-success/40 bg-success/10 text-success shadow-sm'
+                        ? 'border-success/40 bg-success/10 text-success-text shadow-sm'
                         : 'border-border bg-background text-muted-foreground hover:border-success/20 hover:bg-success/10'
                     }`}
                   >
@@ -139,7 +139,7 @@ export function GradingForm({
                     onClick={() => onToggleCriterion(c.id)}
                     className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 ${criteriaBtnTextClass} font-medium transition-all ${
                       isActive
-                        ? 'border-success/40 bg-success/10 text-success shadow-sm'
+                        ? 'border-success/40 bg-success/10 text-success-text shadow-sm'
                         : 'border-border bg-background text-muted-foreground hover:border-success/20 hover:bg-success/10'
                     }`}
                   >

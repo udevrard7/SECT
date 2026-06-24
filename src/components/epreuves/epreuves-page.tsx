@@ -224,13 +224,13 @@ type TabId ='modeles' |'sessions'
 const TYPE_COLORS: Record<string, string> = {
  QCU:'bg-info/15 text-info border-info/30',
  QCM:'bg-warning/15 text-warning border-warning/30',
- QRC:'bg-success/15 text-success border-success/30',
+ QRC:'bg-success/15 text-success-text border-success/30',
  REFLEXION:'bg-secondary/15 text-secondary border-secondary/30',
  CODE:'bg-secondary/15 text-secondary border-secondary/30',
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
- FACILE:'bg-success/10 text-success border-success/30',
+ FACILE:'bg-success/10 text-success-text border-success/30',
  MOYEN:'bg-warning/10 text-warning border-warning/30',
  DIFFICILE:'bg-warning/10 text-warning border-warning/30',
  EXPERT:'bg-destructive/10 text-destructive border-destructive/30',
@@ -281,7 +281,7 @@ const SESSION_EXAMEN_LABELS: Record<string, string> = {
 }
 
 const SESSION_EXAMEN_COLORS: Record<string, string> = {
- NORMALE:'bg-success/10 text-success border-success/30',
+ NORMALE:'bg-success/10 text-success-text border-success/30',
  RATTRAPAGE:'bg-warning/10 text-warning border-warning/30',
  SPECIALE:'bg-secondary/10 text-secondary border-secondary/30',
  EXCEPTIONNELLE:'bg-secondary/10 text-secondary border-secondary/30',
@@ -315,7 +315,7 @@ function getStatutBadge(statut: string) {
  )
  case'EN_COURS':
  return (
- <Badge variant="outline" className="gap-1 bg-success/15 text-success border-success/30">
+ <Badge variant="outline" className="gap-1 bg-success/15 text-success-text border-success/30">
  <Activity className="h-3 w-3" /> En cours
  </Badge>
  )
@@ -360,7 +360,7 @@ export function EpreuvesPage() {
  <>
  <Button
  variant="outline"
- className="border-success/40 text-success hover:bg-success/10"
+ className="border-success/40 text-success-text hover:bg-success/10"
  onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
  >
  <Sparkles className="h-4 w-4" />
@@ -379,7 +379,7 @@ export function EpreuvesPage() {
  onClick={() => setActiveTab('modeles')}
  className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
  activeTab ==='modeles'
- ?'border-success/70 text-success'
+ ?'border-success/70 text-success-text'
  :'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
  }`}
  >
@@ -392,7 +392,7 @@ export function EpreuvesPage() {
  onClick={() => setActiveTab('sessions')}
  className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
  activeTab ==='sessions'
- ?'border-success/70 text-success'
+ ?'border-success/70 text-success-text'
  :'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
  }`}
  >
@@ -603,13 +603,13 @@ function ModelesTab() {
  const isCorrect = correctAnswers.includes(prop.id)
  return (
  <div key={idx} className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm ${isCorrect ?'bg-success/10 border border-success/30' :'bg-muted/30'}`}>
- <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold ${isCorrect ?'bg-success/20 text-success' :'bg-muted text-muted-foreground'}`}>
+ <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold ${isCorrect ?'bg-success/20 text-success-text' :'bg-muted text-muted-foreground'}`}>
  {String.fromCharCode(65 + idx)}
  </span>
- <span className={isCorrect ?'font-medium text-success' :''}>
+ <span className={isCorrect ?'font-medium text-success-text' :''}>
  {typeof prop ==='string' ? prop : prop.text}
  </span>
- {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success" />}
+ {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success-text" />}
  </div>
  )
  })}
@@ -630,7 +630,7 @@ function ModelesTab() {
  <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
  <div className="flex items-center gap-2">
  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/15">
- <Library className="h-4 w-4 text-success" />
+ <Library className="h-4 w-4 text-success-text" />
  </div>
  <div>
  <p className="text-xs text-muted-foreground">Modèles</p>
@@ -753,7 +753,7 @@ function ModelesTab() {
  {!isLoading && epreuves.length === 0 && (
  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
- <Library className="h-10 w-10 text-success" />
+ <Library className="h-10 w-10 text-success-text" />
  </div>
  <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucun modèle d&apos;épreuve</h3>
  <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -764,7 +764,7 @@ function ModelesTab() {
  <div className="mt-6 flex flex-wrap gap-3">
  <Button
  variant="outline"
- className="border-success/40 text-success hover:bg-success/10"
+ className="border-success/40 text-success-text hover:bg-success/10"
  onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
  >
  <Sparkles className="h-4 w-4" />
@@ -797,7 +797,7 @@ function ModelesTab() {
  </div>
 
  <div className="flex flex-wrap gap-3">
- <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+ <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
  <HelpCircle className="h-3 w-3" /> {epreuve.questionCount} question{epreuve.questionCount > 1 ?'s' :''}
  </Badge>
  <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
@@ -864,7 +864,7 @@ function ModelesTab() {
  <Separator />
 
  <div className="flex flex-wrap gap-2">
- <Button variant="outline" size="sm" className="border-success/40 text-success hover:bg-success/10" onClick={() => handlePreview(epreuve)}>
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handlePreview(epreuve)}>
  <Eye className="h-3.5 w-3.5" /> Aperçu
  </Button>
  <DropdownMenu>
@@ -878,7 +878,7 @@ function ModelesTab() {
  <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
  <DropdownMenuSeparator />
  <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id}>
- <FileDown className="h-4 w-4 mr-2 text-success" />
+ <FileDown className="h-4 w-4 mr-2 text-success-text" />
  <div>
  <p className="font-medium">Sujet</p>
  <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
@@ -919,7 +919,7 @@ function ModelesTab() {
  <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
  <DialogHeader>
  <DialogTitle className="flex items-center gap-2">
- <Eye className="h-5 w-5 text-success" />
+ <Eye className="h-5 w-5 text-success-text" />
  Aperçu du modèle
  </DialogTitle>
  {previewEpreuve && (
@@ -943,7 +943,7 @@ function ModelesTab() {
  <Card key={q.id} className="overflow-hidden">
  <CardContent className="p-4">
  <div className="flex flex-wrap items-center gap-2 mb-2">
- <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success">{idx + 1}</span>
+ <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text">{idx + 1}</span>
  <Badge variant="outline" className={`text-xs ${TYPE_COLORS[q.type] ||''}`}>{q.type}</Badge>
  <Badge variant="outline" className={`text-xs ${DIFFICULTE_COLORS[q.difficulte] ||''}`}>{DIFFICULTE_LABELS[q.difficulte] || q.difficulte}</Badge>
  <Badge variant="secondary" className="text-xs ml-auto">{q.bareme} pt{q.bareme > 1 ?'s' :''}</Badge>
@@ -1050,7 +1050,7 @@ function ModelesTab() {
  <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
  <DropdownMenuSeparator />
  <DropdownMenuItem onClick={() => previewEpreuve && handleExportPDF(previewEpreuve.id,'sujet')} disabled={exportingPdfId === previewEpreuve.id}>
- <FileDown className="h-4 w-4 mr-2 text-success" />
+ <FileDown className="h-4 w-4 mr-2 text-success-text" />
  <div>
  <p className="font-medium">Sujet</p>
  <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
@@ -1104,7 +1104,7 @@ function ModelesTab() {
  <Dialog open={!!duplicateTarget} onOpenChange={(open) => { if (!open) setDuplicateTarget(null) }}>
  <DialogContent className="sm:max-w-md">
  <DialogHeader>
- <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5 text-success" /> Dupliquer le modèle</DialogTitle>
+ <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5 text-success-text" /> Dupliquer le modèle</DialogTitle>
  <DialogDescription>Créez une copie de &quot;{duplicateTarget?.titre}&quot;.</DialogDescription>
  </DialogHeader>
  <div className="space-y-4 py-4">
@@ -1699,7 +1699,7 @@ function SessionsTab() {
  <DropdownMenuLabel>Exporter en PDF</DropdownMenuLabel>
  <DropdownMenuSeparator />
  <DropdownMenuItem onClick={() => handleExportPDF(epreuve.id,'sujet')} disabled={exportingPdfId === epreuve.id}>
- <FileDown className="h-4 w-4 mr-2 text-success" />
+ <FileDown className="h-4 w-4 mr-2 text-success-text" />
  <div>
  <p className="font-medium">Sujet</p>
  <p className="text-xs text-muted-foreground">Pour l'étudiant</p>
@@ -1727,7 +1727,7 @@ function SessionsTab() {
  case'BROUILLON':
  return (
  <div className="flex flex-wrap gap-2">
- <Button variant="outline" size="sm" className="border-success/40 text-success hover:bg-success/10" onClick={() => handleStatusAction(epreuve.id,'publier','Épreuve publiée')}>
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleStatusAction(epreuve.id,'publier','Épreuve publiée')}>
  <Send className="h-3.5 w-3.5" /> Publier
  </Button>
  {pdfDropdown}
@@ -1739,7 +1739,7 @@ function SessionsTab() {
  case'PLANIFIEE':
  return (
  <div className="flex flex-wrap gap-2">
- <Button variant="outline" size="sm" className="border-success/40 text-success hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
  <Eye className="h-3.5 w-3.5" /> Voir
  </Button>
  <Button size="sm" className="bg-success/60 hover:bg-success/70" onClick={() => setConfirmAction({ epreuveId: epreuve.id, action:'lancer', label:'Lancer l\'épreuve', description:'Les étudiants pourront commencer cette épreuve. Voulez-vous continuer ?' })}>
@@ -1754,7 +1754,7 @@ function SessionsTab() {
  case'EN_COURS':
  return (
  <div className="flex flex-wrap gap-2">
- <Button variant="outline" size="sm" className="border-success/40 text-success hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
  <Activity className="h-3.5 w-3.5" /> Suivi
  </Button>
  {pdfDropdown}
@@ -1766,7 +1766,7 @@ function SessionsTab() {
  case'TERMINEE':
  return (
  <div className="flex flex-wrap gap-2">
- <Button variant="outline" size="sm" className="border-success/40 text-success hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
  <BarChart3 className="h-3.5 w-3.5" /> Résultats
  </Button>
  {pdfDropdown}
@@ -1781,7 +1781,7 @@ function SessionsTab() {
  case'CLOTUREE':
  return (
  <div className="flex flex-wrap gap-2">
- <Button variant="outline" size="sm" className="border-success/40 text-success hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
+ <Button variant="outline" size="sm" className="border-success/40 text-success-text hover:bg-success/10" onClick={() => handleOpenMonitoring(epreuve)}>
  <Trophy className="h-3.5 w-3.5" /> Résultats
  </Button>
  {pdfDropdown}
@@ -1851,11 +1851,11 @@ function SessionsTab() {
  {getStatutBadge(epreuve.statut)}
  </div>
  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
- <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-success" /> {epreuve.duree} min</span>
+ <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-success-text" /> {epreuve.duree} min</span>
  <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-info" /> {formatDateTime(epreuve.dateDebut)}</span>
  </div>
  <div className="flex flex-wrap gap-3">
- <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+ <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
  <HelpCircle className="h-3 w-3" /> {questionCount} Q
  </Badge>
  <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
@@ -2010,7 +2010,7 @@ function SessionsTab() {
  {!isLoading && filteredEpreuves.length === 0 && (
  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
- <Layers className="h-10 w-10 text-success" />
+ <Layers className="h-10 w-10 text-success-text" />
  </div>
  <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">
  {statutFilter !=='TOUS' ?`Aucune session ${getStatutLabel(statutFilter).toLowerCase()}` :'Aucune session planifiée'}
@@ -2085,12 +2085,12 @@ function SessionsTab() {
  </div>
 
  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
- <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-success" /> {epreuve.duree} min</span>
+ <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-success-text" /> {epreuve.duree} min</span>
  <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-info" /> {formatDateTime(epreuve.dateDebut)}</span>
  </div>
 
  <div className="flex flex-wrap gap-3">
- <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+ <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
  <HelpCircle className="h-3 w-3" /> {questionCount} question{questionCount > 1 ?'s' :''}
  </Badge>
  <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
@@ -2182,7 +2182,7 @@ function SessionsTab() {
  <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
  <DialogHeader>
  <DialogTitle className="flex items-center gap-2">
- <SendHorizonal className="h-5 w-5 text-success" />
+ <SendHorizonal className="h-5 w-5 text-success-text" />
  Planifier une session
  </DialogTitle>
  <DialogDescription>
@@ -2194,7 +2194,7 @@ function SessionsTab() {
  {/* Step 1: Select model */}
  <div className="space-y-3">
  <Label className="text-sm font-semibold flex items-center gap-2">
- <Library className="h-4 w-4 text-success" />
+ <Library className="h-4 w-4 text-success-text" />
  Choisir un modèle
  </Label>
  {isLoadingModeles ? (
@@ -2204,7 +2204,7 @@ function SessionsTab() {
  ) : modeles.length === 0 ? (
  <div className="rounded-lg border border-dashed p-4 text-center">
  <p className="text-sm text-muted-foreground">Aucun modèle disponible.</p>
- <Button variant="outline" size="sm" className="mt-2 border-success/40 text-success" onClick={() => { setPlanifierDialogOpen(false); router.push(PAGE_ROUTES['questions-ia']) }}>
+ <Button variant="outline" size="sm" className="mt-2 border-success/40 text-success-text" onClick={() => { setPlanifierDialogOpen(false); router.push(PAGE_ROUTES['questions-ia']) }}>
  <Sparkles className="h-3 w-3" /> Générer par IA
  </Button>
  </div>
@@ -2230,7 +2230,7 @@ function SessionsTab() {
  <Badge variant="outline" className="text-[10px] gap-0.5 py-0">{modele.generationMode ==='IA_ASSISTEE' ?'IA' :'Manuelle'}</Badge>
  </div>
  </div>
- {selectedModeleId === modele.id && <CheckCircle2 className="h-4 w-4 text-success shrink-0" />}
+ {selectedModeleId === modele.id && <CheckCircle2 className="h-4 w-4 text-success-text shrink-0" />}
  </button>
  ))}
  </div>
@@ -2298,10 +2298,10 @@ function SessionsTab() {
  {/* Filière */}
  <div className="space-y-2">
  <Label className="flex items-center gap-1.5">
- <BookOpen className="h-3.5 w-3.5 text-success" />
+ <BookOpen className="h-3.5 w-3.5 text-success-text" />
  Filière cible
  {planFilieres.length === 1 && (
- <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/30">Auto</Badge>
+ <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30">Auto</Badge>
  )}
  </Label>
  <Select
@@ -2345,7 +2345,7 @@ function SessionsTab() {
  <Layers className="h-3.5 w-3.5 text-info" />
  Niveau cible
  {planFiliereId && planFilieres.find((f) => f.id === planFiliereId)?.niveaux.length === 1 && (
- <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/30">Auto</Badge>
+ <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30">Auto</Badge>
  )}
  </Label>
  <Select value={planNiveau} onValueChange={(val) => { setPlanNiveau(val); setPlanUEId('') }}>
@@ -2505,7 +2505,7 @@ function SessionsTab() {
  <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
  <DialogHeader>
  <DialogTitle className="flex items-center gap-2">
- <Activity className="h-5 w-5 text-success" />
+ <Activity className="h-5 w-5 text-success-text" />
  Suivi — {monitoringEpreuve?.titre}
  </DialogTitle>
  </DialogHeader>
@@ -2515,7 +2515,7 @@ function SessionsTab() {
  <div className="flex-1 overflow-y-auto space-y-4">
  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
  <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold font-mono tabular-nums">{stats.total}</p></CardContent></Card>
- <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">En cours</p><p className="text-xl font-bold text-success font-mono tabular-nums">{stats.enCours}</p></CardContent></Card>
+ <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">En cours</p><p className="text-xl font-bold text-success-text font-mono tabular-nums">{stats.enCours}</p></CardContent></Card>
  <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Soumises</p><p className="text-xl font-bold text-info font-mono tabular-nums">{stats.soumis}</p></CardContent></Card>
  <Card><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">Moyenne</p><p className="text-xl font-bold font-mono tabular-nums">{stats.avgScore > 0 ? stats.avgScore.toFixed(1) :'—'}</p></CardContent></Card>
  </div>
@@ -3058,7 +3058,7 @@ function SessionSpecialeDialog({
  const statusColors: Record<string, string> = {
  ABSENT:'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
  NON_SOUMIS:'bg-warning/10 text-warning',
- EN_COURS:'bg-success/10 text-success',
+ EN_COURS:'bg-success/10 text-success-text',
  SOUMISE:'bg-info/10 text-info',
  CORRIGEE:'bg-info/10 text-info',
  RETOURNEE:'bg-secondary/10 text-secondary',
@@ -3223,8 +3223,8 @@ function SessionSpecialeDialog({
  onClick={() => setEstPartielle(false)}
  className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-all ${!estPartielle ?'border-success/50 ring-2 ring-success/30 bg-success/50' :'hover:border-success/30'}`}
  >
- <BookOpen className={`h-5 w-5 ${!estPartielle ?'text-success' :'text-muted-foreground'}`} />
- <span className={`text-sm font-medium ${!estPartielle ?'text-success' :''}`}>Épreuve complète</span>
+ <BookOpen className={`h-5 w-5 ${!estPartielle ?'text-success-text' :'text-muted-foreground'}`} />
+ <span className={`text-sm font-medium ${!estPartielle ?'text-success-text' :''}`}>Épreuve complète</span>
  <span className="text-[10px] text-muted-foreground">Relancer l&apos;épreuve complète</span>
  </button>
  <button
@@ -3278,7 +3278,7 @@ function SessionSpecialeDialog({
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-2">
  <Label className="text-sm font-medium flex items-center gap-1.5">
- <Calendar className="h-3.5 w-3.5 text-success" /> Date début <span className="text-destructive">*</span>
+ <Calendar className="h-3.5 w-3.5 text-success-text" /> Date début <span className="text-destructive">*</span>
  </Label>
  <Input type="datetime-local" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
  </div>

@@ -183,7 +183,7 @@ function getStatutBadge(statut: string) {
       )
     case 'ACTIF':
       return (
-        <Badge className="bg-success/10 text-success border-success/30">
+        <Badge className="bg-success/10 text-success-text border-success/30">
           Actif
         </Badge>
       )
@@ -227,9 +227,9 @@ function getPlanColor(type: string) {
         bg: 'bg-success/10',
         border: 'border-success/30',
         header: 'bg-success/10',
-        accent: 'text-success',
-        badge: 'bg-success/10 text-success border-success/30',
-        icon: 'text-success',
+        accent: 'text-success-text',
+        badge: 'bg-success/10 text-success-text border-success/30',
+        icon: 'text-success-text',
         ring: 'ring-success',
       }
     case 'PROFESSIONNEL':
@@ -237,9 +237,9 @@ function getPlanColor(type: string) {
         bg: 'bg-success/10',
         border: 'border-success/30',
         header: 'bg-success/10',
-        accent: 'text-success',
-        badge: 'bg-success/10 text-success border-success/30',
-        icon: 'text-success',
+        accent: 'text-success-text',
+        badge: 'bg-success/10 text-success-text border-success/30',
+        icon: 'text-success-text',
         ring: 'ring-success',
       }
     case 'ENTREPRISE':
@@ -988,7 +988,7 @@ export function AbonnementsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <CreditCard className="h-7 w-7 text-success" />
+            <CreditCard className="h-7 w-7 text-success-text" />
             Gestion des Abonnements
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -998,7 +998,7 @@ export function AbonnementsPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            className="border-success/30 text-success hover:bg-success/10"
+            className="border-success/30 text-success-text hover:bg-success/10"
             onClick={handleOpenCreatePlan}
           >
             <Plus className="h-4 w-4" />
@@ -1023,7 +1023,7 @@ export function AbonnementsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Abonnements actifs</p>
@@ -1045,7 +1045,7 @@ export function AbonnementsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <DollarSign className="h-5 w-5 text-success" />
+              <DollarSign className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Revenus mensuels</p>
@@ -1100,7 +1100,7 @@ export function AbonnementsPage() {
           ) : plans.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <CreditCard className="h-10 w-10 text-success" />
+                <CreditCard className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun plan défini</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1150,7 +1150,7 @@ export function AbonnementsPage() {
                         {features.map((f, idx) => (
                           <li key={idx} className="flex items-start gap-2">
                             {f.included ? (
-                              <Check className="h-4 w-4 text-success mt-0.5 shrink-0" />
+                              <Check className="h-4 w-4 text-success-text mt-0.5 shrink-0" />
                             ) : (
                               <X className="h-4 w-4 text-gray-400 dark:text-gray-600 mt-0.5 shrink-0" />
                             )}
@@ -1233,7 +1233,7 @@ export function AbonnementsPage() {
           {!isLoading && filteredAbonnements.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <CreditCard className="h-10 w-10 text-success" />
+                <CreditCard className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun abonnement trouvé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1271,7 +1271,7 @@ export function AbonnementsPage() {
                       <TableRow key={abo.id} className="group">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                               {abo.etablissement.nom.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -1290,7 +1290,7 @@ export function AbonnementsPage() {
                         <TableCell>
                           {responsablesMap[abo.etablissementId] ? (
                             <div className="flex items-center gap-1.5">
-                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 text-[10px] font-bold text-success">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 text-[10px] font-bold text-success-text">
                                 {responsablesMap[abo.etablissementId].name.charAt(0).toUpperCase()}
                               </div>
                               <span className="text-sm">{responsablesMap[abo.etablissementId].name}</span>
@@ -1310,7 +1310,7 @@ export function AbonnementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                              className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
                               onClick={() => handleViewDetail(abo)}
                               title="Voir les détails"
                             >
@@ -1319,7 +1319,7 @@ export function AbonnementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                              className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
                               onClick={() => handleOpenEditAbo(abo)}
                               title="Modifier"
                             >
@@ -1366,7 +1366,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-success" />
+              <Sparkles className="h-5 w-5 text-success-text" />
               Nouvelle souscription
             </DialogTitle>
             <DialogDescription>
@@ -1383,12 +1383,12 @@ export function AbonnementsPage() {
               { step: 4, label: 'Confirmation' },
             ].map((s, idx) => (
               <div key={s.step} className="flex items-center gap-2 flex-1">
-                <div className={`flex items-center gap-1.5 ${wizardStep >= s.step ? 'text-success' : 'text-muted-foreground'}`}>
+                <div className={`flex items-center gap-1.5 ${wizardStep >= s.step ? 'text-success-text' : 'text-muted-foreground'}`}>
                   <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
                     wizardStep > s.step
                       ? 'bg-success text-white'
                       : wizardStep === s.step
-                        ? 'bg-success/10 text-success border-2 border-success/70'
+                        ? 'bg-success/10 text-success-text border-2 border-success/70'
                         : 'bg-muted text-muted-foreground'
                   }`}>
                     {wizardStep > s.step ? <Check className="h-4 w-4" /> : s.step}
@@ -1405,7 +1405,7 @@ export function AbonnementsPage() {
             {wizardStep === 1 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success">
+                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success-text">
                     <CreditCard className="h-4 w-4" />
                     Sélectionnez un plan
                   </h3>
@@ -1437,7 +1437,7 @@ export function AbonnementsPage() {
                         >
                           {isSelected && (
                             <div className="absolute top-2 right-2">
-                              <CheckCircle2 className="h-5 w-5 text-success" />
+                              <CheckCircle2 className="h-5 w-5 text-success-text" />
                             </div>
                           )}
                           <Badge className={`${colors.badge} text-[10px] mb-2`}>{plan.type}</Badge>
@@ -1453,7 +1453,7 @@ export function AbonnementsPage() {
                           <ul className="mt-2 space-y-0.5">
                             {getPlanFeatures(plan).slice(0, 4).map((f, i) => (
                               <li key={i} className="flex items-center gap-1 text-[11px]">
-                                {f.included ? <Check className="h-3 w-3 text-success shrink-0" /> : <X className="h-3 w-3 text-gray-400 shrink-0" />}
+                                {f.included ? <Check className="h-3 w-3 text-success-text shrink-0" /> : <X className="h-3 w-3 text-gray-400 shrink-0" />}
                                 <span className={f.included ? '' : 'line-through text-muted-foreground'}>{f.label}</span>
                               </li>
                             ))}
@@ -1509,7 +1509,7 @@ export function AbonnementsPage() {
                         <Separator />
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">Montant :</span>
-                          <span className="text-sm font-bold text-success font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
+                          <span className="text-sm font-bold text-success-text font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
                         </div>
                       </div>
                     )}
@@ -1522,7 +1522,7 @@ export function AbonnementsPage() {
             {wizardStep === 2 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success">
+                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success-text">
                     <Building2 className="h-4 w-4" />
                     Informations de l&apos;établissement
                   </h3>
@@ -1590,7 +1590,7 @@ export function AbonnementsPage() {
                     onClick={() => setMatriculeOpen(!matriculeOpen)}
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <IdCard className="h-4 w-4 text-success" />
+                      <IdCard className="h-4 w-4 text-success-text" />
                       Configuration des matricules (optionnel)
                     </div>
                     {matriculeOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -1630,7 +1630,7 @@ export function AbonnementsPage() {
             {wizardStep === 3 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success">
+                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success-text">
                     <UserPlus className="h-4 w-4" />
                     Responsable de l&apos;établissement
                   </h3>
@@ -1648,12 +1648,12 @@ export function AbonnementsPage() {
                   <Info className={`h-4 w-4 shrink-0 mt-0.5 ${
                     wizRespMode === 'direct'
                       ? 'text-warning'
-                      : 'text-success'
+                      : 'text-success-text'
                   }`} />
                   <p className={`text-xs ${
                     wizRespMode === 'direct'
                       ? 'text-warning'
-                      : 'text-success'
+                      : 'text-success-text'
                   }`}>
                     {wizRespMode === 'direct'
                       ? 'Un mot de passe temporaire sera généré automatiquement. Le responsable devra le changer à sa première connexion.'
@@ -1674,11 +1674,11 @@ export function AbonnementsPage() {
                   >
                     {wizRespMode === 'direct' && (
                       <div className="absolute top-2 right-2">
-                        <CheckCircle2 className="h-4 w-4 text-success" />
+                        <CheckCircle2 className="h-4 w-4 text-success-text" />
                       </div>
                     )}
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Lock className="h-4 w-4 text-success" />
+                      <Lock className="h-4 w-4 text-success-text" />
                       <span className="text-sm font-semibold">Création directe</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-tight">
@@ -1697,11 +1697,11 @@ export function AbonnementsPage() {
                   >
                     {wizRespMode === 'invitation' && (
                       <div className="absolute top-2 right-2">
-                        <CheckCircle2 className="h-4 w-4 text-success" />
+                        <CheckCircle2 className="h-4 w-4 text-success-text" />
                       </div>
                     )}
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Mail className="h-4 w-4 text-success" />
+                      <Mail className="h-4 w-4 text-success-text" />
                       <span className="text-sm font-semibold">Invitation par lien</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-tight">
@@ -1750,7 +1750,7 @@ export function AbonnementsPage() {
                     <span className="text-muted-foreground">Période :</span>
                     <span className="font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
                     <span className="text-muted-foreground">Montant :</span>
-                    <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
+                    <span className="font-bold text-success-text font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
                     <span className="text-muted-foreground">Mode :</span>
                     <span className="font-medium">{wizRespMode === 'direct' ? 'Création directe' : 'Invitation par lien'}</span>
                     {wizRespMode === 'direct' && (
@@ -1768,10 +1768,10 @@ export function AbonnementsPage() {
             {wizardStep === 4 && wizardCredentials && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-4">
-                  <CheckCircle2 className="h-6 w-6 text-success shrink-0" />
+                  <CheckCircle2 className="h-6 w-6 text-success-text shrink-0" />
                   <div>
-                    <p className="text-sm font-semibold text-success">Souscription créée avec succès !</p>
-                    <p className="text-xs text-success">
+                    <p className="text-sm font-semibold text-success-text">Souscription créée avec succès !</p>
+                    <p className="text-xs text-success-text">
                       L&apos;établissement et l&apos;abonnement ont été créés
                       {wizardCredentials.responsableMode === 'direct' ? ', ainsi que le compte responsable' : ', et l\'invitation a été envoyée'}.
                     </p>
@@ -1781,7 +1781,7 @@ export function AbonnementsPage() {
                 {/* Établissement */}
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-success" />
+                    <Building2 className="h-4 w-4 text-success-text" />
                     Établissement
                   </h4>
                   <div className="rounded-lg border p-3">
@@ -1793,7 +1793,7 @@ export function AbonnementsPage() {
                 {wizardCredentials.responsableMode === 'direct' ? (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Lock className="h-4 w-4 text-success" />
+                      <Lock className="h-4 w-4 text-success-text" />
                       Identifiants de connexion
                     </h4>
                     <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 space-y-2">
@@ -1808,7 +1808,7 @@ export function AbonnementsPage() {
                             {wizardCredentials.responsableEmail}
                           </code>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'email')}>
-                            {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-success-text" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
@@ -1819,7 +1819,7 @@ export function AbonnementsPage() {
                             {wizardCredentials.temporaryPassword}
                           </code>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.temporaryPassword, 'password')}>
-                            {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-success-text" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
@@ -1836,7 +1836,7 @@ export function AbonnementsPage() {
                 ) : (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-success" />
+                      <Mail className="h-4 w-4 text-success-text" />
                       Invitation envoyée
                     </h4>
                     <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-2">
@@ -1847,7 +1847,7 @@ export function AbonnementsPage() {
                             {wizardCredentials.responsableEmail}
                           </code>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'inv-email')}>
-                            {wizardCopiedField === 'inv-email' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'inv-email' ? <CheckCircle2 className="h-3.5 w-3.5 text-success-text" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
@@ -1872,7 +1872,7 @@ export function AbonnementsPage() {
                               }
                             }}
                           >
-                            {wizardCopiedField === 'inv-link' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'inv-link' ? <CheckCircle2 className="h-3.5 w-3.5 text-success-text" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
@@ -1894,7 +1894,7 @@ export function AbonnementsPage() {
 
                     {/* Disclaimer */}
                     <div className="rounded-lg bg-success/10 border border-success/30 p-3">
-                      <p className="text-xs text-success flex items-start gap-2">
+                      <p className="text-xs text-success-text flex items-start gap-2">
                         <Info className="h-4 w-4 mt-0.5 shrink-0" />
                         Ce lien d&apos;invitation est valide 48 heures. Le responsable créera son propre mot de passe en l&apos;utilisant.
                       </p>
@@ -1905,7 +1905,7 @@ export function AbonnementsPage() {
                 {/* Abonnement */}
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <CreditCard className="h-4 w-4 text-success" />
+                    <CreditCard className="h-4 w-4 text-success-text" />
                     Abonnement
                   </h4>
                   <div className="rounded-lg border p-3 space-y-1.5">
@@ -1919,7 +1919,7 @@ export function AbonnementsPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Montant :</span>
-                      <span className="text-sm font-bold text-success font-mono tabular-nums">{formatCurrency(wizardCredentials.montant)}</span>
+                      <span className="text-sm font-bold text-success-text font-mono tabular-nums">{formatCurrency(wizardCredentials.montant)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Début :</span>
@@ -1989,7 +1989,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-success" />
+              <CreditCard className="h-5 w-5 text-success-text" />
               {editingAbo ? 'Modifier l\'abonnement' : 'Ajouter un abonnement'}
             </DialogTitle>
             <DialogDescription>
@@ -2085,7 +2085,7 @@ export function AbonnementsPage() {
               <div className="space-y-3">
                 <Separator />
                 <div className="flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-success" />
+                  <UserPlus className="h-4 w-4 text-success-text" />
                   <h4 className="text-sm font-semibold">Responsable de l&apos;établissement</h4>
                 </div>
 
@@ -2100,14 +2100,14 @@ export function AbonnementsPage() {
                   </div>
                 ) : selectedEtabResponsable ? (
                   <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                       {selectedEtabResponsable.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{selectedEtabResponsable.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{selectedEtabResponsable.email}</p>
                     </div>
-                    <Badge className="bg-success/10 text-success border-success/30 shrink-0">
+                    <Badge className="bg-success/10 text-success-text border-success/30 shrink-0">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Déjà assigné
                     </Badge>
@@ -2115,7 +2115,7 @@ export function AbonnementsPage() {
                 ) : respCreated ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3">
-                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success-text shrink-0" />
                       <span className="text-sm">
                         {responsableMode === 'invitation' ? 'Invitation envoyée avec succès' : 'Responsable créé avec succès'}
                       </span>
@@ -2233,7 +2233,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-success" />
+              <CreditCard className="h-5 w-5 text-success-text" />
               {editingPlan ? 'Modifier le plan' : 'Nouveau plan'}
             </DialogTitle>
             <DialogDescription>
@@ -2319,14 +2319,14 @@ export function AbonnementsPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-success" />
+                    <Brain className="h-4 w-4 text-success-text" />
                     <Label htmlFor="plan-ia-gen" className="cursor-pointer">Génération IA</Label>
                   </div>
                   <Switch id="plan-ia-gen" checked={formPlanIaGeneration} onCheckedChange={setFormPlanIaGeneration} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-success" />
+                    <Sparkles className="h-4 w-4 text-success-text" />
                     <Label htmlFor="plan-ia-correction" className="cursor-pointer">Correction IA</Label>
                   </div>
                   <Switch id="plan-ia-correction" checked={formPlanIaCorrection} onCheckedChange={setFormPlanIaCorrection} />
@@ -2420,7 +2420,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-success" />
+              <CreditCard className="h-5 w-5 text-success-text" />
               Détails de l&apos;abonnement
             </DialogTitle>
             <DialogDescription>
@@ -2434,7 +2434,7 @@ export function AbonnementsPage() {
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Établissement</h4>
                   <div className="flex items-center gap-3 rounded-lg border p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success-text">
                       {detailAbo.etablissement.nom.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -2461,14 +2461,14 @@ export function AbonnementsPage() {
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Responsable</h4>
                   {responsablesMap[detailAbo.etablissementId] ? (
                     <div className="flex items-center gap-3 rounded-lg border p-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                         {responsablesMap[detailAbo.etablissementId].name.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm">{responsablesMap[detailAbo.etablissementId].name}</p>
                         <p className="text-xs text-muted-foreground truncate">{responsablesMap[detailAbo.etablissementId].email}</p>
                       </div>
-                      <Badge className="bg-success/10 text-success border-success/30 shrink-0">
+                      <Badge className="bg-success/10 text-success-text border-success/30 shrink-0">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Assigné
                       </Badge>
@@ -2498,7 +2498,7 @@ export function AbonnementsPage() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Montant payé</span>
-                      <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(detailAbo.montantPaye)}</span>
+                      <span className="font-bold text-success-text font-mono tabular-nums">{formatCurrency(detailAbo.montantPaye)}</span>
                     </div>
                     {detailAbo.modePaiement && (
                       <div className="flex justify-between text-sm">

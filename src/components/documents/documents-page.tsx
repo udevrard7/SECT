@@ -1341,7 +1341,7 @@ export function DocumentsPage() {
             onCheckedChange={toggleSelectAll}
             className="border-success/40"
           />
-          <span className="text-sm font-medium text-success">
+          <span className="text-sm font-medium text-success-text">
             {selectedIds.size} document{selectedIds.size !== 1 ? 's' : ''} sélectionné{selectedIds.size !== 1 ? 's' : ''}
           </span>
           <div className="flex-1" />
@@ -1611,7 +1611,7 @@ export function DocumentsPage() {
                 <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 p-3 dark:border-success/20 dark:bg-success-foreground/30">
                   <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-success truncate">
+                    <p className="text-sm font-medium text-success-text truncate">
                       {selectedDocument.uniteEnseignement.code} — {selectedDocument.uniteEnseignement.nom}
                     </p>
                     <p className="text-xs text-emerald-600 dark:text-emerald-400">
@@ -1756,7 +1756,7 @@ export function DocumentsPage() {
                         TRS: 'bg-destructive',
                       }
                       const textColorMap: Record<string, string> = {
-                        QCU: 'text-success',
+                        QCU: 'text-success-text',
                         QCM: 'text-teal-700 dark:text-teal-300',
                         QRC: 'text-warning',
                         TRS: 'text-rose-700 dark:text-rose-300',

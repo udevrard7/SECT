@@ -14,7 +14,7 @@ export function CorrectionLoadingSkeleton() {
   return (
     <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
       <div className="text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-success mx-auto" />
+        <Loader2 className="h-8 w-8 animate-spin text-success-text mx-auto" />
         <p className="mt-3 text-sm text-muted-foreground">Chargement des épreuves...</p>
       </div>
     </div>

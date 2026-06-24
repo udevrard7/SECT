@@ -50,7 +50,7 @@ export function ResultatsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight md:text-3xl">
-            <TrendingUp className="h-7 w-7 text-success" />
+            <TrendingUp className="h-7 w-7 text-success-text" />
             Résultats & Analyses
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -154,7 +154,7 @@ export function ResultatsPage() {
                 <Card className="border-l-4 border-l-primary">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Étudiants en réussite</p>
-                    <p className="font-mono text-2xl font-bold tabular-nums text-success">
+                    <p className="font-mono text-2xl font-bold tabular-nums text-success-text">
                       {Math.max(0, overview.totalSessions > 0 ? overview.totalSessions - atRiskCount : 0)}
                     </p>
                     <p className="text-xs text-muted-foreground">moyenne ≥ 10/20</p>

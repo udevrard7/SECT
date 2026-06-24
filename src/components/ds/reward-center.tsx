@@ -125,10 +125,10 @@ export function RewardCenter({ rewards, userProgress, className }: RewardCenterP
             {/* Texte progression */}
             <div className="flex-1 text-center sm:text-left min-w-0">
               <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                <Sparkles className="h-4 w-4 text-xp" aria-hidden="true" />
+                <Sparkles className="h-4 w-4 text-xp-text" aria-hidden="true" />
                 <h3 className="font-display text-base font-semibold tracking-tight">
                   Niveau{' '}
-                  <span className="font-mono tabular-nums text-xp">{userProgress.level}</span>
+                  <span className="font-mono tabular-nums text-xp-text">{userProgress.level}</span>
                 </h3>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -139,9 +139,9 @@ export function RewardCenter({ rewards, userProgress, className }: RewardCenterP
                 <span className="font-mono tabular-nums">{userProgress.level + 1}</span>
               </p>
               <p className="mt-1 text-xs text-muted-foreground flex items-center justify-center sm:justify-start gap-1">
-                <Zap className="h-3 w-3 text-xp" aria-hidden="true" />
+                <Zap className="h-3 w-3 text-xp-text" aria-hidden="true" />
                 Plus que{' '}
-                <span className="font-mono tabular-nums font-semibold text-xp">
+                <span className="font-mono tabular-nums font-semibold text-xp-text">
                   {xpRemaining.toLocaleString('fr-FR')}
                 </span>{' '}
                 XP

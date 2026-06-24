@@ -160,16 +160,16 @@ const DIFFICULTE_LABELS: Record<string, string> = {
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
-  FACILE: 'bg-success/15 text-success border-success/30 ',
+  FACILE: 'bg-success/15 text-success-text border-success/30 ',
   MOYEN: 'bg-warning/15 text-warning border-warning/30 ',
-  DIFFICILE: 'bg-primary/15 text-primary border-primary/30 ',
+  DIFFICILE: 'bg-primary/15 text-primary-text border-primary/30 ',
   EXPERT: 'bg-destructive/15 text-destructive border-destructive/30 ',
 }
 
 const TYPE_COLORS: Record<string, string> = {
   QCU: 'bg-info/15 text-info border-info/30 ',
   QCM: 'bg-warning/15 text-warning border-warning/30 ',
-  QRC: 'bg-success/15 text-success border-success/30 ',
+  QRC: 'bg-success/15 text-success-text border-success/30 ',
   REFLEXION: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
   CODE: 'bg-secondary/15 text-secondary border-secondary/30 ',
 }
@@ -285,9 +285,9 @@ function ModernStepper({ steps, currentStep, onStepClick }: {
               <span
                 className={`mt-2 text-xs font-medium transition-colors duration-300 ${
                   isActive
-                    ? 'text-success'
+                    ? 'text-success-text'
                     : isCompleted
-                      ? 'text-success'
+                      ? 'text-success-text'
                       : 'text-muted-foreground'
                 }`}
               >
@@ -471,8 +471,8 @@ export function GenerationIAPage() {
     if (!mime) return { label: 'Fichier', color: 'bg-muted text-muted-foreground border-border /40  ' }
     if (mime.includes('pdf')) return { label: 'PDF', color: 'bg-destructive/15 text-destructive border-destructive/30 ' }
     if (mime.includes('word') || mime.includes('document')) return { label: 'DOC', color: 'bg-info/15 text-info border-info/30 ' }
-    if (mime.includes('powerpoint') || mime.includes('presentation')) return { label: 'PPT', color: 'bg-primary/15 text-primary border-primary/30' }
-    if (mime.includes('text')) return { label: 'TXT', color: 'bg-success/15 text-success border-success/30 ' }
+    if (mime.includes('powerpoint') || mime.includes('presentation')) return { label: 'PPT', color: 'bg-primary/15 text-primary-text border-primary/30' }
+    if (mime.includes('text')) return { label: 'TXT', color: 'bg-success/15 text-success-text border-success/30 ' }
     if (mime.includes('image')) return { label: 'IMG', color: 'bg-secondary/15 text-secondary border-secondary/30 ' }
     return { label: 'Fichier', color: 'bg-muted text-muted-foreground border-border /40  ' }
   }
@@ -1004,7 +1004,7 @@ export function GenerationIAPage() {
         <div className="p-5">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success ">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text ">
               {idx + 1}
             </span>
             <Badge variant="outline" className={`gap-1 ${TYPE_COLORS[q.type] || ''}`}>
@@ -1188,15 +1188,15 @@ export function GenerationIAPage() {
                   >
                     <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold ${
                       isCorrect
-                        ? 'bg-success/20 text-success  '
+                        ? 'bg-success/20 text-success-text  '
                         : 'bg-muted text-muted-foreground'
                     }`}>
                       {String.fromCharCode(65 + pIdx)}
                     </span>
-                    <span className={isCorrect ? 'font-medium text-success' : ''}>
+                    <span className={isCorrect ? 'font-medium text-success-text' : ''}>
                       {typeof prop === 'string' ? prop : prop.text}
                     </span>
-                    {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success" />}
+                    {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success-text" />}
                   </div>
                 )
               })}
@@ -1290,7 +1290,7 @@ export function GenerationIAPage() {
                     Solution
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-2">
-                    <pre className="rounded-md bg-muted text-success p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+                    <pre className="rounded-md bg-muted text-success-text p-3 text-xs overflow-x-auto font-mono leading-relaxed">
                       {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
                     </pre>
                   </CollapsibleContent>
@@ -1321,7 +1321,7 @@ export function GenerationIAPage() {
                             <span className="text-info">Entrée:</span> <span className="text-foreground">{test.entree}</span>
                           </div>
                           <div className="font-mono">
-                            <span className="text-success">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
+                            <span className="text-success-text">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
                           </div>
                           {test.description && <div className="text-muted-foreground mt-0.5 italic">{test.description}</div>}
                         </div>
@@ -1355,7 +1355,7 @@ export function GenerationIAPage() {
                             <span className="text-info">Entrée:</span> <span className="text-foreground">{test.entree}</span>
                           </div>
                           <div className="font-mono">
-                            <span className="text-success">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
+                            <span className="text-success-text">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
                           </div>
                           {test.description && <div className="text-muted-foreground mt-0.5 italic">{test.description}</div>}
                         </div>
@@ -1473,7 +1473,7 @@ export function GenerationIAPage() {
         className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6"
       >
         <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <Sparkles className="h-7 w-7 text-success" />
+          <Sparkles className="h-7 w-7 text-success-text" />
           Génération IA d&apos;Épreuves
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1503,7 +1503,7 @@ export function GenerationIAPage() {
                 <Card>
                   <CardContent className="py-16">
                     <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                      <Loader2 className="h-8 w-8 animate-spin text-success" />
+                      <Loader2 className="h-8 w-8 animate-spin text-success-text" />
                       <p className="text-sm font-medium">Chargement des documents...</p>
                     </div>
                   </CardContent>
@@ -1524,7 +1524,7 @@ export function GenerationIAPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-2 border-success/40 text-success hover:bg-success/10  dark:text-success dark:hover:bg-success/10"
+                        className="mt-2 border-success/40 text-success-text hover:bg-success/10  dark:text-success-text dark:hover:bg-success/10"
                         onClick={() => router.push(PAGE_ROUTES.documents)}
                       >
                         <FileText className="h-3 w-3 mr-1" />
@@ -1572,7 +1572,7 @@ export function GenerationIAPage() {
                                 setSelectedUEId(val)
                               }}>
                                 <SelectTrigger className="h-9 text-sm w-full sm:w-[200px]">
-                                  <Layers className="h-3.5 w-3.5 mr-1.5 text-success shrink-0" />
+                                  <Layers className="h-3.5 w-3.5 mr-1.5 text-success-text shrink-0" />
                                   <SelectValue placeholder="Toutes les UE" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1643,7 +1643,7 @@ export function GenerationIAPage() {
                         {selectedDocIds.size > 0 && (
                           <>
                             <Separator orientation="vertical" className="h-3" />
-                            <span className="font-medium text-success">
+                            <span className="font-medium text-success-text">
                               {selectedDocIds.size} sélectionné{selectedDocIds.size > 1 ? 's' : ''}
                             </span>
                           </>
@@ -1667,7 +1667,7 @@ export function GenerationIAPage() {
                   <Card className="overflow-hidden">
                     <CardHeader className="pb-2 pt-4 px-4">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
-                        <FolderOpen className="h-4 w-4 text-success" />
+                        <FolderOpen className="h-4 w-4 text-success-text" />
                         Sélectionnez les documents sources
                       </CardTitle>
                     </CardHeader>
@@ -1729,7 +1729,7 @@ export function GenerationIAPage() {
 
                                   {/* Document info */}
                                   <div className="min-w-0 flex-1">
-                                    <p className={`text-sm font-medium truncate ${isSelected ? 'text-success' : ''}`} title={doc.nomFichier}>
+                                    <p className={`text-sm font-medium truncate ${isSelected ? 'text-success-text' : ''}`} title={doc.nomFichier}>
                                       {doc.nomFichier}
                                     </p>
                                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -1761,7 +1761,7 @@ export function GenerationIAPage() {
                                         {doc.themesDetectes.slice(0, 4).map((theme, tIdx) => (
                                           <span
                                             key={tIdx}
-                                            className="inline-flex items-center rounded-md bg-success/15/60 px-1.5 py-0.5 text-[10px] font-medium text-success "
+                                            className="inline-flex items-center rounded-md bg-success/15/60 px-1.5 py-0.5 text-[10px] font-medium text-success-text "
                                           >
                                             {theme}
                                           </span>
@@ -1777,7 +1777,7 @@ export function GenerationIAPage() {
 
                                   {/* Selection indicator */}
                                   {isSelected && (
-                                    <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
+                                    <CheckCircle2 className="h-5 w-5 text-success-text shrink-0 mt-0.5" />
                                   )}
                                 </motion.div>
                               )
@@ -1794,7 +1794,7 @@ export function GenerationIAPage() {
                   <div className="flex items-center justify-between rounded-xl border bg-background p-3 shadow-sm">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 text-sm shrink-0">
-                        <FileText className="h-4 w-4 text-success" />
+                        <FileText className="h-4 w-4 text-success-text" />
                         <span className="font-semibold">{selectedDocIds.size}</span>
                         <span className="text-muted-foreground">document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}</span>
                       </div>
@@ -1840,7 +1840,7 @@ export function GenerationIAPage() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
-                      <ClipboardList className="h-4 w-4 text-success" />
+                      <ClipboardList className="h-4 w-4 text-success-text" />
                       Épreuve
                     </CardTitle>
                   </CardHeader>
@@ -1929,7 +1929,7 @@ export function GenerationIAPage() {
                       </div>
                       <div className="space-y-1 min-w-0">
                         <Label className="text-xs font-medium flex items-center gap-1.5">
-                          <Clock className="h-3 w-3 text-success" />
+                          <Clock className="h-3 w-3 text-success-text" />
                           Durée (minutes)
                         </Label>
                         <Input
@@ -1968,7 +1968,7 @@ export function GenerationIAPage() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
-                      <Brain className="h-4 w-4 text-success" />
+                      <Brain className="h-4 w-4 text-success-text" />
                       Questions
                     </CardTitle>
                   </CardHeader>
@@ -1987,7 +1987,7 @@ export function GenerationIAPage() {
                     />
                     <QuestionTypeCounter
                       label="Réponse courte"
-                      badgeClass="bg-success/15 text-success border-success/30 "
+                      badgeClass="bg-success/15 text-success-text border-success/30 "
                       value={qrcCount}
                       onChange={setQrcCount}
                     />
@@ -2039,7 +2039,7 @@ export function GenerationIAPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
-                    <Settings className="h-4 w-4 text-success" />
+                    <Settings className="h-4 w-4 text-success-text" />
                     Contexte
                   </CardTitle>
                 </CardHeader>
@@ -2047,10 +2047,10 @@ export function GenerationIAPage() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
-                        <BookOpen className="h-3 w-3 text-success" />
+                        <BookOpen className="h-3 w-3 text-success-text" />
                         Filière cible
                         {filieres.length === 1 && (
-                          <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/30 ">Auto</Badge>
+                          <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30 ">Auto</Badge>
                         )}
                       </Label>
                       <Select
@@ -2084,7 +2084,7 @@ export function GenerationIAPage() {
                         <Layers className="h-3 w-3 text-info" />
                         Niveau cible
                         {selectedFiliereId && filieres.find((f) => f.id === selectedFiliereId)?.niveaux.length === 1 && (
-                          <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/30 ">Auto</Badge>
+                          <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success-text border-success/30 ">Auto</Badge>
                         )}
                       </Label>
                       <Select value={selectedNiveau} onValueChange={(val) => { setSelectedNiveau(val); setSelectedUEId('') }}>
@@ -2239,7 +2239,7 @@ export function GenerationIAPage() {
             <motion.div variants={itemVariants}>
               <div className="flex flex-wrap items-center gap-4 rounded-xl border border-success/30 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 p-4 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
                 <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-success" />
+                  <Eye className="h-4 w-4 text-success-text" />
                   <span className="text-sm font-semibold">{generatedContenu.questions.length} question(s)</span>
                 </div>
                 <Separator orientation="vertical" className="hidden h-5 sm:block" />
@@ -2344,8 +2344,8 @@ export function GenerationIAPage() {
                 return ueGroupArray.map(([ueKey, group]) => (
                   <motion.div key={ueKey} variants={itemVariants}>
                     <div className="flex items-center gap-2 mb-2 mt-2">
-                      <Layers className="h-4 w-4 text-success" />
-                      <span className="text-sm font-semibold text-success dark:text-success">
+                      <Layers className="h-4 w-4 text-success-text" />
+                      <span className="text-sm font-semibold text-success-text dark:text-success-text">
                         {group.code ? `${group.code} — ` : ''}{group.nom}
                       </span>
                       <Badge variant="secondary" className="text-[10px]">
@@ -2402,7 +2402,7 @@ export function GenerationIAPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
-                    <Save className="h-4 w-4 text-success" />
+                    <Save className="h-4 w-4 text-success-text" />
                     Enregistrer dans la Banque d&apos;Épreuves
                   </CardTitle>
                 </CardHeader>
@@ -2410,12 +2410,12 @@ export function GenerationIAPage() {
                   {/* Clean summary grid */}
                   <div className="rounded-xl border bg-muted/20 p-5">
                     <div className="flex items-center gap-2 mb-4">
-                      <Wand2 className="h-5 w-5 text-success" />
+                      <Wand2 className="h-5 w-5 text-success-text" />
                       <span className="font-semibold text-base">{titreEpreuve || `Épreuve IA - ${new Date().toLocaleDateString('fr-FR')}`}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="rounded-lg border bg-background p-3 text-center">
-                        <Eye className="h-4 w-4 mx-auto text-success mb-1" />
+                        <Eye className="h-4 w-4 mx-auto text-success-text mb-1" />
                         <p className="text-lg font-bold">{generatedContenu.questions.length}</p>
                         <p className="text-[10px] text-muted-foreground">Questions</p>
                       </div>
@@ -2492,7 +2492,7 @@ export function GenerationIAPage() {
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    className="border-success/40 text-success hover:bg-success/10  dark:text-success dark:hover:bg-success/10"
+                    className="border-success/40 text-success-text hover:bg-success/10  dark:text-success-text dark:hover:bg-success/10"
                     onClick={() => router.push(PAGE_ROUTES['banque-epreuves'])}
                   >
                     <Layers className="h-4 w-4" />

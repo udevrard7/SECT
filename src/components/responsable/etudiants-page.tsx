@@ -933,7 +933,7 @@ export function EtudiantsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <GraduationCap className="h-7 w-7 text-success" />
+            <GraduationCap className="h-7 w-7 text-success-text" />
             Gestion des Étudiants
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -965,7 +965,7 @@ export function EtudiantsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Users className="h-5 w-5 text-success" />
+              <Users className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total étudiants</p>
@@ -976,7 +976,7 @@ export function EtudiantsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <GraduationCap className="h-5 w-5 text-success" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actifs</p>
@@ -987,7 +987,7 @@ export function EtudiantsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Avec filière</p>
@@ -1125,7 +1125,7 @@ export function EtudiantsPage() {
       {!isLoading && etudiants.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <GraduationCap className="h-10 w-10 text-success" />
+            <GraduationCap className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun étudiant trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1159,7 +1159,7 @@ export function EtudiantsPage() {
             variant="outline"
             size="sm"
             onClick={() => setBulkActionDialog('activate')}
-            className="border-success/30 text-success hover:bg-success/10"
+            className="border-success/30 text-success-text hover:bg-success/10"
           >
             <Power className="h-3.5 w-3.5" />
             Réactiver
@@ -1205,7 +1205,7 @@ export function EtudiantsPage() {
                     className="mt-1"
                     aria-label={`Sélectionner ${etudiant.name}`}
                   />
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success-text">
                     {getInitials(etudiant.name)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1217,7 +1217,7 @@ export function EtudiantsPage() {
                 {/* Info row */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   {etudiant.filiere ? (
-                    <Badge className="bg-success/10 text-success border-success/30 text-xs">
+                    <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
                       <GraduationCap className="h-3 w-3 mr-0.5" />
                       {etudiant.filiere.nom}
                     </Badge>
@@ -1232,7 +1232,7 @@ export function EtudiantsPage() {
                     </Badge>
                   )}
                   {etudiant.actif ? (
-                    <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
+                    <Badge className="bg-success/10 text-success-text border-success/30 text-xs">Actif</Badge>
                   ) : (
                     <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                   )}
@@ -1323,7 +1323,7 @@ export function EtudiantsPage() {
                 {etudiants.map((etudiant) => (
                   <TableRow key={etudiant.id}>
                     <TableCell>
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                         {getInitials(etudiant.name)}
                       </div>
                     </TableCell>
@@ -1334,7 +1334,7 @@ export function EtudiantsPage() {
                     </TableCell>
                     <TableCell>
                       {etudiant.filiere ? (
-                        <Badge className="bg-success/10 text-success border-success/30 text-xs">
+                        <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
                           {etudiant.filiere.nom}
                         </Badge>
                       ) : (
@@ -1348,7 +1348,7 @@ export function EtudiantsPage() {
                     </TableCell>
                     <TableCell>
                       {etudiant.actif ? (
-                        <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
+                        <Badge className="bg-success/10 text-success-text border-success/30 text-xs">Actif</Badge>
                       ) : (
                         <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                       )}
@@ -1467,7 +1467,7 @@ export function EtudiantsPage() {
                         <TableCell className="text-sm text-muted-foreground">{invitation.name || '—'}</TableCell>
                         <TableCell className="text-sm">
                           {invitation.Filiere ? (
-                            <Badge className="bg-success/10 text-success border-success/30 text-xs">
+                            <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
                               {invitation.Filiere.nom}
                             </Badge>
                           ) : (
@@ -1587,7 +1587,7 @@ export function EtudiantsPage() {
                 </>
               ) : (
                 <div className="rounded-lg border border-success/30 bg-success/10 p-4 space-y-3">
-                  <p className="text-sm font-medium text-success">
+                  <p className="text-sm font-medium text-success-text">
                     Invitation créée avec succès !
                   </p>
                   <div className="space-y-2">
@@ -1807,7 +1807,7 @@ export function EtudiantsPage() {
           {detailEtudiant && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-success/10 text-lg font-bold text-success">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-success/10 text-lg font-bold text-success-text">
                   {getInitials(detailEtudiant.name)}
                 </div>
                 <div>
@@ -1831,7 +1831,7 @@ export function EtudiantsPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Statut</p>
-                  <Badge className={detailEtudiant.actif ? 'bg-success/10 text-success border-success/30' : 'bg-warning/10 text-warning border-warning/30'}>
+                  <Badge className={detailEtudiant.actif ? 'bg-success/10 text-success-text border-success/30' : 'bg-warning/10 text-warning border-warning/30'}>
                     {detailEtudiant.actif ? 'Actif' : 'Archivé'}
                   </Badge>
                 </div>
@@ -1900,7 +1900,7 @@ export function EtudiantsPage() {
           ) : (
             <div className="space-y-4">
               <div className="rounded-lg border bg-success/10 p-4">
-                <p className="font-medium text-success">
+                <p className="font-medium text-success-text">
                   {importResult.imported} étudiant(s) importé(s) avec succès
                 </p>
                 {importResult.errors.length > 0 && (
@@ -2014,11 +2014,11 @@ export function EtudiantsPage() {
                     <span>L&apos;étudiant ne pourra <strong>plus se connecter</strong> avec l&apos;ancien matricule</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-success mt-0.5">✅</span>
+                    <span className="text-success-text mt-0.5">✅</span>
                     <span>Le <strong>mot de passe reste inchangé</strong></span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-success mt-0.5">✅</span>
+                    <span className="text-success-text mt-0.5">✅</span>
                     <span>Toutes les <strong>données sont conservées</strong> (notes, sessions, soumissions)</span>
                   </li>
                   <li className="flex items-start gap-2">
@@ -2052,7 +2052,7 @@ export function EtudiantsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-destructive" />}
-              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-success" />}
+              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-success-text" />}
               {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-warning" />}
               Confirmation d&apos;action groupée
             </AlertDialogTitle>

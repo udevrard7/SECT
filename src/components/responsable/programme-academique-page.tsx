@@ -151,8 +151,8 @@ const NIVEAU_LABELS: Record<string, string> = {
 }
 
 const NIVEAU_COLORS: Record<string, string> = {
-  L1: 'bg-success/10 text-success',
-  L2: 'bg-success/10 text-success',
+  L1: 'bg-success/10 text-success-text',
+  L2: 'bg-success/10 text-success-text',
   L3: 'bg-info/10 text-info',
   M1: 'bg-warning/10 text-warning',
   M2: 'bg-warning/10 text-warning',
@@ -162,15 +162,15 @@ const NIVEAU_COLORS: Record<string, string> = {
 const NIVEAU_CONFIG = [
   {
     key: 'L1', label: 'L1 - Licence 1ère année', shortLabel: 'L1',
-    bgColor: 'bg-success/10', borderColor: 'border-success/30', textColor: 'text-success',
+    bgColor: 'bg-success/10', borderColor: 'border-success/30', textColor: 'text-success-text',
     darkBgColor: 'dark:bg-success/20', darkBorderColor: 'dark:border-success/70',
-    darkTextColor: 'dark:text-success/80', iconBg: 'bg-success/10', darkIconBg: 'dark:bg-success/40',
+    darkTextColor: 'dark:text-success-text/80', iconBg: 'bg-success/10', darkIconBg: 'dark:bg-success/40',
   },
   {
     key: 'L2', label: 'L2 - Licence 2ème année', shortLabel: 'L2',
-    bgColor: 'bg-success/10', borderColor: 'border-success/30', textColor: 'text-success',
+    bgColor: 'bg-success/10', borderColor: 'border-success/30', textColor: 'text-success-text',
     darkBgColor: 'dark:bg-success/20', darkBorderColor: 'dark:border-success/70',
-    darkTextColor: 'dark:text-success/80', iconBg: 'bg-success/10', darkIconBg: 'dark:bg-success/40',
+    darkTextColor: 'dark:text-success-text/80', iconBg: 'bg-success/10', darkIconBg: 'dark:bg-success/40',
   },
   {
     key: 'L3', label: 'L3 - Licence 3ème année', shortLabel: 'L3',
@@ -204,14 +204,14 @@ const TYPE_SEANCE_LABELS: Record<string, string> = {
 
 const AFFECTATION_STATUT_COLORS: Record<string, string> = {
   PROVISOIRE: 'bg-warning/10 text-warning border-warning/30',
-  VALIDEE: 'bg-success/10 text-success border-success/30',
-  PUBLIEE: 'bg-success/10 text-success border-success/30',
+  VALIDEE: 'bg-success/10 text-success-text border-success/30',
+  PUBLIEE: 'bg-success/10 text-success-text border-success/30',
 }
 
 // ─── Utility Functions ───
 
 function getCoverageColor(rate: number) {
-  if (rate >= 80) return { bar: 'bg-success', bg: 'bg-success/10', text: 'text-success', darkText: 'dark:text-success/80' }
+  if (rate >= 80) return { bar: 'bg-success', bg: 'bg-success/10', text: 'text-success-text', darkText: 'dark:text-success-text/80' }
   if (rate >= 50) return { bar: 'bg-warning', bg: 'bg-warning/10', text: 'text-warning', darkText: 'dark:text-warning/80' }
   return { bar: 'bg-destructive', bg: 'bg-destructive/10', text: 'text-destructive', darkText: 'dark:text-destructive/80' }
 }
@@ -226,7 +226,7 @@ function getAllFilieresForUE(ue: UEItem): { id: string; nom: string; code: strin
 }
 
 function getCoverageBadge(rate: number) {
-  if (rate >= 80) return <Badge className="bg-success/10 text-success border-success/30 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Bien couvert</Badge>
+  if (rate >= 80) return <Badge className="bg-success/10 text-success-text border-success/30 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Bien couvert</Badge>
   if (rate >= 50) return <Badge className="bg-warning/10 text-warning border-warning/30 text-xs"><Info className="h-3 w-3 mr-1" />Partiel</Badge>
   return <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Insuffisant</Badge>
 }
@@ -615,7 +615,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <GraduationCap className="h-7 w-7 text-success" />
+            <GraduationCap className="h-7 w-7 text-success-text" />
             Programme académique
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -662,7 +662,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><Layers className="h-5 w-5 text-success" /></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><Layers className="h-5 w-5 text-success-text" /></div>
               <div>
                 <p className="text-xs text-muted-foreground">Niveaux actifs</p>
                 <p className="text-xl font-bold font-mono tabular-nums">{nbNiveauxActifs}<span className="text-sm text-muted-foreground font-normal"> / 6</span></p>
@@ -671,7 +671,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           </Card>
           <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><BookMarked className="h-5 w-5 text-success" /></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><BookMarked className="h-5 w-5 text-success-text" /></div>
               <div>
                 <p className="text-xs text-muted-foreground">Total UEs</p>
                 <p className="text-xl font-bold font-mono tabular-nums">{ues.length}</p>
@@ -705,7 +705,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           {/* Niveau Cards */}
           <div>
             <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-success" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
               Distribution par niveau
             </h2>
             {isLoading ? (
@@ -771,7 +771,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           {/* Filière × Niveau Matrix (includes DOCTORAT) */}
           <div>
             <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <BookMarked className="h-5 w-5 text-success" />
+              <BookMarked className="h-5 w-5 text-success-text" />
               Matrice Filière × Niveau
             </h2>
             {isLoading ? (
@@ -779,7 +779,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
             ) : filieres.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                  <Layers className="h-8 w-8 text-success" />
+                  <Layers className="h-8 w-8 text-success-text" />
                 </div>
                 <h3 className="mt-4 text-base font-display font-semibold tracking-tight">Aucune filière trouvée</h3>
                 <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -804,7 +804,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                           <TableRow key={row.filiere.id}>
                             <TableCell className="sticky left-0 bg-background z-10 font-medium">
                               <div className="flex items-center gap-2">
-                                <GraduationCap className="h-4 w-4 text-success" />
+                                <GraduationCap className="h-4 w-4 text-success-text" />
                                 <div>
                                   <p className="text-sm font-medium">{row.filiere.nom}</p>
                                   {row.filiere.code && <p className="text-xs text-muted-foreground font-mono tabular-nums">{row.filiere.code}</p>}
@@ -914,7 +914,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                 ) : filteredUEs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
                     <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                      <BookMarked className="h-10 w-10 text-success" />
+                      <BookMarked className="h-10 w-10 text-success-text" />
                     </div>
                     <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune UE trouvée</h3>
                     <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -985,7 +985,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               ) : filteredUEs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
                   <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                    <BookMarked className="h-10 w-10 text-success" />
+                    <BookMarked className="h-10 w-10 text-success-text" />
                   </div>
                   <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune unité d&apos;enseignement trouvée</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1050,7 +1050,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookMarked className="h-5 w-5 text-success" />
+              <BookMarked className="h-5 w-5 text-success-text" />
               Nouvelle unité d&apos;enseignement
             </DialogTitle>
             <DialogDescription>Créez une nouvelle unité d&apos;enseignement dans vos filières.</DialogDescription>
@@ -1127,7 +1127,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-success" />
+              <Users className="h-5 w-5 text-success-text" />
               Affectations — {viewingUE?.code} {viewingUE?.nom}
             </DialogTitle>
             <DialogDescription>Enseignants affectés à cette unité d&apos;enseignement</DialogDescription>
@@ -1252,7 +1252,7 @@ function UEForm({
       {/* ─── Multi-filière sharing ─── */}
       <div className="space-y-2">
         <Label className="text-sm font-medium flex items-center gap-2">
-          <Share2 className="h-4 w-4 text-success" />
+          <Share2 className="h-4 w-4 text-success-text" />
           Filières partagées
         </Label>
         <p className="text-xs text-muted-foreground">
@@ -1269,7 +1269,7 @@ function UEForm({
                     key={f.id}
                     className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 cursor-pointer text-sm transition-colors ${
                       isChecked
-                        ? 'bg-success/10 text-success border-success/30'
+                        ? 'bg-success/10 text-success-text border-success/30'
                         : 'text-muted-foreground border-muted hover:bg-muted/50'
                     }`}
                   >
@@ -1301,7 +1301,7 @@ function UEForm({
           <div className="flex items-center justify-between">
             <Label htmlFor={`${mode}-code`}>Code UE *</Label>
             {mode === 'add' && suggestedCode && (
-              <Button variant="ghost" size="sm" className="h-6 text-xs text-success hover:text-success" onClick={() => setCode(suggestedCode)}>
+              <Button variant="ghost" size="sm" className="h-6 text-xs text-success-text hover:text-success-text" onClick={() => setCode(suggestedCode)}>
                 Auto: {suggestedCode}
               </Button>
             )}
@@ -1403,8 +1403,8 @@ function UETableRow({
                 variant="outline"
                 className={`text-[10px] px-1.5 py-0 ${
                   f.isOwner
-                    ? 'bg-success/10 text-success border-success/30'
-                    : 'bg-success/10 text-success border-success/30'
+                    ? 'bg-success/10 text-success-text border-success/30'
+                    : 'bg-success/10 text-success-text border-success/30'
                 }`}
               >
                 {!f.isOwner && <Share2 className="h-2.5 w-2.5 mr-0.5" />}{f.isOwner && '★ '}{f.nom}
@@ -1422,22 +1422,22 @@ function UETableRow({
         </TableCell>
         <TableCell>
           {ue.obligatoire ? (
-            <Badge className="bg-success/10 text-success border-success/30 text-xs">Obl.</Badge>
+            <Badge className="bg-success/10 text-success-text border-success/30 text-xs">Obl.</Badge>
           ) : (
             <Badge variant="outline" className="text-xs text-muted-foreground">Opt.</Badge>
           )}
         </TableCell>
         <TableCell className="text-center hidden sm:table-cell">
-          <Badge variant="secondary" className={`text-xs ${ue._count.affectations > 0 ? 'bg-success/10 text-success' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+          <Badge variant="secondary" className={`text-xs ${ue._count.affectations > 0 ? 'bg-success/10 text-success-text' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
             {ue._count.affectations}
           </Badge>
         </TableCell>
         <TableCell className="text-right font-mono tabular-nums">
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10" onClick={() => onEdit(ue)}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10" onClick={() => onEdit(ue)}>
               <Edit3 className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10" onClick={() => onViewAffectations(ue)}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10" onClick={() => onViewAffectations(ue)}>
               <Eye className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDelete(ue)}>
@@ -1461,8 +1461,8 @@ function UETableRow({
                       variant="outline"
                       className={`text-[10px] px-1.5 py-0 ${
                         f.isOwner
-                          ? 'bg-success/10 text-success border-success/30'
-                          : 'bg-success/10 text-success border-success/30'
+                          ? 'bg-success/10 text-success-text border-success/30'
+                          : 'bg-success/10 text-success-text border-success/30'
                       }`}
                     >
                       {!f.isOwner && <Share2 className="h-2.5 w-2.5 mr-0.5" />}{f.isOwner && '★ '}{f.nom}

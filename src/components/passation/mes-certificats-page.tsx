@@ -81,15 +81,15 @@ const TYPE_META: Record<CertificatType, {
   },
   STANDARD: {
     label: 'Standard', icon: Award,
-    ring: 'ring-success/40', text: 'text-success',
-    badge: 'bg-success/15 text-success border-success/30',
+    ring: 'ring-success/40', text: 'text-success-text',
+    badge: 'bg-success/15 text-success-text border-success/30',
     bar: 'from-success to-teal-500',
   },
 }
 
 const STATUT_META: Record<StatutUE, { label: string; icon: typeof Clock; cls: string }> = {
   EN_COURS: { label: 'En cours', icon: Clock, cls: 'bg-warning/15 text-warning' },
-  VALIDEE: { label: 'Validée', icon: CheckCircle2, cls: 'bg-success/15 text-success' },
+  VALIDEE: { label: 'Validée', icon: CheckCircle2, cls: 'bg-success/15 text-success-text' },
   NON_VALIDEE: { label: 'Non validée', icon: XCircle, cls: 'bg-destructive/15 text-destructive' },
 }
 
@@ -365,7 +365,7 @@ export function MesCertificatsPage() {
             {([
               { n: stats.expert, label: 'Expert', icon: Trophy, color: 'text-warning' },
               { n: stats.avance, label: 'Avancé', icon: Medal, color: 'text-info' },
-              { n: stats.standard, label: 'Standard', icon: Award, color: 'text-success' },
+              { n: stats.standard, label: 'Standard', icon: Award, color: 'text-success-text' },
             ] as const).map((s, i) => (
               <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10">
                 <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
@@ -397,11 +397,11 @@ export function MesCertificatsPage() {
         <div className="flex gap-1 bg-muted/50 rounded-lg p-0.5">
           <button
             onClick={() => setOrientation('landscape')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'landscape' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'}`}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'landscape' ? 'bg-background shadow-sm text-primary-text' : 'text-muted-foreground'}`}
           >📐 Paysage</button>
           <button
             onClick={() => setOrientation('portrait')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'portrait' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'}`}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'portrait' ? 'bg-background shadow-sm text-primary-text' : 'text-muted-foreground'}`}
           >📄 Portrait</button>
         </div>
 
@@ -443,7 +443,7 @@ export function MesCertificatsPage() {
                     typeFilter === t
                       ? t === 'EXPERT' ? 'bg-warning/15 text-warning'
                       : t === 'AVANCE' ? 'bg-info/15 text-info'
-                      : t === 'STANDARD' ? 'bg-success/15 text-success'
+                      : t === 'STANDARD' ? 'bg-success/15 text-success-text'
                       : 'bg-muted text-foreground'
                       : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                   }`}
@@ -647,7 +647,7 @@ export function MesCertificatsPage() {
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className={`text-lg font-bold font-mono tabular-nums ${cert.note >= 14 ? 'text-success' : cert.note >= 10 ? 'text-warning' : 'text-destructive'}`}>{cert.note.toFixed(1)}<span className="text-xs text-muted-foreground">/20</span></p>
+                                <p className={`text-lg font-bold font-mono tabular-nums ${cert.note >= 14 ? 'text-success-text' : cert.note >= 10 ? 'text-warning' : 'text-destructive'}`}>{cert.note.toFixed(1)}<span className="text-xs text-muted-foreground">/20</span></p>
                                 {cert.mention && <p className="text-[10px] text-muted-foreground">{cert.mention}</p>}
                               </div>
                             </div>
@@ -713,7 +713,7 @@ export function MesCertificatsPage() {
                             <td className="p-3 text-center text-muted-foreground font-mono tabular-nums">{val.epreuvesCompletees}/{val.epreuvesTotal}</td>
                             <td className="p-3 text-center font-semibold font-mono tabular-nums">
                               {val.note !== null ? (
-                                <span className={val.note >= 16 ? 'text-warning' : val.note >= 10 ? 'text-success' : 'text-destructive'}>
+                                <span className={val.note >= 16 ? 'text-warning' : val.note >= 10 ? 'text-success-text' : 'text-destructive'}>
                                   {val.note.toFixed(1)}
                                 </span>
                               ) : '—'}
@@ -727,8 +727,8 @@ export function MesCertificatsPage() {
                               {val.certificatId ? (
                                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleDownload(val.certificatId!)} disabled={downloadingId === val.certificatId}>
                                   {downloadingId === val.certificatId
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-success" />
-                                    : <Download className="h-3.5 w-3.5 text-success" />}
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-success-text" />
+                                    : <Download className="h-3.5 w-3.5 text-success-text" />}
                                 </Button>
                               ) : '—'}
                             </td>

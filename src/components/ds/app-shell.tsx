@@ -249,7 +249,7 @@ export function AppShell({
                 className={cn(
                   'flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-md',
-                  isActive ? 'text-primary' : 'text-muted-foreground'
+                  isActive ? 'text-primary-text' : 'text-muted-foreground'
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >

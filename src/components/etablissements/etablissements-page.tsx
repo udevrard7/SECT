@@ -123,7 +123,7 @@ interface EtablissementDetail extends EtablissementItem {
 function getTypeBadge(type: string | null) {
   switch (type) {
     case 'Université':
-      return <Badge className="bg-success/15 text-success border-success/30">Université</Badge>
+      return <Badge className="bg-success/15 text-success-text border-success/30">Université</Badge>
     case 'École d\'ingénieurs':
       return <Badge className="bg-info/15 text-info border-info/30">École d\'ingénieurs</Badge>
     case 'Institut':
@@ -142,7 +142,7 @@ function getRoleBadge(role: string) {
     case 'RESPONSABLE':
       return <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Responsable</Badge>
     case 'ENSEIGNANT':
-      return <Badge className="bg-success/15 text-success border-success/30 text-xs">Enseignant</Badge>
+      return <Badge className="bg-success/15 text-success-text border-success/30 text-xs">Enseignant</Badge>
     case 'ETUDIANT':
       return <Badge className="bg-info/15 text-info border-info/30 text-xs">Étudiant</Badge>
     default:
@@ -334,7 +334,7 @@ export function EtablissementsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Building2 className="h-7 w-7 text-success" />
+            <Building2 className="h-7 w-7 text-success-text" />
             Gestion des Établissements
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -353,7 +353,7 @@ export function EtablissementsPage() {
         <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
-              <Building2 className="h-5 w-5 text-success" />
+              <Building2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total établissements</p>
@@ -443,7 +443,7 @@ export function EtablissementsPage() {
       {!isLoading && etablissements.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <Building2 className="h-10 w-10 text-success" />
+            <Building2 className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun établissement trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -474,7 +474,7 @@ export function EtablissementsPage() {
                     <div className="mt-1">{getTypeBadge(etab.type)}</div>
                   </div>
                   {etab.actif ? (
-                    <Badge className="bg-success/15 text-success border-success/30 text-xs">Actif</Badge>
+                    <Badge className="bg-success/15 text-success-text border-success/30 text-xs">Actif</Badge>
                   ) : (
                     <Badge className="bg-muted text-muted-foreground border-border text-xs">Inactif</Badge>
                   )}
@@ -484,7 +484,7 @@ export function EtablissementsPage() {
                 <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
                   {etab.ville && (
                     <span className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-success" />
+                      <MapPin className="h-3.5 w-3.5 text-success-text" />
                       {etab.ville}{etab.pays ? `, ${etab.pays}` : ''}
                     </span>
                   )}
@@ -517,7 +517,7 @@ export function EtablissementsPage() {
                     {etab.abonnements.map((abo) => {
                       const statutLabel = abo.statut === 'ESSAI' ? 'Essai' : abo.statut === 'ACTIF' ? 'Actif' : abo.statut === 'EXPIRE' ? 'Expiré' : abo.statut === 'RESILIE' ? 'Résilié' : abo.statut
                       const statutClass = abo.statut === 'ACTIF'
-                        ? 'bg-success/15 text-success border-success/30'
+                        ? 'bg-success/15 text-success-text border-success/30'
                         : abo.statut === 'ESSAI'
                           ? 'bg-warning/15 text-warning border-warning/30'
                           : 'bg-muted text-muted-foreground border-border'
@@ -533,7 +533,7 @@ export function EtablissementsPage() {
 
                 {/* Counts */}
                 <div className="flex gap-3">
-                  <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+                  <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
                     <GraduationCap className="h-3 w-3" />
                     <span className="font-mono tabular-nums">{etab._count.filieres}</span> filière{etab._count.filieres > 1 ? 's' : ''}
                   </Badge>
@@ -551,7 +551,7 @@ export function EtablissementsPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenEdit(etab)}
-                    className="border-success/40 text-success hover:bg-success/10"
+                    className="border-success/40 text-success-text hover:bg-success/10"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                     Modifier
@@ -596,7 +596,7 @@ export function EtablissementsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
-              <Building2 className="h-5 w-5 text-success" />
+              <Building2 className="h-5 w-5 text-success-text" />
               Modifier l&apos;établissement
             </DialogTitle>
             <DialogDescription>
@@ -699,7 +699,7 @@ export function EtablissementsPage() {
 
             {/* ─── Matricule Configuration ─── */}
             <div className="space-y-1">
-              <h3 className="text-sm font-display font-semibold flex items-center gap-2 text-success">
+              <h3 className="text-sm font-display font-semibold flex items-center gap-2 text-success-text">
                 <IdCard className="h-4 w-4" />
                 Configuration des Matricules Étudiants
               </h3>
@@ -806,7 +806,7 @@ export function EtablissementsPage() {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
-              <Building2 className="h-5 w-5 text-success" />
+              <Building2 className="h-5 w-5 text-success-text" />
               {detailEtab?.nom ?? 'Détails de l\'établissement'}
             </DialogTitle>
             <DialogDescription>
@@ -835,7 +835,7 @@ export function EtablissementsPage() {
                   )}
                   {detailEtab.ville && (
                     <div className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-3.5 w-3.5 text-success" />
+                      <MapPin className="h-3.5 w-3.5 text-success-text" />
                       {detailEtab.ville}{detailEtab.pays ? `, ${detailEtab.pays}` : ''}
                     </div>
                   )}
@@ -853,8 +853,8 @@ export function EtablissementsPage() {
                   )}
                   {detailEtab.siteWeb && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Globe className="h-3.5 w-3.5 text-success" />
-                      <a href={detailEtab.siteWeb} target="_blank" rel="noopener noreferrer" className="text-success hover:underline">
+                      <Globe className="h-3.5 w-3.5 text-success-text" />
+                      <a href={detailEtab.siteWeb} target="_blank" rel="noopener noreferrer" className="text-success-text hover:underline">
                         {detailEtab.siteWeb}
                       </a>
                     </div>
@@ -891,7 +891,7 @@ export function EtablissementsPage() {
                     {/* Filières section */}
                     <div>
                       <h3 className="text-sm font-display font-semibold mb-3 flex items-center gap-2">
-                        <GraduationCap className="h-4 w-4 text-success" />
+                        <GraduationCap className="h-4 w-4 text-success-text" />
                         Filières (<span className="font-mono tabular-nums">{detailEtab.filieres?.length ?? 0}</span>)
                       </h3>
                       {!detailEtab.filieres || detailEtab.filieres.length === 0 ? (
@@ -933,7 +933,7 @@ export function EtablissementsPage() {
                           {detailEtab.users.map((u) => (
                             <div key={u.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
                               <div className="flex items-center gap-2">
-                                <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success font-mono tabular-nums">
+                                <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success-text font-mono tabular-nums">
                                   {u.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                                 </div>
                                 <div>

@@ -135,23 +135,23 @@ function getAccent(isAdmin: boolean) {
   return isAdmin
     ? {
         color: 'emerald',
-        text: 'text-success',
+        text: 'text-success-text',
         bg100: 'bg-success/10',
         bg50: 'bg-success/10',
         border200: 'border-success/30',
-        text700: 'text-success',
-        text800: 'text-success',
+        text700: 'text-success-text',
+        text800: 'text-success-text',
         btn: 'bg-success hover:bg-success/90',
-        badge: 'bg-success/10 text-success',
+        badge: 'bg-success/10 text-success-text',
         activeBorder: 'border-success/30',
         activeBg: 'bg-success/10',
-        activeIconBg: 'bg-success/10 text-success',
+        activeIconBg: 'bg-success/10 text-success-text',
         codeBg: 'bg-success/10',
         infoBorder: 'border-success/30',
         infoBg: 'bg-success/10',
-        infoText: 'text-success',
-        infoSubtext: 'text-success',
-        infoSmall: 'text-success',
+        infoText: 'text-success-text',
+        infoSubtext: 'text-success-text',
+        infoSmall: 'text-success-text',
       }
     : {
         color: 'amber',
@@ -1329,7 +1329,7 @@ export function ResponsableParametresPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-lg font-display">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success-text">
                           <Lock className="h-4 w-4" />
                         </div>
                         Blocage & Protection
@@ -1702,7 +1702,7 @@ export function ResponsableParametresPage() {
                                   <TooltipTrigger asChild>
                                     <button onClick={() => handleToggleIp(entry.id, entry.actif)}>
                                       {entry.actif ? (
-                                        <CheckCircle2 className="h-5 w-5 text-success inline-block" />
+                                        <CheckCircle2 className="h-5 w-5 text-success-text inline-block" />
                                       ) : (
                                         <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
                                       )}

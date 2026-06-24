@@ -74,7 +74,7 @@ export function WeeklyGoals({
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
-            <Target className="h-4 w-4 text-primary" />
+            <Target className="h-4 w-4 text-primary-text" />
           </div>
           <div>
             <h3 className="font-display text-sm font-semibold tracking-tight leading-tight">
@@ -131,16 +131,16 @@ export function WeeklyGoals({
                   )}
                 >
                   {isCompleted ? (
-                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <CheckCircle2 className="h-4 w-4 text-success-text" />
                   ) : (
                     <Icon className={cn(
                       'h-3.5 w-3.5',
-                      accent === 'primary' && 'text-primary',
+                      accent === 'primary' && 'text-primary-text',
                       accent === 'secondary' && 'text-secondary',
-                      accent === 'success' && 'text-success',
+                      accent === 'success' && 'text-success-text',
                       accent === 'warning' && 'text-warning',
                       accent === 'tech' && 'text-tech',
-                      accent === 'xp' && 'text-xp',
+                      accent === 'xp' && 'text-xp-text',
                     )} />
                   )}
                 </div>
@@ -178,7 +178,7 @@ export function WeeklyGoals({
             ? '🎉 Tous les objectifs complétés !'
             : `${totalCount - completedCount} objectif${totalCount - completedCount > 1 ? 's' : ''} restant${totalCount - completedCount > 1 ? 's' : ''}`}
         </p>
-        <span className="font-mono text-xs font-semibold tabular-nums text-primary">
+        <span className="font-mono text-xs font-semibold tabular-nums text-primary-text">
           {totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%
         </span>
       </div>

@@ -167,7 +167,7 @@ export function ParCopieView({
       <div className="flex-1 flex items-center justify-center min-h-0">
         <div className="text-center">
           <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-success/10">
-            <Check className="h-8 w-8 text-success" />
+            <Check className="h-8 w-8 text-success-text" />
           </div>
           <h3 className="mt-3 text-base font-semibold font-display">Toutes les questions sont corrigées</h3>
           <Button
@@ -199,7 +199,7 @@ export function ParCopieView({
       <div className="border-b border-border bg-card px-4 py-2 flex items-center gap-3 flex-wrap shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15">
-            <User className="h-3.5 w-3.5 text-success" />
+            <User className="h-3.5 w-3.5 text-success-text" />
           </div>
           <div>
             <p className="text-sm font-semibold leading-tight">{selectedSession.etudiant.name}</p>
@@ -211,14 +211,14 @@ export function ParCopieView({
           variant="outline"
           className={
             selectedSession.statut === 'CORRIGEE'
-              ? 'bg-success/15 text-success border-success/20 text-[10px] h-5'
+              ? 'bg-success/15 text-success-text border-success/20 text-[10px] h-5'
               : 'bg-warning/15 text-warning border-warning/20 text-[10px] h-5'
           }
         >
           {selectedSession.statut === 'CORRIGEE' ? 'Corrigée' : 'En correction'}
         </Badge>
         <div className="flex items-center gap-1.5 text-xs">
-          <Award className="h-3.5 w-3.5 text-success" />
+          <Award className="h-3.5 w-3.5 text-success-text" />
           <span>
             <span className={`font-bold font-mono tabular-nums ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
               {selectedSession.score !== null ? selectedSession.score.toFixed(1) : '—'}
@@ -272,15 +272,15 @@ export function ParCopieView({
               {expectedAnswer && (
                 <Collapsible open={expectedAnswerOpen} onOpenChange={setExpectedAnswerOpen}>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-success/20 bg-success/10 px-3 py-2 hover:bg-success/10 transition-colors">
-                    <Check className="h-3.5 w-3.5 text-success" />
-                    <span className="text-xs font-semibold text-success">
+                    <Check className="h-3.5 w-3.5 text-success-text" />
+                    <span className="text-xs font-semibold text-success-text">
                       Réponse attendue
                     </span>
-                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-success transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-success-text transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <div className="rounded-b-lg border border-t-0 border-success/20 bg-success/10 px-3 py-2">
-                      <p className="text-sm whitespace-pre-wrap text-success">
+                      <p className="text-sm whitespace-pre-wrap text-success-text">
                         {expectedAnswer}
                       </p>
                     </div>
@@ -434,7 +434,7 @@ export function ParCopieView({
             } else if (!isCorrected) {
               dotClass = 'bg-warning/15 text-warning border-warning/30'
             } else {
-              dotClass = 'bg-success/15 text-success border-success/30'
+              dotClass = 'bg-success/15 text-success-text border-success/30'
             }
 
             return (
@@ -465,7 +465,7 @@ export function ParCopieView({
       {/* Finalize bar */}
       {selectedSession.allCorrected && selectedSession.statut !== 'RETOURNEE' && (
         <div className="border-t border-success/20 bg-success/10 px-4 py-2 flex items-center justify-between">
-          <span className="text-xs text-success font-medium">
+          <span className="text-xs text-success-text font-medium">
             Toutes les questions sont corrigées
           </span>
           <Button

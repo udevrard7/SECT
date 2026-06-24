@@ -203,19 +203,19 @@ function getQuestionTypeBadgeColor(type: string): string {
   switch (type) {
     case 'QCU': return 'bg-info/15 text-info border-info/30'
     case 'QCM': return 'bg-warning/15 text-warning border-warning/30'
-    case 'QRC': return 'bg-success/15 text-success border-success/30'
+    case 'QRC': return 'bg-success/15 text-success-text border-success/30'
     case 'REFLEXION': return 'bg-secondary/15 text-secondary border-secondary/30'
     case 'TRS': return 'bg-destructive/15 text-destructive border-destructive/30'
-    case 'CODE': return 'bg-primary/15 text-primary border-primary/30'
+    case 'CODE': return 'bg-primary/15 text-primary-text border-primary/30'
     default: return 'bg-muted text-muted-foreground border-border'
   }
 }
 
 function getDifficulteBadgeColor(diff: string): string {
   switch (diff) {
-    case 'FACILE': return 'bg-success/10 text-success'
+    case 'FACILE': return 'bg-success/10 text-success-text'
     case 'MOYEN': return 'bg-warning/10 text-warning'
-    case 'DIFFICILE': return 'bg-primary/10 text-primary'
+    case 'DIFFICILE': return 'bg-primary/10 text-primary-text'
     case 'EXPERT': return 'bg-destructive/10 text-destructive'
     default: return ''
   }
@@ -238,7 +238,7 @@ function getStatutEpreuveBadge(statut: string) {
     case 'PLANIFIEE':
       return <Badge variant="outline" className="gap-1 bg-warning/15 text-warning border-warning/30">Planifiée</Badge>
     case 'EN_COURS':
-      return <Badge variant="outline" className="gap-1 bg-success/15 text-success border-success/30">En cours</Badge>
+      return <Badge variant="outline" className="gap-1 bg-success/15 text-success-text border-success/30">En cours</Badge>
     case 'TERMINEE':
       return <Badge variant="outline" className="gap-1 bg-info/15 text-info border-info/30">Terminée</Badge>
     case 'CLOTUREE':
@@ -253,7 +253,7 @@ function getStatutDevoirBadge(statut: string) {
     case 'BROUILLON':
       return <Badge variant="outline" className="gap-1 bg-muted text-muted-foreground border-border">Brouillon</Badge>
     case 'PUBLIE':
-      return <Badge variant="outline" className="gap-1 bg-success/15 text-success border-success/30">Publié</Badge>
+      return <Badge variant="outline" className="gap-1 bg-success/15 text-success-text border-success/30">Publié</Badge>
     case 'FERME':
       return <Badge variant="outline" className="gap-1 bg-warning/15 text-warning border-warning/30">Fermé</Badge>
     case 'ARCHIVE':
@@ -281,7 +281,7 @@ function getRemainingBadge(remaining: number) {
     )
   }
   return (
-    <Badge variant="outline" className="gap-1 bg-success/10 text-success border-success/30">
+    <Badge variant="outline" className="gap-1 bg-success/10 text-success-text border-success/30">
       <Clock className="h-3 w-3" />
       {remaining} j restants
     </Badge>
@@ -307,7 +307,7 @@ function getFileIcon(doc: DeletedDocument) {
     case 'pptx':
       return (
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 shadow-sm">
-          <Presentation className="h-5 w-5 text-primary" />
+          <Presentation className="h-5 w-5 text-primary-text" />
         </div>
       )
     default:
@@ -347,10 +347,10 @@ function EmptyState({ icon: Icon, label, searchQuery }: { icon: React.ElementTyp
     <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/10 py-20 transition-all">
       <div className="relative">
         <div className="flex h-24 w-24 items-center justify-center rounded-full bg-success/10">
-          <Icon className="h-12 w-12 text-success" />
+          <Icon className="h-12 w-12 text-success-text" />
         </div>
         <div className="absolute -right-1 -bottom-1 flex h-8 w-8 items-center justify-center rounded-full bg-background shadow-md">
-          <Sparkles className="h-4 w-4 text-success" />
+          <Sparkles className="h-4 w-4 text-success-text" />
         </div>
       </div>
       {searchQuery ? (
@@ -408,7 +408,7 @@ function ActionButton({ variant, onClick, disabled, loading, icon: Icon, title }
       <Button
         variant="outline"
         size="icon"
-        className="h-8 w-8 border-success/40 text-success hover:bg-success/10 transition-all duration-200"
+        className="h-8 w-8 border-success/40 text-success-text hover:bg-success/10 transition-all duration-200"
         onClick={onClick}
         disabled={disabled}
         title={title}
@@ -927,7 +927,7 @@ export function CorbeillePage() {
             className="shrink-0"
           />
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-success/10 shadow-sm">
-            <ClipboardList className="h-5 w-5 text-success" />
+            <ClipboardList className="h-5 w-5 text-success-text" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -1129,7 +1129,7 @@ export function CorbeillePage() {
           icon={FileText}
           label="Documents"
           count={tabCounts.documents}
-          color="bg-success/15 text-success"
+          color="bg-success/15 text-success-text"
         />
         <StatCard
           icon={HelpCircle}
@@ -1159,7 +1159,7 @@ export function CorbeillePage() {
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Documents</span>
               {tabCounts.documents > 0 && (
-                <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1 text-[10px] bg-success/15 text-success font-mono tabular-nums">
+                <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1 text-[10px] bg-success/15 text-success-text font-mono tabular-nums">
                   {tabCounts.documents}
                 </Badge>
               )}
@@ -1261,7 +1261,7 @@ export function CorbeillePage() {
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 shadow-lg sm:px-6">
             <div className="flex items-center gap-2">
-              <CheckSquare className="h-4 w-4 text-success" />
+              <CheckSquare className="h-4 w-4 text-success-text" />
               <span className="text-sm font-medium whitespace-nowrap font-mono tabular-nums">
                 {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
               </span>

@@ -58,12 +58,12 @@ interface StatPillProps {
 function StatPill({ icon: Icon, value, label, accent, tier }: StatPillProps) {
   const colorClass =
     accent === 'xp'
-      ? 'text-xp'
+      ? 'text-xp-text'
       : accent === 'streak'
         ? 'text-warning'
         : tier
           ? TIER_TEXT[tier]
-          : 'text-primary'
+          : 'text-primary-text'
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/60 border border-border">

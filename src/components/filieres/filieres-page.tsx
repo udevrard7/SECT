@@ -561,7 +561,7 @@ export function FilieresPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <GraduationCap className="h-7 w-7 text-success" />
+            <GraduationCap className="h-7 w-7 text-success-text" />
             Gestion des Filières
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -592,7 +592,7 @@ export function FilieresPage() {
         <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
-              <GraduationCap className="h-5 w-5 text-success" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total filières</p>
@@ -614,7 +614,7 @@ export function FilieresPage() {
         <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <BookOpen className="h-5 w-5 text-success" />
+              <BookOpen className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actives</p>
@@ -646,7 +646,7 @@ export function FilieresPage() {
             variant="outline"
             size="sm"
             onClick={() => setBulkActionDialog('activate')}
-            className="border-success/40 text-success hover:bg-success/10"
+            className="border-success/40 text-success-text hover:bg-success/10"
           >
             <Power className="h-3.5 w-3.5" />
             Activer
@@ -772,7 +772,7 @@ export function FilieresPage() {
       {!isLoading && filieres.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <GraduationCap className="h-10 w-10 text-success" />
+            <GraduationCap className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune filière trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -816,7 +816,7 @@ export function FilieresPage() {
                     </div>
                   </div>
                   {filiere.actif ? (
-                    <Badge className="bg-success/15 text-success border-success/30 text-xs whitespace-nowrap">Actif</Badge>
+                    <Badge className="bg-success/15 text-success-text border-success/30 text-xs whitespace-nowrap">Actif</Badge>
                   ) : (
                     <Badge className="bg-muted text-muted-foreground border-border text-xs whitespace-nowrap">Inactif</Badge>
                   )}
@@ -824,7 +824,7 @@ export function FilieresPage() {
 
                 {/* Etablissement */}
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Building2 className="h-3.5 w-3.5 text-success" />
+                  <Building2 className="h-3.5 w-3.5 text-success-text" />
                   {filiere.etablissement?.nom ?? '—'}
                 </div>
 
@@ -845,7 +845,7 @@ export function FilieresPage() {
 
                 {/* Student count */}
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+                  <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
                     <Users className="h-3 w-3" />
                     <span className="font-mono tabular-nums">{filiere._count?.etudiants ?? 0}</span> étudiant{(filiere._count?.etudiants ?? 0) > 1 ? 's' : ''}
                   </Badge>
@@ -871,7 +871,7 @@ export function FilieresPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenEdit(filiere)}
-                    className="border-success/40 text-success hover:bg-success/10"
+                    className="border-success/40 text-success-text hover:bg-success/10"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                     Modifier
@@ -988,7 +988,7 @@ export function FilieresPage() {
                   </TableCell>
                   <TableCell>
                     {filiere.actif ? (
-                      <Badge className="bg-success/15 text-success border-success/30 text-xs">Actif</Badge>
+                      <Badge className="bg-success/15 text-success-text border-success/30 text-xs">Actif</Badge>
                     ) : (
                       <Badge className="bg-muted text-muted-foreground border-border text-xs">Inactif</Badge>
                     )}
@@ -1047,7 +1047,7 @@ export function FilieresPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
-              <GraduationCap className="h-5 w-5 text-success" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
               {editingFiliere ? 'Modifier la filière' : 'Nouvelle filière'}
             </DialogTitle>
             <DialogDescription>
@@ -1074,7 +1074,7 @@ export function FilieresPage() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 text-xs text-success hover:text-success"
+                    className="h-6 text-xs text-success-text hover:text-success-text"
                     onClick={() => setFormCode(suggestedFiliereCode)}
                   >
                     Auto: {suggestedFiliereCode}
@@ -1227,7 +1227,7 @@ export function FilieresPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight">
               {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-destructive" />}
-              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-success" />}
+              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-success-text" />}
               {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-warning" />}
               Confirmation d&apos;action groupée
             </AlertDialogTitle>
@@ -1262,7 +1262,7 @@ export function FilieresPage() {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
-              <GraduationCap className="h-5 w-5 text-success" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
               {detailFiliere?.nom ?? 'Détails de la filière'}
             </DialogTitle>
             <DialogDescription>
@@ -1291,14 +1291,14 @@ export function FilieresPage() {
                   )}
 
                   <div className="flex items-center gap-2 text-sm">
-                    <Building2 className="h-3.5 w-3.5 text-success" />
+                    <Building2 className="h-3.5 w-3.5 text-success-text" />
                     <span className="text-muted-foreground">Établissement :</span>
                     <span className="font-medium">{detailFiliere.etablissement?.nom ?? '—'}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-muted-foreground">Statut :</span>
                     {detailFiliere.actif ? (
-                      <Badge className="bg-success/15 text-success border-success/30">Actif</Badge>
+                      <Badge className="bg-success/15 text-success-text border-success/30">Actif</Badge>
                     ) : (
                       <Badge className="bg-muted text-muted-foreground border-border">Inactif</Badge>
                     )}
@@ -1345,7 +1345,7 @@ export function FilieresPage() {
                 {/* Etudiants section */}
                 <div>
                   <h3 className="text-sm font-display font-semibold mb-3 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-success" />
+                    <Users className="h-4 w-4 text-success-text" />
                     Étudiants inscrits (<span className="font-mono tabular-nums">{detailFiliere.etudiants?.length ?? 0}</span>)
                   </h3>
                   {(!detailFiliere.etudiants || detailFiliere.etudiants.length === 0) ? (
@@ -1355,7 +1355,7 @@ export function FilieresPage() {
                       {detailFiliere.etudiants.map((etudiant) => (
                         <div key={etudiant.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
                           <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success font-mono tabular-nums">
+                            <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success-text font-mono tabular-nums">
                               {etudiant.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                             </div>
                             <div>
@@ -1364,7 +1364,7 @@ export function FilieresPage() {
                             </div>
                           </div>
                           {etudiant.actif ? (
-                            <Badge className="bg-success/15 text-success border-success/30 text-xs">Actif</Badge>
+                            <Badge className="bg-success/15 text-success-text border-success/30 text-xs">Actif</Badge>
                           ) : (
                             <Badge className="bg-muted text-muted-foreground border-border text-xs">Inactif</Badge>
                           )}
