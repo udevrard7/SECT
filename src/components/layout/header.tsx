@@ -20,6 +20,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { SidebarControl } from '@/components/layout/sidebar-control'
 import { NotificationBell } from '@/components/layout/notification-bell'
+import { CommandPalette } from '@/components/layout/command-palette'
 import { ThemeToggle } from '@/components/ds'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
@@ -51,14 +52,26 @@ export function AppHeader() {
   const router = useRouter()
   const pathname = usePathname()
   const now = useClock()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Formatage heure/date (memoized — doit être avant early return)
   const { timeStr, dateStr } = useMemo(() => ({
     timeStr: now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
     dateStr: `${DAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`,
   }), [now])
+
+  // Raccourci clavier global : ⌘K (macOS) / Ctrl+K (autres) bascule la palette.
+  // Hook placé avant l'early return pour respecter les Rules of Hooks.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((prev) => !prev)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   if (!user) return null
 
@@ -88,22 +101,6 @@ export function AppHeader() {
   const navigateTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
     if (route) router.push(route)
-  }
-
-  // Recherche rapide dans les pages accessibles
-  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      const allItems = navItems
-      const match = allItems.find(item =>
-        item.label.toLowerCase().includes(query) ||
-        item.id.toLowerCase().includes(query)
-      )
-      if (match) {
-        navigateTo(match.id as PageId)
-        setSearchQuery('')
-      }
-    }
   }
 
   return (
@@ -140,25 +137,20 @@ export function AppHeader() {
           {pageTitle}
         </h1>
 
-        {/* ─── Barre de recherche centrale ─── */}
+        {/* ─── Déclencheur de recherche (ouvre la command palette ⌘K) ─── */}
         <div className="flex-1 max-w-md mx-auto hidden lg:flex items-center">
-          <div className={`relative w-full transition-all duration-300 ${searchFocused ? 'scale-105' : ''}`}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-foreground/40 transition-colors" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearch}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              placeholder="Rechercher une page, un étudiant, une épreuve…"
-              className="w-full h-9 pl-10 pr-4 rounded-xl bg-sidebar-accent/50 border border-sidebar-border/50 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/35 focus:bg-sidebar-accent focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all outline-none"
-            />
-            {/* Raccourci clavier */}
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden xl:flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono text-sidebar-foreground/30 border border-sidebar-border/50 bg-sidebar/50">
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Ouvrir la recherche (⌘K)"
+            className="group flex w-full h-9 items-center gap-2.5 rounded-xl bg-sidebar-accent/50 border border-sidebar-border/50 px-3 text-sm text-sidebar-foreground/40 hover:bg-sidebar-accent hover:border-primary/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/15"
+          >
+            <Search className="h-4 w-4 text-sidebar-foreground/40 transition-colors group-hover:text-sidebar-foreground/60" />
+            <span className="truncate">Rechercher une page…</span>
+            <kbd className="ml-auto hidden xl:flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono text-sidebar-foreground/30 border border-sidebar-border/50 bg-sidebar/50 pointer-events-none">
               ⌘K
             </kbd>
-          </div>
+          </button>
         </div>
 
         {/* ─── Espace flexible (pousse les éléments suivants à droite) ─── */}
@@ -248,6 +240,9 @@ export function AppHeader() {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Command palette (⌘K) — recherche fuzzy des pages accessibles au rôle */}
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </header>
   )
 }
