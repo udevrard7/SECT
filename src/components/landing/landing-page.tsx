@@ -295,20 +295,13 @@ function Navbar({ onLogin }: { onLogin: () => void }) {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <MagneticButton
+            <Button
               variant="ghost"
-              className="text-sm text-zinc-300 hover:text-white"
+              className="text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors duration-200"
               onClick={onLogin}
             >
               Connexion
-            </MagneticButton>
-            <MagneticButton
-              className="text-sm bg-orange-500 hover:bg-orange-400 text-white font-semibold px-5 shadow-[0_0_24px_rgba(249,115,22,0.35)] hover:shadow-[0_0_36px_rgba(249,115,22,0.55)] transition-shadow duration-300 rounded-lg"
-              onClick={onLogin}
-            >
-              Voir la démo
-              <ArrowRight className="ml-1.5 h-4 w-4" />
-            </MagneticButton>
+            </Button>
           </div>
 
           {/* Mobile toggle */}
@@ -342,15 +335,15 @@ function Navbar({ onLogin }: { onLogin: () => void }) {
                     {l.label}
                   </a>
                 ))}
-                <MagneticButton
+                <Button
                   className="mt-2 w-full bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-lg"
                   onClick={() => {
                     setMobileOpen(false)
                     onLogin()
                   }}
                 >
-                  Voir la démo
-                </MagneticButton>
+                  Connexion
+                </Button>
               </div>
             </motion.div>
           )}
