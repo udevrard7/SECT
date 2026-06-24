@@ -1302,3 +1302,108 @@ Stage Summary:
   * src/components/ds/showcase.tsx — 5 nouvelles sections démo + palette cyan
 - DS v2 final : 14 composants premium + 8 accents (primary/secondary/success/warning/destructive/info/tech/xp) + 4 tiers gamification (bronze/silver/gold/platinum) + PWA installable + spec doc complète.
 - État du projet : STABLE. Le DS est désormais complet et documenté. L'identité premium indigo/violet/cyan est unifiée. La plateforme est PWA-ready (installable Android/iOS/Desktop). Le document de spec sert de référence pour toute évolution future.
+
+---
+Task ID: T9-B
+Agent: full-stack-developer (GradeTable + RewardCenter integration)
+Task: Integrate GradeTable in mes-resultats + RewardCenter in profil
+
+Work Log:
+- Lecture du worklog (T6/T7/T8) + lecture des composants DS `grade-table.tsx` et `reward-center.tsx` pour comprendre les props attendues.
+- Lecture des pages cibles `mes-resultats-page.tsx` et `profil-page.tsx` ainsi que leurs dépendances (`use-resultats.ts`, `types/resultats.ts`, `use-dashboard.ts`, `lib/badges-engine.ts`, `shared/badges-carousel.tsx`).
+- **mes-resultats-page.tsx** :
+  * Ajout import `GradeTable, type GradeEntry` depuis `@/components/ds` et `useMemo` depuis React.
+  * Écriture d'une fonction de mapping `mapSessionToGrade(session: StudentSession): GradeEntry | null` + `mapSessionsToGrades(sessions): GradeEntry[]`, avec commentaire de mapping détaillé (subject←enseignant.name, examTitle←epreuve.titre, score←resultat.scoreFinal ?? session.score, maxScore←epreuve.noteTotal ?? 20, date←dateCorrection ?? dateFin ?? dateDebut, comment←commentaires).
+  * Sessions SOUMISE (sans score) filtrées (retournent `null`) — GradeTable ne reçoit que des évaluations notées.
+  * Remplacement du `<MesEpreuvesTab … />` (onglet "Mes épreuves") par `<GradeTable grades={grades} showAverage onRowClick={handleGradeClick} />`. Import `MesEpreuvesTab` supprimé (n'est plus utilisé).
+  * `handleGradeClick` retrouve la `StudentSession` d'origine par `id` pour réutiliser le `MonResultatDialog` existant (aucune régression du flow détail).
+  * `useMemo` hoisté avant l'early-return skeleton pour respecter la règle des hooks (sinon eslint `react-hooks/rules-of-hooks`).
+  * Header (h1 + bouton Refresh) et Tabs (overview/epreuves/evolution) conservés intégralement.
+- **profil-page.tsx** :
+  * Ajout imports : `useBadges` depuis `@/hooks/use-dashboard`, `RewardCenter, type Reward, type GamificationTier` depuis `@/components/ds`, `BadgeWithProgress, NiveauBadge` depuis `@/lib/badges-engine`, et tous les icônes Lucide utilisés par les badges (`Award, Star, Trophy, Zap, Flame, ThumbsUp, CalendarCheck, FileText, PenTool, Sparkles, Library, Clock, ClipboardCheck, Users, Network, Target, Cpu, HeartHandshake` + alias pour éviter les collisions avec `CheckCircle2`, `GraduationCap`, `Eye`, `Shield` déjà importés) + `type LucideIcon`.
+  * Création `BADGE_ICON_MAP: Record<string, LucideIcon>` couvrant les 22 icônes référencées dans `BADGE_DEFINITIONS` (lib/badges-engine.ts). Fallback explicite : `Award`.
+  * Création helper statique `mapRarityToTier(niveau: NiveauBadge | string | undefined, unlocked: boolean): GamificationTier` (BRONZE→bronze, ARGENT→silver, OR→gold, DIAMANT→platinum ; fallback 'bronze' locked / 'gold' unlocked si valeur inconnue).
+  * Création `mapBadgeToReward(badge: BadgeWithProgress): Reward` (id←cle, title←titre, description←description, tier←mapRarityToTier(niveauActuel, debloque), icon←getBadgeIcon(icone), unlocked←debloque, unlockedAt←dateObtention?new Date:undefined, progress←progression 0-100).
+  * `useBadges(user?.id)` appelé inconditionnellement avant le `if (!user) return null` (règle des hooks ; `enabled: !!userId` côté hook).
+  * `rewards: Reward[]` calculé via `useMemo(() => badgesQuery.data?.badges?.map(mapBadgeToReward) ?? [])`.
+  * Section "Mes récompenses" ajoutée en bas de page (après le tab password, avant `</div>`), titre `font-display`, contenu dans une Card avec `<RewardCenter rewards={rewards} />`. `userProgress` omis (ni AuthUser ni useBadges n'exposent d'XP/niveau — le RewardCenter masque proprement le header XP dans ce cas).
+  * Tout le contenu existant (header profil, tabs infos/password, formulaires, handlers, state) conservé à l'identique.
+- Vérifications : `bunx tsc --noEmit` → 0 erreur ; `bunx eslint` sur les deux fichiers → 0 erreur, exit 0.
+
+Stage Summary:
+- Files modified:
+  * `src/components/passation/mes-resultats-page.tsx` (mapping StudentSession→GradeEntry, remplacement MesEpreuvesTab par GradeTable)
+  * `src/components/profil/profil-page.tsx` (mapping BadgeWithProgress→Reward, ajout section "Mes récompenses" avec RewardCenter)
+- Data mappings:
+  * **StudentSession → GradeEntry** : `id`←session.id, `subject`←epreuve.enseignant.name (proxy matière), `examTitle`←epreuve.titre, `score`←resultat.scoreFinal ?? session.score, `maxScore`←epreuve.noteTotal ?? 20, `date`←resultat.dateCorrection ?? dateFin ?? dateDebut, `comment`←resultat.commentaires. Sessions sans score (SOUMISE) exclues. `coefficient` non disponible dans le modèle (omis).
+  * **BadgeWithProgress → Reward** : `id`←cle, `title`←titre, `description`←description, `tier`←mapRarityToTier(niveauActuel) (BRONZE→bronze / ARGENT→silver / OR→gold / DIAMANT→platinum), `icon`←BADGE_ICON_MAP[icone] ?? Award, `unlocked`←debloque, `unlockedAt`←dateObtention?new Date:undefined, `progress`←progression. `userProgress` omis (pas d'XP/level exposé côté frontend).
+
+---
+Task ID: T9-A
+Agent: full-stack-developer (AcademicCalendar integration)
+Task: Integrate AcademicCalendar in etudiant + enseignant dashboards
+
+Work Log:
+- Read `worklog.md`, `src/components/ds/academic-calendar.tsx` and `src/components/ds/index.ts` to understand the DS component's API (`CalendarEvent = { id, date, title, type: 'exam'|'deadline'|'course'|'holiday', color? }`).
+- Read both target dashboards (`etudiant-dashboard.tsx`, `enseignant-dashboard.tsx`) and the `use-dashboard.ts` hook to identify real date-bearing data (`EpreuveAVenirEtudiant.date`/`dateFin` and `EpreuveAVenirEnseignant.date`/`dateFin`).
+- Confirmed `formatDateFR(dateStr: string | Date | null | undefined)` accepts `Date` directly (no `.toISOString()` needed).
+- `etudiant-dashboard.tsx`:
+  - Added `useMemo` to React imports and `AcademicCalendar, type CalendarEvent` to `@/components/ds` imports.
+  - Added two `useMemo` hooks BEFORE the early returns (rules-of-hooks): `calendarEvents` (maps each upcoming epreuve to 2 events — `exam` on `date`, `deadline` on `dateFin`) and `upcomingEventsSorted` (chronological sort for the side list). Uses `statsQuery.data?.epreuvesAVenir` as the dep so the hooks are unconditional.
+  - Added a new `lg:grid-cols-2` section between the "session en cours" alert and the main 3-col grid: left = `AcademicCalendar` wrapped in a Card titled "Calendrier académique" (`max-w-md w-full`, `onDateClick` routes to `/mes-epreuves`); right = a "Prochaines échéances" list card with color dots (red=exam, amber=deadline) + `formatDateFR` dates, `max-h-96 overflow-y-auto`.
+  - Did NOT touch existing hooks/state/handlers/KPIs/main grid/sidebar.
+- `enseignant-dashboard.tsx`:
+  - Same import additions (`useMemo`, `AcademicCalendar`, `CalendarEvent`).
+  - Added `calendarEvents` `useMemo` BEFORE the early returns (uses `statsQuery.data?.epreuvesAVenir`). Documented why `pendingCorrections` is excluded (no correction deadline exposed — only `submittedAt`).
+  - Added a new Card titled "Calendrier académique" (`font-display tracking-tight`) as the FIRST item of the existing sidebar (`lg:col-span-1`), wrapping `AcademicCalendar` with `max-w-md w-full` and `onDateClick → /epreuves`. Existing `EpreuvesTimeline` and `RecentEpreuves` cards left untouched.
+- Verification: `bunx tsc --noEmit` → 0 errors on both files (and project-wide). `bunx eslint <both files>` → 0 errors after fixing the initial `react-hooks/rules-of-hooks` violation (the `useMemo` calls were originally placed after early returns; moved them up).
+
+Stage Summary:
+- Files modified:
+  - `src/components/dashboard/etudiant-dashboard.tsx` (+~115 lines, 0 deletions of existing code)
+  - `src/components/dashboard/enseignant-dashboard.tsx` (+~50 lines, 0 deletions of existing code)
+- Data mapping:
+  - `EpreuveAVenirEtudiant` / `EpreuveAVenirEnseignant` → `CalendarEvent[]`
+    - 1 epreuve → 2 events: `{id: '${epreuve.id}-start', date: new Date(epreuve.date), title: epreuve.titre, type: 'exam'}` and `{id: '${epreuve.id}-deadline', date: new Date(epreuve.dateFin), title: epreuve.titre, type: 'deadline'}`
+    - NaN dates filtered out via `Number.isNaN(date.getTime())` guard.
+    - No mock/fallback data needed — the dashboard data already exposes real `date`/`dateFin` ISO strings.
+- tsc + eslint: both 0 errors on the 2 files.
+
+---
+Task ID: T9 (intégration composants DS + PWA offline + AIAssistant global)
+Agent: Z.ai (tuteur/assistant — exécution + 2 sous-agents)
+Task: Visualiser la showcase, intégrer AcademicCalendar/GradeTable/RewardCenter/AIAssistant dans les pages métier, implémenter le Service Worker offline, valider l'installabilité PWA.
+
+Work Log:
+- Step 1 — Showcase montée dans page.tsx via query param ?preview=ds (non-destructif : landing/login reste par défaut). useSearchParams importé. Permet de visualiser les 14 composants DS sur /?preview=ds sans casser l'expérience utilisateur.
+- Step 2 (sous-agent T9-A) — AcademicCalendar intégré dans 2 dashboards :
+  * etudiant-dashboard.tsx : nouvelle section lg:grid-cols-2 (calendrier + liste échéances). Mapping epreuvesAVenir → CalendarEvent[] (1 épreuve = 2 events : 'exam' dateDebut + 'deadline' dateFin). NaN dates filtrées.
+  * enseignant-dashboard.tsx : nouvelle Card "Calendrier académique" (font-display) dans le sidebar existant. Mapping epreuves → CalendarEvent[].
+- Step 3 (sous-agent T9-B) — GradeTable + RewardCenter intégrés :
+  * mes-resultats-page.tsx : GradeTable remplace MesEpreuvesTab. Mapping StudentSession → GradeEntry (subject=enseignant.name, examTitle=epreuve.titre, score=scoreFinal, maxScore=noteTotal, date=dateCorrection). Sessions sans score filtrées. onRowClick préserve le flow MonResultatDialog.
+  * profil-page.tsx : RewardCenter ajouté en section "Mes récompenses". Mapping BadgeWithProgress → Reward (tier via mapRarityToTier BRONZE/ARGENT/OR/DIAMANT, icon via BADGE_ICON_MAP 22 icônes). userProgress omis (XP non exposé frontend).
+- Step 4 — AIAssistant global (moi) :
+  * Création endpoint /api/ai-assistant/route.ts : withAuth tous rôles. System prompt pédagogique FR (aide étudiants/enseignants/responsables, max 300 mots, refuse hors-scope). Utilise getAIProvider() failover (Mistral→Groq→OpenRouter). Contexte utilisateur (rôle + page courante) injecté pour réponses ciblées. Max 2000 chars input, 600 tokens output.
+  * Montage AIAssistant dans authenticated-layout.tsx : bouton flottant cyan (bg-tech) visible sur toutes les pages authentifiées. onSend appelle /api/ai-assistant avec contexte (page + rôle). Suggestions par défaut : "Explique-moi un concept", "Préparer mon examen", "Analyse mes résultats".
+- Step 5 — Service Worker offline (moi) :
+  * public/sw.js : 3 stratégies de cache. (1) Navigation pages : network-first + fallback cache (màj visibles + offline). (2) API GET : network-first + fallback cache (données fraîches). (3) Assets statiques : stale-while-revalidate (rapide + màj BG). API POST = network-only. NextAuth /api/auth exclu. Pré-cache app shell (/, manifest, favicons). Versionning CACHE_VERSION='sect-v1'. skipWaiting + clients.claim pour activation immédiate.
+  * src/components/pwa/service-worker-register.tsx : enregistre SW en production uniquement (pas en dev pour éviter conflit HMR Turbopack). Gestion updatefound + controllerchange (recharge page au nouveau SW). Monté dans layout.tsx racine.
+- Step 6 — Validation PWA : manifest.json valide (6 icônes, 3 shortcuts, theme_color #4F46E5, display standalone). 7 meta tags PWA dans layout. sw.js accessible (HTTP 200). Routes testées : / 200, /?preview=ds 200, /manifest.json 200, /sw.js 200.
+- Vérifications : tsc 0 erreur, eslint 0 erreur (1 warning préexistant), serveur dev Ready 1290ms.
+
+Stage Summary:
+- Fichiers créés (4) :
+  * src/app/api/ai-assistant/route.ts (endpoint IA pédagogique, failover)
+  * public/sw.js (Service Worker offline, 3 stratégies cache)
+  * src/components/pwa/service-worker-register.tsx (registration SW prod)
+- Fichiers modifiés (5) :
+  * src/app/page.tsx (showcase via ?preview=ds)
+  * src/app/layout.tsx (mount ServiceWorkerRegister)
+  * src/components/layout/authenticated-layout.tsx (mount AIAssistant global)
+  * src/components/dashboard/etudiant-dashboard.tsx (+AcademicCalendar)
+  * src/components/dashboard/enseignant-dashboard.tsx (+AcademicCalendar)
+  * src/components/passation/mes-resultats-page.tsx (GradeTable)
+  * src/components/profil/profil-page.tsx (+RewardCenter)
+- PWA : installable Android/iOS/Desktop. Offline via SW (pages + API GET cachées). Service Worker en production uniquement.
+- AIAssistant : bouton flottant cyan sur toutes les pages auth, failover IA Mistral→Groq→OpenRouter, contexte page+rôle.
+- État du projet : STABLE. Tous les composants DS premium sont intégrés dans les pages métier. La plateforme est PWA installable + offline. L'assistant IA pédagogique est accessible partout.

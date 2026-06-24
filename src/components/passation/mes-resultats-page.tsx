@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Trophy,
   LayoutDashboard,
@@ -25,12 +25,74 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { useMesResultats, useEtudiantOverview, useRefreshResultats } from '@/hooks/use-resultats'
-import { PulseSkeleton } from '@/components/ds'
+import { GradeTable, PulseSkeleton, type GradeEntry } from '@/components/ds'
 import { MesResultatsSkeleton, MesEpreuvesSkeleton } from '../mes-resultats/mes-resultats-skeletons'
 import { EtudiantOverviewTab } from '../mes-resultats/etudiant-overview-tab'
-import { MesEpreuvesTab } from '../mes-resultats/mes-epreuves-tab'
 import { MonResultatDialog } from '../mes-resultats/mon-resultat-dialog'
 import type { StudentSession } from '@/types/resultats'
+
+// ─────────────────────────────────────────────────────────────
+// Mapping StudentSession → GradeEntry (pour le GradeTable DS)
+//
+// Le modèle de données étudiant est centré sur la "session de passation"
+// (StudentSession) qui contient l'épreuve, les réponses et le résultat.
+// On projette ces données vers le format GradeEntry attendu par le DS :
+//
+//   GradeEntry.subject     ← session.epreuve.enseignant.name
+//                            (l'enseignant est le meilleur proxy de la
+//                             "matière" — la filière n'est pas exposée
+//                             dans le type StudentSession.epreuve)
+//   GradeEntry.examTitle   ← session.epreuve.titre
+//   GradeEntry.score       ← session.resultat?.scoreFinal ?? session.score ?? 0
+//   GradeEntry.maxScore    ← session.epreuve.noteTotal ?? 20
+//   GradeEntry.date        ← session.resultat?.dateCorrection
+//                            ?? session.dateFin
+//                            ?? session.dateDebut
+//                            (fallback now() si toutes null)
+//   GradeEntry.coefficient ← non disponible dans le modèle (omis)
+//   GradeEntry.comment     ← session.resultat?.commentaires (si non vide)
+//
+// On ne retient que les sessions ayant un score exploitable
+// (RETOURNEE ou CORRIGEE avec scoreFinal/score non null). Les
+// sessions SOUMISE (en attente de correction) sont exclues car
+// leur score n'est pas encore connu.
+// ─────────────────────────────────────────────────────────────
+
+function mapSessionToGrade(session: StudentSession): GradeEntry | null {
+  const scoreFinal = session.resultat?.scoreFinal
+  const rawScore = session.score
+  const score = scoreFinal ?? rawScore
+  // Skip sessions without a computable score (e.g. SOUMISE)
+  if (score === null || score === undefined) return null
+
+  const date =
+    session.resultat?.dateCorrection ??
+    session.dateFin ??
+    session.dateDebut ??
+    new Date().toISOString()
+
+  const comment = session.resultat?.commentaires?.trim() || undefined
+
+  return {
+    id: session.id,
+    subject: session.epreuve.enseignant.name,
+    examTitle: session.epreuve.titre,
+    score,
+    maxScore: session.epreuve.noteTotal ?? 20,
+    date,
+    // coefficient: non disponible dans StudentSession
+    comment,
+  }
+}
+
+function mapSessionsToGrades(sessions: StudentSession[]): GradeEntry[] {
+  const grades: GradeEntry[] = []
+  for (const s of sessions) {
+    const g = mapSessionToGrade(s)
+    if (g) grades.push(g)
+  }
+  return grades
+}
 
 export function MesResultatsPage() {
   const user = useAuthStore((s) => s.user)
@@ -42,9 +104,25 @@ export function MesResultatsPage() {
   const resultatsQuery = useMesResultats(user?.id)
   const refresh = useRefreshResultats()
 
+  // Sessions disponibles (tableau vide tant que la requête charge).
+  // Hoisté avant l'early return ci-dessous pour respecter la règle des
+  // hooks (useMemo ne doit pas être appelé de façon conditionnelle).
+  const sessions: StudentSession[] = resultatsQuery.data ?? []
+
+  // Projection StudentSession[] → GradeEntry[] pour le GradeTable DS.
+  // Les sessions sans score (SOUMISE) sont exclues par mapSessionsToGrades.
+  const grades = useMemo(() => mapSessionsToGrades(sessions), [sessions])
+
   const handleViewDetail = (session: StudentSession) => {
     setSelectedSession(session)
     setDetailOpen(true)
+  }
+
+  // Au clic sur une ligne du GradeTable, on retrouve la StudentSession
+  // correspondante pour ouvrir le dialog de détail existant.
+  const handleGradeClick = (grade: GradeEntry) => {
+    const session = sessions.find((s) => s.id === grade.id)
+    if (session) handleViewDetail(session)
   }
 
   // ─── Skeleton global tant que l'overview charge ───
@@ -63,7 +141,6 @@ export function MesResultatsPage() {
   }
 
   const overview = overviewQuery.data
-  const sessions = resultatsQuery.data ?? []
   const pendingCount = sessions.filter((s) => s.statut === 'SOUMISE').length
 
   return (
@@ -193,7 +270,11 @@ export function MesResultatsPage() {
               </CardContent>
             </Card>
           ) : (
-            <MesEpreuvesTab sessions={sessions} onViewDetail={handleViewDetail} />
+            <GradeTable
+              grades={grades}
+              showAverage
+              onRowClick={handleGradeClick}
+            />
           )}
         </TabsContent>
 
