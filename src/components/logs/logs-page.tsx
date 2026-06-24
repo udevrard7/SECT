@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { Separator } from '@/components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { toast } from 'sonner'
@@ -58,35 +58,35 @@ function getActionBadge(action: string) {
   switch (action) {
     case 'CREATE':
       return (
-        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+        <Badge className="bg-success/15 text-success border-success/30 gap-1">
           <PlusCircle className="h-3 w-3" />
           Création
         </Badge>
       )
     case 'UPDATE':
       return (
-        <Badge className="bg-sky-100 text-sky-800 border-sky-200 gap-1 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">
+        <Badge className="bg-info/15 text-info border-info/30 gap-1">
           <Edit3 className="h-3 w-3" />
           Modification
         </Badge>
       )
     case 'DELETE':
       return (
-        <Badge className="bg-red-100 text-red-800 border-red-200 gap-1 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
+        <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
           <Trash2 className="h-3 w-3" />
           Suppression
         </Badge>
       )
     case 'LOGIN':
       return (
-        <Badge className="bg-amber-100 text-amber-800 border-amber-200 gap-1 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+        <Badge className="bg-warning/15 text-warning border-warning/30 gap-1">
           <LogIn className="h-3 w-3" />
           Connexion
         </Badge>
       )
     case 'LOGOUT':
       return (
-        <Badge className="bg-gray-100 text-gray-700 border-gray-200 gap-1 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+        <Badge className="bg-muted text-muted-foreground border-border gap-1">
           <LogOut className="h-3 w-3" />
           Déconnexion
         </Badge>
@@ -98,12 +98,12 @@ function getActionBadge(action: string) {
 
 function getActionIcon(action: string) {
   switch (action) {
-    case 'CREATE': return <PlusCircle className="h-5 w-5 text-emerald-500" />
-    case 'UPDATE': return <Edit3 className="h-5 w-5 text-sky-500" />
-    case 'DELETE': return <Trash2 className="h-5 w-5 text-red-500" />
-    case 'LOGIN': return <LogIn className="h-5 w-5 text-amber-500" />
-    case 'LOGOUT': return <LogOut className="h-5 w-5 text-gray-500" />
-    default: return <Activity className="h-5 w-5 text-gray-500" />
+    case 'CREATE': return <PlusCircle className="h-5 w-5 text-success" />
+    case 'UPDATE': return <Edit3 className="h-5 w-5 text-info" />
+    case 'DELETE': return <Trash2 className="h-5 w-5 text-destructive" />
+    case 'LOGIN': return <LogIn className="h-5 w-5 text-warning" />
+    case 'LOGOUT': return <LogOut className="h-5 w-5 text-muted-foreground" />
+    default: return <Activity className="h-5 w-5 text-muted-foreground" />
   }
 }
 
@@ -223,8 +223,8 @@ export function LogsPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <FileText className="h-7 w-7 text-emerald-600" />
+        <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+          <FileText className="h-7 w-7 text-success" />
           Journaux d&apos;Audit
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -306,12 +306,12 @@ export function LogsPage() {
 
       {/* ─── Stats summary ─── */}
       <div className="flex gap-3 flex-wrap">
-        <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 py-1 px-3">
+        <Badge variant="secondary" className="gap-1 bg-success/10 text-success py-1 px-3">
           <Activity className="h-3 w-3" />
-          {total} entrée{total > 1 ? 's' : ''}
+          <span className="font-mono tabular-nums">{total}</span> entrée{total > 1 ? 's' : ''}
         </Badge>
         {actionFilter !== 'all' && (
-          <Badge variant="secondary" className="gap-1 bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300 py-1 px-3">
+          <Badge variant="secondary" className="gap-1 bg-info/10 text-info py-1 px-3">
             <Filter className="h-3 w-3" />
             Filtré par: {actionFilter}
           </Badge>
@@ -322,14 +322,14 @@ export function LogsPage() {
       {isLoading && (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i}>
               <CardContent className="flex items-start gap-4 p-4">
-                <Skeleton className="h-10 w-10 rounded-full" />
+                <PulseSkeleton className="h-10 w-10" variant="circle" />
                 <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-3 w-32" />
+                  <PulseSkeleton className="h-4 w-48" />
+                  <PulseSkeleton className="h-3 w-32" />
                 </div>
-                <Skeleton className="h-6 w-20" />
+                <PulseSkeleton className="h-6 w-20" />
               </CardContent>
             </Card>
           ))}
@@ -339,10 +339,10 @@ export function LogsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && logs.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <FileText className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <FileText className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun log trouvé</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold">Aucun log trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Aucune entrée de journal ne correspond à vos critères de recherche.
             Essayez de modifier vos filtres.
@@ -360,7 +360,7 @@ export function LogsPage() {
             return (
               <Card
                 key={log.id}
-                className={`transition-all hover:shadow-sm ${isExpanded ? 'ring-1 ring-emerald-200 dark:ring-emerald-800' : ''}`}
+                className={`transition-all hover:shadow-sm ds-lift ${isExpanded ? 'ring-1 ring-success/40' : ''}`}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
@@ -393,7 +393,7 @@ export function LogsPage() {
 
                       {/* User info */}
                       <div className="mt-2 flex items-center gap-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success font-mono tabular-nums">
                           {getInitials(log.userEmail as string | null)}
                         </div>
                         <span className="text-sm text-muted-foreground truncate">
@@ -425,7 +425,7 @@ export function LogsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="mt-1 h-7 text-xs text-emerald-700 dark:text-emerald-400"
+                              className="mt-1 h-7 text-xs text-success"
                             >
                               {isExpanded ? (
                                 <>
@@ -469,7 +469,7 @@ export function LogsPage() {
       {/* ─── Pagination ─── */}
       {!isLoading && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground font-mono tabular-nums">
             {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} sur {total} entrées
           </p>
           <div className="flex items-center gap-2">
@@ -482,7 +482,7 @@ export function LogsPage() {
               <ChevronLeft className="h-4 w-4" />
               Précédent
             </Button>
-            <span className="text-sm font-medium">
+            <span className="text-sm font-medium font-mono tabular-nums">
               {page} / {totalPages}
             </span>
             <Button

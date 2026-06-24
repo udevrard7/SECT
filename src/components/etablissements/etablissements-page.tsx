@@ -60,7 +60,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
 
@@ -123,13 +123,13 @@ interface EtablissementDetail extends EtablissementItem {
 function getTypeBadge(type: string | null) {
   switch (type) {
     case 'Université':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Université</Badge>
+      return <Badge className="bg-success/15 text-success border-success/30">Université</Badge>
     case 'École d\'ingénieurs':
-      return <Badge className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">École d\'ingénieurs</Badge>
+      return <Badge className="bg-info/15 text-info border-info/30">École d\'ingénieurs</Badge>
     case 'Institut':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">Institut</Badge>
+      return <Badge className="bg-warning/15 text-warning border-warning/30">Institut</Badge>
     case 'École de commerce':
-      return <Badge className="bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800">École de commerce</Badge>
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30">École de commerce</Badge>
     default:
       return type ? <Badge variant="outline">{type}</Badge> : <Badge variant="outline" className="text-muted-foreground">Autre</Badge>
   }
@@ -138,13 +138,13 @@ function getTypeBadge(type: string | null) {
 function getRoleBadge(role: string) {
   switch (role) {
     case 'ADMIN':
-      return <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs dark:bg-rose-900/40 dark:text-rose-300">Admin</Badge>
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">Admin</Badge>
     case 'RESPONSABLE':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs dark:bg-amber-900/40 dark:text-amber-300">Responsable</Badge>
+      return <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Responsable</Badge>
     case 'ENSEIGNANT':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs dark:bg-emerald-900/40 dark:text-emerald-300">Enseignant</Badge>
+      return <Badge className="bg-success/15 text-success border-success/30 text-xs">Enseignant</Badge>
     case 'ETUDIANT':
-      return <Badge className="bg-sky-100 text-sky-800 border-sky-200 text-xs dark:bg-sky-900/40 dark:text-sky-300">Étudiant</Badge>
+      return <Badge className="bg-info/15 text-info border-info/30 text-xs">Étudiant</Badge>
     default:
       return <Badge variant="outline" className="text-xs">{role}</Badge>
   }
@@ -333,15 +333,15 @@ export function EtablissementsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Building2 className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <Building2 className="h-7 w-7 text-success" />
             Gestion des Établissements
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Consulter et administrer les établissements partenaires
           </p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => router.push(PAGE_ROUTES.abonnements)}>
+        <Button onClick={() => router.push(PAGE_ROUTES.abonnements)}>
           <CreditCard className="h-4 w-4" />
           Nouvelle souscription
           <ArrowRight className="h-3.5 w-3.5 ml-1" />
@@ -350,32 +350,32 @@ export function EtablissementsPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Building2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
+              <Building2 className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total établissements</p>
-              <p className="text-xl font-bold">{totalEtab}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalEtab}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-info ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <Users className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/15">
+              <Users className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actifs</p>
-              <p className="text-xl font-bold">{actifCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{actifCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <GraduationCap className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
+              <GraduationCap className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Types</p>
@@ -416,22 +416,22 @@ export function EtablissementsPage() {
       {isLoading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="space-y-2">
-                    <div className="h-5 w-40 rounded bg-muted" />
-                    <div className="h-4 w-24 rounded bg-muted" />
+                    <PulseSkeleton className="h-5 w-40" />
+                    <PulseSkeleton className="h-4 w-24" />
                   </div>
-                  <div className="h-6 w-20 rounded-full bg-muted" />
+                  <PulseSkeleton className="h-6 w-20" />
                 </div>
                 <div className="mt-4 space-y-2">
-                  <div className="h-3 w-32 rounded bg-muted" />
-                  <div className="h-3 w-24 rounded bg-muted" />
+                  <PulseSkeleton className="h-3 w-32" />
+                  <PulseSkeleton className="h-3 w-24" />
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <div className="h-6 w-16 rounded bg-muted" />
-                  <div className="h-6 w-16 rounded bg-muted" />
+                  <PulseSkeleton className="h-6 w-16" />
+                  <PulseSkeleton className="h-6 w-16" />
                 </div>
               </CardContent>
             </Card>
@@ -442,17 +442,17 @@ export function EtablissementsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && etablissements.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <Building2 className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <Building2 className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun établissement trouvé</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold">Aucun établissement trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || typeFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres.'
               : 'Aucun établissement enregistré. Créez-en un via la page Abonnements.'}
           </p>
           {!search && typeFilter === 'all' && (
-            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={() => router.push(PAGE_ROUTES.abonnements)}>
+            <Button className="mt-6" onClick={() => router.push(PAGE_ROUTES.abonnements)}>
               <CreditCard className="h-4 w-4" />
               Nouvelle souscription
               <ArrowRight className="h-3.5 w-3.5 ml-1" />
@@ -465,18 +465,18 @@ export function EtablissementsPage() {
       {!isLoading && etablissements.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {etablissements.map((etab) => (
-            <Card key={etab.id} className="group transition-shadow hover:shadow-md">
+            <Card key={etab.id} className="group transition-shadow hover:shadow-md ds-lift">
               <CardContent className="flex flex-col gap-4 p-6">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold leading-tight">{etab.nom}</h3>
+                    <h3 className="text-base font-display font-semibold leading-tight">{etab.nom}</h3>
                     <div className="mt-1">{getTypeBadge(etab.type)}</div>
                   </div>
                   {etab.actif ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">Actif</Badge>
+                    <Badge className="bg-success/15 text-success border-success/30 text-xs">Actif</Badge>
                   ) : (
-                    <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                    <Badge className="bg-muted text-muted-foreground border-border text-xs">Inactif</Badge>
                   )}
                 </div>
 
@@ -484,13 +484,13 @@ export function EtablissementsPage() {
                 <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
                   {etab.ville && (
                     <span className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <MapPin className="h-3.5 w-3.5 text-success" />
                       {etab.ville}{etab.pays ? `, ${etab.pays}` : ''}
                     </span>
                   )}
                   {etab.email && (
                     <span className="flex items-center gap-1.5">
-                      <Mail className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                      <Mail className="h-3.5 w-3.5 text-info" />
                       {etab.email}
                     </span>
                   )}
@@ -502,10 +502,10 @@ export function EtablissementsPage() {
                   )}
                   {etab.responsable && (
                     <span className="flex items-center gap-1.5">
-                      <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      <UserCheck className="h-3.5 w-3.5 text-warning" />
                       <span className="truncate">Responsable: {etab.responsable.name}</span>
                       {!etab.responsable.actif && (
-                        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-[10px] px-1.5 py-0">Inactif</Badge>
+                        <Badge className="bg-muted text-muted-foreground border-border text-[10px] px-1.5 py-0">Inactif</Badge>
                       )}
                     </span>
                   )}
@@ -517,10 +517,10 @@ export function EtablissementsPage() {
                     {etab.abonnements.map((abo) => {
                       const statutLabel = abo.statut === 'ESSAI' ? 'Essai' : abo.statut === 'ACTIF' ? 'Actif' : abo.statut === 'EXPIRE' ? 'Expiré' : abo.statut === 'RESILIE' ? 'Résilié' : abo.statut
                       const statutClass = abo.statut === 'ACTIF'
-                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+                        ? 'bg-success/15 text-success border-success/30'
                         : abo.statut === 'ESSAI'
-                          ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
-                          : 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                          ? 'bg-warning/15 text-warning border-warning/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       return (
                         <Badge key={abo.id} className={`text-[10px] gap-1 ${statutClass}`}>
                           <CreditCard className="h-2.5 w-2.5" />
@@ -533,13 +533,13 @@ export function EtablissementsPage() {
 
                 {/* Counts */}
                 <div className="flex gap-3">
-                  <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                  <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
                     <GraduationCap className="h-3 w-3" />
-                    {etab._count.filieres} filière{etab._count.filieres > 1 ? 's' : ''}
+                    <span className="font-mono tabular-nums">{etab._count.filieres}</span> filière{etab._count.filieres > 1 ? 's' : ''}
                   </Badge>
-                  <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                  <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
                     <Users className="h-3 w-3" />
-                    {etab._count.users} utilisateur{etab._count.users > 1 ? 's' : ''}
+                    <span className="font-mono tabular-nums">{etab._count.users}</span> utilisateur{etab._count.users > 1 ? 's' : ''}
                   </Badge>
                 </div>
 
@@ -551,7 +551,7 @@ export function EtablissementsPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenEdit(etab)}
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    className="border-success/40 text-success hover:bg-success/10"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                     Modifier
@@ -577,7 +577,7 @@ export function EtablissementsPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleViewDetail(etab)}
-                    className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+                    className="border-info/40 text-info hover:bg-info/10"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     Détails
@@ -595,8 +595,8 @@ export function EtablissementsPage() {
       }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <Building2 className="h-5 w-5 text-success" />
               Modifier l&apos;établissement
             </DialogTitle>
             <DialogDescription>
@@ -699,7 +699,7 @@ export function EtablissementsPage() {
 
             {/* ─── Matricule Configuration ─── */}
             <div className="space-y-1">
-              <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+              <h3 className="text-sm font-display font-semibold flex items-center gap-2 text-success">
                 <IdCard className="h-4 w-4" />
                 Configuration des Matricules Étudiants
               </h3>
@@ -708,7 +708,7 @@ export function EtablissementsPage() {
               </p>
             </div>
 
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
+            <div className="rounded-lg border border-success/30 bg-success/5 p-3 space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="etab-format-matricule" className="text-xs">
                   Format du matricule
@@ -751,7 +751,7 @@ export function EtablissementsPage() {
                 </div>
               </div>
               {!formFormatMatricule && (
-                <p className="text-xs text-amber-600 flex items-center gap-1">
+                <p className="text-xs text-warning flex items-center gap-1">
                   <Info className="h-3 w-3" />
                   Sans format défini, un matricule aléatoire (ETU-XXXXXX) sera généré.
                 </p>
@@ -764,7 +764,6 @@ export function EtablissementsPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
               onClick={handleSubmit}
               disabled={isSubmitting}
             >
@@ -788,7 +787,7 @@ export function EtablissementsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
             >
               Supprimer
@@ -806,8 +805,8 @@ export function EtablissementsPage() {
       }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <Building2 className="h-5 w-5 text-success" />
               {detailEtab?.nom ?? 'Détails de l\'établissement'}
             </DialogTitle>
             <DialogDescription>
@@ -818,7 +817,7 @@ export function EtablissementsPage() {
           {detailLoading && (
             <div className="space-y-4 p-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <PulseSkeleton key={i} className="h-12 w-full" />
               ))}
             </div>
           )}
@@ -836,13 +835,13 @@ export function EtablissementsPage() {
                   )}
                   {detailEtab.ville && (
                     <div className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-3.5 w-3.5 text-emerald-600" />
+                      <MapPin className="h-3.5 w-3.5 text-success" />
                       {detailEtab.ville}{detailEtab.pays ? `, ${detailEtab.pays}` : ''}
                     </div>
                   )}
                   {detailEtab.email && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-3.5 w-3.5 text-teal-600" />
+                      <Mail className="h-3.5 w-3.5 text-info" />
                       {detailEtab.email}
                     </div>
                   )}
@@ -854,8 +853,8 @@ export function EtablissementsPage() {
                   )}
                   {detailEtab.siteWeb && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Globe className="h-3.5 w-3.5 text-emerald-600" />
-                      <a href={detailEtab.siteWeb} target="_blank" rel="noopener noreferrer" className="text-emerald-700 dark:text-emerald-400 hover:underline">
+                      <Globe className="h-3.5 w-3.5 text-success" />
+                      <a href={detailEtab.siteWeb} target="_blank" rel="noopener noreferrer" className="text-success hover:underline">
                         {detailEtab.siteWeb}
                       </a>
                     </div>
@@ -872,11 +871,11 @@ export function EtablissementsPage() {
                 {detailAdminAccess === false && (
                   <>
                     <Separator />
-                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4 flex items-start gap-3">
-                      <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div className="rounded-lg bg-warning/10 border border-warning/30 p-4 flex items-start gap-3">
+                      <Lock className="h-5 w-5 text-warning mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Accès non autorisé</p>
-                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                        <p className="text-sm font-display font-semibold text-warning">Accès non autorisé</p>
+                        <p className="text-xs text-warning mt-1">
                           Vous n&apos;avez pas d&apos;accès autorisé aux données détaillées de cet établissement. Demandez une autorisation dans la section Accès &amp; autorisations.
                         </p>
                       </div>
@@ -891,9 +890,9 @@ export function EtablissementsPage() {
 
                     {/* Filières section */}
                     <div>
-                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <GraduationCap className="h-4 w-4 text-emerald-600" />
-                        Filières ({detailEtab.filieres?.length ?? 0})
+                      <h3 className="text-sm font-display font-semibold mb-3 flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4 text-success" />
+                        Filières (<span className="font-mono tabular-nums">{detailEtab.filieres?.length ?? 0}</span>)
                       </h3>
                       {!detailEtab.filieres || detailEtab.filieres.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-2">Aucune filière dans cet établissement.</p>
@@ -908,7 +907,7 @@ export function EtablissementsPage() {
                                     {f.code && <p className="text-xs text-muted-foreground">{f.code}</p>}
                                     {f.responsable && <p className="text-xs text-muted-foreground mt-0.5">Resp: {f.responsable.name}</p>}
                                   </div>
-                                  <Badge variant="secondary" className="text-xs">
+                                  <Badge variant="secondary" className="text-xs font-mono tabular-nums">
                                     {f._count.etudiants} étud.
                                   </Badge>
                                 </div>
@@ -923,9 +922,9 @@ export function EtablissementsPage() {
 
                     {/* Users section */}
                     <div>
-                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <Users className="h-4 w-4 text-teal-600" />
-                        Utilisateurs ({detailEtab.users?.length ?? 0})
+                      <h3 className="text-sm font-display font-semibold mb-3 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-info" />
+                        Utilisateurs (<span className="font-mono tabular-nums">{detailEtab.users?.length ?? 0}</span>)
                       </h3>
                       {!detailEtab.users || detailEtab.users.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-2">Aucun utilisateur dans cet établissement.</p>
@@ -934,7 +933,7 @@ export function EtablissementsPage() {
                           {detailEtab.users.map((u) => (
                             <div key={u.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
                               <div className="flex items-center gap-2">
-                                <div className="h-7 w-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                                <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success font-mono tabular-nums">
                                   {u.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                                 </div>
                                 <div>

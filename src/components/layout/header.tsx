@@ -28,39 +28,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ETUDIANT: 'Étudiant',
 }
 
-// ─── Modern role color for header accent ───
-const ROLE_HEADER_COLORS: Record<UserRole, {
-  accentBar: string
-  avatarBg: string
-  roleText: string
-  searchFocus: string
-}> = {
-  ADMIN: {
-    accentBar: 'bg-gradient-to-r from-rose-500 via-rose-400 to-amber-400',
-    avatarBg: 'bg-gradient-to-br from-rose-500 to-rose-700 text-white',
-    roleText: 'text-rose-600 dark:text-rose-400',
-    searchFocus: 'focus-within:ring-rose-500/20',
-  },
-  RESPONSABLE: {
-    accentBar: 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400',
-    avatarBg: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white',
-    roleText: 'text-amber-600 dark:text-amber-400',
-    searchFocus: 'focus-within:ring-amber-500/20',
-  },
-  ENSEIGNANT: {
-    accentBar: 'bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400',
-    avatarBg: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white',
-    roleText: 'text-emerald-600 dark:text-emerald-400',
-    searchFocus: 'focus-within:ring-emerald-500/20',
-  },
-  ETUDIANT: {
-    accentBar: 'bg-gradient-to-r from-violet-500 via-purple-400 to-fuchsia-400',
-    avatarBg: 'bg-gradient-to-br from-violet-500 to-purple-600 text-white',
-    roleText: 'text-violet-600 dark:text-violet-400',
-    searchFocus: 'focus-within:ring-violet-500/20',
-  },
-}
-
 export function AppHeader() {
   const { theme, setTheme } = useTheme()
   const { user, logout } = useAuthStore()
@@ -68,8 +35,6 @@ export function AppHeader() {
   const pathname = usePathname()
 
   if (!user) return null
-
-  const colors = ROLE_HEADER_COLORS[user.role]
 
   // Determine current page ID from URL
   const currentPageId = ROUTE_TO_PAGE[pathname] ?? 'dashboard'
@@ -105,12 +70,12 @@ export function AppHeader() {
   }
 
   return (
-    <header className="flex flex-col shrink-0">
-      {/* ─── Accent bar ─── */}
-      <div className={`h-[2px] w-full ${colors.accentBar}`} />
+    <header className="flex flex-col shrink-0 sticky top-0 z-30">
+      {/* ─── Accent bar unifiée indigo (DS) ─── */}
+      <div className="h-[2px] w-full bg-gradient-to-r from-primary via-secondary to-primary" />
 
-      {/* ─── Header content ─── */}
-      <div className="flex h-14 items-center gap-2 bg-background/80 backdrop-blur-md border-b border-border/50 px-4">
+      {/* ─── Header content — glassmorphism DS ─── */}
+      <div className="flex h-14 items-center gap-2 ds-glass border-b border-border px-4">
         {/* Sidebar toggle */}
         <SidebarTrigger className="-ml-1 hover:bg-muted/60" />
         <div className="h-5 w-px bg-border mx-1" />
@@ -125,7 +90,7 @@ export function AppHeader() {
               <ChevronRight className="h-3 w-3 text-muted-foreground/50 hidden sm:block shrink-0" />
             </>
           )}
-          <h1 className="text-sm font-semibold truncate">{pageTitle}</h1>
+          <h1 className="text-sm font-semibold truncate font-display tracking-tight">{pageTitle}</h1>
         </div>
 
         {/* Right actions */}
@@ -150,7 +115,7 @@ export function AppHeader() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-9 w-9 rounded-full hover:bg-muted/60">
                 <Avatar className="h-7 w-7">
-                  <AvatarFallback className={`${colors.avatarBg} text-[10px] font-bold`}>
+                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
@@ -161,7 +126,7 @@ export function AppHeader() {
                 <div className="flex flex-col space-y-1.5">
                   <div className="flex items-center gap-2.5">
                     <Avatar className="h-9 w-9">
-                      <AvatarFallback className={`${colors.avatarBg} text-xs font-bold`}>
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
@@ -172,7 +137,7 @@ export function AppHeader() {
                       </p>
                     </div>
                   </div>
-                  <span className={`inline-flex self-start text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted ${colors.roleText}`}>
+                  <span className="inline-flex self-start text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
                     {ROLE_LABELS[user.role]}
                   </span>
                 </div>
@@ -195,7 +160,7 @@ export function AppHeader() {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus-text-red-400 rounded-md">
+              <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-destructive focus:text-destructive rounded-md">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Déconnexion</span>
               </DropdownMenuItem>

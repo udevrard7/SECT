@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 // ─── Config types (mapped from the API settings object) ───
@@ -206,21 +206,21 @@ export function ConfigurationPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <Skeleton className="h-9 w-64 mb-2" />
-          <Skeleton className="h-5 w-96" />
+        <div className="space-y-2">
+          <PulseSkeleton className="h-9 w-64" />
+          <PulseSkeleton className="h-5 w-96" />
         </div>
-        <Skeleton className="h-10 w-full" />
+        <PulseSkeleton className="h-10 w-full" />
         <Card>
           <CardHeader>
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-64" />
+            <PulseSkeleton className="h-6 w-48" />
+            <PulseSkeleton className="h-4 w-64" />
           </CardHeader>
           <CardContent className="space-y-6">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-10 w-full" />
+                <PulseSkeleton className="h-4 w-32" />
+                <PulseSkeleton className="h-10 w-full" />
               </div>
             ))}
           </CardContent>
@@ -235,15 +235,15 @@ export function ConfigurationPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Settings className="h-7 w-7 text-rose-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <Settings className="h-7 w-7 text-destructive" />
             Paramètres Plateforme
           </h1>
         </div>
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-            <p className="text-lg font-semibold text-destructive mb-2">Erreur de chargement</p>
+            <p className="text-lg font-display font-semibold text-destructive mb-2">Erreur de chargement</p>
             <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
             <Button variant="outline" onClick={fetchSettings}>
               <Loader2 className="h-4 w-4 mr-2" />
@@ -259,8 +259,8 @@ export function ConfigurationPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <Settings className="h-7 w-7 text-rose-600" />
+        <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+          <Settings className="h-7 w-7 text-destructive" />
           Paramètres Plateforme
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -293,8 +293,8 @@ export function ConfigurationPage() {
         <TabsContent value="general">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5 text-emerald-600" />
+              <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                <Globe className="h-5 w-5 text-success" />
                 Paramètres généraux
               </CardTitle>
               <CardDescription>
@@ -420,7 +420,6 @@ export function ConfigurationPage() {
 
               <div className="flex justify-end">
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => handleSave('general')}
                   disabled={savingTab === 'general'}
                 >
@@ -437,8 +436,8 @@ export function ConfigurationPage() {
         <TabsContent value="security">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-emerald-600" />
+              <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                <Shield className="h-5 w-5 text-success" />
                 Paramètres de sécurité
               </CardTitle>
               <CardDescription>
@@ -484,7 +483,7 @@ export function ConfigurationPage() {
                         }}
                         className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                           isSelected
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+                            ? 'bg-success/15 text-success border-success/40'
                             : 'bg-muted text-muted-foreground border-border hover:bg-accent'
                         }`}
                       >
@@ -515,12 +514,12 @@ export function ConfigurationPage() {
               </div>
 
               {/* Security summary */}
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2 flex items-center gap-2">
+              <div className="rounded-lg border border-success/30 bg-success/10 p-4">
+                <h4 className="text-sm font-display font-semibold text-success mb-2 flex items-center gap-2">
                   <Lock className="h-4 w-4" />
                   Résumé de la configuration sécurité
                 </h4>
-                <ul className="text-sm text-emerald-700 dark:text-emerald-400 space-y-1">
+                <ul className="text-sm text-success space-y-1 font-mono tabular-nums">
                   <li>• Taille max fichiers : {config.security.maxUploadSizeMB} MB</li>
                   <li>• Types autorisés : {config.security.allowedFileTypes.join(', ')}</li>
                   <li>• Proctoring : {config.security.proctoringEnabled ? 'Activé' : 'Désactivé'}</li>
@@ -531,7 +530,6 @@ export function ConfigurationPage() {
 
               <div className="flex justify-end">
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => handleSave('security')}
                   disabled={savingTab === 'security'}
                 >
@@ -548,8 +546,8 @@ export function ConfigurationPage() {
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5 text-emerald-600" />
+              <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                <Bell className="h-5 w-5 text-success" />
                 Paramètres de notifications
               </CardTitle>
               <CardDescription>
@@ -603,7 +601,6 @@ export function ConfigurationPage() {
 
               <div className="flex justify-end">
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => handleSave('notifications')}
                   disabled={savingTab === 'notifications'}
                 >
@@ -620,8 +617,8 @@ export function ConfigurationPage() {
         <TabsContent value="ia">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-emerald-600" />
+              <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                <Sparkles className="h-5 w-5 text-success" />
                 Paramètres IA
               </CardTitle>
               <CardDescription>
@@ -630,21 +627,21 @@ export function ConfigurationPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Link to AI Providers page */}
-              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-950/30">
+              <div className="rounded-lg border border-secondary/30 bg-secondary/10 p-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <h4 className="text-sm font-semibold text-violet-800 dark:text-violet-300 flex items-center gap-2">
+                    <h4 className="text-sm font-display font-semibold text-secondary flex items-center gap-2">
                       <Sparkles className="h-4 w-4" />
                       Fournisseurs IA
                     </h4>
-                    <p className="text-xs text-violet-700 dark:text-violet-400">
+                    <p className="text-xs text-secondary">
                       Configurez vos fournisseurs d&apos;IA (OpenAI, Anthropic, Groq, Z-AI...) et changez le fournisseur actif
                     </p>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950/50"
+                    className="border-secondary/40 text-secondary hover:bg-secondary/10"
                     onClick={() => router.push(PAGE_ROUTES['ai-providers'])}
                   >
                     <Sparkles className="h-4 w-4 mr-1" />
@@ -692,12 +689,12 @@ export function ConfigurationPage() {
               </div>
 
               {/* IA Summary */}
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2 flex items-center gap-2">
+              <div className="rounded-lg border border-success/30 bg-success/10 p-4">
+                <h4 className="text-sm font-display font-semibold text-success mb-2 flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   Résumé de la configuration IA
                 </h4>
-                <ul className="text-sm text-emerald-700 dark:text-emerald-400 space-y-1">
+                <ul className="text-sm text-success space-y-1">
                   <li>• Génération de questions : {config.ia.aiGenerationEnabled ? 'Activée' : 'Désactivée'}</li>
                   <li>• Correction automatique : {config.ia.aiCorrectionEnabled ? 'Activée' : 'Désactivée'}</li>
                 </ul>
@@ -707,7 +704,6 @@ export function ConfigurationPage() {
 
               <div className="flex justify-end">
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => handleSave('ia')}
                   disabled={savingTab === 'ia'}
                 >

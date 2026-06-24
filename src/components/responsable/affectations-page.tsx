@@ -54,7 +54,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import {
   Table,
   TableBody,
@@ -138,11 +138,11 @@ interface FiliereOption {
 function getTypeSeanceBadge(typeSeance: string): React.ReactNode {
   switch (typeSeance) {
     case 'CM':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">CM</Badge>
+      return <Badge className="bg-success/10 text-success border-success/30 text-xs">CM</Badge>
     case 'TD':
-      return <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">TD</Badge>
+      return <Badge className="bg-success/10 text-success border-success/30 text-xs">TD</Badge>
     case 'TP':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">TP</Badge>
+      return <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">TP</Badge>
     default:
       return <Badge variant="outline" className="text-xs">{typeSeance}</Badge>
   }
@@ -151,11 +151,11 @@ function getTypeSeanceBadge(typeSeance: string): React.ReactNode {
 function getStatutBadge(statut: string): React.ReactNode {
   switch (statut) {
     case 'PROVISOIRE':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">Provisoire</Badge>
+      return <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Provisoire</Badge>
     case 'VALIDEE':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">Validée</Badge>
+      return <Badge className="bg-success/10 text-success border-success/30 text-xs">Validée</Badge>
     case 'PUBLIEE':
-      return <Badge className="bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 text-xs">Publiée</Badge>
+      return <Badge className="bg-info/10 text-info border-info/30 text-xs">Publiée</Badge>
     default:
       return <Badge variant="outline" className="text-xs">{statut}</Badge>
   }
@@ -166,8 +166,8 @@ function getNiveauBadge(niveau: string): React.ReactNode {
   return (
     <Badge className={`text-xs ${
       isLicence
-        ? 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-        : 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+        ? 'bg-success/10 text-success border-success/30'
+        : 'bg-warning/10 text-warning border-warning/30'
     }`}>
       {niveau}
     </Badge>
@@ -178,15 +178,15 @@ function getNiveauBadge(niveau: string): React.ReactNode {
 
 const TYPE_STYLES: Record<string, { checked: string; unchecked: string }> = {
   CM: {
-    checked: 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30',
+    checked: 'border-success/30 bg-success/10',
     unchecked: 'border-muted hover:bg-muted/50',
   },
   TD: {
-    checked: 'border-teal-300 bg-teal-50 dark:border-teal-800 dark:bg-teal-950/30',
+    checked: 'border-success/30 bg-success/10',
     unchecked: 'border-muted hover:bg-muted/50',
   },
   TP: {
-    checked: 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
+    checked: 'border-warning/30 bg-warning/10',
     unchecked: 'border-muted hover:bg-muted/50',
   },
 }
@@ -762,8 +762,8 @@ export function AffectationsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <UserCheck className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <UserCheck className="h-7 w-7 text-success" />
             Affectations
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -774,7 +774,7 @@ export function AffectationsPage() {
           {affectations.filter(a => a.statut === 'PROVISOIRE').length > 0 && (
             <Button
               variant="outline"
-              className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+              className="border-success/30 text-success hover:bg-success/10"
               onClick={handleBatchValidate}
               disabled={isBatchValidating}
             >
@@ -782,7 +782,7 @@ export function AffectationsPage() {
               Valider tout ({affectations.filter(a => a.statut === 'PROVISOIRE').length})
             </Button>
           )}
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenAdd}>
+          <Button className="bg-success hover:bg-success/90" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
             Nouvelle affectation
           </Button>
@@ -791,58 +791,58 @@ export function AffectationsPage() {
 
       {/* ─── Stats row ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <UserCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <UserCheck className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total affectations</p>
-              <p className="text-xl font-bold">{totalAffectations}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalAffectations}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <CheckCircle2 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <CheckCircle2 className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Validées</p>
-              <p className="text-xl font-bold">{affectationsValidees}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{affectationsValidees}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <PieChart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <PieChart className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Taux couverture</p>
-              <p className="text-xl font-bold">{tauxCouverture}%</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{tauxCouverture}%</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-emerald-400">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-              <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Users className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Enseignants actifs</p>
-              <p className="text-xl font-bold">{enseignantsActifs}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{enseignantsActifs}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-cyan-500">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
-              <Clock className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
+              <Clock className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Volume total</p>
-              <p className="text-xl font-bold">{totalVolume}h</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalVolume}h</p>
             </div>
           </CardContent>
         </Card>
@@ -931,12 +931,12 @@ export function AffectationsPage() {
               <CardContent className="p-6 space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-4">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-5 w-40" />
-                    <Skeleton className="h-5 w-20" />
-                    <Skeleton className="h-5 w-16" />
-                    <Skeleton className="h-5 w-20" />
-                    <Skeleton className="h-5 w-16" />
+                    <PulseSkeleton className="h-5 w-32" />
+                    <PulseSkeleton className="h-5 w-40" />
+                    <PulseSkeleton className="h-5 w-20" />
+                    <PulseSkeleton className="h-5 w-16" />
+                    <PulseSkeleton className="h-5 w-20" />
+                    <PulseSkeleton className="h-5 w-16" />
                   </div>
                 ))}
               </CardContent>
@@ -946,8 +946,8 @@ export function AffectationsPage() {
           {/* ─── Empty state ─── */}
           {!isLoading && filteredAffectations.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <UserCheck className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <UserCheck className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucune affectation trouvée</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -956,7 +956,7 @@ export function AffectationsPage() {
                   : 'Commencez par affecter des enseignants aux unités d\'enseignement.'}
               </p>
               {!enseignantSearch && filiereFilter === 'all' && niveauFilter === 'all' && statutFilter === 'all' && (
-                <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenAdd}>
+                <Button className="mt-6 bg-success hover:bg-success/90" onClick={handleOpenAdd}>
                   <Plus className="h-4 w-4" />
                   Nouvelle affectation
                 </Button>
@@ -972,16 +972,16 @@ export function AffectationsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Enseignant</TableHead>
-                        <TableHead>Unité d&apos;enseignement</TableHead>
-                        <TableHead>Filière</TableHead>
-                        <TableHead>Niveau</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Groupe</TableHead>
-                        <TableHead>Volume</TableHead>
-                        <TableHead>Année</TableHead>
-                        <TableHead>Statut</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="font-display">Enseignant</TableHead>
+                        <TableHead className="font-display">Unité d&apos;enseignement</TableHead>
+                        <TableHead className="font-display">Filière</TableHead>
+                        <TableHead className="font-display">Niveau</TableHead>
+                        <TableHead className="font-display">Type</TableHead>
+                        <TableHead className="font-display">Groupe</TableHead>
+                        <TableHead className="font-display">Volume</TableHead>
+                        <TableHead className="font-display">Année</TableHead>
+                        <TableHead className="font-display">Statut</TableHead>
+                        <TableHead className="text-right font-display">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1001,11 +1001,11 @@ export function AffectationsPage() {
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex flex-wrap gap-1">
-                              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800 text-xs">
+                              <Badge className="bg-success/10 text-success border-success/30 text-xs">
                                 {affectation.uniteEnseignement.filiere.nom}
                               </Badge>
                               {affectation.uniteEnseignement.filieresSuppl?.map((s) => (
-                                <Badge key={s.id} className="bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800 text-xs">
+                                <Badge key={s.id} className="bg-success/10 text-success border-success/30 text-xs">
                                   <Share2 className="h-3 w-3 mr-1" />
                                   {s.filiere.nom}
                                 </Badge>
@@ -1046,7 +1046,7 @@ export function AffectationsPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                                    className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
                                     onClick={() => handleOpenEdit(affectation)}
                                     title="Modifier"
                                   >
@@ -1055,7 +1055,7 @@ export function AffectationsPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                     onClick={() => setConfirmAction({ type: 'delete', affectation })}
                                     title="Supprimer"
                                   >
@@ -1064,7 +1064,7 @@ export function AffectationsPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950"
+                                    className="h-8 px-2 text-success hover:text-success hover:bg-success/10"
                                     onClick={() => setConfirmAction({ type: 'validate', affectation })}
                                     title="Valider"
                                   >
@@ -1077,7 +1077,7 @@ export function AffectationsPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950"
+                                  className="h-8 px-2 text-info hover:text-info hover:bg-info/10"
                                   onClick={() => setConfirmAction({ type: 'publish', affectation })}
                                   title="Publier"
                                 >
@@ -1104,8 +1104,8 @@ export function AffectationsPage() {
         <TabsContent value="load" className="space-y-4">
           {teachingLoadData.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <Users className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <Users className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucune charge d&apos;enseignement</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1119,13 +1119,13 @@ export function AffectationsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Enseignant</TableHead>
-                        <TableHead className="text-center">UEs</TableHead>
-                        <TableHead className="text-center">CM</TableHead>
-                        <TableHead className="text-center">TD</TableHead>
-                        <TableHead className="text-center">TP</TableHead>
-                        <TableHead className="text-center">Total</TableHead>
-                        <TableHead>Statuts</TableHead>
+                        <TableHead className="font-display">Enseignant</TableHead>
+                        <TableHead className="text-center font-display">UEs</TableHead>
+                        <TableHead className="text-center font-display">CM</TableHead>
+                        <TableHead className="text-center font-display">TD</TableHead>
+                        <TableHead className="text-center font-display">TP</TableHead>
+                        <TableHead className="text-center font-display">Total</TableHead>
+                        <TableHead className="font-display">Statuts</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1139,22 +1139,22 @@ export function AffectationsPage() {
                           </TableCell>
                           <TableCell className="text-center font-medium">{row.nbUEs}</TableCell>
                           <TableCell className="text-center">
-                            {row.totalCM > 0 ? <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs">{row.totalCM}h</Badge> : <span className="text-muted-foreground">—</span>}
+                            {row.totalCM > 0 ? <Badge className="bg-success/10 text-success text-xs">{row.totalCM}h</Badge> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-center">
-                            {row.totalTD > 0 ? <Badge className="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 text-xs">{row.totalTD}h</Badge> : <span className="text-muted-foreground">—</span>}
+                            {row.totalTD > 0 ? <Badge className="bg-success/10 text-success text-xs">{row.totalTD}h</Badge> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-center">
-                            {row.totalTP > 0 ? <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-xs">{row.totalTP}h</Badge> : <span className="text-muted-foreground">—</span>}
+                            {row.totalTP > 0 ? <Badge className="bg-warning/10 text-warning text-xs">{row.totalTP}h</Badge> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-center">
-                            <span className="font-bold text-base">{row.total}h</span>
+                            <span className="font-bold text-base font-mono tabular-nums">{row.total}h</span>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {row.provisoires > 0 && <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-xs">{row.provisoires} prov.</Badge>}
-                              {row.validees > 0 && <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs">{row.validees} valid.</Badge>}
-                              {row.publiees > 0 && <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">{row.publiees} publ.</Badge>}
+                              {row.provisoires > 0 && <Badge className="bg-warning/10 text-warning text-xs">{row.provisoires} prov.</Badge>}
+                              {row.validees > 0 && <Badge className="bg-success/10 text-success text-xs">{row.validees} valid.</Badge>}
+                              {row.publiees > 0 && <Badge className="bg-info/10 text-info text-xs">{row.publiees} publ.</Badge>}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1203,8 +1203,8 @@ export function AffectationsPage() {
           {/* ─── Matrix empty state ─── */}
           {matrixData.rows.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <Grid3X3 className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <Grid3X3 className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucune unité d&apos;enseignement</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1223,7 +1223,7 @@ export function AffectationsPage() {
                     <CardContent className="p-0">
                       <div className="px-4 py-3 border-b bg-muted/30">
                         <h3 className="font-semibold text-sm flex items-center gap-2">
-                          <GraduationCap className="h-4 w-4 text-emerald-600" />
+                          <GraduationCap className="h-4 w-4 text-success" />
                           {filiereNom}
                         </h3>
                       </div>
@@ -1231,11 +1231,11 @@ export function AffectationsPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-[200px]">Unité d&apos;enseignement</TableHead>
-                              <TableHead className="w-[60px] text-center">Niveau</TableHead>
-                              <TableHead className="text-center">CM</TableHead>
-                              <TableHead className="text-center">TD</TableHead>
-                              <TableHead className="text-center">TP</TableHead>
+                              <TableHead className="w-[200px] font-display">Unité d&apos;enseignement</TableHead>
+                              <TableHead className="w-[60px] text-center font-display">Niveau</TableHead>
+                              <TableHead className="text-center font-display">CM</TableHead>
+                              <TableHead className="text-center font-display">TD</TableHead>
+                              <TableHead className="text-center font-display">TP</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1299,7 +1299,7 @@ export function AffectationsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-emerald-600" />
+              <UserCheck className="h-5 w-5 text-success" />
               Nouvelle affectation
             </DialogTitle>
             <DialogDescription>
@@ -1443,7 +1443,7 @@ export function AffectationsPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleAddSubmit}
               disabled={isSubmitting}
             >
@@ -1459,7 +1459,7 @@ export function AffectationsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-emerald-600" />
+              <Edit3 className="h-5 w-5 text-success" />
               Modifier l&apos;affectation
             </DialogTitle>
             <DialogDescription>
@@ -1539,7 +1539,7 @@ export function AffectationsPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleEditSubmit}
               disabled={isSubmitting}
             >
@@ -1558,9 +1558,9 @@ export function AffectationsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              {confirmAction?.type === 'validate' && <CheckCircle2 className="h-5 w-5 text-teal-600" />}
-              {confirmAction?.type === 'publish' && <Send className="h-5 w-5 text-blue-600" />}
-              {confirmAction?.type === 'delete' && <AlertTriangle className="h-5 w-5 text-red-600" />}
+              {confirmAction?.type === 'validate' && <CheckCircle2 className="h-5 w-5 text-success" />}
+              {confirmAction?.type === 'publish' && <Send className="h-5 w-5 text-info" />}
+              {confirmAction?.type === 'delete' && <AlertTriangle className="h-5 w-5 text-destructive" />}
               {confirmAction?.type === 'validate' && 'Valider l\'affectation'}
               {confirmAction?.type === 'publish' && 'Publier l\'affectation'}
               {confirmAction?.type === 'delete' && 'Supprimer l\'affectation'}
@@ -1602,10 +1602,10 @@ export function AffectationsPage() {
               }}
               className={
                 confirmAction?.type === 'delete'
-                  ? 'bg-red-600 hover:bg-red-700'
+                  ? 'bg-destructive hover:bg-destructive/90'
                   : confirmAction?.type === 'validate'
-                    ? 'bg-teal-600 hover:bg-teal-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
+                    ? 'bg-success hover:bg-success/90'
+                    : 'bg-info hover:bg-info/90'
               }
             >
               {confirmAction?.type === 'validate' && 'Valider'}
@@ -1632,15 +1632,15 @@ function MatrixCell({ names, needed, covered }: { names: string[]; needed: boole
   // If covered, show green
   if (covered) {
     return (
-      <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-2 py-1">
+      <div className="rounded-md bg-success/10 border border-success/30 px-2 py-1">
         {names.length > 0 ? (
           <div className="space-y-0.5">
             {names.map((name, i) => (
-              <p key={i} className="text-xs font-medium text-emerald-800 dark:text-emerald-300">{name}</p>
+              <p key={i} className="text-xs font-medium text-success">{name}</p>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-emerald-600 dark:text-emerald-400">Affecté</p>
+          <p className="text-xs text-success">Affecté</p>
         )}
       </div>
     )
@@ -1648,8 +1648,8 @@ function MatrixCell({ names, needed, covered }: { names: string[]; needed: boole
 
   // Not covered — show red warning
   return (
-    <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-2 py-1">
-      <p className="text-xs font-medium text-red-600 dark:text-red-400">Non affecté</p>
+    <div className="rounded-md bg-destructive/10 border border-destructive/30 px-2 py-1">
+      <p className="text-xs font-medium text-destructive">Non affecté</p>
     </div>
   )
 }

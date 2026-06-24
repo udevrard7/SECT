@@ -68,7 +68,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -135,43 +135,43 @@ function getAccent(isAdmin: boolean) {
   return isAdmin
     ? {
         color: 'emerald',
-        text: 'text-emerald-600 dark:text-emerald-400',
-        bg100: 'bg-emerald-100 dark:bg-emerald-900/50',
-        bg50: 'bg-emerald-50/50 dark:bg-emerald-950/20',
-        border200: 'border-emerald-200 dark:border-emerald-800',
-        text700: 'text-emerald-700 dark:text-emerald-400',
-        text800: 'text-emerald-800 dark:text-emerald-300',
-        btn: 'bg-emerald-600 hover:bg-emerald-700',
-        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300',
-        activeBorder: 'border-emerald-200 dark:border-emerald-800',
-        activeBg: 'bg-emerald-50/50 dark:bg-emerald-950/20',
-        activeIconBg: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400',
-        codeBg: 'bg-emerald-100 dark:bg-emerald-900/50',
-        infoBorder: 'border-emerald-200 dark:border-emerald-800',
-        infoBg: 'bg-emerald-50 dark:bg-emerald-950/30',
-        infoText: 'text-emerald-800 dark:text-emerald-300',
-        infoSubtext: 'text-emerald-700 dark:text-emerald-400',
-        infoSmall: 'text-emerald-600 dark:text-emerald-500',
+        text: 'text-success',
+        bg100: 'bg-success/10',
+        bg50: 'bg-success/10',
+        border200: 'border-success/30',
+        text700: 'text-success',
+        text800: 'text-success',
+        btn: 'bg-success hover:bg-success/90',
+        badge: 'bg-success/10 text-success',
+        activeBorder: 'border-success/30',
+        activeBg: 'bg-success/10',
+        activeIconBg: 'bg-success/10 text-success',
+        codeBg: 'bg-success/10',
+        infoBorder: 'border-success/30',
+        infoBg: 'bg-success/10',
+        infoText: 'text-success',
+        infoSubtext: 'text-success',
+        infoSmall: 'text-success',
       }
     : {
         color: 'amber',
-        text: 'text-amber-600 dark:text-amber-400',
-        bg100: 'bg-amber-100 dark:bg-amber-900/50',
-        bg50: 'bg-amber-50/50 dark:bg-amber-950/20',
-        border200: 'border-amber-200 dark:border-amber-800',
-        text700: 'text-amber-700 dark:text-amber-400',
-        text800: 'text-amber-800 dark:text-amber-300',
-        btn: 'bg-amber-600 hover:bg-amber-700',
-        badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
-        activeBorder: 'border-amber-200 dark:border-amber-800',
-        activeBg: 'bg-amber-50/50 dark:bg-amber-950/20',
-        activeIconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400',
-        codeBg: 'bg-amber-100 dark:bg-amber-900/50',
-        infoBorder: 'border-amber-200 dark:border-amber-800',
-        infoBg: 'bg-amber-50 dark:bg-amber-950/30',
-        infoText: 'text-amber-800 dark:text-amber-300',
-        infoSubtext: 'text-amber-700 dark:text-amber-400',
-        infoSmall: 'text-amber-600 dark:text-amber-500',
+        text: 'text-warning',
+        bg100: 'bg-warning/10',
+        bg50: 'bg-warning/10',
+        border200: 'border-warning/30',
+        text700: 'text-warning',
+        text800: 'text-warning',
+        btn: 'bg-warning hover:bg-warning/90',
+        badge: 'bg-warning/10 text-warning',
+        activeBorder: 'border-warning/30',
+        activeBg: 'bg-warning/10',
+        activeIconBg: 'bg-warning/10 text-warning',
+        codeBg: 'bg-warning/10',
+        infoBorder: 'border-warning/30',
+        infoBg: 'bg-warning/10',
+        infoText: 'text-warning',
+        infoSubtext: 'text-warning',
+        infoSmall: 'text-warning',
       }
 }
 
@@ -416,7 +416,7 @@ function LogoUpload({
                 size="sm"
                 onClick={handleDelete}
                 disabled={uploading}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                 Supprimer
@@ -778,20 +778,20 @@ export function ResponsableParametresPage() {
     return (
       <div className="space-y-6">
         <div>
-          <Skeleton className="h-9 w-64 mb-2" />
-          <Skeleton className="h-5 w-96" />
+          <PulseSkeleton className="h-9 w-64 mb-2" />
+          <PulseSkeleton className="h-5 w-96" />
         </div>
-        <Skeleton className="h-10 w-full" />
+        <PulseSkeleton className="h-10 w-full" />
         <Card>
           <CardHeader>
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-64" />
+            <PulseSkeleton className="h-6 w-48" />
+            <PulseSkeleton className="h-4 w-64" />
           </CardHeader>
           <CardContent className="space-y-6">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-10 w-full" />
+                <PulseSkeleton className="h-4 w-32" />
+                <PulseSkeleton className="h-10 w-full" />
               </div>
             ))}
           </CardContent>
@@ -807,7 +807,7 @@ export function ResponsableParametresPage() {
       <TooltipProvider>
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
               <Settings className={`h-7 w-7 ${accent.text}`} />
               Paramètres des établissements
             </h1>
@@ -823,7 +823,7 @@ export function ResponsableParametresPage() {
           >
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 font-display">
                   <Building2 className={`h-5 w-5 ${accent.text}`} />
                   Sélectionner un établissement
                 </CardTitle>
@@ -878,7 +878,7 @@ export function ResponsableParametresPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">Aucun établissement</CardTitle>
+            <CardTitle className="text-xl font-display">Aucun établissement</CardTitle>
             <CardDescription>
               Votre compte n&apos;est pas associé à un établissement. Contactez un administrateur.
             </CardDescription>
@@ -894,7 +894,7 @@ export function ResponsableParametresPage() {
         {/* ─── Header ─── */}
         <div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
               <Settings className={`h-7 w-7 ${accent.text}`} />
               Paramètres de l&apos;établissement
             </h1>
@@ -967,7 +967,7 @@ export function ResponsableParametresPage() {
           <TabsContent value="etablissement">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 font-display">
                   <Building2 className={`h-5 w-5 ${accent.text}`} />
                   Informations de l&apos;établissement
                 </CardTitle>
@@ -1156,14 +1156,12 @@ export function ResponsableParametresPage() {
                 {/* Stats summary */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className={`rounded-lg border p-4 ${accent.bg50}`}>
-                    <p className={`text-2xl font-bold ${accent.text700}`}>
-                      {etablissement._count?.filieres ?? 0}
+                    <p className={`text-2xl font-bold ${accent.text700} font-mono tabular-nums`}>{etablissement._count?.filieres ?? 0}
                     </p>
                     <p className="text-xs text-muted-foreground">Filières</p>
                   </div>
                   <div className={`rounded-lg border p-4 ${accent.bg50}`}>
-                    <p className={`text-2xl font-bold ${accent.text700}`}>
-                      {etablissement._count?.users ?? 0}
+                    <p className={`text-2xl font-bold ${accent.text700} font-mono tabular-nums`}>{etablissement._count?.users ?? 0}
                     </p>
                     <p className="text-xs text-muted-foreground">Utilisateurs</p>
                   </div>
@@ -1227,7 +1225,7 @@ export function ResponsableParametresPage() {
                   {/* Section A: Surveillance & Détection */}
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-lg">
+                      <CardTitle className="flex items-center gap-2 text-lg font-display">
                         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent.bg100} ${accent.text}`}>
                           <Eye className="h-4 w-4" />
                         </div>
@@ -1330,8 +1328,8 @@ export function ResponsableParametresPage() {
                   {/* Section B: Blocage & Protection */}
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400">
+                      <CardTitle className="flex items-center gap-2 text-lg font-display">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success">
                           <Lock className="h-4 w-4" />
                         </div>
                         Blocage & Protection
@@ -1383,8 +1381,8 @@ export function ResponsableParametresPage() {
                   {/* Section C: Seuils & Alertes */}
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400">
+                      <CardTitle className="flex items-center gap-2 text-lg font-display">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10 text-warning">
                           <BellRing className="h-4 w-4" />
                         </div>
                         Seuils & Alertes
@@ -1446,8 +1444,8 @@ export function ResponsableParametresPage() {
                   {/* Section D: Analyse & Rapports */}
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600 dark:bg-cyan-900/50 dark:text-cyan-400">
+                      <CardTitle className="flex items-center gap-2 text-lg font-display">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info/10 text-info">
                           <BarChart3 className="h-4 w-4" />
                         </div>
                         Analyse & Rapports
@@ -1479,17 +1477,17 @@ export function ResponsableParametresPage() {
                         icon={ClipboardCheck}
                         accent={accent}
                       />
-                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-800 dark:bg-cyan-950/30">
-                        <h4 className="text-sm font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-2">
+                      <div className="rounded-lg border border-info/30 bg-info/10 p-4">
+                        <h4 className="text-sm font-semibold text-info mb-2 flex items-center gap-2">
                           <FileSearch className="h-4 w-4" />
                           Interprétation du seuil
                         </h4>
-                        <ul className="text-sm text-cyan-700 dark:text-cyan-400 space-y-1">
+                        <ul className="text-sm text-info space-y-1">
                           <li>&#8226; <strong>0.50 – 0.65</strong> : Tolérant — détecte les similarités évidentes uniquement</li>
                           <li>&#8226; <strong>0.70 – 0.85</strong> : Équilibré — bon compromis entre faux positifs et détection</li>
                           <li>&#8226; <strong>0.90 – 1.00</strong> : Strict — signale les réponses très similaires uniquement</li>
                         </ul>
-                        <p className="mt-2 text-xs text-cyan-600 dark:text-cyan-500">
+                        <p className="mt-2 text-xs text-info">
                           Seuil actuel : <strong>{securitySettings.seuilSimilarite.toFixed(2)}</strong> — {
                             securitySettings.seuilSimilarite < 0.7 ? 'Tolérant' :
                             securitySettings.seuilSimilarite < 0.9 ? 'Équilibré' : 'Strict'
@@ -1524,7 +1522,7 @@ export function ResponsableParametresPage() {
           <TabsContent value="matricule">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 font-display">
                   <Hash className={`h-5 w-5 ${accent.text}`} />
                   Format des matricules étudiants
                 </CardTitle>
@@ -1566,7 +1564,7 @@ export function ResponsableParametresPage() {
                     value={etablissement.regexMatricule || ''}
                     onChange={(e) => updateEtab({ regexMatricule: e.target.value })}
                     placeholder="Ex: ^\d{4}-\d{4}$"
-                    className="font-mono"
+                    className="font-mono tabular-nums"
                   />
                   <p className="text-xs text-muted-foreground">
                     Regex utilisée pour valider le format du matricule lors de l&apos;inscription des étudiants
@@ -1608,7 +1606,7 @@ export function ResponsableParametresPage() {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 font-display">
                     <Wifi className={`h-5 w-5 ${accent.text}`} />
                     Liste blanche IP
                   </CardTitle>
@@ -1626,7 +1624,7 @@ export function ResponsableParametresPage() {
                         value={newIp}
                         onChange={(e) => setNewIp(e.target.value)}
                         placeholder="192.168.1.0/24"
-                        className="font-mono"
+                        className="font-mono tabular-nums"
                       />
                     </div>
                     <div className="flex-1 space-y-2">
@@ -1657,7 +1655,7 @@ export function ResponsableParametresPage() {
               {/* IP list */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
+                  <CardTitle className="flex items-center gap-2 text-lg font-display">
                     <Wifi className={`h-5 w-5 ${accent.text}`} />
                     Adresses autorisées
                     <Badge variant="secondary" className="ml-2">{ipEntries.length}</Badge>
@@ -1684,16 +1682,16 @@ export function ResponsableParametresPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Adresse IP</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="text-center">Statut</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
+                            <TableHead className="font-display">Adresse IP</TableHead>
+                            <TableHead className="font-display">Description</TableHead>
+                            <TableHead className="text-center font-display">Statut</TableHead>
+                            <TableHead className="text-right font-display">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {ipEntries.map((entry) => (
                             <TableRow key={entry.id}>
-                              <TableCell className="font-mono text-sm">
+                              <TableCell className="font-mono tabular-nums text-sm">
                                 {entry.adresseIp}
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">
@@ -1704,7 +1702,7 @@ export function ResponsableParametresPage() {
                                   <TooltipTrigger asChild>
                                     <button onClick={() => handleToggleIp(entry.id, entry.actif)}>
                                       {entry.actif ? (
-                                        <CheckCircle2 className="h-5 w-5 text-emerald-500 inline-block" />
+                                        <CheckCircle2 className="h-5 w-5 text-success inline-block" />
                                       ) : (
                                         <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
                                       )}
@@ -1715,12 +1713,12 @@ export function ResponsableParametresPage() {
                                   </TooltipContent>
                                 </Tooltip>
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="text-right font-mono tabular-nums">
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleDeleteIp(entry.id, entry.adresseIp)}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>

@@ -177,7 +177,7 @@ function getEventTypeIcon(type: string) {
 function severityClasses(sev: SeverityLevel): string {
   switch (sev) {
     case 'high':
-      return 'bg-rose-500/15 text-rose-300 border-rose-500/40 sv-glow-rose'
+      return 'bg-destructive/15 text-rose-300 border-rose-500/40 sv-glow-rose'
     case 'medium':
       return 'bg-amber-500/15 text-amber-300 border-amber-500/40 sv-glow-amber'
     case 'low':
@@ -207,7 +207,7 @@ function getStatutLabel(statut: string): string {
 function getStatutClasses(statut: string): string {
   switch (statut) {
     case 'EN_COURS':
-      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 sv-glow-emerald'
+      return 'bg-success/15 text-emerald-300 border-emerald-500/40 sv-glow-emerald'
     case 'SOUMISE':
       return 'bg-amber-500/15 text-amber-300 border-amber-500/40'
     case 'CORRIGEE':
@@ -227,7 +227,7 @@ function riskLevelClasses(level: string): {
     case 'critical':
       return {
         text: 'text-rose-300',
-        bg: 'bg-rose-500',
+        bg: 'bg-destructive/100',
         label: 'Critique',
       }
     case 'high':
@@ -245,7 +245,7 @@ function riskLevelClasses(level: string): {
     default:
       return {
         text: 'text-emerald-300',
-        bg: 'bg-emerald-500',
+        bg: 'bg-success/100',
         label: 'Sûr',
       }
   }
@@ -537,7 +537,7 @@ export function SurveillancePage() {
               {isLive && (
                 <span className="absolute -right-1 -top-1 flex h-4 w-4">
                   <span className="sv-live-dot absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-4 w-4 rounded-full bg-emerald-500" />
+                  <span className="relative inline-flex h-4 w-4 rounded-full bg-success/100" />
                 </span>
               )}
             </div>
@@ -549,7 +549,7 @@ export function SurveillancePage() {
                 Centre de contrôle anti-fraude en temps réel
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-emerald-300">
                   <Radio className="h-3 w-3 sv-live-dot" />
                   {isLive ? 'Live' : 'Pause'}
                 </span>
@@ -559,7 +559,7 @@ export function SurveillancePage() {
                   </span>
                 )}
                 {alertesNonLues > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-2.5 py-1 text-rose-300 sv-glow-rose">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-rose-300 sv-glow-rose">
                     <Bell className="h-3 w-3" />
                     {alertesNonLues} alerte{alertesNonLues > 1 ? 's' : ''} non lue
                     {alertesNonLues > 1 ? 's' : ''}
@@ -777,10 +777,10 @@ function KpiCard({
     cyan: 'text-cyan-300 sv-glow-cyan',
   }
   const bgMap = {
-    emerald: 'bg-emerald-500/15',
+    emerald: 'bg-success/15',
     amber: 'bg-amber-500/15',
     fuchsia: 'bg-fuchsia-500/15',
-    rose: 'bg-rose-500/15',
+    rose: 'bg-destructive/15',
     violet: 'bg-violet-500/15',
     cyan: 'bg-cyan-500/15',
   }
@@ -843,7 +843,7 @@ function TabButton({
           className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
             active
               ? 'bg-white/25 text-white'
-              : 'bg-rose-500/30 text-rose-200 sv-glow-rose'
+              : 'bg-destructive/30 text-rose-200 sv-glow-rose'
           }`}
         >
           {count}
@@ -981,7 +981,7 @@ function SessionsTab({
 
       {/* ─── Erreur ─── */}
       {error && (
-        <div className="sv-card border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200">
+        <div className="sv-card border-rose-500/40 bg-destructive/100/10 p-4 text-sm text-rose-200">
           <AlertTriangle className="mr-2 inline h-4 w-4" />
           {error}
         </div>
@@ -1112,7 +1112,7 @@ function SessionCard({
                   {getStatutLabel(session.statut)}
                 </Badge>
                 {session.flagged && (
-                  <Badge className="border border-rose-500/40 bg-rose-500/15 text-xs text-rose-300 sv-glow-rose">
+                  <Badge className="border border-rose-500/40 bg-destructive/15 text-xs text-rose-300 sv-glow-rose">
                     <Flag className="mr-1 h-3 w-3" />
                     Signalée
                   </Badge>
@@ -1184,7 +1184,7 @@ function SessionCard({
               {/* Raccourcis événements */}
               <div className="flex flex-wrap items-center gap-2">
                 {session.fraudEvents.length > 0 && (
-                  <Badge className="border border-rose-500/40 bg-rose-500/10 text-xs text-rose-300">
+                  <Badge className="border border-rose-500/40 bg-destructive/100/10 text-xs text-rose-300">
                     <Flame className="mr-1 h-3 w-3" />
                     {session.fraudEvents.length} fraude
                     {session.fraudEvents.length > 1 ? 's' : ''}
@@ -1204,7 +1204,7 @@ function SessionCard({
                   </button>
                 )}
                 {session.submissionEvents.length > 0 && (
-                  <Badge className="border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-300">
+                  <Badge className="border border-emerald-500/40 bg-success/100/10 text-xs text-emerald-300">
                     <Activity className="mr-1 h-3 w-3" />
                     {session.submissionEvents.length} soumission
                     {session.submissionEvents.length > 1 ? 's' : ''}
@@ -1270,7 +1270,7 @@ function SessionCard({
                     variant="outline"
                     onClick={onFlag}
                     disabled={flagging}
-                    className="sv-focus border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
+                    className="sv-focus border-rose-500/40 bg-destructive/100/10 text-rose-200 hover:bg-destructive/100/20"
                   >
                     {flagging ? (
                       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -1514,7 +1514,7 @@ function AlertesTab({
     CRITICAL: {
       icon: <AlertTriangle className="h-4 w-4" />,
       label: 'Critique',
-      classes: 'border-rose-500/40 bg-rose-500/15 text-rose-300 sv-glow-rose',
+      classes: 'border-rose-500/40 bg-destructive/15 text-rose-300 sv-glow-rose',
     },
     WARNING: {
       icon: <AlertTriangle className="h-4 w-4" />,
@@ -1555,7 +1555,7 @@ function AlertesTab({
                     <span className="h-2 w-2 rounded-full bg-violet-400 sv-glow-violet" />
                   )}
                   {a.resolu && (
-                    <Badge className="border border-emerald-500/40 bg-emerald-500/15 text-xs text-emerald-300">
+                    <Badge className="border border-emerald-500/40 bg-success/15 text-xs text-emerald-300">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Résolue
                     </Badge>
@@ -1595,7 +1595,7 @@ function AlertesTab({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="sv-focus h-7 px-2 text-xs text-emerald-300 hover:bg-emerald-500/15"
+                    className="sv-focus h-7 px-2 text-xs text-emerald-300 hover:bg-success/15"
                     onClick={() => onAction(a.id, 'resoudre')}
                   >
                     Résoudre
@@ -1788,7 +1788,7 @@ function DetailSheet({
                   <Button
                     onClick={() => onFlag(session.id)}
                     disabled={flagging === session.id}
-                    className="sv-focus flex-1 border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+                    className="sv-focus flex-1 border border-rose-500/40 bg-destructive/15 text-rose-200 hover:bg-destructive/100/25"
                   >
                     {flagging === session.id ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import {
@@ -171,12 +171,12 @@ function getSeverityIcon(severity: string) {
   switch (severity.toLowerCase()) {
     case 'critical':
     case 'critique':
-      return <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+      return <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
     case 'warning':
     case 'avertissement':
-      return <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+      return <AlertTriangle className="h-3.5 w-3.5 text-warning" />
     default:
-      return <Clock className="h-3.5 w-3.5 text-blue-500" />
+      return <Clock className="h-3.5 w-3.5 text-info" />
   }
 }
 
@@ -184,12 +184,12 @@ function getSeverityBorder(severity: string): string {
   switch (severity.toLowerCase()) {
     case 'critical':
     case 'critique':
-      return 'border-red-500'
+      return 'border-destructive'
     case 'warning':
     case 'avertissement':
-      return 'border-amber-500'
+      return 'border-warning'
     default:
-      return 'border-blue-500'
+      return 'border-info'
   }
 }
 
@@ -199,27 +199,23 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-6 w-32" />
+        <PulseSkeleton className="h-9 w-64" />
+        <PulseSkeleton className="h-6 w-32" />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full" />
-        ))}
-      </div>
+      <StatCardSkeletonGrid count={5} />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
+          <PulseSkeleton className="h-40 w-full" variant="card" />
+          <PulseSkeleton className="h-40 w-full" variant="card" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <Skeleton className="h-72 w-full" />
-            <Skeleton className="h-72 w-full" />
+            <PulseSkeleton className="h-72 w-full" variant="card" />
+            <PulseSkeleton className="h-72 w-full" variant="card" />
           </div>
         </div>
         <div className="lg:col-span-1 space-y-6">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
+          <PulseSkeleton className="h-64 w-full" variant="card" />
+          <PulseSkeleton className="h-48 w-full" variant="card" />
+          <PulseSkeleton className="h-48 w-full" variant="card" />
         </div>
       </div>
     </div>
@@ -230,10 +226,10 @@ function DashboardSkeleton() {
 function DashboardError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/30">
-        <AlertTriangle className="h-10 w-10 text-amber-500" />
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-warning/10">
+        <AlertTriangle className="h-10 w-10 text-warning" />
       </div>
-      <h3 className="text-lg font-semibold text-center">Impossible de charger le tableau de bord</h3>
+      <h3 className="text-lg font-display font-semibold text-center tracking-tight">Impossible de charger le tableau de bord</h3>
       <p className="text-sm text-muted-foreground text-center max-w-sm">
         Une erreur est survenue lors du chargement des statistiques. Veuillez réessayer.
       </p>
@@ -251,9 +247,9 @@ function ObjectiveCard() {
   const [isEditing, setIsEditing] = useState(false)
 
   return (
-    <Card className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 border-amber-200 dark:border-amber-800">
+    <Card className="bg-gradient-to-br from-warning/10 to-primary/10 border-warning/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+        <CardTitle className="flex items-center gap-2 text-warning font-display tracking-tight">
           <Target className="h-5 w-5" />
           Mon Objectif
         </CardTitle>
@@ -265,7 +261,7 @@ function ObjectiveCard() {
               type="text"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              className="flex-grow bg-transparent border-b border-amber-500 focus:outline-none text-lg font-semibold"
+              className="flex-grow bg-transparent border-b border-warning focus:outline-none text-lg font-semibold"
             />
             <Button size="sm" onClick={() => setIsEditing(false)}>
               <Check className="h-4 w-4" />
@@ -289,8 +285,8 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-amber-600" />
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <AlertTriangle className="h-5 w-5 text-warning" />
           Alertes Récentes
         </CardTitle>
         <CardDescription>Points d&apos;attention nécessitant votre intervention</CardDescription>
@@ -298,7 +294,7 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
       <CardContent>
         {alertes.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-6">
-            <Shield className="h-10 w-10 text-emerald-500 mb-2" />
+            <Shield className="h-10 w-10 text-success mb-2" />
             <p className="font-semibold">Tout est au vert</p>
             <p className="text-sm text-muted-foreground">Aucune alerte active pour le moment.</p>
           </div>
@@ -327,8 +323,8 @@ function TopEnseignantsSection({ enseignants }: { enseignants: TopEnseignant[] }
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Trophy className="h-5 w-5 text-amber-500" />
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <Trophy className="h-5 w-5 text-warning" />
           Top Enseignants
         </CardTitle>
       </CardHeader>
@@ -342,7 +338,7 @@ function TopEnseignantsSection({ enseignants }: { enseignants: TopEnseignant[] }
               return (
                 <div key={index} className="flex items-center">
                   <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs font-mono tabular-nums tracking-tight"
                     style={{
                       backgroundColor: `${tauxColor}20`,
                       color: tauxColor,
@@ -353,10 +349,10 @@ function TopEnseignantsSection({ enseignants }: { enseignants: TopEnseignant[] }
                   <div className="ml-4 flex-grow">
                     <p className="font-semibold truncate">{ens.nom}</p>
                     <p className="text-sm text-muted-foreground">
-                      {ens.nbEpreuves} épreuve{ens.nbEpreuves !== 1 ? 's' : ''} · Moy: {ens.moyenne.toFixed(1)}/20
+                      <span className="font-mono tabular-nums tracking-tight">{ens.nbEpreuves}</span> épreuve{ens.nbEpreuves !== 1 ? 's' : ''} · Moy: <span className="font-mono tabular-nums tracking-tight">{ens.moyenne.toFixed(1)}</span>/20
                     </p>
                   </div>
-                  {index === 0 && <Award className="h-5 w-5 text-amber-500" />}
+                  {index === 0 && <Award className="h-5 w-5 text-warning" />}
                 </div>
               )
             })}
@@ -372,9 +368,9 @@ function EtudiantsDifficulteSection({ etudiants }: { etudiants: TopEtudiant[] })
   if (etudiants.length === 0) return null
 
   return (
-    <Card className="border-rose-200 dark:border-rose-800/50">
+    <Card className="border-destructive/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-300">
+        <CardTitle className="flex items-center gap-2 text-destructive font-display tracking-tight">
           <AlertTriangle className="h-5 w-5" />
           Étudiants en Difficulté
         </CardTitle>
@@ -387,7 +383,7 @@ function EtudiantsDifficulteSection({ etudiants }: { etudiants: TopEtudiant[] })
             return (
               <div key={index} className="flex items-center">
                 <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px]"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px] font-mono tabular-nums tracking-tight"
                   style={{
                     backgroundColor: `${scoreColor}20`,
                     color: scoreColor,
@@ -417,16 +413,16 @@ function EmptyDashboard({ name }: { name: string }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
         Bonjour, {name} ! Bienvenue sur votre espace.
       </motion.h1>
       <ObjectiveCard />
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/30">
-            <GraduationCap className="h-10 w-10 text-amber-500" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-warning/10">
+            <GraduationCap className="h-10 w-10 text-warning" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Bienvenue sur SECT !</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Bienvenue sur SECT !</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Votre tableau de bord stratégique sera disponible dès que des données seront enregistrées.
           </p>
@@ -540,64 +536,64 @@ export function ResponsableDashboard() {
       animate="visible"
     >
       <AnimatePresence>
-        <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+        <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           Bonjour, {name} ! Vue stratégique de votre établissement.
         </motion.h1>
       </AnimatePresence>
 
       {/* Quick stats bar */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Card className="p-4">
+        <Card className="p-4 ds-lift">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <GraduationCap className="h-5 w-5 text-amber-600" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/15">
+              <GraduationCap className="h-5 w-5 text-warning" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{data.nbEtudiants}</p>
+              <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.nbEtudiants}</p>
               <p className="text-xs text-muted-foreground">Étudiant{data.nbEtudiants !== 1 ? 's' : ''}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 ds-lift">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Users className="h-5 w-5 text-emerald-600" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15">
+              <Users className="h-5 w-5 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{data.nbEnseignants}</p>
+              <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.nbEnseignants}</p>
               <p className="text-xs text-muted-foreground">Enseignant{data.nbEnseignants !== 1 ? 's' : ''}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 ds-lift">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <ClipboardCheck className="h-5 w-5 text-teal-600" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{data.nbEvaluations}</p>
+              <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.nbEvaluations}</p>
               <p className="text-xs text-muted-foreground">Évaluation{data.nbEvaluations !== 1 ? 's' : ''}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 ds-lift">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/40">
-              <TrendingUp className="h-5 w-5 text-sky-600" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/15">
+              <TrendingUp className="h-5 w-5 text-info" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{data.tauxReussiteGlobal}%</p>
+              <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.tauxReussiteGlobal}%</p>
               <p className="text-xs text-muted-foreground">Taux réussite</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 ds-lift">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
-              <BarChart3 className="h-5 w-5 text-violet-600" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/15">
+              <BarChart3 className="h-5 w-5 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{data.moyenneGenerale.toFixed(1)}</p>
+              <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.moyenneGenerale.toFixed(1)}</p>
               <p className="text-xs text-muted-foreground">Moyenne /20</p>
             </div>
           </div>
@@ -607,23 +603,23 @@ export function ResponsableDashboard() {
       {/* Alertes banner */}
       {data.alertes.length > 0 && (
         <motion.div variants={itemVariants}>
-          <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+          <Card className="border-warning/40 bg-warning/10">
             <CardContent className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20">
+                  <AlertTriangle className="h-5 w-5 text-warning" />
                 </div>
                 <div>
-                  <p className="font-semibold text-amber-800 dark:text-amber-300">
-                    {data.alertes.length} alerte{data.alertes.length !== 1 ? 's' : ''} active{data.alertes.length !== 1 ? 's' : ''}
+                  <p className="font-semibold text-warning">
+                    <span className="font-mono tabular-nums tracking-tight">{data.alertes.length}</span> alerte{data.alertes.length !== 1 ? 's' : ''} active{data.alertes.length !== 1 ? 's' : ''}
                   </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                  <p className="text-sm text-warning">
                     Des points d&apos;attention nécessitent votre intervention
                   </p>
                 </div>
               </div>
               <Button
-                className="bg-amber-600 hover:bg-amber-700"
+                className="bg-warning hover:bg-warning/90"
                 onClick={() => window.location.href = '/alertes'}
               >
                 <AlertTriangle className="mr-2 h-4 w-4" /> Voir les alertes
@@ -649,8 +645,8 @@ export function ResponsableDashboard() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-amber-600" />
+                  <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                    <TrendingUp className="h-5 w-5 text-warning" />
                     Évolution des moyennes
                   </CardTitle>
                 </CardHeader>
@@ -682,8 +678,8 @@ export function ResponsableDashboard() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5 text-amber-600" />
+                  <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                    <BarChart3 className="h-5 w-5 text-warning" />
                     Répartition des notes
                   </CardTitle>
                 </CardHeader>
@@ -721,8 +717,8 @@ export function ResponsableDashboard() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-amber-600" />
+                  <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                    <BookOpen className="h-5 w-5 text-warning" />
                     Résultats par matière
                   </CardTitle>
                   <CardDescription>Classement par moyenne décroissante</CardDescription>
@@ -734,7 +730,7 @@ export function ResponsableDashboard() {
                       return (
                         <div key={index} className="flex items-center">
                           <div
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs font-mono tabular-nums tracking-tight"
                             style={{
                               backgroundColor: `${scoreColor}20`,
                               color: scoreColor,
@@ -745,13 +741,13 @@ export function ResponsableDashboard() {
                           <div className="ml-4 flex-grow">
                             <p className="font-semibold truncate">{matiere.titre}</p>
                             <p className="text-sm text-muted-foreground">
-                              {matiere.enseignant} · {matiere.nbParticipants} participant{matiere.nbParticipants !== 1 ? 's' : ''}
+                              {matiere.enseignant} · <span className="font-mono tabular-nums tracking-tight">{matiere.nbParticipants}</span> participant{matiere.nbParticipants !== 1 ? 's' : ''}
                             </p>
                           </div>
                           <div className="text-right">
                             <Badge
                               variant="outline"
-                              className="text-[10px]"
+                              className="text-[10px] font-mono tabular-nums tracking-tight"
                               style={{
                                 borderColor: `${getTauxColor(matiere.tauxReussite)}`,
                                 color: getTauxColor(matiere.tauxReussite),
@@ -789,8 +785,8 @@ export function ResponsableDashboard() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <GraduationCap className="h-5 w-5 text-amber-600" />
+                  <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                    <GraduationCap className="h-5 w-5 text-warning" />
                     Étudiants par filière
                   </CardTitle>
                 </CardHeader>
@@ -799,7 +795,7 @@ export function ResponsableDashboard() {
                     {data.etudiantsParFiliere.map((f, index) => (
                       <div key={index} className="flex items-center justify-between">
                         <span className="font-medium text-sm truncate">{f.filiere}</span>
-                        <Badge variant="secondary" className="text-xs">{f.count}</Badge>
+                        <Badge variant="secondary" className="text-xs font-mono tabular-nums tracking-tight">{f.count}</Badge>
                       </div>
                     ))}
                   </div>
@@ -813,8 +809,8 @@ export function ResponsableDashboard() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Star className="h-5 w-5 text-amber-500" />
+                  <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+                    <Star className="h-5 w-5 text-warning" />
                     Top Étudiants
                   </CardTitle>
                 </CardHeader>
@@ -825,7 +821,7 @@ export function ResponsableDashboard() {
                       return (
                         <div key={index} className="flex items-center">
                           <div
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px]"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px] font-mono tabular-nums tracking-tight"
                             style={{
                               backgroundColor: `${scoreColor}20`,
                               color: scoreColor,
@@ -837,7 +833,7 @@ export function ResponsableDashboard() {
                             <p className="font-medium text-sm truncate">{etu.nom}</p>
                             <p className="text-xs text-muted-foreground">{etu.filiere}</p>
                           </div>
-                          {index === 0 && <Trophy className="h-4 w-4 text-amber-500" />}
+                          {index === 0 && <Trophy className="h-4 w-4 text-warning" />}
                         </div>
                       )
                     })}

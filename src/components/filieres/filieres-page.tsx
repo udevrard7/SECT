@@ -76,7 +76,7 @@ import {
 } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Tooltip,
@@ -560,8 +560,8 @@ export function FilieresPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <GraduationCap className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <GraduationCap className="h-7 w-7 text-success" />
             Gestion des Filières
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -580,7 +580,7 @@ export function FilieresPage() {
             </TooltipTrigger>
             <TooltipContent>Exporter en CSV</TooltipContent>
           </Tooltip>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+          <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Nouvelle filière
           </Button>
@@ -589,47 +589,47 @@ export function FilieresPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <GraduationCap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
+              <GraduationCap className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total filières</p>
-              <p className="text-xl font-bold">{totalFilieres}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalFilieres}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-info ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <Users className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/15">
+              <Users className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total étudiants</p>
-              <p className="text-xl font-bold">{totalEtudiants}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalEtudiants}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-emerald-400">
+        <Card className="border-l-4 border-l-success ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-              <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <BookOpen className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actives</p>
-              <p className="text-xl font-bold">{actifCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{actifCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <UserCheck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
+              <UserCheck className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Avec responsable</p>
-              <p className="text-xl font-bold">{withResponsable}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{withResponsable}</p>
             </div>
           </CardContent>
         </Card>
@@ -637,8 +637,8 @@ export function FilieresPage() {
 
       {/* ─── Bulk Action Toolbar ─── */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border bg-emerald-50 p-3 dark:bg-emerald-950/30">
-          <span className="text-sm font-medium">
+        <div className="flex items-center gap-3 rounded-lg border bg-success/5 p-3">
+          <span className="text-sm font-medium font-mono tabular-nums">
             {selectedIds.size} filière(s) sélectionnée(s)
           </span>
           <div className="flex-1" />
@@ -646,7 +646,7 @@ export function FilieresPage() {
             variant="outline"
             size="sm"
             onClick={() => setBulkActionDialog('activate')}
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+            className="border-success/40 text-success hover:bg-success/10"
           >
             <Power className="h-3.5 w-3.5" />
             Activer
@@ -663,7 +663,7 @@ export function FilieresPage() {
             variant="outline"
             size="sm"
             onClick={() => setBulkActionDialog('delete')}
-            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Supprimer
@@ -735,23 +735,23 @@ export function FilieresPage() {
         viewMode === 'card' ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="animate-pulse">
+              <Card key={i}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div className="space-y-2">
-                      <div className="h-5 w-40 rounded bg-muted" />
-                      <div className="h-4 w-24 rounded bg-muted" />
+                      <PulseSkeleton className="h-5 w-40" />
+                      <PulseSkeleton className="h-4 w-24" />
                     </div>
-                    <div className="h-6 w-20 rounded-full bg-muted" />
+                    <PulseSkeleton className="h-6 w-20" />
                   </div>
                   <div className="mt-4 space-y-2">
-                    <div className="h-3 w-32 rounded bg-muted" />
-                    <div className="h-3 w-24 rounded bg-muted" />
+                    <PulseSkeleton className="h-3 w-32" />
+                    <PulseSkeleton className="h-3 w-24" />
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <div className="h-8 w-20 rounded bg-muted" />
-                    <div className="h-8 w-20 rounded bg-muted" />
-                    <div className="h-8 w-20 rounded bg-muted" />
+                    <PulseSkeleton className="h-8 w-20" />
+                    <PulseSkeleton className="h-8 w-20" />
+                    <PulseSkeleton className="h-8 w-20" />
                   </div>
                 </CardContent>
               </Card>
@@ -761,7 +761,7 @@ export function FilieresPage() {
           <div className="rounded-lg border">
             <div className="p-6 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <PulseSkeleton key={i} className="h-12 w-full" />
               ))}
             </div>
           </div>
@@ -771,17 +771,17 @@ export function FilieresPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && filieres.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <GraduationCap className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <GraduationCap className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucune filière trouvée</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold">Aucune filière trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {searchInput || etablissementFilter !== 'all' || statusFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
               : 'Commencez par créer votre première filière.'}
           </p>
           {!searchInput && etablissementFilter === 'all' && statusFilter === 'all' && (
-            <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+            <Button className="mt-6" onClick={handleOpenCreate}>
               <Plus className="h-4 w-4" />
               Créer une filière
             </Button>
@@ -793,7 +793,7 @@ export function FilieresPage() {
       {!isLoading && filieres.length > 0 && viewMode === 'card' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filieres.map((filiere) => (
-            <Card key={filiere.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(filiere.id) ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
+            <Card key={filiere.id} className={`group transition-shadow hover:shadow-md ds-lift ${selectedIds.has(filiere.id) ? 'ring-2 ring-success/30 border-success/40' : ''}`}>
               <CardContent className="flex flex-col gap-4 p-6">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
@@ -805,7 +805,7 @@ export function FilieresPage() {
                       aria-label={`Sélectionner ${filiere.nom}`}
                     />
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold leading-tight">{filiere.nom}</h3>
+                      <h3 className="text-base font-display font-semibold leading-tight">{filiere.nom}</h3>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         {filiere.code && (
                           <Badge variant="outline" className="text-xs font-mono">
@@ -816,15 +816,15 @@ export function FilieresPage() {
                     </div>
                   </div>
                   {filiere.actif ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs whitespace-nowrap">Actif</Badge>
+                    <Badge className="bg-success/15 text-success border-success/30 text-xs whitespace-nowrap">Actif</Badge>
                   ) : (
-                    <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs whitespace-nowrap">Inactif</Badge>
+                    <Badge className="bg-muted text-muted-foreground border-border text-xs whitespace-nowrap">Inactif</Badge>
                   )}
                 </div>
 
                 {/* Etablissement */}
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Building2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <Building2 className="h-3.5 w-3.5 text-success" />
                   {filiere.etablissement?.nom ?? '—'}
                 </div>
 
@@ -832,25 +832,25 @@ export function FilieresPage() {
                 <div className="flex items-center gap-1.5 text-sm">
                   {filiere.responsable ? (
                     <>
-                      <UserCircle className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                      <UserCircle className="h-3.5 w-3.5 text-info" />
                       <span className="text-muted-foreground">{filiere.responsable.name}</span>
                     </>
                   ) : (
                     <>
-                      <UserCircle className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="text-amber-600 dark:text-amber-400 text-xs italic">Non assigné</span>
+                      <UserCircle className="h-3.5 w-3.5 text-warning" />
+                      <span className="text-warning text-xs italic">Non assigné</span>
                     </>
                   )}
                 </div>
 
                 {/* Student count */}
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                  <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
                     <Users className="h-3 w-3" />
-                    {filiere._count?.etudiants ?? 0} étudiant{(filiere._count?.etudiants ?? 0) > 1 ? 's' : ''}
+                    <span className="font-mono tabular-nums">{filiere._count?.etudiants ?? 0}</span> étudiant{(filiere._count?.etudiants ?? 0) > 1 ? 's' : ''}
                   </Badge>
                   {filiere.nbEtudiants && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums">
                       (prévus : {filiere.nbEtudiants})
                     </span>
                   )}
@@ -871,7 +871,7 @@ export function FilieresPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenEdit(filiere)}
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    className="border-success/40 text-success hover:bg-success/10"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                     Modifier
@@ -948,7 +948,7 @@ export function FilieresPage() {
               {filieres.map((filiere) => (
                 <TableRow
                   key={filiere.id}
-                  className={selectedIds.has(filiere.id) ? 'bg-emerald-50 dark:bg-emerald-950/30' : ''}
+                  className={selectedIds.has(filiere.id) ? 'bg-success/5' : ''}
                 >
                   <TableCell>
                     <Checkbox
@@ -977,20 +977,20 @@ export function FilieresPage() {
                     {filiere.responsable ? (
                       <span className="text-sm">{filiere.responsable.name}</span>
                     ) : (
-                      <span className="text-xs text-amber-600 italic">Non assigné</span>
+                      <span className="text-xs text-warning italic">Non assigné</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="gap-1 text-xs">
+                    <Badge variant="secondary" className="gap-1 text-xs font-mono tabular-nums">
                       <Users className="h-3 w-3" />
                       {filiere._count?.etudiants ?? 0}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {filiere.actif ? (
-                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">Actif</Badge>
+                      <Badge className="bg-success/15 text-success border-success/30 text-xs">Actif</Badge>
                     ) : (
-                      <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                      <Badge className="bg-muted text-muted-foreground border-border text-xs">Inactif</Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -1046,8 +1046,8 @@ export function FilieresPage() {
       }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <GraduationCap className="h-5 w-5 text-success" />
               {editingFiliere ? 'Modifier la filière' : 'Nouvelle filière'}
             </DialogTitle>
             <DialogDescription>
@@ -1074,7 +1074,7 @@ export function FilieresPage() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 text-xs text-emerald-600 hover:text-emerald-700"
+                    className="h-6 text-xs text-success hover:text-success"
                     onClick={() => setFormCode(suggestedFiliereCode)}
                   >
                     Auto: {suggestedFiliereCode}
@@ -1164,7 +1164,6 @@ export function FilieresPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
               onClick={handleSubmit}
               disabled={isSubmitting}
             >
@@ -1179,8 +1178,8 @@ export function FilieresPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteDependencies(null) } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
+            <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               Supprimer la filière
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -1188,20 +1187,20 @@ export function FilieresPage() {
                 <p>
                   Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nom}</strong> ?
                 </p>
-                <p className="text-amber-600 dark:text-amber-400">
+                <p className="text-warning">
                   Cette action désactivera la filière (suppression logique). Les données associées ne seront pas perdues.
                 </p>
                 {deleteDependencies && (deleteDependencies.etudiants > 0 || deleteDependencies.epreuves > 0 || deleteDependencies.unitesEnseignement > 0) && (
-                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-sm space-y-1">
-                    <p className="font-medium text-amber-800 dark:text-amber-300">Dépendances trouvées :</p>
+                  <div className="rounded-lg bg-warning/10 p-3 text-sm space-y-1">
+                    <p className="font-display font-medium text-warning">Dépendances trouvées :</p>
                     {deleteDependencies.etudiants > 0 && (
-                      <p className="text-amber-700 dark:text-amber-400">• {deleteDependencies.etudiants} étudiant(s) inscrit(s)</p>
+                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.etudiants}</span> étudiant(s) inscrit(s)</p>
                     )}
                     {deleteDependencies.epreuves > 0 && (
-                      <p className="text-amber-700 dark:text-amber-400">• {deleteDependencies.epreuves} épreuve(s) associée(s)</p>
+                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.epreuves}</span> épreuve(s) associée(s)</p>
                     )}
                     {deleteDependencies.unitesEnseignement > 0 && (
-                      <p className="text-amber-700 dark:text-amber-400">• {deleteDependencies.unitesEnseignement} unité(s) d'enseignement</p>
+                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.unitesEnseignement}</span> unité(s) d'enseignement</p>
                     )}
                   </div>
                 )}
@@ -1211,7 +1210,7 @@ export function FilieresPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
               disabled={isDeleting}
             >
@@ -1226,10 +1225,10 @@ export function FilieresPage() {
       <AlertDialog open={!!bulkActionDialog} onOpenChange={(open) => { if (!open) setBulkActionDialog(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-red-500" />}
-              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-emerald-500" />}
-              {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-amber-500" />}
+            <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-destructive" />}
+              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-success" />}
+              {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-warning" />}
               Confirmation d&apos;action groupée
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -1242,7 +1241,7 @@ export function FilieresPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isBulkProcessing}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className={bulkActionDialog === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              className={bulkActionDialog === 'delete' ? 'bg-destructive hover:bg-destructive/90' : ''}
               onClick={handleBulkAction}
               disabled={isBulkProcessing}
             >
@@ -1262,8 +1261,8 @@ export function FilieresPage() {
       }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <GraduationCap className="h-5 w-5 text-success" />
               {detailFiliere?.nom ?? 'Détails de la filière'}
             </DialogTitle>
             <DialogDescription>
@@ -1274,7 +1273,7 @@ export function FilieresPage() {
           {detailLoading && (
             <div className="space-y-4 p-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <PulseSkeleton key={i} className="h-12 w-full" />
               ))}
             </div>
           )}
@@ -1292,21 +1291,21 @@ export function FilieresPage() {
                   )}
 
                   <div className="flex items-center gap-2 text-sm">
-                    <Building2 className="h-3.5 w-3.5 text-emerald-600" />
+                    <Building2 className="h-3.5 w-3.5 text-success" />
                     <span className="text-muted-foreground">Établissement :</span>
                     <span className="font-medium">{detailFiliere.etablissement?.nom ?? '—'}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-muted-foreground">Statut :</span>
                     {detailFiliere.actif ? (
-                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Actif</Badge>
+                      <Badge className="bg-success/15 text-success border-success/30">Actif</Badge>
                     ) : (
-                      <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">Inactif</Badge>
+                      <Badge className="bg-muted text-muted-foreground border-border">Inactif</Badge>
                     )}
                   </div>
                   {detailFiliere.responsable && (
                     <div className="flex items-center gap-2 text-sm sm:col-span-2">
-                      <UserCircle className="h-3.5 w-3.5 text-teal-600" />
+                      <UserCircle className="h-3.5 w-3.5 text-info" />
                       <span className="text-muted-foreground">Responsable :</span>
                       <span className="font-medium">{detailFiliere.responsable.name}</span>
                       <span className="text-muted-foreground">({detailFiliere.responsable.email})</span>
@@ -1314,15 +1313,15 @@ export function FilieresPage() {
                   )}
                   {!detailFiliere.responsable && (
                     <div className="flex items-center gap-2 text-sm sm:col-span-2">
-                      <UserCircle className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="text-amber-600 dark:text-amber-400 italic">Aucun responsable assigné</span>
+                      <UserCircle className="h-3.5 w-3.5 text-warning" />
+                      <span className="text-warning italic">Aucun responsable assigné</span>
                     </div>
                   )}
                   {detailFiliere.nbEtudiants && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Users className="h-3.5 w-3.5 text-teal-600" />
+                      <Users className="h-3.5 w-3.5 text-info" />
                       <span className="text-muted-foreground">Étudiants prévus :</span>
-                      <span className="font-medium">{detailFiliere.nbEtudiants}</span>
+                      <span className="font-medium font-mono tabular-nums">{detailFiliere.nbEtudiants}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-sm">
@@ -1335,7 +1334,7 @@ export function FilieresPage() {
                   <>
                     <Separator />
                     <div>
-                      <h3 className="text-sm font-semibold mb-2">Description</h3>
+                      <h3 className="text-sm font-display font-semibold mb-2">Description</h3>
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">{detailFiliere.description}</p>
                     </div>
                   </>
@@ -1345,9 +1344,9 @@ export function FilieresPage() {
 
                 {/* Etudiants section */}
                 <div>
-                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-emerald-600" />
-                    Étudiants inscrits ({detailFiliere.etudiants?.length ?? 0})
+                  <h3 className="text-sm font-display font-semibold mb-3 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-success" />
+                    Étudiants inscrits (<span className="font-mono tabular-nums">{detailFiliere.etudiants?.length ?? 0}</span>)
                   </h3>
                   {(!detailFiliere.etudiants || detailFiliere.etudiants.length === 0) ? (
                     <p className="text-sm text-muted-foreground py-2">Aucun étudiant inscrit dans cette filière.</p>
@@ -1356,7 +1355,7 @@ export function FilieresPage() {
                       {detailFiliere.etudiants.map((etudiant) => (
                         <div key={etudiant.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
                           <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                            <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success font-mono tabular-nums">
                               {etudiant.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                             </div>
                             <div>
@@ -1365,9 +1364,9 @@ export function FilieresPage() {
                             </div>
                           </div>
                           {etudiant.actif ? (
-                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">Actif</Badge>
+                            <Badge className="bg-success/15 text-success border-success/30 text-xs">Actif</Badge>
                           ) : (
-                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs">Inactif</Badge>
+                            <Badge className="bg-muted text-muted-foreground border-border text-xs">Inactif</Badge>
                           )}
                         </div>
                       ))}

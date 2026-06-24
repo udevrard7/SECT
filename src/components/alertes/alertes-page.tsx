@@ -48,7 +48,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
@@ -98,24 +98,24 @@ function formatRelativeDate(dateStr: string): string {
 function getSeverityIcon(severity: string) {
   switch (severity) {
     case 'CRITICAL':
-      return <AlertTriangle className="h-5 w-5 text-red-500" />
+      return <AlertTriangle className="h-5 w-5 text-destructive" />
     case 'WARNING':
-      return <AlertTriangle className="h-5 w-5 text-amber-500" />
+      return <AlertTriangle className="h-5 w-5 text-warning" />
     case 'INFO':
-      return <Info className="h-5 w-5 text-sky-500" />
+      return <Info className="h-5 w-5 text-info" />
     default:
-      return <Info className="h-5 w-5 text-gray-500" />
+      return <Info className="h-5 w-5 text-muted-foreground" />
   }
 }
 
 function getSeverityBadge(severity: string) {
   switch (severity) {
     case 'CRITICAL':
-      return <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-xs">Critique</Badge>
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">Critique</Badge>
     case 'WARNING':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">Attention</Badge>
+      return <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Attention</Badge>
     case 'INFO':
-      return <Badge className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800 text-xs">Info</Badge>
+      return <Badge className="bg-info/15 text-info border-info/30 text-xs">Info</Badge>
     default:
       return <Badge variant="outline" className="text-xs">{severity}</Badge>
   }
@@ -124,15 +124,15 @@ function getSeverityBadge(severity: string) {
 function getTypeBadge(type: string) {
   switch (type) {
     case 'PERFORMANCE':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">Performance</Badge>
+      return <Badge className="bg-success/15 text-success border-success/30 text-xs">Performance</Badge>
     case 'FRAUDE':
-      return <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-xs">Fraude</Badge>
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">Fraude</Badge>
     case 'SYSTEME':
-      return <Badge className="bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 text-xs">Système</Badge>
+      return <Badge className="bg-muted text-muted-foreground border-border text-xs">Système</Badge>
     case 'RAPPEL':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">Rappel</Badge>
+      return <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Rappel</Badge>
     case 'CUSTOM':
-      return <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Personnalisée</Badge>
+      return <Badge className="bg-primary/15 text-primary border-primary/30 text-xs">Personnalisée</Badge>
     default:
       return <Badge variant="outline" className="text-xs">{type}</Badge>
   }
@@ -140,10 +140,10 @@ function getTypeBadge(type: string) {
 
 function getSeverityBorderColor(severity: string): string {
   switch (severity) {
-    case 'CRITICAL': return 'border-l-red-500'
-    case 'WARNING': return 'border-l-amber-500'
-    case 'INFO': return 'border-l-sky-500'
-    default: return 'border-l-gray-400'
+    case 'CRITICAL': return 'border-l-destructive'
+    case 'WARNING': return 'border-l-warning'
+    case 'INFO': return 'border-l-info'
+    default: return 'border-l-border'
   }
 }
 
@@ -552,8 +552,8 @@ export function AlertesPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Bell className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <Bell className="h-7 w-7 text-success" />
             Alertes et Notifications
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -566,7 +566,7 @@ export function AlertesPage() {
             size="sm"
             onClick={handleMarkAllAsRead}
             disabled={bulkLoading || nonLuesCount === 0}
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+            className="border-success/40 text-success hover:bg-success/10"
           >
             {bulkLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
             Tout marquer comme lu
@@ -576,13 +576,12 @@ export function AlertesPage() {
             size="sm"
             onClick={handleMarkAllAsResolved}
             disabled={bulkLoading}
-            className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+            className="border-info/40 text-info hover:bg-info/10"
           >
             <CheckCircle2 className="h-4 w-4 mr-1" />
             Tout résoudre
           </Button>
           <Button
-            className="bg-emerald-600 hover:bg-emerald-700"
             size="sm"
             onClick={() => {
               resetForm()
@@ -597,36 +596,36 @@ export function AlertesPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Bell className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
+              <Bell className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total alertes</p>
-              <p className="text-xl font-bold">{totalCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Eye className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
+              <Eye className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Non lues</p>
-              <p className="text-xl font-bold">{nonLuesCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{nonLuesCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-destructive ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/15">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Critiques</p>
-              <p className="text-xl font-bold">{critiquesCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{critiquesCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -685,10 +684,10 @@ export function AlertesPage() {
       {/* ─── Results count ─── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {filteredAlertes.length} alerte{filteredAlertes.length !== 1 ? 's' : ''} trouvée{filteredAlertes.length !== 1 ? 's' : ''}
+          <span className="font-mono tabular-nums">{filteredAlertes.length}</span> alerte{filteredAlertes.length !== 1 ? 's' : ''} trouvée{filteredAlertes.length !== 1 ? 's' : ''}
         </p>
         {isUsingFallback && (
-          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+          <Badge variant="outline" className="text-xs text-warning border-warning/40">
             <Zap className="h-3 w-3 mr-1" />
             Données dynamiques
           </Badge>
@@ -699,15 +698,15 @@ export function AlertesPage() {
       {isLoading && (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i}>
               <CardContent className="flex items-start gap-4 p-4">
-                <Skeleton className="h-10 w-10 rounded-lg" />
+                <PulseSkeleton className="h-10 w-10" variant="card" />
                 <div className="flex-1 space-y-2">
-                  <Skeleton className="h-5 w-64" />
-                  <Skeleton className="h-4 w-96" />
+                  <PulseSkeleton className="h-5 w-64" />
+                  <PulseSkeleton className="h-4 w-96" />
                   <div className="flex gap-2">
-                    <Skeleton className="h-5 w-20" />
-                    <Skeleton className="h-5 w-24" />
+                    <PulseSkeleton className="h-5 w-20" />
+                    <PulseSkeleton className="h-5 w-24" />
                   </div>
                 </div>
               </CardContent>
@@ -719,10 +718,10 @@ export function AlertesPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && filteredAlertes.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <Bell className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <Bell className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucune alerte trouvée</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold">Aucune alerte trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || severityFilter !== 'all' || typeFilter !== 'all' || lueFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
@@ -730,7 +729,7 @@ export function AlertesPage() {
           </p>
           {!search && severityFilter === 'all' && typeFilter === 'all' && lueFilter === 'all' && (
             <Button
-              className="mt-6 bg-emerald-600 hover:bg-emerald-700"
+              className="mt-6"
               onClick={() => {
                 resetForm()
                 setCreateDialogOpen(true)
@@ -749,7 +748,7 @@ export function AlertesPage() {
           {filteredAlertes.map((alerte) => (
             <Card
               key={alerte.id}
-              className={`border-l-4 ${getSeverityBorderColor(alerte.severity)} transition-shadow hover:shadow-md ${!alerte.lue ? 'bg-emerald-50/30 dark:bg-emerald-950/10' : ''}`}
+              className={`border-l-4 ${getSeverityBorderColor(alerte.severity)} transition-shadow hover:shadow-md ds-lift ${!alerte.lue ? 'bg-success/5' : ''}`}
             >
               <CardContent className="flex items-start gap-4 p-4">
                 {/* Severity icon */}
@@ -761,9 +760,9 @@ export function AlertesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-sm">{alerte.titre}</h3>
+                      <h3 className="font-display font-semibold text-sm">{alerte.titre}</h3>
                       {!alerte.lue && (
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" title="Non lue" />
+                        <span className="h-2 w-2 rounded-full bg-success flex-shrink-0" title="Non lue" />
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -779,13 +778,13 @@ export function AlertesPage() {
                   <div className="flex flex-wrap items-center gap-3 mt-2">
                     {alerte.filiere && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <GraduationCap className="h-3 w-3 text-emerald-600" />
+                        <GraduationCap className="h-3 w-3 text-success" />
                         {alerte.filiere.nom}
                       </span>
                     )}
                     {alerte.epreuve && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <ClipboardList className="h-3 w-3 text-teal-600" />
+                        <ClipboardList className="h-3 w-3 text-info" />
                         {alerte.epreuve.titre}
                       </span>
                     )}
@@ -794,7 +793,7 @@ export function AlertesPage() {
                       {formatRelativeDate(alerte.createdAt)}
                     </span>
                     {alerte.resolu && (
-                      <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">
+                      <Badge className="bg-info/15 text-info border-info/30 text-xs">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Résolue
                       </Badge>
@@ -808,7 +807,7 @@ export function AlertesPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                      className="h-7 text-xs text-success hover:bg-success/10"
                       onClick={() => handleMarkAsRead(alerte)}
                     >
                       <Eye className="h-3 w-3 mr-1" />
@@ -819,7 +818,7 @@ export function AlertesPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-xs text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950"
+                      className="h-7 text-xs text-info hover:bg-info/10"
                       onClick={() => handleMarkAsResolved(alerte)}
                     >
                       <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -846,8 +845,8 @@ export function AlertesPage() {
       <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) setCreateDialogOpen(false) }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
+              <Bell className="h-5 w-5 text-success" />
               Nouvelle alerte
             </DialogTitle>
             <DialogDescription>
@@ -929,7 +928,6 @@ export function AlertesPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
               onClick={handleCreateAlerte}
               disabled={isSubmitting}
             >
@@ -957,17 +955,17 @@ export function AlertesPage() {
             <div className="mt-6 space-y-4">
               {/* Title & badges */}
               <div>
-                <h3 className="text-lg font-semibold">{selectedAlerte.titre}</h3>
+                <h3 className="text-lg font-display font-semibold">{selectedAlerte.titre}</h3>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {getSeverityBadge(selectedAlerte.severity)}
                   {getTypeBadge(selectedAlerte.type)}
                   {selectedAlerte.resolu ? (
-                    <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">
+                    <Badge className="bg-info/15 text-info border-info/30 text-xs">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Résolue
                     </Badge>
                   ) : (
-                    <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">
+                    <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">
                       En cours
                     </Badge>
                   )}
@@ -985,7 +983,7 @@ export function AlertesPage() {
               {/* Related entities */}
               {selectedAlerte.filiere && (
                 <div className="flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-emerald-600" />
+                  <GraduationCap className="h-4 w-4 text-success" />
                   <div>
                     <Label className="text-xs text-muted-foreground">Filière</Label>
                     <p className="text-sm font-medium">{selectedAlerte.filiere.nom}</p>
@@ -995,7 +993,7 @@ export function AlertesPage() {
 
               {selectedAlerte.epreuve && (
                 <div className="flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-teal-600" />
+                  <ClipboardList className="h-4 w-4 text-info" />
                   <div>
                     <Label className="text-xs text-muted-foreground">Épreuve</Label>
                     <p className="text-sm font-medium">{selectedAlerte.epreuve.titre}</p>
@@ -1033,7 +1031,6 @@ export function AlertesPage() {
               <div className="flex flex-col gap-2">
                 {!selectedAlerte.lue && (
                   <Button
-                    className="bg-emerald-600 hover:bg-emerald-700"
                     onClick={() => {
                       handleMarkAsRead(selectedAlerte)
                       setSelectedAlerte({ ...selectedAlerte, lue: true })
@@ -1046,7 +1043,7 @@ export function AlertesPage() {
                 {!selectedAlerte.resolu && (
                   <Button
                     variant="outline"
-                    className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+                    className="border-info/40 text-info hover:bg-info/10"
                     onClick={() => {
                       handleMarkAsResolved(selectedAlerte)
                       setSelectedAlerte({ ...selectedAlerte, resolu: true, lue: true })

@@ -67,6 +67,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import { PulseSkeleton } from '@/components/ds'
 import { OrphanEpreuvesAlert } from './orphan-epreuves-alert'
 
 // ─── Types ───
@@ -112,17 +113,17 @@ interface BanqueEpreuve {
 // ─── Utility functions ───
 
 const TYPE_COLORS: Record<string, string> = {
-  QCU: 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800',
-  QCM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-  QRC: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
-  REFLEXION: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
+  QCU: 'bg-info/10 text-info border-info/20',
+  QCM: 'bg-warning/10 text-warning border-warning/20',
+  QRC: 'bg-success/10 text-success border-success/20',
+  REFLEXION: 'bg-secondary/10 text-secondary border-secondary/20',
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
-  FACILE: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300',
-  MOYEN: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300',
-  DIFFICILE: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300',
-  EXPERT: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300',
+  FACILE: 'bg-success/10 text-success border-success/20',
+  MOYEN: 'bg-warning/10 text-warning border-warning/20',
+  DIFFICILE: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300',
+  EXPERT: 'bg-destructive/10 text-destructive border-destructive/20',
 }
 
 const DIFFICULTE_LABELS: Record<string, string> = {
@@ -300,23 +301,23 @@ export function BanqueEpreuvesPage() {
               key={idx}
               className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm ${
                 isCorrect
-                  ? 'bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                  ? 'bg-success/10 border border-success/20'
                   : 'bg-muted/30'
               }`}
             >
               <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold ${
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded font-mono text-xs font-bold ${
                   isCorrect
-                    ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200'
+                    ? 'bg-success/20 text-success'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {String.fromCharCode(65 + idx)}
               </span>
-              <span className={isCorrect ? 'font-medium text-emerald-800 dark:text-emerald-200' : ''}>
+              <span className={isCorrect ? 'font-medium text-success' : ''}>
                 {typeof prop === 'string' ? prop : prop.text}
               </span>
-              {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+              {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success" />}
             </div>
           )
         })}
@@ -335,8 +336,8 @@ export function BanqueEpreuvesPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Library className="h-7 w-7 text-emerald-600" />
+          <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <Library className="h-7 w-7 text-success" />
             Banque d&apos;Épreuves
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -346,7 +347,7 @@ export function BanqueEpreuvesPage() {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+            className="border-success/30 text-success hover:bg-success/10"
             onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
           >
             <Sparkles className="h-4 w-4" />
@@ -360,30 +361,30 @@ export function BanqueEpreuvesPage() {
 
       {/* ─── Statistics Card ─── */}
       {!isLoading && (
-        <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
+        <Card className="border-success/20 bg-gradient-to-r from-success/5 to-secondary/5">
           <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
             <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
-                <Library className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
+                <Library className="h-4 w-4 text-success" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Épreuves</p>
-                <p className="text-lg font-bold">{totalEpreuves}</p>
+                <p className="font-mono text-lg font-bold tabular-nums">{totalEpreuves}</p>
               </div>
             </div>
 
             <Separator orientation="vertical" className="hidden h-8 sm:block" />
 
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              <Sparkles className="h-4 w-4 text-secondary" />
               <span className="text-sm">
-                <span className="font-semibold">{iaEpreuves}</span>{' '}
+                <span className="font-mono font-semibold tabular-nums">{iaEpreuves}</span>{' '}
                 <span className="text-muted-foreground">générées par IA</span>
               </span>
               <span className="text-muted-foreground">·</span>
-              <Edit3 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Edit3 className="h-4 w-4 text-warning" />
               <span className="text-sm">
-                <span className="font-semibold">{manuelleEpreuves}</span>{' '}
+                <span className="font-mono font-semibold tabular-nums">{manuelleEpreuves}</span>{' '}
                 <span className="text-muted-foreground">manuelles</span>
               </span>
             </div>
@@ -391,9 +392,9 @@ export function BanqueEpreuvesPage() {
             <Separator orientation="vertical" className="hidden h-8 sm:block" />
 
             <div className="flex items-center gap-2">
-              <HelpCircle className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+              <HelpCircle className="h-4 w-4 text-info" />
               <span className="text-sm">
-                <span className="font-semibold">{totalQuestions}</span>{' '}
+                <span className="font-mono font-semibold tabular-nums">{totalQuestions}</span>{' '}
                 <span className="text-muted-foreground">questions au total</span>
               </span>
             </div>
@@ -434,17 +435,15 @@ export function BanqueEpreuvesPage() {
       {isLoading && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6 space-y-3">
-                <div className="h-5 w-48 rounded bg-muted" />
-                <div className="h-3 w-32 rounded bg-muted" />
-                <div className="flex gap-3">
-                  <div className="h-6 w-16 rounded-full bg-muted" />
-                  <div className="h-6 w-16 rounded-full bg-muted" />
-                  <div className="h-6 w-20 rounded-full bg-muted" />
-                </div>
-              </CardContent>
-            </Card>
+            <div key={i} className="p-6 space-y-3 rounded-lg border border-border bg-card">
+              <PulseSkeleton className="h-5 w-48" />
+              <PulseSkeleton className="h-3 w-32" />
+              <div className="flex gap-3">
+                <PulseSkeleton className="h-6 w-16" variant="circle" />
+                <PulseSkeleton className="h-6 w-16" variant="circle" />
+                <PulseSkeleton className="h-6 w-20" variant="circle" />
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -452,10 +451,10 @@ export function BanqueEpreuvesPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && epreuves.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <Library className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <Library className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucune épreuve dans la banque</h3>
+          <h3 className="mt-4 font-display text-lg font-semibold">Aucune épreuve dans la banque</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || modeFilter !== 'TOUS'
               ? 'Aucune épreuve ne correspond à vos critères. Modifiez vos filtres.'
@@ -465,7 +464,7 @@ export function BanqueEpreuvesPage() {
             {!search && modeFilter === 'TOUS' && (
               <Button
                 variant="outline"
-                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                className="border-success/30 text-success hover:bg-success/10"
                 onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
               >
                 <Sparkles className="h-4 w-4" />
@@ -473,7 +472,7 @@ export function BanqueEpreuvesPage() {
               </Button>
             )}
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={() => router.push(PAGE_ROUTES.epreuves)}
             >
               <BookOpen className="h-4 w-4" />
@@ -490,12 +489,12 @@ export function BanqueEpreuvesPage() {
             const typeEntries = Object.entries(epreuve.typeDistribution)
 
             return (
-              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
+              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md ds-lift">
                 <CardContent className="flex flex-col gap-3 p-6">
                   {/* Title + mode badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+                      <h3 className="font-display text-base font-semibold leading-tight">{epreuve.titre}</h3>
                       {epreuve.description && (
                         <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                           {epreuve.description.length > 100 ? epreuve.description.slice(0, 100) + '...' : epreuve.description}
@@ -505,8 +504,8 @@ export function BanqueEpreuvesPage() {
                     <Badge
                       variant="outline"
                       className={epreuve.generationMode === 'IA_ASSISTEE'
-                        ? 'gap-1 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800'
-                        : 'gap-1 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
+                        ? 'gap-1 bg-secondary/10 text-secondary border-secondary/20'
+                        : 'gap-1 bg-warning/10 text-warning border-warning/20'
                       }
                     >
                       {epreuve.generationMode === 'IA_ASSISTEE' ? <><Sparkles className="h-3 w-3" /> IA</> : <><Edit3 className="h-3 w-3" /> Manuelle</>}
@@ -515,17 +514,17 @@ export function BanqueEpreuvesPage() {
 
                   {/* Meta info */}
                   <div className="flex flex-wrap gap-3">
-                    <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                    <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
                       <HelpCircle className="h-3 w-3" />
-                      {epreuve.questionCount} question{epreuve.questionCount > 1 ? 's' : ''}
+                      <span className="font-mono tabular-nums">{epreuve.questionCount}</span> question{epreuve.questionCount > 1 ? 's' : ''}
                     </Badge>
-                    <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                    <Badge variant="secondary" className="gap-1 bg-secondary/10 text-secondary">
                       <Trophy className="h-3 w-3" />
-                      {epreuve.baremeTotal} pts
+                      <span className="font-mono tabular-nums">{epreuve.baremeTotal}</span> pts
                     </Badge>
-                    <Badge variant="secondary" className="gap-1 bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                    <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
                       <Clock className="h-3 w-3" />
-                      {epreuve.duree} min
+                      <span className="font-mono tabular-nums">{epreuve.duree}</span> min
                     </Badge>
                   </div>
 
@@ -533,7 +532,7 @@ export function BanqueEpreuvesPage() {
                   {typeEntries.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {typeEntries.map(([type, count]) => (
-                        <Badge key={type} variant="outline" className={`text-[10px] gap-0.5 py-0 ${TYPE_COLORS[type] || ''}`}>
+                        <Badge key={type} variant="outline" className={`text-[10px] gap-0.5 py-0 font-mono tabular-nums ${TYPE_COLORS[type] || ''}`}>
                           {type}: {count}
                         </Badge>
                       ))}
@@ -569,7 +568,7 @@ export function BanqueEpreuvesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                      className="border-success/30 text-success hover:bg-success/10"
                       onClick={() => handlePreview(epreuve)}
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -586,7 +585,7 @@ export function BanqueEpreuvesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                      className="border-destructive/30 text-destructive hover:bg-destructive/10"
                       onClick={() => setDeleteTarget(epreuve)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -604,13 +603,13 @@ export function BanqueEpreuvesPage() {
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display">
+              <Eye className="h-5 w-5 text-success" />
               Aperçu de l&apos;épreuve
             </DialogTitle>
             {previewEpreuve && (
               <DialogDescription>
-                {previewEpreuve.titre} — {previewEpreuve.questionCount} question(s) · {previewEpreuve.baremeTotal} pts
+                <span className="font-mono tabular-nums">{previewEpreuve.titre}</span> — <span className="font-mono tabular-nums">{previewEpreuve.questionCount}</span> question(s) · <span className="font-mono tabular-nums">{previewEpreuve.baremeTotal}</span> pts
               </DialogDescription>
             )}
           </DialogHeader>
@@ -619,9 +618,9 @@ export function BanqueEpreuvesPage() {
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
               {/* Consignes */}
               {previewEpreuve.contenu.consignes && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Consignes</p>
-                  <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{previewEpreuve.contenu.consignes}</p>
+                <div className="rounded-lg border border-warning/20 bg-warning/10 p-3">
+                  <p className="text-xs font-semibold text-warning mb-1">Consignes</p>
+                  <p className="text-sm text-warning-foreground whitespace-pre-wrap">{previewEpreuve.contenu.consignes}</p>
                 </div>
               )}
 
@@ -634,16 +633,16 @@ export function BanqueEpreuvesPage() {
                     <CardContent className="p-4">
                       {/* Header */}
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 font-mono text-xs font-bold text-success">
                           {idx + 1}
                         </span>
-                        <Badge variant="outline" className={`text-xs ${TYPE_COLORS[q.type] || ''}`}>
+                        <Badge variant="outline" className={`text-xs font-mono ${TYPE_COLORS[q.type] || ''}`}>
                           {q.type}
                         </Badge>
                         <Badge variant="outline" className={`text-xs ${DIFFICULTE_COLORS[q.difficulte] || ''}`}>
                           {DIFFICULTE_LABELS[q.difficulte] || q.difficulte}
                         </Badge>
-                        <Badge variant="secondary" className="text-xs ml-auto">
+                        <Badge variant="secondary" className="text-xs ml-auto font-mono tabular-nums">
                           {q.bareme} pt{q.bareme > 1 ? 's' : ''}
                         </Badge>
                       </div>
@@ -668,8 +667,8 @@ export function BanqueEpreuvesPage() {
                           {isExpanded && (
                             <div className={`mt-2 rounded-md border p-3 text-sm whitespace-pre-wrap ${
                               q.type === 'QRC'
-                                ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                                : 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800/50'
+                                ? 'bg-success/10 border-success/20'
+                                : 'bg-secondary/10 border-secondary/20'
                             }`}>
                               {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
                             </div>
@@ -705,7 +704,7 @@ export function BanqueEpreuvesPage() {
           {!previewEpreuve?.contenu && previewEpreuve && (
             <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground">
               <div className="text-center">
-                <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                <AlertTriangle className="h-8 w-8 mx-auto text-warning mb-2" />
                 <p className="text-sm font-medium">Format ancien détecté</p>
                 <p className="text-xs mt-1">Cette épreuve utilise l&apos;ancien format (questions individuelles). Consultez-la depuis la page Épreuves.</p>
               </div>
@@ -718,7 +717,7 @@ export function BanqueEpreuvesPage() {
             </Button>
             {previewEpreuve && (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
                 onClick={() => {
                   setPreviewDialogOpen(false)
                   openDuplicate(previewEpreuve)
@@ -743,7 +742,7 @@ export function BanqueEpreuvesPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete}>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleDelete}>
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -754,8 +753,8 @@ export function BanqueEpreuvesPage() {
       <Dialog open={!!duplicateTarget} onOpenChange={(open) => { if (!open) setDuplicateTarget(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Copy className="h-5 w-5 text-emerald-600" />
+            <DialogTitle className="flex items-center gap-2 font-display">
+              <Copy className="h-5 w-5 text-success" />
               Dupliquer l&apos;épreuve
             </DialogTitle>
             <DialogDescription>
@@ -778,7 +777,7 @@ export function BanqueEpreuvesPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleDuplicate}
               disabled={isDuplicating || !duplicateTitre.trim()}
             >

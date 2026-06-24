@@ -103,6 +103,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
+import { PulseSkeleton } from '@/components/ds'
 
 // ─── Types ───
 
@@ -237,19 +238,19 @@ function getFileIcon(doc: Document): ReactNode {
   switch (type) {
     case 'pdf':
       return (
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
           <FileText className="h-5 w-5 text-red-600 dark:text-red-400" />
         </div>
       )
     case 'docx':
       return (
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/40">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
           <FileText className="h-5 w-5 text-sky-600 dark:text-sky-400" />
         </div>
       )
     case 'pptx':
       return (
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/40">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
           <Presentation className="h-5 w-5 text-orange-600 dark:text-orange-400" />
         </div>
       )
@@ -301,11 +302,11 @@ function getStatusBadgeClasses(status: string): string {
     case 'EN_ATTENTE':
       return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'
     case 'EN_COURS':
-      return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+      return 'bg-warning/10 text-warning border-warning/20 dark:text-warning'
     case 'ANALYSE':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+      return 'bg-success/10 text-emerald-800 border-success/20 dark:text-emerald-300 dark:border-success/20'
     case 'ERREUR':
-      return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+      return 'bg-destructive/10 text-red-800 border-destructive/20 dark:text-red-300 dark:border-red-800'
     default:
       return ''
   }
@@ -929,7 +930,7 @@ export function DocumentsPage() {
               {doc.uniteEnseignement && (
                 <Badge
                   variant="outline"
-                  className="gap-1 text-[9px] px-1 py-0 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300 shrink-0"
+                  className="gap-1 text-[9px] px-1 py-0 border-success/30 text-emerald-700 dark:border-success dark:text-emerald-300 shrink-0"
                 >
                   <BookOpen className="h-2.5 w-2.5" />
                   {doc.uniteEnseignement.code}
@@ -957,7 +958,7 @@ export function DocumentsPage() {
                   <Badge
                     key={i}
                     variant="secondary"
-                    className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                    className="text-[10px] bg-success/10 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
                   >
                     {theme}
                   </Badge>
@@ -1050,7 +1051,7 @@ export function DocumentsPage() {
                     <Button
                       variant={viewMode === 'folders' ? 'default' : 'ghost'}
                       size="sm"
-                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'folders' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'folders' ? 'bg-success text-white' : ''}`}
                       onClick={() => setViewMode('folders')}
                     >
                       <Folder className="h-3.5 w-3.5" />
@@ -1064,7 +1065,7 @@ export function DocumentsPage() {
                     <Button
                       variant={viewMode === 'grid' ? 'default' : 'ghost'}
                       size="sm"
-                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'grid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'grid' ? 'bg-success text-white' : ''}`}
                       onClick={() => setViewMode('grid')}
                     >
                       <LayoutGrid className="h-3.5 w-3.5" />
@@ -1078,7 +1079,7 @@ export function DocumentsPage() {
                     <Button
                       variant={viewMode === 'list' ? 'default' : 'ghost'}
                       size="sm"
-                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'list' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                      className={`h-8 gap-1.5 rounded-md px-3 ${viewMode === 'list' ? 'bg-success text-white' : ''}`}
                       onClick={() => setViewMode('list')}
                     >
                       <List className="h-3.5 w-3.5" />
@@ -1099,7 +1100,7 @@ export function DocumentsPage() {
             }
           }}>
             <DialogTrigger asChild>
-              <Button className="bg-emerald-600 hover:bg-emerald-700" size="lg">
+              <Button className="bg-success" size="lg">
                 <Plus className="h-4 w-4" />
                 Nouveau document
               </Button>
@@ -1144,12 +1145,12 @@ export function DocumentsPage() {
                     relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed
                     p-8 transition-colors
                     ${isDragging
-                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
-                      : 'border-muted-foreground/25 hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/20'
+                      ? 'border-success bg-success/10 dark:bg-success-foreground/30'
+                      : 'border-muted-foreground/25 hover:border-success/40 hover:bg-success/10/50 dark:hover:border-success dark:hover:bg-success-foreground/20'
                     }
                   `}
                 >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
                     <FileUp className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <p className="mt-3 text-sm font-medium">
@@ -1192,7 +1193,7 @@ export function DocumentsPage() {
                   Annuler
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-success"
                   onClick={handleUploadAll}
                   disabled={!uploadFiles.some((f) => f.status === 'pending' || f.status === 'error') || uploadFiles.some((f) => f.status === 'uploading')}
                 >
@@ -1240,13 +1241,13 @@ export function DocumentsPage() {
             <Button
               variant={showFilters ? 'default' : 'outline'}
               size="sm"
-              className={`gap-1.5 ${showFilters ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+              className={`gap-1.5 ${showFilters ? 'bg-success text-white' : ''}`}
               onClick={() => setShowFilters(!showFilters)}
             >
               <Filter className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Filtres</span>
               {hasActiveFilters && (
-                <Badge className="ml-1 h-5 w-5 rounded-full p-0 text-[10px] flex items-center justify-center bg-emerald-500 text-white">
+                <Badge className="ml-1 h-5 w-5 rounded-full p-0 text-[10px] flex items-center justify-center bg-success/100 text-white">
                   {[debouncedSearch.trim() !== '', filterUE !== '__all__', filterFileType !== '__all__', filterStatus !== '__all__'].filter(Boolean).length}
                 </Badge>
               )}
@@ -1322,13 +1323,13 @@ export function DocumentsPage() {
 
       {/* ─── Bulk action bar ─── */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+        <div className="flex items-center gap-3 rounded-lg border border-success/20 bg-success/10 p-3 dark:border-success/20 dark:bg-success-foreground/30">
           <Checkbox
             checked={isAllSelected}
             onCheckedChange={toggleSelectAll}
-            className="border-emerald-400 dark:border-emerald-600"
+            className="border-success/40"
           />
-          <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+          <span className="text-sm font-medium text-success">
             {selectedIds.size} document{selectedIds.size !== 1 ? 's' : ''} sélectionné{selectedIds.size !== 1 ? 's' : ''}
           </span>
           <div className="flex-1" />
@@ -1375,7 +1376,7 @@ export function DocumentsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && documents.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10 dark:bg-success-foreground/30">
             <FolderOpen className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucun document importé</h3>
@@ -1383,7 +1384,7 @@ export function DocumentsPage() {
             Commencez par importer un document pédagogique pour permettre à l&apos;IA d&apos;analyser son contenu et générer des questions.
           </p>
           <Button
-            className="mt-6 bg-emerald-600 hover:bg-emerald-700"
+            className="mt-6 bg-success"
             onClick={() => setUploadDialogOpen(true)}
           >
             <Upload className="h-4 w-4" />
@@ -1429,7 +1430,7 @@ export function DocumentsPage() {
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${
                           isUnassigned
                             ? 'bg-gray-100 dark:bg-gray-800/60'
-                            : 'bg-emerald-100 dark:bg-emerald-900/40'
+                            : 'bg-success/10'
                         }`}>
                           <Folder className={`h-4.5 w-4.5 ${
                             isUnassigned
@@ -1448,7 +1449,7 @@ export function DocumentsPage() {
                               <>
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300"
+                                  className="text-[10px] px-1.5 py-0 border-success/30 text-emerald-700 dark:border-success dark:text-emerald-300"
                                 >
                                   {ue!.niveau}
                                 </Badge>
@@ -1515,7 +1516,7 @@ export function DocumentsPage() {
                 return (
                   <TableRow
                     key={doc.id}
-                    className={`cursor-pointer ${isSelected ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}
+                    className={`cursor-pointer ${isSelected ? 'bg-success/10/50 dark:bg-success-foreground/20' : ''}`}
                     onClick={() => handleSelectDocument(doc)}
                   >
                     <TableCell>
@@ -1537,7 +1538,7 @@ export function DocumentsPage() {
                       {doc.uniteEnseignement ? (
                         <Badge
                           variant="outline"
-                          className="gap-1 text-[10px] px-1 py-0 border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300"
+                          className="gap-1 text-[10px] px-1 py-0 border-success/30 text-emerald-700 dark:border-success dark:text-emerald-300"
                         >
                           <BookOpen className="h-2.5 w-2.5" />
                           {doc.uniteEnseignement.code}
@@ -1606,10 +1607,10 @@ export function DocumentsPage() {
             <div className="flex flex-col gap-6 px-4 pb-4">
               {/* UE info */}
               {selectedDocument.uniteEnseignement && (
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+                <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 p-3 dark:border-success/20 dark:bg-success-foreground/30">
                   <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 truncate">
+                    <p className="text-sm font-medium text-success truncate">
                       {selectedDocument.uniteEnseignement.code} — {selectedDocument.uniteEnseignement.nom}
                     </p>
                     <p className="text-xs text-emerald-600 dark:text-emerald-400">
@@ -1632,7 +1633,7 @@ export function DocumentsPage() {
 
               {/* Error detail */}
               {selectedDocument.statutAnalyse === 'ERREUR' && selectedDocument.erreurAnalyse && (
-                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 dark:border-destructive/20">
                   <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                   <p className="text-sm text-red-800 dark:text-red-300">{selectedDocument.erreurAnalyse}</p>
                 </div>
@@ -1701,7 +1702,7 @@ export function DocumentsPage() {
                     {themes.map((theme, i) => (
                       <Badge
                         key={i}
-                        className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800"
+                        className="bg-success/10 text-emerald-800 border-success/20 dark:text-emerald-300 dark:border-success/20"
                       >
                         {theme}
                       </Badge>
@@ -1722,7 +1723,7 @@ export function DocumentsPage() {
                       <Badge
                         key={i}
                         variant="outline"
-                        className="border-teal-300 text-teal-700 dark:border-teal-700 dark:text-teal-300"
+                        className="border-secondary/30 text-teal-700 dark:border-teal-700 dark:text-teal-300"
                       >
                         {concept}
                       </Badge>
@@ -1742,21 +1743,21 @@ export function DocumentsPage() {
                     {volumeEntries.map(({ key, label, value }) => {
                       const pct = Math.round((value / maxVolume) * 100)
                       const colorMap: Record<string, string> = {
-                        QCU: 'bg-emerald-500',
-                        QCM: 'bg-teal-500',
-                        QRC: 'bg-amber-500',
-                        TRS: 'bg-rose-500',
+                        QCU: 'bg-success/100',
+                        QCM: 'bg-secondary',
+                        QRC: 'bg-warning',
+                        TRS: 'bg-destructive',
                       }
                       const bgMap: Record<string, string> = {
-                        QCU: 'bg-emerald-100 dark:bg-emerald-900/30',
-                        QCM: 'bg-teal-100 dark:bg-teal-900/30',
-                        QRC: 'bg-amber-100 dark:bg-amber-900/30',
-                        TRS: 'bg-rose-100 dark:bg-rose-900/30',
+                        QCU: 'bg-success/10',
+                        QCM: 'bg-secondary/10',
+                        QRC: 'bg-warning/10',
+                        TRS: 'bg-destructive',
                       }
                       const textColorMap: Record<string, string> = {
-                        QCU: 'text-emerald-700 dark:text-emerald-300',
+                        QCU: 'text-success',
                         QCM: 'text-teal-700 dark:text-teal-300',
-                        QRC: 'text-amber-700 dark:text-amber-300',
+                        QRC: 'text-warning',
                         TRS: 'text-rose-700 dark:text-rose-300',
                       }
                       return (

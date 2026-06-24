@@ -109,17 +109,17 @@ const DIFFICULTE_LABELS: Record<string, string> = {
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
-  FACILE: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
-  MOYEN: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-  DIFFICILE: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800',
-  EXPERT: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800',
+  FACILE: 'bg-success/15 text-success border-success/30',
+  MOYEN: 'bg-warning/15 text-warning border-warning/30',
+  DIFFICILE: 'bg-primary/15 text-primary border-primary/30',
+  EXPERT: 'bg-destructive/15 text-destructive border-destructive/30',
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  QCU: 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800',
-  QCM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-  QRC: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
-  TRS: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800',
+  QCU: 'bg-info/15 text-info border-info/30',
+  QCM: 'bg-warning/15 text-warning border-warning/30',
+  QRC: 'bg-success/15 text-success border-success/30',
+  TRS: 'bg-secondary/15 text-secondary border-secondary/30',
 }
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -149,9 +149,9 @@ function parseReponseCorrecte(raw: unknown): string | string[] | null {
 
 function getQualityColor(score: number | null): string {
   if (score === null) return 'bg-muted'
-  if (score < 40) return 'bg-red-500'
-  if (score <= 70) return 'bg-amber-500'
-  return 'bg-emerald-500'
+  if (score < 40) return 'bg-destructive'
+  if (score <= 70) return 'bg-warning'
+  return 'bg-success'
 }
 
 // ─── Main Component ───
@@ -629,23 +629,23 @@ export function QuestionsIAPage() {
               key={idx}
               className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm ${
                 isCorrect
-                  ? 'bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                  ? 'bg-success/10 border border-success/30'
                   : 'bg-muted/30'
               }`}
             >
               <span
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs font-bold ${
                   isCorrect
-                    ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200'
+                    ? 'bg-success/20 text-success'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {letter}
               </span>
-              <span className={isCorrect ? 'font-medium text-emerald-800 dark:text-emerald-200' : ''}>
+              <span className={isCorrect ? 'font-medium text-success' : ''}>
                 {prop}
               </span>
-              {isCorrect && <Check className="ml-auto h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+              {isCorrect && <Check className="ml-auto h-4 w-4 shrink-0 text-success" />}
             </div>
           )
         })}
@@ -661,7 +661,7 @@ export function QuestionsIAPage() {
     const isExplanationExpanded = expandedExplanations.has(question.id)
 
     return (
-      <Card key={question.id} className={`overflow-hidden transition-shadow hover:shadow-md ${question.validee ? 'border-emerald-200 dark:border-emerald-800/50' : ''}`}>
+      <Card key={question.id} className={`overflow-hidden transition-shadow hover:shadow-md ds-lift ${question.validee ? 'border-success/30' : ''}`}>
         <CardContent className="p-4">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -683,13 +683,13 @@ export function QuestionsIAPage() {
                       style={{ width: `${Math.min(100, Math.max(0, question.scoreQualite))}%` }}
                     />
                   </div>
-                  <span className="text-xs font-medium">{question.scoreQualite}%</span>
+                  <span className="text-xs font-medium font-mono tabular-nums">{question.scoreQualite}%</span>
                 </div>
               </div>
             )}
 
             {question.validee && (
-              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 gap-1">
+              <Badge className="bg-success/15 text-success border-success/30 gap-1">
                 <CheckCircle2 className="h-3 w-3" />
                 Validée
               </Badge>
@@ -783,7 +783,7 @@ export function QuestionsIAPage() {
           {question.themes && question.themes.length > 0 && !isEditing && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {question.themes.map((theme, i) => (
-                <Badge key={i} variant="secondary" className="text-[10px] bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+                <Badge key={i} variant="secondary" className="text-[10px] bg-info/10 text-info">
                   {theme}
                 </Badge>
               ))}
@@ -795,7 +795,7 @@ export function QuestionsIAPage() {
           {/* Actions */}
           {isEditing ? (
             <div className="flex items-center gap-2">
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-8" onClick={() => saveEditing(question.id)} disabled={isLoading}>
+              <Button size="sm" className="h-8" onClick={() => saveEditing(question.id)} disabled={isLoading}>
                 {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                 Sauvegarder
               </Button>
@@ -807,7 +807,7 @@ export function QuestionsIAPage() {
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               {!question.validee && (
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-8" onClick={() => handleValidate(question.id)} disabled={isLoading || isRegenerating}>
+                <Button size="sm" className="h-8" onClick={() => handleValidate(question.id)} disabled={isLoading || isRegenerating}>
                   {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                   Valider
                 </Button>
@@ -822,21 +822,21 @@ export function QuestionsIAPage() {
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30" disabled={isLoading || isRegenerating}>
+                  <Button size="sm" variant="outline" className="h-8 text-destructive hover:bg-destructive/10" disabled={isLoading || isRegenerating}>
                     <Trash2 className="h-3 w-3" />
                     Supprimer
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Supprimer cette question ?</AlertDialogTitle>
+                    <AlertDialogTitle className="font-display tracking-tight">Supprimer cette question ?</AlertDialogTitle>
                     <AlertDialogDescription>
                       Cette action est irréversible. La question sera définitivement supprimée.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => handleDelete(question.id)}>
+                    <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={() => handleDelete(question.id)}>
                       Supprimer
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -859,8 +859,8 @@ export function QuestionsIAPage() {
       <div className="w-full lg:w-[40%] xl:w-[35%] space-y-4 shrink-0">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Sparkles className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <Sparkles className="h-7 w-7 text-success" />
             Questions IA
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -871,8 +871,8 @@ export function QuestionsIAPage() {
         {/* Document Selector */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <FileText className="h-4 w-4 text-emerald-600" />
+            <CardTitle className="text-sm font-display font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4 text-success" />
               Document source
             </CardTitle>
           </CardHeader>
@@ -884,7 +884,7 @@ export function QuestionsIAPage() {
               </div>
             ) : analyzedDocuments.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-center">
-                <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                <AlertTriangle className="h-8 w-8 mx-auto text-warning mb-2" />
                 <p className="text-sm font-medium">Aucun document analysé</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Importez et analysez un document avant de générer des questions.
@@ -892,7 +892,7 @@ export function QuestionsIAPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                  className="mt-3 border-success/40 text-success hover:bg-success/10"
                   onClick={() => router.push(PAGE_ROUTES.documents)}
                 >
                   <FileText className="h-3 w-3 mr-1" />
@@ -927,8 +927,8 @@ export function QuestionsIAPage() {
         {/* Generation Parameters */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-emerald-600" />
+            <CardTitle className="text-sm font-display font-semibold flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-success" />
               Paramètres de génération
             </CardTitle>
           </CardHeader>
@@ -941,31 +941,31 @@ export function QuestionsIAPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1.5">
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">QCU</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-info/15 text-info border-info/30">QCU</Badge>
                     Choix unique
                   </Label>
-                  <Input type="number" min={0} max={20} value={qcuCount} onChange={(e) => setQcuCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm" />
+                  <Input type="number" min={0} max={20} value={qcuCount} onChange={(e) => setQcuCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm font-mono tabular-nums" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1.5">
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">QCM</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-warning/15 text-warning border-warning/30">QCM</Badge>
                     Choix multiple
                   </Label>
-                  <Input type="number" min={0} max={20} value={qcmCount} onChange={(e) => setQcmCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm" />
+                  <Input type="number" min={0} max={20} value={qcmCount} onChange={(e) => setQcmCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm font-mono tabular-nums" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1.5">
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">QRC</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-success/15 text-success border-success/30">QRC</Badge>
                     Réponse courte
                   </Label>
-                  <Input type="number" min={0} max={20} value={qrcCount} onChange={(e) => setQrcCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm" />
+                  <Input type="number" min={0} max={20} value={qrcCount} onChange={(e) => setQrcCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm font-mono tabular-nums" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1.5">
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800">TRS</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-secondary/15 text-secondary border-secondary/30">TRS</Badge>
                     Réflexion structurée
                   </Label>
-                  <Input type="number" min={0} max={20} value={trsCount} onChange={(e) => setTrsCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm" />
+                  <Input type="number" min={0} max={20} value={trsCount} onChange={(e) => setTrsCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm font-mono tabular-nums" />
                 </div>
               </div>
             </div>
@@ -1029,8 +1029,8 @@ export function QuestionsIAPage() {
                         variant={isSelected ? 'default' : 'outline'}
                         className={`cursor-pointer text-xs transition-colors ${
                           isSelected
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                            : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                            : 'hover:bg-primary/10'
                         }`}
                         onClick={() => toggleTheme(theme)}
                       >
@@ -1058,7 +1058,7 @@ export function QuestionsIAPage() {
 
         {/* Generate Button */}
         <Button
-          className="w-full h-12 text-base font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+          className="w-full h-12 text-base font-display font-semibold disabled:opacity-50"
           onClick={handleGenerate}
           disabled={isGenerating || !selectedDocumentId || !user?.id || totalQuestions === 0}
         >
@@ -1109,22 +1109,22 @@ export function QuestionsIAPage() {
             {isTestingZAI ? (
               <Loader2 className="h-3 w-3 animate-spin mr-1" />
             ) : zaiTestResult?.status === 'ok' ? (
-              <Wifi className="h-3 w-3 mr-1 text-emerald-600" />
+              <Wifi className="h-3 w-3 mr-1 text-success" />
             ) : zaiTestResult?.status === 'error' ? (
-              <WifiOff className="h-3 w-3 mr-1 text-red-500" />
+              <WifiOff className="h-3 w-3 mr-1 text-destructive" />
             ) : (
               <Wifi className="h-3 w-3 mr-1" />
             )}
             Tester la connexion IA
           </Button>
           {zaiTestResult && zaiTestResult.status === 'error' && (
-            <div className="rounded-md bg-red-50 border border-red-200 p-3 dark:bg-red-950/20 dark:border-red-800/50">
-              <p className="text-xs font-medium text-red-800 dark:text-red-300">Erreur de connexion IA</p>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-1">{zaiTestResult.error}</p>
+            <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3">
+              <p className="text-xs font-medium text-destructive">Erreur de connexion IA</p>
+              <p className="text-xs text-destructive mt-1">{zaiTestResult.error}</p>
               {zaiTestResult.baseUrl && (
-                <p className="text-xs text-red-500 mt-1 font-mono">URL: {zaiTestResult.baseUrl}</p>
+                <p className="text-xs text-destructive mt-1 font-mono">URL: {zaiTestResult.baseUrl}</p>
               )}
-              <p className="text-xs text-red-500 mt-2">
+              <p className="text-xs text-destructive mt-2">
                 Vérifiez les variables d&apos;environnement ZAI_BASE_URL et ZAI_API_KEY sur Vercel.
               </p>
             </div>
@@ -1132,7 +1132,7 @@ export function QuestionsIAPage() {
         </div>
 
         {!selectedDocumentId && analyzedDocuments.length > 0 && (
-          <p className="text-xs text-center text-amber-600 dark:text-amber-400">
+          <p className="text-xs text-center text-warning">
             ⚠️ Sélectionnez un document pour activer la génération
           </p>
         )}
@@ -1146,8 +1146,8 @@ export function QuestionsIAPage() {
         {questions.length > 0 && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold">
-                {questions.length} question{questions.length !== 1 ? 's' : ''} générée{questions.length !== 1 ? 's' : ''}
+              <h2 className="text-lg font-display font-semibold">
+                <span className="font-mono tabular-nums">{questions.length}</span> question{questions.length !== 1 ? 's' : ''} générée{questions.length !== 1 ? 's' : ''}
               </h2>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleValidateAll}>
@@ -1156,21 +1156,21 @@ export function QuestionsIAPage() {
                 </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400">
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-destructive hover:bg-destructive/10">
                       <Trash2 className="h-3 w-3 mr-1" />
                       Supprimer non validées
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Supprimer les questions non validées ?</AlertDialogTitle>
+                      <AlertDialogTitle className="font-display tracking-tight">Supprimer les questions non validées ?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Les {questions.filter(q => !q.validee).length} question(s) non validée(s) seront définitivement supprimées.
+                        Les <span className="font-mono tabular-nums">{questions.filter(q => !q.validee).length}</span> question(s) non validée(s) seront définitivement supprimées.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Annuler</AlertDialogCancel>
-                      <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDeleteNonValidated}>
+                      <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleDeleteNonValidated}>
                         Supprimer
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -1186,11 +1186,11 @@ export function QuestionsIAPage() {
                   key={f}
                   size="sm"
                   variant={filter === f ? 'default' : 'outline'}
-                  className={`h-7 text-xs ${filter === f ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                  className="h-7 text-xs"
                   onClick={() => setFilter(f)}
                 >
                   {f === 'TOUS' ? 'Tous' : f}
-                  <span className="ml-1 text-[10px] opacity-70">({filterCounts[f]})</span>
+                  <span className="ml-1 text-[10px] opacity-70 font-mono tabular-nums">({filterCounts[f]})</span>
                 </Button>
               ))}
             </div>
@@ -1200,10 +1200,10 @@ export function QuestionsIAPage() {
         {/* Empty state */}
         {questions.length === 0 && !isGenerating && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="rounded-full bg-emerald-50 p-6 mb-4 dark:bg-emerald-950/30">
-              <Sparkles className="h-12 w-12 text-emerald-500" />
+            <div className="rounded-full bg-success/10 p-6 mb-4">
+              <Sparkles className="h-12 w-12 text-success" />
             </div>
-            <h3 className="text-lg font-semibold mb-1">Prêt à générer</h3>
+            <h3 className="text-lg font-display font-semibold mb-1">Prêt à générer</h3>
             <p className="text-sm text-muted-foreground max-w-md">
               Sélectionnez un document analysé, configurez vos paramètres, puis cliquez sur le bouton
               &quot;Générer&quot; pour créer des questions automatiquement avec l&apos;IA.
@@ -1214,10 +1214,10 @@ export function QuestionsIAPage() {
         {/* Generating state */}
         {isGenerating && questions.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Loader2 className="h-12 w-12 text-emerald-500 animate-spin mb-4" />
-            <h3 className="text-lg font-semibold mb-1">Génération en cours...</h3>
+            <Loader2 className="h-12 w-12 text-success animate-spin mb-4" />
+            <h3 className="text-lg font-display font-semibold mb-1">Génération en cours...</h3>
             <p className="text-sm text-muted-foreground max-w-md">
-              L&apos;IA analyse votre document et crée {totalQuestions} question(s). Cela peut prendre 30 à 60 secondes.
+              L&apos;IA analyse votre document et crée <span className="font-mono tabular-nums">{totalQuestions}</span> question(s). Cela peut prendre 30 à 60 secondes.
             </p>
           </div>
         )}

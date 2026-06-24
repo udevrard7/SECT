@@ -32,8 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { PulseSkeleton } from '@/components/ds'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -157,23 +157,23 @@ function formatMonth(mois: string): string {
 // ─── Score color ───
 
 function getScoreColor(score: number): string {
-  if (score >= 14) return 'text-emerald-600 dark:text-emerald-400'
-  if (score >= 10) return 'text-teal-600 dark:text-teal-400'
-  if (score >= 8) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
+  if (score >= 14) return 'text-success'
+  if (score >= 10) return 'text-info'
+  if (score >= 8) return 'text-warning'
+  return 'text-destructive'
 }
 
 function getScoreBg(score: number): string {
-  if (score >= 14) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-  if (score >= 10) return 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300 border-teal-200 dark:border-teal-800'
-  if (score >= 8) return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-  return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800'
+  if (score >= 14) return 'bg-success/15 text-success border-success/30'
+  if (score >= 10) return 'bg-info/15 text-info border-info/30'
+  if (score >= 8) return 'bg-warning/15 text-warning border-warning/30'
+  return 'bg-destructive/15 text-destructive border-destructive/30'
 }
 
 function getTrendIcon(trend: 'up' | 'down' | 'stable') {
-  if (trend === 'up') return <ArrowUpRight className="h-4 w-4 text-emerald-600" />
-  if (trend === 'down') return <ArrowDownRight className="h-4 w-4 text-red-500" />
-  return <Minus className="h-4 w-4 text-amber-500" />
+  if (trend === 'up') return <ArrowUpRight className="h-4 w-4 text-success" />
+  if (trend === 'down') return <ArrowDownRight className="h-4 w-4 text-destructive" />
+  return <Minus className="h-4 w-4 text-warning" />
 }
 
 // ─── KPI Card ───
@@ -189,14 +189,14 @@ interface KPICardProps {
 
 function KPICard({ title, value, subtitle, icon, iconBg, borderColor }: KPICardProps) {
   return (
-    <Card className={`border-l-4 ${borderColor}`}>
+    <Card className={`border-l-4 ${borderColor} ds-lift`}>
       <CardContent className="flex items-center gap-3 p-4">
         <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>
           {icon}
         </div>
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground truncate">{title}</p>
-          <p className="text-xl font-bold">{value}</p>
+          <p className="text-xl font-bold font-mono tabular-nums">{value}</p>
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         </div>
       </CardContent>
@@ -811,8 +811,8 @@ export function RapportsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <BarChart3 className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <BarChart3 className="h-7 w-7 text-success" />
             Rapports et Statistiques
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -825,7 +825,7 @@ export function RapportsPage() {
             size="sm"
             onClick={handleExportCSV}
             disabled={!hasData}
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+            className="border-success/40 text-success hover:bg-success/10"
           >
             <Download className="h-4 w-4 mr-1" />
             Exporter CSV
@@ -835,7 +835,7 @@ export function RapportsPage() {
             size="sm"
             onClick={handleExportPDF}
             disabled={!hasData}
-            className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+            className="border-info/40 text-info hover:bg-info/10"
           >
             <FileText className="h-4 w-4 mr-1" />
             Exporter PDF
@@ -901,20 +901,20 @@ export function RapportsPage() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="animate-pulse">
+              <Card key={i}>
                 <CardContent className="p-4">
-                  <Skeleton className="h-4 w-20 mb-2" />
-                  <Skeleton className="h-8 w-16" />
+                  <PulseSkeleton className="h-4 w-20 mb-2" />
+                  <PulseSkeleton className="h-8 w-16" />
                 </CardContent>
               </Card>
             ))}
           </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="animate-pulse">
+              <Card key={i}>
                 <CardContent className="p-6">
-                  <Skeleton className="h-5 w-40 mb-4" />
-                  <Skeleton className="h-48 w-full" />
+                  <PulseSkeleton className="h-5 w-40 mb-4" />
+                  <PulseSkeleton className="h-48 w-full" />
                 </CardContent>
               </Card>
             ))}
@@ -925,10 +925,10 @@ export function RapportsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && !hasData && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <BarChart3 className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <BarChart3 className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucune donnée disponible</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold">Aucune donnée disponible</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Les statistiques apparaîtront une fois que des évaluations auront été réalisées par les enseignants de vos filières.
           </p>
@@ -948,65 +948,65 @@ export function RapportsPage() {
               title="Moyenne générale"
               value={`${stats.moyenneGenerale}/20`}
               subtitle="Toutes évaluations confondues"
-              icon={<TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
-              iconBg="bg-emerald-100 dark:bg-emerald-900/40"
-              borderColor="border-l-emerald-500"
+              icon={<TrendingUp className="h-5 w-5 text-success" />}
+              iconBg="bg-success/15"
+              borderColor="border-l-success"
             />
             <KPICard
               title="Taux de réussite"
               value={`${stats.tauxReussiteGlobal}%`}
               subtitle="Notes ≥ 10/20"
-              icon={<Trophy className="h-5 w-5 text-teal-600 dark:text-teal-400" />}
-              iconBg="bg-teal-100 dark:bg-teal-900/40"
-              borderColor="border-l-teal-500"
+              icon={<Trophy className="h-5 w-5 text-info" />}
+              iconBg="bg-info/15"
+              borderColor="border-l-info"
             />
             <KPICard
               title="Évaluations"
               value={stats.nbEvaluations}
               subtitle="Épreuves terminées"
-              icon={<ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
-              iconBg="bg-amber-100 dark:bg-amber-900/40"
-              borderColor="border-l-amber-500"
+              icon={<ClipboardList className="h-5 w-5 text-warning" />}
+              iconBg="bg-warning/15"
+              borderColor="border-l-warning"
             />
             <KPICard
               title="Étudiants"
               value={stats.nbEtudiants}
               subtitle={`${stats.etudiantsEnDifficulte.length} en difficulté`}
-              icon={<Users className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
-              iconBg="bg-rose-100 dark:bg-rose-900/40"
-              borderColor="border-l-rose-500"
+              icon={<Users className="h-5 w-5 text-destructive" />}
+              iconBg="bg-destructive/15"
+              borderColor="border-l-destructive"
             />
           </div>
 
           {/* ─── Secondary KPIs (3 mini cards) ─── */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Card className="border-l-4 border-l-emerald-400">
+            <Card className="border-l-4 border-l-success">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-emerald-600" />
+                  <Users className="h-4 w-4 text-success" />
                   <span className="text-sm text-muted-foreground">Enseignants actifs</span>
                 </div>
-                <span className="text-lg font-bold">{stats.nbEnseignants}</span>
+                <span className="text-lg font-bold font-mono tabular-nums">{stats.nbEnseignants}</span>
               </CardContent>
             </Card>
-            <Card className="border-l-4 border-l-teal-400">
+            <Card className="border-l-4 border-l-info">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-teal-600" />
+                  <Eye className="h-4 w-4 text-info" />
                   <span className="text-sm text-muted-foreground">Participants aux épreuves</span>
                 </div>
-                <span className="text-lg font-bold">
+                <span className="text-lg font-bold font-mono tabular-nums">
                   {stats.resultatsParMatiere.reduce((acc, r) => acc + r.nbParticipants, 0)}
                 </span>
               </CardContent>
             </Card>
-            <Card className="border-l-4 border-l-amber-400">
+            <Card className="border-l-4 border-l-warning">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
-                  <UserX className="h-4 w-4 text-amber-600" />
+                  <UserX className="h-4 w-4 text-warning" />
                   <span className="text-sm text-muted-foreground">Étudiants en difficulté</span>
                 </div>
-                <span className="text-lg font-bold text-red-600 dark:text-red-400">
+                <span className="text-lg font-bold text-destructive font-mono tabular-nums">
                   {stats.etudiantsEnDifficulte.length}
                 </span>
               </CardContent>
@@ -1019,8 +1019,8 @@ export function RapportsPage() {
             {/* ─── 1. Évolution des moyennes (Area chart) ─── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <TrendingUp className="h-4 w-4 text-success" />
                   Évolution des moyennes
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1063,8 +1063,8 @@ export function RapportsPage() {
             {/* ─── 2. Répartition des notes (Bar chart) ─── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-teal-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <BarChart3 className="h-4 w-4 text-info" />
                   Répartition des notes
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1095,8 +1095,8 @@ export function RapportsPage() {
             {/* ─── 3. Résultats par matière (Horizontal Bar chart) ─── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-amber-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <ClipboardList className="h-4 w-4 text-warning" />
                   Résultats par matière
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1140,8 +1140,8 @@ export function RapportsPage() {
             {/* ─── 4. Étudiants par filière (Pie/Donut chart) ─── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-emerald-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <GraduationCap className="h-4 w-4 text-success" />
                   Étudiants par filière
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1191,8 +1191,8 @@ export function RapportsPage() {
             {/* ─── Top 5 performers ─── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-emerald-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <Trophy className="h-4 w-4 text-success" />
                   Top 5 — Meilleurs étudiants
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1208,11 +1208,11 @@ export function RapportsPage() {
                         className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
                       >
                         {/* Rank badge */}
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                          index === 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
-                          index === 1 ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300' :
-                          index === 2 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
-                          'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold font-mono tabular-nums ${
+                          index === 0 ? 'bg-success/15 text-success' :
+                          index === 1 ? 'bg-info/15 text-info' :
+                          index === 2 ? 'bg-warning/15 text-warning' :
+                          'bg-muted text-muted-foreground'
                         }`}>
                           {index + 1}
                         </div>
@@ -1231,7 +1231,7 @@ export function RapportsPage() {
                               className="h-2"
                             />
                           </div>
-                          <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[52px] justify-center`}>
+                          <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[52px] justify-center font-mono tabular-nums`}>
                             {student.moyenne}/20
                           </Badge>
                         </div>
@@ -1249,8 +1249,8 @@ export function RapportsPage() {
             {/* ─── Students needing attention (REAL DATA) ─── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
                   Étudiants en difficulté
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1265,14 +1265,14 @@ export function RapportsPage() {
                         key={student.id}
                         className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
                       >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/40">
-                          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-destructive/15">
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{student.nom}</p>
                           <p className="text-xs text-muted-foreground">{student.filiere}</p>
                         </div>
-                        <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[52px] justify-center`}>
+                        <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[52px] justify-center font-mono tabular-nums`}>
                           {student.moyenne}/20
                         </Badge>
                       </div>
@@ -1280,7 +1280,7 @@ export function RapportsPage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                    <Trophy className="h-6 w-6 mr-2 text-emerald-500" />
+                    <Trophy className="h-6 w-6 mr-2 text-success" />
                     {stats.topEtudiants.length > 0
                       ? 'Tous les participants ont la moyenne !'
                       : 'Aucun résultat d\'étudiant disponible'
@@ -1295,8 +1295,8 @@ export function RapportsPage() {
           {stats.topEnseignants.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4 text-teal-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <Users className="h-4 w-4 text-info" />
                   Performance des enseignants
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1310,17 +1310,17 @@ export function RapportsPage() {
                       key={index}
                       className="flex flex-col items-center gap-2 p-3 rounded-lg border bg-muted/30"
                     >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/15 text-sm font-bold text-success font-mono tabular-nums">
                         {ens.nom.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                       </div>
                       <p className="text-sm font-medium text-center">{ens.nom}</p>
                       <div className="flex items-center gap-1">
                         {getTrendIcon(ens.tauxReussite >= 50 ? 'up' : 'down')}
-                        <span className={`text-lg font-bold ${ens.tauxReussite >= 50 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        <span className={`text-lg font-bold font-mono tabular-nums ${ens.tauxReussite >= 50 ? 'text-success' : 'text-destructive'}`}>
                           {ens.tauxReussite}%
                         </span>
                       </div>
-                      <div className="flex flex-col items-center text-xs text-muted-foreground">
+                      <div className="flex flex-col items-center text-xs text-muted-foreground font-mono tabular-nums">
                         <span>{ens.nbEpreuves} épreuve{ens.nbEpreuves > 1 ? 's' : ''}</span>
                         <span>Moy: {ens.moyenne}/20</span>
                       </div>
@@ -1335,8 +1335,8 @@ export function RapportsPage() {
           {stats.resultatsParMatiere.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-amber-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <ClipboardList className="h-4 w-4 text-warning" />
                   Détail des résultats par épreuve
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1348,11 +1348,11 @@ export function RapportsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left">
-                        <th className="pb-2 font-medium text-muted-foreground">Épreuve</th>
-                        <th className="pb-2 font-medium text-muted-foreground">Enseignant</th>
-                        <th className="pb-2 font-medium text-muted-foreground text-center">Participants</th>
-                        <th className="pb-2 font-medium text-muted-foreground text-center">Moyenne</th>
-                        <th className="pb-2 font-medium text-muted-foreground text-center">Taux réussite</th>
+                        <th className="pb-2 font-display font-medium text-muted-foreground">Épreuve</th>
+                        <th className="pb-2 font-display font-medium text-muted-foreground">Enseignant</th>
+                        <th className="pb-2 font-display font-medium text-muted-foreground text-center">Participants</th>
+                        <th className="pb-2 font-display font-medium text-muted-foreground text-center">Moyenne</th>
+                        <th className="pb-2 font-display font-medium text-muted-foreground text-center">Taux réussite</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1360,14 +1360,14 @@ export function RapportsPage() {
                         <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
                           <td className="py-2 font-medium">{r.titre}</td>
                           <td className="py-2 text-muted-foreground">{r.enseignant}</td>
-                          <td className="py-2 text-center">{r.nbParticipants}</td>
+                          <td className="py-2 text-center font-mono tabular-nums">{r.nbParticipants}</td>
                           <td className="py-2 text-center">
-                            <Badge className={`${getScoreBg(r.moyenne)} text-xs`}>
+                            <Badge className={`${getScoreBg(r.moyenne)} text-xs font-mono tabular-nums`}>
                               {r.moyenne}/20
                             </Badge>
                           </td>
                           <td className="py-2 text-center">
-                            <span className={r.tauxReussite >= 50 ? 'text-emerald-600 font-semibold' : 'text-red-500 font-semibold'}>
+                            <span className={`font-mono tabular-nums ${r.tauxReussite >= 50 ? 'text-success font-semibold' : 'text-destructive font-semibold'}`}>
                               {r.tauxReussite}%
                             </span>
                           </td>
@@ -1382,11 +1382,11 @@ export function RapportsPage() {
 
           {/* ─── Alertes summary ─── */}
           {stats.alertes.length > 0 && (
-            <Card className="border-l-4 border-l-amber-500">
+            <Card className="border-l-4 border-l-warning">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  Alertes détectées ({stats.alertes.length})
+                <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  Alertes détectées (<span className="font-mono tabular-nums">{stats.alertes.length}</span>)
                 </CardTitle>
                 <CardDescription className="text-xs">
                   Problèmes identifiés nécessitant votre attention
@@ -1397,9 +1397,9 @@ export function RapportsPage() {
                   {stats.alertes.map((alerte, index) => (
                     <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-muted/30">
                       <AlertTriangle className={`h-4 w-4 mt-0.5 ${
-                        alerte.severity === 'critical' ? 'text-red-500' :
-                        alerte.severity === 'warning' ? 'text-amber-500' :
-                        'text-teal-500'
+                        alerte.severity === 'critical' ? 'text-destructive' :
+                        alerte.severity === 'warning' ? 'text-warning' :
+                        'text-info'
                       }`} />
                       <div>
                         <p className="text-sm font-medium">{alerte.titre}</p>

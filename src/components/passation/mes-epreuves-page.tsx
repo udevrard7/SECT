@@ -50,6 +50,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { PulseSkeleton } from '@/components/ds'
 
 // ─── Types ───
 
@@ -187,8 +188,8 @@ function getStatusIndicator(status: 'disponible' | 'pas_encore' | 'en_cours' | '
     case 'disponible':
       return {
         label: 'Disponible',
-        dotClass: 'bg-emerald-500',
-        textClass: 'text-emerald-700 dark:text-emerald-400',
+        dotClass: 'bg-success',
+        textClass: 'text-success',
       }
     case 'pas_encore':
       return {
@@ -199,8 +200,8 @@ function getStatusIndicator(status: 'disponible' | 'pas_encore' | 'en_cours' | '
     case 'en_cours':
       return {
         label: 'En cours',
-        dotClass: 'bg-amber-500',
-        textClass: 'text-amber-700 dark:text-amber-400',
+        dotClass: 'bg-warning',
+        textClass: 'text-warning',
       }
     case 'terminee':
       return {
@@ -215,26 +216,26 @@ function getScoreBadgeClasses(score: number, maxScore = 20): string {
   const halfMax = maxScore / 2
   const threshold = halfMax * 0.8
   if (score >= halfMax) {
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+    return 'bg-success/10 text-success border-success/20'
   }
   if (score >= threshold) {
-    return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+    return 'bg-warning/10 text-warning border-warning/20'
   }
-  return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+  return 'bg-destructive/10 text-destructive border-destructive/20'
 }
 
 function getProgressColor(score: number, maxScore = 20): string {
   const halfMax = maxScore / 2
-  if (score >= halfMax) return 'bg-emerald-500'
-  if (score >= halfMax * 0.8) return 'bg-amber-500'
-  return 'bg-red-500'
+  if (score >= halfMax) return 'bg-success'
+  if (score >= halfMax * 0.8) return 'bg-warning'
+  return 'bg-destructive'
 }
 
 function getProgressBg(score: number, maxScore = 20): string {
   const halfMax = maxScore / 2
-  if (score >= halfMax) return 'bg-emerald-100 dark:bg-emerald-900/30'
-  if (score >= halfMax * 0.8) return 'bg-amber-100 dark:bg-amber-900/30'
-  return 'bg-red-100 dark:bg-red-900/30'
+  if (score >= halfMax) return 'bg-success/10'
+  if (score >= halfMax * 0.8) return 'bg-warning/10'
+  return 'bg-destructive/10'
 }
 
 function getQuestionTypeLabel(type: string): string {
@@ -267,15 +268,15 @@ function getTimeRemaining(dateFin: string): { text: string; urgent: boolean } {
 function getQuestionTypeBadgeClasses(type: string): string {
   switch (type?.toUpperCase()) {
     case 'QCU':
-      return 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800'
+      return 'bg-info/10 text-info border-info/20'
     case 'QCM':
-      return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+      return 'bg-warning/10 text-warning border-warning/20'
     case 'QRC':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+      return 'bg-success/10 text-success border-success/20'
     case 'TRS':
-      return 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800'
+      return 'bg-secondary/10 text-secondary border-secondary/20'
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800'
+      return 'bg-muted text-muted-foreground border-border'
   }
 }
 
@@ -370,7 +371,7 @@ export function MesEpreuvesPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+        <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
           Mes Épreuves
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -387,7 +388,7 @@ export function MesEpreuvesPage() {
             {upcomingEpreuves.length > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-success/10 text-success"
               >
                 {upcomingEpreuves.length}
               </Badge>
@@ -399,7 +400,7 @@ export function MesEpreuvesPage() {
             {completedEpreuves.length > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-secondary/10 text-secondary"
               >
                 {completedEpreuves.length}
               </Badge>
@@ -412,30 +413,28 @@ export function MesEpreuvesPage() {
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex-1 space-y-3">
-                        <div className="h-5 w-2/3 rounded bg-muted" />
-                        <div className="h-4 w-1/2 rounded bg-muted" />
-                        <div className="flex gap-4">
-                          <div className="h-3 w-24 rounded bg-muted" />
-                          <div className="h-3 w-20 rounded bg-muted" />
-                          <div className="h-3 w-16 rounded bg-muted" />
-                        </div>
+                <div key={i} className="p-6 rounded-lg border border-border bg-card">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex-1 space-y-3">
+                      <PulseSkeleton className="h-5 w-2/3" />
+                      <PulseSkeleton className="h-4 w-1/2" />
+                      <div className="flex gap-4">
+                        <PulseSkeleton className="h-3 w-24" />
+                        <PulseSkeleton className="h-3 w-20" />
+                        <PulseSkeleton className="h-3 w-16" />
                       </div>
-                      <div className="h-10 w-32 rounded bg-muted" />
                     </div>
-                  </CardContent>
-                </Card>
+                    <PulseSkeleton className="h-10 w-32" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : upcomingEpreuves.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <FileCheck className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <FileCheck className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucune épreuve à venir</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold">Aucune épreuve à venir</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez aucune épreuve programmée pour le moment. Les épreuves disponibles apparaîtront ici.
               </p>
@@ -452,7 +451,7 @@ export function MesEpreuvesPage() {
                 return (
                   <Card
                     key={ep.id}
-                    className="group transition-shadow hover:shadow-md"
+                    className="group transition-shadow hover:shadow-md ds-lift"
                   >
                     <CardContent className="p-6">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -460,11 +459,11 @@ export function MesEpreuvesPage() {
                         <div className="flex-1 space-y-3">
                           {/* Title row */}
                           <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                              <ClipboardList className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
+                              <ClipboardList className="h-5 w-5 text-success" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-base font-semibold leading-tight">
+                              <h3 className="font-display text-base font-semibold leading-tight">
                                 {ep.titre}
                               </h3>
                               <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -477,27 +476,27 @@ export function MesEpreuvesPage() {
                           {/* Meta info */}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
                             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <CalendarDays className="h-3.5 w-3.5 text-success" />
                               Début : {formatDateTimeFR(ep.dateDebut)}
                             </span>
                             <span className={`flex items-center gap-1.5 text-sm font-medium ${(() => {
                               const rem = getTimeRemaining(ep.dateFin)
-                              return rem.urgent ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'
+                              return rem.urgent ? 'text-destructive' : 'text-warning'
                             })()}`}>
                               <AlertCircle className="h-3.5 w-3.5" />
                               Limite : {formatDateTimeFR(ep.dateFin)}
                             </span>
                             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <Timer className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-                              {ep.duree} min
+                              <Timer className="h-3.5 w-3.5 text-secondary" />
+                              <span className="font-mono tabular-nums">{ep.duree}</span> min
                             </span>
                             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <HelpCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                              {ep.questionCount} question{ep.questionCount > 1 ? 's' : ''}
+                              <HelpCircle className="h-3.5 w-3.5 text-warning" />
+                              <span className="font-mono tabular-nums">{ep.questionCount}</span> question{ep.questionCount > 1 ? 's' : ''}
                             </span>
                             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <Star className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400" />
-                              {ep.totalPoints} point{ep.totalPoints > 1 ? 's' : ''}
+                              <Star className="h-3.5 w-3.5 text-secondary" />
+                              <span className="font-mono tabular-nums">{ep.totalPoints}</span> point{ep.totalPoints > 1 ? 's' : ''}
                             </span>
                           </div>
 
@@ -509,8 +508,8 @@ export function MesEpreuvesPage() {
                               <div className="pl-[52px]">
                                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                                   rem.urgent
-                                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
-                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                    ? 'bg-destructive/10 text-destructive'
+                                    : 'bg-warning/10 text-warning'
                                 }`}>
                                   <Clock className="h-3 w-3" />
                                   {rem.text}
@@ -549,7 +548,7 @@ export function MesEpreuvesPage() {
                         <div className="flex shrink-0 items-center gap-2 sm:ml-4">
                           {canStart && (
                             <Button
-                              className="bg-emerald-600 hover:bg-emerald-700"
+                              className="bg-success hover:bg-success/90"
                               onClick={() => handleCommencer(ep.id)}
                             >
                               <Play className="h-4 w-4" />
@@ -558,7 +557,7 @@ export function MesEpreuvesPage() {
                           )}
                           {canResume && (
                             <Button
-                              className="bg-amber-600 hover:bg-amber-700"
+                              className="bg-warning hover:bg-warning/90"
                               onClick={() => handleReprendre(ep.id)}
                             >
                               <RotateCcw className="h-4 w-4" />
@@ -586,26 +585,24 @@ export function MesEpreuvesPage() {
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex-1 space-y-3">
-                        <div className="h-5 w-2/3 rounded bg-muted" />
-                        <div className="h-4 w-1/2 rounded bg-muted" />
-                        <div className="h-3 w-full rounded bg-muted" />
-                      </div>
-                      <div className="h-10 w-32 rounded bg-muted" />
+                <div key={i} className="p-6 rounded-lg border border-border bg-card">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex-1 space-y-3">
+                      <PulseSkeleton className="h-5 w-2/3" />
+                      <PulseSkeleton className="h-4 w-1/2" />
+                      <PulseSkeleton className="h-3 w-full" />
                     </div>
-                  </CardContent>
-                </Card>
+                    <PulseSkeleton className="h-10 w-32" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : completedEpreuves.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-                <Trophy className="h-10 w-10 text-teal-500 dark:text-teal-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-secondary/10">
+                <Trophy className="h-10 w-10 text-secondary" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun résultat disponible</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold">Aucun résultat disponible</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez pas encore passé d&apos;épreuve. Vos résultats apparaîtront ici après soumission.
               </p>
@@ -640,7 +637,7 @@ export function MesEpreuvesPage() {
                 return (
                   <Card
                     key={ep.id}
-                    className="group transition-shadow hover:shadow-md"
+                    className="group transition-shadow hover:shadow-md ds-lift"
                   >
                     <CardContent className="p-6">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -648,17 +645,17 @@ export function MesEpreuvesPage() {
                         <div className="flex-1 space-y-3">
                           {/* Title row */}
                           <div className="flex items-start gap-3">
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${isAbsent ? 'bg-gray-100 dark:bg-gray-900/40' : isNonSoumis ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-teal-100 dark:bg-teal-900/40'}`}>
+                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${isAbsent ? 'bg-muted' : isNonSoumis ? 'bg-warning/10' : 'bg-secondary/10'}`}>
                               {isAbsent ? (
-                                <Ban className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                                <Ban className="h-5 w-5 text-muted-foreground" />
                               ) : isNonSoumis ? (
-                                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                <AlertTriangle className="h-5 w-5 text-warning" />
                               ) : (
-                                <FileCheck className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                                <FileCheck className="h-5 w-5 text-secondary" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-base font-semibold leading-tight">
+                              <h3 className="font-display text-base font-semibold leading-tight">
                                 {ep.titre}
                               </h3>
                               <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -671,8 +668,8 @@ export function MesEpreuvesPage() {
                           {/* Absent/Non soumis banner */}
                           {isAbsent && (
                             <div className="pl-[52px]">
-                              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/30">
-                                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              <div className="rounded-md border border-border bg-muted/50 p-3">
+                                <p className="text-sm font-medium text-muted-foreground">
                                   Absent(e) — Vous n&apos;avez pas commencé cette épreuve.
                                 </p>
                               </div>
@@ -680,8 +677,8 @@ export function MesEpreuvesPage() {
                           )}
                           {isNonSoumis && (
                             <div className="pl-[52px]">
-                              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                              <div className="rounded-md border border-warning/20 bg-warning/10 p-3">
+                                <p className="text-sm font-medium text-warning">
                                   Non soumis — Votre brouillon a été sauvegardé automatiquement à la clôture de l&apos;épreuve.
                                 </p>
                               </div>
@@ -692,7 +689,7 @@ export function MesEpreuvesPage() {
                           {!isAbsent && session.dateDebut && (
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
                               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                                <CalendarDays className="h-3.5 w-3.5 text-secondary" />
                                 Passé le {formatDateTimeFR(session.dateDebut)}
                               </span>
                             </div>
@@ -704,11 +701,11 @@ export function MesEpreuvesPage() {
                             <div className="flex items-center gap-3">
                               <Badge
                                 variant="outline"
-                                className={`text-sm font-bold px-3 py-1 ${getScoreBadgeClasses(score)}`}
+                                className={`font-mono text-sm font-bold tabular-nums px-3 py-1 ${getScoreBadgeClasses(score)}`}
                               >
                                 {score.toFixed(1)}/{maxScore}
                               </Badge>
-                              <span className="text-sm text-muted-foreground">
+                              <span className="font-mono text-sm text-muted-foreground tabular-nums">
                                 {percentage}%
                               </span>
                             </div>
@@ -727,15 +724,15 @@ export function MesEpreuvesPage() {
                           <div className="flex items-center gap-2 pl-[52px]">
                             {isCorrected ? (
                               <>
-                                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                                <CheckCircle2 className="h-4 w-4 text-success" />
+                                <span className="text-sm font-medium text-success">
                                   Corrigé
                                 </span>
                               </>
                             ) : (
                               <>
-                                <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
-                                <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                                <Loader2 className="h-4 w-4 text-warning animate-spin" />
+                                <span className="text-sm font-medium text-warning">
                                   En attente de correction
                                 </span>
                               </>
@@ -752,7 +749,7 @@ export function MesEpreuvesPage() {
                         <div className="shrink-0 sm:ml-4">
                           <Button
                             variant="outline"
-                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                            className="border-success/30 text-success hover:bg-success/10"
                             onClick={() => handleVoirDetail(ep, session)}
                           >
                             <Eye className="h-4 w-4" />
@@ -773,8 +770,8 @@ export function MesEpreuvesPage() {
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <DialogTitle className="flex items-center gap-2 font-display">
+              <ClipboardList className="h-5 w-5 text-success" />
               {selectedResult?.epreuve.titre ?? 'Détail du résultat'}
             </DialogTitle>
             <DialogDescription>
@@ -789,14 +786,14 @@ export function MesEpreuvesPage() {
               <div className="space-y-6 pb-4">
                 {/* Score overview */}
                 <div className="flex items-center gap-4 rounded-lg border bg-muted/30 p-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40">
-                    <Trophy className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-success/10">
+                    <Trophy className="h-7 w-7 text-success" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl font-bold">
+                      <span className="font-mono text-2xl font-bold tabular-nums">
                         {(selectedResult.session.resultat?.scoreFinal ?? selectedResult.session.score ?? 0).toFixed(1)}
-                        <span className="text-lg text-muted-foreground">/{(selectedResult.session.resultat?.totalPossible ?? selectedResult.epreuve.noteTotal) || 20}</span>
+                        <span className="font-mono text-lg text-muted-foreground">/{(selectedResult.session.resultat?.totalPossible ?? selectedResult.epreuve.noteTotal) || 20}</span>
                       </span>
                       <Badge
                         variant="outline"
@@ -827,17 +824,17 @@ export function MesEpreuvesPage() {
                 {/* Correction status */}
                 <div className="flex items-center gap-2">
                   {selectedResult.session.statut === 'RETOURNEE' ? (
-                    <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+                    <Badge className="bg-secondary/10 text-secondary border-secondary/20">
                       <CheckCircle2 className="h-3 w-3" />
                       Rendu
                     </Badge>
                   ) : selectedResult.session.statut === 'CORRIGEE' ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+                    <Badge className="bg-success/10 text-success border-success/20">
                       <CheckCircle2 className="h-3 w-3" />
                       Corrigé
                     </Badge>
                   ) : (
-                    <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+                    <Badge className="bg-warning/10 text-warning border-warning/20">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       En attente de correction
                     </Badge>
@@ -849,8 +846,8 @@ export function MesEpreuvesPage() {
                 {/* Question-by-question breakdown */}
                 {hasQuestionDetails ? (
                   <div className="space-y-4">
-                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <HelpCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <h4 className="font-display text-sm font-semibold flex items-center gap-2">
+                      <HelpCircle className="h-4 w-4 text-success" />
                       Détail par question
                     </h4>
                     <div className="space-y-3">
@@ -865,29 +862,29 @@ export function MesEpreuvesPage() {
                             key={idx}
                             className={`rounded-lg border p-4 transition-colors ${
                               isCorrect
-                                ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20'
+                                ? 'border-success/20 bg-success/5'
                                 : isIncorrect
-                                  ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20'
+                                  ? 'border-destructive/20 bg-destructive/5'
                                   : 'border-muted'
                             }`}
                           >
                             <div className="flex items-start gap-3">
                               {/* Question number & status icon */}
                               <div className="flex flex-col items-center gap-1">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-bold">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted font-mono text-xs font-bold tabular-nums">
                                   {q.index ?? idx + 1}
                                 </span>
                                 {isGraded && isCorrect && (
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                  <CheckCircle2 className="h-4 w-4 text-success" />
                                 )}
                                 {isGraded && isIncorrect && (
-                                  <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
+                                  <XCircle className="h-4 w-4 text-destructive" />
                                 )}
                                 {isGraded && q.correct === null && isManual && (
-                                  <MinusCircle className="h-4 w-4 text-gray-400" />
+                                  <MinusCircle className="h-4 w-4 text-muted-foreground" />
                                 )}
                                 {!isGraded && (
-                                  <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
+                                  <Loader2 className="h-4 w-4 text-warning animate-spin" />
                                 )}
                               </div>
 
@@ -913,37 +910,37 @@ export function MesEpreuvesPage() {
                                 {/* Score for this question */}
                                 {isGraded ? (
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-semibold ${
+                                    <span className={`font-mono text-sm font-semibold tabular-nums ${
                                       isCorrect
-                                        ? 'text-emerald-700 dark:text-emerald-400'
-                                        : 'text-red-700 dark:text-red-400'
+                                        ? 'text-success'
+                                        : 'text-destructive'
                                     }`}>
                                       {q.pointsObtenus?.toFixed(1) ?? '0'}/{q.pointsMax}
                                     </span>
                                     {isCorrect && (
-                                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] px-1.5 py-0">
+                                      <Badge className="bg-success/10 text-success text-[10px] px-1.5 py-0">
                                         Correct
                                       </Badge>
                                     )}
                                     {isIncorrect && (
-                                      <Badge className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 text-[10px] px-1.5 py-0">
+                                      <Badge className="bg-destructive/10 text-destructive text-[10px] px-1.5 py-0">
                                         Incorrect
                                       </Badge>
                                     )}
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-900 dark:bg-amber-950/30">
+                                  <div className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-1.5">
                                     {isManual ? (
                                       <>
-                                        <PenLine className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                                        <span className="text-xs text-amber-700 dark:text-amber-400">
+                                        <PenLine className="h-3.5 w-3.5 text-warning" />
+                                        <span className="text-xs text-warning">
                                           En attente de correction par l&apos;enseignant
                                         </span>
                                       </>
                                     ) : (
                                       <>
-                                        <MessageSquare className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                                        <span className="text-xs text-amber-700 dark:text-amber-400">
+                                        <MessageSquare className="h-3.5 w-3.5 text-warning" />
+                                        <span className="text-xs text-warning">
                                           En attente de correction
                                         </span>
                                       </>
@@ -958,7 +955,7 @@ export function MesEpreuvesPage() {
                                       <span className="font-medium">Votre réponse :</span> {q.reponseEtudiant}
                                     </p>
                                     {isIncorrect && q.reponseAttendue && (
-                                      <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                                      <p className="text-xs text-success">
                                         <span className="font-medium">Réponse attendue :</span> {q.reponseAttendue}
                                       </p>
                                     )}
@@ -980,7 +977,7 @@ export function MesEpreuvesPage() {
                       Le détail par question n&apos;est pas encore disponible.
                     </p>
                     {selectedResult.session.statut !== 'CORRIGEE' && (
-                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      <p className="mt-1 text-xs text-warning">
                         Les détails seront accessibles une fois la correction terminée.
                       </p>
                     )}

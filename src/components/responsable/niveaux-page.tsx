@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import {
   Table,
   TableBody,
@@ -124,84 +124,84 @@ const NIVEAU_CONFIG = [
     label: 'L1 - Licence 1ère année',
     shortLabel: 'L1',
     color: 'emerald',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    textColor: 'text-emerald-700',
-    darkBgColor: 'dark:bg-emerald-950/30',
-    darkBorderColor: 'dark:border-emerald-800',
-    darkTextColor: 'dark:text-emerald-300',
-    iconBg: 'bg-emerald-100',
-    darkIconBg: 'dark:bg-emerald-900/40',
+    bgColor: 'bg-success/10',
+    borderColor: 'border-success/30',
+    textColor: 'text-success',
+    darkBgColor: 'dark:bg-success/20',
+    darkBorderColor: 'dark:border-success/70',
+    darkTextColor: 'dark:text-success/80',
+    iconBg: 'bg-success/10',
+    darkIconBg: 'dark:bg-success/40',
   },
   {
     key: 'L2',
     label: 'L2 - Licence 2ème année',
     shortLabel: 'L2',
     color: 'teal',
-    bgColor: 'bg-teal-50',
-    borderColor: 'border-teal-200',
-    textColor: 'text-teal-700',
-    darkBgColor: 'dark:bg-teal-950/30',
-    darkBorderColor: 'dark:border-teal-800',
-    darkTextColor: 'dark:text-teal-300',
-    iconBg: 'bg-teal-100',
-    darkIconBg: 'dark:bg-teal-900/40',
+    bgColor: 'bg-success/10',
+    borderColor: 'border-success/30',
+    textColor: 'text-success',
+    darkBgColor: 'dark:bg-success/20',
+    darkBorderColor: 'dark:border-success/70',
+    darkTextColor: 'dark:text-success/80',
+    iconBg: 'bg-success/10',
+    darkIconBg: 'dark:bg-success/40',
   },
   {
     key: 'L3',
     label: 'L3 - Licence 3ème année',
     shortLabel: 'L3',
     color: 'cyan',
-    bgColor: 'bg-cyan-50',
-    borderColor: 'border-cyan-200',
-    textColor: 'text-cyan-700',
-    darkBgColor: 'dark:bg-cyan-950/30',
-    darkBorderColor: 'dark:border-cyan-800',
-    darkTextColor: 'dark:text-cyan-300',
-    iconBg: 'bg-cyan-100',
-    darkIconBg: 'dark:bg-cyan-900/40',
+    bgColor: 'bg-info/10',
+    borderColor: 'border-info/30',
+    textColor: 'text-info',
+    darkBgColor: 'dark:bg-info/20',
+    darkBorderColor: 'dark:border-info/70',
+    darkTextColor: 'dark:text-info/80',
+    iconBg: 'bg-info/10',
+    darkIconBg: 'dark:bg-info/40',
   },
   {
     key: 'M1',
     label: 'M1 - Master 1ère année',
     shortLabel: 'M1',
     color: 'amber',
-    bgColor: 'bg-amber-50',
-    borderColor: 'border-amber-200',
-    textColor: 'text-amber-700',
-    darkBgColor: 'dark:bg-amber-950/30',
-    darkBorderColor: 'dark:border-amber-800',
-    darkTextColor: 'dark:text-amber-300',
-    iconBg: 'bg-amber-100',
-    darkIconBg: 'dark:bg-amber-900/40',
+    bgColor: 'bg-warning/10',
+    borderColor: 'border-warning/30',
+    textColor: 'text-warning',
+    darkBgColor: 'dark:bg-warning/20',
+    darkBorderColor: 'dark:border-warning/70',
+    darkTextColor: 'dark:text-warning/80',
+    iconBg: 'bg-warning/10',
+    darkIconBg: 'dark:bg-warning/40',
   },
   {
     key: 'M2',
     label: 'M2 - Master 2ème année',
     shortLabel: 'M2',
     color: 'orange',
-    bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
-    textColor: 'text-orange-700',
-    darkBgColor: 'dark:bg-orange-950/30',
-    darkBorderColor: 'dark:border-orange-800',
-    darkTextColor: 'dark:text-orange-300',
-    iconBg: 'bg-orange-100',
-    darkIconBg: 'dark:bg-orange-900/40',
+    bgColor: 'bg-warning/10',
+    borderColor: 'border-warning/30',
+    textColor: 'text-warning',
+    darkBgColor: 'dark:bg-warning/20',
+    darkBorderColor: 'dark:border-warning/70',
+    darkTextColor: 'dark:text-warning/80',
+    iconBg: 'bg-warning/10',
+    darkIconBg: 'dark:bg-warning/40',
   },
   {
     key: 'DOCTORAT',
     label: 'Doctorat',
     shortLabel: 'Doctorat',
     color: 'violet',
-    bgColor: 'bg-violet-50',
-    borderColor: 'border-violet-200',
-    textColor: 'text-violet-700',
-    darkBgColor: 'dark:bg-violet-950/30',
-    darkBorderColor: 'dark:border-violet-800',
-    darkTextColor: 'dark:text-violet-300',
-    iconBg: 'bg-violet-100',
-    darkIconBg: 'dark:bg-violet-900/40',
+    bgColor: 'bg-secondary/10',
+    borderColor: 'border-secondary/30',
+    textColor: 'text-secondary',
+    darkBgColor: 'dark:bg-secondary/20',
+    darkBorderColor: 'dark:border-secondary/70',
+    darkTextColor: 'dark:text-secondary/80',
+    iconBg: 'bg-secondary/10',
+    darkIconBg: 'dark:bg-secondary/40',
   },
 ]
 
@@ -210,32 +210,32 @@ const NIVEAU_CONFIG = [
 function getCoverageColor(rate: number): { bar: string; bg: string; text: string; darkText: string } {
   if (rate >= 80) {
     return {
-      bar: 'bg-emerald-500',
-      bg: 'bg-emerald-100 dark:bg-emerald-900/40',
-      text: 'text-emerald-700',
-      darkText: 'dark:text-emerald-300',
+      bar: 'bg-success',
+      bg: 'bg-success/10',
+      text: 'text-success',
+      darkText: 'dark:text-success/80',
     }
   }
   if (rate >= 50) {
     return {
-      bar: 'bg-amber-500',
-      bg: 'bg-amber-100 dark:bg-amber-900/40',
-      text: 'text-amber-700',
-      darkText: 'dark:text-amber-300',
+      bar: 'bg-warning',
+      bg: 'bg-warning/10',
+      text: 'text-warning',
+      darkText: 'dark:text-warning/80',
     }
   }
   return {
-    bar: 'bg-red-500',
-    bg: 'bg-red-100 dark:bg-red-900/40',
-    text: 'text-red-700',
-    darkText: 'dark:text-red-300',
+    bar: 'bg-destructive',
+    bg: 'bg-destructive/10',
+    text: 'text-destructive',
+    darkText: 'dark:text-destructive/80',
   }
 }
 
 function getCoverageBadge(rate: number) {
   if (rate >= 80) {
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">
+      <Badge className="bg-success/10 text-success border-success/30 text-xs">
         <CheckCircle2 className="h-3 w-3 mr-1" />
         Bien couvert
       </Badge>
@@ -243,14 +243,14 @@ function getCoverageBadge(rate: number) {
   }
   if (rate >= 50) {
     return (
-      <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">
+      <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">
         <Info className="h-3 w-3 mr-1" />
         Partiel
       </Badge>
     )
   }
   return (
-    <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-xs">
+    <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
       <AlertTriangle className="h-3 w-3 mr-1" />
       Insuffisant
     </Badge>
@@ -580,8 +580,8 @@ export function NiveauxPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Layers className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <Layers className="h-7 w-7 text-success" />
             Niveaux d&apos;étude
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -589,7 +589,7 @@ export function NiveauxPage() {
           </p>
         </div>
         <Button
-          className="bg-emerald-600 hover:bg-emerald-700"
+          className="bg-success hover:bg-success/90"
           onClick={() => handleOpenAdd()}
         >
           <Plus className="h-4 w-4" />
@@ -599,8 +599,8 @@ export function NiveauxPage() {
 
       {/* ─── Overview: Niveau Cards Grid ─── */}
       <div>
-        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-          <GraduationCap className="h-5 w-5 text-emerald-600" />
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 font-display">
+          <GraduationCap className="h-5 w-5 text-success" />
           Vue d&apos;ensemble par niveau
         </h2>
 
@@ -609,11 +609,11 @@ export function NiveauxPage() {
             {Array.from({ length: 6 }).map((_, i) => (
               <Card key={i} className="animate-pulse">
                 <CardContent className="p-4 space-y-3">
-                  <Skeleton className="h-5 w-16" />
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-2 w-full" />
+                  <PulseSkeleton className="h-5 w-16" />
+                  <PulseSkeleton className="h-4 w-24" />
+                  <PulseSkeleton className="h-4 w-20" />
+                  <PulseSkeleton className="h-4 w-20" />
+                  <PulseSkeleton className="h-2 w-full" />
                 </CardContent>
               </Card>
             ))}
@@ -701,23 +701,23 @@ export function NiveauxPage() {
 
       {/* ─── Filière-Niveau Matrix ─── */}
       <div>
-        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-          <BookMarked className="h-5 w-5 text-teal-600" />
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 font-display">
+          <BookMarked className="h-5 w-5 text-success" />
           Matrice Filière × Niveau
         </h2>
 
         {isLoading ? (
           <Card>
             <CardContent className="p-6 space-y-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+              <PulseSkeleton className="h-10 w-full" />
+              <PulseSkeleton className="h-10 w-full" />
+              <PulseSkeleton className="h-10 w-full" />
             </CardContent>
           </Card>
         ) : filieres.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-              <Layers className="h-8 w-8 text-emerald-500 dark:text-emerald-400" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+              <Layers className="h-8 w-8 text-success" />
             </div>
             <h3 className="mt-4 text-base font-semibold">Aucune filière trouvée</h3>
             <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -731,7 +731,7 @@ export function NiveauxPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">
+                      <TableHead className="sticky left-0 bg-background z-10 min-w-[200px] font-display">
                         Filière
                       </TableHead>
                       {['L1', 'L2', 'L3', 'M1', 'M2'].map((niveau) => (
@@ -746,11 +746,11 @@ export function NiveauxPage() {
                       <TableRow key={row.filiere.id}>
                         <TableCell className="sticky left-0 bg-background z-10 font-medium">
                           <div className="flex items-center gap-2">
-                            <GraduationCap className="h-4 w-4 text-emerald-600" />
+                            <GraduationCap className="h-4 w-4 text-success" />
                             <div>
                               <p className="text-sm font-medium">{row.filiere.nom}</p>
                               {row.filiere.code && (
-                                <p className="text-xs text-muted-foreground font-mono">
+                                <p className="text-xs text-muted-foreground font-mono tabular-nums">
                                   {row.filiere.code}
                                 </p>
                               )}
@@ -781,8 +781,7 @@ export function NiveauxPage() {
                                 title={`${cell.nbUEs} UE${cell.nbUEs > 1 ? 's' : ''} en ${niveau} — Taux de couverture : ${cell.tauxCouverture}%`}
                                 onClick={() => handleViewNiveauDetail(niveau)}
                               >
-                                <span className={`text-sm font-bold ${coverage.text} ${coverage.darkText}`}>
-                                  {cell.nbUEs} UE{cell.nbUEs > 1 ? 's' : ''}
+                                <span className={`text-sm font-bold ${coverage.text} ${coverage.darkText} font-mono tabular-nums`}>{cell.nbUEs} UE{cell.nbUEs > 1 ? 's' : ''}
                                 </span>
                                 <span className={`text-xs ${coverage.text} ${coverage.darkText}`}>
                                   {cell.tauxCouverture}% couvert
@@ -804,52 +803,50 @@ export function NiveauxPage() {
       {/* ─── Summary Stats Row ─── */}
       {!isLoading && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card className="border-l-4 border-l-emerald-500">
+          <Card className="border-l-4 border-l-success">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                <Layers className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                <Layers className="h-5 w-5 text-success" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Niveaux actifs</p>
-                <p className="text-xl font-bold">
-                  {niveauStats.filter((s) => s.nbUEs > 0).length}
+                <p className="text-xl font-bold font-mono tabular-nums">{niveauStats.filter((s) => s.nbUEs > 0).length}
                   <span className="text-sm text-muted-foreground font-normal"> / 6</span>
                 </p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-teal-500">
+          <Card className="border-l-4 border-l-success">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                <BookMarked className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                <BookMarked className="h-5 w-5 text-success" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total UEs</p>
-                <p className="text-xl font-bold">{ues.length}</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{ues.length}</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-amber-500">
+          <Card className="border-l-4 border-l-warning">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                <Users className="h-5 w-5 text-warning" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Enseignants affectés</p>
-                <p className="text-xl font-bold">
-                  {new Set(affectations.map((a) => a.enseignantId)).size}
+                <p className="text-xl font-bold font-mono tabular-nums">{new Set(affectations.map((a) => a.enseignantId)).size}
                 </p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-cyan-500">
+          <Card className="border-l-4 border-l-info">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
-                <GraduationCap className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
+                <GraduationCap className="h-5 w-5 text-info" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Taux couverture global</p>
-                <p className="text-xl font-bold">{globalCoverage}%</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{globalCoverage}%</p>
               </div>
             </CardContent>
           </Card>
@@ -861,7 +858,7 @@ export function NiveauxPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-emerald-600" />
+              <Layers className="h-5 w-5 text-success" />
               Ajouter un niveau
             </DialogTitle>
             <DialogDescription>
@@ -909,8 +906,8 @@ export function NiveauxPage() {
             <Separator />
 
             {/* UE details */}
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-800 dark:bg-emerald-950/20">
-              <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium mb-1">
+            <div className="rounded-lg border border-success/30 bg-success/10 p-3">
+              <p className="text-xs text-success font-medium mb-1">
                 Unité d&apos;enseignement
               </p>
               <p className="text-xs text-muted-foreground">
@@ -926,7 +923,7 @@ export function NiveauxPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 text-xs text-emerald-600 hover:text-emerald-700"
+                      className="h-6 text-xs text-success hover:text-success"
                       onClick={() => setAddUECode(suggestedCode)}
                     >
                       Auto: {suggestedCode}
@@ -1039,7 +1036,7 @@ export function NiveauxPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleAddSubmit}
               disabled={isSubmitting}
             >
@@ -1055,7 +1052,7 @@ export function NiveauxPage() {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-emerald-600" />
+              <Layers className="h-5 w-5 text-success" />
               Détail du niveau {detailData?.config?.label ?? detailNiveau}
             </DialogTitle>
             <DialogDescription>
@@ -1067,11 +1064,11 @@ export function NiveauxPage() {
             <div className="flex-1 overflow-y-auto space-y-4 pr-1">
               {/* Summary badges */}
               <div className="flex flex-wrap gap-2">
-                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+                <Badge className="bg-success/10 text-success border-success/30">
                   <BookMarked className="h-3 w-3 mr-1" />
                   {detailData.totalUEs} UE{detailData.totalUEs > 1 ? 's' : ''}
                 </Badge>
-                <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+                <Badge className="bg-success/10 text-success border-success/30">
                   <Users className="h-3 w-3 mr-1" />
                   {detailData.totalAffectations} affectation{detailData.totalAffectations > 1 ? 's' : ''}
                 </Badge>
@@ -1100,7 +1097,7 @@ export function NiveauxPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    className="mt-3 border-success/30 text-success hover:bg-success/10"
                     onClick={() => {
                       setDetailDialogOpen(false)
                       handleOpenAdd(detailNiveau ?? undefined)
@@ -1123,11 +1120,11 @@ export function NiveauxPage() {
                       <Card key={group.filiere.id} className="overflow-hidden">
                         <CardHeader className="pb-2 px-4 pt-4">
                           <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                              <GraduationCap className="h-4 w-4 text-emerald-600" />
+                            <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display">
+                              <GraduationCap className="h-4 w-4 text-success" />
                               {group.filiere.nom}
                               {group.filiere.code && (
-                                <Badge variant="outline" className="font-mono text-xs">
+                                <Badge variant="outline" className="font-mono tabular-nums text-xs">
                                   {group.filiere.code}
                                 </Badge>
                               )}
@@ -1154,8 +1151,8 @@ export function NiveauxPage() {
                                   className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50"
                                 >
                                   <div className="flex items-center gap-3 min-w-0">
-                                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${hasAff ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-amber-100 dark:bg-amber-900/40'}`}>
-                                      <BookMarked className={`h-3.5 w-3.5 ${hasAff ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${hasAff ? 'bg-success/10' : 'bg-warning/10'}`}>
+                                      <BookMarked className={`h-3.5 w-3.5 ${hasAff ? 'text-success' : 'text-warning'}`} />
                                     </div>
                                     <div className="min-w-0">
                                       <p className="text-sm font-medium truncate">{ue.nom}</p>
@@ -1169,14 +1166,14 @@ export function NiveauxPage() {
                                   <div className="flex items-center gap-2 shrink-0">
                                     {ueAffectations.length > 0 ? (
                                       <Badge
-                                        className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs cursor-help"
+                                        className="bg-success/10 text-success border-success/30 text-xs cursor-help"
                                         title={ueAffectations.map((a) => `${a.enseignant.name} — ${a.typeSeance} (${a.volumeHeures}h)`).join('\n')}
                                       >
                                         <Users className="h-3 w-3 mr-1" />
                                         {ueAffectations.length}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs">
+                                      <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">
                                         Non affectée
                                       </Badge>
                                     )}
@@ -1190,7 +1187,7 @@ export function NiveauxPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                              className="border-success/30 text-success hover:bg-success/10"
                               onClick={() => {
                                 setDetailDialogOpen(false)
                                 handleOpenAdd(detailNiveau ?? undefined, group.filiere.id)

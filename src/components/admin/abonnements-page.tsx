@@ -82,7 +82,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
@@ -177,19 +177,19 @@ function getStatutBadge(statut: string) {
   switch (statut) {
     case 'ESSAI':
       return (
-        <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+        <Badge className="bg-warning/10 text-warning border-warning/30">
           Essai
         </Badge>
       )
     case 'ACTIF':
       return (
-        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+        <Badge className="bg-success/10 text-success border-success/30">
           Actif
         </Badge>
       )
     case 'SUSPENDU':
       return (
-        <Badge className="bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800">
+        <Badge className="bg-warning/10 text-warning border-warning/30">
           Suspendu
         </Badge>
       )
@@ -201,7 +201,7 @@ function getStatutBadge(statut: string) {
       )
     case 'RESILIE':
       return (
-        <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
+        <Badge className="bg-destructive/10 text-destructive border-destructive/30">
           Résilié
         </Badge>
       )
@@ -224,33 +224,33 @@ function getPlanColor(type: string) {
       }
     case 'ESSENTIEL':
       return {
-        bg: 'bg-emerald-50/50 dark:bg-emerald-950/10',
-        border: 'border-emerald-200 dark:border-emerald-800',
-        header: 'bg-emerald-100 dark:bg-emerald-900/40',
-        accent: 'text-emerald-700 dark:text-emerald-300',
-        badge: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300',
-        icon: 'text-emerald-500 dark:text-emerald-400',
-        ring: 'ring-emerald-500 dark:ring-emerald-400',
+        bg: 'bg-success/10',
+        border: 'border-success/30',
+        header: 'bg-success/10',
+        accent: 'text-success',
+        badge: 'bg-success/10 text-success border-success/30',
+        icon: 'text-success',
+        ring: 'ring-success',
       }
     case 'PROFESSIONNEL':
       return {
-        bg: 'bg-teal-50/50 dark:bg-teal-950/10',
-        border: 'border-teal-200 dark:border-teal-800',
-        header: 'bg-teal-100 dark:bg-teal-900/40',
-        accent: 'text-teal-700 dark:text-teal-300',
-        badge: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300',
-        icon: 'text-teal-500 dark:text-teal-400',
-        ring: 'ring-teal-500 dark:ring-teal-400',
+        bg: 'bg-success/10',
+        border: 'border-success/30',
+        header: 'bg-success/10',
+        accent: 'text-success',
+        badge: 'bg-success/10 text-success border-success/30',
+        icon: 'text-success',
+        ring: 'ring-success',
       }
     case 'ENTREPRISE':
       return {
-        bg: 'bg-cyan-50/50 dark:bg-cyan-950/10',
-        border: 'border-cyan-200 dark:border-cyan-800',
-        header: 'bg-cyan-100 dark:bg-cyan-900/40',
-        accent: 'text-cyan-700 dark:text-cyan-300',
-        badge: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-300',
-        icon: 'text-cyan-500 dark:text-cyan-400',
-        ring: 'ring-cyan-500 dark:ring-cyan-400',
+        bg: 'bg-info/10',
+        border: 'border-info/30',
+        header: 'bg-info/10',
+        accent: 'text-info',
+        badge: 'bg-info/10 text-info border-info/30',
+        icon: 'text-info',
+        ring: 'ring-info',
       }
     default:
       return {
@@ -987,8 +987,8 @@ export function AbonnementsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <CreditCard className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <CreditCard className="h-7 w-7 text-success" />
             Gestion des Abonnements
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -998,7 +998,7 @@ export function AbonnementsPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+            className="border-success/30 text-success hover:bg-success/10"
             onClick={handleOpenCreatePlan}
           >
             <Plus className="h-4 w-4" />
@@ -1011,7 +1011,7 @@ export function AbonnementsPage() {
             <Plus className="h-4 w-4" />
             Ajouter abonnement
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenWizard}>
+          <Button className="bg-success hover:bg-success/90" onClick={handleOpenWizard}>
             <Sparkles className="h-4 w-4" />
             Nouvelle souscription
           </Button>
@@ -1020,47 +1020,47 @@ export function AbonnementsPage() {
 
       {/* ─── Stats Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <CheckCircle2 className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Abonnements actifs</p>
-              <p className="text-xl font-bold">{activeAboCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{activeAboCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <Users className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">En essai</p>
-              <p className="text-xl font-bold">{trialAboCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{trialAboCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <DollarSign className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <DollarSign className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Revenus mensuels</p>
-              <p className="text-xl font-bold">{formatCurrency(monthlyRevenue)}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{formatCurrency(monthlyRevenue)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-cyan-500">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
-              <TrendingUp className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
+              <TrendingUp className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Taux de rétention</p>
-              <p className="text-xl font-bold">{retentionRate}%</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{retentionRate}%</p>
             </div>
           </CardContent>
         </Card>
@@ -1099,14 +1099,14 @@ export function AbonnementsPage() {
             </div>
           ) : plans.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <CreditCard className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <CreditCard className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucun plan défini</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Commencez par créer vos plans tarifaires.
               </p>
-              <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreatePlan}>
+              <Button className="mt-6 bg-success hover:bg-success/90" onClick={handleOpenCreatePlan}>
                 <Plus className="h-4 w-4" />
                 Créer un plan
               </Button>
@@ -1132,8 +1132,7 @@ export function AbonnementsPage() {
                         {plan.nom}
                       </CardTitle>
                       <div className="mt-1">
-                        <span className="text-3xl font-bold">
-                          {plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
+                        <span className="text-3xl font-bold font-mono tabular-nums">{plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
                         </span>
                         {plan.prixMensuel > 0 && (
                           <span className="text-sm text-muted-foreground">/mois</span>
@@ -1151,7 +1150,7 @@ export function AbonnementsPage() {
                         {features.map((f, idx) => (
                           <li key={idx} className="flex items-start gap-2">
                             {f.included ? (
-                              <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
+                              <Check className="h-4 w-4 text-success mt-0.5 shrink-0" />
                             ) : (
                               <X className="h-4 w-4 text-gray-400 dark:text-gray-600 mt-0.5 shrink-0" />
                             )}
@@ -1226,15 +1225,15 @@ export function AbonnementsPage() {
           {isLoading && (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
+                <PulseSkeleton key={i} className="h-14 w-full" />
               ))}
             </div>
           )}
 
           {!isLoading && filteredAbonnements.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-                <CreditCard className="h-10 w-10 text-teal-500 dark:text-teal-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <CreditCard className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucun abonnement trouvé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1243,7 +1242,7 @@ export function AbonnementsPage() {
                   : 'Commencez par créer votre premier abonnement.'}
               </p>
               {!search && statutFilter === 'all' && (
-                <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenWizard}>
+                <Button className="mt-6 bg-success hover:bg-success/90" onClick={handleOpenWizard}>
                   <Sparkles className="h-4 w-4" />
                   Nouvelle souscription
                 </Button>
@@ -1257,14 +1256,14 @@ export function AbonnementsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Établissement</TableHead>
-                      <TableHead>Plan</TableHead>
-                      <TableHead>Responsable</TableHead>
-                      <TableHead>Statut</TableHead>
-                      <TableHead>Date début</TableHead>
-                      <TableHead>Date fin</TableHead>
-                      <TableHead className="text-right">Montant</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="font-display">Établissement</TableHead>
+                      <TableHead className="font-display">Plan</TableHead>
+                      <TableHead className="font-display">Responsable</TableHead>
+                      <TableHead className="font-display">Statut</TableHead>
+                      <TableHead className="font-display">Date début</TableHead>
+                      <TableHead className="font-display">Date fin</TableHead>
+                      <TableHead className="text-right font-display">Montant</TableHead>
+                      <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1272,7 +1271,7 @@ export function AbonnementsPage() {
                       <TableRow key={abo.id} className="group">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                               {abo.etablissement.nom.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -1291,27 +1290,27 @@ export function AbonnementsPage() {
                         <TableCell>
                           {responsablesMap[abo.etablissementId] ? (
                             <div className="flex items-center gap-1.5">
-                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 text-[10px] font-bold text-success">
                                 {responsablesMap[abo.etablissementId].name.charAt(0).toUpperCase()}
                               </div>
                               <span className="text-sm">{responsablesMap[abo.etablissementId].name}</span>
                             </div>
                           ) : (
-                            <span className="text-xs text-amber-600 dark:text-amber-400 italic">Non assigné</span>
+                            <span className="text-xs text-warning italic">Non assigné</span>
                           )}
                         </TableCell>
                         <TableCell>{getStatutBadge(abo.statut)}</TableCell>
                         <TableCell className="text-sm">{formatDate(abo.dateDebut)}</TableCell>
                         <TableCell className="text-sm">{formatDate(abo.dateFin)}</TableCell>
-                        <TableCell className="text-right font-medium text-sm">
+                        <TableCell className="text-right font-medium text-sm font-mono tabular-nums">
                           {formatCurrency(abo.montantPaye)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           <div className="flex items-center justify-end gap-1">
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950"
+                              className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
                               onClick={() => handleViewDetail(abo)}
                               title="Voir les détails"
                             >
@@ -1320,7 +1319,7 @@ export function AbonnementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                              className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
                               onClick={() => handleOpenEditAbo(abo)}
                               title="Modifier"
                             >
@@ -1330,7 +1329,7 @@ export function AbonnementsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950"
+                                className="h-8 w-8 p-0 text-warning hover:text-warning hover:bg-warning/10"
                                 onClick={() => setSuspendTarget(abo)}
                                 title="Suspendre"
                               >
@@ -1341,7 +1340,7 @@ export function AbonnementsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => setCancelTarget(abo)}
                                 title="Résilier"
                               >
@@ -1367,7 +1366,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-emerald-600" />
+              <Sparkles className="h-5 w-5 text-success" />
               Nouvelle souscription
             </DialogTitle>
             <DialogDescription>
@@ -1384,19 +1383,19 @@ export function AbonnementsPage() {
               { step: 4, label: 'Confirmation' },
             ].map((s, idx) => (
               <div key={s.step} className="flex items-center gap-2 flex-1">
-                <div className={`flex items-center gap-1.5 ${wizardStep >= s.step ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+                <div className={`flex items-center gap-1.5 ${wizardStep >= s.step ? 'text-success' : 'text-muted-foreground'}`}>
                   <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
                     wizardStep > s.step
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-success text-white'
                       : wizardStep === s.step
-                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-500'
+                        ? 'bg-success/10 text-success border-2 border-success/70'
                         : 'bg-muted text-muted-foreground'
                   }`}>
                     {wizardStep > s.step ? <Check className="h-4 w-4" /> : s.step}
                   </div>
                   <span className="text-xs font-medium hidden sm:inline">{s.label}</span>
                 </div>
-                {idx < 3 && <div className={`flex-1 h-0.5 ${wizardStep > s.step ? 'bg-emerald-500' : 'bg-muted'}`} />}
+                {idx < 3 && <div className={`flex-1 h-0.5 ${wizardStep > s.step ? 'bg-success' : 'bg-muted'}`} />}
               </div>
             ))}
           </div>
@@ -1406,7 +1405,7 @@ export function AbonnementsPage() {
             {wizardStep === 1 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                  <h3 className="text-sm font-semibold flex items-center gap-2 text-success">
                     <CreditCard className="h-4 w-4" />
                     Sélectionnez un plan
                   </h3>
@@ -1432,20 +1431,19 @@ export function AbonnementsPage() {
                           onClick={() => setWizPlanId(plan.id)}
                           className={`relative text-left rounded-lg border-2 p-4 transition-all hover:shadow-md ${
                             isSelected
-                              ? `border-emerald-500 dark:border-emerald-400 ${colors.bg} ring-2 ${colors.ring}`
-                              : `border-muted ${colors.bg} hover:border-emerald-300 dark:hover:border-emerald-700`
+                              ? `border-success ${colors.bg} ring-2 ${colors.ring}`
+                              : `border-muted ${colors.bg} hover:border-success/30`
                           }`}
                         >
                           {isSelected && (
                             <div className="absolute top-2 right-2">
-                              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                              <CheckCircle2 className="h-5 w-5 text-success" />
                             </div>
                           )}
                           <Badge className={`${colors.badge} text-[10px] mb-2`}>{plan.type}</Badge>
-                          <p className="font-bold text-sm">{plan.nom}</p>
+                          <p className="font-bold text-sm font-mono tabular-nums">{plan.nom}</p>
                           <div className="mt-1">
-                            <span className="text-lg font-bold">
-                              {plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
+                            <span className="text-lg font-bold font-mono tabular-nums">{plan.prixMensuel === 0 ? 'Gratuit' : formatCurrency(plan.prixMensuel)}
                             </span>
                             {plan.prixMensuel > 0 && <span className="text-xs text-muted-foreground">/mois</span>}
                           </div>
@@ -1455,7 +1453,7 @@ export function AbonnementsPage() {
                           <ul className="mt-2 space-y-0.5">
                             {getPlanFeatures(plan).slice(0, 4).map((f, i) => (
                               <li key={i} className="flex items-center gap-1 text-[11px]">
-                                {f.included ? <Check className="h-3 w-3 text-emerald-500 shrink-0" /> : <X className="h-3 w-3 text-gray-400 shrink-0" />}
+                                {f.included ? <Check className="h-3 w-3 text-success shrink-0" /> : <X className="h-3 w-3 text-gray-400 shrink-0" />}
                                 <span className={f.included ? '' : 'line-through text-muted-foreground'}>{f.label}</span>
                               </li>
                             ))}
@@ -1475,7 +1473,7 @@ export function AbonnementsPage() {
                         type="button"
                         className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
                           wizPeriodeFacturation === 'mensuel'
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-success text-white'
                             : 'bg-background text-muted-foreground hover:bg-muted'
                         }`}
                         onClick={() => setWizPeriodeFacturation('mensuel')}
@@ -1487,7 +1485,7 @@ export function AbonnementsPage() {
                         type="button"
                         className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
                           wizPeriodeFacturation === 'annuel'
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-success text-white'
                             : 'bg-background text-muted-foreground hover:bg-muted'
                         }`}
                         onClick={() => setWizPeriodeFacturation('annuel')}
@@ -1499,7 +1497,7 @@ export function AbonnementsPage() {
 
                     {/* Price summary */}
                     {wizSelectedPlan && (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-1.5">
+                      <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">Plan :</span>
                           <span className="text-sm font-semibold">{wizSelectedPlan.nom}</span>
@@ -1511,7 +1509,7 @@ export function AbonnementsPage() {
                         <Separator />
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">Montant :</span>
-                          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizPlanPrice)}</span>
+                          <span className="text-sm font-bold text-success font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
                         </div>
                       </div>
                     )}
@@ -1524,7 +1522,7 @@ export function AbonnementsPage() {
             {wizardStep === 2 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                  <h3 className="text-sm font-semibold flex items-center gap-2 text-success">
                     <Building2 className="h-4 w-4" />
                     Informations de l&apos;établissement
                   </h3>
@@ -1592,7 +1590,7 @@ export function AbonnementsPage() {
                     onClick={() => setMatriculeOpen(!matriculeOpen)}
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <IdCard className="h-4 w-4 text-emerald-600" />
+                      <IdCard className="h-4 w-4 text-success" />
                       Configuration des matricules (optionnel)
                     </div>
                     {matriculeOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -1601,7 +1599,7 @@ export function AbonnementsPage() {
                     <div className="border-t p-3 space-y-3">
                       <div className="space-y-2">
                         <Label htmlFor="wiz-format-matricule" className="text-xs">Format du matricule</Label>
-                        <Input id="wiz-format-matricule" placeholder="Ex: {YYYY}/{FIL}-{NIV}/{NNN}" value={wizFormatMatricule} onChange={(e) => setWizFormatMatricule(e.target.value)} className="text-sm font-mono" />
+                        <Input id="wiz-format-matricule" placeholder="Ex: {YYYY}/{FIL}-{NIV}/{NNN}" value={wizFormatMatricule} onChange={(e) => setWizFormatMatricule(e.target.value)} className="text-sm font-mono tabular-nums" />
                         <p className="text-xs text-muted-foreground">
                           Variables : {'{YYYY}'} (année), {'{YY}'} (année courte), {'{FIL}'} (code filière), {'{NIV}'} (niveau), {'{CODE}'} (code étab.), {'{NNN}'} (numéro)
                         </p>
@@ -1609,15 +1607,15 @@ export function AbonnementsPage() {
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="wiz-exemple-matricule" className="text-xs">Exemple</Label>
-                          <Input id="wiz-exemple-matricule" placeholder="Ex: 2026/INFO-L3/001" value={wizExempleMatricule} onChange={(e) => setWizExempleMatricule(e.target.value)} className="text-sm font-mono" />
+                          <Input id="wiz-exemple-matricule" placeholder="Ex: 2026/INFO-L3/001" value={wizExempleMatricule} onChange={(e) => setWizExempleMatricule(e.target.value)} className="text-sm font-mono tabular-nums" />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="wiz-regex-matricule" className="text-xs">Regex de validation</Label>
-                          <Input id="wiz-regex-matricule" placeholder="Ex: ^\\d{4}/.+\\/.+$" value={wizRegexMatricule} onChange={(e) => setWizRegexMatricule(e.target.value)} className="text-sm font-mono" />
+                          <Input id="wiz-regex-matricule" placeholder="Ex: ^\\d{4}/.+\\/.+$" value={wizRegexMatricule} onChange={(e) => setWizRegexMatricule(e.target.value)} className="text-sm font-mono tabular-nums" />
                         </div>
                       </div>
                       {!wizFormatMatricule && (
-                        <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <p className="text-xs text-warning flex items-center gap-1">
                           <Info className="h-3 w-3" />
                           Sans format défini, un matricule aléatoire (ETU-XXXXXX) sera généré.
                         </p>
@@ -1632,7 +1630,7 @@ export function AbonnementsPage() {
             {wizardStep === 3 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                  <h3 className="text-sm font-semibold flex items-center gap-2 text-success">
                     <UserPlus className="h-4 w-4" />
                     Responsable de l&apos;établissement
                   </h3>
@@ -1644,18 +1642,18 @@ export function AbonnementsPage() {
                 {/* Info banner */}
                 <div className={`rounded-lg border p-3 flex items-start gap-2 ${
                   wizRespMode === 'direct'
-                    ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800'
-                    : 'border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800'
+                    ? 'border-warning/30 bg-warning/10'
+                    : 'border-success/30 bg-success/10'
                 }`}>
                   <Info className={`h-4 w-4 shrink-0 mt-0.5 ${
                     wizRespMode === 'direct'
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-emerald-600 dark:text-emerald-400'
+                      ? 'text-warning'
+                      : 'text-success'
                   }`} />
                   <p className={`text-xs ${
                     wizRespMode === 'direct'
-                      ? 'text-amber-700 dark:text-amber-300'
-                      : 'text-emerald-700 dark:text-emerald-300'
+                      ? 'text-warning'
+                      : 'text-success'
                   }`}>
                     {wizRespMode === 'direct'
                       ? 'Un mot de passe temporaire sera généré automatiquement. Le responsable devra le changer à sa première connexion.'
@@ -1670,17 +1668,17 @@ export function AbonnementsPage() {
                     onClick={() => setWizRespMode('direct')}
                     className={`relative text-left rounded-lg border-2 p-3 transition-all hover:shadow-sm ${
                       wizRespMode === 'direct'
-                        ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 ring-2 ring-emerald-500/30'
-                        : 'border-muted bg-muted/30 hover:border-emerald-300 dark:hover:border-emerald-700'
+                        ? 'border-success bg-success/10 ring-2 ring-success'
+                        : 'border-muted bg-muted/30 hover:border-success/30'
                     }`}
                   >
                     {wizRespMode === 'direct' && (
                       <div className="absolute top-2 right-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <CheckCircle2 className="h-4 w-4 text-success" />
                       </div>
                     )}
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Lock className="h-4 w-4 text-emerald-600" />
+                      <Lock className="h-4 w-4 text-success" />
                       <span className="text-sm font-semibold">Création directe</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-tight">
@@ -1693,17 +1691,17 @@ export function AbonnementsPage() {
                     onClick={() => setWizRespMode('invitation')}
                     className={`relative text-left rounded-lg border-2 p-3 transition-all hover:shadow-sm ${
                       wizRespMode === 'invitation'
-                        ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 ring-2 ring-emerald-500/30'
-                        : 'border-muted bg-muted/30 hover:border-emerald-300 dark:hover:border-emerald-700'
+                        ? 'border-success bg-success/10 ring-2 ring-success'
+                        : 'border-muted bg-muted/30 hover:border-success/30'
                     }`}
                   >
                     {wizRespMode === 'invitation' && (
                       <div className="absolute top-2 right-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <CheckCircle2 className="h-4 w-4 text-success" />
                       </div>
                     )}
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Mail className="h-4 w-4 text-emerald-600" />
+                      <Mail className="h-4 w-4 text-success" />
                       <span className="text-sm font-semibold">Invitation par lien</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-tight">
@@ -1752,7 +1750,7 @@ export function AbonnementsPage() {
                     <span className="text-muted-foreground">Période :</span>
                     <span className="font-medium">{wizPeriodeFacturation === 'annuel' ? 'Annuel' : 'Mensuel'}</span>
                     <span className="text-muted-foreground">Montant :</span>
-                    <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizPlanPrice)}</span>
+                    <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(wizPlanPrice)}</span>
                     <span className="text-muted-foreground">Mode :</span>
                     <span className="font-medium">{wizRespMode === 'direct' ? 'Création directe' : 'Invitation par lien'}</span>
                     {wizRespMode === 'direct' && (
@@ -1769,11 +1767,11 @@ export function AbonnementsPage() {
             {/* ─── Step 4: Confirmation ─── */}
             {wizardStep === 4 && wizardCredentials && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800 p-4">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-4">
+                  <CheckCircle2 className="h-6 w-6 text-success shrink-0" />
                   <div>
-                    <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Souscription créée avec succès !</p>
-                    <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80">
+                    <p className="text-sm font-semibold text-success">Souscription créée avec succès !</p>
+                    <p className="text-xs text-success">
                       L&apos;établissement et l&apos;abonnement ont été créés
                       {wizardCredentials.responsableMode === 'direct' ? ', ainsi que le compte responsable' : ', et l\'invitation a été envoyée'}.
                     </p>
@@ -1783,7 +1781,7 @@ export function AbonnementsPage() {
                 {/* Établissement */}
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-emerald-600" />
+                    <Building2 className="h-4 w-4 text-success" />
                     Établissement
                   </h4>
                   <div className="rounded-lg border p-3">
@@ -1795,10 +1793,10 @@ export function AbonnementsPage() {
                 {wizardCredentials.responsableMode === 'direct' ? (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Lock className="h-4 w-4 text-emerald-600" />
+                      <Lock className="h-4 w-4 text-success" />
                       Identifiants de connexion
                     </h4>
-                    <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3 space-y-2">
+                    <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-muted-foreground">Nom :</span>
                         <span className="text-sm font-medium">{wizardCredentials.responsableNom}</span>
@@ -1806,30 +1804,30 @@ export function AbonnementsPage() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-muted-foreground">Email :</span>
                         <div className="flex items-center gap-1.5">
-                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                          <code className="text-xs font-mono tabular-nums bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
                             {wizardCredentials.responsableEmail}
                           </code>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'email')}>
-                            {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-muted-foreground">Mot de passe :</span>
                         <div className="flex items-center gap-1.5">
-                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                          <code className="text-xs font-mono tabular-nums bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
                             {wizardCredentials.temporaryPassword}
                           </code>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.temporaryPassword, 'password')}>
-                            {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'password' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
                     </div>
 
                     {/* Disclaimer */}
-                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
-                      <p className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                    <div className="rounded-lg bg-warning/10 border border-warning/30 p-3">
+                      <p className="text-xs text-warning flex items-start gap-2">
                         <Info className="h-4 w-4 mt-0.5 shrink-0" />
                         Ce mot de passe est temporaire. Le responsable devra le modifier lors de sa première connexion.
                       </p>
@@ -1838,25 +1836,25 @@ export function AbonnementsPage() {
                 ) : (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-emerald-600" />
+                      <Mail className="h-4 w-4 text-success" />
                       Invitation envoyée
                     </h4>
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-2">
+                    <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-muted-foreground">Email :</span>
                         <div className="flex items-center gap-1.5">
-                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
+                          <code className="text-xs font-mono tabular-nums bg-white dark:bg-gray-900 rounded px-2 py-0.5 border">
                             {wizardCredentials.responsableEmail}
                           </code>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleWizardCopy(wizardCredentials.responsableEmail, 'inv-email')}>
-                            {wizardCopiedField === 'inv-email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'inv-email' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
                       <div className="space-y-1.5">
                         <span className="text-xs text-muted-foreground">Lien d&apos;invitation :</span>
                         <div className="flex items-center gap-1.5">
-                          <code className="text-xs font-mono bg-white dark:bg-gray-900 rounded px-2 py-1 border break-all flex-1">
+                          <code className="text-xs font-mono tabular-nums bg-white dark:bg-gray-900 rounded px-2 py-1 border break-all flex-1">
                             {typeof window !== 'undefined' && wizardCredentials.invitationToken
                               ? `${window.location.origin}/?token=${wizardCredentials.invitationToken}`
                               : ''}
@@ -1874,7 +1872,7 @@ export function AbonnementsPage() {
                               }
                             }}
                           >
-                            {wizardCopiedField === 'inv-link' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                            {wizardCopiedField === 'inv-link' ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>
@@ -1895,8 +1893,8 @@ export function AbonnementsPage() {
                     </div>
 
                     {/* Disclaimer */}
-                    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3">
-                      <p className="text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                    <div className="rounded-lg bg-success/10 border border-success/30 p-3">
+                      <p className="text-xs text-success flex items-start gap-2">
                         <Info className="h-4 w-4 mt-0.5 shrink-0" />
                         Ce lien d&apos;invitation est valide 48 heures. Le responsable créera son propre mot de passe en l&apos;utilisant.
                       </p>
@@ -1907,7 +1905,7 @@ export function AbonnementsPage() {
                 {/* Abonnement */}
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <CreditCard className="h-4 w-4 text-emerald-600" />
+                    <CreditCard className="h-4 w-4 text-success" />
                     Abonnement
                   </h4>
                   <div className="rounded-lg border p-3 space-y-1.5">
@@ -1921,7 +1919,7 @@ export function AbonnementsPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Montant :</span>
-                      <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(wizardCredentials.montant)}</span>
+                      <span className="text-sm font-bold text-success font-mono tabular-nums">{formatCurrency(wizardCredentials.montant)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Début :</span>
@@ -1941,7 +1939,7 @@ export function AbonnementsPage() {
             {wizardStep === 1 && (
               <>
                 <Button variant="outline" onClick={() => setWizardOpen(false)}>Annuler</Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!canGoStep2} onClick={() => setWizardStep(2)}>
+                <Button className="bg-success hover:bg-success/90" disabled={!canGoStep2} onClick={() => setWizardStep(2)}>
                   Suivant
                   <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
@@ -1953,7 +1951,7 @@ export function AbonnementsPage() {
                   <ArrowLeft className="h-4 w-4 mr-1" />
                   Précédent
                 </Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!canGoStep3} onClick={() => setWizardStep(3)}>
+                <Button className="bg-success hover:bg-success/90" disabled={!canGoStep3} onClick={() => setWizardStep(3)}>
                   Suivant
                   <ArrowRight className="h-4 w-4 ml-1" />
                 </Button>
@@ -1965,7 +1963,7 @@ export function AbonnementsPage() {
                   <ArrowLeft className="h-4 w-4 mr-1" />
                   Précédent
                 </Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!canSubmit || wizardSubmitting} onClick={handleSouscriptionSubmit}>
+                <Button className="bg-success hover:bg-success/90" disabled={!canSubmit || wizardSubmitting} onClick={handleSouscriptionSubmit}>
                   {wizardSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   <Sparkles className="h-4 w-4 mr-1" />
                   Créer la souscription
@@ -1973,7 +1971,7 @@ export function AbonnementsPage() {
               </>
             )}
             {wizardStep === 4 && (
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setWizardOpen(false)}>
+              <Button className="bg-success hover:bg-success/90" onClick={() => setWizardOpen(false)}>
                 Terminer
               </Button>
             )}
@@ -1991,7 +1989,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-emerald-600" />
+              <CreditCard className="h-5 w-5 text-success" />
               {editingAbo ? 'Modifier l\'abonnement' : 'Ajouter un abonnement'}
             </DialogTitle>
             <DialogDescription>
@@ -2087,7 +2085,7 @@ export function AbonnementsPage() {
               <div className="space-y-3">
                 <Separator />
                 <div className="flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <UserPlus className="h-4 w-4 text-success" />
                   <h4 className="text-sm font-semibold">Responsable de l&apos;établissement</h4>
                 </div>
 
@@ -2101,34 +2099,34 @@ export function AbonnementsPage() {
                     Vérification du responsable...
                   </div>
                 ) : selectedEtabResponsable ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                  <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                       {selectedEtabResponsable.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{selectedEtabResponsable.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{selectedEtabResponsable.email}</p>
                     </div>
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 shrink-0">
+                    <Badge className="bg-success/10 text-success border-success/30 shrink-0">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Déjà assigné
                     </Badge>
                   </div>
                 ) : respCreated ? (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3">
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                       <span className="text-sm">
                         {responsableMode === 'invitation' ? 'Invitation envoyée avec succès' : 'Responsable créé avec succès'}
                       </span>
                     </div>
                     {createdTempPassword && (
-                      <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
-                        <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                      <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 space-y-2">
+                        <p className="text-xs font-medium text-warning">
                           Mot de passe temporaire (à communiquer au responsable) :
                         </p>
                         <div className="flex items-center gap-2">
-                          <code className="flex-1 rounded bg-white dark:bg-gray-900 px-2 py-1 text-sm font-mono border">
+                          <code className="flex-1 rounded bg-white dark:bg-gray-900 px-2 py-1 text-sm font-mono tabular-nums border">
                             {createdTempPassword}
                           </code>
                           <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
@@ -2143,9 +2141,9 @@ export function AbonnementsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-2.5">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2.5">
+                      <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                      <p className="text-xs text-warning">
                         Il est recommandé d&apos;assigner un responsable à chaque établissement. Vous pouvez aussi créer l&apos;abonnement sans responsable.
                       </p>
                     </div>
@@ -2155,7 +2153,7 @@ export function AbonnementsPage() {
                         type="button"
                         className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
                           responsableMode === 'invitation'
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-success text-white'
                             : 'bg-white dark:bg-gray-900 text-muted-foreground hover:bg-gray-50 dark:hover:bg-gray-800'
                         }`}
                         onClick={() => setResponsableMode('invitation')}
@@ -2167,7 +2165,7 @@ export function AbonnementsPage() {
                         type="button"
                         className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
                           responsableMode === 'direct'
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-success text-white'
                             : 'bg-white dark:bg-gray-900 text-muted-foreground hover:bg-gray-50 dark:hover:bg-gray-800'
                         }`}
                         onClick={() => setResponsableMode('direct')}
@@ -2183,7 +2181,7 @@ export function AbonnementsPage() {
                           <Label htmlFor="resp-invit-email" className="text-xs">Email du responsable</Label>
                           <div className="flex gap-2">
                             <Input id="resp-invit-email" type="email" placeholder="responsable@etablissement.fr" value={formRespInvitEmail} onChange={(e) => setFormRespInvitEmail(e.target.value)} className="flex-1" />
-                            <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 shrink-0" onClick={handleSendInvitation} disabled={isCreatingResp || !formRespInvitEmail}>
+                            <Button type="button" className="bg-success hover:bg-success/90 shrink-0" onClick={handleSendInvitation} disabled={isCreatingResp || !formRespInvitEmail}>
                               {isCreatingResp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                               Envoyer
                             </Button>
@@ -2205,7 +2203,7 @@ export function AbonnementsPage() {
                           <Label htmlFor="resp-email" className="text-xs">Email</Label>
                           <Input id="resp-email" type="email" placeholder="jean.dupont@etablissement.fr" value={formRespEmail} onChange={(e) => setFormRespEmail(e.target.value)} />
                         </div>
-                        <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleDirectCreateResponsable} disabled={isCreatingResp || !formRespName || !formRespEmail}>
+                        <Button type="button" className="w-full bg-success hover:bg-success/90" onClick={handleDirectCreateResponsable} disabled={isCreatingResp || !formRespName || !formRespEmail}>
                           {isCreatingResp ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserPlus className="h-4 w-4 mr-2" />}
                           Créer le responsable
                         </Button>
@@ -2222,7 +2220,7 @@ export function AbonnementsPage() {
 
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => setAboDialogOpen(false)}>Annuler</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSubmitAbo} disabled={isSubmitting}>
+            <Button className="bg-success hover:bg-success/90" onClick={handleSubmitAbo} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingAbo ? 'Enregistrer' : 'Créer'}
             </Button>
@@ -2235,7 +2233,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-teal-600" />
+              <CreditCard className="h-5 w-5 text-success" />
               {editingPlan ? 'Modifier le plan' : 'Nouveau plan'}
             </DialogTitle>
             <DialogDescription>
@@ -2321,28 +2319,28 @@ export function AbonnementsPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-emerald-500" />
+                    <Brain className="h-4 w-4 text-success" />
                     <Label htmlFor="plan-ia-gen" className="cursor-pointer">Génération IA</Label>
                   </div>
                   <Switch id="plan-ia-gen" checked={formPlanIaGeneration} onCheckedChange={setFormPlanIaGeneration} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-teal-500" />
+                    <Sparkles className="h-4 w-4 text-success" />
                     <Label htmlFor="plan-ia-correction" className="cursor-pointer">Correction IA</Label>
                   </div>
                   <Switch id="plan-ia-correction" checked={formPlanIaCorrection} onCheckedChange={setFormPlanIaCorrection} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-orange-500" />
+                    <Shield className="h-4 w-4 text-warning" />
                     <Label htmlFor="plan-proctoring" className="cursor-pointer">Proctoring</Label>
                   </div>
                   <Switch id="plan-proctoring" checked={formPlanProctoring} onCheckedChange={setFormPlanProctoring} />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-cyan-500" />
+                    <FileText className="h-4 w-4 text-info" />
                     <Label htmlFor="plan-export-pdf" className="cursor-pointer">Export PDF</Label>
                   </div>
                   <Switch id="plan-export-pdf" checked={formPlanExportPDF} onCheckedChange={setFormPlanExportPDF} />
@@ -2367,7 +2365,7 @@ export function AbonnementsPage() {
 
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>Annuler</Button>
-            <Button className="bg-teal-600 hover:bg-teal-700" onClick={handleSubmitPlan} disabled={isSubmitting}>
+            <Button className="bg-success hover:bg-success/90" onClick={handleSubmitPlan} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingPlan ? 'Enregistrer' : 'Créer le plan'}
             </Button>
@@ -2380,7 +2378,7 @@ export function AbonnementsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <PauseCircle className="h-5 w-5 text-orange-500" />
+              <PauseCircle className="h-5 w-5 text-warning" />
               Suspendre l&apos;abonnement
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -2391,7 +2389,7 @@ export function AbonnementsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction className="bg-orange-600 hover:bg-orange-700" onClick={handleSuspendAbo}>Suspendre</AlertDialogAction>
+            <AlertDialogAction className="bg-warning hover:bg-warning/90" onClick={handleSuspendAbo}>Suspendre</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2401,7 +2399,7 @@ export function AbonnementsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <Ban className="h-5 w-5 text-red-500" />
+              <Ban className="h-5 w-5 text-destructive" />
               Résilier l&apos;abonnement
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -2412,7 +2410,7 @@ export function AbonnementsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleCancelAbo}>Résilier</AlertDialogAction>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleCancelAbo}>Résilier</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2422,7 +2420,7 @@ export function AbonnementsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-emerald-600" />
+              <CreditCard className="h-5 w-5 text-success" />
               Détails de l&apos;abonnement
             </DialogTitle>
             <DialogDescription>
@@ -2436,7 +2434,7 @@ export function AbonnementsPage() {
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Établissement</h4>
                   <div className="flex items-center gap-3 rounded-lg border p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success">
                       {detailAbo.etablissement.nom.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -2463,22 +2461,22 @@ export function AbonnementsPage() {
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Responsable</h4>
                   {responsablesMap[detailAbo.etablissementId] ? (
                     <div className="flex items-center gap-3 rounded-lg border p-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                         {responsablesMap[detailAbo.etablissementId].name.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm">{responsablesMap[detailAbo.etablissementId].name}</p>
                         <p className="text-xs text-muted-foreground truncate">{responsablesMap[detailAbo.etablissementId].email}</p>
                       </div>
-                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 shrink-0">
+                      <Badge className="bg-success/10 text-success border-success/30 shrink-0">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Assigné
                       </Badge>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span className="text-sm text-amber-700 dark:text-amber-300">Aucun responsable assigné</span>
+                    <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                      <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
+                      <span className="text-sm text-warning">Aucun responsable assigné</span>
                     </div>
                   )}
                 </div>
@@ -2500,7 +2498,7 @@ export function AbonnementsPage() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Montant payé</span>
-                      <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(detailAbo.montantPaye)}</span>
+                      <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(detailAbo.montantPaye)}</span>
                     </div>
                     {detailAbo.modePaiement && (
                       <div className="flex justify-between text-sm">

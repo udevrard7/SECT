@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 // ─── Types ───
@@ -68,43 +69,43 @@ const TYPE_META: Record<CertificatType, {
 }> = {
   EXPERT: {
     label: 'Expert', icon: Trophy,
-    ring: 'ring-amber-400/40', text: 'text-amber-600 dark:text-amber-400',
-    badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/30',
-    bar: 'from-amber-400 to-orange-500',
+    ring: 'ring-warning/40', text: 'text-warning',
+    badge: 'bg-warning/15 text-warning border-warning/30',
+    bar: 'from-warning to-orange-500',
   },
   AVANCE: {
     label: 'Avancé', icon: Medal,
-    ring: 'ring-blue-400/40', text: 'text-blue-600 dark:text-blue-400',
-    badge: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-400/30',
-    bar: 'from-blue-400 to-indigo-500',
+    ring: 'ring-info/40', text: 'text-info',
+    badge: 'bg-info/15 text-info border-info/30',
+    bar: 'from-info to-indigo-500',
   },
   STANDARD: {
     label: 'Standard', icon: Award,
-    ring: 'ring-emerald-400/40', text: 'text-emerald-600 dark:text-emerald-400',
-    badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400/30',
-    bar: 'from-emerald-400 to-teal-500',
+    ring: 'ring-success/40', text: 'text-success',
+    badge: 'bg-success/15 text-success border-success/30',
+    bar: 'from-success to-teal-500',
   },
 }
 
 const STATUT_META: Record<StatutUE, { label: string; icon: typeof Clock; cls: string }> = {
-  EN_COURS: { label: 'En cours', icon: Clock, cls: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300' },
-  VALIDEE: { label: 'Validée', icon: CheckCircle2, cls: 'bg-green-500/15 text-green-700 dark:text-green-300' },
-  NON_VALIDEE: { label: 'Non validée', icon: XCircle, cls: 'bg-red-500/15 text-red-700 dark:text-red-300' },
+  EN_COURS: { label: 'En cours', icon: Clock, cls: 'bg-warning/15 text-warning' },
+  VALIDEE: { label: 'Validée', icon: CheckCircle2, cls: 'bg-success/15 text-success' },
+  NON_VALIDEE: { label: 'Non validée', icon: XCircle, cls: 'bg-destructive/15 text-destructive' },
 }
 
 // ─── Skeleton ───
 
 function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-border/40 p-5 space-y-4 animate-pulse">
+    <div className="rounded-xl border border-border/40 p-5 space-y-4">
       <div className="flex justify-between">
-        <div className="h-11 w-11 rounded-xl bg-muted" />
-        <div className="h-5 w-16 rounded-full bg-muted" />
+        <PulseSkeleton className="h-11 w-11" variant="card" />
+        <PulseSkeleton className="h-5 w-16" variant="default" />
       </div>
-      <div className="h-4 w-3/4 rounded bg-muted" />
-      <div className="h-8 w-20 rounded bg-muted" />
-      <div className="h-2 w-full rounded-full bg-muted" />
-      <div className="h-8 w-full rounded-lg bg-muted" />
+      <PulseSkeleton className="h-4 w-3/4" />
+      <PulseSkeleton className="h-8 w-20" />
+      <PulseSkeleton className="h-2 w-full" />
+      <PulseSkeleton className="h-8 w-full" />
     </div>
   )
 }
@@ -320,7 +321,7 @@ export function MesCertificatsPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-24 rounded-2xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 animate-pulse" />
+        <PulseSkeleton className="h-24 w-full" variant="card" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
         </div>
@@ -333,8 +334,8 @@ export function MesCertificatsPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <AlertCircle className="h-10 w-10 text-red-500" />
-        <p className="text-lg font-semibold">{error}</p>
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <p className="text-lg font-display font-semibold">{error}</p>
         <Button variant="outline" onClick={fetchData} className="gap-2">
           <Clock className="h-4 w-4" /> Réessayer
         </Button>
@@ -355,21 +356,21 @@ export function MesCertificatsPage() {
               <ScrollText className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Mes Certificats</h1>
-              <p className="text-xs text-emerald-100">Téléchargez et vérifiez vos certificats de réussite</p>
+              <h1 className="text-xl sm:text-2xl font-display font-bold tracking-tight">Mes Certificats</h1>
+              <p className="text-xs text-white/80">Téléchargez et vérifiez vos certificats de réussite</p>
             </div>
           </div>
           {/* Inline stats */}
           <div className="flex items-center gap-3">
             {([
-              { n: stats.expert, label: 'Expert', icon: Trophy, color: 'text-amber-300' },
-              { n: stats.avance, label: 'Avancé', icon: Medal, color: 'text-blue-300' },
-              { n: stats.standard, label: 'Standard', icon: Award, color: 'text-emerald-300' },
+              { n: stats.expert, label: 'Expert', icon: Trophy, color: 'text-warning' },
+              { n: stats.avance, label: 'Avancé', icon: Medal, color: 'text-info' },
+              { n: stats.standard, label: 'Standard', icon: Award, color: 'text-success' },
             ] as const).map((s, i) => (
               <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 backdrop-blur">
                 <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
-                <span className="text-sm font-bold">{s.n}</span>
-                <span className="text-[10px] text-emerald-100 hidden sm:inline">{s.label}</span>
+                <span className="text-sm font-bold font-mono tabular-nums">{s.n}</span>
+                <span className="text-[10px] text-white/80 hidden sm:inline">{s.label}</span>
               </div>
             ))}
           </div>
@@ -382,7 +383,7 @@ export function MesCertificatsPage() {
           <TabsList>
             <TabsTrigger value="certificats" className="gap-1.5 text-xs">
               <Award className="h-3.5 w-3.5" /> Certificats
-              {stats.total > 0 && <span className="ml-1 px-1.5 rounded-full bg-primary/15 text-[10px] font-bold">{stats.total}</span>}
+              {stats.total > 0 && <span className="ml-1 px-1.5 rounded-full bg-primary/15 text-[10px] font-bold font-mono tabular-nums">{stats.total}</span>}
             </TabsTrigger>
             <TabsTrigger value="timeline" className="gap-1.5 text-xs">
               <TrendingUp className="h-3.5 w-3.5" /> Parcours
@@ -396,11 +397,11 @@ export function MesCertificatsPage() {
         <div className="flex gap-1 bg-muted/50 rounded-lg p-0.5">
           <button
             onClick={() => setOrientation('landscape')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'landscape' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground'}`}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'landscape' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'}`}
           >📐 Paysage</button>
           <button
             onClick={() => setOrientation('portrait')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'portrait' ? 'bg-background shadow-sm text-emerald-600' : 'text-muted-foreground'}`}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${orientation === 'portrait' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'}`}
           >📄 Portrait</button>
         </div>
 
@@ -440,9 +441,9 @@ export function MesCertificatsPage() {
                   onClick={() => setTypeFilter(t)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     typeFilter === t
-                      ? t === 'EXPERT' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                      : t === 'AVANCE' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-                      : t === 'STANDARD' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      ? t === 'EXPERT' ? 'bg-warning/15 text-warning'
+                      : t === 'AVANCE' ? 'bg-info/15 text-info'
+                      : t === 'STANDARD' ? 'bg-success/15 text-success'
                       : 'bg-muted text-foreground'
                       : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                   }`}
@@ -463,7 +464,7 @@ export function MesCertificatsPage() {
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-3">
                   <FileText className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <p className="text-lg font-semibold">Aucun certificat</p>
+                <p className="text-lg font-display font-semibold">Aucun certificat</p>
                 <p className="text-sm text-muted-foreground text-center max-w-sm mt-1">
                   Vos certificats apparaîtront ici une fois vos épreuves validées.
                 </p>
@@ -471,7 +472,7 @@ export function MesCertificatsPage() {
             ) : filteredCertificats.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-16">
                 <Search className="h-10 w-10 text-muted-foreground" />
-                <p className="text-lg font-semibold mt-4">Aucun résultat</p>
+                <p className="text-lg font-display font-semibold mt-4">Aucun résultat</p>
                 <p className="text-sm text-muted-foreground mt-1">Essayez d&apos;autres filtres.</p>
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => { setSearchQuery(''); setTypeFilter('all') }}>
                   Réinitialiser les filtres
@@ -490,7 +491,7 @@ export function MesCertificatsPage() {
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={{ delay: i * 0.04, duration: 0.3 }}
                   >
-                    <div className={`group relative overflow-hidden rounded-xl border border-border/50 bg-card p-5 ring-1 ${meta.ring} hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300`}>
+                    <div className={`group relative overflow-hidden rounded-xl border border-border/50 bg-card p-5 ring-1 ${meta.ring} hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 ds-lift`}>
                       {/* Top accent bar */}
                       <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${meta.bar}`} />
 
@@ -511,18 +512,18 @@ export function MesCertificatsPage() {
                         {/* Mini border effect */}
                         <div className="absolute inset-1 border border-gold/20 rounded" />
                         <div className="relative text-center space-y-1">
-                          <p className="text-[8px] uppercase tracking-[2px] text-amber-600/60 dark:text-amber-400/40 font-semibold">Certificat de réussite</p>
+                          <p className="text-[8px] uppercase tracking-[2px] text-warning/60 font-semibold">Certificat de réussite</p>
                           <p className="text-[9px] font-bold text-muted-foreground/80 truncate">{cert.etudiantNom || user?.name || '—'}</p>
-                          <p className="text-[10px] font-bold text-foreground/90">{cert.ueCode}</p>
+                          <p className="text-[10px] font-bold text-foreground/90 font-mono">{cert.ueCode}</p>
                           <div className="flex items-center justify-center gap-1">
-                            <span className="text-xs font-black text-foreground">{cert.note.toFixed(1)}</span>
+                            <span className="text-xs font-black text-foreground font-mono tabular-nums">{cert.note.toFixed(1)}</span>
                             <span className="text-[8px] text-muted-foreground">/20</span>
                           </div>
                           <div className="h-1 rounded-full bg-muted mx-2 overflow-hidden">
                             <div className={`h-full rounded-full bg-gradient-to-r ${meta.bar}`} style={{ width: `${(cert.note / 20) * 100}%` }} />
                           </div>
                           {cert.mention && (
-                            <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{cert.mention}</Badge>
+                            <Badge variant="outline" className="text-[8px] px-1.5 py-0 h-4 bg-warning/10 text-warning">{cert.mention}</Badge>
                           )}
                         </div>
                         {/* QR code miniature */}
@@ -537,13 +538,13 @@ export function MesCertificatsPage() {
                       {/* UE */}
                       <div className="mb-3">
                         <p className="font-mono text-[11px] text-muted-foreground">{cert.ueCode}</p>
-                        <h3 className="font-semibold text-sm leading-snug">{cert.ueNom}</h3>
+                        <h3 className="font-semibold text-sm leading-snug font-display">{cert.ueNom}</h3>
                       </div>
 
                       {/* Note */}
                       <div className="flex items-baseline justify-between mb-2">
                         <div className="flex items-baseline gap-1">
-                          <span className="text-2xl font-bold">{cert.note.toFixed(2).replace(/[.,]00$/, '')}</span>
+                          <span className="text-2xl font-bold font-mono tabular-nums">{cert.note.toFixed(2).replace(/[.,]00$/, '')}</span>
                           <span className="text-xs text-muted-foreground">/20</span>
                         </div>
                         <span className="text-xs text-muted-foreground">{cert.mention}</span>
@@ -566,7 +567,7 @@ export function MesCertificatsPage() {
                       <div className="flex flex-col gap-1.5">
                         <Button
                           size="sm"
-                          className="w-full gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700"
+                          className="w-full gap-1.5 text-xs"
                           onClick={() => handleDownload(cert.id)}
                           disabled={downloadingId === cert.id}
                         >
@@ -602,7 +603,7 @@ export function MesCertificatsPage() {
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-3">
                 <TrendingUp className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-lg font-semibold">Aucun parcours</p>
+              <p className="text-lg font-display font-semibold">Aucun parcours</p>
               <p className="text-sm text-muted-foreground mt-1">Votre parcours apparaîtra ici après vos premières certifications.</p>
             </div>
           ) : (
@@ -626,12 +627,12 @@ export function MesCertificatsPage() {
                       >
                         {/* Dot on timeline */}
                         <div className={`absolute -left-11 top-1.5 h-4 w-4 rounded-full border-2 border-background shadow-sm ${
-                          cert.type === 'EXPERT' ? 'bg-amber-500' : cert.type === 'AVANCE' ? 'bg-blue-500' : 'bg-emerald-500'
+                          cert.type === 'EXPERT' ? 'bg-warning' : cert.type === 'AVANCE' ? 'bg-info' : 'bg-success'
                         }`}>
                           <div className="absolute inset-0 rounded-full animate-ping opacity-30 bg-current" style={{ animationDuration: '3s' }} />
                         </div>
                         {/* Card */}
-                        <Card className="border-l-4 hover:shadow-md transition-shadow" style={{
+                        <Card className="border-l-4 hover:shadow-md transition-shadow ds-lift" style={{
                           borderLeftColor: cert.type === 'EXPERT' ? '#F59E0B' : cert.type === 'AVANCE' ? '#3B82F6' : '#10B981'
                         }}>
                           <CardContent className="p-4">
@@ -646,7 +647,7 @@ export function MesCertificatsPage() {
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className={`text-lg font-bold ${cert.note >= 14 ? 'text-emerald-600' : cert.note >= 10 ? 'text-amber-600' : 'text-red-500'}`}>{cert.note.toFixed(1)}<span className="text-xs text-muted-foreground">/20</span></p>
+                                <p className={`text-lg font-bold font-mono tabular-nums ${cert.note >= 14 ? 'text-success' : cert.note >= 10 ? 'text-warning' : 'text-destructive'}`}>{cert.note.toFixed(1)}<span className="text-xs text-muted-foreground">/20</span></p>
                                 {cert.mention && <p className="text-[10px] text-muted-foreground">{cert.mention}</p>}
                               </div>
                             </div>
@@ -679,7 +680,7 @@ export function MesCertificatsPage() {
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-3">
                 <TrendingUp className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-lg font-semibold">Aucune progression</p>
+              <p className="text-lg font-display font-semibold">Aucune progression</p>
               <p className="text-sm text-muted-foreground mt-1">Vos résultats apparaîtront ici après vos évaluations.</p>
             </div>
           ) : (
@@ -690,7 +691,7 @@ export function MesCertificatsPage() {
                     <thead>
                       <tr className="border-b bg-muted/40">
                         {['Code UE', 'Nom', 'ECTS', 'Épreuves', 'Note', 'Statut', 'PDF'].map((h) => (
-                          <th key={h} className="text-center p-3 font-medium text-muted-foreground first:text-left">{h}</th>
+                          <th key={h} className="text-center p-3 font-display font-medium text-muted-foreground first:text-left">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -708,11 +709,11 @@ export function MesCertificatsPage() {
                           >
                             <td className="p-3 font-mono text-xs text-left">{val.ueCode}</td>
                             <td className="p-3 font-medium text-left">{val.ueNom}</td>
-                            <td className="p-3 text-center">{val.creditsECTS}</td>
-                            <td className="p-3 text-center text-muted-foreground">{val.epreuvesCompletees}/{val.epreuvesTotal}</td>
-                            <td className="p-3 text-center font-semibold">
+                            <td className="p-3 text-center font-mono tabular-nums">{val.creditsECTS}</td>
+                            <td className="p-3 text-center text-muted-foreground font-mono tabular-nums">{val.epreuvesCompletees}/{val.epreuvesTotal}</td>
+                            <td className="p-3 text-center font-semibold font-mono tabular-nums">
                               {val.note !== null ? (
-                                <span className={val.note >= 16 ? 'text-amber-600' : val.note >= 10 ? 'text-emerald-600' : 'text-red-500'}>
+                                <span className={val.note >= 16 ? 'text-warning' : val.note >= 10 ? 'text-success' : 'text-destructive'}>
                                   {val.note.toFixed(1)}
                                 </span>
                               ) : '—'}
@@ -726,8 +727,8 @@ export function MesCertificatsPage() {
                               {val.certificatId ? (
                                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleDownload(val.certificatId!)} disabled={downloadingId === val.certificatId}>
                                   {downloadingId === val.certificatId
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
-                                    : <Download className="h-3.5 w-3.5 text-emerald-600" />}
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-success" />
+                                    : <Download className="h-3.5 w-3.5 text-success" />}
                                 </Button>
                               ) : '—'}
                             </td>

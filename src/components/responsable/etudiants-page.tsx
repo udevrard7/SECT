@@ -62,7 +62,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import {
   Table,
   TableBody,
@@ -932,8 +932,8 @@ export function EtudiantsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <GraduationCap className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <GraduationCap className="h-7 w-7 text-success" />
             Gestion des Étudiants
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -949,11 +949,11 @@ export function EtudiantsPage() {
             <FileText className="h-4 w-4" />
             Template CSV
           </Button>
-          <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950" onClick={handleOpenImport}>
+          <Button variant="outline" size="sm" className="border-warning/30 text-warning hover:bg-warning/10" onClick={handleOpenImport}>
             <Upload className="h-4 w-4" />
             Importer CSV
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={handleOpenAdd}>
+          <Button className="bg-success hover:bg-success/90" size="sm" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
             Ajouter un étudiant
           </Button>
@@ -962,58 +962,58 @@ export function EtudiantsPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Users className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total étudiants</p>
-              <p className="text-xl font-bold">{totalEtudiants}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalEtudiants}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <GraduationCap className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <GraduationCap className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actifs</p>
-              <p className="text-xl font-bold">{activeEtudiants}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{activeEtudiants}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-emerald-400">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <CheckCircle2 className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Avec filière</p>
-              <p className="text-xl font-bold">{withFiliere}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{withFiliere}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-sky-500">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/40">
-              <Mail className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
+              <Mail className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Invitations en attente</p>
-              <p className="text-xl font-bold">{pendingInvitations}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{pendingInvitations}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <Clock className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Invitations expirées</p>
-              <p className="text-xl font-bold">{expiredInvitations}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{expiredInvitations}</p>
             </div>
           </CardContent>
         </Card>
@@ -1116,7 +1116,7 @@ export function EtudiantsPage() {
       {isLoading && viewMode === 'table' && (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <PulseSkeleton key={i} className="h-12 w-full" />
             ))}
           </div>
       )}
@@ -1124,8 +1124,8 @@ export function EtudiantsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && etudiants.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <GraduationCap className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <GraduationCap className="h-10 w-10 text-success" />
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucun étudiant trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1135,11 +1135,11 @@ export function EtudiantsPage() {
           </p>
           {!search && filiereFilter === 'all' && statusFilter === 'all' && niveauFilter === 'all' && (
             <div className="mt-6 flex gap-3">
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenAdd}>
+              <Button className="bg-success hover:bg-success/90" onClick={handleOpenAdd}>
                 <Plus className="h-4 w-4" />
                 Ajouter un étudiant
               </Button>
-              <Button variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950" onClick={handleOpenImport}>
+              <Button variant="outline" className="border-warning/30 text-warning hover:bg-warning/10" onClick={handleOpenImport}>
                 <Upload className="h-4 w-4" />
                 Importer CSV
               </Button>
@@ -1150,7 +1150,7 @@ export function EtudiantsPage() {
 
       {/* ─── Bulk Action Toolbar ─── */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border bg-emerald-50 p-3 dark:bg-emerald-950/30">
+        <div className="flex items-center gap-3 rounded-lg border bg-success/10 p-3">
           <span className="text-sm font-medium">
             {selectedIds.size} étudiant(s) sélectionné(s)
           </span>
@@ -1159,7 +1159,7 @@ export function EtudiantsPage() {
             variant="outline"
             size="sm"
             onClick={() => setBulkActionDialog('activate')}
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+            className="border-success/30 text-success hover:bg-success/10"
           >
             <Power className="h-3.5 w-3.5" />
             Réactiver
@@ -1176,7 +1176,7 @@ export function EtudiantsPage() {
             variant="outline"
             size="sm"
             onClick={() => setBulkActionDialog('delete')}
-            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+            className="border-destructive/30 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Supprimer
@@ -1195,7 +1195,7 @@ export function EtudiantsPage() {
       {!isLoading && etudiants.length > 0 && viewMode === 'cards' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {etudiants.map((etudiant) => (
-            <Card key={etudiant.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(etudiant.id) ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
+            <Card key={etudiant.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(etudiant.id) ? 'ring-2 ring-success border-success/30' : ''}`}>
               <CardContent className="flex flex-col gap-3 p-5">
                 {/* Header */}
                 <div className="flex items-start gap-3">
@@ -1205,7 +1205,7 @@ export function EtudiantsPage() {
                     className="mt-1"
                     aria-label={`Sélectionner ${etudiant.name}`}
                   />
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success">
                     {getInitials(etudiant.name)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1217,12 +1217,12 @@ export function EtudiantsPage() {
                 {/* Info row */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   {etudiant.filiere ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">
+                    <Badge className="bg-success/10 text-success border-success/30 text-xs">
                       <GraduationCap className="h-3 w-3 mr-0.5" />
                       {etudiant.filiere.nom}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-800">
+                    <Badge variant="outline" className="text-xs text-warning border-warning/30">
                       Sans filière
                     </Badge>
                   )}
@@ -1232,16 +1232,16 @@ export function EtudiantsPage() {
                     </Badge>
                   )}
                   {etudiant.actif ? (
-                    <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
+                    <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
                   ) : (
-                    <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
+                    <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                   )}
                 </div>
 
                 {/* Matricule + date */}
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   {etudiant.matricule ? (
-                    <span className="font-mono">{etudiant.matricule}</span>
+                    <span className="font-mono tabular-nums">{etudiant.matricule}</span>
                   ) : (
                     <span>—</span>
                   )}
@@ -1309,36 +1309,36 @@ export function EtudiantsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40px]">+</TableHead>
-                  <TableHead>Nom</TableHead>
-                  <TableHead className="hidden md:table-cell">Email</TableHead>
-                  <TableHead className="hidden sm:table-cell">Matricule</TableHead>
-                  <TableHead>Filière</TableHead>
-                  <TableHead className="hidden lg:table-cell">Niveau</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-[40px] font-display">+</TableHead>
+                  <TableHead className="font-display">Nom</TableHead>
+                  <TableHead className="hidden md:table-cell font-display">Email</TableHead>
+                  <TableHead className="hidden sm:table-cell font-display">Matricule</TableHead>
+                  <TableHead className="font-display">Filière</TableHead>
+                  <TableHead className="hidden lg:table-cell font-display">Niveau</TableHead>
+                  <TableHead className="font-display">Statut</TableHead>
+                  <TableHead className="text-right font-display">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {etudiants.map((etudiant) => (
                   <TableRow key={etudiant.id}>
                     <TableCell>
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                         {getInitials(etudiant.name)}
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">{etudiant.name}</TableCell>
                     <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{etudiant.email}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <span className="font-mono text-xs">{etudiant.matricule || '—'}</span>
+                      <span className="font-mono tabular-nums text-xs">{etudiant.matricule || '—'}</span>
                     </TableCell>
                     <TableCell>
                       {etudiant.filiere ? (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">
+                        <Badge className="bg-success/10 text-success border-success/30 text-xs">
                           {etudiant.filiere.nom}
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs text-amber-600">—</Badge>
+                        <Badge variant="outline" className="text-xs text-warning">—</Badge>
                       )}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
@@ -1348,12 +1348,12 @@ export function EtudiantsPage() {
                     </TableCell>
                     <TableCell>
                       {etudiant.actif ? (
-                        <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
+                        <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
                       ) : (
-                        <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
+                        <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right font-mono tabular-nums">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
@@ -1428,17 +1428,17 @@ export function EtudiantsPage() {
 
       {/* ─── Invitation Tracking Section ─── */}
       {!isLoading && invitations.length > 0 && (
-        <Card className="border-sky-200 dark:border-sky-900">
+        <Card className="border-info/30">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Mail className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+              <CardTitle className="text-lg flex items-center gap-2 font-display">
+                <Mail className="h-5 w-5 text-info" />
                 Invitations en cours ({invitations.length})
               </CardTitle>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-sky-600 hover:text-sky-700"
+                className="text-info hover:text-info"
                 onClick={fetchInvitations}
               >
                 <RefreshCw className={`h-4 w-4 ${isLoadingInvitations ? 'animate-spin' : ''}`} />
@@ -1450,24 +1450,24 @@ export function EtudiantsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Filière</TableHead>
-                    <TableHead>Expire dans</TableHead>
-                    <TableHead className="hidden sm:table-cell">Créée le</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="font-display">Email</TableHead>
+                    <TableHead className="font-display">Nom</TableHead>
+                    <TableHead className="font-display">Filière</TableHead>
+                    <TableHead className="font-display">Expire dans</TableHead>
+                    <TableHead className="hidden sm:table-cell font-display">Créée le</TableHead>
+                    <TableHead className="text-right font-display">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {invitations.map((invitation) => {
                     const expired = isExpired(invitation.expiresAt)
                     return (
-                      <TableRow key={invitation.id} className={expired ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
+                      <TableRow key={invitation.id} className={expired ? 'bg-warning/10' : ''}>
                         <TableCell className="text-sm font-medium">{invitation.email}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{invitation.name || '—'}</TableCell>
                         <TableCell className="text-sm">
                           {invitation.Filiere ? (
-                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs">
+                            <Badge className="bg-success/10 text-success border-success/30 text-xs">
                               {invitation.Filiere.nom}
                             </Badge>
                           ) : (
@@ -1476,25 +1476,25 @@ export function EtudiantsPage() {
                         </TableCell>
                         <TableCell>
                           {expired ? (
-                            <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-xs">
+                            <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
                               <XCircle className="h-3 w-3 mr-0.5" />
                               Expirée
                             </Badge>
                           ) : (
-                            <Badge className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800 text-xs">
+                            <Badge className="bg-info/10 text-info border-info/30 text-xs">
                               <Clock className="h-3 w-3 mr-0.5" />
                               {getExpiryCountdown(invitation.expiresAt)}
                             </Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">{formatDateTimeFR(invitation.createdAt)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           <div className="flex items-center justify-end gap-1">
                             {expired && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-400 dark:hover:bg-sky-950 h-7 text-xs"
+                                className="border-info/30 text-info hover:bg-info/10 h-7 text-xs"
                                 onClick={() => handleRenvoyerInvitation(invitation)}
                               >
                                 <RefreshCw className="h-3 w-3" />
@@ -1504,7 +1504,7 @@ export function EtudiantsPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950 h-7 text-xs"
+                              className="border-destructive/30 text-destructive hover:bg-destructive/10 h-7 text-xs"
                               onClick={() => setCancelInvitationTarget(invitation)}
                             >
                               Annuler
@@ -1540,7 +1540,7 @@ export function EtudiantsPage() {
             <Button
               variant={registrationMode === 'invitation' ? 'default' : 'outline'}
               size="sm"
-              className={registrationMode === 'invitation' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              className={registrationMode === 'invitation' ? 'bg-success hover:bg-success/90' : ''}
               onClick={() => setRegistrationMode('invitation')}
             >
               <Mail className="h-4 w-4 mr-1" />
@@ -1549,7 +1549,7 @@ export function EtudiantsPage() {
             <Button
               variant={registrationMode === 'direct' ? 'default' : 'outline'}
               size="sm"
-              className={registrationMode === 'direct' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              className={registrationMode === 'direct' ? 'bg-success hover:bg-success/90' : ''}
               onClick={() => setRegistrationMode('direct')}
             >
               <KeyRound className="h-4 w-4 mr-1" />
@@ -1586,8 +1586,8 @@ export function EtudiantsPage() {
                   </div>
                 </>
               ) : (
-                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-4 space-y-3">
-                  <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                <div className="rounded-lg border border-success/30 bg-success/10 p-4 space-y-3">
+                  <p className="text-sm font-medium text-success">
                     Invitation créée avec succès !
                   </p>
                   <div className="space-y-2">
@@ -1657,7 +1657,7 @@ export function EtudiantsPage() {
           <DialogFooter>
             {!invitationTokenResult && (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
                 onClick={registrationMode === 'invitation' ? handleInvitationSubmit : handleDirectSubmit}
                 disabled={isSubmitting}
               >
@@ -1679,7 +1679,7 @@ export function EtudiantsPage() {
             </DialogDescription>
           </DialogHeader>
           {directResult && (
-            <div className="rounded-lg border bg-emerald-50 dark:bg-emerald-950/30 p-4 space-y-3">
+            <div className="rounded-lg border bg-success/10 p-4 space-y-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">{directResult.name}</p>
                 <p className="text-sm text-muted-foreground">{directResult.email}</p>
@@ -1687,7 +1687,7 @@ export function EtudiantsPage() {
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">Mot de passe temporaire :</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-sm bg-white dark:bg-gray-900 p-2 rounded border font-mono">
+                  <code className="flex-1 text-sm bg-white dark:bg-gray-900 p-2 rounded border font-mono tabular-nums">
                     {directResult.temporaryPassword}
                   </code>
                   <Button size="sm" variant="outline" onClick={() => handleCopyToClipboard(directResult.temporaryPassword, 'Mot de passe')}>
@@ -1745,15 +1745,15 @@ export function EtudiantsPage() {
                   placeholder="Laissez vide pour auto-génération"
                   value={editMatricule}
                   onChange={(e) => setEditMatricule(e.target.value)}
-                  className={`font-mono ${editingEtudiant && editingEtudiant.matricule !== (editMatricule || null) && editingEtudiant.matricule !== editMatricule ? 'border-amber-400 focus-visible:ring-amber-400' : ''}`}
+                  className={`font-mono ${editingEtudiant && editingEtudiant.matricule !== (editMatricule || null) && editingEtudiant.matricule !== editMatricule ? 'border-warning focus-visible:ring-warning' : ''}`}
                 />
               </div>
               {editingEtudiant && editingEtudiant.matricule !== (editMatricule || null) && editingEtudiant.matricule !== editMatricule && (
-                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
-                  <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <div className="text-xs text-amber-800 dark:text-amber-300">
+                <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+                  <div className="text-xs text-warning">
                     <p className="font-semibold">Attention : changement de matricule détecté</p>
-                    <p className="mt-1">Ancien : <span className="font-mono">{editingEtudiant.matricule || '(aucun)'}</span> → Nouveau : <span className="font-mono">{editMatricule || '(supprimé)'}</span></p>
+                    <p className="mt-1">Ancien : <span className="font-mono tabular-nums">{editingEtudiant.matricule || '(aucun)'}</span> → Nouveau : <span className="font-mono tabular-nums">{editMatricule || '(supprimé)'}</span></p>
                     <p className="mt-1">L&apos;étudiant devra utiliser son nouveau matricule pour se connecter. Une notification lui sera envoyée.</p>
                   </div>
                 </div>
@@ -1781,7 +1781,7 @@ export function EtudiantsPage() {
               <Button
                 variant={editActif ? 'default' : 'outline'}
                 size="sm"
-                className={editActif ? 'bg-teal-600 hover:bg-teal-700' : ''}
+                className={editActif ? 'bg-success hover:bg-success/90' : ''}
                 onClick={() => setEditActif(!editActif)}
               >
                 {editActif ? 'Actif' : 'Archivé'}
@@ -1790,7 +1790,7 @@ export function EtudiantsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Annuler</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleEditSubmit} disabled={isSubmitting}>
+            <Button className="bg-success hover:bg-success/90" onClick={handleEditSubmit} disabled={isSubmitting}>
               {isSubmitting && <span className="animate-spin mr-2">⏳</span>}
               Enregistrer
             </Button>
@@ -1807,7 +1807,7 @@ export function EtudiantsPage() {
           {detailEtudiant && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-success/10 text-lg font-bold text-success">
                   {getInitials(detailEtudiant.name)}
                 </div>
                 <div>
@@ -1819,7 +1819,7 @@ export function EtudiantsPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-muted-foreground">Matricule</p>
-                  <p className="font-mono">{detailEtudiant.matricule || '—'}</p>
+                  <p className="font-mono tabular-nums">{detailEtudiant.matricule || '—'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Filière</p>
@@ -1831,7 +1831,7 @@ export function EtudiantsPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Statut</p>
-                  <Badge className={detailEtudiant.actif ? 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800' : 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800'}>
+                  <Badge className={detailEtudiant.actif ? 'bg-success/10 text-success border-success/30' : 'bg-warning/10 text-warning border-warning/30'}>
                     {detailEtudiant.actif ? 'Actif' : 'Archivé'}
                   </Badge>
                 </div>
@@ -1899,14 +1899,14 @@ export function EtudiantsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-lg border bg-emerald-50 dark:bg-emerald-950/30 p-4">
-                <p className="font-medium text-emerald-800 dark:text-emerald-200">
+              <div className="rounded-lg border bg-success/10 p-4">
+                <p className="font-medium text-success">
                   {importResult.imported} étudiant(s) importé(s) avec succès
                 </p>
                 {importResult.errors.length > 0 && (
                   <div className="mt-2">
-                    <p className="text-sm text-red-600">{importResult.errors.length} erreur(s) :</p>
-                    <ul className="mt-1 text-xs text-red-500 space-y-1">
+                    <p className="text-sm text-destructive">{importResult.errors.length} erreur(s) :</p>
+                    <ul className="mt-1 text-xs text-destructive space-y-1">
                       {importResult.errors.map((err, i) => (
                         <li key={i}>Ligne {err.row} ({err.email}): {err.error}</li>
                       ))}
@@ -1926,7 +1926,7 @@ export function EtudiantsPage() {
           <DialogFooter>
             {!importResult ? (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
                 onClick={handleImportSubmit}
                 disabled={isImporting || importParsedData.length === 0}
               >
@@ -1944,7 +1944,7 @@ export function EtudiantsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               Supprimer définitivement l&apos;étudiant
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -1952,16 +1952,16 @@ export function EtudiantsPage() {
                 <p>
                   Êtes-vous sûr de vouloir supprimer définitivement <strong>{deleteTarget?.name}</strong> ?
                 </p>
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/40">
-                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                  <p className="text-sm font-semibold text-destructive">
                     ⚠️ Action irréversible
                   </p>
-                  <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                  <p className="mt-1 text-sm text-destructive">
                     L&apos;étudiant sera définitivement supprimé de la base de données <strong>avec tout son historique</strong> (sessions, réponses, soumissions). Cette action est irréversible.
                   </p>
                 </div>
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
-                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                <div className="rounded-lg border border-info/30 bg-info/10 p-3">
+                  <p className="text-sm text-info">
                     💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;étudiant restera visible dans la liste mais marqué comme inactif, et pourra être réactivé à tout moment.
                   </p>
                 </div>
@@ -1971,7 +1971,7 @@ export function EtudiantsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleDeleteStudent}
               disabled={isDeleting}
             >
@@ -1986,7 +1986,7 @@ export function EtudiantsPage() {
       <AlertDialog open={matriculeChangeDialog} onOpenChange={setMatriculeChangeDialog}>
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <AlertDialogTitle className="flex items-center gap-2 text-warning">
               <AlertTriangle className="h-5 w-5" />
               Confirmer le changement de matricule
             </AlertDialogTitle>
@@ -1996,33 +1996,33 @@ export function EtudiantsPage() {
                   Vous êtes sur le point de modifier le matricule de connexion de cet étudiant.
                   Cette action a des conséquences importantes :
                 </p>
-                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                <div className="rounded-md border border-warning/30 bg-warning/10 p-3">
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Ancien matricule :</span>
-                      <span className="font-mono font-semibold">{matriculeChangeInfo?.oldMatricule || '(aucun)'}</span>
+                      <span className="font-mono tabular-nums font-semibold">{matriculeChangeInfo?.oldMatricule || '(aucun)'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Nouveau matricule :</span>
-                      <span className="font-mono font-semibold text-amber-700 dark:text-amber-400">{matriculeChangeInfo?.newMatricule || '(supprimé)'}</span>
+                      <span className="font-mono tabular-nums font-semibold text-warning">{matriculeChangeInfo?.newMatricule || '(supprimé)'}</span>
                     </div>
                   </div>
                 </div>
                 <ul className="space-y-1.5 text-sm">
                   <li className="flex items-start gap-2">
-                    <span className="text-amber-600 mt-0.5">⚠️</span>
+                    <span className="text-warning mt-0.5">⚠️</span>
                     <span>L&apos;étudiant ne pourra <strong>plus se connecter</strong> avec l&apos;ancien matricule</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-emerald-600 mt-0.5">✅</span>
+                    <span className="text-success mt-0.5">✅</span>
                     <span>Le <strong>mot de passe reste inchangé</strong></span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-emerald-600 mt-0.5">✅</span>
+                    <span className="text-success mt-0.5">✅</span>
                     <span>Toutes les <strong>données sont conservées</strong> (notes, sessions, soumissions)</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-0.5">📬</span>
+                    <span className="text-info mt-0.5">📬</span>
                     <span>Une <strong>notification sera envoyée</strong> à l&apos;étudiant avec son nouveau matricule</span>
                   </li>
                 </ul>
@@ -2037,7 +2037,7 @@ export function EtudiantsPage() {
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-warning hover:bg-warning/90 text-white"
               onClick={() => { setMatriculeChangeDialog(false); doEditSubmit(); }}
             >
               Confirmer le changement
@@ -2051,9 +2051,9 @@ export function EtudiantsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-red-500" />}
-              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-emerald-500" />}
-              {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-amber-500" />}
+              {bulkActionDialog === 'delete' && <AlertTriangle className="h-5 w-5 text-destructive" />}
+              {bulkActionDialog === 'activate' && <Power className="h-5 w-5 text-success" />}
+              {bulkActionDialog === 'deactivate' && <PowerOff className="h-5 w-5 text-warning" />}
               Confirmation d&apos;action groupée
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -2066,7 +2066,7 @@ export function EtudiantsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isBulkProcessing}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className={bulkActionDialog === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              className={bulkActionDialog === 'delete' ? 'bg-destructive hover:bg-destructive/90' : 'bg-success hover:bg-success/90'}
               onClick={handleBulkAction}
               disabled={isBulkProcessing}
             >

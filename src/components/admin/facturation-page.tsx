@@ -37,7 +37,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
@@ -195,21 +195,21 @@ function getStatutBadge(statut: string) {
   switch (statut) {
     case 'EN_ATTENTE':
       return (
-        <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+        <Badge className="bg-warning/10 text-warning border-warning/30">
           <Clock className="h-3 w-3 mr-1" />
           En attente
         </Badge>
       )
     case 'PAYEE':
       return (
-        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+        <Badge className="bg-success/10 text-success border-success/30">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Payée
         </Badge>
       )
     case 'EN_RETARD':
       return (
-        <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
+        <Badge className="bg-destructive/10 text-destructive border-destructive/30">
           <AlertTriangle className="h-3 w-3 mr-1" />
           En retard
         </Badge>
@@ -794,15 +794,15 @@ export function FacturationPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Receipt className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <Receipt className="h-7 w-7 text-success" />
             Facturation & Revenus
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Gérez les factures, suivez les revenus et analysez les prévisions
           </p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+        <Button className="bg-success hover:bg-success/90" onClick={handleOpenCreate}>
           <Plus className="h-4 w-4" />
           Nouvelle facture
         </Button>
@@ -811,68 +811,68 @@ export function FacturationPage() {
       {/* ─── KPI Stats Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {/* Revenus totaux */}
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
+              <DollarSign className="h-5 w-5 text-success" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Revenus totaux</p>
-              <p className="text-lg font-bold truncate">{formatCurrency(stats.totalRevenus)}</p>
+              <p className="text-lg font-bold truncate font-mono tabular-nums">{formatCurrency(stats.totalRevenus)}</p>
             </div>
           </CardContent>
         </Card>
 
         {/* En attente */}
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/10">
+              <Clock className="h-5 w-5 text-warning" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">En attente</p>
-              <p className="text-lg font-bold">{stats.enAttenteCount}</p>
+              <p className="text-lg font-bold font-mono tabular-nums">{stats.enAttenteCount}</p>
               <p className="text-xs text-muted-foreground truncate">{formatCurrency(stats.enAttenteMontant)}</p>
             </div>
           </CardContent>
         </Card>
 
         {/* Payées */}
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <CheckCircle2 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
+              <CheckCircle2 className="h-5 w-5 text-success" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Factures payées</p>
-              <p className="text-lg font-bold">{stats.payeesCount}</p>
+              <p className="text-lg font-bold font-mono tabular-nums">{stats.payeesCount}</p>
             </div>
           </CardContent>
         </Card>
 
         {/* En retard */}
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-destructive">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">En retard</p>
-              <p className="text-lg font-bold">{stats.enRetardCount}</p>
+              <p className="text-lg font-bold font-mono tabular-nums">{stats.enRetardCount}</p>
               <p className="text-xs text-muted-foreground truncate">{formatCurrency(stats.enRetardMontant)}</p>
             </div>
           </CardContent>
         </Card>
 
         {/* Montant moyen */}
-        <Card className="border-l-4 border-l-cyan-500">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
-              <BarChart3 className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/10">
+              <BarChart3 className="h-5 w-5 text-info" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Montant moyen</p>
-              <p className="text-lg font-bold truncate">{formatCurrency(stats.montantMoyen)}</p>
+              <p className="text-lg font-bold truncate font-mono tabular-nums">{formatCurrency(stats.montantMoyen)}</p>
             </div>
           </CardContent>
         </Card>
@@ -929,7 +929,7 @@ export function FacturationPage() {
           {isLoading && (
             <div className="space-y-3">
               {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full animate-pulse" />
+                <PulseSkeleton key={i} className="h-14 w-full animate-pulse" />
               ))}
             </div>
           )}
@@ -937,8 +937,8 @@ export function FacturationPage() {
           {/* Empty state */}
           {!isLoading && filteredFactures.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <Receipt className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <Receipt className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucune facture trouvée</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -947,7 +947,7 @@ export function FacturationPage() {
                   : 'Commencez par créer votre première facture.'}
               </p>
               {!search && statutFilter === 'all' && (
-                <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+                <Button className="mt-6 bg-success hover:bg-success/90" onClick={handleOpenCreate}>
                   <Plus className="h-4 w-4" />
                   Créer une facture
                 </Button>
@@ -962,15 +962,15 @@ export function FacturationPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Numéro</TableHead>
-                      <TableHead>Établissement</TableHead>
-                      <TableHead className="text-right">Montant HT</TableHead>
-                      <TableHead className="text-right">TVA</TableHead>
-                      <TableHead className="text-right">Montant TTC</TableHead>
-                      <TableHead>Statut</TableHead>
-                      <TableHead>Émission</TableHead>
-                      <TableHead>Échéance</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="font-display">Numéro</TableHead>
+                      <TableHead className="font-display">Établissement</TableHead>
+                      <TableHead className="text-right font-display">Montant HT</TableHead>
+                      <TableHead className="text-right font-display">TVA</TableHead>
+                      <TableHead className="text-right font-display">Montant TTC</TableHead>
+                      <TableHead className="font-display">Statut</TableHead>
+                      <TableHead className="font-display">Émission</TableHead>
+                      <TableHead className="font-display">Échéance</TableHead>
+                      <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -979,13 +979,13 @@ export function FacturationPage() {
                       return (
                         <TableRow key={facture.id} className="group">
                           <TableCell>
-                            <span className="font-mono text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                            <span className="font-mono tabular-nums text-sm font-medium text-success">
                               {facture.numero}
                             </span>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/40 text-xs font-bold text-teal-700 dark:text-teal-300">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                                 {facture.etablissement.nom.charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
@@ -996,12 +996,12 @@ export function FacturationPage() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right text-sm">{formatCurrency(facture.montantHt)}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">{facture.tva}%</TableCell>
-                          <TableCell className="text-right font-medium text-sm">{formatCurrency(facture.montantTtc)}</TableCell>
+                          <TableCell className="text-right text-sm font-mono tabular-nums">{formatCurrency(facture.montantHt)}</TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground font-mono tabular-nums">{facture.tva}%</TableCell>
+                          <TableCell className="text-right font-medium text-sm font-mono tabular-nums">{formatCurrency(facture.montantTtc)}</TableCell>
                           <TableCell>
                             {isOverdue && facture.statut === 'EN_ATTENTE' ? (
-                              <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
+                              <Badge className="bg-destructive/10 text-destructive border-destructive/30">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                                 En retard
                               </Badge>
@@ -1011,16 +1011,16 @@ export function FacturationPage() {
                           </TableCell>
                           <TableCell className="text-sm">{formatDate(facture.dateEmission)}</TableCell>
                           <TableCell className="text-sm">
-                            <span className={isOverdue ? 'text-red-600 dark:text-red-400 font-medium' : ''}>
+                            <span className={isOverdue ? 'text-destructive font-medium' : ''}>
                               {formatDate(facture.dateEcheance)}
                             </span>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right font-mono tabular-nums">
                             <div className="flex items-center justify-end gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950"
+                                className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
                                 onClick={() => handleViewDetail(facture)}
                                 title="Voir les détails"
                               >
@@ -1030,7 +1030,7 @@ export function FacturationPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                                  className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
                                   onClick={() => handleOpenPay(facture)}
                                   title="Marquer comme payée"
                                 >
@@ -1041,7 +1041,7 @@ export function FacturationPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                   onClick={() => {
                                     setCancelTarget(facture)
                                     setCancelDialogOpen(true)
@@ -1069,54 +1069,54 @@ export function FacturationPage() {
         <TabsContent value="analytique">
           {/* Key Metrics Row */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
-            <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-background">
+            <Card className="border-success/30 bg-gradient-to-br from-success to-white dark:to-background">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">MRR</p>
-                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(mrr)}</p>
+                    <p className="text-2xl font-bold text-success font-mono tabular-nums">{formatCurrency(mrr)}</p>
                     <p className="text-xs text-muted-foreground">Monthly Recurring Revenue</p>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40">
-                    <TrendingUp className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+                    <TrendingUp className="h-6 w-6 text-success" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-teal-200 dark:border-teal-800 bg-gradient-to-br from-teal-50 to-white dark:from-teal-950/30 dark:to-background">
+            <Card className="border-success/30 bg-gradient-to-br from-success to-white dark:to-background">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">ARR</p>
-                    <p className="text-2xl font-bold text-teal-700 dark:text-teal-400">{formatCurrency(arr)}</p>
+                    <p className="text-2xl font-bold text-success font-mono tabular-nums">{formatCurrency(arr)}</p>
                     <p className="text-xs text-muted-foreground">Annual Recurring Revenue</p>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/40">
-                    <DollarSign className="h-6 w-6 text-teal-600 dark:text-teal-400" />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+                    <DollarSign className="h-6 w-6 text-success" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className={`border-${churnRate > 15 ? 'red' : 'cyan'}-200 dark:border-${churnRate > 15 ? 'red' : 'cyan'}-800 bg-gradient-to-br ${churnRate > 15 ? 'from-red-50 to-white dark:from-red-950/30' : 'from-cyan-50 to-white dark:from-cyan-950/30'} dark:to-background`}>
+            <Card className={`border-${churnRate > 15 ? 'red' : 'cyan'}-200 dark:border-${churnRate > 15 ? 'red' : 'cyan'}-800 bg-gradient-to-br ${churnRate > 15 ? 'from-destructive to-white' : 'from-info to-white'} dark:to-background`}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Taux de résiliation</p>
                     <div className="flex items-center gap-2">
-                      <p className={`text-2xl font-bold ${churnRate > 15 ? 'text-red-700 dark:text-red-400' : 'text-cyan-700 dark:text-cyan-400'}`}>{churnRate}%</p>
+                      <p className={`text-2xl font-bold ${churnRate > 15 ? 'text-destructive' : 'text-info'} font-mono tabular-nums`}>{churnRate}%</p>
                       {churnRate > 15 ? (
-                        <ArrowDownRight className="h-5 w-5 text-red-500" />
+                        <ArrowDownRight className="h-5 w-5 text-destructive" />
                       ) : (
-                        <ArrowUpRight className="h-5 w-5 text-emerald-500" />
+                        <ArrowUpRight className="h-5 w-5 text-success" />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">Churn rate</p>
                   </div>
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-full ${churnRate > 15 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-cyan-100 dark:bg-cyan-900/40'}`}>
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-full ${churnRate > 15 ? 'bg-destructive/10' : 'bg-info/10'}`}>
                     {churnRate > 15 ? (
-                      <TrendingDown className="h-6 w-6 text-red-600 dark:text-red-400" />
+                      <TrendingDown className="h-6 w-6 text-destructive" />
                     ) : (
-                      <TrendingUp className="h-6 w-6 text-cyan-600 dark:text-cyan-400" />
+                      <TrendingUp className="h-6 w-6 text-info" />
                     )}
                   </div>
                 </div>
@@ -1128,8 +1128,8 @@ export function FacturationPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-emerald-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display">
+                  <BarChart3 className="h-4 w-4 text-success" />
                   Revenus par mois
                 </CardTitle>
                 <CardDescription>Revenus HT et TTC des factures payées</CardDescription>
@@ -1162,8 +1162,8 @@ export function FacturationPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <PieChartIcon className="h-4 w-4 text-teal-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display">
+                  <PieChartIcon className="h-4 w-4 text-success" />
                   Répartition par statut
                 </CardTitle>
                 <CardDescription>Distribution des factures selon leur statut</CardDescription>
@@ -1209,8 +1209,8 @@ export function FacturationPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-teal-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display">
+                  <Building2 className="h-4 w-4 text-success" />
                   Revenus par établissement
                 </CardTitle>
                 <CardDescription>Top 8 établissements par revenu (factures payées)</CardDescription>
@@ -1241,8 +1241,8 @@ export function FacturationPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display">
+                  <TrendingUp className="h-4 w-4 text-success" />
                   Tendance des revenus cumulés
                 </CardTitle>
                 <CardDescription>Évolution du chiffre d'affaires cumulé</CardDescription>
@@ -1288,8 +1288,8 @@ export function FacturationPage() {
           {/* Forecast Chart */}
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-emerald-600" />
+              <CardTitle className="text-base flex items-center gap-2 font-display">
+                <TrendingUp className="h-4 w-4 text-success" />
                 Prévisions de revenus — 6 prochains mois
               </CardTitle>
               <CardDescription>
@@ -1342,8 +1342,8 @@ export function FacturationPage() {
             {/* Projected Renewals Timeline */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 text-teal-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display">
+                  <CalendarDays className="h-4 w-4 text-success" />
                   Renouvellements prévus
                 </CardTitle>
                 <CardDescription>Abonnements arrivant à échéance dans les 3 prochains mois</CardDescription>
@@ -1352,7 +1352,7 @@ export function FacturationPage() {
                 {isLoading ? (
                   <div className="space-y-3">
                     {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} className="h-14 w-full animate-pulse" />
+                      <PulseSkeleton key={i} className="h-14 w-full animate-pulse" />
                     ))}
                   </div>
                 ) : projectedRenewals.length === 0 ? (
@@ -1373,19 +1373,19 @@ export function FacturationPage() {
                             key={renewal.id}
                             className={`flex items-center gap-3 p-3 rounded-lg border ${
                               isUrgent
-                                ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20'
+                                ? 'border-destructive/30 bg-destructive/10'
                                 : 'border-border bg-background'
                             }`}
                           >
                             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                               isUrgent
-                                ? 'bg-red-100 dark:bg-red-900/40'
-                                : 'bg-teal-100 dark:bg-teal-900/40'
+                                ? 'bg-destructive/10'
+                                : 'bg-success/10'
                             }`}>
                               <CalendarDays className={`h-4 w-4 ${
                                 isUrgent
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-teal-600 dark:text-teal-400'
+                                  ? 'text-destructive'
+                                  : 'text-success'
                               }`} />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1396,7 +1396,7 @@ export function FacturationPage() {
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-sm font-medium">{formatCurrency(renewal.montant)}</p>
-                              <p className={`text-xs ${isUrgent ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                              <p className={`text-xs ${isUrgent ? 'text-destructive' : 'text-muted-foreground'}`}>
                                 {daysUntilEnd <= 0 ? 'Expiré' : `J-${daysUntilEnd}`}
                               </p>
                             </div>
@@ -1412,8 +1412,8 @@ export function FacturationPage() {
             {/* Risk Alerts */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <CardTitle className="text-base flex items-center gap-2 font-display">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
                   Alertes & Risques
                 </CardTitle>
                 <CardDescription>Points d'attention nécessitant une action</CardDescription>
@@ -1422,12 +1422,12 @@ export function FacturationPage() {
                 {isLoading ? (
                   <div className="space-y-3">
                     {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} className="h-14 w-full animate-pulse" />
+                      <PulseSkeleton key={i} className="h-14 w-full animate-pulse" />
                     ))}
                   </div>
                 ) : riskAlerts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                    <CheckCircle2 className="h-10 w-10 mb-2 text-emerald-500" />
+                    <CheckCircle2 className="h-10 w-10 mb-2 text-success" />
                     <p className="text-sm font-medium">Tout va bien !</p>
                     <p className="text-xs">Aucune alerte ou risque détecté pour le moment.</p>
                   </div>
@@ -1440,26 +1440,26 @@ export function FacturationPage() {
                           key={index}
                           className={`flex items-start gap-3 p-4 rounded-lg border ${
                             alert.type === 'danger'
-                              ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20'
-                              : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20'
+                              ? 'border-destructive/30 bg-destructive/10'
+                              : 'border-warning/30 bg-warning/10'
                           }`}
                         >
                           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                             alert.type === 'danger'
-                              ? 'bg-red-100 dark:bg-red-900/40'
-                              : 'bg-amber-100 dark:bg-amber-900/40'
+                              ? 'bg-destructive/10'
+                              : 'bg-warning/10'
                           }`}>
                             <AlertIcon className={`h-4 w-4 ${
                               alert.type === 'danger'
-                                ? 'text-red-600 dark:text-red-400'
-                                : 'text-amber-600 dark:text-amber-400'
+                                ? 'text-destructive'
+                                : 'text-warning'
                             }`} />
                           </div>
                           <div>
                             <p className={`text-sm font-semibold ${
                               alert.type === 'danger'
-                                ? 'text-red-800 dark:text-red-300'
-                                : 'text-amber-800 dark:text-amber-300'
+                                ? 'text-destructive'
+                                : 'text-warning'
                             }`}>
                               {alert.title}
                             </p>
@@ -1477,30 +1477,29 @@ export function FacturationPage() {
           {/* Summary forecast table */}
           <Card className="mt-6">
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Info className="h-4 w-4 text-cyan-600" />
+              <CardTitle className="text-base flex items-center gap-2 font-display">
+                <Info className="h-4 w-4 text-info" />
                 Résumé des prévisions
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                <div className="p-4 rounded-lg bg-success/10 border border-success/30">
                   <p className="text-xs text-muted-foreground">MRR actuel</p>
-                  <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(mrr)}</p>
+                  <p className="text-xl font-bold text-success font-mono tabular-nums">{formatCurrency(mrr)}</p>
                 </div>
-                <div className="p-4 rounded-lg bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800">
+                <div className="p-4 rounded-lg bg-success/10 border border-success/30">
                   <p className="text-xs text-muted-foreground">ARR projeté</p>
-                  <p className="text-xl font-bold text-teal-700 dark:text-teal-400">{formatCurrency(arr)}</p>
+                  <p className="text-xl font-bold text-success font-mono tabular-nums">{formatCurrency(arr)}</p>
                 </div>
-                <div className="p-4 rounded-lg bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-800">
+                <div className="p-4 rounded-lg bg-info/10 border border-info/30">
                   <p className="text-xs text-muted-foreground">Abonnements actifs</p>
-                  <p className="text-xl font-bold text-cyan-700 dark:text-cyan-400">
-                    {abonnements.filter((a) => a.statut === 'ACTIF').length}
+                  <p className="text-xl font-bold text-info font-mono tabular-nums">{abonnements.filter((a) => a.statut === 'ACTIF').length}
                   </p>
                 </div>
-                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
                   <p className="text-xs text-muted-foreground">Renouvellements à venir</p>
-                  <p className="text-xl font-bold text-amber-700 dark:text-amber-400">{projectedRenewals.length}</p>
+                  <p className="text-xl font-bold text-warning font-mono tabular-nums">{projectedRenewals.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -1517,7 +1516,7 @@ export function FacturationPage() {
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-emerald-600" />
+              <Receipt className="h-5 w-5 text-success" />
               Nouvelle facture
             </DialogTitle>
             <DialogDescription>
@@ -1563,7 +1562,7 @@ export function FacturationPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                  className="h-7 text-xs border-success/30 text-success hover:bg-success/10"
                   onClick={handleAddLigne}
                 >
                   <Plus className="h-3 w-3 mr-1" />
@@ -1596,7 +1595,7 @@ export function FacturationPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-9 w-9 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                      className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => handleRemoveLigne(index)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1618,7 +1617,7 @@ export function FacturationPage() {
                 <Separator />
                 <div className="flex justify-between">
                   <span className="font-semibold">Total TTC</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(formTotalTtc)}</span>
+                  <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(formTotalTtc)}</span>
                 </div>
               </div>
             </div>
@@ -1641,7 +1640,7 @@ export function FacturationPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleSubmitCreate}
               disabled={isSubmitting}
             >
@@ -1666,7 +1665,7 @@ export function FacturationPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-emerald-600" />
+              <Receipt className="h-5 w-5 text-success" />
               Détail de la facture
             </DialogTitle>
             <DialogDescription>
@@ -1680,7 +1679,7 @@ export function FacturationPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Numéro</p>
-                  <p className="font-mono font-medium text-emerald-700 dark:text-emerald-400">{selectedFacture.numero}</p>
+                  <p className="font-mono tabular-nums font-medium text-success">{selectedFacture.numero}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Statut</p>
@@ -1704,7 +1703,7 @@ export function FacturationPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Date d&apos;échéance</p>
-                  <p className={`text-sm ${selectedFacture.statut !== 'PAYEE' && new Date(selectedFacture.dateEcheance) < new Date() ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
+                  <p className={`text-sm ${selectedFacture.statut !== 'PAYEE' && new Date(selectedFacture.dateEcheance) < new Date() ? 'text-destructive font-medium' : ''}`}>
                     {formatDateLong(selectedFacture.dateEcheance)}
                   </p>
                 </div>
@@ -1731,8 +1730,8 @@ export function FacturationPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Montant HT</TableHead>
+                        <TableHead className="font-display">Description</TableHead>
+                        <TableHead className="text-right font-display">Montant HT</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1740,7 +1739,7 @@ export function FacturationPage() {
                         selectedFacture.lignes.map((ligne, index) => (
                           <TableRow key={index}>
                             <TableCell className="text-sm">{ligne.description}</TableCell>
-                            <TableCell className="text-right text-sm">{formatCurrency(ligne.montant)}</TableCell>
+                            <TableCell className="text-right text-sm font-mono tabular-nums">{formatCurrency(ligne.montant)}</TableCell>
                           </TableRow>
                         ))
                       ) : (
@@ -1768,7 +1767,7 @@ export function FacturationPage() {
                 <Separator />
                 <div className="flex justify-between text-base">
                   <span className="font-semibold">Total TTC</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(selectedFacture.montantTtc)}</span>
+                  <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(selectedFacture.montantTtc)}</span>
                 </div>
               </div>
 
@@ -1776,7 +1775,7 @@ export function FacturationPage() {
               {selectedFacture.referencePaiement && (
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Référence de paiement</p>
-                  <p className="text-sm font-mono bg-muted/50 p-2 rounded">{selectedFacture.referencePaiement}</p>
+                  <p className="text-sm font-mono tabular-nums bg-muted/50 p-2 rounded">{selectedFacture.referencePaiement}</p>
                 </div>
               )}
 
@@ -1796,7 +1795,7 @@ export function FacturationPage() {
             </Button>
             {selectedFacture && (selectedFacture.statut === 'EN_ATTENTE' || selectedFacture.statut === 'EN_RETARD') && (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
                 onClick={() => {
                   setDetailDialogOpen(false)
                   handleOpenPay(selectedFacture)
@@ -1815,7 +1814,7 @@ export function FacturationPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
               Marquer comme payée
             </DialogTitle>
             <DialogDescription>
@@ -1859,7 +1858,7 @@ export function FacturationPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleSubmitPay}
               disabled={isSubmitting}
             >
@@ -1884,7 +1883,7 @@ export function FacturationPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-600" />
+              <XCircle className="h-5 w-5 text-destructive" />
               Annuler la facture
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -1897,7 +1896,7 @@ export function FacturationPage() {
             <AlertDialogCancel>Non, garder la facture</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleCancelFacture}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               Oui, annuler la facture
             </AlertDialogAction>

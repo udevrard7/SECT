@@ -79,9 +79,9 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
 
   const tendanceIcon =
     data.tendance > 0.3 ? (
-      <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+      <TrendingUp className="h-4 w-4 text-success" />
     ) : data.tendance < -0.3 ? (
-      <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+      <TrendingDown className="h-4 w-4 text-destructive" />
     ) : (
       <Minus className="h-4 w-4 text-muted-foreground" />
     )
@@ -93,9 +93,9 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         : 'Stable'
   const tendanceColor =
     data.tendance > 0.3
-      ? 'text-emerald-700 dark:text-emerald-400'
+      ? 'text-success'
       : data.tendance < -0.3
-        ? 'text-red-700 dark:text-red-400'
+        ? 'text-destructive'
         : 'text-muted-foreground'
 
   return (
@@ -136,21 +136,21 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
 
       {/* Bannière de progression */}
       {data.totalCorrigees >= 3 && (
-        <Card className={`border-l-4 ${data.tendance > 0.3 ? 'border-l-emerald-500' : data.tendance < -0.3 ? 'border-l-red-500' : 'border-l-slate-400'}`}>
+        <Card className={`border-l-4 ${data.tendance > 0.3 ? 'border-l-success' : data.tendance < -0.3 ? 'border-l-destructive' : 'border-l-slate-400'}`}>
           <CardContent className="flex items-center gap-4 p-4">
             <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
               data.tendance > 0.3
-                ? 'bg-emerald-100 dark:bg-emerald-900/40'
+                ? 'bg-success/10'
                 : data.tendance < -0.3
-                  ? 'bg-red-100 dark:bg-red-900/40'
-                  : 'bg-slate-100 dark:bg-slate-900/40'
+                  ? 'bg-destructive/10'
+                  : 'bg-muted'
             }`}>
               {tendanceIcon}
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold">
                 {tendanceLabel}
-                <span className={`ml-2 text-lg font-bold ${tendanceColor}`}>
+                <span className={`ml-2 font-mono text-lg font-bold tabular-nums ${tendanceColor}`}>
                   {data.tendance > 0 ? '+' : ''}{data.tendance.toFixed(1)}
                 </span>
                 <span className="text-sm font-normal text-muted-foreground">/20</span>
@@ -168,7 +168,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         <ChartCard
           title="Évolution de mes notes"
           description="Moyenne mensuelle sur les 12 derniers mois"
-          icon={<Calendar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+          icon={<Calendar className="h-4 w-4 text-success" />}
         >
           <div className="h-72">
             {evolutionData.length > 0 ? (
@@ -184,7 +184,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         <ChartCard
           title="Distribution de mes notes"
           description="Répartition de vos scores par tranche"
-          icon={<BarChart3 className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
+          icon={<BarChart3 className="h-4 w-4 text-secondary" />}
         >
           <div className="h-72">
             <DistributionChart data={distributionData} height={288} noteTotal={20} />
@@ -197,7 +197,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         <ChartCard
           title="Performance par type de question"
           description="Vos forces et faiblesses selon le type de question"
-          icon={<PieChart className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+          icon={<PieChart className="h-4 w-4 text-success" />}
         >
           <div className="space-y-3 pt-2">
             {performanceData.map((p) => {
@@ -219,7 +219,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
                     />
                   </div>
                   <div className="flex w-24 shrink-0 items-center justify-end gap-1">
-                    <span className={`text-sm font-bold ${getScoreColor(scoreOn20)}`}>
+                    <span className={`font-mono text-sm font-bold tabular-nums ${getScoreColor(scoreOn20)}`}>
                       {p.value.toFixed(1)}
                     </span>
                     <span className="text-xs text-muted-foreground">/20</span>
@@ -238,8 +238,8 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
       {data.recentResults.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Trophy className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <CardTitle className="flex items-center gap-2 font-display text-base">
+              <Trophy className="h-4 w-4 text-success" />
               Résultats récents
             </CardTitle>
             <CardDescription>Vos 5 dernières épreuves</CardDescription>
@@ -252,7 +252,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
                   className="flex items-center gap-3 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50"
                 >
                   <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold tabular-nums text-white"
                     style={{ backgroundColor: getBarColor(r.scoreOn20) }}
                   >
                     {r.percentage}%
@@ -264,17 +264,17 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className={`text-sm font-bold ${getScoreColor(r.scoreOn20)}`}>
+                    <p className={`font-mono text-sm font-bold tabular-nums ${getScoreColor(r.scoreOn20)}`}>
                       {r.scoreOn20.toFixed(1)}/20
                     </p>
                     <Badge
                       variant="outline"
                       className={`text-[10px] ${
                         r.isReturned
-                          ? 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800'
+                          ? 'bg-secondary/10 text-secondary border-secondary/20'
                           : r.isCorrected
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-                            : 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+                            ? 'bg-success/10 text-success border-success/20'
+                            : 'bg-warning/10 text-warning border-warning/20'
                       }`}
                     >
                       {r.isReturned ? 'Rendu' : r.isCorrected ? 'Corrigé' : 'En attente'}

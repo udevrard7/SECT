@@ -45,6 +45,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Search } from 'lucide-react'
 import { toast } from 'sonner'
+import { PulseSkeleton } from '@/components/ds'
 
 // ─── Types ───
 
@@ -127,11 +128,11 @@ function getTypeSeanceLabel(type: string): string {
 function getTypeSeanceBadgeClasses(type: string): string {
   switch (type) {
     case 'CM':
-      return 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800'
+      return 'bg-info/10 text-info border-info/20'
     case 'TD':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+      return 'bg-success/10 text-success border-success/20'
     case 'TP':
-      return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+      return 'bg-warning/10 text-warning border-warning/20'
     default:
       return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800'
   }
@@ -148,19 +149,19 @@ function getSoumissionStatutBadge(statut: string): { label: string; classes: str
     case 'SOUMIS':
       return {
         label: 'Soumis',
-        classes: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
+        classes: 'bg-success/10 text-success border-success/20',
         icon: <CheckCircle2 className="h-3 w-3" />,
       }
     case 'CORRIGE':
       return {
         label: 'Corrigé',
-        classes: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800',
+        classes: 'bg-secondary/10 text-secondary border-secondary/20',
         icon: <CheckCircle2 className="h-3 w-3" />,
       }
     case 'RETOURNE':
       return {
         label: 'Retourné',
-        classes: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+        classes: 'bg-warning/10 text-warning border-warning/20',
         icon: <Eye className="h-3 w-3" />,
       }
     default:
@@ -322,7 +323,7 @@ export function MesDevoirsPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+        <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
           Mes Devoirs
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -332,66 +333,66 @@ export function MesDevoirsPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
+                <BookOpen className="h-4 w-4 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{devoirsAFaire.length}</p>
+                <p className="font-mono text-2xl font-bold tabular-nums">{devoirsAFaire.length}</p>
                 <p className="text-xs text-muted-foreground">À faire</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
+                <FileText className="h-4 w-4 text-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{draftCount}</p>
+                <p className="font-mono text-2xl font-bold tabular-nums">{draftCount}</p>
                 <p className="text-xs text-muted-foreground">Brouillons</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-destructive">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{overdueCount}</p>
+                <p className="font-mono text-2xl font-bold tabular-nums">{overdueCount}</p>
                 <p className="text-xs text-muted-foreground">En retard</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-secondary">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                <CheckCircle2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10">
+                <CheckCircle2 className="h-4 w-4 text-secondary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{devoirsSoumis.length}</p>
+                <p className="font-mono text-2xl font-bold tabular-nums">{devoirsSoumis.length}</p>
                 <p className="text-xs text-muted-foreground">En attente</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-purple-500 sm:col-span-2 lg:col-span-1">
+        <Card className="border-l-4 border-l-secondary sm:col-span-2 lg:col-span-1">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/40">
-                <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10">
+                <Sparkles className="h-4 w-4 text-secondary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{devoirsCorriges.length}</p>
+                <p className="font-mono text-2xl font-bold tabular-nums">{devoirsCorriges.length}</p>
                 <p className="text-xs text-muted-foreground">Corrigés{avgNote !== null ? ` · ${avgNote.toFixed(1)} moy` : ''}</p>
               </div>
             </div>
@@ -419,7 +420,7 @@ export function MesDevoirsPage() {
             {devoirsAFaire.filter(filterBySearch).length > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-success/10 text-success"
               >
                 {devoirsAFaire.filter(filterBySearch).length}
               </Badge>
@@ -431,7 +432,7 @@ export function MesDevoirsPage() {
             {devoirsSoumis.filter(filterBySearch).length > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-info/10 text-info"
               >
                 {devoirsSoumis.filter(filterBySearch).length}
               </Badge>
@@ -443,7 +444,7 @@ export function MesDevoirsPage() {
             {devoirsCorriges.filter(filterBySearch).length > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-secondary/10 text-secondary"
               >
                 {devoirsCorriges.filter(filterBySearch).length}
               </Badge>
@@ -456,30 +457,28 @@ export function MesDevoirsPage() {
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex-1 space-y-3">
-                        <div className="h-5 w-2/3 rounded bg-muted" />
-                        <div className="h-4 w-1/2 rounded bg-muted" />
-                        <div className="flex gap-4">
-                          <div className="h-3 w-24 rounded bg-muted" />
-                          <div className="h-3 w-20 rounded bg-muted" />
-                          <div className="h-3 w-16 rounded bg-muted" />
-                        </div>
+                <div key={i} className="p-6 rounded-lg border border-border bg-card">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex-1 space-y-3">
+                      <PulseSkeleton className="h-5 w-2/3" />
+                      <PulseSkeleton className="h-4 w-1/2" />
+                      <div className="flex gap-4">
+                        <PulseSkeleton className="h-3 w-24" />
+                        <PulseSkeleton className="h-3 w-20" />
+                        <PulseSkeleton className="h-3 w-16" />
                       </div>
-                      <div className="h-10 w-32 rounded bg-muted" />
                     </div>
-                  </CardContent>
-                </Card>
+                    <PulseSkeleton className="h-10 w-32" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : devoirsAFaire.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <BookOpen className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <BookOpen className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun devoir à faire</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold">Aucun devoir à faire</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez aucun devoir en attente pour le moment. Les nouveaux devoirs apparaîtront ici.
               </p>
@@ -495,8 +494,8 @@ export function MesDevoirsPage() {
                 return (
                   <Card
                     key={devoir.id}
-                    className={`group transition-shadow hover:shadow-md ${
-                      overdue ? 'border-red-200 dark:border-red-900' : ''
+                    className={`group transition-shadow hover:shadow-md ds-lift ${
+                      overdue ? 'border-destructive/20' : ''
                     }`}
                   >
                     <CardContent className="p-6">
@@ -507,17 +506,17 @@ export function MesDevoirsPage() {
                           <div className="flex items-start gap-3">
                             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
                               overdue
-                                ? 'bg-red-100 dark:bg-red-900/40'
-                                : 'bg-emerald-100 dark:bg-emerald-900/40'
+                                ? 'bg-destructive/10'
+                                : 'bg-success/10'
                             }`}>
                               <BookOpen className={`h-5 w-5 ${
                                 overdue
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-emerald-600 dark:text-emerald-400'
+                                  ? 'text-destructive'
+                                  : 'text-success'
                               }`} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-base font-semibold leading-tight">
+                              <h3 className="font-display text-base font-semibold leading-tight">
                                 {devoir.titre}
                               </h3>
                               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -530,13 +529,13 @@ export function MesDevoirsPage() {
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
                             <span className={`flex items-center gap-1.5 text-sm ${
                               overdue
-                                ? 'text-red-600 dark:text-red-400 font-medium'
+                                ? 'text-destructive font-medium'
                                 : 'text-muted-foreground'
                             }`}>
                               <CalendarDays className={`h-3.5 w-3.5 ${
                                 overdue
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-emerald-600 dark:text-emerald-400'
+                                  ? 'text-destructive'
+                                  : 'text-success'
                               }`} />
                               {formatDateTimeFR(devoir.dateLimite)}
                             </span>
@@ -557,13 +556,13 @@ export function MesDevoirsPage() {
                           {/* Time remaining */}
                           <div className="pl-[52px]">
                             {overdue ? (
-                              <span className="flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
+                              <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
                                 <AlertTriangle className="h-3.5 w-3.5" />
                                 {timeRemaining}
                               </span>
                             ) : (
                               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <Clock className="h-3.5 w-3.5 text-success" />
                                 {timeRemaining}
                               </span>
                             )}
@@ -574,7 +573,7 @@ export function MesDevoirsPage() {
                             <div className="pl-[52px]">
                               <Badge
                                 variant="outline"
-                                className="text-xs bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800"
+                                className="text-xs bg-warning/10 text-warning border-warning/20"
                               >
                                 <FileText className="h-3 w-3" />
                                 Brouillon en cours
@@ -594,7 +593,7 @@ export function MesDevoirsPage() {
                         <div className="flex shrink-0 items-center gap-2 sm:ml-4">
                           {canSubmit && (
                             <Button
-                              className="bg-emerald-600 hover:bg-emerald-700"
+                              className="bg-success hover:bg-success"
                               onClick={() => handleOpenSubmit(devoir)}
                             >
                               <Send className="h-4 w-4" />
@@ -610,7 +609,7 @@ export function MesDevoirsPage() {
                           {devoir.soumission && (
                             <Button
                               variant="outline"
-                              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                              className="border-success/30 text-success hover:bg-success/10"
                               onClick={() => handleOpenDetail(devoir)}
                             >
                               <Eye className="h-4 w-4" />
@@ -632,26 +631,24 @@ export function MesDevoirsPage() {
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex-1 space-y-3">
-                        <div className="h-5 w-2/3 rounded bg-muted" />
-                        <div className="h-4 w-1/2 rounded bg-muted" />
-                        <div className="h-3 w-full rounded bg-muted" />
-                      </div>
-                      <div className="h-10 w-32 rounded bg-muted" />
+                <div key={i} className="p-6 rounded-lg border border-border bg-card">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex-1 space-y-3">
+                      <PulseSkeleton className="h-5 w-2/3" />
+                      <PulseSkeleton className="h-4 w-1/2" />
+                      <PulseSkeleton className="h-3 w-full" />
                     </div>
-                  </CardContent>
-                </Card>
+                    <PulseSkeleton className="h-10 w-32" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : devoirsSoumis.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-                <CheckCircle2 className="h-10 w-10 text-teal-500 dark:text-teal-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-secondary/10">
+                <CheckCircle2 className="h-10 w-10 text-secondary" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun devoir soumis</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold">Aucun devoir soumis</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez pas encore soumis de devoir. Vos soumissions apparaîtront ici.
               </p>
@@ -665,7 +662,7 @@ export function MesDevoirsPage() {
                 return (
                   <Card
                     key={devoir.id}
-                    className="group transition-shadow hover:shadow-md"
+                    className="group transition-shadow hover:shadow-md ds-lift"
                   >
                     <CardContent className="p-6">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -673,11 +670,11 @@ export function MesDevoirsPage() {
                         <div className="flex-1 space-y-3">
                           {/* Title row */}
                           <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-                              <CheckCircle2 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/10">
+                              <CheckCircle2 className="h-5 w-5 text-secondary" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-base font-semibold leading-tight">
+                              <h3 className="font-display text-base font-semibold leading-tight">
                                 {devoir.titre}
                               </h3>
                               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -690,7 +687,7 @@ export function MesDevoirsPage() {
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-[52px]">
                             {soumission.renduAt && (
                               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                                <CalendarDays className="h-3.5 w-3.5 text-secondary" />
                                 Soumis le {formatDateTimeFR(soumission.renduAt)}
                               </span>
                             )}
@@ -710,7 +707,7 @@ export function MesDevoirsPage() {
                             </Badge>
                             <Badge
                               variant="outline"
-                              className="text-xs bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800"
+                              className="text-xs bg-info/10 text-info border-info/20"
                             >
                               <Clock className="h-3 w-3" />
                               En attente de correction
@@ -722,7 +719,7 @@ export function MesDevoirsPage() {
                         <div className="shrink-0 sm:ml-4">
                           <Button
                             variant="outline"
-                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                            className="border-success/30 text-success hover:bg-success/10"
                             onClick={() => handleOpenDetail(devoir)}
                           >
                             <Eye className="h-4 w-4" />
@@ -743,20 +740,18 @@ export function MesDevoirsPage() {
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="h-5 w-2/3 rounded bg-muted" />
-                    <div className="h-4 w-1/2 rounded bg-muted mt-3" />
-                  </CardContent>
-                </Card>
+                <div key={i} className="p-6 rounded-lg border border-border bg-card">
+                  <PulseSkeleton className="h-5 w-2/3" />
+                  <PulseSkeleton className="h-4 w-1/2 mt-3" />
+                </div>
               ))}
             </div>
           ) : devoirsCorriges.filter(filterBySearch).length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-50 dark:bg-purple-950/30">
-                <Sparkles className="h-10 w-10 text-purple-500 dark:text-purple-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-secondary/10">
+                <Sparkles className="h-10 w-10 text-secondary" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun devoir corrigé</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold">Aucun devoir corrigé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vos devoirs corrigés apparaîtront ici une fois notés par l&apos;enseignant.
               </p>
@@ -772,8 +767,8 @@ export function MesDevoirsPage() {
                 return (
                   <Card
                     key={devoir.id}
-                    className={`group transition-shadow hover:shadow-md ${
-                      isPassing ? 'border-emerald-200 dark:border-emerald-900' : 'border-red-200 dark:border-red-900'
+                    className={`group transition-shadow hover:shadow-md ds-lift ${
+                      isPassing ? 'border-success/20' : 'border-destructive/20'
                     }`}
                   >
                     <CardContent className="p-6">
@@ -783,15 +778,15 @@ export function MesDevoirsPage() {
                           <div className="flex items-start gap-3">
                             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
                               isPassing
-                                ? 'bg-emerald-100 dark:bg-emerald-900/40'
-                                : 'bg-red-100 dark:bg-red-900/40'
+                                ? 'bg-success/10'
+                                : 'bg-destructive/10'
                             }`}>
                               <Sparkles className={`h-5 w-5 ${
-                                isPassing ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                                isPassing ? 'text-success' : 'text-destructive'
                               }`} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-base font-semibold leading-tight">{devoir.titre}</h3>
+                              <h3 className="font-display text-base font-semibold leading-tight">{devoir.titre}</h3>
                               <p className="mt-0.5 text-sm text-muted-foreground">
                                 {devoir.uniteEnseignement.code} — {devoir.uniteEnseignement.nom}
                               </p>
@@ -814,17 +809,17 @@ export function MesDevoirsPage() {
                             <div className="pl-[52px]">
                               <div className={`rounded-lg border p-4 ${
                                 isPassing
-                                  ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20'
-                                  : 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20'
+                                  ? 'border-success/20 bg-success/15'
+                                  : 'border-destructive/20 bg-destructive/15'
                               }`}>
                                 <div className="flex items-center gap-4">
                                   <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${
                                     isPassing
-                                      ? 'bg-emerald-100 dark:bg-emerald-900/40'
-                                      : 'bg-red-100 dark:bg-red-900/40'
+                                      ? 'bg-success/10'
+                                      : 'bg-destructive/10'
                                   }`}>
                                     <span className={`text-lg font-bold ${
-                                      isPassing ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                                      isPassing ? 'text-success' : 'text-destructive'
                                     }`}>
                                       {soumission.note.toFixed(1)}
                                     </span>
@@ -843,15 +838,15 @@ export function MesDevoirsPage() {
                           {/* AI feedback */}
                           {soumission.noteIA !== null && soumission.noteIA !== undefined && (
                             <div className="pl-[52px]">
-                              <div className="rounded-lg border border-purple-200 bg-purple-50 dark:border-purple-900 dark:bg-purple-950/20 p-3">
+                              <div className="rounded-lg border border-secondary/20 bg-secondary/15 p-3">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                  <span className="text-xs font-medium text-purple-800 dark:text-purple-300">
+                                  <Sparkles className="h-4 w-4 text-secondary" />
+                                  <span className="text-xs font-medium text-secondary">
                                     Évaluation IA : {soumission.noteIA.toFixed(1)}/{devoir.noteMax}
                                   </span>
                                 </div>
                                 {soumission.justificationIA && (
-                                  <p className="text-xs text-purple-700 dark:text-purple-400 whitespace-pre-wrap">
+                                  <p className="text-xs text-secondary whitespace-pre-wrap">
                                     {soumission.justificationIA}
                                   </p>
                                 )}
@@ -862,8 +857,8 @@ export function MesDevoirsPage() {
                           {/* Teacher comment */}
                           {soumission.commentaireEnseignant && (
                             <div className="pl-[52px]">
-                              <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20 p-3">
-                                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-1">
+                              <div className="rounded-lg border border-success/20 bg-success/15 p-3">
+                                <p className="text-xs font-medium text-success mb-1">
                                   Commentaire de l&apos;enseignant
                                 </p>
                                 <p className="text-sm">{soumission.commentaireEnseignant}</p>
@@ -876,7 +871,7 @@ export function MesDevoirsPage() {
                         <div className="shrink-0 sm:ml-4">
                           <Button
                             variant="outline"
-                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                            className="border-success/30 text-success hover:bg-success/10"
                             onClick={() => handleOpenDetail(devoir)}
                           >
                             <Eye className="h-4 w-4" />
@@ -898,7 +893,7 @@ export function MesDevoirsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <BookOpen className="h-5 w-5 text-success" />
               {selectedDevoir?.titre ?? 'Soumettre un devoir'}
             </DialogTitle>
             <DialogDescription>
@@ -909,11 +904,11 @@ export function MesDevoirsPage() {
           </DialogHeader>
 
           {selectedDevoir?.consignes && (
-            <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3">
-              <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
+            <div className="rounded-lg border bg-warning/10 p-3">
+              <p className="text-xs font-medium text-warning mb-1">
                 Consignes
               </p>
-              <p className="text-sm text-amber-900 dark:text-amber-300">
+              <p className="text-sm text-warning">
                 {selectedDevoir.consignes}
               </p>
             </div>
@@ -922,7 +917,7 @@ export function MesDevoirsPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="contenu-texte" className="text-sm font-medium">
-                Votre réponse <span className="text-red-500">*</span>
+                Votre réponse <span className="text-destructive">*</span>
               </Label>
               <Textarea
                 id="contenu-texte"
@@ -968,7 +963,7 @@ export function MesDevoirsPage() {
               Sauvegarder en brouillon
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success"
               onClick={() => handleSubmit('SOUMIS')}
               disabled={isSubmitting}
             >
@@ -988,7 +983,7 @@ export function MesDevoirsPage() {
         <DialogContent className="sm:max-w-2xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <BookOpen className="h-5 w-5 text-success" />
               {detailDevoir?.titre ?? 'Détail du devoir'}
             </DialogTitle>
             <DialogDescription>
@@ -1029,11 +1024,11 @@ export function MesDevoirsPage() {
                   )}
 
                   {detailDevoir.consignes && (
-                    <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3">
-                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
+                    <div className="rounded-lg border bg-warning/10 p-3">
+                      <p className="text-xs font-medium text-warning mb-1">
                         Consignes
                       </p>
-                      <p className="text-sm text-amber-900 dark:text-amber-300">
+                      <p className="text-sm text-warning">
                         {detailDevoir.consignes}
                       </p>
                     </div>
@@ -1046,7 +1041,7 @@ export function MesDevoirsPage() {
                 {detailDevoir.soumission ? (
                   <div className="space-y-4">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <FileText className="h-4 w-4 text-success" />
                       Votre soumission
                     </h4>
 
@@ -1071,8 +1066,8 @@ export function MesDevoirsPage() {
                     {(detailDevoir.soumission.statut === 'CORRIGE' || detailDevoir.soumission.statut === 'RETOURNE') && (
                       <div className="rounded-lg border bg-muted/30 p-4">
                         <div className="flex items-center gap-4">
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40">
-                            <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-success/10">
+                            <span className="text-lg font-bold text-success">
                               {detailDevoir.soumission.note?.toFixed(1) ?? '—'}
                             </span>
                           </div>
@@ -1113,10 +1108,10 @@ export function MesDevoirsPage() {
                     {/* Teacher comment */}
                     {detailDevoir.soumission.commentaireEnseignant && (
                       <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        <p className="text-xs font-medium text-success">
                           Commentaire de l&apos;enseignant
                         </p>
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20 p-3 text-sm">
+                        <div className="rounded-lg border border-success/20 bg-success/15 p-3 text-sm">
                           {detailDevoir.soumission.commentaireEnseignant}
                         </div>
                       </div>
@@ -1125,16 +1120,16 @@ export function MesDevoirsPage() {
                     {/* AI Evaluation */}
                     {detailDevoir.soumission.noteIA !== null && detailDevoir.soumission.noteIA !== undefined && (
                       <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-purple-700 dark:text-purple-400 flex items-center gap-1">
+                        <p className="text-xs font-medium text-secondary flex items-center gap-1">
                           <Sparkles className="h-3 w-3" />
                           Évaluation IA
                         </p>
-                        <div className="rounded-lg border border-purple-200 bg-purple-50 dark:border-purple-900 dark:bg-purple-950/20 p-3">
-                          <p className="text-sm font-medium text-purple-800 dark:text-purple-300 mb-1">
+                        <div className="rounded-lg border border-secondary/20 bg-secondary/15 p-3">
+                          <p className="text-sm font-medium text-secondary mb-1">
                             Note IA : {detailDevoir.soumission.noteIA.toFixed(1)}/{detailDevoir.noteMax}
                           </p>
                           {detailDevoir.soumission.justificationIA && (
-                            <p className="text-xs text-purple-700 dark:text-purple-400 whitespace-pre-wrap">
+                            <p className="text-xs text-secondary whitespace-pre-wrap">
                               {detailDevoir.soumission.justificationIA}
                             </p>
                           )}
