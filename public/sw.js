@@ -136,3 +136,129 @@ self.addEventListener('message', (event) => {
     self.skipWaiting()
   }
 })
+
+// ════════════════════════════════════════════════════════════════
+// PUSH NOTIFICATIONS
+// ════════════════════════════════════════════════════════════════
+
+// ─── PUSH : réception d'une notification push ───
+self.addEventListener('push', (event) => {
+  let payload
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = { title: 'SECT', body: event.data ? event.data.text() : 'Nouvelle notification' }
+  }
+
+  const {
+    title = 'SECT',
+    body = '',
+    url = '/dashboard',
+    icon = '/favicon.png',
+    badge = '/favicon-32x32.png',
+    tag = 'sect-notification',
+    data = {},
+  } = payload
+
+  const options = {
+    body,
+    icon,
+    badge,
+    tag,
+    data: { ...data, url },
+    requireInteraction: false,
+    vibrate: [100, 50, 100], // vibration courte
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  )
+})
+
+// ─── NOTIFICATIONCLICK : ouvre l'URL cible au clic ───
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const url = event.notification.data?.url || '/dashboard'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Si une fenêtre est déjà ouverte, la focalise et navigue
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.navigate(url)
+          return client.focus()
+        }
+      }
+      // Sinon ouvre une nouvelle fenêtre
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(url)
+      }
+    })
+  )
+})
+
+// ════════════════════════════════════════════════════════════════
+// BACKGROUND SYNC — soumission d'examen en différé (offline)
+// ════════════════════════════════════════════════════════════════
+
+// ─── SYNC : déclenché quand le réseau revient (après sync.register) ───
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'submit-exam') {
+    event.waitUntil(flushSubmissionOutbox())
+  }
+})
+
+// Lit l'IndexedDB outbox et POSTe les soumissions en attente
+async function flushSubmissionOutbox() {
+  try {
+    const db = await openOutboxDB()
+    const tx = db.transaction('outbox', 'readonly')
+    const store = tx.objectStore('outbox')
+    const items = await store.getAll()
+    db.close()
+
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        const res = await fetch(item.url, {
+          method: item.method || 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: item.body,
+          credentials: 'same-origin',
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        // Succès → supprime de l'outbox
+        const db2 = await openOutboxDB()
+        await db2.transaction('outbox', 'readwrite').objectStore('outbox').delete(item.id)
+        db2.close()
+        // Notifie le client que la soumission a réussi
+        const clients = await self.clients.matchAll({ includeUncontrolled: true })
+        clients.forEach((c) => c.postMessage({ type: 'SUBMISSION_SYNCED', id: item.id, url: item.url }))
+      })
+    )
+
+    const failed = results.filter((r) => r.status === 'rejected')
+    if (failed.length > 0) {
+      // Retry : re-enregistre le sync pour les échecs restants
+      const reg = await self.registration.sync.register('submit-exam')
+      return reg
+    }
+  } catch (err) {
+    console.error('[SW Background Sync] flushSubmissionOutbox failed:', err)
+  }
+}
+
+// Helper : ouvre la DB IndexedDB de l'outbox
+function openOutboxDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('sect-offline-outbox', 1)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains('outbox')) {
+        db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true })
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}

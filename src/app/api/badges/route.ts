@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
-import { computeAllBadges, getUserBadgesFromDB } from '@/lib/badges-engine'
+import { computeAllBadges, getUserBadgesFromDB, type NiveauBadge } from '@/lib/badges-engine'
+import { sendPushToUser } from '@/lib/push'
+
+/**
+ * Mapping niveau de badge → XP bonus affiché dans la notification.
+ * Les badges n'exposent pas de champ `xp` dans BadgeWithProgress, on dérive
+ * donc la valeur depuis le niveau atteint (BRONZE < ARGENT < OR < DIAMANT).
+ * Valeurs purement indicatives (gamification), cohérentes avec l'esprit du DS.
+ */
+const XP_PER_NIVEAU: Record<NiveauBadge, number> = {
+  BRONZE: 10,
+  ARGENT: 25,
+  OR: 50,
+  DIAMANT: 100,
+}
 
 /**
  * GET /api/badges
@@ -62,6 +76,25 @@ async function _POST(request: NextRequest, context: { params: any; user: Authent
 
     const badges = await computeAllBadges(userId, role, etablissementId)
     const newBadges = badges.filter(b => b.isNewlyUnlocked)
+
+    // ─── Push notification : notifie l'utilisateur pour chaque badge
+    // nouvellement débloqué. Non-bloquant : un échec push ne doit jamais
+    // casser le recalcul. Le `tag` est unique par badge (badge-${cle}) pour
+    // éviter qu'un nouveau déclenchement n'écrase une notification précédente
+    // d'un autre badge, tout en dédoublonnant les recalculs successifs du
+    // même badge.
+    if (newBadges.length > 0) {
+      await Promise.all(
+        newBadges.map((badge) =>
+          sendPushToUser(userId, {
+            title: 'Nouveau badge débloqué !',
+            body: `Vous avez débloqué : "${badge.titre}". +${XP_PER_NIVEAU[badge.niveauActuel] ?? 10} XP`,
+            url: '/profil',
+            tag: `badge-${badge.cle}`,
+          }).catch(() => {})
+        )
+      )
+    }
 
     return NextResponse.json({
       badges,

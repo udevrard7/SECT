@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { withAuth, AuthenticatedUser } from '@/lib/auth-session'
 import { requireAdminEtablissementAccess, verifySelfAccess } from '@/lib/tenant-access'
+import { sendPushToUsers } from '@/lib/push'
 
 async function _POST(
   request: NextRequest,
@@ -270,6 +271,52 @@ async function _POST(
           themes: eq.question.themes ? JSON.parse(eq.question.themes as string) : null,
         },
       })),
+    }
+
+    // ─── Push notification : notifie les étudiants de la filière si l'épreuve
+    // est immédiatement visible (statut EN_COURS ou TERMINEE — pas BROUILLON).
+    // Non-bloquant : un échec push ne doit jamais casser la création.
+    // Remarque : actuellement la création force `statut = 'BROUILLON'`, donc ce
+    // bloc est défensif — il s'activera dès qu'un statut publié sera autorisé
+    // côté body/validation. La condition est volontairement stricte (filiereId
+    // + statut visible) pour éviter de spammer les étudiants.
+    if (
+      epreuve.filiereId &&
+      (epreuve.statut === 'EN_COURS' || epreuve.statut === 'TERMINEE')
+    ) {
+      try {
+        // Compte des questions : relations EpreuveQuestion OU contenu JSONB
+        const contenuData = epreuve.contenu as Record<string, unknown> | null
+        const contenuQuestions =
+          contenuData && typeof contenuData === 'object' && Array.isArray(contenuData.questions)
+            ? (contenuData.questions as unknown[])
+            : []
+        const questionCount =
+          epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
+
+        const students = await db.user.findMany({
+          where: {
+            filiereId: epreuve.filiereId,
+            role: 'ETUDIANT',
+            actif: true,
+          },
+          select: { id: true },
+        })
+
+        if (students.length > 0) {
+          await sendPushToUsers(
+            students.map((s) => s.id),
+            {
+              title: 'Nouvel examen disponible',
+              body: `"${epreuve.titre}" est disponible. ${questionCount} question(s).`,
+              url: '/mes-epreuves',
+              tag: 'new-exam',
+            }
+          ).catch(() => {})
+        }
+      } catch {
+        // Push est best-effort — on ignore toute erreur pour ne pas casser la réponse
+      }
     }
 
     return NextResponse.json({

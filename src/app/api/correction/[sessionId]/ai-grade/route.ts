@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 import { verifyCorrectionOwnership } from '@/lib/correction-access'
+import { sendPushToUser } from '@/lib/push'
 
 export const maxDuration = 60
 
@@ -437,6 +438,17 @@ export const PATCH = withAuth(
           details: `Correction finalisée et copie rendue — score ${totalScore}/${totalPossible}`,
         },
       })
+
+      // ─── Push notification : notifie l'étudiant que sa copie est corrigée ───
+      // Non-bloquant : un échec push ne doit jamais casser la finalisation.
+      // La session est chargée via `include` (pas `select`), donc `etudiantId`
+      // et `epreuve.titre` sont déjà disponibles sur l'objet `session`.
+      await sendPushToUser(session.etudiantId, {
+        title: 'Correction disponible',
+        body: `Votre copie pour "${session.epreuve.titre}" a été corrigée. Note : ${totalScore}/${totalPossible}.`,
+        url: '/mes-resultats',
+        tag: 'correction-finalized',
+      }).catch(() => {})
 
       return NextResponse.json({
         score: totalScore,
