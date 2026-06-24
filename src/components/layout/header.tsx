@@ -21,7 +21,6 @@ import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, ty
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { PushNotificationManager } from '@/components/pwa/push-notification-manager'
 
-// ─── Role display names ───
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Administrateur',
   RESPONSABLE: 'Responsable des études',
@@ -36,10 +35,7 @@ export function AppHeader() {
 
   if (!user) return null
 
-  // Determine current page ID from URL
   const currentPageId = ROUTE_TO_PAGE[pathname] ?? 'dashboard'
-
-  // Find the current page label and breadcrumb
   const categories = NAV_CATEGORIES[user.role] ?? []
   let parentCategory = ''
   for (const cat of categories) {
@@ -55,7 +51,6 @@ export function AppHeader() {
     ? PROFILE_PAGE.label
     : (currentNavItem?.label ?? 'Tableau de bord')
 
-  // Get user initials for avatar fallback
   const initials = user.name
     .split(' ')
     .map((n) => n[0])
@@ -63,7 +58,6 @@ export function AppHeader() {
     .toUpperCase()
     .slice(0, 2)
 
-  // Navigate to a page using Next.js router
   const navigateTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
     if (route) router.push(route)
@@ -71,51 +65,54 @@ export function AppHeader() {
 
   return (
     <header className="flex flex-col shrink-0 sticky top-0 z-30">
-      {/* ─── Accent bar : motif africain (vert lime + terre cuite + or) ─── */}
+      {/* Bande kente tricolore (vert/terre/or) */}
       <div className="h-[3px] w-full ds-african-divider" />
 
-      {/* ─── Header content — fond opaque pour lisibilité ─── */}
-      <div className="flex h-14 items-center gap-2 bg-card border-b border-border px-4">
+      {/* Header compact h-12 — fond bleu nuit */}
+      <div className="flex h-12 items-center gap-2 bg-sidebar border-b border-sidebar-border px-3">
         {/* Sidebar toggle */}
-        <SidebarTrigger className="-ml-1 hover:bg-muted/60" />
-        <div className="h-5 w-px bg-border mx-1" />
+        <SidebarTrigger className="-ml-1 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-lg" />
 
-        {/* Breadcrumb / Page title */}
+        {/* Breadcrumb */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           {parentCategory && currentPageId !== 'dashboard' && (
             <>
-              <span className="text-xs text-muted-foreground hidden sm:inline truncate">
+              <span className="text-[11px] text-sidebar-foreground/40 hidden sm:inline truncate">
                 {parentCategory}
               </span>
-              <ChevronRight className="h-3 w-3 text-muted-foreground/50 hidden sm:block shrink-0" />
+              <ChevronRight className="h-3 w-3 text-sidebar-foreground/30 hidden sm:block shrink-0" />
             </>
           )}
-          <h1 className="text-sm font-semibold truncate font-display tracking-tight">{pageTitle}</h1>
+          <h1 className="text-sm font-semibold truncate font-display tracking-tight text-sidebar-foreground">
+            {pageTitle}
+          </h1>
         </div>
 
-        {/* Right actions */}
+        {/* Actions */}
         <div className="flex items-center gap-0.5">
-          {/* Theme toggle (DS) */}
           <ThemeToggle />
-
-          {/* Notifications in-app */}
           <NotificationBell />
-
-          {/* Push notifications PWA (activation) */}
           <PushNotificationManager />
+
+          {/* Séparateur */}
+          <div className="h-5 w-px bg-sidebar-border mx-1.5" />
 
           {/* User dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full hover:bg-muted/60">
+              <button className="flex items-center gap-2 h-9 px-1.5 rounded-lg hover:bg-sidebar-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Avatar className="h-7 w-7">
                   <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-              </Button>
+                <div className="hidden sm:flex flex-col items-start leading-tight">
+                  <span className="text-xs font-semibold text-sidebar-foreground truncate max-w-[100px]">{user.name}</span>
+                  <span className="text-[10px] text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</span>
+                </div>
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 rounded-xl" align="end" forceMount>
+            <DropdownMenuContent className="w-56 rounded-xl border-border" align="end" forceMount>
               <DropdownMenuLabel className="font-normal py-3">
                 <div className="flex flex-col space-y-1.5">
                   <div className="flex items-center gap-2.5">
@@ -126,9 +123,7 @@ export function AppHeader() {
                     </Avatar>
                     <div>
                       <p className="text-sm font-semibold leading-none">{user.name}</p>
-                      <p className="text-xs leading-none text-muted-foreground mt-0.5">
-                        {user.email}
-                      </p>
+                      <p className="text-xs leading-none text-muted-foreground mt-0.5">{user.email}</p>
                     </div>
                   </div>
                   <span className="inline-flex self-start text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary-text">
