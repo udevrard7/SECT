@@ -181,44 +181,46 @@ export function BadgeCard({ badge, index = 0 }: BadgeCardProps) {
       </h4>
 
       {/* Description */}
-      <p className="mt-1 text-[11px] text-muted-foreground line-clamp-2 min-h-[2rem]">
+      <p className="mt-1 text-[11px] text-muted-foreground line-clamp-2 min-h-[2.5rem]">
         {description}
       </p>
 
-      {/* Footer : progression ou date de déblocage */}
-      {unlocked ? (
-        unlockedAt && (
-          <p className="mt-3 text-[10px] text-muted-foreground font-mono tabular-nums">
-            Débloqué le {formatFrDate(unlockedAt)}
-          </p>
-        )
-      ) : hasProgress ? (
-        <div className="mt-3 w-full">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Progression
-            </span>
-            <span className={cn('font-mono text-[10px] font-semibold tabular-nums', TIER_TEXT[tier])}>
-              {Math.round(clampedProgress)}%
-            </span>
+      {/* Footer : progression ou date de déblocage — espacé pour éviter chevauchement */}
+      <div className="mt-auto pt-3 w-full">
+        {unlocked ? (
+          unlockedAt && (
+            <p className="text-[10px] text-muted-foreground font-mono tabular-nums">
+              Débloqué le {formatFrDate(unlockedAt)}
+            </p>
+          )
+        ) : hasProgress ? (
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Progression
+              </span>
+              <span className={cn('font-mono text-[10px] font-semibold tabular-nums', TIER_TEXT[tier])}>
+                {Math.round(clampedProgress)}%
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <motion.div
+                className="h-full rounded-full"
+                style={{ backgroundColor: `var(--${tier})` }}
+                initial={{ width: 0 }}
+                animate={{ width: `${clampedProgress}%` }}
+                transition={{
+                  duration: 0.7,
+                  delay: index * 0.06 + 0.15,
+                  ease: 'easeOut',
+                }}
+              />
+            </div>
           </div>
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <motion.div
-              className="h-full rounded-full"
-              style={{ backgroundColor: `var(--${tier})` }}
-              initial={{ width: 0 }}
-              animate={{ width: `${clampedProgress}%` }}
-              transition={{
-                duration: 0.7,
-                delay: index * 0.06 + 0.15,
-                ease: 'easeOut',
-              }}
-            />
-          </div>
-        </div>
-      ) : (
-        <p className="mt-3 text-[10px] text-muted-foreground italic">Verrouillé</p>
-      )}
+        ) : (
+          <p className="text-[10px] text-muted-foreground italic">Verrouillé</p>
+        )}
+      </div>
     </motion.article>
   )
 }

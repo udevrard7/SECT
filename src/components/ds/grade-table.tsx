@@ -159,37 +159,37 @@ export function GradeTable({
             <TableRow className="hover:bg-transparent">
               <TableHead
                 scope="col"
-                className="font-display text-xs uppercase tracking-wider text-muted-foreground"
+                className="font-display text-xs uppercase tracking-wider text-muted-foreground w-[20%]"
               >
                 Matière
               </TableHead>
               <TableHead
                 scope="col"
-                className="font-display text-xs uppercase tracking-wider text-muted-foreground"
+                className="font-display text-xs uppercase tracking-wider text-muted-foreground w-[25%]"
               >
                 Examen
               </TableHead>
               <TableHead
                 scope="col"
-                className="font-display text-xs uppercase tracking-wider text-muted-foreground text-right"
+                className="font-display text-xs uppercase tracking-wider text-muted-foreground text-right w-[12%]"
               >
                 Note
               </TableHead>
               <TableHead
                 scope="col"
-                className="font-display text-xs uppercase tracking-wider text-muted-foreground text-center"
+                className="font-display text-xs uppercase tracking-wider text-muted-foreground text-center w-[8%]"
               >
                 Coef.
               </TableHead>
               <TableHead
                 scope="col"
-                className="font-display text-xs uppercase tracking-wider text-muted-foreground"
+                className="font-display text-xs uppercase tracking-wider text-muted-foreground w-[15%]"
               >
                 Date
               </TableHead>
               <TableHead
                 scope="col"
-                className="font-display text-xs uppercase tracking-wider text-muted-foreground"
+                className="font-display text-xs uppercase tracking-wider text-muted-foreground w-[20%] hidden lg:table-cell"
               >
                 Commentaire
               </TableHead>
@@ -244,7 +244,7 @@ export function GradeTable({
                   <TableCell className="text-muted-foreground text-sm">
                     {formatDate(grade.date)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm max-w-[280px] truncate">
+                  <TableCell className="text-muted-foreground text-sm max-w-[280px] truncate hidden lg:table-cell">
                     {grade.comment || <span className="opacity-40">—</span>}
                   </TableCell>
                 </motion.tr>
