@@ -235,9 +235,9 @@ function downloadCSV(content: string, filename: string) {
 
 function getNiveauBadgeColor(niveau: string): string {
   switch (niveau) {
-    case 'L1': return 'bg-success/10 text-success border-success/30'
-    case 'L2': return 'bg-success/10 text-success border-success/30'
-    case 'L3': return 'bg-success/10 text-success border-success/30'
+    case 'L1': return 'bg-success/10 text-success-text border-success/30'
+    case 'L2': return 'bg-success/10 text-success-text border-success/30'
+    case 'L3': return 'bg-success/10 text-success-text border-success/30'
     case 'M1': return 'bg-warning/10 text-warning border-warning/30'
     case 'M2': return 'bg-warning/10 text-warning border-warning/30'
     default: return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
@@ -1077,7 +1077,7 @@ export function EnseignantsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <BookOpen className="h-7 w-7 text-success" />
+            <BookOpen className="h-7 w-7 text-success-text" />
             Gestion des Enseignants
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -1119,7 +1119,7 @@ export function EnseignantsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Users className="h-5 w-5 text-success" />
+              <Users className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total enseignants</p>
@@ -1130,7 +1130,7 @@ export function EnseignantsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <BookOpen className="h-5 w-5 text-success" />
+              <BookOpen className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actifs</p>
@@ -1141,7 +1141,7 @@ export function EnseignantsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <GraduationCap className="h-5 w-5 text-success" />
+              <GraduationCap className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Avec affectations</p>
@@ -1202,14 +1202,14 @@ export function EnseignantsPage() {
       {/* ─── Bulk action toolbar ─── */}
       {selectedIds.size > 0 && !isLoading && (
         <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
-          <span className="text-sm font-medium text-success">
+          <span className="text-sm font-medium text-success-text">
             {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
           </span>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs border-success/30 text-success hover:bg-success/10"
+              className="h-8 text-xs border-success/30 text-success-text hover:bg-success/10"
               onClick={() => setBulkActionDialog('activate')}
             >
               <Power className="h-3.5 w-3.5 mr-1" />
@@ -1282,7 +1282,7 @@ export function EnseignantsPage() {
       {!isLoading && filteredEnseignants.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <BookOpen className="h-10 w-10 text-success" />
+            <BookOpen className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun enseignant trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1324,7 +1324,7 @@ export function EnseignantsPage() {
                         onCheckedChange={() => toggleSelect(enseignant.id)}
                         aria-label={`Sélectionner ${enseignant.name}`}
                       />
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success-text">
                         {getInitials(enseignant.name)}
                       </div>
                     </div>
@@ -1377,7 +1377,7 @@ export function EnseignantsPage() {
                   {/* Status badge */}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {enseignant.actif ? (
-                      <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
+                      <Badge className="bg-success/10 text-success-text border-success/30 text-xs">Actif</Badge>
                     ) : (
                       <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                     )}
@@ -1440,7 +1440,7 @@ export function EnseignantsPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                               {getInitials(enseignant.name)}
                             </div>
                             <span className="truncate">{enseignant.name}</span>
@@ -1462,7 +1462,7 @@ export function EnseignantsPage() {
                         </TableCell>
                         <TableCell>
                           {enseignant.actif ? (
-                            <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
+                            <Badge className="bg-success/10 text-success-text border-success/30 text-xs">Actif</Badge>
                           ) : (
                             <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                           )}
@@ -1522,9 +1522,9 @@ export function EnseignantsPage() {
       {pendingInvitations.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-success" />
+            <Mail className="h-5 w-5 text-success-text" />
             <h2 className="text-lg font-display font-semibold tracking-tight">Invitations en attente</h2>
-            <Badge className="bg-success/10 text-success border-success/30">
+            <Badge className="bg-success/10 text-success-text border-success/30">
               {pendingInvitations.length}
             </Badge>
           </div>
@@ -1582,7 +1582,7 @@ export function EnseignantsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-xs border-success/30 text-success hover:bg-success/10"
+                                className="h-8 text-xs border-success/30 text-success-text hover:bg-success/10"
                                 onClick={() => handleResendInvitation(invitation)}
                                 disabled={isResending === invitation.id}
                               >
@@ -1620,7 +1620,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-success" />
+              <BookOpen className="h-5 w-5 text-success-text" />
               Ajouter un enseignant
             </DialogTitle>
             <DialogDescription>
@@ -1636,7 +1636,7 @@ export function EnseignantsPage() {
                 className={`flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
                   registrationMode === 'invitation'
                     ? 'bg-success text-white shadow-sm'
-                    : 'text-success hover:bg-success/10'
+                    : 'text-success-text hover:bg-success/10'
                 }`}
                 onClick={() => setRegistrationMode('invitation')}
               >
@@ -1648,7 +1648,7 @@ export function EnseignantsPage() {
                 className={`flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
                   registrationMode === 'direct'
                     ? 'bg-success text-white shadow-sm'
-                    : 'text-success hover:bg-success/10'
+                    : 'text-success-text hover:bg-success/10'
                 }`}
                 onClick={() => setRegistrationMode('direct')}
               >
@@ -1702,7 +1702,7 @@ export function EnseignantsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs border-success/30 text-success hover:bg-success/10"
+                      className="h-7 text-xs border-success/30 text-success-text hover:bg-success/10"
                       onClick={handleAddAssignmentRow}
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -1762,7 +1762,7 @@ export function EnseignantsPage() {
                 {/* Token link display after invitation success */}
                 {invitationTokenLink && (
                   <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-2">
-                    <div className="flex items-center gap-2 text-success">
+                    <div className="flex items-center gap-2 text-success-text">
                       <CheckCircle2 className="h-4 w-4" />
                       <span className="text-sm font-medium">Invitation envoyée avec succès</span>
                     </div>
@@ -1829,7 +1829,7 @@ export function EnseignantsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs border-success/30 text-success hover:bg-success/10"
+                      className="h-7 text-xs border-success/30 text-success-text hover:bg-success/10"
                       onClick={handleAddAssignmentRow}
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -1936,7 +1936,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
               Compte enseignant créé
             </DialogTitle>
             <DialogDescription>
@@ -2010,7 +2010,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-success" />
+              <Edit3 className="h-5 w-5 text-success-text" />
               Modifier l&apos;enseignant
             </DialogTitle>
             <DialogDescription>
@@ -2088,7 +2088,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-success" />
+              <Settings2 className="h-5 w-5 text-success-text" />
               Affectations de {assignmentEnseignant?.name}
             </DialogTitle>
             <DialogDescription>
@@ -2236,7 +2236,7 @@ export function EnseignantsPage() {
               </>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-success">
+                <div className="flex items-center gap-2 text-success-text">
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-medium">{importResult.imported} enseignant{importResult.imported > 1 ? 's' : ''} importé{importResult.imported > 1 ? 's' : ''}</span>
                 </div>

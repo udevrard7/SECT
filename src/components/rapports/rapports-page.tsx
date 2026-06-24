@@ -157,21 +157,21 @@ function formatMonth(mois: string): string {
 // ─── Score color ───
 
 function getScoreColor(score: number): string {
-  if (score >= 14) return 'text-success'
+  if (score >= 14) return 'text-success-text'
   if (score >= 10) return 'text-info'
   if (score >= 8) return 'text-warning'
   return 'text-destructive'
 }
 
 function getScoreBg(score: number): string {
-  if (score >= 14) return 'bg-success/15 text-success border-success/30'
+  if (score >= 14) return 'bg-success/15 text-success-text border-success/30'
   if (score >= 10) return 'bg-info/15 text-info border-info/30'
   if (score >= 8) return 'bg-warning/15 text-warning border-warning/30'
   return 'bg-destructive/15 text-destructive border-destructive/30'
 }
 
 function getTrendIcon(trend: 'up' | 'down' | 'stable') {
-  if (trend === 'up') return <ArrowUpRight className="h-4 w-4 text-success" />
+  if (trend === 'up') return <ArrowUpRight className="h-4 w-4 text-success-text" />
   if (trend === 'down') return <ArrowDownRight className="h-4 w-4 text-destructive" />
   return <Minus className="h-4 w-4 text-warning" />
 }
@@ -812,7 +812,7 @@ export function RapportsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <BarChart3 className="h-7 w-7 text-success" />
+            <BarChart3 className="h-7 w-7 text-success-text" />
             Rapports et Statistiques
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -825,7 +825,7 @@ export function RapportsPage() {
             size="sm"
             onClick={handleExportCSV}
             disabled={!hasData}
-            className="border-success/40 text-success hover:bg-success/10"
+            className="border-success/40 text-success-text hover:bg-success/10"
           >
             <Download className="h-4 w-4 mr-1" />
             Exporter CSV
@@ -926,7 +926,7 @@ export function RapportsPage() {
       {!isLoading && !hasData && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <BarChart3 className="h-10 w-10 text-success" />
+            <BarChart3 className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune donnée disponible</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -948,7 +948,7 @@ export function RapportsPage() {
               title="Moyenne générale"
               value={`${stats.moyenneGenerale}/20`}
               subtitle="Toutes évaluations confondues"
-              icon={<TrendingUp className="h-5 w-5 text-success" />}
+              icon={<TrendingUp className="h-5 w-5 text-success-text" />}
               iconBg="bg-success/15"
               borderColor="border-l-primary"
             />
@@ -983,7 +983,7 @@ export function RapportsPage() {
             <Card className="border-l-4 border-l-primary">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-success" />
+                  <Users className="h-4 w-4 text-success-text" />
                   <span className="text-sm text-muted-foreground">Enseignants actifs</span>
                 </div>
                 <span className="text-lg font-bold font-mono tabular-nums">{stats.nbEnseignants}</span>
@@ -1020,7 +1020,7 @@ export function RapportsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
-                  <TrendingUp className="h-4 w-4 text-success" />
+                  <TrendingUp className="h-4 w-4 text-success-text" />
                   Évolution des moyennes
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1141,7 +1141,7 @@ export function RapportsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
-                  <GraduationCap className="h-4 w-4 text-success" />
+                  <GraduationCap className="h-4 w-4 text-success-text" />
                   Étudiants par filière
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1192,7 +1192,7 @@ export function RapportsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
-                  <Trophy className="h-4 w-4 text-success" />
+                  <Trophy className="h-4 w-4 text-success-text" />
                   Top 5 — Meilleurs étudiants
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -1209,7 +1209,7 @@ export function RapportsPage() {
                       >
                         {/* Rank badge */}
                         <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold font-mono tabular-nums ${
-                          index === 0 ? 'bg-success/15 text-success' :
+                          index === 0 ? 'bg-success/15 text-success-text' :
                           index === 1 ? 'bg-info/15 text-info' :
                           index === 2 ? 'bg-warning/15 text-warning' :
                           'bg-muted text-muted-foreground'
@@ -1280,7 +1280,7 @@ export function RapportsPage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                    <Trophy className="h-6 w-6 mr-2 text-success" />
+                    <Trophy className="h-6 w-6 mr-2 text-success-text" />
                     {stats.topEtudiants.length > 0
                       ? 'Tous les participants ont la moyenne !'
                       : 'Aucun résultat d\'étudiant disponible'
@@ -1310,13 +1310,13 @@ export function RapportsPage() {
                       key={index}
                       className="flex flex-col items-center gap-2 p-3 rounded-lg border bg-muted/30"
                     >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/15 text-sm font-bold text-success font-mono tabular-nums">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/15 text-sm font-bold text-success-text font-mono tabular-nums">
                         {ens.nom.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                       </div>
                       <p className="text-sm font-medium text-center">{ens.nom}</p>
                       <div className="flex items-center gap-1">
                         {getTrendIcon(ens.tauxReussite >= 50 ? 'up' : 'down')}
-                        <span className={`text-lg font-bold font-mono tabular-nums ${ens.tauxReussite >= 50 ? 'text-success' : 'text-destructive'}`}>
+                        <span className={`text-lg font-bold font-mono tabular-nums ${ens.tauxReussite >= 50 ? 'text-success-text' : 'text-destructive'}`}>
                           {ens.tauxReussite}%
                         </span>
                       </div>
@@ -1367,7 +1367,7 @@ export function RapportsPage() {
                             </Badge>
                           </td>
                           <td className="py-2 text-center">
-                            <span className={`font-mono tabular-nums ${r.tauxReussite >= 50 ? 'text-success font-semibold' : 'text-destructive font-semibold'}`}>
+                            <span className={`font-mono tabular-nums ${r.tauxReussite >= 50 ? 'text-success-text font-semibold' : 'text-destructive font-semibold'}`}>
                               {r.tauxReussite}%
                             </span>
                           </td>

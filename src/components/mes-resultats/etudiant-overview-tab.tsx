@@ -79,7 +79,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
 
   const tendanceIcon =
     data.tendance > 0.3 ? (
-      <TrendingUp className="h-4 w-4 text-success" />
+      <TrendingUp className="h-4 w-4 text-success-text" />
     ) : data.tendance < -0.3 ? (
       <TrendingDown className="h-4 w-4 text-destructive" />
     ) : (
@@ -93,7 +93,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         : 'Stable'
   const tendanceColor =
     data.tendance > 0.3
-      ? 'text-success'
+      ? 'text-success-text'
       : data.tendance < -0.3
         ? 'text-destructive'
         : 'text-muted-foreground'
@@ -168,7 +168,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         <ChartCard
           title="Évolution de mes notes"
           description="Moyenne mensuelle sur les 12 derniers mois"
-          icon={<Calendar className="h-4 w-4 text-success" />}
+          icon={<Calendar className="h-4 w-4 text-success-text" />}
         >
           <div className="h-72">
             {evolutionData.length > 0 ? (
@@ -197,7 +197,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         <ChartCard
           title="Performance par type de question"
           description="Vos forces et faiblesses selon le type de question"
-          icon={<PieChart className="h-4 w-4 text-success" />}
+          icon={<PieChart className="h-4 w-4 text-success-text" />}
         >
           <div className="space-y-3 pt-2">
             {performanceData.map((p) => {
@@ -239,7 +239,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 font-display text-base">
-              <Trophy className="h-4 w-4 text-success" />
+              <Trophy className="h-4 w-4 text-success-text" />
               Résultats récents
             </CardTitle>
             <CardDescription>Vos 5 dernières épreuves</CardDescription>
@@ -273,7 +273,7 @@ export function EtudiantOverviewTab({ data }: EtudiantOverviewTabProps) {
                         r.isReturned
                           ? 'bg-secondary/10 text-secondary border-secondary/20'
                           : r.isCorrected
-                            ? 'bg-success/10 text-success border-success/20'
+                            ? 'bg-success/10 text-success-text border-success/20'
                             : 'bg-warning/10 text-warning border-warning/20'
                       }`}
                     >

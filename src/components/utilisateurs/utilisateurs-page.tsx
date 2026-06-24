@@ -160,7 +160,7 @@ function getRoleBadge(role: string) {
     case 'RESPONSABLE':
       return <Badge className="bg-warning/15 text-warning border-warning/30 ">Responsable</Badge>
     case 'ENSEIGNANT':
-      return <Badge className="bg-success/15 text-success border-success/30 ">Enseignant</Badge>
+      return <Badge className="bg-success/15 text-success-text border-success/30 ">Enseignant</Badge>
     case 'ETUDIANT':
       return <Badge className="bg-info/15 text-info border-info/30 ">Étudiant</Badge>
     default:
@@ -247,7 +247,7 @@ function getInvitationStatusBadge(status: 'pending' | 'used' | 'expired') {
     case 'pending':
       return <Badge className="bg-info/15 text-info border-info/30">En attente</Badge>
     case 'used':
-      return <Badge className="bg-success/15 text-success border-success/30 ">Utilisée</Badge>
+      return <Badge className="bg-success/15 text-success-text border-success/30 ">Utilisée</Badge>
     case 'expired':
       return <Badge className="bg-destructive/15 text-destructive border-destructive/30 ">Expirée</Badge>
   }
@@ -793,7 +793,7 @@ export function UtilisateursPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Users className="h-7 w-7 text-success" />
+            <Users className="h-7 w-7 text-success-text" />
             {isAdmin ? 'Gestion des Responsables' : 'Gestion des Utilisateurs'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -802,12 +802,12 @@ export function UtilisateursPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {!isAdmin && (
-            <Button variant="outline" className="border-success/30 text-success  hover:bg-success/10 " onClick={handleOpenImport}>
+            <Button variant="outline" className="border-success/30 text-success-text  hover:bg-success/10 " onClick={handleOpenImport}>
               <FileUp className="h-4 w-4" />
               Importer
             </Button>
           )}
-          <Button variant="outline" className="border-success/30 text-success  hover:bg-success/10 " onClick={handleOpenInvite}>
+          <Button variant="outline" className="border-success/30 text-success-text  hover:bg-success/10 " onClick={handleOpenInvite}>
             <Mail className="h-4 w-4" />
             {isAdmin ? 'Inviter un responsable' : 'Inviter'}
           </Button>
@@ -823,7 +823,7 @@ export function UtilisateursPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
-              <Users className="h-5 w-5 text-success" />
+              <Users className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
@@ -876,7 +876,7 @@ export function UtilisateursPage() {
                 <p className="text-sm font-semibold">
                   <span className="text-destructive">{adminCount}A</span>{' '}
                   <span className="text-warning">{respCount}R</span>{' '}
-                  <span className="text-success">{ensCount}E</span>{' '}
+                  <span className="text-success-text">{ensCount}E</span>{' '}
                   <span className="text-info">{etuCount}É</span>
                 </p>
               </div>
@@ -955,7 +955,7 @@ export function UtilisateursPage() {
       {!isLoading && users.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <Users className="h-10 w-10 text-success" />
+            <Users className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">{isAdmin ? 'Aucun responsable trouvé' : 'Aucun utilisateur trouvé'}</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1045,7 +1045,7 @@ export function UtilisateursPage() {
                     )}
                     <TableCell>
                       {u.actif ? (
-                        <Badge className="bg-success/15 text-success border-success/30 ">Actif</Badge>
+                        <Badge className="bg-success/15 text-success-text border-success/30 ">Actif</Badge>
                       ) : (
                         <Badge className="bg-muted text-muted-foreground border-border ">Inactif</Badge>
                       )}
@@ -1137,7 +1137,7 @@ export function UtilisateursPage() {
           <Separator />
           <div>
             <h2 className="text-lg font-display font-semibold tracking-tight flex items-center gap-2">
-              <Send className="h-5 w-5 text-success" />
+              <Send className="h-5 w-5 text-success-text" />
               Invitations
               {pendingInvitations.length > 0 && (
                 <Badge className="bg-info/15 text-info border-info/30 ml-1">
@@ -1243,7 +1243,7 @@ export function UtilisateursPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 text-xs text-success hover:text-success hover:bg-success/10  "
+                              className="h-7 text-xs text-success-text hover:text-success-text hover:bg-success/10  "
                               onClick={() => setRenvoyerTarget(inv)}
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
@@ -1306,12 +1306,12 @@ export function UtilisateursPage() {
             <DialogTitle className="flex items-center gap-2">
               {editingUser ? (
                 <>
-                  <Users className="h-5 w-5 text-success" />
+                  <Users className="h-5 w-5 text-success-text" />
                   {isAdmin ? 'Modifier le responsable' : 'Modifier l\'utilisateur'}
                 </>
               ) : (
                 <>
-                  <UserPlus className="h-5 w-5 text-success" />
+                  <UserPlus className="h-5 w-5 text-success-text" />
                   {isAdmin ? 'Nouveau responsable' : 'Nouvel utilisateur'}
                 </>
               )}
@@ -1333,7 +1333,7 @@ export function UtilisateursPage() {
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium transition-all ${
                       registrationMode === 'invitation'
                         ? 'bg-success text-white shadow-inner'
-                        : 'bg-success/10 text-success hover:bg-success/15   '
+                        : 'bg-success/10 text-success-text hover:bg-success/15   '
                     }`}
                     onClick={() => {
                       setRegistrationMode('invitation')
@@ -1348,7 +1348,7 @@ export function UtilisateursPage() {
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-l border-success/30 ${
                       registrationMode === 'direct'
                         ? 'bg-success text-white shadow-inner'
-                        : 'bg-success/10 text-success hover:bg-success/15   '
+                        : 'bg-success/10 text-success-text hover:bg-success/15   '
                     }`}
                     onClick={() => {
                       setRegistrationMode('direct')
@@ -1591,7 +1591,7 @@ export function UtilisateursPage() {
             {/* ─── Invitation result (after successful send) ─── */}
             {!editingUser && registrationMode === 'invitation' && invitationResult && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-success">
+                <div className="flex items-center gap-2 text-success-text">
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-semibold">Invitation envoyée avec succès</span>
                 </div>
@@ -1837,7 +1837,7 @@ export function UtilisateursPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
               Compte créé avec succès
             </DialogTitle>
             <DialogDescription>
@@ -1921,7 +1921,7 @@ export function UtilisateursPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileUp className="h-5 w-5 text-success" />
+              <FileUp className="h-5 w-5 text-success-text" />
               Importer des utilisateurs
             </DialogTitle>
             <DialogDescription>
@@ -1966,8 +1966,8 @@ export function UtilisateursPage() {
             {importResult && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-success" />
-                  <span className="font-semibold text-success ">
+                  <CheckCircle2 className="h-5 w-5 text-success-text" />
+                  <span className="font-semibold text-success-text ">
                     Import terminé : {importResult.imported} utilisateur(s) créé(s)
                   </span>
                 </div>
@@ -2102,7 +2102,7 @@ export function UtilisateursPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-success" />
+              <RefreshCw className="h-5 w-5 text-success-text" />
               Renvoyer l&apos;invitation
             </AlertDialogTitle>
             <AlertDialogDescription>

@@ -39,9 +39,9 @@ export interface EntityCardProps {
 }
 
 const BADGE_VARIANT_MAP = {
-  primary: 'bg-primary/10 text-primary',
+  primary: 'bg-primary/10 text-primary-text',
   secondary: 'bg-secondary/10 text-secondary',
-  success: 'bg-success/10 text-success',
+  success: 'bg-success/10 text-success-text',
   warning: 'bg-warning/10 text-warning',
   danger: 'bg-destructive/10 text-destructive',
 } as const
@@ -105,7 +105,7 @@ export function EntityCard({
           />
         ) : ThumbnailIcon ? (
           <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-secondary/10">
-            <ThumbnailIcon className="h-10 w-10 text-primary/60" />
+            <ThumbnailIcon className="h-10 w-10 text-primary-text/60" />
           </div>
         ) : (
           <div className="h-full w-full flex items-center justify-center bg-muted">
@@ -206,7 +206,7 @@ export function EntityCard({
                 />
               ))}
             </div>
-            <span className="font-mono text-[10px] font-semibold tabular-nums text-primary ml-0.5">
+            <span className="font-mono text-[10px] font-semibold tabular-nums text-primary-text ml-0.5">
               {level.current}/{level.max}
             </span>
           </div>

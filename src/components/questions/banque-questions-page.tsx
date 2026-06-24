@@ -117,7 +117,7 @@ function getTypeBadgeConfig(type: Question['type']) {
  case'QCM':
  return { label:'QCM', className:'bg-warning/15 text-warning border-warning/30' }
  case'QRC':
- return { label:'QRC', className:'bg-success/15 text-success border-success/30' }
+ return { label:'QRC', className:'bg-success/15 text-success-text border-success/30' }
  case'TRS':
  return { label:'TRS', className:'bg-destructive/15 text-destructive border-destructive/30' }
  case'CODE':
@@ -128,7 +128,7 @@ function getTypeBadgeConfig(type: Question['type']) {
 function getDifficulteBadgeConfig(difficulte: Question['difficulte']) {
  switch (difficulte) {
  case'FACILE':
- return { label:'Facile', className:'bg-success/15 text-success border-success/30' }
+ return { label:'Facile', className:'bg-success/15 text-success-text border-success/30' }
  case'MOYEN':
  return { label:'Moyen', className:'bg-warning/15 text-warning border-warning/30' }
  case'DIFFICILE':
@@ -140,7 +140,7 @@ function getDifficulteBadgeConfig(difficulte: Question['difficulte']) {
 
 function getScoreColor(score: number | null): string {
  if (score === null) return'text-muted-foreground'
- if (score >= 80) return'text-success'
+ if (score >= 80) return'text-success-text'
  if (score >= 60) return'text-warning'
  return'text-destructive'
 }
@@ -653,11 +653,11 @@ export function BanqueQuestionsPage() {
  >
  {letter}
  </span>
- <span className={isCorrect ?'font-medium text-success' :''}>
+ <span className={isCorrect ?'font-medium text-success-text' :''}>
  {prop}
  </span>
  {isCorrect && (
- <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-success" />
+ <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-success-text" />
  )}
  </div>
  )
@@ -687,7 +687,7 @@ export function BanqueQuestionsPage() {
  size="sm"
  onClick={addProposition}
  disabled={formPropositions.length >= 5}
- className="h-7 text-xs text-success hover:text-success"
+ className="h-7 text-xs text-success-text hover:text-success-text"
  >
  <PlusCircle className="mr-1 h-3 w-3" />
  Ajouter
@@ -929,7 +929,7 @@ export function BanqueQuestionsPage() {
  <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
  <div className="flex items-center gap-2">
  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/15">
- <Library className="h-4 w-4 text-success" />
+ <Library className="h-4 w-4 text-success-text" />
  </div>
  <div>
  <p className="text-xs text-muted-foreground">Total</p>
@@ -947,7 +947,7 @@ export function BanqueQuestionsPage() {
  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
  QCM: {stats.byType.QCM}
  </Badge>
- <Badge variant="outline" className="bg-success/10 text-success border-success/30">
+ <Badge variant="outline" className="bg-success/10 text-success-text border-success/30">
  QRC: {stats.byType.QRC}
  </Badge>
  <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
@@ -961,7 +961,7 @@ export function BanqueQuestionsPage() {
  <Separator orientation="vertical" className="hidden h-8 sm:block" />
 
  <div className="flex items-center gap-2">
- <CheckCircle2 className="h-4 w-4 text-success" />
+ <CheckCircle2 className="h-4 w-4 text-success-text" />
  <span className="text-sm">
  <span className="font-semibold">{stats.validees}</span>{''}
  <span className="text-muted-foreground">validées</span>
@@ -1120,7 +1120,7 @@ export function BanqueQuestionsPage() {
  {!isLoading && questions.length === 0 && (
  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
- <BookOpen className="h-10 w-10 text-success" />
+ <BookOpen className="h-10 w-10 text-success-text" />
  </div>
  <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucune question trouvée</h3>
  <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1132,7 +1132,7 @@ export function BanqueQuestionsPage() {
  {!search && typeFilter ==='TOUS' && difficulteFilter ==='TOUS' && valideeFilter ==='TOUS' && documentFilter ==='TOUS' && (
  <Button
  variant="outline"
- className="border-success/40 text-success hover:bg-success/10"
+ className="border-success/40 text-success-text hover:bg-success/10"
  onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
  >
  <Sparkles className="h-4 w-4" />
@@ -1255,7 +1255,7 @@ export function BanqueQuestionsPage() {
  {diffBadge.label}
  </Badge>
  {q.validee ? (
- <span className="flex items-center gap-1 text-xs font-medium text-success">
+ <span className="flex items-center gap-1 text-xs font-medium text-success-text">
  <CheckCircle2 className="h-3.5 w-3.5" />
  Validée
  </span>
@@ -1298,7 +1298,7 @@ export function BanqueQuestionsPage() {
  <Button
  variant="ghost"
  size="sm"
- className="h-8 text-xs hover:text-success"
+ className="h-8 text-xs hover:text-success-text"
  onClick={() => handleViewDetail(q)}
  >
  <Eye className="mr-1 h-3.5 w-3.5" />
@@ -1392,7 +1392,7 @@ export function BanqueQuestionsPage() {
  {getDifficulteBadgeConfig(detailQuestion.difficulte).label}
  </Badge>
  {detailQuestion.validee ? (
- <Badge className="bg-success/15 text-success border-success/30 gap-1">
+ <Badge className="bg-success/15 text-success-text border-success/30 gap-1">
  <CheckCircle2 className="h-3 w-3" />
  Validée
  </Badge>
@@ -1417,7 +1417,7 @@ export function BanqueQuestionsPage() {
  {/* Énoncé */}
  <section>
  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
- <Hash className="h-4 w-4 text-success" />
+ <Hash className="h-4 w-4 text-success-text" />
  Énoncé
  </h3>
  <div className="rounded-lg border bg-muted/30 p-3">
@@ -1434,7 +1434,7 @@ export function BanqueQuestionsPage() {
  {detailQuestion.type ==='QRC' && detailQuestion.reponseCorrecte && (
  <section>
  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
- <BookOpen className="h-4 w-4 text-success" />
+ <BookOpen className="h-4 w-4 text-success-text" />
  Réponse attendue
  </h3>
  <div className="rounded-lg border border-success/30 bg-success/50 p-3">
@@ -1451,7 +1451,7 @@ export function BanqueQuestionsPage() {
  {detailQuestion.type ==='TRS' && detailQuestion.reponseCorrecte && (
  <section>
  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
- <BookOpen className="h-4 w-4 text-success" />
+ <BookOpen className="h-4 w-4 text-success-text" />
  Grille de correction
  </h3>
  <div className="rounded-lg border border-success/30 bg-success/50 p-3">
@@ -1505,10 +1505,10 @@ export function BanqueQuestionsPage() {
  {codeData?.solution && (
  <section>
  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
- <BookOpen className="h-4 w-4 text-success" />
+ <BookOpen className="h-4 w-4 text-success-text" />
  Solution modèle
  </h3>
- <pre className="rounded-lg bg-success/95 text-success/15 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+ <pre className="rounded-lg bg-success/95 text-success-text/15 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
  {codeData.solution}
  </pre>
  </section>
@@ -1536,14 +1536,14 @@ export function BanqueQuestionsPage() {
  {detailQuestion.themes && detailQuestion.themes.length > 0 && (
  <section>
  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
- <Hash className="h-4 w-4 text-success" />
+ <Hash className="h-4 w-4 text-success-text" />
  Thèmes
  </h3>
  <div className="flex flex-wrap gap-2">
  {detailQuestion.themes.map((theme, i) => (
  <Badge
  key={i}
- className="bg-success/15 text-success border-success/30"
+ className="bg-success/15 text-success-text border-success/30"
  >
  {theme}
  </Badge>
@@ -1556,7 +1556,7 @@ export function BanqueQuestionsPage() {
  {detailQuestion.document && (
  <section>
  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
- <FileText className="h-4 w-4 text-success" />
+ <FileText className="h-4 w-4 text-success-text" />
  Document source
  </h3>
  <p className="text-sm text-muted-foreground">

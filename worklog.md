@@ -2511,3 +2511,35 @@ Stage Summary:
 - 0 hooks/handlers/state/API calls modifiés (à l'exception de expandedQuestions/toggleExpand supprimés comme expliqué ci-dessus). Tous les boutons d'action préservés via EntityCard children.
 - tsc: 0 errors. eslint: 0 errors, 0 warnings. État : STABLE.
 - Compteur cumul T19-B + T19-C : 5 fichiers utilisent désormais EntityCard (banque-epreuves, mes-epreuves, mes-devoirs, documents, banque-questions) — toutes les pages de liste simples sont migrées. epreuves-page.tsx (3447 lignes, 13 grids) reste à migrer dans une tâche séparée (trop complexe pour cette vague).
+
+---
+Task ID: T21
+Agent: full-stack-developer (fix green text contrast)
+Task: Replace text-primary/success/xp with text-safe variants
+Work Log:
+- Audit préalable : `grep -rEoh "text-(primary|success|xp)([a-zA-Z0-9/_-]*)"` sur src/components + src/lib (*.tsx + *.ts) pour inventorier toutes les variantes existantes. Trouvé : `text-primary` (30), `text-primary-foreground` (20 — à préserver), `text-primary/60` (1), `text-success` (722), `text-success-foreground` (3 — à préserver), `text-success/80` (1), `text-success/15` (1), `dark:text-success/80` (8), `dark:text-success` (8), `text-xp` (7). Total occurrences \btext-(primary|success|xp)\b avant = 801 (51 + 743 + 7).
+- Vérification que les tokens safe sont déjà définis dans src/app/globals.css : `--color-primary-text` (ligne 58, light=#3F6212 oklch(0.38 0.12 125), dark=lime vif oklch(0.82 0.2 125) — confirmé lisible dans les deux modes), `--color-success-text` (ligne 51, mêmes valeurs), `--color-xp-text` (ligne 156 light / 227 dark). Tailwind v4 génère automatiquement les utilitaires `text-primary-text`, `text-success-text`, `text-xp-text` (+ variants `/opacity`) depuis ces vars.
+- Stratégie sed 3 étapes pour éviter de toucher à `*-foreground` :
+  1. `find src/components src/lib \( -name "*.tsx" -o -name "*.ts" \) -print0 | xargs -0 sed -i -E 's/\btext-primary\b/text-primary-text/g; s/\btext-success\b/text-success-text/g; s/\btext-xp\b/text-xp-text/g'` — remplacement avec word boundaries `\b` qui matche `text-primary`, `text-primary/60`, `text-primary-foreground` (boundary entre `y` et `-`/`/`), mais préserve `bg-primary`, `border-success`, `from-primary`, `ring-success`, etc. (pas de préfixe `text-`).
+  2. Restauration des `*-foreground` : `sed -i -E 's/text-primary-text-foreground/text-primary-foreground/g; s/text-success-text-foreground/text-success-foreground/g'` — corrige les 20+3 occurrences qui ont été transformées à tort (le `\b` matchait la portion `text-primary` de `text-primary-foreground`).
+  3. Filet de sécurité double-replacement : `sed -i -E 's/text-primary-text-text/text-primary-text/g; s/text-success-text-text/text-success-text/g; s/text-xp-text-text/text-xp-text/g'` — aucune occurrence trouvée (aucun `*-text-text` préexistant), mais appliqué par précaution.
+- Vérification post-remplacement :
+  * `grep -rn "\btext-primary\b" src/components/ src/lib/ --include="*.tsx" --include="*.ts" | grep -v "text-primary-text\|text-primary-foreground" | wc -l` → 0 ✓
+  * `grep -rn "\btext-success\b" src/components/ src/lib/ --include="*.tsx" --include="*.ts" | grep -v "text-success-text\|text-success-foreground" | wc -l` → 0 ✓
+  * `grep -rn "\btext-xp\b" src/components/ src/lib/ --include="*.tsx" --include="*.ts" | grep -v "text-xp-text" | wc -l` → 0 ✓
+  * `text-primary-foreground` préservé : 20 occurrences ✓ ; `text-success-foreground` préservé : 3 occurrences ✓
+- Variantes finales après remplacement (via `grep -rEoh "text-(primary|success|xp)([a-zA-Z0-9/_-]*)" | sort | uniq -c`) :
+  * text-primary-text: 30, text-primary-text/60: 1, text-primary-foreground: 20 (préservé)
+  * text-success-text: 730, text-success-text/80: 9 (incluant 8 `dark:text-success-text/80`), text-success-text/15: 1, text-success-foreground: 3 (préservé)
+  * text-xp-text: 7
+  * Total remplacements effectifs (801 - 23 restaurés -foreground) = 778
+- Types check : `bunx tsc --noEmit 2>&1 | grep -c "error TS"` → 0 erreur.
+- Lint check : `bun run lint 2>&1 | tail -5` → 0 erreur, 1 warning préexistant non lié (`jsx-a11y/alt-text` sur `src/lib/pdf/certificat-pdf-react.tsx:312` — Image sans alt, fichier dans src/lib mais le warning préexistait à cette tâche et n'est pas lié aux remplacements de classes).
+- Dev server (dev.log) : compile avec succès après les changements (`✓ Compiled in 893ms`, `✓ Compiled in 761ms`, `✓ Compiled in 476ms`, `✓ Compiled in 229ms` — pas d'erreur de build).
+- Aucun commit/push effectué (conforme à la consigne).
+
+Stage Summary:
+- Files modified: 61 (60 dans src/components/ + 1 dans src/lib/ : src/lib/correction-utils.ts)
+- Replacements: 778 total (text-primary-text: 31 [30 + 1 /60], text-success-text: 740 [730 + 9 /80 + 1 /15], text-xp-text: 7) — 23 occurrences *-foreground correctement préservées
+- tsc --noEmit: 0 errors ; eslint: 0 errors, 1 pre-existing warning unrelated (jsx-a11y/alt-text)
+- Remaining bare text-primary/success/xp (excluding -text and -foreground variants): 0 / 0 / 0

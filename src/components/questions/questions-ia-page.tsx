@@ -109,16 +109,16 @@ const DIFFICULTE_LABELS: Record<string, string> = {
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
-  FACILE: 'bg-success/15 text-success border-success/30',
+  FACILE: 'bg-success/15 text-success-text border-success/30',
   MOYEN: 'bg-warning/15 text-warning border-warning/30',
-  DIFFICILE: 'bg-primary/15 text-primary border-primary/30',
+  DIFFICILE: 'bg-primary/15 text-primary-text border-primary/30',
   EXPERT: 'bg-destructive/15 text-destructive border-destructive/30',
 }
 
 const TYPE_COLORS: Record<string, string> = {
   QCU: 'bg-info/15 text-info border-info/30',
   QCM: 'bg-warning/15 text-warning border-warning/30',
-  QRC: 'bg-success/15 text-success border-success/30',
+  QRC: 'bg-success/15 text-success-text border-success/30',
   TRS: 'bg-secondary/15 text-secondary border-secondary/30',
 }
 
@@ -636,16 +636,16 @@ export function QuestionsIAPage() {
               <span
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs font-bold ${
                   isCorrect
-                    ? 'bg-success/20 text-success'
+                    ? 'bg-success/20 text-success-text'
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {letter}
               </span>
-              <span className={isCorrect ? 'font-medium text-success' : ''}>
+              <span className={isCorrect ? 'font-medium text-success-text' : ''}>
                 {prop}
               </span>
-              {isCorrect && <Check className="ml-auto h-4 w-4 shrink-0 text-success" />}
+              {isCorrect && <Check className="ml-auto h-4 w-4 shrink-0 text-success-text" />}
             </div>
           )
         })}
@@ -689,7 +689,7 @@ export function QuestionsIAPage() {
             )}
 
             {question.validee && (
-              <Badge className="bg-success/15 text-success border-success/30 gap-1">
+              <Badge className="bg-success/15 text-success-text border-success/30 gap-1">
                 <CheckCircle2 className="h-3 w-3" />
                 Validée
               </Badge>
@@ -860,7 +860,7 @@ export function QuestionsIAPage() {
         {/* Header */}
         <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Sparkles className="h-7 w-7 text-success" />
+            <Sparkles className="h-7 w-7 text-success-text" />
             Questions IA
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -872,7 +872,7 @@ export function QuestionsIAPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-display font-semibold tracking-tight flex items-center gap-2">
-              <FileText className="h-4 w-4 text-success" />
+              <FileText className="h-4 w-4 text-success-text" />
               Document source
             </CardTitle>
           </CardHeader>
@@ -892,7 +892,7 @@ export function QuestionsIAPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-3 border-success/40 text-success hover:bg-success/10"
+                  className="mt-3 border-success/40 text-success-text hover:bg-success/10"
                   onClick={() => router.push(PAGE_ROUTES.documents)}
                 >
                   <FileText className="h-3 w-3 mr-1" />
@@ -928,7 +928,7 @@ export function QuestionsIAPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-display font-semibold tracking-tight flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-success" />
+              <ClipboardList className="h-4 w-4 text-success-text" />
               Paramètres de génération
             </CardTitle>
           </CardHeader>
@@ -955,7 +955,7 @@ export function QuestionsIAPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1.5">
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-success/15 text-success border-success/30">QRC</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-success/15 text-success-text border-success/30">QRC</Badge>
                     Réponse courte
                   </Label>
                   <Input type="number" min={0} max={20} value={qrcCount} onChange={(e) => setQrcCount(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-sm font-mono tabular-nums" />
@@ -1109,7 +1109,7 @@ export function QuestionsIAPage() {
             {isTestingZAI ? (
               <Loader2 className="h-3 w-3 animate-spin mr-1" />
             ) : zaiTestResult?.status === 'ok' ? (
-              <Wifi className="h-3 w-3 mr-1 text-success" />
+              <Wifi className="h-3 w-3 mr-1 text-success-text" />
             ) : zaiTestResult?.status === 'error' ? (
               <WifiOff className="h-3 w-3 mr-1 text-destructive" />
             ) : (
@@ -1201,7 +1201,7 @@ export function QuestionsIAPage() {
         {questions.length === 0 && !isGenerating && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="rounded-full bg-success/10 p-6 mb-4">
-              <Sparkles className="h-12 w-12 text-success" />
+              <Sparkles className="h-12 w-12 text-success-text" />
             </div>
             <h3 className="text-lg font-display font-semibold tracking-tight mb-1">Prêt à générer</h3>
             <p className="text-sm text-muted-foreground max-w-md">
@@ -1214,7 +1214,7 @@ export function QuestionsIAPage() {
         {/* Generating state */}
         {isGenerating && questions.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Loader2 className="h-12 w-12 text-success animate-spin mb-4" />
+            <Loader2 className="h-12 w-12 text-success-text animate-spin mb-4" />
             <h3 className="text-lg font-display font-semibold tracking-tight mb-1">Génération en cours...</h3>
             <p className="text-sm text-muted-foreground max-w-md">
               L&apos;IA analyse votre document et crée <span className="font-mono tabular-nums">{totalQuestions}</span> question(s). Cela peut prendre 30 à 60 secondes.

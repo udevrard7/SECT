@@ -154,7 +154,7 @@ export function RewardToast({
             {/* XP gagnés */}
             {xpGained !== undefined && (
               <div className="shrink-0 text-right">
-                <p className="font-mono font-bold text-lg text-xp leading-none">+{xpGained}</p>
+                <p className="font-mono font-bold text-lg text-xp-text leading-none">+{xpGained}</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">XP</p>
               </div>
             )}

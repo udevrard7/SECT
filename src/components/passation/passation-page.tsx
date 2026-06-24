@@ -1135,7 +1135,7 @@ export function PassationPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-success" />
+          <Loader2 className="h-8 w-8 animate-spin text-success-text" />
           <p className="text-sm text-muted-foreground">Chargement de l&apos;épreuve...</p>
         </div>
       </div>
@@ -1156,7 +1156,7 @@ export function PassationPage() {
           <CardContent className="flex justify-center">
             <Button
               variant="outline"
-              className="border-success/40 text-success hover:bg-success/10"
+              className="border-success/40 text-success-text hover:bg-success/10"
               onClick={() => router.push('/mes-epreuves')}
             >
               <Home className="h-4 w-4 mr-2" />
@@ -1178,7 +1178,7 @@ export function PassationPage() {
         <Card className="w-full max-w-2xl border-success/30 ">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ">
-              <ShieldCheck className="h-8 w-8 text-success" />
+              <ShieldCheck className="h-8 w-8 text-success-text" />
             </div>
             <CardTitle className="text-2xl font-display tracking-tight">{epreuve.titre}</CardTitle>
             {epreuve.description && (
@@ -1189,8 +1189,8 @@ export function PassationPage() {
             {/* Exam info */}
             <div className="grid grid-cols-3 gap-4 text-center">
               <div className="rounded-lg border border-success/30 bg-success/10 p-3  /50">
-                <Clock className="mx-auto h-5 w-5 text-success mb-1" />
-                <p className="text-lg font-bold text-success dark:text-success">{epreuve.duree} min</p>
+                <Clock className="mx-auto h-5 w-5 text-success-text mb-1" />
+                <p className="text-lg font-bold text-success-text dark:text-success-text">{epreuve.duree} min</p>
                 <p className="text-xs text-muted-foreground">Durée</p>
               </div>
               <div className="rounded-lg border border-info/30 bg-info/10 p-3  ">
@@ -1208,13 +1208,13 @@ export function PassationPage() {
             {/* Dynamic Rules */}
             <div className="rounded-lg border bg-muted/30 p-4">
               <h3 className="font-display font-semibold tracking-tight text-sm mb-3 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-success" />
+                <Lock className="h-4 w-4 text-success-text" />
                 Règles de l&apos;épreuve
               </h3>
               <ul className="space-y-2.5">
                 {examRules.map((rule, i) => (
                   <li key={i} className={`flex items-start gap-2.5 text-sm ${rule.highlight ? 'font-medium' : ''}`}>
-                    <rule.icon className={`h-4 w-4 mt-0.5 shrink-0 ${rule.highlight ? 'text-destructive' : 'text-success'}`} />
+                    <rule.icon className={`h-4 w-4 mt-0.5 shrink-0 ${rule.highlight ? 'text-destructive' : 'text-success-text'}`} />
                     <span className={rule.highlight ? 'text-destructive ' : ''}>{rule.text}</span>
                   </li>
                 ))}
@@ -1304,7 +1304,7 @@ export function PassationPage() {
         <Card className="w-full max-w-lg border-success/30 ">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ">
-              <CheckCircle2 className="h-8 w-8 text-success" />
+              <CheckCircle2 className="h-8 w-8 text-success-text" />
             </div>
             <CardTitle className="text-2xl font-display tracking-tight">Épreuve soumise !</CardTitle>
             <CardDescription className="mt-1">
@@ -1318,7 +1318,7 @@ export function PassationPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-4 text-center">
-                <p className="text-2xl font-bold text-success">{answeredCount}</p>
+                <p className="text-2xl font-bold text-success-text">{answeredCount}</p>
                 <p className="text-xs text-muted-foreground mt-1">Questions répondues</p>
               </div>
               <div className="rounded-lg border p-4 text-center">
@@ -1331,18 +1331,18 @@ export function PassationPage() {
             {submitResult && submitResult.scenario === 'A' && (
               <div className="rounded-lg border border-success/30 bg-success/10 p-4  ">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-5 w-5 text-success" />
-                  <p className="text-sm font-semibold text-success">
+                  <CheckCircle2 className="h-5 w-5 text-success-text" />
+                  <p className="text-sm font-semibold text-success-text">
                     Correction automatique terminée
                   </p>
                 </div>
                 <div className="flex items-baseline gap-1 ml-7">
-                  <span className="text-3xl font-bold text-success">
+                  <span className="text-3xl font-bold text-success-text">
                     {submitResult.score.toFixed(1)}
                   </span>
                   <span className="text-lg text-muted-foreground">/{submitResult.totalPossible}</span>
                 </div>
-                <p className="text-xs text-success ml-7 mt-1">
+                <p className="text-xs text-success-text ml-7 mt-1">
                   Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.
                 </p>
               </div>
@@ -1455,14 +1455,14 @@ export function PassationPage() {
     ? 'border-destructive/40 text-destructive bg-destructive/10'
     : alertRatio >= 0.5
       ? 'border-warning text-warning bg-warning/10  dark:text-warning '
-      : 'border-success/40 text-success bg-success/10  dark:text-success /50'
+      : 'border-success/40 text-success-text bg-success/10  dark:text-success-text /50'
 
   // Inactivity badge color
   const inactivityBadgeColor = inactivityRatio >= 0.8
     ? 'text-destructive'
     : inactivityRatio >= 0.5
       ? 'text-warning'
-      : 'text-success'
+      : 'text-success-text'
 
   return (
     <div
@@ -1611,14 +1611,14 @@ export function PassationPage() {
 
         {/* Center: Timer + Penalty */}
         <div className="flex items-center gap-2 shrink-0">
-          <Clock className={`h-5 w-5 ${isVeryLowTime ? 'text-destructive' : isLowTime ? 'text-destructive' : 'text-success'}`} />
+          <Clock className={`h-5 w-5 ${isVeryLowTime ? 'text-destructive' : isLowTime ? 'text-destructive' : 'text-success-text'}`} />
           <span
             className={`text-lg font-mono font-bold tabular-nums ${
               isVeryLowTime
                 ? 'text-destructive animate-pulse'
                 : isLowTime
                   ? 'text-destructive'
-                  : 'text-success dark:text-success'
+                  : 'text-success-text dark:text-success-text'
             }`}
           >
             {formatTime(timeRemaining)}
@@ -1749,9 +1749,9 @@ export function PassationPage() {
                   const isCurrent = idx === currentIndex
 
                   let bgClass = 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  if (isCurrent) bgClass = 'ring-2 ring-success bg-success/10 text-success  dark:text-success'
+                  if (isCurrent) bgClass = 'ring-2 ring-success bg-success/10 text-success-text  dark:text-success-text'
                   else if (isFlagged) bgClass = 'bg-warning/15 text-warning hover:bg-warning/20'
-                  else if (isAnswered) bgClass = 'bg-success/15 text-success hover:bg-success/20 '
+                  else if (isAnswered) bgClass = 'bg-success/15 text-success-text hover:bg-success/20 '
 
                   return (
                     <button
@@ -1790,7 +1790,7 @@ export function PassationPage() {
               <div className="mt-4 pt-4 border-t space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Répondues</span>
-                  <Badge variant="secondary" className="bg-success/15 text-success  text-xs">
+                  <Badge variant="secondary" className="bg-success/15 text-success-text  text-xs">
                     {answeredCount}
                   </Badge>
                 </div>
@@ -1876,9 +1876,9 @@ export function PassationPage() {
                     const isCurrent = idx === currentIndex
 
                     let bgClass = 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    if (isCurrent) bgClass = 'ring-2 ring-success bg-success/10 text-success  dark:text-success'
+                    if (isCurrent) bgClass = 'ring-2 ring-success bg-success/10 text-success-text  dark:text-success-text'
                     else if (isFlagged) bgClass = 'bg-warning/15 text-warning hover:bg-warning/20'
-                    else if (isAnswered) bgClass = 'bg-success/15 text-success hover:bg-success/20 '
+                    else if (isAnswered) bgClass = 'bg-success/15 text-success-text hover:bg-success/20 '
 
                     return (
                       <button
@@ -1929,7 +1929,7 @@ export function PassationPage() {
                             : currentQuestion.question.type === 'QCM'
                               ? 'bg-warning/15 text-warning dark:bg-warning/30/50 dark:text-warning border-warning/30'
                               : currentQuestion.question.type === 'QRC'
-                                ? 'bg-success/15 text-success  border-success/30'
+                                ? 'bg-success/15 text-success-text  border-success/30'
                                 : currentQuestion.question.type === 'REFLEXION'
                                   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                   : currentQuestion.question.type === 'CODE'
@@ -2013,13 +2013,13 @@ export function PassationPage() {
                             <RadioGroupItem
                               value={letter}
                               id={`qcu-${currentQuestion.questionId}-${letter}`}
-                              className="data-[state=checked]:border-success data-[state=checked]:text-success"
+                              className="data-[state=checked]:border-success data-[state=checked]:text-success-text"
                             />
                             <Label
                               htmlFor={`qcu-${currentQuestion.questionId}-${letter}`}
                               className="flex items-center gap-3 cursor-pointer flex-1"
                             >
-                              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success  shrink-0">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success-text  shrink-0">
                                 {letter}
                               </span>
                               <span className="text-sm leading-relaxed">{prop}</span>
@@ -2057,7 +2057,7 @@ export function PassationPage() {
                             >
                               {isChecked && <CheckCircle2 className="h-3 w-3" />}
                             </div>
-                            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success  shrink-0">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success-text  shrink-0">
                               {letter}
                             </span>
                             <span className="text-sm leading-relaxed">{prop}</span>
@@ -2180,7 +2180,7 @@ export function PassationPage() {
                         return (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between text-[10px]">
-                              <span className={`font-medium ${progress >= 100 ? 'text-success' : 'text-warning'}`}>
+                              <span className={`font-medium ${progress >= 100 ? 'text-success-text' : 'text-warning'}`}>
                                 {progress >= 100 ? '✓ Réponse suffisamment développée' : `Minimum recommandé : ${minWords} mots`}
                               </span>
                               <span className="text-muted-foreground">{wordCount}/{minWords} mots</span>

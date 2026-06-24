@@ -172,7 +172,7 @@ export function ParQuestionView({
           <span className="text-muted-foreground">·</span>
           <span className="text-xs text-muted-foreground">{getQuestionTypeLabel(hq.type)}</span>
           <span className="text-muted-foreground">·</span>
-          <span className="text-xs font-semibold text-success font-mono tabular-nums">{horizontalCurrentQuestion.bareme}pts</span>
+          <span className="text-xs font-semibold text-success-text font-mono tabular-nums">{horizontalCurrentQuestion.bareme}pts</span>
           <Badge variant="outline" className={`text-[10px] h-5 ${getCorrectionBadge(hq.type).classes}`}>
             {getCorrectionBadge(hq.type).label}
           </Badge>
@@ -200,15 +200,15 @@ export function ParQuestionView({
               {expectedAnswer && (
                 <Collapsible open={expectedAnswerOpen} onOpenChange={setExpectedAnswerOpen}>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full text-left rounded-lg border border-success/20 bg-success/10 px-3 py-2 hover:bg-success/10 transition-colors">
-                    <Check className="h-3.5 w-3.5 text-success" />
-                    <span className="text-xs font-semibold text-success">
+                    <Check className="h-3.5 w-3.5 text-success-text" />
+                    <span className="text-xs font-semibold text-success-text">
                       Réponse attendue
                     </span>
-                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-success transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-3.5 w-3.5 ml-auto text-success-text transition-transform ${expectedAnswerOpen ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <div className="rounded-b-lg border border-t-0 border-success/20 bg-success/10 px-3 py-2">
-                      <p className="text-sm whitespace-pre-wrap text-success">
+                      <p className="text-sm whitespace-pre-wrap text-success-text">
                         {expectedAnswer}
                       </p>
                     </div>
@@ -247,7 +247,7 @@ export function ParQuestionView({
                       <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${statusDot.color}`} title={statusDot.label} />
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 shrink-0">
-                          <User className="h-3.5 w-3.5 text-success" />
+                          <User className="h-3.5 w-3.5 text-success-text" />
                         </div>
                         <p className="text-sm font-semibold truncate">{session.etudiant.name}</p>
                       </div>

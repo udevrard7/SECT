@@ -58,7 +58,7 @@ function getActionBadge(action: string) {
   switch (action) {
     case 'CREATE':
       return (
-        <Badge className="bg-success/15 text-success border-success/30 gap-1">
+        <Badge className="bg-success/15 text-success-text border-success/30 gap-1">
           <PlusCircle className="h-3 w-3" />
           Création
         </Badge>
@@ -98,7 +98,7 @@ function getActionBadge(action: string) {
 
 function getActionIcon(action: string) {
   switch (action) {
-    case 'CREATE': return <PlusCircle className="h-5 w-5 text-success" />
+    case 'CREATE': return <PlusCircle className="h-5 w-5 text-success-text" />
     case 'UPDATE': return <Edit3 className="h-5 w-5 text-info" />
     case 'DELETE': return <Trash2 className="h-5 w-5 text-destructive" />
     case 'LOGIN': return <LogIn className="h-5 w-5 text-warning" />
@@ -224,7 +224,7 @@ export function LogsPage() {
       {/* ─── Header ─── */}
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <FileText className="h-7 w-7 text-success" />
+          <FileText className="h-7 w-7 text-success-text" />
           Journaux d&apos;Audit
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -306,7 +306,7 @@ export function LogsPage() {
 
       {/* ─── Stats summary ─── */}
       <div className="flex gap-3 flex-wrap">
-        <Badge variant="secondary" className="gap-1 bg-success/10 text-success py-1 px-3">
+        <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text py-1 px-3">
           <Activity className="h-3 w-3" />
           <span className="font-mono tabular-nums">{total}</span> entrée{total > 1 ? 's' : ''}
         </Badge>
@@ -340,7 +340,7 @@ export function LogsPage() {
       {!isLoading && logs.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <FileText className="h-10 w-10 text-success" />
+            <FileText className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun log trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -393,7 +393,7 @@ export function LogsPage() {
 
                       {/* User info */}
                       <div className="mt-2 flex items-center gap-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success font-mono tabular-nums">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text font-mono tabular-nums">
                           {getInitials(log.userEmail as string | null)}
                         </div>
                         <span className="text-sm text-muted-foreground truncate">
@@ -425,7 +425,7 @@ export function LogsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="mt-1 h-7 text-xs text-success"
+                              className="mt-1 h-7 text-xs text-success-text"
                             >
                               {isExpanded ? (
                                 <>

@@ -131,7 +131,7 @@ export function AppHeader() {
                       </p>
                     </div>
                   </div>
-                  <span className="inline-flex self-start text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+                  <span className="inline-flex self-start text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary-text">
                     {ROLE_LABELS[user.role]}
                   </span>
                 </div>

@@ -48,10 +48,14 @@
   /* ── Nouveaux tokens DS : statut sémantique ── */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-success-text: var(--success-text);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+
+  /* ── Text-safe variants (contraste WCAG AA sur fond clair) ── */
+  --color-primary-text: var(--primary-text);
 
   /* ── Cyan (technologie) — accent premium pour IA, tech, data ── */
   --color-tech: var(--tech);
@@ -105,9 +109,12 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.33 0.03 250);
 
-  /* Primary — Vert lime #7ED321 (engagement, croissance, savane) */
+  /* Primary — Vert lime #84CC16 (engagement, croissance, savane) */
+  /* Utilisé pour BOUTONS et FONDS (texte sombre dessus = 8:1 ✅) */
   --primary: oklch(0.78 0.19 125);
   --primary-foreground: oklch(0.2 0.02 125); /* texte sombre sur vert lime (contraste) */
+  /* primary-text — Vert foncé #3F6212 pour TEXTE sur fond clair (7:1 ✅ AA) */
+  --primary-text: oklch(0.38 0.12 125);
 
   /* Secondary — Terre cuite #C2410C (terre d'Afrique de l'Ouest) */
   --secondary: oklch(0.55 0.15 35);
@@ -117,7 +124,7 @@
   --muted: oklch(0.94 0.005 240);           /* gris très clair */
   --muted-foreground: oklch(0.55 0.015 240); /* #95A5A6 gris clair */
   --accent: oklch(0.93 0.03 125);           /* vert lime très clair */
-  --accent-foreground: oklch(0.45 0.12 125);
+  --accent-foreground: oklch(0.38 0.12 125); /* vert foncé pour contraste */
 
   /* Danger — Red #D0021B */
   --destructive: oklch(0.55 0.22 27);
@@ -126,8 +133,11 @@
   --ring: oklch(0.78 0.19 125);             /* vert lime pour focus */
 
   /* ── Statut sémantique ── */
+  /* success = vert lime pour FONDS (bg-success). Texte dessus = sombre ✅ */
   --success: oklch(0.78 0.19 125);          /* vert lime = succès/croissance */
   --success-foreground: oklch(0.2 0.02 125);
+  /* success-text = vert foncé pour TEXTE sur fond clair (7:1 ✅ AA) */
+  --success-text: oklch(0.38 0.12 125);
   --warning: oklch(0.76 0.16 70);           /* #F5A623 orange = soleil */
   --warning-foreground: oklch(0.2 0.02 70);
   --info: oklch(0.55 0.12 250);             /* bleu nuit info */
@@ -142,7 +152,8 @@
   --silver: oklch(0.72 0.01 240);           /* argent */
   --gold: oklch(0.75 0.14 80);              /* #D4A017 or africain (soleil) */
   --platinum: oklch(0.85 0.015 240);
-  --xp: oklch(0.78 0.19 125);               /* vert lime = XP croissance */
+  --xp: oklch(0.78 0.19 125);               /* vert lime = XP croissance (pour FONDS) */
+  --xp-text: oklch(0.38 0.12 125);          /* vert foncé pour TEXTE xp sur fond clair */
 
   /* Charts (alignés sur la palette) */
   --chart-1: oklch(0.78 0.19 125);          /* vert lime */
@@ -177,6 +188,8 @@
   /* Primary — vert lime plus lumineux en dark */
   --primary: oklch(0.82 0.2 125);
   --primary-foreground: oklch(0.15 0.02 125);
+  /* En dark mode, le vert lime vif est lisible sur fond sombre → primary-text = primary */
+  --primary-text: oklch(0.82 0.2 125);
 
   /* Secondary — terre cuite plus lumineuse */
   --secondary: oklch(0.62 0.17 35);
@@ -195,6 +208,7 @@
   /* Statut sémantique dark */
   --success: oklch(0.82 0.2 125);
   --success-foreground: oklch(0.15 0.02 125);
+  --success-text: oklch(0.82 0.2 125); /* En dark, vert lime vif = lisible */
   --warning: oklch(0.8 0.16 70);
   --warning-foreground: oklch(0.15 0.02 70);
   --info: oklch(0.6 0.12 250);
@@ -210,6 +224,7 @@
   --gold: oklch(0.82 0.15 80);
   --platinum: oklch(0.88 0.015 240);
   --xp: oklch(0.82 0.2 125);
+  --xp-text: oklch(0.82 0.2 125); /* En dark, vert lime vif = lisible */
 
   /* Charts dark */
   --chart-1: oklch(0.82 0.2 125);

@@ -93,7 +93,7 @@ export function getDifficulteDotColor(diff: string): string {
 export function getScoreColor(score: number, total: number): string {
   if (total === 0) return 'text-muted-foreground'
   const pct = score / total
-  if (pct >= 0.5) return 'text-success'
+  if (pct >= 0.5) return 'text-success-text'
   if (pct >= 0.4) return 'text-warning'
   return 'text-destructive'
 }
@@ -101,7 +101,7 @@ export function getScoreColor(score: number, total: number): string {
 export function getScoreCircleColor(score: number, total: number): string {
   if (total === 0) return 'bg-muted text-muted-foreground border-border'
   const pct = score / total
-  if (pct >= 0.5) return 'bg-success/10 text-success border-success/20'
+  if (pct >= 0.5) return 'bg-success/10 text-success-text border-success/20'
   if (pct >= 0.4) return 'bg-warning/10 text-warning border-warning/20'
   return 'bg-destructive/10 text-destructive border-destructive/20'
 }

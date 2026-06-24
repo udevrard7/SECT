@@ -149,7 +149,7 @@ export function MesResultatsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-display font-bold tracking-tight md:text-3xl">
-            <Trophy className="h-7 w-7 text-success" />
+            <Trophy className="h-7 w-7 text-success-text" />
             Mes Résultats
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -181,7 +181,7 @@ export function MesResultatsPage() {
             <span className="hidden sm:inline">Mes épreuves</span>
             <span className="sm:hidden">Épreuves</span>
             {sessions.length > 0 && (
-              <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center bg-success/15 px-1 text-xs text-success font-mono tabular-nums">
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center bg-success/15 px-1 text-xs text-success-text font-mono tabular-nums">
                 {sessions.length}
               </Badge>
             )}
@@ -223,7 +223,7 @@ export function MesResultatsPage() {
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                  <Trophy className="h-10 w-10 text-success" />
+                  <Trophy className="h-10 w-10 text-success-text" />
                 </div>
                 <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun résultat disponible</h3>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">

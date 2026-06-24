@@ -138,9 +138,9 @@ interface FiliereOption {
 function getTypeSeanceBadge(typeSeance: string): React.ReactNode {
   switch (typeSeance) {
     case 'CM':
-      return <Badge className="bg-success/10 text-success border-success/30 text-xs">CM</Badge>
+      return <Badge className="bg-success/10 text-success-text border-success/30 text-xs">CM</Badge>
     case 'TD':
-      return <Badge className="bg-success/10 text-success border-success/30 text-xs">TD</Badge>
+      return <Badge className="bg-success/10 text-success-text border-success/30 text-xs">TD</Badge>
     case 'TP':
       return <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">TP</Badge>
     default:
@@ -153,7 +153,7 @@ function getStatutBadge(statut: string): React.ReactNode {
     case 'PROVISOIRE':
       return <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Provisoire</Badge>
     case 'VALIDEE':
-      return <Badge className="bg-success/10 text-success border-success/30 text-xs">Validée</Badge>
+      return <Badge className="bg-success/10 text-success-text border-success/30 text-xs">Validée</Badge>
     case 'PUBLIEE':
       return <Badge className="bg-info/10 text-info border-info/30 text-xs">Publiée</Badge>
     default:
@@ -166,7 +166,7 @@ function getNiveauBadge(niveau: string): React.ReactNode {
   return (
     <Badge className={`text-xs ${
       isLicence
-        ? 'bg-success/10 text-success border-success/30'
+        ? 'bg-success/10 text-success-text border-success/30'
         : 'bg-warning/10 text-warning border-warning/30'
     }`}>
       {niveau}
@@ -763,7 +763,7 @@ export function AffectationsPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <UserCheck className="h-7 w-7 text-success" />
+            <UserCheck className="h-7 w-7 text-success-text" />
             Affectations
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -774,7 +774,7 @@ export function AffectationsPage() {
           {affectations.filter(a => a.statut === 'PROVISOIRE').length > 0 && (
             <Button
               variant="outline"
-              className="border-success/30 text-success hover:bg-success/10"
+              className="border-success/30 text-success-text hover:bg-success/10"
               onClick={handleBatchValidate}
               disabled={isBatchValidating}
             >
@@ -794,7 +794,7 @@ export function AffectationsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <UserCheck className="h-5 w-5 text-success" />
+              <UserCheck className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total affectations</p>
@@ -805,7 +805,7 @@ export function AffectationsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Validées</p>
@@ -827,7 +827,7 @@ export function AffectationsPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Users className="h-5 w-5 text-success" />
+              <Users className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Enseignants actifs</p>
@@ -947,7 +947,7 @@ export function AffectationsPage() {
           {!isLoading && filteredAffectations.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <UserCheck className="h-10 w-10 text-success" />
+                <UserCheck className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune affectation trouvée</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1001,11 +1001,11 @@ export function AffectationsPage() {
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex flex-wrap gap-1">
-                              <Badge className="bg-success/10 text-success border-success/30 text-xs">
+                              <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
                                 {affectation.uniteEnseignement.filiere.nom}
                               </Badge>
                               {affectation.uniteEnseignement.filieresSuppl?.map((s) => (
-                                <Badge key={s.id} className="bg-success/10 text-success border-success/30 text-xs">
+                                <Badge key={s.id} className="bg-success/10 text-success-text border-success/30 text-xs">
                                   <Share2 className="h-3 w-3 mr-1" />
                                   {s.filiere.nom}
                                 </Badge>
@@ -1046,7 +1046,7 @@ export function AffectationsPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                                    className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
                                     onClick={() => handleOpenEdit(affectation)}
                                     title="Modifier"
                                   >
@@ -1064,7 +1064,7 @@ export function AffectationsPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 px-2 text-success hover:text-success hover:bg-success/10"
+                                    className="h-8 px-2 text-success-text hover:text-success-text hover:bg-success/10"
                                     onClick={() => setConfirmAction({ type: 'validate', affectation })}
                                     title="Valider"
                                   >
@@ -1105,7 +1105,7 @@ export function AffectationsPage() {
           {teachingLoadData.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <Users className="h-10 w-10 text-success" />
+                <Users className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune charge d&apos;enseignement</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1139,10 +1139,10 @@ export function AffectationsPage() {
                           </TableCell>
                           <TableCell className="text-center font-medium">{row.nbUEs}</TableCell>
                           <TableCell className="text-center">
-                            {row.totalCM > 0 ? <Badge className="bg-success/10 text-success text-xs">{row.totalCM}h</Badge> : <span className="text-muted-foreground">—</span>}
+                            {row.totalCM > 0 ? <Badge className="bg-success/10 text-success-text text-xs">{row.totalCM}h</Badge> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-center">
-                            {row.totalTD > 0 ? <Badge className="bg-success/10 text-success text-xs">{row.totalTD}h</Badge> : <span className="text-muted-foreground">—</span>}
+                            {row.totalTD > 0 ? <Badge className="bg-success/10 text-success-text text-xs">{row.totalTD}h</Badge> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-center">
                             {row.totalTP > 0 ? <Badge className="bg-warning/10 text-warning text-xs">{row.totalTP}h</Badge> : <span className="text-muted-foreground">—</span>}
@@ -1153,7 +1153,7 @@ export function AffectationsPage() {
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {row.provisoires > 0 && <Badge className="bg-warning/10 text-warning text-xs">{row.provisoires} prov.</Badge>}
-                              {row.validees > 0 && <Badge className="bg-success/10 text-success text-xs">{row.validees} valid.</Badge>}
+                              {row.validees > 0 && <Badge className="bg-success/10 text-success-text text-xs">{row.validees} valid.</Badge>}
                               {row.publiees > 0 && <Badge className="bg-info/10 text-info text-xs">{row.publiees} publ.</Badge>}
                             </div>
                           </TableCell>
@@ -1204,7 +1204,7 @@ export function AffectationsPage() {
           {matrixData.rows.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <Grid3X3 className="h-10 w-10 text-success" />
+                <Grid3X3 className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune unité d&apos;enseignement</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1223,7 +1223,7 @@ export function AffectationsPage() {
                     <CardContent className="p-0">
                       <div className="px-4 py-3 border-b bg-muted/30">
                         <h3 className="font-display font-semibold tracking-tight text-sm flex items-center gap-2">
-                          <GraduationCap className="h-4 w-4 text-success" />
+                          <GraduationCap className="h-4 w-4 text-success-text" />
                           {filiereNom}
                         </h3>
                       </div>
@@ -1299,7 +1299,7 @@ export function AffectationsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-success" />
+              <UserCheck className="h-5 w-5 text-success-text" />
               Nouvelle affectation
             </DialogTitle>
             <DialogDescription>
@@ -1459,7 +1459,7 @@ export function AffectationsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-success" />
+              <Edit3 className="h-5 w-5 text-success-text" />
               Modifier l&apos;affectation
             </DialogTitle>
             <DialogDescription>
@@ -1558,7 +1558,7 @@ export function AffectationsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              {confirmAction?.type === 'validate' && <CheckCircle2 className="h-5 w-5 text-success" />}
+              {confirmAction?.type === 'validate' && <CheckCircle2 className="h-5 w-5 text-success-text" />}
               {confirmAction?.type === 'publish' && <Send className="h-5 w-5 text-info" />}
               {confirmAction?.type === 'delete' && <AlertTriangle className="h-5 w-5 text-destructive" />}
               {confirmAction?.type === 'validate' && 'Valider l\'affectation'}
@@ -1636,11 +1636,11 @@ function MatrixCell({ names, needed, covered }: { names: string[]; needed: boole
         {names.length > 0 ? (
           <div className="space-y-0.5">
             {names.map((name, i) => (
-              <p key={i} className="text-xs font-medium text-success">{name}</p>
+              <p key={i} className="text-xs font-medium text-success-text">{name}</p>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-success">Affecté</p>
+          <p className="text-xs text-success-text">Affecté</p>
         )}
       </div>
     )

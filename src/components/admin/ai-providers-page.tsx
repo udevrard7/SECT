@@ -106,7 +106,7 @@ const PROVIDER_META: Record<AIProviderType, {
     icon: Brain,
     color: '#10b981',
     bgClass: 'bg-success/10',
-    textClass: 'text-success',
+    textClass: 'text-success-text',
     borderClass: 'border-success/30',
     gradientClass: 'from-success via-success to-success',
   },
@@ -780,7 +780,7 @@ export function AIProvidersPage() {
   const formatEventType = (type: string) => {
     switch (type) {
       case 'FAIL_OVER': return { label: 'Basculement', color: 'text-warning bg-warning/10', icon: ArrowRightLeft }
-      case 'RECOVERY': return { label: 'Récupération', color: 'text-success bg-success/10', icon: CheckCircle2 }
+      case 'RECOVERY': return { label: 'Récupération', color: 'text-success-text bg-success/10', icon: CheckCircle2 }
       case 'MANUAL_SWITCH': return { label: 'Manuel', color: 'text-secondary bg-secondary/10', icon: Settings2 }
       case 'COOLDOWN_EXPIRED': return { label: 'Cooldown', color: 'text-info bg-info/10', icon: Timer }
       case 'ALL_FAILED': return { label: 'Échec total', color: 'text-destructive bg-destructive/10', icon: X }
@@ -853,7 +853,7 @@ export function AIProvidersPage() {
         <Separator orientation="vertical" className="h-4" />
         <div className="flex items-center gap-1.5">
           {activeProvider?.lastTestOk === true ? (
-            <><Wifi className="h-3.5 w-3.5 text-success" /><span className="text-xs text-success">Test OK</span></>
+            <><Wifi className="h-3.5 w-3.5 text-success-text" /><span className="text-xs text-success-text">Test OK</span></>
           ) : activeProvider?.lastTestOk === false ? (
             <><WifiOff className="h-3.5 w-3.5 text-destructive" /><span className="text-xs text-destructive">Test échoué</span></>
           ) : (
@@ -956,7 +956,7 @@ export function AIProvidersPage() {
                               {provider.model || '—'}
                             </Badge>
                             {provider.isActive && (
-                              <Badge className="bg-success/10 text-success text-[10px] shrink-0 gap-1">
+                              <Badge className="bg-success/10 text-success-text text-[10px] shrink-0 gap-1">
                                 <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
                                 Actif
                               </Badge>
@@ -969,7 +969,7 @@ export function AIProvidersPage() {
                             {provider.hasApiKey && (
                               <>
                                 <span className="text-muted-foreground/40">·</span>
-                                <Shield className="h-3 w-3 text-success" />
+                                <Shield className="h-3 w-3 text-success-text" />
                               </>
                             )}
                           </div>
@@ -980,7 +980,7 @@ export function AIProvidersPage() {
                       <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                         {/* Connection status */}
                         {provider.lastTestOk === true && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-success/10 text-success">
+                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-success/10 text-success-text">
                             <Check className="h-3.5 w-3.5" />
                           </span>
                         )}
@@ -1077,7 +1077,7 @@ export function AIProvidersPage() {
               <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className="p-1.5 rounded-md bg-success/10">
-                    <ShieldCheck className="h-4 w-4 text-success" />
+                    <ShieldCheck className="h-4 w-4 text-success-text" />
                   </div>
                   <div>
                     <p className="text-sm font-medium">Basculement automatique (Failover)</p>
@@ -1088,7 +1088,7 @@ export function AIProvidersPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {failoverStatus.config.enabled && (
-                    <Badge className="bg-success/10 text-success text-[10px] gap-1">
+                    <Badge className="bg-success/10 text-success-text text-[10px] gap-1">
                       <HeartPulse className="h-3 w-3 animate-pulse" />
                       Actif
                     </Badge>
@@ -1114,10 +1114,10 @@ export function AIProvidersPage() {
               {/* ─── Summary Stats ─── */}
               <div className="grid grid-cols-4 gap-2">
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success-text shrink-0" />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Sains</p>
-                    <p className="text-sm font-bold text-success font-mono tabular-nums">{failoverStatus.summary.healthy}</p>
+                    <p className="text-sm font-bold text-success-text font-mono tabular-nums">{failoverStatus.summary.healthy}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10">
@@ -1210,7 +1210,7 @@ export function AIProvidersPage() {
                             {/* Status indicator */}
                             <div className="hidden sm:flex items-center shrink-0">
                               {p.status === 'HEALTHY' && (
-                                <span className="flex items-center gap-1 text-[10px] text-success bg-success/10 px-2 py-0.5 rounded-full">
+                                <span className="flex items-center gap-1 text-[10px] text-success-text bg-success/10 px-2 py-0.5 rounded-full">
                                   <CheckCircle2 className="h-3 w-3" />
                                   Sain
                                 </span>

@@ -142,7 +142,7 @@ function ToggleRow({
   return (
     <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors ${checked ? 'border-success/30 bg-success/5' : 'border-border'} ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? 'bg-success/10 text-success-text' : 'bg-muted text-muted-foreground'}`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="space-y-0.5 min-w-0">
@@ -386,7 +386,7 @@ export function SecuritePage() {
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight md:text-3xl font-display flex items-center gap-2">
-              <Shield className="h-7 w-7 text-success" />
+              <Shield className="h-7 w-7 text-success-text" />
               Sécurité des Évaluations
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -406,11 +406,11 @@ export function SecuritePage() {
           <Card className="border-l-4 border-l-primary">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success-text">
                   <Eye className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-success font-mono tabular-nums">
+                  <p className="text-2xl font-bold text-success-text font-mono tabular-nums">
                     {statsProctoring}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -464,7 +464,7 @@ export function SecuritePage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-2">
                 <Label className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-success" />
+                  <Building2 className="h-4 w-4 text-success-text" />
                   Sélectionner un établissement
                 </Label>
                 <Select
@@ -497,7 +497,7 @@ export function SecuritePage() {
               </div>
               {selectedEtablissementId && settings && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Badge variant="secondary" className="bg-success/10 text-success">
+                  <Badge variant="secondary" className="bg-success/10 text-success-text">
                     Configuré
                   </Badge>
                 </div>
@@ -509,7 +509,7 @@ export function SecuritePage() {
         {/* ─── Loading Spinner ─── */}
         {loadingSettings && (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-success" />
+            <Loader2 className="h-8 w-8 animate-spin text-success-text" />
             <span className="ml-3 text-sm text-muted-foreground">Chargement des paramètres...</span>
           </div>
         )}
@@ -522,7 +522,7 @@ export function SecuritePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg font-display">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success-text">
                     <Eye className="h-4 w-4" />
                   </div>
                   Surveillance & Détection
@@ -813,7 +813,7 @@ export function SecuritePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg font-display">
-              <Building2 className="h-5 w-5 text-success" />
+              <Building2 className="h-5 w-5 text-success-text" />
               Vue d&apos;ensemble des établissements
             </CardTitle>
             <CardDescription>
@@ -857,7 +857,7 @@ export function SecuritePage() {
                             <TooltipTrigger asChild>
                               <span>
                                 {s.proctoringActif ? (
-                                  <CheckCircle2 className="h-5 w-5 text-success inline-block" />
+                                  <CheckCircle2 className="h-5 w-5 text-success-text inline-block" />
                                 ) : (
                                   <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
                                 )}
@@ -910,7 +910,7 @@ export function SecuritePage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleSelectFromTable(s.etablissementId)}
-                            className="text-success hover:bg-success/10"
+                            className="text-success-text hover:bg-success/10"
                           >
                             <Settings2 className="h-4 w-4 mr-1" />
                             Configurer

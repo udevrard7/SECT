@@ -172,7 +172,7 @@ const ROLE_INFO: Record<UserRole, { label: string; color: string; description: s
   },
   ENSEIGNANT: {
     label: 'Enseignant',
-    color: 'bg-success/15 text-success',
+    color: 'bg-success/15 text-success-text',
     description: 'Création et gestion des évaluations',
   },
   ETUDIANT: {
@@ -298,7 +298,7 @@ export function ProfilPage() {
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative group">
               <Avatar className="h-24 w-24 ring-4 ring-background shadow-lg">
-                <AvatarFallback className="bg-success/15 text-success text-2xl font-display font-bold">
+                <AvatarFallback className="bg-success/15 text-success-text text-2xl font-display font-bold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -464,8 +464,8 @@ export function ProfilPage() {
               <div className="flex items-center gap-2">
                 {user.actif ? (
                   <>
-                    <CheckCircle2 className="h-4 w-4 text-success" />
-                    <span className="text-sm text-success">Compte actif</span>
+                    <CheckCircle2 className="h-4 w-4 text-success-text" />
+                    <span className="text-sm text-success-text">Compte actif</span>
                   </>
                 ) : (
                   <>
@@ -549,7 +549,7 @@ export function ProfilPage() {
                 </p>
               )}
               {confirmPassword && newPassword === confirmPassword && newPassword.length >= 8 && (
-                <p className="text-xs text-success flex items-center gap-1">
+                <p className="text-xs text-success-text flex items-center gap-1">
                   <CheckCircle2 className="h-3 w-3" /> Les mots de passe correspondent
                 </p>
               )}

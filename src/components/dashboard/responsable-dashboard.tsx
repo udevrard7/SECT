@@ -295,7 +295,7 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
       <CardContent>
         {alertes.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-6 ds-kente-pattern rounded-lg">
-            <Shield className="h-10 w-10 text-success mb-2" />
+            <Shield className="h-10 w-10 text-success-text mb-2" />
             <p className="font-semibold">Tout est au vert</p>
             <p className="text-sm text-muted-foreground">Aucune alerte active pour le moment.</p>
           </div>
@@ -558,7 +558,7 @@ export function ResponsableDashboard() {
         <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15">
-              <Users className="h-5 w-5 text-success" />
+              <Users className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.nbEnseignants}</p>
@@ -569,7 +569,7 @@ export function ResponsableDashboard() {
         <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15">
-              <ClipboardCheck className="h-5 w-5 text-primary" />
+              <ClipboardCheck className="h-5 w-5 text-primary-text" />
             </div>
             <div>
               <p className="text-2xl font-bold font-mono tabular-nums tracking-tight">{data.nbEvaluations}</p>

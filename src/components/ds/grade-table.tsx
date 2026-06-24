@@ -54,7 +54,7 @@ function getLevel(ratio: number): ScoreLevel {
 
 /** Map statique niveau → classes badge (Tailwind v4 purge-safe). */
 const LEVEL_BADGE: Record<ScoreLevel, string> = {
-  success: 'bg-success/10 text-success',
+  success: 'bg-success/10 text-success-text',
   warning: 'bg-warning/10 text-warning',
   danger: 'bg-destructive/10 text-destructive',
 }

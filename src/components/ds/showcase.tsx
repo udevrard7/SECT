@@ -117,7 +117,7 @@ export function DesignSystemShowcase() {
       {/* ── Section 1 : StatCards ── */}
       <section className="mb-8">
         <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" />
+          <TrendingUp className="h-4 w-4 text-primary-text" />
           StatCards — Métriques & tendances
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -260,7 +260,7 @@ export function DesignSystemShowcase() {
       {/* ── Section 5 : GlassModal & RewardToast (interactif) ── */}
       <section className="mb-8">
         <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
-          <Zap className="h-4 w-4 text-primary" />
+          <Zap className="h-4 w-4 text-primary-text" />
           Interactions — GlassModal & RewardToast
         </h2>
         <div className="flex flex-wrap gap-3">
@@ -369,7 +369,7 @@ export function DesignSystemShowcase() {
       {/* ── Section 10 : GradeTable ── */}
       <section className="mb-8">
         <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
-          <GraduationCap className="h-4 w-4 text-success" />
+          <GraduationCap className="h-4 w-4 text-success-text" />
           GradeTable — Tableau des notes premium
         </h2>
         <GradeTable

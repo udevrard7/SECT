@@ -124,7 +124,7 @@ function getSeverityBadge(severity: string) {
 function getTypeBadge(type: string) {
   switch (type) {
     case 'PERFORMANCE':
-      return <Badge className="bg-success/15 text-success border-success/30 text-xs">Performance</Badge>
+      return <Badge className="bg-success/15 text-success-text border-success/30 text-xs">Performance</Badge>
     case 'FRAUDE':
       return <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">Fraude</Badge>
     case 'SYSTEME':
@@ -132,7 +132,7 @@ function getTypeBadge(type: string) {
     case 'RAPPEL':
       return <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Rappel</Badge>
     case 'CUSTOM':
-      return <Badge className="bg-primary/15 text-primary border-primary/30 text-xs">Personnalisée</Badge>
+      return <Badge className="bg-primary/15 text-primary-text border-primary/30 text-xs">Personnalisée</Badge>
     default:
       return <Badge variant="outline" className="text-xs">{type}</Badge>
   }
@@ -553,7 +553,7 @@ export function AlertesPage() {
       <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Bell className="h-7 w-7 text-success" />
+            <Bell className="h-7 w-7 text-success-text" />
             Alertes et Notifications
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -566,7 +566,7 @@ export function AlertesPage() {
             size="sm"
             onClick={handleMarkAllAsRead}
             disabled={bulkLoading || nonLuesCount === 0}
-            className="border-success/40 text-success hover:bg-success/10"
+            className="border-success/40 text-success-text hover:bg-success/10"
           >
             {bulkLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
             Tout marquer comme lu
@@ -599,7 +599,7 @@ export function AlertesPage() {
         <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
-              <Bell className="h-5 w-5 text-success" />
+              <Bell className="h-5 w-5 text-success-text" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total alertes</p>
@@ -719,7 +719,7 @@ export function AlertesPage() {
       {!isLoading && filteredAlertes.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-            <Bell className="h-10 w-10 text-success" />
+            <Bell className="h-10 w-10 text-success-text" />
           </div>
           <h3 className="mt-4 text-lg font-display font-semibold">Aucune alerte trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -778,7 +778,7 @@ export function AlertesPage() {
                   <div className="flex flex-wrap items-center gap-3 mt-2">
                     {alerte.filiere && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <GraduationCap className="h-3 w-3 text-success" />
+                        <GraduationCap className="h-3 w-3 text-success-text" />
                         {alerte.filiere.nom}
                       </span>
                     )}
@@ -807,7 +807,7 @@ export function AlertesPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-xs text-success hover:bg-success/10"
+                      className="h-7 text-xs text-success-text hover:bg-success/10"
                       onClick={() => handleMarkAsRead(alerte)}
                     >
                       <Eye className="h-3 w-3 mr-1" />
@@ -846,7 +846,7 @@ export function AlertesPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
-              <Bell className="h-5 w-5 text-success" />
+              <Bell className="h-5 w-5 text-success-text" />
               Nouvelle alerte
             </DialogTitle>
             <DialogDescription>
@@ -983,7 +983,7 @@ export function AlertesPage() {
               {/* Related entities */}
               {selectedAlerte.filiere && (
                 <div className="flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-success" />
+                  <GraduationCap className="h-4 w-4 text-success-text" />
                   <div>
                     <Label className="text-xs text-muted-foreground">Filière</Label>
                     <p className="text-sm font-medium">{selectedAlerte.filiere.nom}</p>

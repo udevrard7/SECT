@@ -152,7 +152,7 @@ const STATUT_LABELS: Record<string, string> = {
 
 const STATUT_BG: Record<string, string> = {
   ESSAI: 'bg-warning/15 text-warning',
-  ACTIF: 'bg-success/15 text-success',
+  ACTIF: 'bg-success/15 text-success-text',
   SUSPENDU: 'bg-destructive/15 text-destructive',
   EXPIRE: 'bg-muted text-muted-foreground',
   RESILIE: 'bg-destructive/25 text-destructive',
@@ -472,7 +472,7 @@ export function AdminDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-              <TrendingUp className="h-5 w-5 text-success" />
+              <TrendingUp className="h-5 w-5 text-success-text" />
               Tendance des revenus
             </CardTitle>
             <CardDescription>Évolution mensuelle des revenus de la plateforme</CardDescription>
@@ -524,7 +524,7 @@ export function AdminDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-              <CreditCard className="h-5 w-5 text-primary" />
+              <CreditCard className="h-5 w-5 text-primary-text" />
               Répartition par plan
             </CardTitle>
             <CardDescription>Distribution des abonnements selon le plan choisi</CardDescription>
@@ -633,7 +633,7 @@ export function AdminDashboard() {
                           </p>
                         </div>
                         {etab.proctoringActif && (
-                          <Shield className="h-4 w-4 shrink-0 text-success" />
+                          <Shield className="h-4 w-4 shrink-0 text-success-text" />
                         )}
                       </div>
 
@@ -644,7 +644,7 @@ export function AdminDashboard() {
                           </Badge>
                         )}
                         {etab.planNom && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary-text">
                             {etab.planNom}
                           </Badge>
                         )}
@@ -745,7 +745,7 @@ export function AdminDashboard() {
               className="h-auto flex-col gap-2 py-4 ds-lift"
               onClick={() => router.push('/utilisateurs')}
             >
-              <Users className="h-5 w-5 text-primary" />
+              <Users className="h-5 w-5 text-primary-text" />
               <span className="text-sm font-medium">Voir les responsables</span>
               <span className="text-xs text-muted-foreground">Gérer les comptes responsables</span>
             </Button>
@@ -789,11 +789,11 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
-                      <Building2 className="h-4 w-4 text-success" />
+                      <Building2 className="h-4 w-4 text-success-text" />
                     </div>
                     <span className="text-sm">Établissements actifs</span>
                   </div>
-                  <Badge variant="outline" className="bg-success/10 text-success font-mono tabular-nums tracking-tight">
+                  <Badge variant="outline" className="bg-success/10 text-success-text font-mono tabular-nums tracking-tight">
                     {stats?.nbAbonnementsActifs ?? 0} / {stats?.nbEtablissements ?? 0}
                   </Badge>
                 </div>
@@ -817,11 +817,11 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                      <Eye className="h-4 w-4 text-primary" />
+                      <Eye className="h-4 w-4 text-primary-text" />
                     </div>
                     <span className="text-sm">Vérification d&apos;identité</span>
                   </div>
-                  <Badge variant="outline" className="bg-primary/10 text-primary font-mono tabular-nums tracking-tight">
+                  <Badge variant="outline" className="bg-primary/10 text-primary-text font-mono tabular-nums tracking-tight">
                     {stats?.nbVerificationIdentite ?? 0}
                   </Badge>
                 </div>
@@ -839,7 +839,7 @@ export function AdminDashboard() {
                     variant="outline"
                     className={`font-mono tabular-nums tracking-tight ${
                       avgSecurityScore >= 70
-                        ? 'bg-success/10 text-success'
+                        ? 'bg-success/10 text-success-text'
                         : avgSecurityScore >= 40
                           ? 'bg-warning/10 text-warning'
                           : 'bg-destructive/10 text-destructive'
@@ -866,7 +866,7 @@ export function AdminDashboard() {
 
               {/* Right column - visual score */}
               <div className="flex flex-col items-center justify-center rounded-xl border bg-gradient-to-br from-success/10 to-primary/10 p-6">
-                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-success">
+                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-success-text">
                   Santé plateforme
                 </p>
                 <div className="flex items-end gap-1">
@@ -876,11 +876,11 @@ export function AdminDashboard() {
                   >
                     {avgSecurityScore}
                   </span>
-                  <span className="mb-1 text-2xl font-semibold text-success">
+                  <span className="mb-1 text-2xl font-semibold text-success-text">
                     %
                   </span>
                 </div>
-                <p className="mt-2 text-sm text-success/80">
+                <p className="mt-2 text-sm text-success-text/80">
                   Score de sécurité global
                 </p>
               </div>

@@ -202,7 +202,7 @@ function getStatutBadge(statut: string) {
       )
     case 'PAYEE':
       return (
-        <Badge className="bg-success/10 text-success border-success/30">
+        <Badge className="bg-success/10 text-success-text border-success/30">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Payée
         </Badge>
@@ -795,7 +795,7 @@ export function FacturationPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <Receipt className="h-7 w-7 text-success" />
+            <Receipt className="h-7 w-7 text-success-text" />
             Facturation & Revenus
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -814,7 +814,7 @@ export function FacturationPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
-              <DollarSign className="h-5 w-5 text-success" />
+              <DollarSign className="h-5 w-5 text-success-text" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Revenus totaux</p>
@@ -841,7 +841,7 @@ export function FacturationPage() {
         <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Factures payées</p>
@@ -938,7 +938,7 @@ export function FacturationPage() {
           {!isLoading && filteredFactures.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <Receipt className="h-10 w-10 text-success" />
+                <Receipt className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune facture trouvée</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -979,13 +979,13 @@ export function FacturationPage() {
                       return (
                         <TableRow key={facture.id} className="group">
                           <TableCell>
-                            <span className="font-mono tabular-nums text-sm font-medium text-success">
+                            <span className="font-mono tabular-nums text-sm font-medium text-success-text">
                               {facture.numero}
                             </span>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
                                 {facture.etablissement.nom.charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
@@ -1020,7 +1020,7 @@ export function FacturationPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                                className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
                                 onClick={() => handleViewDetail(facture)}
                                 title="Voir les détails"
                               >
@@ -1030,7 +1030,7 @@ export function FacturationPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                                  className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10"
                                   onClick={() => handleOpenPay(facture)}
                                   title="Marquer comme payée"
                                 >
@@ -1074,11 +1074,11 @@ export function FacturationPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">MRR</p>
-                    <p className="text-2xl font-bold text-success font-mono tabular-nums">{formatCurrency(mrr)}</p>
+                    <p className="text-2xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(mrr)}</p>
                     <p className="text-xs text-muted-foreground">Monthly Recurring Revenue</p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-                    <TrendingUp className="h-6 w-6 text-success" />
+                    <TrendingUp className="h-6 w-6 text-success-text" />
                   </div>
                 </div>
               </CardContent>
@@ -1088,11 +1088,11 @@ export function FacturationPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">ARR</p>
-                    <p className="text-2xl font-bold text-success font-mono tabular-nums">{formatCurrency(arr)}</p>
+                    <p className="text-2xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(arr)}</p>
                     <p className="text-xs text-muted-foreground">Annual Recurring Revenue</p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-                    <DollarSign className="h-6 w-6 text-success" />
+                    <DollarSign className="h-6 w-6 text-success-text" />
                   </div>
                 </div>
               </CardContent>
@@ -1107,7 +1107,7 @@ export function FacturationPage() {
                       {churnRate > 15 ? (
                         <ArrowDownRight className="h-5 w-5 text-destructive" />
                       ) : (
-                        <ArrowUpRight className="h-5 w-5 text-success" />
+                        <ArrowUpRight className="h-5 w-5 text-success-text" />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">Churn rate</p>
@@ -1129,7 +1129,7 @@ export function FacturationPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <BarChart3 className="h-4 w-4 text-success" />
+                  <BarChart3 className="h-4 w-4 text-success-text" />
                   Revenus par mois
                 </CardTitle>
                 <CardDescription>Revenus HT et TTC des factures payées</CardDescription>
@@ -1163,7 +1163,7 @@ export function FacturationPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <PieChartIcon className="h-4 w-4 text-success" />
+                  <PieChartIcon className="h-4 w-4 text-success-text" />
                   Répartition par statut
                 </CardTitle>
                 <CardDescription>Distribution des factures selon leur statut</CardDescription>
@@ -1210,7 +1210,7 @@ export function FacturationPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <Building2 className="h-4 w-4 text-success" />
+                  <Building2 className="h-4 w-4 text-success-text" />
                   Revenus par établissement
                 </CardTitle>
                 <CardDescription>Top 8 établissements par revenu (factures payées)</CardDescription>
@@ -1242,7 +1242,7 @@ export function FacturationPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <TrendingUp className="h-4 w-4 text-success" />
+                  <TrendingUp className="h-4 w-4 text-success-text" />
                   Tendance des revenus cumulés
                 </CardTitle>
                 <CardDescription>Évolution du chiffre d'affaires cumulé</CardDescription>
@@ -1289,7 +1289,7 @@ export function FacturationPage() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2 font-display">
-                <TrendingUp className="h-4 w-4 text-success" />
+                <TrendingUp className="h-4 w-4 text-success-text" />
                 Prévisions de revenus — 6 prochains mois
               </CardTitle>
               <CardDescription>
@@ -1343,7 +1343,7 @@ export function FacturationPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 font-display">
-                  <CalendarDays className="h-4 w-4 text-success" />
+                  <CalendarDays className="h-4 w-4 text-success-text" />
                   Renouvellements prévus
                 </CardTitle>
                 <CardDescription>Abonnements arrivant à échéance dans les 3 prochains mois</CardDescription>
@@ -1385,7 +1385,7 @@ export function FacturationPage() {
                               <CalendarDays className={`h-4 w-4 ${
                                 isUrgent
                                   ? 'text-destructive'
-                                  : 'text-success'
+                                  : 'text-success-text'
                               }`} />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1427,7 +1427,7 @@ export function FacturationPage() {
                   </div>
                 ) : riskAlerts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                    <CheckCircle2 className="h-10 w-10 mb-2 text-success" />
+                    <CheckCircle2 className="h-10 w-10 mb-2 text-success-text" />
                     <p className="text-sm font-medium">Tout va bien !</p>
                     <p className="text-xs">Aucune alerte ou risque détecté pour le moment.</p>
                   </div>
@@ -1486,11 +1486,11 @@ export function FacturationPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="p-4 rounded-lg bg-success/10 border border-success/30">
                   <p className="text-xs text-muted-foreground">MRR actuel</p>
-                  <p className="text-xl font-bold text-success font-mono tabular-nums">{formatCurrency(mrr)}</p>
+                  <p className="text-xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(mrr)}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-success/10 border border-success/30">
                   <p className="text-xs text-muted-foreground">ARR projeté</p>
-                  <p className="text-xl font-bold text-success font-mono tabular-nums">{formatCurrency(arr)}</p>
+                  <p className="text-xl font-bold text-success-text font-mono tabular-nums">{formatCurrency(arr)}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-info/10 border border-info/30">
                   <p className="text-xs text-muted-foreground">Abonnements actifs</p>
@@ -1516,7 +1516,7 @@ export function FacturationPage() {
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-success" />
+              <Receipt className="h-5 w-5 text-success-text" />
               Nouvelle facture
             </DialogTitle>
             <DialogDescription>
@@ -1562,7 +1562,7 @@ export function FacturationPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-xs border-success/30 text-success hover:bg-success/10"
+                  className="h-7 text-xs border-success/30 text-success-text hover:bg-success/10"
                   onClick={handleAddLigne}
                 >
                   <Plus className="h-3 w-3 mr-1" />
@@ -1617,7 +1617,7 @@ export function FacturationPage() {
                 <Separator />
                 <div className="flex justify-between">
                   <span className="font-semibold">Total TTC</span>
-                  <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(formTotalTtc)}</span>
+                  <span className="font-bold text-success-text font-mono tabular-nums">{formatCurrency(formTotalTtc)}</span>
                 </div>
               </div>
             </div>
@@ -1665,7 +1665,7 @@ export function FacturationPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-success" />
+              <Receipt className="h-5 w-5 text-success-text" />
               Détail de la facture
             </DialogTitle>
             <DialogDescription>
@@ -1679,7 +1679,7 @@ export function FacturationPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Numéro</p>
-                  <p className="font-mono tabular-nums font-medium text-success">{selectedFacture.numero}</p>
+                  <p className="font-mono tabular-nums font-medium text-success-text">{selectedFacture.numero}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Statut</p>
@@ -1767,7 +1767,7 @@ export function FacturationPage() {
                 <Separator />
                 <div className="flex justify-between text-base">
                   <span className="font-semibold">Total TTC</span>
-                  <span className="font-bold text-success font-mono tabular-nums">{formatCurrency(selectedFacture.montantTtc)}</span>
+                  <span className="font-bold text-success-text font-mono tabular-nums">{formatCurrency(selectedFacture.montantTtc)}</span>
                 </div>
               </div>
 
@@ -1814,7 +1814,7 @@ export function FacturationPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success" />
+              <CheckCircle2 className="h-5 w-5 text-success-text" />
               Marquer comme payée
             </DialogTitle>
             <DialogDescription>

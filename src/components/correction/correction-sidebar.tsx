@@ -129,7 +129,7 @@ export function CorrectionSidebar({
                         onClick={() => setHorizontalQuestionIndex(idx)}
                         className={`h-7 w-7 rounded-md flex items-center justify-center text-[10px] font-bold font-mono tabular-nums transition-colors ${
                           idx === horizontalQuestionIndex
-                            ? 'bg-success/15 text-success'
+                            ? 'bg-success/15 text-success-text'
                             : 'hover:bg-muted/60 text-muted-foreground'
                         }`}
                       >

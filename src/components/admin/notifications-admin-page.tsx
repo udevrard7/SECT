@@ -205,9 +205,9 @@ function getTypeBadgeClasses(type: string) {
     case 'ERROR':
       return 'bg-destructive/10 text-destructive border-destructive/30'
     case 'SUCCESS':
-      return 'bg-success/10 text-success border-success/30'
+      return 'bg-success/10 text-success-text border-success/30'
     case 'BROADCAST':
-      return 'bg-success/10 text-success border-success/30'
+      return 'bg-success/10 text-success-text border-success/30'
     default:
       return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300'
   }
@@ -222,9 +222,9 @@ function getTypeIconColor(type: string) {
     case 'ERROR':
       return 'text-destructive bg-destructive/10'
     case 'SUCCESS':
-      return 'text-success bg-success/10'
+      return 'text-success-text bg-success/10'
     case 'BROADCAST':
-      return 'text-success bg-success/10'
+      return 'text-success-text bg-success/10'
     default:
       return 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800'
   }
@@ -687,7 +687,7 @@ export function NotificationsAdminPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <Bell className="h-7 w-7 text-success" />
+            <Bell className="h-7 w-7 text-success-text" />
             Centre de Notifications
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -817,7 +817,7 @@ export function NotificationsAdminPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-success/30 text-success hover:bg-success/10"
+                className="border-success/30 text-success-text hover:bg-success/10"
                 onClick={handleMarkAllRead}
                 disabled={unreadCount === 0}
               >
@@ -863,7 +863,7 @@ export function NotificationsAdminPage() {
           {!isLoading && notifications.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-                <Bell className="h-10 w-10 text-success" />
+                <Bell className="h-10 w-10 text-success-text" />
               </div>
               <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune notification</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -944,7 +944,7 @@ export function NotificationsAdminPage() {
                             {isExpanded || !isLong ? notif.message : truncateText(notif.message, 150)}
                             {isLong && (
                               <button
-                                className="ml-1 text-success hover:underline font-medium"
+                                className="ml-1 text-success-text hover:underline font-medium"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   toggleExpand(notif.id)
@@ -961,7 +961,7 @@ export function NotificationsAdminPage() {
                               <Button
                                 variant="link"
                                 size="sm"
-                                className="h-auto p-0 text-success"
+                                className="h-auto p-0 text-success-text"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                 }}
@@ -1135,7 +1135,7 @@ export function NotificationsAdminPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg font-display">
-                  <Send className="h-5 w-5 text-success" />
+                  <Send className="h-5 w-5 text-success-text" />
                   Nouvelle diffusion
                 </CardTitle>
                 <CardDescription>
@@ -1166,7 +1166,7 @@ export function NotificationsAdminPage() {
                     className="resize-y"
                   />
                   {formMessage.includes('{{') && (
-                    <p className="text-xs text-success flex items-center gap-1">
+                    <p className="text-xs text-success-text flex items-center gap-1">
                       <Sparkles className="h-3 w-3" />
                       Variables détectées : {extractVariables(formMessage).map((v) => `{{${v}}}`).join(', ')}
                     </p>
@@ -1332,7 +1332,7 @@ export function NotificationsAdminPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg font-display">
-                    <Eye className="h-5 w-5 text-success" />
+                    <Eye className="h-5 w-5 text-success-text" />
                     Aperçu
                   </CardTitle>
                   <CardDescription>
@@ -1376,7 +1376,7 @@ export function NotificationsAdminPage() {
                           <Button
                             variant="link"
                             size="sm"
-                            className="h-auto p-0 text-success"
+                            className="h-auto p-0 text-success-text"
                           >
                             {formActionLabel}
                             <ArrowRight className="h-3 w-3 ml-1" />
@@ -1401,7 +1401,7 @@ export function NotificationsAdminPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg font-display">
-                    <Megaphone className="h-5 w-5 text-success" />
+                    <Megaphone className="h-5 w-5 text-success-text" />
                     Diffusions récentes
                   </CardTitle>
                 </CardHeader>
@@ -1440,7 +1440,7 @@ export function NotificationsAdminPage() {
                                 </span>
                                 <span className="flex items-center gap-1">
                                   {broadcast.lu ? (
-                                    <Eye className="h-3 w-3 text-success" />
+                                    <Eye className="h-3 w-3 text-success-text" />
                                   ) : (
                                     <EyeOff className="h-3 w-3 text-warning" />
                                   )}
@@ -1504,7 +1504,7 @@ export function NotificationsAdminPage() {
                   {/* Variables */}
                   {template.variables.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-success" />
+                      <Sparkles className="h-3 w-3 text-success-text" />
                       {template.variables.map((v) => (
                         <code key={v} className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono tabular-nums">
                           {`{{${v}}}`}
@@ -1517,7 +1517,7 @@ export function NotificationsAdminPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-success/30 text-success hover:bg-success/10"
+                    className="flex-1 border-success/30 text-success-text hover:bg-success/10"
                     onClick={() => handleUseTemplate(template)}
                   >
                     <Copy className="h-3.5 w-3.5" />
@@ -1540,7 +1540,7 @@ export function NotificationsAdminPage() {
           {/* Create custom template hint */}
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-8">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
-              <Plus className="h-7 w-7 text-success" />
+              <Plus className="h-7 w-7 text-success-text" />
             </div>
             <h3 className="mt-3 text-sm font-semibold font-display tracking-tight">Besoin d&apos;un nouveau modèle ?</h3>
             <p className="mt-1 max-w-sm text-center text-xs text-muted-foreground">
@@ -1549,7 +1549,7 @@ export function NotificationsAdminPage() {
             <Button
               variant="outline"
               size="sm"
-              className="mt-3 border-success/30 text-success hover:bg-success/10"
+              className="mt-3 border-success/30 text-success-text hover:bg-success/10"
               onClick={() => setActiveTab('diffuser')}
             >
               <Send className="h-3.5 w-3.5" />
@@ -1606,7 +1606,7 @@ export function NotificationsAdminPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-success" />
+              <Edit3 className="h-5 w-5 text-success-text" />
               Modifier le modèle
             </DialogTitle>
             <DialogDescription>
@@ -1643,7 +1643,7 @@ export function NotificationsAdminPage() {
                 className="resize-y"
               />
               {templateFormMessage.includes('{{') && (
-                <p className="text-xs text-success flex items-center gap-1">
+                <p className="text-xs text-success-text flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   Variables : {extractVariables(templateFormMessage).map((v) => `{{${v}}}`).join(', ')}
                 </p>
