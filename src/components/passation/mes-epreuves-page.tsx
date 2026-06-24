@@ -370,7 +370,7 @@ export function MesEpreuvesPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
           Mes Épreuves
         </h1>

@@ -343,7 +343,7 @@ export function AccesEtablissementsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
           <KeyRound className="h-7 w-7 text-success" />
           Accès aux Établissements
@@ -446,7 +446,7 @@ export function AccesEtablissementsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <KeyRound className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucune autorisation</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune autorisation</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez encore demandé accès à aucun établissement.
               </p>
@@ -575,7 +575,7 @@ export function AccesEtablissementsPage() {
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
                     <Building2 className="h-8 w-8 text-success" />
                   </div>
-                  <h3 className="mt-4 font-semibold">Aucun établissement disponible</h3>
+                  <h3 className="mt-4 font-semibold font-display tracking-tight">Aucun établissement disponible</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                     Vous avez déjà demandé ou obtenu l&apos;accès à tous les établissements actifs.
                   </p>
@@ -701,7 +701,7 @@ export function AccesEtablissementsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <ShieldCheck className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun accès autorisé</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun accès autorisé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez pas encore d&apos;autorisation d&apos;accès approuvée.
               </p>

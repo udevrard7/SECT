@@ -333,7 +333,7 @@ export function BanqueEpreuvesPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Library className="h-7 w-7 text-success" />
@@ -453,7 +453,7 @@ export function BanqueEpreuvesPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <Library className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 font-display text-lg font-semibold">Aucune épreuve dans la banque</h3>
+          <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucune épreuve dans la banque</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || modeFilter !== 'TOUS'
               ? 'Aucune épreuve ne correspond à vos critères. Modifiez vos filtres.'
@@ -493,7 +493,7 @@ export function BanqueEpreuvesPage() {
                   {/* Title + mode badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-display text-base font-semibold leading-tight">{epreuve.titre}</h3>
+                      <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
                       {epreuve.description && (
                         <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                           {epreuve.description.length > 100 ? epreuve.description.slice(0, 100) + '...' : epreuve.description}

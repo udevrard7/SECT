@@ -805,7 +805,7 @@ export function MonitoringPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <Activity className="h-7 w-7 text-success" />
@@ -1016,7 +1016,7 @@ export function MonitoringPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <Activity className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun événement trouvé</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun événement trouvé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 {search || typeFilter !== 'all' || severiteFilter !== 'all' || statutFilter !== 'all'
                   ? 'Aucun résultat ne correspond à vos filtres.'
@@ -1260,7 +1260,7 @@ export function MonitoringPage() {
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
                     <CheckCircle2 className="h-8 w-8 text-success" />
                   </div>
-                  <h3 className="mt-3 text-lg font-semibold">Aucune alerte active</h3>
+                  <h3 className="mt-3 text-lg font-semibold font-display tracking-tight">Aucune alerte active</h3>
                   <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                     Tous les systèmes fonctionnent normalement. Aucune action requise.
                   </p>

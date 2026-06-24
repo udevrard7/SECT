@@ -234,7 +234,7 @@ export function ConfigurationPage() {
   if (loadError) {
     return (
       <div className="space-y-6">
-        <div>
+        <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Settings className="h-7 w-7 text-destructive" />
             Paramètres Plateforme
@@ -258,7 +258,7 @@ export function ConfigurationPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
           <Settings className="h-7 w-7 text-destructive" />
           Paramètres Plateforme

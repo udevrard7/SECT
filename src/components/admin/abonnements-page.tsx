@@ -985,7 +985,7 @@ export function AbonnementsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <CreditCard className="h-7 w-7 text-success" />
@@ -1102,7 +1102,7 @@ export function AbonnementsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <CreditCard className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun plan défini</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun plan défini</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Commencez par créer vos plans tarifaires.
               </p>
@@ -1235,7 +1235,7 @@ export function AbonnementsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <CreditCard className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucun abonnement trouvé</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucun abonnement trouvé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 {search || statutFilter !== 'all'
                   ? 'Aucun résultat ne correspond à vos filtres.'
@@ -1405,7 +1405,7 @@ export function AbonnementsPage() {
             {wizardStep === 1 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-success">
+                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success">
                     <CreditCard className="h-4 w-4" />
                     Sélectionnez un plan
                   </h3>
@@ -1522,7 +1522,7 @@ export function AbonnementsPage() {
             {wizardStep === 2 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-success">
+                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success">
                     <Building2 className="h-4 w-4" />
                     Informations de l&apos;établissement
                   </h3>
@@ -1630,7 +1630,7 @@ export function AbonnementsPage() {
             {wizardStep === 3 && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold flex items-center gap-2 text-success">
+                  <h3 className="text-sm font-semibold font-display tracking-tight flex items-center gap-2 text-success">
                     <UserPlus className="h-4 w-4" />
                     Responsable de l&apos;établissement
                   </h3>

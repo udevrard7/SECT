@@ -322,7 +322,7 @@ export function MesDevoirsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
           Mes Devoirs
         </h1>
@@ -333,7 +333,7 @@ export function MesDevoirsPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
@@ -346,7 +346,7 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
@@ -359,7 +359,7 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-destructive">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10">
@@ -372,7 +372,7 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-secondary">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10">
@@ -385,7 +385,7 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-secondary sm:col-span-2 lg:col-span-1">
+        <Card className="border-l-4 border-l-primary sm:col-span-2 lg:col-span-1">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10">
@@ -478,7 +478,7 @@ export function MesDevoirsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <BookOpen className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 font-display text-lg font-semibold">Aucun devoir à faire</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucun devoir à faire</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez aucun devoir en attente pour le moment. Les nouveaux devoirs apparaîtront ici.
               </p>
@@ -516,7 +516,7 @@ export function MesDevoirsPage() {
                               }`} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight">
+                              <h3 className="font-display text-base font-semibold leading-tight tracking-tight">
                                 {devoir.titre}
                               </h3>
                               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -648,7 +648,7 @@ export function MesDevoirsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-secondary/10">
                 <CheckCircle2 className="h-10 w-10 text-secondary" />
               </div>
-              <h3 className="mt-4 font-display text-lg font-semibold">Aucun devoir soumis</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucun devoir soumis</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez pas encore soumis de devoir. Vos soumissions apparaîtront ici.
               </p>
@@ -674,7 +674,7 @@ export function MesDevoirsPage() {
                               <CheckCircle2 className="h-5 w-5 text-secondary" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight">
+                              <h3 className="font-display text-base font-semibold leading-tight tracking-tight">
                                 {devoir.titre}
                               </h3>
                               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -751,7 +751,7 @@ export function MesDevoirsPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-secondary/10">
                 <Sparkles className="h-10 w-10 text-secondary" />
               </div>
-              <h3 className="mt-4 font-display text-lg font-semibold">Aucun devoir corrigé</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Aucun devoir corrigé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vos devoirs corrigés apparaîtront ici une fois notés par l&apos;enseignant.
               </p>
@@ -786,7 +786,7 @@ export function MesDevoirsPage() {
                               }`} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="font-display text-base font-semibold leading-tight">{devoir.titre}</h3>
+                              <h3 className="font-display text-base font-semibold leading-tight tracking-tight">{devoir.titre}</h3>
                               <p className="mt-0.5 text-sm text-muted-foreground">
                                 {devoir.uniteEnseignement.code} — {devoir.uniteEnseignement.nom}
                               </p>

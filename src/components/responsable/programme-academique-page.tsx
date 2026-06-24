@@ -612,7 +612,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <GraduationCap className="h-7 w-7 text-success" />
@@ -660,7 +660,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card className="border-l-4 border-l-success">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><Layers className="h-5 w-5 text-success" /></div>
               <div>
@@ -669,7 +669,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-success">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><BookMarked className="h-5 w-5 text-success" /></div>
               <div>
@@ -678,7 +678,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-warning">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10"><Users className="h-5 w-5 text-warning" /></div>
               <div>
@@ -687,7 +687,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-info">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10"><GraduationCap className="h-5 w-5 text-info" /></div>
               <div>
@@ -704,7 +704,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <div className="space-y-6">
           {/* Niveau Cards */}
           <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 font-display">
+            <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
               <GraduationCap className="h-5 w-5 text-success" />
               Distribution par niveau
             </h2>
@@ -770,7 +770,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
 
           {/* Filière × Niveau Matrix (includes DOCTORAT) */}
           <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 font-display">
+            <h2 className="text-lg font-display font-semibold tracking-tight mb-3 flex items-center gap-2">
               <BookMarked className="h-5 w-5 text-success" />
               Matrice Filière × Niveau
             </h2>
@@ -781,7 +781,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
                   <Layers className="h-8 w-8 text-success" />
                 </div>
-                <h3 className="mt-4 text-base font-semibold">Aucune filière trouvée</h3>
+                <h3 className="mt-4 text-base font-display font-semibold tracking-tight">Aucune filière trouvée</h3>
                 <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                   Vous n&apos;avez aucune filière assignée. La matrice sera disponible une fois vos filières configurées.
                 </p>
@@ -916,7 +916,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                     <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                       <BookMarked className="h-10 w-10 text-success" />
                     </div>
-                    <h3 className="mt-4 text-lg font-semibold">Aucune UE trouvée</h3>
+                    <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune UE trouvée</h3>
                     <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                       {(search || filiereFilter !== 'all' || semestreFilter !== 'all')
                         ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
@@ -987,7 +987,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                   <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                     <BookMarked className="h-10 w-10 text-success" />
                   </div>
-                  <h3 className="mt-4 text-lg font-semibold">Aucune unité d&apos;enseignement trouvée</h3>
+                  <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune unité d&apos;enseignement trouvée</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                     {search || filiereFilter !== 'all' || semestreFilter !== 'all'
                       ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'

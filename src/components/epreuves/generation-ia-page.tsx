@@ -1470,8 +1470,9 @@ export function GenerationIAPage() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
+        className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6"
       >
-        <h1 className="text-2xl font-display font-bold tracking-tight tracking-tight md:text-3xl flex items-center gap-2">
+        <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
           <Sparkles className="h-7 w-7 text-success" />
           Génération IA d&apos;Épreuves
         </h1>

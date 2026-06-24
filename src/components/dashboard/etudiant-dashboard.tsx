@@ -193,13 +193,13 @@ function EmptyDashboard({ name }: { name: string }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
+      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl ds-kente-pattern rounded-lg px-4 py-3">
         Bonjour, {name} ! Bienvenue sur votre espace.
       </motion.h1>
 
       <ObjectiveCard />
 
-      <Card className="border-dashed">
+      <Card className="border-dashed ds-kente-pattern">
         <CardContent className="flex flex-col items-center justify-center py-12">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <GraduationCap className="h-10 w-10 text-success" />
@@ -354,7 +354,7 @@ export function EtudiantDashboard() {
       animate="visible"
     >
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern rounded-lg px-4 py-3">
         <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           Bonjour, {name} ! Bienvenue sur votre espace.
         </motion.h1>
@@ -371,7 +371,7 @@ export function EtudiantDashboard() {
       </div>
 
       {/* ─── Quick stats KPIs ─── */}
-      <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:border-l-4 [&>div]:border-l-primary">
         <KpiCard
           icon={CalendarDays}
           label="Épreuves à venir"
@@ -553,7 +553,7 @@ export function EtudiantDashboard() {
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm ds-kente-pattern rounded-lg">
                       Pas encore de données
                     </div>
                   )}
@@ -594,7 +594,7 @@ export function EtudiantDashboard() {
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm ds-kente-pattern rounded-lg">
                       Pas encore de données
                     </div>
                   )}

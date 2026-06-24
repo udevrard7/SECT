@@ -331,7 +331,7 @@ export function EtablissementsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Building2 className="h-7 w-7 text-success" />
@@ -445,7 +445,7 @@ export function EtablissementsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <Building2 className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-display font-semibold">Aucun établissement trouvé</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun établissement trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || typeFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres.'

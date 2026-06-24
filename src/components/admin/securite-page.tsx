@@ -383,7 +383,7 @@ export function SecuritePage() {
     <TooltipProvider>
       <div className="space-y-6">
         {/* ─── Header ─── */}
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight md:text-3xl font-display flex items-center gap-2">
               <Shield className="h-7 w-7 text-success" />
@@ -403,7 +403,7 @@ export function SecuritePage() {
 
         {/* ─── Stats Cards ─── */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card className="border-success/30">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
@@ -421,7 +421,7 @@ export function SecuritePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-info/30">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
@@ -439,7 +439,7 @@ export function SecuritePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-warning/30">
+          <Card className="border-l-4 border-l-primary">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
@@ -801,7 +801,7 @@ export function SecuritePage() {
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <Settings2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
-              <h3 className="text-lg font-medium text-muted-foreground">Aucun établissement sélectionné</h3>
+              <h3 className="text-lg font-medium text-muted-foreground font-display tracking-tight">Aucun établissement sélectionné</h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
                 Choisissez un établissement ci-dessus pour configurer ses paramètres de sécurité anti-fraude.
               </p>

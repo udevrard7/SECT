@@ -293,7 +293,7 @@ function AlertesTimeline({ alertes }: { alertes: AlerteStat[] }) {
       </CardHeader>
       <CardContent>
         {alertes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-center py-6">
+          <div className="flex flex-col items-center justify-center text-center py-6 ds-kente-pattern rounded-lg">
             <Shield className="h-10 w-10 text-success mb-2" />
             <p className="font-semibold">Tout est au vert</p>
             <p className="text-sm text-muted-foreground">Aucune alerte active pour le moment.</p>
@@ -413,11 +413,11 @@ function EmptyDashboard({ name }: { name: string }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
+      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl ds-kente-pattern rounded-lg px-4 py-3">
         Bonjour, {name} ! Bienvenue sur votre espace.
       </motion.h1>
       <ObjectiveCard />
-      <Card className="border-dashed">
+      <Card className="border-dashed ds-kente-pattern">
         <CardContent className="flex flex-col items-center justify-center py-12">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-warning/10">
             <GraduationCap className="h-10 w-10 text-warning" />
@@ -536,14 +536,14 @@ export function ResponsableDashboard() {
       animate="visible"
     >
       <AnimatePresence>
-        <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
+        <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl ds-kente-pattern rounded-lg px-4 py-3">
           Bonjour, {name} ! Vue stratégique de votre établissement.
         </motion.h1>
       </AnimatePresence>
 
       {/* Quick stats bar */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Card className="p-4 ds-lift">
+        <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/15">
               <GraduationCap className="h-5 w-5 text-warning" />
@@ -554,7 +554,7 @@ export function ResponsableDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4 ds-lift">
+        <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15">
               <Users className="h-5 w-5 text-success" />
@@ -565,7 +565,7 @@ export function ResponsableDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4 ds-lift">
+        <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15">
               <ClipboardCheck className="h-5 w-5 text-primary" />
@@ -576,7 +576,7 @@ export function ResponsableDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4 ds-lift">
+        <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/15">
               <TrendingUp className="h-5 w-5 text-info" />
@@ -587,7 +587,7 @@ export function ResponsableDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4 ds-lift">
+        <Card className="p-4 ds-lift border-l-4 border-l-primary">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/15">
               <BarChart3 className="h-5 w-5 text-secondary" />
@@ -667,7 +667,7 @@ export function ResponsableDashboard() {
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm ds-kente-pattern rounded-lg">
                       Pas encore de données
                     </div>
                   )}
@@ -703,7 +703,7 @@ export function ResponsableDashboard() {
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm ds-kente-pattern rounded-lg">
                       Pas encore de données
                     </div>
                   )}

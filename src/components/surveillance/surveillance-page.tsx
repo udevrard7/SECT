@@ -526,7 +526,7 @@ export function SurveillancePage() {
   return (
     <div className="sv-gaming space-y-6">
       {/* ─── Header ─── */}
-      <header className="sv-card sv-border-flow relative overflow-hidden p-6">
+      <header className="ds-kente-pattern sv-card sv-border-flow relative overflow-hidden p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
             <div className="relative">
@@ -1000,7 +1000,7 @@ function SessionsTab({
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-violet-500/15 text-violet-300">
             <Shield className="h-8 w-8" />
           </div>
-          <h3 className="text-lg font-semibold text-violet-100">
+          <h3 className="text-lg font-display font-semibold tracking-tight text-violet-100">
             Aucune session à surveiller
           </h3>
           <p className="mt-1 max-w-sm text-sm text-violet-200/60">
@@ -1098,7 +1098,7 @@ function SessionCard({
                     <ChevronRight className="h-4 w-4 text-violet-300" />
                   )}
                 </button>
-                <h3 className="truncate font-semibold text-violet-50">
+                <h3 className="truncate font-display font-semibold tracking-tight text-violet-50">
                   {session.etudiant.name}
                 </h3>
                 <Badge
@@ -1327,7 +1327,7 @@ function AnalysisTab({
       <div className="sv-card p-5">
         <div className="mb-4 flex items-center gap-2">
           <Flame className="h-5 w-5 text-rose-300" />
-          <h3 className="font-semibold text-violet-50">
+          <h3 className="font-display font-semibold tracking-tight text-violet-50">
             Répartition des fraudes
           </h3>
         </div>
@@ -1362,7 +1362,7 @@ function AnalysisTab({
       <div className="sv-card p-5">
         <div className="mb-4 flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-fuchsia-300" />
-          <h3 className="font-semibold text-violet-50">Activité (7 jours)</h3>
+          <h3 className="font-display font-semibold tracking-tight text-violet-50">Activité (7 jours)</h3>
         </div>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart
@@ -1427,7 +1427,7 @@ function AnalysisTab({
       <div className="sv-card p-5 lg:col-span-2">
         <div className="mb-4 flex items-center gap-2">
           <Users className="h-5 w-5 text-violet-300" />
-          <h3 className="font-semibold text-violet-50">
+          <h3 className="font-display font-semibold tracking-tight text-violet-50">
             Top étudiants par alertes
           </h3>
         </div>

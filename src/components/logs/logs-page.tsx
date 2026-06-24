@@ -222,7 +222,7 @@ export function LogsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
           <FileText className="h-7 w-7 text-success" />
           Journaux d&apos;Audit
@@ -342,7 +342,7 @@ export function LogsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <FileText className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-display font-semibold">Aucun log trouvé</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun log trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Aucune entrée de journal ne correspond à vos critères de recherche.
             Essayez de modifier vos filtres.

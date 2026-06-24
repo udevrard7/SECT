@@ -123,7 +123,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="flex items-center gap-2 text-base">
+                <CardTitle className="flex items-center gap-2 text-base font-display tracking-tight">
                   <BarChart3 className="h-4 w-4 text-red-600 dark:text-red-400" />
                   Questions les plus difficiles
                 </CardTitle>
@@ -193,7 +193,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
       {/* Liste détaillée des épreuves */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base font-display tracking-tight">
             <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Toutes vos épreuves
           </CardTitle>

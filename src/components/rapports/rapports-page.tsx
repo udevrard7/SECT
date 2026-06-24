@@ -809,7 +809,7 @@ export function RapportsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <BarChart3 className="h-7 w-7 text-success" />
@@ -928,7 +928,7 @@ export function RapportsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <BarChart3 className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-display font-semibold">Aucune donnée disponible</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucune donnée disponible</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Les statistiques apparaîtront une fois que des évaluations auront été réalisées par les enseignants de vos filières.
           </p>
@@ -950,7 +950,7 @@ export function RapportsPage() {
               subtitle="Toutes évaluations confondues"
               icon={<TrendingUp className="h-5 w-5 text-success" />}
               iconBg="bg-success/15"
-              borderColor="border-l-success"
+              borderColor="border-l-primary"
             />
             <KPICard
               title="Taux de réussite"
@@ -958,7 +958,7 @@ export function RapportsPage() {
               subtitle="Notes ≥ 10/20"
               icon={<Trophy className="h-5 w-5 text-info" />}
               iconBg="bg-info/15"
-              borderColor="border-l-info"
+              borderColor="border-l-primary"
             />
             <KPICard
               title="Évaluations"
@@ -966,7 +966,7 @@ export function RapportsPage() {
               subtitle="Épreuves terminées"
               icon={<ClipboardList className="h-5 w-5 text-warning" />}
               iconBg="bg-warning/15"
-              borderColor="border-l-warning"
+              borderColor="border-l-primary"
             />
             <KPICard
               title="Étudiants"
@@ -974,13 +974,13 @@ export function RapportsPage() {
               subtitle={`${stats.etudiantsEnDifficulte.length} en difficulté`}
               icon={<Users className="h-5 w-5 text-destructive" />}
               iconBg="bg-destructive/15"
-              borderColor="border-l-destructive"
+              borderColor="border-l-primary"
             />
           </div>
 
           {/* ─── Secondary KPIs (3 mini cards) ─── */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Card className="border-l-4 border-l-success">
+            <Card className="border-l-4 border-l-primary">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-success" />
@@ -989,7 +989,7 @@ export function RapportsPage() {
                 <span className="text-lg font-bold font-mono tabular-nums">{stats.nbEnseignants}</span>
               </CardContent>
             </Card>
-            <Card className="border-l-4 border-l-info">
+            <Card className="border-l-4 border-l-primary">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-info" />
@@ -1000,7 +1000,7 @@ export function RapportsPage() {
                 </span>
               </CardContent>
             </Card>
-            <Card className="border-l-4 border-l-warning">
+            <Card className="border-l-4 border-l-primary">
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2">
                   <UserX className="h-4 w-4 text-warning" />
@@ -1382,7 +1382,7 @@ export function RapportsPage() {
 
           {/* ─── Alertes summary ─── */}
           {stats.alertes.length > 0 && (
-            <Card className="border-l-4 border-l-warning">
+            <Card className="border-l-4 border-l-primary">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2 font-display tracking-tight">
                   <AlertTriangle className="h-4 w-4 text-warning" />

@@ -792,7 +792,7 @@ export function FacturationPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <Receipt className="h-7 w-7 text-success" />
@@ -940,7 +940,7 @@ export function FacturationPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <Receipt className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucune facture trouvée</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune facture trouvée</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 {search || statutFilter !== 'all'
                   ? 'Aucun résultat ne correspond à vos filtres.'

@@ -930,7 +930,7 @@ export function EtudiantsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <GraduationCap className="h-7 w-7 text-success" />
@@ -962,7 +962,7 @@ export function EtudiantsPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <Users className="h-5 w-5 text-success" />
@@ -973,7 +973,7 @@ export function EtudiantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <GraduationCap className="h-5 w-5 text-success" />
@@ -984,7 +984,7 @@ export function EtudiantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <CheckCircle2 className="h-5 w-5 text-success" />
@@ -995,7 +995,7 @@ export function EtudiantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-info">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
               <Mail className="h-5 w-5 text-info" />
@@ -1006,7 +1006,7 @@ export function EtudiantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
               <Clock className="h-5 w-5 text-warning" />
@@ -1127,7 +1127,7 @@ export function EtudiantsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <GraduationCap className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun étudiant trouvé</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun étudiant trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || filiereFilter !== 'all' || statusFilter !== 'all' || niveauFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
@@ -1209,7 +1209,7 @@ export function EtudiantsPage() {
                     {getInitials(etudiant.name)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold leading-tight truncate">{etudiant.name}</h3>
+                    <h3 className="text-base font-display font-semibold leading-tight tracking-tight truncate">{etudiant.name}</h3>
                     <p className="text-sm text-muted-foreground truncate">{etudiant.email}</p>
                   </div>
                 </div>
@@ -1811,7 +1811,7 @@ export function EtudiantsPage() {
                   {getInitials(detailEtudiant.name)}
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold">{detailEtudiant.name}</h3>
+                  <h3 className="text-lg font-display font-semibold tracking-tight">{detailEtudiant.name}</h3>
                   <p className="text-sm text-muted-foreground">{detailEtudiant.email}</p>
                 </div>
               </div>

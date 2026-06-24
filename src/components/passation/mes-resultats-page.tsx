@@ -146,7 +146,7 @@ export function MesResultatsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-display font-bold tracking-tight md:text-3xl">
             <Trophy className="h-7 w-7 text-success" />
@@ -201,7 +201,7 @@ export function MesResultatsPage() {
         {/* ─── Vue d'ensemble ─── */}
         <TabsContent value="overview" className="mt-6">
           {overviewQuery.isError ? (
-            <Card className="border-l-4 border-l-destructive">
+            <Card className="border-l-4 border-l-primary">
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                 <AlertCircle className="h-10 w-10 text-destructive" />
                 <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
@@ -225,7 +225,7 @@ export function MesResultatsPage() {
                 <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                   <Trophy className="h-10 w-10 text-success" />
                 </div>
-                <h3 className="mt-4 text-lg font-semibold">Aucun résultat disponible</h3>
+                <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun résultat disponible</h3>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                   Vous n&apos;avez pas encore passé d&apos;épreuve. Vos résultats apparaîtront ici après soumission.
                 </p>
@@ -241,7 +241,7 @@ export function MesResultatsPage() {
           {resultatsQuery.isLoading && !resultatsQuery.data ? (
             <MesEpreuvesSkeleton />
           ) : resultatsQuery.isError ? (
-            <Card className="border-l-4 border-l-destructive">
+            <Card className="border-l-4 border-l-primary">
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                 <AlertCircle className="h-10 w-10 text-destructive" />
                 <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
@@ -263,7 +263,7 @@ export function MesResultatsPage() {
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <BookOpen className="h-10 w-10 text-muted-foreground/50" />
-                <h3 className="mt-3 text-lg font-semibold">Aucune épreuve</h3>
+                <h3 className="mt-3 text-lg font-display font-semibold tracking-tight">Aucune épreuve</h3>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                   Vous n&apos;avez pas encore passé d&apos;épreuve.
                 </p>
@@ -286,7 +286,7 @@ export function MesResultatsPage() {
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <TrendingUp className="h-10 w-10 text-muted-foreground/50" />
-                <h3 className="mt-3 text-lg font-semibold">Pas encore de données</h3>
+                <h3 className="mt-3 text-lg font-display font-semibold tracking-tight">Pas encore de données</h3>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                   L&apos;évolution de vos performances sera visible après vos premières épreuves corrigées.
                 </p>

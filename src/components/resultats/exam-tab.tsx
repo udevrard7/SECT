@@ -247,7 +247,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
             <BarChart3 className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Sélectionnez une épreuve pour voir les résultats</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Sélectionnez une épreuve pour voir les résultats</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Choisissez une épreuve terminée ou clôturée dans le sélecteur ci-dessus pour afficher ses résultats détaillés.
           </p>
