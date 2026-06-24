@@ -294,7 +294,7 @@
    Utiliser en haut d'une card ou en séparateur de section. */
 .ds-kente-strip {
   height: 6px;
-  background:
+  background-image:
     repeating-linear-gradient(
       90deg,
       var(--primary) 0,
@@ -304,13 +304,24 @@
       var(--gold) 20px,
       var(--gold) 30px
     );
+  background-color: var(--primary);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-/* ── Bordure supérieure kente pour cards (1px tricolore) ── */
+/* ── Bordure supérieure kente pour cards (3px tricolore) ──
+   Utilise un pseudo-élément ::after car border-image avec oklch
+   n'est pas supporté de façon fiable par tous les navigateurs. */
 .ds-kente-top {
-  border-top: 3px solid;
-  border-image: linear-gradient(
+  position: relative;
+}
+.ds-kente-top::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-image: linear-gradient(
     90deg,
     var(--primary) 0%,
     var(--primary) 33%,
@@ -318,12 +329,14 @@
     var(--secondary) 66%,
     var(--gold) 66%,
     var(--gold) 100%
-  ) 1;
+  );
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 /* ── Badge kente (petit accent décoratif pour récompenses) ── */
 .ds-kente-badge {
-  background:
+  background-image:
     repeating-linear-gradient(
       45deg,
       var(--primary) 0,
@@ -333,6 +346,7 @@
       var(--secondary) 6px,
       var(--secondary) 9px
     );
+  background-color: var(--primary);
 }
 
 /* ── Watermark kente pour empty states (très subtil, full-bg) ── */
