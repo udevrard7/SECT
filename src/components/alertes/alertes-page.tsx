@@ -550,7 +550,7 @@ export function AlertesPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Bell className="h-7 w-7 text-success" />
@@ -596,7 +596,7 @@ export function AlertesPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="border-l-4 border-l-success ds-lift">
+        <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
               <Bell className="h-5 w-5 text-success" />
@@ -607,7 +607,7 @@ export function AlertesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning ds-lift">
+        <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
               <Eye className="h-5 w-5 text-warning" />
@@ -618,7 +618,7 @@ export function AlertesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-destructive ds-lift">
+        <Card className="border-l-4 border-l-primary ds-lift">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/15">
               <AlertTriangle className="h-5 w-5 text-destructive" />

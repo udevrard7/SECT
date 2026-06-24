@@ -684,7 +684,7 @@ export function NotificationsAdminPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <Bell className="h-7 w-7 text-success" />
@@ -905,7 +905,7 @@ export function NotificationsAdminPage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <Bell className="h-10 w-10 text-success" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold">Aucune notification</h3>
+              <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Aucune notification</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Aucune notification ne correspond à vos filtres. Essayez de modifier les critères ou créez une nouvelle diffusion.
               </p>
@@ -1582,7 +1582,7 @@ export function NotificationsAdminPage() {
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
               <Plus className="h-7 w-7 text-success" />
             </div>
-            <h3 className="mt-3 text-sm font-semibold">Besoin d&apos;un nouveau modèle ?</h3>
+            <h3 className="mt-3 text-sm font-semibold font-display tracking-tight">Besoin d&apos;un nouveau modèle ?</h3>
             <p className="mt-1 max-w-sm text-center text-xs text-muted-foreground">
               Créez une diffusion et réutilisez-la comme modèle pour vos futures notifications.
             </p>

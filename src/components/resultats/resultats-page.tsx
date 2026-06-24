@@ -47,7 +47,7 @@ export function ResultatsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight md:text-3xl">
             <TrendingUp className="h-7 w-7 text-success" />
@@ -100,7 +100,7 @@ export function ResultatsPage() {
         {/* ─── Vue d'ensemble ─── */}
         <TabsContent value="overview" className="mt-6 space-y-6">
           {overviewQuery.isError ? (
-            <Card className="border-l-4 border-l-destructive">
+            <Card className="border-l-4 border-l-primary">
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                 <AlertTriangle className="h-10 w-10 text-destructive" />
                 <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
@@ -134,7 +134,7 @@ export function ResultatsPage() {
             <div className="space-y-6">
               {/* KPIs étudiants */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Card className="border-l-4 border-l-success">
+                <Card className="border-l-4 border-l-primary">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Total étudiants évalués</p>
                     <p className="font-mono text-2xl font-bold tabular-nums">
@@ -142,7 +142,7 @@ export function ResultatsPage() {
                     </p>
                   </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-warning">
+                <Card className="border-l-4 border-l-primary">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Étudiants en difficulté</p>
                     <p className="font-mono text-2xl font-bold tabular-nums text-warning">
@@ -151,7 +151,7 @@ export function ResultatsPage() {
                     <p className="text-xs text-muted-foreground">moyenne &lt; 8/20</p>
                   </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-success">
+                <Card className="border-l-4 border-l-primary">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Étudiants en réussite</p>
                     <p className="font-mono text-2xl font-bold tabular-nums text-success">

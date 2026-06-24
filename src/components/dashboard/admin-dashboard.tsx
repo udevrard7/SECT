@@ -161,10 +161,10 @@ const STATUT_BG: Record<string, string> = {
 
 function StatCard({ title, value, icon, accentColor, subtitle }: StatCardProps) {
   return (
-    <Card className="relative overflow-hidden">
+    <Card className="relative overflow-hidden border-l-4 border-l-primary">
       <div
         className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
-        style={{ backgroundColor: accentColor }}
+        style={{ backgroundColor: 'var(--primary)' }}
       />
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardDescription className="text-sm font-medium">{title}</CardDescription>
@@ -394,7 +394,7 @@ export function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* ─── 1. Welcome Section ─── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 ds-kente-pattern rounded-lg px-4 py-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl">
             Bonjour, {user?.name ?? 'Administrateur'}
@@ -482,7 +482,7 @@ export function AdminDashboard() {
                 <PulseSkeleton className="h-56 w-full" />
               </div>
             ) : revenueTrendData.length === 0 ? (
-              <div className="flex h-72 flex-col items-center justify-center text-muted-foreground">
+              <div className="flex h-72 flex-col items-center justify-center text-muted-foreground ds-kente-pattern rounded-lg">
                 <TrendingUp className="mb-2 h-10 w-10 opacity-30" />
                 <p className="text-sm">Aucune donnée de revenu disponible</p>
               </div>
@@ -534,7 +534,7 @@ export function AdminDashboard() {
                 <PulseSkeleton className="h-48 w-48" variant="circle" />
               </div>
             ) : planData.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
+              <div className="flex h-64 flex-col items-center justify-center text-muted-foreground ds-kente-pattern rounded-lg">
                 <CreditCard className="mb-2 h-10 w-10 opacity-30" />
                 <p className="text-sm">Aucun abonnement enregistré</p>
               </div>
@@ -605,7 +605,7 @@ export function AdminDashboard() {
               ))}
             </div>
           ) : !stats?.etablissementsOverview || stats.etablissementsOverview.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center text-muted-foreground">
+            <div className="flex h-48 flex-col items-center justify-center text-muted-foreground ds-kente-pattern rounded-lg">
               <Building2 className="mb-2 h-10 w-10 opacity-30" />
               <p className="text-sm">Aucun établissement enregistré</p>
             </div>

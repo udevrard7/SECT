@@ -1074,7 +1074,7 @@ export function EnseignantsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
             <BookOpen className="h-7 w-7 text-success" />
@@ -1116,7 +1116,7 @@ export function EnseignantsPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <Users className="h-5 w-5 text-success" />
@@ -1127,7 +1127,7 @@ export function EnseignantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <BookOpen className="h-5 w-5 text-success" />
@@ -1138,7 +1138,7 @@ export function EnseignantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <GraduationCap className="h-5 w-5 text-success" />
@@ -1149,7 +1149,7 @@ export function EnseignantsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
               <Settings2 className="h-5 w-5 text-warning" />
@@ -1284,7 +1284,7 @@ export function EnseignantsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <BookOpen className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun enseignant trouvé</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Aucun enseignant trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || filiereFilter !== 'all' || statusFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
@@ -1329,7 +1329,7 @@ export function EnseignantsPage() {
                       </div>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold leading-tight truncate">{enseignant.name}</h3>
+                      <h3 className="text-base font-display font-semibold leading-tight tracking-tight truncate">{enseignant.name}</h3>
                       <p className="text-sm text-muted-foreground truncate">{enseignant.email}</p>
                     </div>
                     {/* Dropdown menu */}
@@ -1523,7 +1523,7 @@ export function EnseignantsPage() {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Mail className="h-5 w-5 text-success" />
-            <h2 className="text-lg font-semibold font-display">Invitations en attente</h2>
+            <h2 className="text-lg font-display font-semibold tracking-tight">Invitations en attente</h2>
             <Badge className="bg-success/10 text-success border-success/30">
               {pendingInvitations.length}
             </Badge>

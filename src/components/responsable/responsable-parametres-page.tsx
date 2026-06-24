@@ -806,7 +806,7 @@ export function ResponsableParametresPage() {
     return (
       <TooltipProvider>
         <div className="space-y-6">
-          <div>
+          <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
             <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
               <Settings className={`h-7 w-7 ${accent.text}`} />
               Paramètres des établissements
@@ -892,7 +892,7 @@ export function ResponsableParametresPage() {
     <TooltipProvider>
       <div className="space-y-6">
         {/* ─── Header ─── */}
-        <div>
+        <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
             <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
               <Settings className={`h-7 w-7 ${accent.text}`} />

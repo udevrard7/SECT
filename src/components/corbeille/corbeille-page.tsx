@@ -355,14 +355,14 @@ function EmptyState({ icon: Icon, label, searchQuery }: { icon: React.ElementTyp
       </div>
       {searchQuery ? (
         <>
-          <h3 className="mt-6 text-lg font-display font-semibold text-foreground">Aucun résultat</h3>
+          <h3 className="mt-6 text-lg font-display font-semibold tracking-tight text-foreground">Aucun résultat</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Aucun{label ? ` ${label}` : ''} ne correspond à &laquo; {searchQuery} &raquo;.
           </p>
         </>
       ) : (
         <>
-          <h3 className="mt-6 text-lg font-display font-semibold text-foreground">Corbeille vide</h3>
+          <h3 className="mt-6 text-lg font-display font-semibold tracking-tight text-foreground">Corbeille vide</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Vous n&apos;avez aucun{label ? ` ${label}` : ''} supprimé. C&apos;est une bonne chose !
           </p>
@@ -1076,7 +1076,7 @@ export function CorbeillePage() {
   return (
     <div className="space-y-6 pb-20">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:-mx-6 sm:px-6">
         <div>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 shadow-sm">

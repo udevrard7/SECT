@@ -348,7 +348,7 @@ export function EpreuvesPage() {
  return (
  <div className="space-y-6">
  {/* ─── Header ─── */}
- <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+ <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
  <div>
  <h1 className="text-2xl font-bold font-display tracking-tight md:text-3xl">Épreuves</h1>
  <p className="mt-1 text-sm text-muted-foreground">
@@ -755,7 +755,7 @@ function ModelesTab() {
  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
  <Library className="h-10 w-10 text-success" />
  </div>
- <h3 className="mt-4 text-lg font-semibold">Aucun modèle d&apos;épreuve</h3>
+ <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucun modèle d&apos;épreuve</h3>
  <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
  {search || modeFilter !=='TOUS'
  ?'Aucun modèle ne correspond à vos critères.'
@@ -784,7 +784,7 @@ function ModelesTab() {
  <CardContent className="flex flex-col gap-3 p-6">
  <div className="flex items-start justify-between gap-3">
  <div className="min-w-0 flex-1">
- <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+ <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
  {epreuve.description && (
  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
  {epreuve.description.length > 100 ? epreuve.description.slice(0, 100) +'...' : epreuve.description}
@@ -1843,7 +1843,7 @@ function SessionsTab() {
  <CardContent className="flex flex-col gap-4 p-6">
  <div className="flex items-start justify-between gap-3">
  <div className="min-w-0 flex-1">
- <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+ <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
  {epreuve.description && (
  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
  )}
@@ -2012,7 +2012,7 @@ function SessionsTab() {
  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
  <Layers className="h-10 w-10 text-success" />
  </div>
- <h3 className="mt-4 text-lg font-semibold">
+ <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">
  {statutFilter !=='TOUS' ?`Aucune session ${getStatutLabel(statutFilter).toLowerCase()}` :'Aucune session planifiée'}
  </h3>
  <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -2076,7 +2076,7 @@ function SessionsTab() {
  <CardContent className="flex flex-col gap-4 p-6">
  <div className="flex items-start justify-between gap-3">
  <div className="min-w-0 flex-1">
- <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+ <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
  {epreuve.description && (
  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{truncateText(epreuve.description, 100)}</p>
  )}

@@ -293,7 +293,7 @@ export function ProfilPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* ─── Profile Header Card ─── */}
-      <Card>
+      <Card className="ds-kente-pattern">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative group">

@@ -196,7 +196,7 @@ function RecentEpreuves({ epreuves }: { epreuves: RecentEpreuve[] }) {
               return (
                 <div key={epreuve.id} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors">
                   <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs font-mono tabular-nums tracking-tight"
                     style={{
                       backgroundColor: `${scoreColor}20`,
                       color: scoreColor,
@@ -233,11 +233,11 @@ function EmptyDashboard({ name }: { name: string }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
+      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl ds-kente-pattern rounded-lg px-4 py-3">
         Bonjour, {name} ! Bienvenue sur votre espace.
       </motion.h1>
       <ObjectiveCard />
-      <Card className="border-dashed">
+      <Card className="border-dashed ds-kente-pattern">
         <CardContent className="flex flex-col items-center justify-center py-12">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <ClipboardPen className="h-10 w-10 text-success" />
@@ -385,7 +385,7 @@ export function EnseignantDashboard() {
       animate="visible"
     >
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern rounded-lg px-4 py-3">
         <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           Bonjour, {name} ! Bienvenue sur votre espace.
         </motion.h1>
@@ -402,7 +402,7 @@ export function EnseignantDashboard() {
       </div>
 
       {/* ─── Quick stats KPIs ─── */}
-      <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:border-l-4 [&>div]:border-l-primary">
         <KpiCard
           icon={FileText}
           label="Documents"
@@ -506,7 +506,7 @@ export function EnseignantDashboard() {
               </CardHeader>
               <CardContent className="max-h-[300px] overflow-y-auto">
                 {data.pendingCorrections.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center text-center py-6">
+                  <div className="flex flex-col items-center justify-center text-center py-6 ds-kente-pattern rounded-lg">
                     <CheckCircle className="h-10 w-10 text-success mb-2" />
                     <p className="font-semibold">Boîte de réception vide</p>
                     <p className="text-sm text-muted-foreground">Aucune nouvelle soumission à corriger.</p>

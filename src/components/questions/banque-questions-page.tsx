@@ -916,7 +916,7 @@ export function BanqueQuestionsPage() {
  return (
  <div className="space-y-6">
  {/* ─── Header ─── */}
- <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+ <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
  <div>
  <h1 className="text-2xl font-bold font-display tracking-tight md:text-3xl">
  Banque de Questions
@@ -1148,7 +1148,7 @@ export function BanqueQuestionsPage() {
  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
  <BookOpen className="h-10 w-10 text-success" />
  </div>
- <h3 className="mt-4 text-lg font-semibold">Aucune question trouvée</h3>
+ <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucune question trouvée</h3>
  <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
  {search || typeFilter !=='TOUS' || difficulteFilter !=='TOUS' || valideeFilter !=='TOUS' || documentFilter !=='TOUS'
  ?'Aucune question ne correspond à vos critères de recherche. Essayez de modifier vos filtres.'
@@ -1457,7 +1457,7 @@ export function BanqueQuestionsPage() {
 
  {/* Énoncé */}
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <Hash className="h-4 w-4 text-success" />
  Énoncé
  </h3>
@@ -1474,7 +1474,7 @@ export function BanqueQuestionsPage() {
  {/* Réponse attendue (QRC) */}
  {detailQuestion.type ==='QRC' && detailQuestion.reponseCorrecte && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <BookOpen className="h-4 w-4 text-success" />
  Réponse attendue
  </h3>
@@ -1491,7 +1491,7 @@ export function BanqueQuestionsPage() {
  {/* Grille de correction (TRS) */}
  {detailQuestion.type ==='TRS' && detailQuestion.reponseCorrecte && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <BookOpen className="h-4 w-4 text-success" />
  Grille de correction
  </h3>
@@ -1534,7 +1534,7 @@ export function BanqueQuestionsPage() {
  )}
  {codeData?.codeInitial && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <FileText className="h-4 w-4 text-secondary" />
  Code initial
  </h3>
@@ -1545,7 +1545,7 @@ export function BanqueQuestionsPage() {
  )}
  {codeData?.solution && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <BookOpen className="h-4 w-4 text-success" />
  Solution modèle
  </h3>
@@ -1561,7 +1561,7 @@ export function BanqueQuestionsPage() {
  {/* Explication */}
  {detailQuestion.explication && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <Lightbulb className="h-4 w-4 text-info" />
  Explication
  </h3>
@@ -1576,7 +1576,7 @@ export function BanqueQuestionsPage() {
  {/* Themes */}
  {detailQuestion.themes && detailQuestion.themes.length > 0 && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <Hash className="h-4 w-4 text-success" />
  Thèmes
  </h3>
@@ -1596,7 +1596,7 @@ export function BanqueQuestionsPage() {
  {/* Document source */}
  {detailQuestion.document && (
  <section>
- <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+ <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
  <FileText className="h-4 w-4 text-success" />
  Document source
  </h3>

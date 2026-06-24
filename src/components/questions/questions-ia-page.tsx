@@ -858,7 +858,7 @@ export function QuestionsIAPage() {
       {/* ═══ LEFT PANEL ═══ */}
       <div className="w-full lg:w-[40%] xl:w-[35%] space-y-4 shrink-0">
         {/* Header */}
-        <div>
+        <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
           <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Sparkles className="h-7 w-7 text-success" />
             Questions IA
@@ -871,7 +871,7 @@ export function QuestionsIAPage() {
         {/* Document Selector */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-display font-semibold flex items-center gap-2">
+            <CardTitle className="text-sm font-display font-semibold tracking-tight flex items-center gap-2">
               <FileText className="h-4 w-4 text-success" />
               Document source
             </CardTitle>
@@ -927,7 +927,7 @@ export function QuestionsIAPage() {
         {/* Generation Parameters */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-display font-semibold flex items-center gap-2">
+            <CardTitle className="text-sm font-display font-semibold tracking-tight flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-success" />
               Paramètres de génération
             </CardTitle>
@@ -1146,7 +1146,7 @@ export function QuestionsIAPage() {
         {questions.length > 0 && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-display font-semibold">
+              <h2 className="text-lg font-display font-semibold tracking-tight">
                 <span className="font-mono tabular-nums">{questions.length}</span> question{questions.length !== 1 ? 's' : ''} générée{questions.length !== 1 ? 's' : ''}
               </h2>
               <div className="flex items-center gap-2">
@@ -1203,7 +1203,7 @@ export function QuestionsIAPage() {
             <div className="rounded-full bg-success/10 p-6 mb-4">
               <Sparkles className="h-12 w-12 text-success" />
             </div>
-            <h3 className="text-lg font-display font-semibold mb-1">Prêt à générer</h3>
+            <h3 className="text-lg font-display font-semibold tracking-tight mb-1">Prêt à générer</h3>
             <p className="text-sm text-muted-foreground max-w-md">
               Sélectionnez un document analysé, configurez vos paramètres, puis cliquez sur le bouton
               &quot;Générer&quot; pour créer des questions automatiquement avec l&apos;IA.
@@ -1215,7 +1215,7 @@ export function QuestionsIAPage() {
         {isGenerating && questions.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Loader2 className="h-12 w-12 text-success animate-spin mb-4" />
-            <h3 className="text-lg font-display font-semibold mb-1">Génération en cours...</h3>
+            <h3 className="text-lg font-display font-semibold tracking-tight mb-1">Génération en cours...</h3>
             <p className="text-sm text-muted-foreground max-w-md">
               L&apos;IA analyse votre document et crée <span className="font-mono tabular-nums">{totalQuestions}</span> question(s). Cela peut prendre 30 à 60 secondes.
             </p>

@@ -727,7 +727,7 @@ export function DevoirsPage() {
   return (
     <div className="ng-theme space-y-6">
       {/* ─── Header ─── */}
-      <header className="ng-card ng-border-anim relative overflow-hidden p-5 sm:p-6">
+      <header className="ng-card ng-border-anim ds-kente-pattern relative overflow-hidden p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
             <div className="relative">
@@ -1172,7 +1172,7 @@ function GridView({
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-cyan-400/15 text-cyan-200">
             <BookOpen className="h-8 w-8 ng-float" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-100">
+          <h3 className="text-lg font-display tracking-tight font-semibold text-slate-100">
             {filters.hasActiveFilters ? 'Aucun devoir ne correspond' : 'Aucun devoir créé'}
           </h3>
           <p className="mt-1 max-w-sm text-sm text-slate-300/60">
@@ -1246,7 +1246,7 @@ function DevoirCard({
                 {getTypeSeanceShort(devoir.typeSeance)}
               </Badge>
             </div>
-            <h3 className="mt-2 truncate font-semibold text-slate-50">{devoir.titre}</h3>
+            <h3 className="mt-2 truncate font-display tracking-tight font-semibold text-slate-50">{devoir.titre}</h3>
             <p className="mt-0.5 truncate text-xs text-slate-300/60">
               {devoir.UniteEnseignement?.code} — {devoir.UniteEnseignement?.nom}
             </p>
@@ -1422,7 +1422,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
       <div className="ng-card p-5">
         <div className="mb-4 flex items-center gap-2">
           <Layers className="h-5 w-5 text-cyan-300" />
-          <h3 className="font-semibold text-slate-50">Répartition par type</h3>
+          <h3 className="font-display tracking-tight font-semibold text-slate-50">Répartition par type</h3>
         </div>
         {stats.byType.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-300/50">Aucun devoir.</p>
@@ -1450,7 +1450,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
       <div className="ng-card p-5">
         <div className="mb-4 flex items-center gap-2">
           <Users className="h-5 w-5 text-pink-300" />
-          <h3 className="font-semibold text-slate-50">Soumissions par statut</h3>
+          <h3 className="font-display tracking-tight font-semibold text-slate-50">Soumissions par statut</h3>
         </div>
         {stats.soumissionsByStatut.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-300/50">Aucune soumission.</p>
@@ -1460,7 +1460,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
               const cfg = statutSoumissionConfig(s.statut)
               return (
                 <div key={s.statut} className={`rounded-lg border p-3 text-center ${cfg.badge}`}>
-                  <p className="text-2xl font-bold">{s.count}</p>
+                  <p className="text-2xl font-bold font-mono tabular-nums">{s.count}</p>
                   <p className="text-xs">{s.label}</p>
                 </div>
               )
@@ -1473,7 +1473,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
       <div className="ng-card p-5 lg:col-span-2">
         <div className="mb-4 flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-violet-300" />
-          <h3 className="font-semibold text-slate-50">Soumissions reçues (7 jours)</h3>
+          <h3 className="font-display tracking-tight font-semibold text-slate-50">Soumissions reçues (7 jours)</h3>
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={stats.timeline} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>

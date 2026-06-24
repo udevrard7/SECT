@@ -1024,9 +1024,9 @@ export function DocumentsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Mes Documents</h1>
+          <h1 className="text-2xl font-bold font-display tracking-tight md:text-3xl">Mes Documents</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Importez et gérez vos documents pédagogiques
             {!isLoading && (
@@ -1379,7 +1379,7 @@ export function DocumentsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10 dark:bg-success-foreground/30">
             <FolderOpen className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucun document importé</h3>
+          <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucun document importé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Commencez par importer un document pédagogique pour permettre à l&apos;IA d&apos;analyser son contenu et générer des questions.
           </p>
@@ -1397,7 +1397,7 @@ export function DocumentsPage() {
       {!isLoading && documents.length > 0 && filteredDocuments.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
           <Search className="h-10 w-10 text-muted-foreground/50" />
-          <h3 className="mt-4 text-base font-semibold">Aucun résultat</h3>
+          <h3 className="mt-4 font-display tracking-tight text-base font-semibold">Aucun résultat</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Aucun document ne correspond à vos critères de recherche.
           </p>
@@ -1641,7 +1641,7 @@ export function DocumentsPage() {
 
               {/* ─── Actions IA ─── */}
               <section className="space-y-3">
-                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <h3 className="flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
                   <Brain className="h-4 w-4 text-emerald-600" />
                   Actions IA
                 </h3>
@@ -1681,7 +1681,7 @@ export function DocumentsPage() {
               {/* Résumé */}
               {selectedDocument.resumeAnalyse && (
                 <section>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
                     <FileText className="h-4 w-4 text-emerald-600" />
                     Résumé
                   </h3>
@@ -1694,7 +1694,7 @@ export function DocumentsPage() {
               {/* Thèmes détectés */}
               {themes.length > 0 && (
                 <section>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
                     <Tag className="h-4 w-4 text-emerald-600" />
                     Thèmes détectés
                   </h3>
@@ -1714,7 +1714,7 @@ export function DocumentsPage() {
               {/* Concepts clés */}
               {concepts.length > 0 && (
                 <section>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  <h3 className="mb-2 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
                     <Lightbulb className="h-4 w-4 text-teal-600" />
                     Concepts clés
                   </h3>
@@ -1735,7 +1735,7 @@ export function DocumentsPage() {
               {/* Volume estimé */}
               {volumeEntries.length > 0 && (
                 <section>
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                  <h3 className="mb-3 flex items-center gap-2 font-display tracking-tight text-sm font-semibold">
                     <BarChart3 className="h-4 w-4 text-emerald-600" />
                     Volume estimé
                   </h3>

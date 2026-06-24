@@ -790,9 +790,9 @@ export function UtilisateursPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:-mx-6 sm:px-6">
         <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight tracking-tight md:text-3xl flex items-center gap-2">
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
             <Users className="h-7 w-7 text-success" />
             {isAdmin ? 'Gestion des Responsables' : 'Gestion des Utilisateurs'}
           </h1>
@@ -1136,7 +1136,7 @@ export function UtilisateursPage() {
         <div className="space-y-4">
           <Separator />
           <div>
-            <h2 className="text-lg font-semibold flex items-center gap-2">
+            <h2 className="text-lg font-display font-semibold tracking-tight flex items-center gap-2">
               <Send className="h-5 w-5 text-success" />
               Invitations
               {pendingInvitations.length > 0 && (

@@ -811,7 +811,7 @@ export function AIProvidersPage() {
   return (
     <div className="space-y-4">
       {/* ─── Compact Header ─── */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 font-display">
             <Sparkles className="h-5 w-5 text-secondary" />
@@ -906,7 +906,7 @@ export function AIProvidersPage() {
               <div className="p-4 rounded-full bg-secondary/10 mb-4">
                 <Server className="h-8 w-8 text-secondary" />
               </div>
-              <h3 className="text-lg font-semibold mb-1">Aucun fournisseur IA configuré</h3>
+              <h3 className="text-lg font-semibold mb-1 font-display tracking-tight">Aucun fournisseur IA configuré</h3>
               <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
                 Le système utilise <strong>Z-AI par défaut</strong>. Ajoutez un fournisseur pour personnaliser le comportement de l&apos;IA.
               </p>

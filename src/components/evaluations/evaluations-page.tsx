@@ -420,7 +420,7 @@ export function EvaluationsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
         <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
           <ClipboardCheck className="h-7 w-7 text-success" />
           Suivi des Évaluations
@@ -432,7 +432,7 @@ export function EvaluationsPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <ClipboardCheck className="h-5 w-5 text-success" />
@@ -443,7 +443,7 @@ export function EvaluationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
               <Activity className="h-5 w-5 text-success" />
@@ -454,7 +454,7 @@ export function EvaluationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
               <Calendar className="h-5 w-5 text-warning" />
@@ -465,7 +465,7 @@ export function EvaluationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-secondary">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/10">
               <Trophy className="h-5 w-5 text-secondary" />
@@ -476,7 +476,7 @@ export function EvaluationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-destructive">
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
               <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -649,7 +649,7 @@ export function EvaluationsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <ClipboardCheck className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 font-display text-lg font-semibold">Aucune évaluation trouvée</h3>
+          <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucune évaluation trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {hasActiveFilters
               ? 'Aucun résultat ne correspond à vos critères de recherche. Essayez de modifier vos filtres.'
@@ -679,7 +679,7 @@ export function EvaluationsPage() {
                   {/* Title + Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-display text-base font-semibold leading-tight">{epreuve.titre}</h3>
+                      <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
                       {epreuve.description && (
                         <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                           {truncateText(epreuve.description, 100)}
@@ -839,7 +839,7 @@ export function EvaluationsPage() {
                   {/* Title & Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-display text-lg font-bold">{detailEpreuve.titre}</h3>
+                      <h3 className="font-display tracking-tight text-lg font-bold">{detailEpreuve.titre}</h3>
                       {detailEpreuve.description && (
                         <p className="mt-1 text-sm text-muted-foreground">{detailEpreuve.description}</p>
                       )}
@@ -870,7 +870,7 @@ export function EvaluationsPage() {
 
                   {/* Info grid */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Card className="border-l-4 border-l-success">
+                    <Card className="border-l-4 border-l-primary">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Durée</p>
                         <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
@@ -879,7 +879,7 @@ export function EvaluationsPage() {
                         </p>
                       </CardContent>
                     </Card>
-                    <Card className="border-l-4 border-l-secondary">
+                    <Card className="border-l-4 border-l-primary">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Questions</p>
                         <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
@@ -888,7 +888,7 @@ export function EvaluationsPage() {
                         </p>
                       </CardContent>
                     </Card>
-                    <Card className="border-l-4 border-l-warning">
+                    <Card className="border-l-4 border-l-primary">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Points total</p>
                         <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
@@ -899,7 +899,7 @@ export function EvaluationsPage() {
                         </p>
                       </CardContent>
                     </Card>
-                    <Card className="border-l-4 border-l-info">
+                    <Card className="border-l-4 border-l-primary">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Participants</p>
                         <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
@@ -1019,7 +1019,7 @@ export function EvaluationsPage() {
                   {/* Title & Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-display text-lg font-bold">{detailEpreuve.titre}</h3>
+                      <h3 className="font-display tracking-tight text-lg font-bold">{detailEpreuve.titre}</h3>
                       <p className="text-sm text-muted-foreground">
                         {detailEpreuve.enseignant?.name} {detailEpreuve.filiere ? `• ${detailEpreuve.filiere.nom}` : ''}
                       </p>

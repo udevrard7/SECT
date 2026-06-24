@@ -348,7 +348,7 @@ export function MesCertificatsPage() {
   return (
     <div className="space-y-5">
       {/* ─── Hero compact ─── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-5 sm:p-6 text-white shadow-lg">
+      <div className="ds-kente-pattern relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-5 sm:p-6 text-white shadow-lg">
         <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-white/10 blur-3xl translate-x-1/3 -translate-y-1/3" />
         <div className="relative flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
