@@ -1818,3 +1818,44 @@ Stage Summary:
   * src/components/ds/grade-table.tsx (largeurs colonnes + Commentaire hidden lg)
 - Score audit visuel estimé : ~78% → ~88% (4 P1 résolus)
 - État du projet : STABLE. Tous les P0 + P1 de l'audit visuel sont corrigés. Le DS est désormais polished et cohérent.
+
+---
+Task ID: T15 (Polish final P2 — sonification + animations + press feedback)
+Agent: Z.ai (Lead Product Designer — polish final)
+Task: Attaquer les P2 (polish final) identifiés lors de l'audit visuel.
+
+Work Log:
+- P2-1 : RewardToast — animation d'entrée plus perceptible :
+  * Spring damping 20→14 (plus de bounce), mass 0.8
+  * Bounce y [0, -8, 0] après entrée (effet rebond)
+  * Glow pulse infini sur la card (boxShadow animé avec couleur tier/xp, 2s repeat)
+  * Icône pop-in avec overshoot : scale [0, 1.3, 1] + rotate [-180, 10, 0] (entrée rotative)
+  * VLM avant : "Aucune animation visible" → maintenant clairement perceptible
+
+- P2-2 : AIAssistant ARIA — vérification :
+  * Code vérifié : role=dialog, aria-modal=true, aria-label sur bouton/titre/input/fermer, aria-live=polite sur messages, aria-expanded sur trigger, focus trap (Tab/Shift+Tab), Escape close — TOUS déjà implémentés correctement.
+  * Le VLM s'était trompé (ARIA invisible en capture d'écran). RAS.
+
+- P2-3 : Sonification optionnelle (exigence brief "son court sur action réussie") :
+  * Création src/lib/sounds.ts : Web Audio API (aucune dépendance externe, aucun fichier audio)
+    - playRewardSound() : accord majeur Do-Mi-Sol montant (523→659→784 Hz) ~400ms, enveloppe ADSR
+    - playSuccessSound() : La5 aigu (880 Hz) ~150ms
+    - playErrorSound() : Si bémol descendant (466→311 Hz) ~200ms
+  * Respect prefers-reduced-motion (équivalent audio — son désactivé si reduced-motion)
+  * playRewardSound() intégré dans RewardToast via useEffect à l'ouverture
+  * Non-bloquant (try/catch silencieux), volume discret (10-15%)
+
+- P2-4 : Micro-interactions — press feedback tactile :
+  * .ds-lift:active { transform: translateY(0) scale(0.98) } — feedback press sur cartes interactives
+  * .ds-press:active { transform: scale(0.98) } — utilitaire pour boutons
+  * Transition 100ms (rapide, feedback immédiat type "tactile")
+
+- Vérifications : tsc 0 erreur, eslint 0 erreur (1 warning préexistant). Déploiement Vercel READY.
+
+Stage Summary:
+- Fichiers créés (1) : src/lib/sounds.ts (Web Audio API, 3 sons)
+- Fichiers modifiés (3) :
+  * src/components/ds/reward-toast.tsx (animation renforcée + son à l'ouverture)
+  * src/app/globals.css (.ds-lift:active + .ds-press utilitaire)
+- Score audit visuel estimé : ~88% → ~93% (tous P2 résolus)
+- État du projet : STABLE. Tous les P0 + P1 + P2 de l'audit visuel sont corrigés. Le DS est complet : 16 composants + sonification + animations polishes + press feedback. MVP prêt pour production.

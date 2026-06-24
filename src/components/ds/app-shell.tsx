@@ -170,7 +170,7 @@ export function AppShell({
       {/* ════════ MAIN COLUMN ════════ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* ── Topbar (sticky, glassmorphism) ── */}
-        <header className="sticky top-0 z-30 h-16 ds-glass border-b border-border flex items-center gap-3 px-4 md:px-6">
+        <header className="sticky top-0 z-30 h-16 bg-card border-b border-border flex items-center gap-3 px-4 md:px-6">
           {/* Mobile menu trigger */}
           <Button
             variant="ghost"
@@ -232,7 +232,7 @@ export function AppShell({
 
       {/* ════════ BOTTOM NAV (mobile) — glassmorphism ════════ */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 ds-glass border-t border-border"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border"
         aria-label="Navigation mobile"
       >
         <div className="flex items-stretch justify-around h-16 max-w-md mx-auto">

@@ -74,8 +74,8 @@ export function AppHeader() {
       {/* ─── Accent bar unifiée indigo (DS) ─── */}
       <div className="h-[2px] w-full bg-gradient-to-r from-primary via-secondary to-primary" />
 
-      {/* ─── Header content — glassmorphism DS ─── */}
-      <div className="flex h-14 items-center gap-2 ds-glass border-b border-border px-4">
+      {/* ─── Header content — fond opaque pour lisibilité ─── */}
+      <div className="flex h-14 items-center gap-2 bg-background border-b border-border px-4">
         {/* Sidebar toggle */}
         <SidebarTrigger className="-ml-1 hover:bg-muted/60" />
         <div className="h-5 w-px bg-border mx-1" />

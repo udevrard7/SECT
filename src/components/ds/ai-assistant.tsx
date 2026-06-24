@@ -78,8 +78,8 @@ const DOT_VARIANTS: Variants = {
  *   - Indicateur de saisie "…" (3 points animés)
  *
  * Design :
- *   - Bouton : `ds-glass` + Sparkles (Lucide) + pulse quand fermé
- *   - Panneau : `ds-glass` + `rounded-xl`, 350×500 (desktop),
+ *   - Bouton : fond opaque (bg-card) + Sparkles (Lucide) + pulse quand fermé
+ *   - Panneau : fond opaque (bg-card) + `rounded-xl`, 350×500 (desktop),
  *     pleine largeur - 2rem (mobile)
  *   - Messages user : `bg-primary text-primary-foreground` (droite)
  *   - Messages assistant : `bg-muted` (gauche)
@@ -266,7 +266,7 @@ export function AIAssistant({
             }}
             className={cn(
               'pointer-events-auto fixed bottom-20 right-4 z-50',
-              'flex flex-col ds-glass rounded-xl shadow-2xl overflow-hidden',
+              'flex flex-col bg-card border border-border rounded-xl shadow-2xl overflow-hidden',
               'border border-border/40'
             )}
           >
@@ -425,7 +425,7 @@ export function AIAssistant({
         className={cn(
           'pointer-events-auto fixed bottom-4 right-4 z-50',
           'h-14 w-14 rounded-full flex items-center justify-center',
-          'ds-glass border border-tech/30',
+          'bg-card border border-tech/30',
           'bg-tech text-tech-foreground shadow-xl',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
         )}

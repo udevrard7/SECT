@@ -1259,7 +1259,7 @@ export function CorbeillePage() {
       {/* ─── Bulk actions bar ─── */}
       {selectedCount > 0 && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="flex items-center gap-3 rounded-xl border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
+          <div className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 shadow-lg sm:px-6">
             <div className="flex items-center gap-2">
               <CheckSquare className="h-4 w-4 text-success" />
               <span className="text-sm font-medium whitespace-nowrap font-mono tabular-nums">

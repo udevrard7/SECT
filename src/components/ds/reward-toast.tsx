@@ -41,7 +41,7 @@ const TIER_LABEL: Record<GamificationTier, string> = {
  *
  * Design :
  *   - Position : top-center, fixed, z-50
- *   - Glassmorphism (ds-glass) car élément flottant positionné
+ *   - Fond opaque (bg-card) pour lisibilité maximale
  *   - Icône de récompense dans un cercle coloré selon le tier
  *   - XP gagnés en grand, en violet (couleur XP)
  *   - Animation d'entrée : slide-down + spring + pulse de l'icône
@@ -98,7 +98,7 @@ export function RewardToast({
           }}
         >
           <motion.div
-            className="ds-glass rounded-xl shadow-2xl p-4 flex items-center gap-3.5 relative overflow-hidden"
+            className="bg-card border border-border rounded-xl shadow-2xl p-4 flex items-center gap-3.5 relative overflow-hidden"
             animate={{
               boxShadow: tier
                 ? [
