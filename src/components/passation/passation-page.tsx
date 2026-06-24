@@ -41,10 +41,13 @@ import {
   MousePointerClick,
   Camera,
   MinusCircle,
+  WifiOff,
+  CloudUpload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CodingQuestionStudent } from '@/components/coding/code-editor'
 import { type CodingLanguage, type CodingAnswer, type TestResult, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
+import { useOfflineSubmission } from '@/hooks/use-offline-submission'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,6 +180,12 @@ export function PassationPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuthStore()
+
+  // ─── Offline submission hook ────────────────────────────────────────────
+  // Allows exam submission to be queued in IndexedDB when the network is
+  // unavailable, then replayed automatically by the Service Worker (BG Sync)
+  // or on the next `online` event (iOS Safari fallback).
+  const { submitOffline, pendingCount, isOnline } = useOfflineSubmission()
 
   const epreuveId = searchParams.get('epreuveId') || ''
 
@@ -509,15 +518,49 @@ export function PassationPage() {
       // Save answers first
       await saveAnswers()
 
-      const res = await fetch(`/api/sessions/${sessionRef.current.id}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoSubmit, reponses: reponsesRef.current }),
-      })
+      // Offline-first submission: when online, behaves like a normal fetch.
+      // When offline, the request is stored in the IndexedDB outbox and
+      // replayed automatically by the Service Worker (BG Sync) or on the
+      // next `online` event (iOS Safari fallback). In the offline case we
+      // keep the student on the exam page — they can close the app, the SW
+      // will sync as soon as the network is back.
+      type SubmitResponse = {
+        penalite?: number
+        scenario?: 'A' | 'B'
+        scenarioMessage?: string
+        score?: number
+        totalPossible?: number
+        autoGradableTotal?: number
+        pendingCorrection?: number
+      }
 
-      if (!res.ok) throw new Error('Erreur lors de la soumission')
+      const result = await submitOffline<SubmitResponse>(
+        `/api/sessions/${sessionRef.current.id}/submit`,
+        { autoSubmit, reponses: reponsesRef.current },
+        {
+          type: 'submit-exam',
+          meta: { examTitle: epreuve?.titre ?? 'Épreuve' },
+        }
+      )
 
-      const result = await res.json()
+      // Offline → request queued in outbox, toast already shown by the hook.
+      // Keep the user on the page so they can close the app; the SW will sync.
+      if (!result.synced) {
+        // Hook already toasted. If outbox storage itself failed, surface it.
+        if (result.error) {
+          toast.error('Sauvegarde hors ligne impossible', {
+            description: result.error,
+          })
+        }
+        return
+      }
+
+      // Online path — handle server errors (HTTP non-2xx) gracefully.
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      const data = result.data
 
       if (autoSubmit) {
         setAutoSubmitted(true)
@@ -525,19 +568,19 @@ export function PassationPage() {
       }
 
       // Update penalty from server response
-      if (result.penalite !== undefined) {
-        setPenalite(result.penalite)
+      if (data?.penalite !== undefined) {
+        setPenalite(data.penalite)
       }
 
       // Store submit result for scenario-specific display
-      if (result.scenario) {
+      if (data?.scenario) {
         setSubmitResult({
-          score: result.score ?? 0,
-          totalPossible: result.totalPossible ?? 0,
-          autoGradedTotal: result.autoGradableTotal ?? result.totalPossible ?? 0,
-          pendingCorrection: result.pendingCorrection ?? 0,
-          scenario: result.scenario,
-          scenarioMessage: result.scenarioMessage ?? '',
+          score: data.score ?? 0,
+          totalPossible: data.totalPossible ?? 0,
+          autoGradedTotal: data.autoGradableTotal ?? data.totalPossible ?? 0,
+          pendingCorrection: data.pendingCorrection ?? 0,
+          scenario: data.scenario,
+          scenarioMessage: data.scenarioMessage ?? '',
         })
       }
 
@@ -565,7 +608,7 @@ export function PassationPage() {
       setIsSubmitting(false)
       isAutoSubmittingRef.current = false
     }
-  }, [isSubmitting, saveAnswers])
+  }, [isSubmitting, saveAnswers, submitOffline, epreuve])
 
   // ─── Log alert (enhanced with penalty) ─────────────────────────────────
   const logAlert = useCallback(async (type: string, details?: string, alertPenalite?: number) => {
@@ -1504,6 +1547,18 @@ export function PassationPage() {
         </div>
       )}
 
+      {/* ─── Offline Status Banner ─────────────────────────────────────────── */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-[94] bg-amber-600 text-white px-4 py-2 text-center shadow-lg">
+          <div className="flex items-center justify-center gap-2">
+            <WifiOff className="h-4 w-4" />
+            <span className="font-medium text-sm">
+              Hors ligne — vos réponses sont sauvegardées et seront soumises à la reconnexion.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* ─── Closure Dialog ───────────────────────────────────────────────── */}
       <Dialog open={showClosureDialog} onOpenChange={setShowClosureDialog}>
         <DialogContent className="sm:max-w-md">
@@ -1627,6 +1682,18 @@ export function PassationPage() {
               <Save className="h-3 w-3" />
               Sauvegardé
             </span>
+          )}
+
+          {/* Pending offline submissions badge — shown when outbox has items */}
+          {pendingCount > 0 && (
+            <Badge
+              variant="outline"
+              className="text-xs border-amber-500/60 text-amber-600 bg-amber-500/10 dark:text-amber-400"
+              title="Soumissions en attente de synchronisation"
+            >
+              <CloudUpload className="h-3 w-3 mr-1" />
+              {pendingCount} en attente
+            </Badge>
           )}
 
           <Button

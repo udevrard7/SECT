@@ -32,6 +32,7 @@ const PUBLIC_PATHS = [
   '/api/epreuves/auto-close', // Cron auto-close (has its own secret-based auth)
   '/api/certificats/verify',  // Public certificate verification endpoint
   '/api/landing-demo',        // Public interactive demo on landing page (rate-limited)
+  '/api/push/vapid-public-key', // Public VAPID key for push subscription (client needs it before auth)
 ]
 
 // API routes that should return 401 instead of redirecting

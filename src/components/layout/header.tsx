@@ -19,6 +19,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
 import { NotificationBell } from '@/components/layout/notification-bell'
+import { PushNotificationManager } from '@/components/pwa/push-notification-manager'
 
 // ─── Role display names ───
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -107,8 +108,11 @@ export function AppHeader() {
             <Moon className="absolute h-[18px] w-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100 text-muted-foreground" />
           </Button>
 
-          {/* Notifications */}
+          {/* Notifications in-app */}
           <NotificationBell />
+
+          {/* Push notifications PWA (activation) */}
+          <PushNotificationManager />
 
           {/* User dropdown */}
           <DropdownMenu>

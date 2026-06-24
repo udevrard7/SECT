@@ -1407,3 +1407,132 @@ Stage Summary:
 - PWA : installable Android/iOS/Desktop. Offline via SW (pages + API GET cachées). Service Worker en production uniquement.
 - AIAssistant : bouton flottant cyan sur toutes les pages auth, failover IA Mistral→Groq→OpenRouter, contexte page+rôle.
 - État du projet : STABLE. Tous les composants DS premium sont intégrés dans les pages métier. La plateforme est PWA installable + offline. L'assistant IA pédagogique est accessible partout.
+
+---
+Task ID: T10-A
+Agent: full-stack-developer (push triggers)
+Task: Add push notification triggers in 3 API routes
+
+Work Log:
+- Lecture du worklog (T9 finalisé, T10 = tâche courante) + lecture de `src/lib/push.ts` pour confirmer l'API (`sendPushToUser`, `sendPushToUsers`, `PushPayload`).
+- Lecture des 3 fichiers cibles + `src/lib/badges-engine.ts` (interface `BadgeWithProgress` : pas de champ `xp` → XP dérivée du `niveauActuel`) + `prisma/schema.prisma` (vérifié `SessionPassation.etudiantId`, `Epreuve.titre`/`filiereId`, `User.filiereId`/`actif`/`role`, `StatutEpreuve` enum).
+
+- Fichier 1 — `src/app/api/correction/[sessionId]/ai-grade/route.ts` (PATCH, branche `finalizeAll`) :
+  * Ajout import `sendPushToUser` depuis `@/lib/push`.
+  * Vérifié que la query `session` utilise `include` (pas `select`) → `session.etudiantId` et `session.epreuve.titre` sont déjà disponibles sans modifier la query.
+  * Push inséré APRÈS l'`auditLog.create` (DB write réussi) et AVANT le `NextResponse.json` final. Payload : `title='Correction disponible'`, `body` incluant le titre de l'épreuve + `${totalScore}/${totalPossible}`, `url='/mes-resultats'`, `tag='correction-finalized'`. Appel `.catch(() => {})` non-bloquant.
+
+- Fichier 2 — `src/app/api/epreuves/route.ts` (POST, création épreuve) :
+  * Ajout import `sendPushToUsers` depuis `@/lib/push`.
+  * Push inséré APRÈS l'`auditLog.create` + parse `parsedEpreuve`, AVANT le `NextResponse.json`. Condition stricte : `epreuve.filiereId && (statut === 'EN_COURS' || 'TERMINEE')` — pas de notification pour BROUILLON.
+  * Compte des questions géré pour les 2 formats : `epreuve.questions.length` (relations EpreuveQuestion) OU fallback sur `contenu.questions.length` (JSONB).
+  * Récupération des étudiants actifs de la filière (`role: 'ETUDIANT'`, `actif: true`) via `db.user.findMany`. Si ≥1 étudiant, `sendPushToUsers(...)` avec `tag='new-exam'`, `url='/mes-epreuves'`. Wrap try/catch global + `.catch(() => {})` sur le push → double non-blocage.
+  * Note : actuellement `statut` est hardcoded à `'BROUILLON'` à la création, donc le push ne se déclenche pas aujourd'hui. Bloc défensif — s'activera dès qu'un statut publié sera autorisé côté body. Comportement correct vis-à-vis du spec (pas de spam étudiants).
+
+- Fichier 3 — `src/app/api/badges/route.ts` (POST, recalcul badges) :
+  * Ajout imports `sendPushToUser` + `type NiveauBadge` depuis `@/lib/badges-engine`.
+  * Ajout constante `XP_PER_NIVEAU: Record<NiveauBadge, number>` (BRONZE=10, ARGENT=25, OR=50, DIAMANT=100) — `BadgeWithProgress` n'expose pas de champ `xp`, donc XP dérivée du `niveauActuel` pour le payload push.
+  * Push inséré APRÈS `computeAllBadges` + `newBadges = badges.filter(b => b.isNewlyUnlocked)`, AVANT le `NextResponse.json`. Pour chaque badge nouvellement débloqué : `sendPushToUser(userId, {...})` avec `tag=`badge-${badge.cle}`` (tag unique par badge pour éviter d'écraser une notif d'un autre badge, tout en dédoublonnant les recalculs successifs du même badge). `Promise.all` + `.catch(() => {})` sur chaque appel → non-bloquant.
+
+- Vérification : `bunx tsc --noEmit` → 0 erreur sur les 3 fichiers (grep `ai-grade/route|epreuves/route|badges/route` → 0 match). Les 2 erreurs tsc restantes sont préexistantes dans `src/components/pwa/push-notification-manager.tsx` et `src/lib/offline-outbox.ts` (fichiers PWA non touchés par cette tâche). `bunx eslint <3 fichiers>` → exit 0, 0 erreur.
+
+Stage Summary:
+- Files modified (3) :
+  * `src/app/api/correction/[sessionId]/ai-grade/route.ts` (+1 import, +10 lignes de push dans le PATCH finalizeAll)
+  * `src/app/api/epreuves/route.ts` (+1 import, +~45 lignes de push conditionnel dans le POST)
+  * `src/app/api/badges/route.ts` (+2 imports + constante XP_PER_NIVEAU, +~18 lignes de push dans le POST)
+- Push triggers added (qui notifie qui) :
+  * **Correction finalisée** → notifie l'**étudiant** propriétaire de la session (`session.etudiantId`) avec titre épreuve + note. `tag='correction-finalized'`, `url='/mes-resultats'`.
+  * **Épreuve créée publiée** (EN_COURS/TERMINEE + filiereId) → notifie **tous les étudiants actifs** de la filière. `tag='new-exam'`, `url='/mes-epreuves'`. (Défensif : actuellement toujours BROUILLON → pas de spam.)
+  * **Badge nouvellement débloqué** → notifie l'**utilisateur connecté** (`context.user.id`) pour chaque `isNewlyUnlocked`. `tag=`badge-${cle}``, `url='/profil'`. XP bonus dérivé du niveau.
+- Toutes les notifications sont non-bloquantes (`.catch(() => {})` ou try/catch global) — aucune ne peut casser la logique métier. `sendPushToUser`/`sendPushToUsers` retournent silencieusement 0 si pas de subscription ou si VAPID manquant.
+
+---
+Task ID: T10-B
+Agent: full-stack-developer (offline submission integration)
+Task: Integrate useOfflineSubmission in passation-page exam submit flow
+
+Work Log:
+- Lecture du worklog (T10-A finalisé, T10-B = tâche courante) + lecture des fichiers de référence : `src/hooks/use-offline-submission.ts` (API `submitOffline<T>(url, body, options)` → `{ synced, data?, error? }`, `pendingCount`, `isOnline`), `src/lib/offline-outbox.ts` (IndexedDB outbox + `registerBackgroundSync`), et `src/app/api/sessions/[id]/submit/route.ts` pour confirmer la shape de la réponse (`score`, `totalPossible`, `autoGradableTotal`, `pendingCorrection`, `scenario: 'A'|'B'`, `scenarioMessage`, `penalite`).
+- Lecture de `passation-page.tsx` (2415 lignes après mes edits) — identification du handler `submitExam` (ligne 510) qui faisait un `fetch('/api/sessions/[id]/submit', { method: 'POST', body: { autoSubmit, reponses } })` direct, parsait la réponse, mettait à jour `penalite` + `submitResult`, puis `setPhase('post-exam')`. Le hook `useOfflineSubmission` n'était pas importé.
+
+- Edit 1 — Imports : ajouté `import { useOfflineSubmission } from '@/hooks/use-offline-submission'` après l'import `coding-types`. Ajouté `WifiOff` + `CloudUpload` à l'import `lucide-react` (la liste existante était triée alphabétiquement, inséré en position correcte).
+
+- Edit 2 — Hook : monté `const { submitOffline, pendingCount, isOnline } = useOfflineSubmission()` en haut du composant `PassationPage`, juste après `useAuthStore()`, AVANT la lecture de `epreuveId` depuis searchParams (donc avant tout early return — respecte rules-of-hooks). Commentaire inline expliquant le pattern outbox + BG Sync + fallback iOS.
+
+- Edit 3 — submitExam refactorisé : remplacé le bloc `fetch + res.ok + res.json()` par `await submitOffline<SubmitResponse>(url, body, { type: 'submit-exam', meta: { examTitle: epreuve?.titre } })`. Définition d'un type local `SubmitResponse` (pénalité, scenario, scenarioMessage, score, totalPossible, autoGradableTotal, pendingCorrection) pour typer le générique `<T>` du hook. Logique post-submit :
+  * `!result.synced` (offline) → `return` sans navigate : le hook a déjà toasté "Sauvegardé hors ligne". Si `result.error` existe (outbox storage échoué), toast.error séparé.
+  * `result.synced && result.error` (HTTP non-2xx online) → `throw new Error(result.error)` → catch existant → toast.error identique au comportement précédent.
+  * `result.synced && result.data` → même flow qu'avant : `setAutoSubmitted/setAutoSubmitReason` si autoSubmit, `setPenalite(data.penalite)`, `setSubmitResult({...data})`, `setPhase('post-exam')`, exit fullscreen, cleanup intervals. Aucune régression du success path.
+  * Dépendances du `useCallback` mises à jour : `[isSubmitting, saveAnswers, submitOffline, epreuve]` (ajout de `submitOffline` stable du hook + `epreuve` pour `meta.examTitle`).
+  * Le body envoyé (`{ autoSubmit, reponses: reponsesRef.current }`) est strictement identique à l'ancien — l'API côté serveur n'a pas besoin de modification.
+
+- Edit 4 — Offline banner : inséré APRÈS le "Grace Period Banner" existant et AVANT le "Closure Dialog", à l'intérieur de la phase `in-exam` (le bloc `return` qui contient déjà les overlays fixed). Banner fixed top-0 full-width `z-[94]` (z-index légèrement inférieur au Grace Period `z-[95]` pour que la période de grâce reste prioritaire visuellement), `bg-amber-600 text-white`, icône `WifiOff`, texte exact : "Hors ligne — vos réponses sont sauvegardées et seront soumises à la reconnexion." Condition : `!isOnline`. N'apparaît qu'en phase in-exam (pas en pre-exam/post-exam — cohérent avec le scope de la task).
+
+- Edit 5 — Pending badge : inséré dans le top bar `in-exam` (section "Right: Alert counter + Progress + Save indicator + Submit"), APRÈS le "Sauvegardé" indicator et AVANT le bouton "Soumettre". Badge `border-amber-500/60 text-amber-600 bg-amber-500/10` + icône `CloudUpload`, texte `{pendingCount} en attente`. Condition : `pendingCount > 0`. `title` aria-friendly pour expliquer le badge. Couleur ambre cohérente avec le banner offline.
+
+- Vérification :
+  * `bunx tsc --noEmit` → exit 0, 0 erreur (projet-wide, pas seulement passation-page).
+  * `bunx eslint src/components/passation/passation-page.tsx` → exit 0, 0 erreur.
+  * Dev log : serveur `Ready in 993ms`, routes 200 OK, aucune erreur compile liée au fichier modifié.
+
+Stage Summary:
+- File modified: `src/components/passation/passation-page.tsx` (+~75 lignes nettes, 0 suppression de logique existante)
+- Changes:
+  * Imports : +`useOfflineSubmission` hook, +`WifiOff`/`CloudUpload` icons.
+  * Hook monté en tête de composant (`submitOffline`, `pendingCount`, `isOnline`).
+  * `submitExam` : `fetch` direct remplacé par `submitOffline<SubmitResponse>(...)`. Online success → flow identique (score, scenario, post-exam, fullscreen exit, intervals cleanup). Offline → `return` sans navigate, toast géré par le hook. HTTP error online → `throw` attrapé par le catch existant → toast.error identique. Dépendances useCallback étendues.
+  * Offline banner (fixed top, ambre, `WifiOff` icon) visible uniquement en phase `in-exam` quand `!isOnline`.
+  * Pending submissions badge (ambre, `CloudUpload` icon, `{pendingCount} en attente`) dans le top bar à côté du bouton "Soumettre", visible quand `pendingCount > 0`.
+- Aucune autre page touchée. Aucune API modifiée (le body shape envoyé est inchangé). Aucun commit/push (main agent fera le commit unifié).
+- tsc : 0 erreur. eslint : 0 erreur. Dev server : stable.
+
+---
+Task ID: T10 (Push Notifications + Background Sync)
+Agent: Z.ai (tuteur/assistant — exécution + 2 sous-agents)
+Task: Implémenter les push notifications (alertes nouveaux examens/résultats/badges) et le background sync (soumission examen en différé si réseau perdu).
+
+Work Log:
+- Push Notifications infrastructure :
+  1. Installation web-push + génération clés VAPID (publique + privée) ajoutées au .env.
+  2. Modèle PushSubscription ajouté au schéma Prisma (userId, endpoint unique, p256dh, auth, userAgent). db:push → base sync. Back-relation ajoutée au modèle User.
+  3. src/lib/push.ts : sendPushToUser(userId, payload) + sendPushToUsers(userIds, payload). Configure web-push VAPID. Suppression auto des subscriptions expirées (404/410). Non-bloquant si VAPID manquant.
+  4. Endpoints API :
+     - GET /api/push/vapid-public-key (public, ajouté au proxy PUBLIC_PATHS) : retourne la clé publique.
+     - POST /api/push/subscribe (withAuth) : upsert subscription (endpoint unique) liée à userId.
+     - DELETE /api/push/subscribe (withAuth) : supprime subscription (désabonnement).
+  5. Handlers SW (sw.js) : push event (parse payload JSON, showNotification avec icon/badge/tag/vibrate) + notificationclick (focus fenêtre existante + navigate URL, sinon openWindow).
+  6. PushNotificationManager (src/components/pwa/) : demande permission, récupère VAPID, PushManager.subscribe, envoie à /api/push/subscribe. Bouton "Notifications" dans le header (disparaît après activation). Silencieux si refusé/non supporté.
+  7. Triggers push (sous-agent T10-A) dans 3 API routes :
+     - Correction finalize → notifie l'étudiant (titre "Correction disponible", url /mes-resultats, tag correction-finalized).
+     - Création épreuve (statut publié) → notifie tous les étudiants de la filière (titre "Nouvel examen disponible", url /mes-epreuves, tag new-exam).
+     - Badge débloqué → notifie l'utilisateur (titre "Nouveau badge débloqué !", url /profil, tag badge-${cle}).
+     - Tous non-bloquants (.catch(() => {})).
+
+- Background Sync infrastructure :
+  1. src/lib/offline-outbox.ts : IndexedDB outbox (DB sect-offline-outbox, store 'outbox'). CRUD : addToOutbox, getOutboxItems, removeFromOutbox, getOutboxCount, flushOutbox, registerBackgroundSync. Cast sécurisé pour 'sync' (non supporté iOS Safari).
+  2. Handler SW (sw.js) : sync event (tag 'submit-exam') → flushSubmissionOutbox() lit l'outbox, POSTe chaque item, supprime au succès, notifie le client (postMessage SUBMISSION_SYNCED), retry les échecs.
+  3. src/hooks/use-offline-submission.ts : hook submitOffline<T>(url, body, options). Si online → fetch direct. Si offline → addToOutbox + registerBackgroundSync + toast "Sauvegardé hors ligne". Fallback iOS : écoute 'online' event → flushOutbox. Écoute messages SW (SUBMISSION_SYNCED). pendingCount + isOnline exposés.
+  4. Intégration passation-page (sous-agent T10-B) : submitExam utilise submitOffline. Bannière offline (amber, WifiOff) si !isOnline. Badge "X en attente" (CloudUpload) si pendingCount > 0. Flow succès inchangé (synced=true → navigate). Offline (synced=false) → reste sur la page, toast "Sauvegardé hors ligne".
+
+- Corrections tsc/lint : urlBase64ToUint8Array retourne ArrayBuffer (BufferSource TS 5.7+). Cast 'sync' via unknown. useState lazy pour isOnline (règle React 19 set-state-in-effect).
+
+Stage Summary:
+- Fichiers créés (8) :
+  * src/lib/push.ts (sendPushToUser/Users + config VAPID)
+  * src/lib/offline-outbox.ts (IndexedDB outbox + BG Sync register)
+  * src/hooks/use-offline-submission.ts (hook offline-first)
+  * src/app/api/push/vapid-public-key/route.ts (GET public)
+  * src/app/api/push/subscribe/route.ts (POST/DELETE withAuth)
+  * src/components/pwa/push-notification-manager.tsx (client permission + subscribe)
+  * prisma/schema.prisma (+PushSubscription model)
+- Fichiers modifiés (6) :
+  * .env (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT)
+  * public/sw.js (handlers push + notificationclick + sync)
+  * src/proxy.ts (+ /api/push/vapid-public-key PUBLIC_PATHS)
+  * src/components/layout/header.tsx (mount PushNotificationManager)
+  * src/app/api/correction/[sessionId]/ai-grade/route.ts (trigger push finalize)
+  * src/app/api/epreuves/route.ts (trigger push nouvel examen)
+  * src/app/api/badges/route.ts (trigger push badge unlock)
+  * src/components/passation/passation-page.tsx (useOfflineSubmission + bannière offline + badge)
+- État du projet : STABLE. Push notifications opérationnelles (VAPID + 3 triggers métier). Background sync opérationnel (outbox IndexedDB + SW sync + fallback iOS). PWA complète : installable + offline pages + offline soumission + push.

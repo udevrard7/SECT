@@ -44,6 +44,7 @@ model User {
   sessionsSpecialesCreees SessionSpeciale[]  @relation("SessionsSpecialesCreees")
   badgeProgressions       BadgeProgression[]
   validationsUE          ValidationUE[]
+  pushSubscriptions       PushSubscription[]
   certificats            Certificat[]
   certificatsEmis        Certificat[]          @relation("CertificatsEmis")
 }
@@ -980,4 +981,19 @@ model AIFailoverEvent {
   errorDetails String?
   resolved     Boolean  @default(false)
   createdAt    DateTime @default(now())
+}
+
+// ─── Push Notifications (PWA) ───
+// Stocke les abonnements push Web Push par utilisateur.
+// Un utilisateur peut avoir plusieurs abonnements (plusieurs appareils).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique // URL du service push (FCM, Mozilla, Apple…)
+  p256dh    String   // clé publique P-256 ECDH (base64url)
+  auth      String   // secret d'authentification (base64url)
+  userAgent String?  // pour identifier l'appareil/navigateur
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
