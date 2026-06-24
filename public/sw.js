@@ -17,7 +17,7 @@
  * exhaustif (les URLs Turbopack sont dynamiques) — on cache à la volée.
  */
 
-const CACHE_VERSION = 'sect-v2'
+const CACHE_VERSION = 'sect-v3'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
@@ -98,9 +98,11 @@ self.addEventListener('fetch', (event) => {
   // ─── Navigation (pages HTML) : network-first, fallback cache + offline page ───
   // IMPORTANT : ne cache QUE les réponses 200 (pas les redirects 307 d'auth).
   // Sinon offline /dashboard → cache du 307 → /login au lieu de /offline.
+  // cache: 'no-store' force le fetch à ignorer le HTTP cache du navigateur
+  // (qui pourrait servir un redirect 307 périmé même offline).
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((response) => {
           // Cache seulement les pages valides (200, type basic = same-origin)
           // Ne PAS cacher les redirects (3xx) qui cassent le fallback offline
