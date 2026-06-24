@@ -23,7 +23,7 @@ import { NotificationBell } from '@/components/layout/notification-bell'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { ThemeToggle } from '@/components/ds'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
-import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
+import { PAGE_ROUTES, getPageContext, type PageId } from '@/lib/routes'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Administrateur',
@@ -75,28 +75,11 @@ export function AppHeader() {
 
   if (!user) return null
 
-  const currentPageId = ROUTE_TO_PAGE[pathname] ?? 'dashboard'
-  const categories = NAV_CATEGORIES[user.role] ?? []
-  let parentCategory = ''
-  for (const cat of categories) {
-    if (cat.items.some((item) => item.id === currentPageId)) {
-      parentCategory = cat.label
-      break
-    }
-  }
-
-  const navItems = NAV_ITEMS[user.role] ?? []
-  const currentNavItem = navItems.find((item) => item.id === currentPageId)
-  const pageTitle = currentPageId === 'profil'
-    ? PROFILE_PAGE.label
-    : (currentNavItem?.label ?? 'Tableau de bord')
-
-  const initials = user.name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  // ─── Contexte de page factorisé (fil d'Ariane + titre) ───
+  // Centralise la résolution du PageId canonique, du titre et de la catégorie
+  // parente. Évite les collisions de ROUTE_TO_PAGE (plusieurs PageId mappés
+  // vers la même route) en partant de NAV_CATEGORIES[user.role].
+  const { pageTitle, parentCategory } = getPageContext(pathname, user.role)
 
   const navigateTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
@@ -119,7 +102,7 @@ export function AppHeader() {
 
         {/* Breadcrumb */}
         <div className="hidden md:flex items-center gap-1.5 min-w-0">
-          {parentCategory && currentPageId !== 'dashboard' && (
+          {parentCategory && (
             <>
               <span className="text-[11px] text-sidebar-foreground/40 truncate">
                 {parentCategory}

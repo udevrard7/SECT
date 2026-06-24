@@ -84,9 +84,89 @@ export const PAGE_ROUTES: Record<PageId, string> = {
 }
 
 // ─── Reverse mapping: URL path → PageId ───
+//
+// ⚠️ COLLISIONS CONNUES : plusieurs PageId mappent vers la même route car ce
+// sont des alias historiques ou des vues équivalentes d'une même page :
+//   - /programme-academique  ← niveaux | unites-enseignement | programme-academique
+//   - /epreuves              ← banque-epreuves | epreuves
+// Object.fromEntries ne conserve que le DERNIER PageId rencontré dans l'ordre
+// d'insertion de PAGE_ROUTES, ce qui correspond par chance au PageId canonique
+// (celui affiché dans la sidebar). Ce comportement est FRAGILE : toute
+// réorganisation de PAGE_ROUTES pourrait le casser.
+//
+// → Pour résoudre le PageId d'une page affichée de manière fiable, utiliser
+//   `getPageContext(pathname, role)` qui part des catégories de navigation du
+//   rôle (qui ne contiennent que les PageId canoniques).
+// → ROUTE_TO_PAGE reste utilisé par `getPageIdFromSlug` au niveau du routeur,
+//   où un match direct est acceptable car les alias sont équivalents.
 export const ROUTE_TO_PAGE: Record<string, PageId> = Object.fromEntries(
   Object.entries(PAGE_ROUTES).map(([pageId, route]) => [route, pageId as PageId])
 ) as Record<string, PageId>
+
+// ─── Contexte d'affichage d'une page (fil d'Ariane + titre) ───
+export interface PageContext {
+  pageId: PageId
+  pageTitle: string
+  /**
+   * Libellé de la catégorie parente dans la sidebar, ou `null` si non
+   * applicable (dashboard, profil, ou route inconnue/non autorisée).
+   * Sert au fil d'Ariane du header : "Catégorie › Titre de la page".
+   */
+  parentCategory: string | null
+}
+
+/**
+ * Résout le contexte d'affichage d'une page (PageId canonique, titre, catégorie
+ * parente) à partir du pathname et du rôle utilisateur.
+ *
+ * Centralise la logique de fil d'Ariane/titre précédemment dupliquée entre
+ * `AppHeader` et `AppSidebar`, et évite les collisions de `ROUTE_TO_PAGE` en
+ * partant des catégories de navigation du rôle (`NAV_CATEGORIES[role]`), qui
+ * ne contiennent que les PageId canoniques réellement affichés dans la
+ * sidebar.
+ *
+ * Ordre de résolution :
+ *  1. Recherche dans les items de navigation du rôle (match sur PAGE_ROUTES).
+ *  2. Page de profil (accessible depuis le header, absente de la sidebar).
+ *  3. Fallback dashboard (route inconnue ou non autorisée pour le rôle).
+ *
+ * @example
+ *   const { pageId, pageTitle, parentCategory } = getPageContext(pathname, user.role)
+ */
+export function getPageContext(pathname: string, role: UserRole): PageContext {
+  const categories = NAV_CATEGORIES[role] ?? []
+
+  // 1. Recherche dans les items de navigation du rôle (PageId canoniques)
+  for (const category of categories) {
+    for (const item of category.items) {
+      if (PAGE_ROUTES[item.id] === pathname) {
+        return {
+          pageId: item.id,
+          pageTitle: item.label,
+          // Le dashboard est la seule page de sa catégorie "Vue d'ensemble" :
+          // pas de fil d'Ariane parent pour éviter "Vue d'ensemble › Tableau de bord".
+          parentCategory: item.id === 'dashboard' ? null : category.label,
+        }
+      }
+    }
+  }
+
+  // 2. Page de profil (accessible depuis le header dropdown, absente de la sidebar)
+  if (pathname === PAGE_ROUTES.profil) {
+    return {
+      pageId: 'profil',
+      pageTitle: PROFILE_PAGE.label,
+      parentCategory: null,
+    }
+  }
+
+  // 3. Fallback : dashboard (route inconnue ou non autorisée pour le rôle)
+  return {
+    pageId: 'dashboard',
+    pageTitle: PAGE_LABELS.dashboard,
+    parentCategory: null,
+  }
+}
 
 // ─── Page labels ───
 export const PAGE_LABELS: Record<PageId, string> = {
