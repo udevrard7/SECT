@@ -42,7 +42,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
@@ -146,42 +146,42 @@ const TYPE_LABELS: Record<MonitoringEvent['type'], string> = {
 const SEVERITY_CONFIG: Record<MonitoringEvent['severite'], { label: string; color: string; bg: string; border: string; darkBg: string; darkColor: string; darkBorder: string; icon: React.ComponentType<{ className?: string }> }> = {
   INFO: {
     label: 'Info',
-    color: 'text-blue-700',
-    bg: 'bg-blue-100',
-    border: 'border-blue-200',
-    darkBg: 'dark:bg-blue-900/40',
-    darkColor: 'dark:text-blue-300',
-    darkBorder: 'dark:border-blue-800',
+    color: 'text-info',
+    bg: 'bg-info/10',
+    border: 'border-info/30',
+    darkBg: 'dark:bg-info/40',
+    darkColor: 'dark:text-info/80',
+    darkBorder: 'dark:border-info/70',
     icon: Info,
   },
   WARNING: {
     label: 'Avertissement',
-    color: 'text-amber-700',
-    bg: 'bg-amber-100',
-    border: 'border-amber-200',
-    darkBg: 'dark:bg-amber-900/40',
-    darkColor: 'dark:text-amber-300',
-    darkBorder: 'dark:border-amber-800',
+    color: 'text-warning',
+    bg: 'bg-warning/10',
+    border: 'border-warning/30',
+    darkBg: 'dark:bg-warning/40',
+    darkColor: 'dark:text-warning/80',
+    darkBorder: 'dark:border-warning/70',
     icon: AlertTriangle,
   },
   ERROR: {
     label: 'Erreur',
-    color: 'text-red-700',
-    bg: 'bg-red-100',
-    border: 'border-red-200',
-    darkBg: 'dark:bg-red-900/40',
-    darkColor: 'dark:text-red-300',
-    darkBorder: 'dark:border-red-800',
+    color: 'text-destructive',
+    bg: 'bg-destructive/10',
+    border: 'border-destructive/30',
+    darkBg: 'dark:bg-destructive/40',
+    darkColor: 'dark:text-destructive/80',
+    darkBorder: 'dark:border-destructive/70',
     icon: XCircle,
   },
   CRITICAL: {
     label: 'Critique',
-    color: 'text-purple-700',
-    bg: 'bg-purple-100',
-    border: 'border-purple-200',
-    darkBg: 'dark:bg-purple-900/40',
-    darkColor: 'dark:text-purple-300',
-    darkBorder: 'dark:border-purple-800',
+    color: 'text-secondary',
+    bg: 'bg-secondary/10',
+    border: 'border-secondary/30',
+    darkBg: 'dark:bg-secondary/40',
+    darkColor: 'dark:text-secondary/80',
+    darkBorder: 'dark:border-secondary/70',
     icon: AlertOctagon,
   },
 }
@@ -189,21 +189,21 @@ const SEVERITY_CONFIG: Record<MonitoringEvent['severite'], { label: string; colo
 const STATUS_CONFIG: Record<MonitoringEvent['statut'], { label: string; color: string; bg: string; border: string; darkBg: string; darkColor: string; darkBorder: string }> = {
   ACTIF: {
     label: 'Actif',
-    color: 'text-orange-700',
-    bg: 'bg-orange-100',
-    border: 'border-orange-200',
-    darkBg: 'dark:bg-orange-900/40',
-    darkColor: 'dark:text-orange-300',
-    darkBorder: 'dark:border-orange-800',
+    color: 'text-warning',
+    bg: 'bg-warning/10',
+    border: 'border-warning/30',
+    darkBg: 'dark:bg-warning/40',
+    darkColor: 'dark:text-warning/80',
+    darkBorder: 'dark:border-warning/70',
   },
   RESOLU: {
     label: 'Résolu',
-    color: 'text-emerald-700',
-    bg: 'bg-emerald-100',
-    border: 'border-emerald-200',
-    darkBg: 'dark:bg-emerald-900/40',
-    darkColor: 'dark:text-emerald-300',
-    darkBorder: 'dark:border-emerald-800',
+    color: 'text-success',
+    bg: 'bg-success/10',
+    border: 'border-success/30',
+    darkBg: 'dark:bg-success/40',
+    darkColor: 'dark:text-success/80',
+    darkBorder: 'dark:border-success/70',
   },
   IGNORE: {
     label: 'Ignoré',
@@ -219,33 +219,33 @@ const STATUS_CONFIG: Record<MonitoringEvent['statut'], { label: string; color: s
 const SERVICE_STATUS_CONFIG: Record<ServiceHealth['status'], { label: string; dotColor: string; bgColor: string; borderColor: string; darkBgColor: string; darkBorderColor: string; textColor: string; darkTextColor: string }> = {
   OPERATIONNEL: {
     label: 'Opérationnel',
-    dotColor: 'bg-emerald-500',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    darkBgColor: 'dark:bg-emerald-950/20',
-    darkBorderColor: 'dark:border-emerald-800',
-    textColor: 'text-emerald-700',
-    darkTextColor: 'dark:text-emerald-300',
+    dotColor: 'bg-success',
+    bgColor: 'bg-success/10',
+    borderColor: 'border-success/30',
+    darkBgColor: 'dark:bg-success/20',
+    darkBorderColor: 'dark:border-success/70',
+    textColor: 'text-success',
+    darkTextColor: 'dark:text-success/80',
   },
   DEGRADE: {
     label: 'Dégradé',
-    dotColor: 'bg-amber-500',
-    bgColor: 'bg-amber-50',
-    borderColor: 'border-amber-200',
-    darkBgColor: 'dark:bg-amber-950/20',
-    darkBorderColor: 'dark:border-amber-800',
-    textColor: 'text-amber-700',
-    darkTextColor: 'dark:text-amber-300',
+    dotColor: 'bg-warning',
+    bgColor: 'bg-warning/10',
+    borderColor: 'border-warning/30',
+    darkBgColor: 'dark:bg-warning/20',
+    darkBorderColor: 'dark:border-warning/70',
+    textColor: 'text-warning',
+    darkTextColor: 'dark:text-warning/80',
   },
   INDISPONIBLE: {
     label: 'Indisponible',
-    dotColor: 'bg-red-500',
-    bgColor: 'bg-red-50',
-    borderColor: 'border-red-200',
-    darkBgColor: 'dark:bg-red-950/20',
-    darkBorderColor: 'dark:border-red-800',
-    textColor: 'text-red-700',
-    darkTextColor: 'dark:text-red-300',
+    dotColor: 'bg-destructive',
+    bgColor: 'bg-destructive/10',
+    borderColor: 'border-destructive/30',
+    darkBgColor: 'dark:bg-destructive/20',
+    darkBorderColor: 'dark:border-destructive/70',
+    textColor: 'text-destructive',
+    darkTextColor: 'dark:text-destructive/80',
   },
 }
 
@@ -293,10 +293,10 @@ function HealthGauge({ score, size = 180 }: { score: number; size?: number }) {
   const center = size / 2
 
   const getColor = (s: number) => {
-    if (s >= 80) return { stroke: '#10b981', text: 'text-emerald-600 dark:text-emerald-400', label: 'Excellent' }
-    if (s >= 60) return { stroke: '#f59e0b', text: 'text-amber-600 dark:text-amber-400', label: 'Correct' }
-    if (s >= 40) return { stroke: '#f97316', text: 'text-orange-600 dark:text-orange-400', label: 'Dégradé' }
-    return { stroke: '#ef4444', text: 'text-red-600 dark:text-red-400', label: 'Critique' }
+    if (s >= 80) return { stroke: '#10b981', text: 'text-success', label: 'Excellent' }
+    if (s >= 60) return { stroke: '#f59e0b', text: 'text-warning', label: 'Correct' }
+    if (s >= 40) return { stroke: '#f97316', text: 'text-warning', label: 'Dégradé' }
+    return { stroke: '#ef4444', text: 'text-destructive', label: 'Critique' }
   }
 
   const colorConfig = getColor(score)
@@ -343,8 +343,7 @@ function HealthGauge({ score, size = 180 }: { score: number; size?: number }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-4xl font-bold ${colorConfig.text}`}>
-          {score}
+        <span className={`text-4xl font-bold ${colorConfig.text} font-mono tabular-nums`}>{score}
         </span>
         <span className="text-xs text-muted-foreground mt-0.5">/ 100</span>
         <span className={`text-xs font-medium mt-1 ${colorConfig.text}`}>
@@ -429,13 +428,13 @@ function ServiceHealthCard({ service }: { service: ServiceHealth }) {
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
             <p className="text-muted-foreground mb-0.5">Uptime</p>
-            <p className={`font-semibold ${service.uptime >= 99 ? 'text-emerald-600 dark:text-emerald-400' : service.uptime >= 95 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+            <p className={`font-semibold ${service.uptime >= 99 ? 'text-success' : service.uptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
               {service.uptime.toFixed(2)}%
             </p>
           </div>
           <div>
             <p className="text-muted-foreground mb-0.5">Temps rép. moyen</p>
-            <p className={`font-semibold ${service.avgResponseTime <= 200 ? 'text-emerald-600 dark:text-emerald-400' : service.avgResponseTime <= 500 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+            <p className={`font-semibold ${service.avgResponseTime <= 200 ? 'text-success' : service.avgResponseTime <= 500 ? 'text-warning' : 'text-destructive'}`}>
               {service.avgResponseTime}ms
             </p>
           </div>
@@ -501,7 +500,7 @@ function AlertCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                className="h-7 text-xs gap-1 border-success/30 text-success hover:bg-success/10"
                 onClick={() => onResolve(event)}
               >
                 <CheckCircle2 className="h-3 w-3" />
@@ -510,7 +509,7 @@ function AlertCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs gap-1 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950"
+                className="h-7 text-xs gap-1 border-warning/30 text-warning hover:bg-warning/10"
                 onClick={() => onEscalate(event)}
               >
                 <ArrowUpRight className="h-3 w-3" />
@@ -808,8 +807,8 @@ export function MonitoringPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Activity className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <Activity className="h-7 w-7 text-success" />
             Monitoring & Santé Plateforme
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -822,7 +821,7 @@ export function MonitoringPage() {
               id="auto-refresh"
               checked={autoRefresh}
               onCheckedChange={setAutoRefresh}
-              className="data-[state=checked]:bg-emerald-600"
+              className="data-[state=checked]:bg-success"
             />
             <Label htmlFor="auto-refresh" className="text-xs text-muted-foreground cursor-pointer">
               Auto-refresh 30s
@@ -846,31 +845,30 @@ export function MonitoringPage() {
       {/* ─── Health Status Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Uptime Card */}
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <HeartPulse className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <HeartPulse className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Uptime</p>
               <div className="flex items-center gap-2">
-                <p className="text-xl font-bold">{uptimePercentage.toFixed(2)}%</p>
-                <span className={`h-2.5 w-2.5 rounded-full ${uptimePercentage >= 99 ? 'bg-emerald-500' : uptimePercentage >= 95 ? 'bg-amber-500' : 'bg-red-500'}`} />
+                <p className="text-xl font-bold font-mono tabular-nums">{uptimePercentage.toFixed(2)}%</p>
+                <span className={`h-2.5 w-2.5 rounded-full ${uptimePercentage >= 99 ? 'bg-success' : uptimePercentage >= 95 ? 'bg-warning' : 'bg-destructive'}`} />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Response Time Card */}
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <Timer className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Timer className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Temps de réponse moyen</p>
-              <p className="text-xl font-bold">
-                {avgResponseTime}
+              <p className="text-xl font-bold font-mono tabular-nums">{avgResponseTime}
                 <span className="text-sm font-normal text-muted-foreground ml-0.5">ms</span>
               </p>
             </div>
@@ -878,23 +876,23 @@ export function MonitoringPage() {
         </Card>
 
         {/* Active Errors Card */}
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-destructive">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-              <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+              <XCircle className="h-5 w-5 text-destructive" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Erreurs actives</p>
               <div className="flex items-center gap-2">
-                <p className="text-xl font-bold">{stats.errorCount + stats.criticalCount}</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{stats.errorCount + stats.criticalCount}</p>
                 <div className="flex gap-1 text-[10px]">
                   {stats.criticalCount > 0 && (
-                    <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800 text-[10px] px-1 py-0 h-4">
+                    <Badge className="bg-secondary/10 text-secondary border-secondary/30 text-[10px] px-1 py-0 h-4">
                       {stats.criticalCount} critique{stats.criticalCount > 1 ? 's' : ''}
                     </Badge>
                   )}
                   {stats.errorCount > 0 && (
-                    <Badge className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-[10px] px-1 py-0 h-4">
+                    <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-[10px] px-1 py-0 h-4">
                       {stats.errorCount} erreur{stats.errorCount > 1 ? 's' : ''}
                     </Badge>
                   )}
@@ -905,14 +903,14 @@ export function MonitoringPage() {
         </Card>
 
         {/* Critical Events Card */}
-        <Card className="border-l-4 border-l-purple-500">
+        <Card className="border-l-4 border-l-secondary">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/40">
-              <AlertOctagon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/10">
+              <AlertOctagon className="h-5 w-5 text-secondary" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Événements critiques</p>
-              <p className="text-xl font-bold">{stats.criticalCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{stats.criticalCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -933,7 +931,7 @@ export function MonitoringPage() {
             <Bell className="h-3.5 w-3.5" />
             Alertes
             {activeAlerts.length > 0 && (
-              <Badge className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-[10px] px-1.5 py-0 h-4 ml-1">
+              <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-[10px] px-1.5 py-0 h-4 ml-1">
                 {activeAlerts.length}
               </Badge>
             )}
@@ -1002,11 +1000,11 @@ export function MonitoringPage() {
             <div className="space-y-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-20" />
+                  <PulseSkeleton className="h-4 w-16" />
+                  <PulseSkeleton className="h-4 w-20" />
+                  <PulseSkeleton className="h-4 flex-1" />
+                  <PulseSkeleton className="h-4 w-24" />
+                  <PulseSkeleton className="h-4 w-20" />
                 </div>
               ))}
             </div>
@@ -1015,8 +1013,8 @@ export function MonitoringPage() {
           {/* Empty state */}
           {!isLoading && filteredEvents.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <Activity className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <Activity className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucun événement trouvé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1048,14 +1046,14 @@ export function MonitoringPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[100px]">Type</TableHead>
-                      <TableHead className="w-[120px]">Sévérité</TableHead>
-                      <TableHead>Message</TableHead>
-                      <TableHead className="w-[110px]">Source</TableHead>
-                      <TableHead className="w-[90px]">Durée</TableHead>
-                      <TableHead className="w-[90px]">Statut</TableHead>
-                      <TableHead className="w-[130px]">Créé le</TableHead>
-                      <TableHead className="w-[100px] text-right">Actions</TableHead>
+                      <TableHead className="w-[100px] font-display">Type</TableHead>
+                      <TableHead className="w-[120px] font-display">Sévérité</TableHead>
+                      <TableHead className="font-display">Message</TableHead>
+                      <TableHead className="w-[110px] font-display">Source</TableHead>
+                      <TableHead className="w-[90px] font-display">Durée</TableHead>
+                      <TableHead className="w-[90px] font-display">Statut</TableHead>
+                      <TableHead className="w-[130px] font-display">Créé le</TableHead>
+                      <TableHead className="w-[100px] text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1078,7 +1076,7 @@ export function MonitoringPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm font-mono">
+                          <span className="text-sm font-mono tabular-nums">
                             {formatDuration(event.duree)}
                           </span>
                         </TableCell>
@@ -1090,14 +1088,14 @@ export function MonitoringPage() {
                             {formatDate(event.createdAt)}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           <div className="flex items-center justify-end gap-1">
                             {event.statut === 'ACTIF' && (
                               <>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                                  className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
                                   onClick={() => {
                                     setResolveTarget(event)
                                     setResolveNotes('')
@@ -1118,7 +1116,7 @@ export function MonitoringPage() {
                               </>
                             )}
                             {event.statut === 'RESOLU' && (
-                              <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <span className="text-xs text-success flex items-center gap-1">
                                 <CheckCircle2 className="h-3 w-3" />
                                 Résolu
                                 {event.resoluPar && (
@@ -1152,8 +1150,8 @@ export function MonitoringPage() {
             {/* Health Gauge Card */}
             <Card className="lg:col-span-1">
               <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <HeartPulse className="h-5 w-5 text-emerald-600" />
+                <CardTitle className="flex items-center gap-2 text-lg font-display">
+                  <HeartPulse className="h-5 w-5 text-success" />
                   Santé globale
                 </CardTitle>
                 <CardDescription>
@@ -1163,27 +1161,24 @@ export function MonitoringPage() {
               <CardContent className="flex flex-col items-center justify-center py-4">
                 {isLoading ? (
                   <div className="flex items-center justify-center h-[180px] w-[180px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                    <Loader2 className="h-8 w-8 animate-spin text-success" />
                   </div>
                 ) : (
                   <HealthGauge score={platformHealthScore} size={180} />
                 )}
                 <div className="mt-4 grid grid-cols-3 gap-4 w-full text-center">
                   <div>
-                    <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                      {serviceHealths.filter((s) => s.status === 'OPERATIONNEL').length}
+                    <p className="text-lg font-bold text-success font-mono tabular-nums">{serviceHealths.filter((s) => s.status === 'OPERATIONNEL').length}
                     </p>
                     <p className="text-xs text-muted-foreground">Opérationnels</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                      {serviceHealths.filter((s) => s.status === 'DEGRADE').length}
+                    <p className="text-lg font-bold text-warning font-mono tabular-nums">{serviceHealths.filter((s) => s.status === 'DEGRADE').length}
                     </p>
                     <p className="text-xs text-muted-foreground">Dégradés</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold text-red-600 dark:text-red-400">
-                      {serviceHealths.filter((s) => s.status === 'INDISPONIBLE').length}
+                    <p className="text-lg font-bold text-destructive font-mono tabular-nums">{serviceHealths.filter((s) => s.status === 'INDISPONIBLE').length}
                     </p>
                     <p className="text-xs text-muted-foreground">Indisponibles</p>
                   </div>
@@ -1199,16 +1194,16 @@ export function MonitoringPage() {
                     <Card key={i} className="animate-pulse">
                       <CardContent className="p-5 space-y-3">
                         <div className="flex items-center gap-2.5">
-                          <Skeleton className="h-9 w-9 rounded-lg" />
+                          <PulseSkeleton className="h-9 w-9 rounded-lg" />
                           <div className="space-y-1.5">
-                            <Skeleton className="h-4 w-32" />
-                            <Skeleton className="h-3 w-20" />
+                            <PulseSkeleton className="h-4 w-32" />
+                            <PulseSkeleton className="h-3 w-20" />
                           </div>
                         </div>
-                        <Skeleton className="h-px w-full" />
+                        <PulseSkeleton className="h-px w-full" />
                         <div className="grid grid-cols-2 gap-3">
-                          <Skeleton className="h-8 w-full" />
-                          <Skeleton className="h-8 w-full" />
+                          <PulseSkeleton className="h-8 w-full" />
+                          <PulseSkeleton className="h-8 w-full" />
                         </div>
                       </CardContent>
                     </Card>
@@ -1230,11 +1225,11 @@ export function MonitoringPage() {
           {/* Active Alerts Section */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <BellRing className="h-5 w-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
+                <BellRing className="h-5 w-5 text-success" />
                 Alertes actives
                 {activeAlerts.length > 0 && (
-                  <Badge className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
+                  <Badge className="bg-destructive/10 text-destructive border-destructive/30">
                     {activeAlerts.length}
                   </Badge>
                 )}
@@ -1246,14 +1241,14 @@ export function MonitoringPage() {
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Card key={i} className="animate-pulse">
                     <CardContent className="p-4 flex items-start gap-3">
-                      <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+                      <PulseSkeleton className="h-9 w-9 rounded-lg shrink-0" />
                       <div className="flex-1 space-y-2">
                         <div className="flex gap-2">
-                          <Skeleton className="h-5 w-20" />
-                          <Skeleton className="h-5 w-16" />
+                          <PulseSkeleton className="h-5 w-20" />
+                          <PulseSkeleton className="h-5 w-16" />
                         </div>
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-8 w-48" />
+                        <PulseSkeleton className="h-4 w-3/4" />
+                        <PulseSkeleton className="h-8 w-48" />
                       </div>
                     </CardContent>
                   </Card>
@@ -1262,8 +1257,8 @@ export function MonitoringPage() {
             ) : activeAlerts.length === 0 ? (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                    <CheckCircle2 className="h-8 w-8 text-emerald-500 dark:text-emerald-400" />
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+                    <CheckCircle2 className="h-8 w-8 text-success" />
                   </div>
                   <h3 className="mt-3 text-lg font-semibold">Aucune alerte active</h3>
                   <p className="mt-1 max-w-sm text-sm text-muted-foreground">
@@ -1294,8 +1289,8 @@ export function MonitoringPage() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Settings2 className="h-5 w-5 text-teal-600" />
+                <h2 className="text-lg font-semibold flex items-center gap-2 font-display">
+                  <Settings2 className="h-5 w-5 text-success" />
                   Règles d&apos;alertes
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
@@ -1324,11 +1319,11 @@ export function MonitoringPage() {
                           <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
                             <div className="flex items-center gap-1">
                               <span>Seuil :</span>
-                              <span className="font-mono font-semibold text-foreground">{rule.threshold}</span>
+                              <span className="font-mono tabular-nums font-semibold text-foreground">{rule.threshold}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <span>Actuel :</span>
-                              <span className={`font-mono font-semibold ${isExceeded ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              <span className={`font-mono font-semibold ${isExceeded ? 'text-destructive' : 'text-success'}`}>
                                 {rule.current}
                               </span>
                             </div>
@@ -1337,7 +1332,7 @@ export function MonitoringPage() {
                           <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all ${
-                                isExceeded ? 'bg-red-500' : rule.current >= rule.threshold * 0.75 ? 'bg-amber-500' : 'bg-emerald-500'
+                                isExceeded ? 'bg-destructive' : rule.current >= rule.threshold * 0.75 ? 'bg-warning' : 'bg-success'
                               }`}
                               style={{ width: `${Math.min(100, (rule.current / rule.threshold) * 100)}%` }}
                             />
@@ -1346,7 +1341,7 @@ export function MonitoringPage() {
                         <Switch
                           checked={rule.enabled}
                           onCheckedChange={() => handleToggleAlertRule(rule.id)}
-                          className="data-[state=checked]:bg-emerald-600"
+                          className="data-[state=checked]:bg-success"
                         />
                       </div>
                     </CardContent>
@@ -1371,7 +1366,7 @@ export function MonitoringPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
               Résoudre l&apos;événement
             </DialogTitle>
             <DialogDescription>
@@ -1418,7 +1413,7 @@ export function MonitoringPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleResolve}
               disabled={isSubmitting}
             >
@@ -1486,7 +1481,7 @@ export function MonitoringPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <ArrowUpRight className="h-5 w-5 text-amber-500" />
+              <ArrowUpRight className="h-5 w-5 text-warning" />
               Escalader l&apos;événement
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -1498,8 +1493,8 @@ export function MonitoringPage() {
               <div className="flex items-center gap-2">
                 <TypeBadge type={escalateTarget.type} />
                 <SeverityBadge severite={escalateTarget.severite} />
-                <ArrowUpRight className="h-4 w-4 text-amber-500" />
-                <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800 text-xs">
+                <ArrowUpRight className="h-4 w-4 text-warning" />
+                <Badge className="bg-secondary/10 text-secondary border-secondary/30 text-xs">
                   CRITICAL
                 </Badge>
               </div>
@@ -1513,7 +1508,7 @@ export function MonitoringPage() {
                 if (escalateTarget) handleEscalate(escalateTarget)
                 setEscalateTarget(null)
               }}
-              className="bg-amber-600 hover:bg-amber-700"
+              className="bg-warning hover:bg-warning/90"
             >
               Escalader au niveau critique
             </AlertDialogAction>

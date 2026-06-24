@@ -30,8 +30,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
 import {
   Dialog,
   DialogContent,
@@ -150,11 +150,11 @@ const STATUT_LABELS: Record<string, string> = {
 }
 
 const STATUT_BG: Record<string, string> = {
-  ESSAI: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  ACTIF: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  SUSPENDU: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  EXPIRE: 'bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400',
-  RESILIE: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-300',
+  ESSAI: 'bg-warning/15 text-warning',
+  ACTIF: 'bg-success/15 text-success',
+  SUSPENDU: 'bg-destructive/15 text-destructive',
+  EXPIRE: 'bg-muted text-muted-foreground',
+  RESILIE: 'bg-destructive/25 text-destructive',
 }
 
 // ─── StatCard ───
@@ -176,7 +176,7 @@ function StatCard({ title, value, icon, accentColor, subtitle }: StatCardProps) 
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-2xl font-bold font-mono tabular-nums tracking-tight">{value}</div>
         {subtitle && (
           <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
         )}
@@ -396,39 +396,26 @@ export function AdminDashboard() {
       {/* ─── 1. Welcome Section ─── */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl">
             Bonjour, {user?.name ?? 'Administrateur'}
           </h1>
           <Badge
-            className="w-fit bg-emerald-600 text-white hover:bg-emerald-700"
+            className="w-fit bg-success text-success-foreground hover:bg-success/90"
           >
             Propriétaire SaaS
           </Badge>
         </div>
       </div>
-      <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
-        <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-        <p className="text-sm text-amber-800 dark:text-amber-300">
+      <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
+        <Lock className="h-4 w-4 text-warning" />
+        <p className="text-sm text-warning">
           🔒 Accès aux données des établissements soumis à autorisation explicite
         </p>
       </div>
 
       {/* ─── 2. KPI Row (6 cards) ─── */}
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="relative overflow-hidden">
-              <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-muted" />
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-9 w-9 rounded-lg" />
-              </CardHeader>
-              <CardContent className="pt-0">
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <StatCardSkeletonGrid count={6} />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard
@@ -483,8 +470,8 @@ export function AdminDashboard() {
         {/* Revenue Trend */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-emerald-600" />
+            <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+              <TrendingUp className="h-5 w-5 text-success" />
               Tendance des revenus
             </CardTitle>
             <CardDescription>Évolution mensuelle des revenus de la plateforme</CardDescription>
@@ -492,7 +479,7 @@ export function AdminDashboard() {
           <CardContent>
             {loading ? (
               <div className="flex h-72 items-center justify-center">
-                <Skeleton className="h-56 w-full" />
+                <PulseSkeleton className="h-56 w-full" />
               </div>
             ) : revenueTrendData.length === 0 ? (
               <div className="flex h-72 flex-col items-center justify-center text-muted-foreground">
@@ -535,8 +522,8 @@ export function AdminDashboard() {
         {/* Plan Distribution */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-teal-600" />
+            <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+              <CreditCard className="h-5 w-5 text-primary" />
               Répartition par plan
             </CardTitle>
             <CardDescription>Distribution des abonnements selon le plan choisi</CardDescription>
@@ -544,7 +531,7 @@ export function AdminDashboard() {
           <CardContent>
             {loading ? (
               <div className="flex h-64 items-center justify-center">
-                <Skeleton className="h-48 w-48 rounded-full" />
+                <PulseSkeleton className="h-48 w-48" variant="circle" />
               </div>
             ) : planData.length === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
@@ -595,8 +582,8 @@ export function AdminDashboard() {
       {/* ─── 4. Établissements Overview (Card-based) ─── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-amber-600" />
+          <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+            <Building2 className="h-5 w-5 text-warning" />
             Établissements
           </CardTitle>
           <CardDescription>Vue d&apos;ensemble des établissements de la plateforme</CardDescription>
@@ -607,11 +594,11 @@ export function AdminDashboard() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <Card key={i}>
                   <CardContent className="p-4">
-                    <Skeleton className="mb-2 h-5 w-3/4" />
-                    <Skeleton className="mb-3 h-4 w-1/2" />
+                    <PulseSkeleton className="mb-2 h-5 w-3/4" />
+                    <PulseSkeleton className="mb-3 h-4 w-1/2" />
                     <div className="flex gap-2">
-                      <Skeleton className="h-6 w-16" />
-                      <Skeleton className="h-6 w-20" />
+                      <PulseSkeleton className="h-6 w-16" />
+                      <PulseSkeleton className="h-6 w-20" />
                     </div>
                   </CardContent>
                 </Card>
@@ -628,7 +615,7 @@ export function AdminDashboard() {
                 {stats.etablissementsOverview.map((etab) => (
                   <Card
                     key={etab.id}
-                    className="relative overflow-hidden transition-shadow hover:shadow-md"
+                    className="relative overflow-hidden transition-shadow hover:shadow-md ds-lift"
                   >
                     <div
                       className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
@@ -645,7 +632,7 @@ export function AdminDashboard() {
                           </p>
                         </div>
                         {etab.proctoringActif && (
-                          <Shield className="h-4 w-4 shrink-0 text-emerald-600" />
+                          <Shield className="h-4 w-4 shrink-0 text-success" />
                         )}
                       </div>
 
@@ -656,7 +643,7 @@ export function AdminDashboard() {
                           </Badge>
                         )}
                         {etab.planNom && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
                             {etab.planNom}
                           </Badge>
                         )}
@@ -665,11 +652,11 @@ export function AdminDashboard() {
                       <div className="mb-3 flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Users className="h-3 w-3" />
-                          {etab.nbUsers}
+                          <span className="font-mono tabular-nums tracking-tight">{etab.nbUsers}</span>
                         </span>
                         <span className="flex items-center gap-1">
                           <BookOpen className="h-3 w-3" />
-                          {etab.nbFilieres} filières
+                          <span className="font-mono tabular-nums tracking-tight">{etab.nbFilieres}</span> filières
                         </span>
                       </div>
 
@@ -680,7 +667,7 @@ export function AdminDashboard() {
                             <Users className="h-3 w-3" />
                             <span className="font-medium text-foreground">{etab.responsable.name}</span>
                             {!etab.responsable.actif && (
-                              <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                              <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 bg-destructive/10 text-destructive">
                                 Inactif
                               </Badge>
                             )}
@@ -735,8 +722,8 @@ export function AdminDashboard() {
       {/* ─── 5. Quick Actions ─── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-amber-600" />
+          <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+            <Zap className="h-5 w-5 text-warning" />
             Actions rapides
           </CardTitle>
           <CardDescription>Accès directs aux fonctionnalités clés</CardDescription>
@@ -745,28 +732,28 @@ export function AdminDashboard() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Button
               variant="outline"
-              className="h-auto flex-col gap-2 py-4"
+              className="h-auto flex-col gap-2 py-4 ds-lift"
               onClick={() => router.push('/abonnements')}
             >
-              <Plus className="h-5 w-5 text-amber-600" />
+              <Plus className="h-5 w-5 text-warning" />
               <span className="text-sm font-medium">Nouvelle souscription</span>
               <span className="text-xs text-muted-foreground">Créer un établissement avec abonnement</span>
             </Button>
             <Button
               variant="outline"
-              className="h-auto flex-col gap-2 py-4"
+              className="h-auto flex-col gap-2 py-4 ds-lift"
               onClick={() => router.push('/utilisateurs')}
             >
-              <Users className="h-5 w-5 text-teal-600" />
+              <Users className="h-5 w-5 text-primary" />
               <span className="text-sm font-medium">Voir les responsables</span>
               <span className="text-xs text-muted-foreground">Gérer les comptes responsables</span>
             </Button>
             <Button
               variant="outline"
-              className="h-auto flex-col gap-2 py-4"
+              className="h-auto flex-col gap-2 py-4 ds-lift"
               onClick={() => router.push('/acces-etablissements')}
             >
-              <KeyRound className="h-5 w-5 text-red-600" />
+              <KeyRound className="h-5 w-5 text-destructive" />
               <span className="text-sm font-medium">Accès & autorisations</span>
               <span className="text-xs text-muted-foreground">Gérer les autorisations d&apos;accès</span>
             </Button>
@@ -777,8 +764,8 @@ export function AdminDashboard() {
       {/* ─── 6. Platform Health Card ─── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HeartPulse className="h-5 w-5 text-rose-500" />
+          <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+            <HeartPulse className="h-5 w-5 text-destructive" />
             Santé de la plateforme
           </CardTitle>
           <CardDescription>Indicateurs de sécurité et d&apos;activité globale</CardDescription>
@@ -788,8 +775,8 @@ export function AdminDashboard() {
             <div className="space-y-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center justify-between">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-6 w-16" />
+                  <PulseSkeleton className="h-4 w-32" />
+                  <PulseSkeleton className="h-6 w-16" />
                 </div>
               ))}
             </div>
@@ -800,12 +787,12 @@ export function AdminDashboard() {
                 {/* Active establishments vs total */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/30">
-                      <Building2 className="h-4 w-4 text-emerald-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
+                      <Building2 className="h-4 w-4 text-success" />
                     </div>
                     <span className="text-sm">Établissements actifs</span>
                   </div>
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  <Badge variant="outline" className="bg-success/10 text-success font-mono tabular-nums tracking-tight">
                     {stats?.nbAbonnementsActifs ?? 0} / {stats?.nbEtablissements ?? 0}
                   </Badge>
                 </div>
@@ -814,12 +801,12 @@ export function AdminDashboard() {
                 {/* Proctoring enabled */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 dark:bg-rose-900/30">
-                      <Shield className="h-4 w-4 text-rose-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10">
+                      <Shield className="h-4 w-4 text-destructive" />
                     </div>
                     <span className="text-sm">Proctoring activé</span>
                   </div>
-                  <Badge variant="outline" className="bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
+                  <Badge variant="outline" className="bg-destructive/10 text-destructive font-mono tabular-nums tracking-tight">
                     {stats?.nbEtablissementsProteges ?? 0}
                   </Badge>
                 </div>
@@ -828,12 +815,12 @@ export function AdminDashboard() {
                 {/* Identity verification */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-900/30">
-                      <Eye className="h-4 w-4 text-teal-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                      <Eye className="h-4 w-4 text-primary" />
                     </div>
                     <span className="text-sm">Vérification d&apos;identité</span>
                   </div>
-                  <Badge variant="outline" className="bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+                  <Badge variant="outline" className="bg-primary/10 text-primary font-mono tabular-nums tracking-tight">
                     {stats?.nbVerificationIdentite ?? 0}
                   </Badge>
                 </div>
@@ -842,20 +829,20 @@ export function AdminDashboard() {
                 {/* Average security score */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30">
-                      <Lock className="h-4 w-4 text-amber-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
+                      <Lock className="h-4 w-4 text-warning" />
                     </div>
                     <span className="text-sm">Score de sécurité moyen</span>
                   </div>
                   <Badge
                     variant="outline"
-                    className={
+                    className={`font-mono tabular-nums tracking-tight ${
                       avgSecurityScore >= 70
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        ? 'bg-success/10 text-success'
                         : avgSecurityScore >= 40
-                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                          : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    }
+                          ? 'bg-warning/10 text-warning'
+                          : 'bg-destructive/10 text-destructive'
+                    }`}
                   >
                     {avgSecurityScore}%
                   </Badge>
@@ -865,34 +852,34 @@ export function AdminDashboard() {
                 {/* Trial accounts */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30">
-                      <CheckCircle2 className="h-4 w-4 text-amber-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
+                      <CheckCircle2 className="h-4 w-4 text-warning" />
                     </div>
                     <span className="text-sm">En période d&apos;essai</span>
                   </div>
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  <Badge variant="outline" className="bg-warning/10 text-warning font-mono tabular-nums tracking-tight">
                     {stats?.nbAbonnementsEssai ?? 0}
                   </Badge>
                 </div>
               </div>
 
               {/* Right column - visual score */}
-              <div className="flex flex-col items-center justify-center rounded-xl border bg-gradient-to-br from-emerald-50 to-teal-50 p-6 dark:from-emerald-950/30 dark:to-teal-950/30">
-                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+              <div className="flex flex-col items-center justify-center rounded-xl border bg-gradient-to-br from-success/10 to-primary/10 p-6">
+                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-success">
                   Santé plateforme
                 </p>
                 <div className="flex items-end gap-1">
                   <span
-                    className="text-5xl font-bold leading-none"
+                    className="text-5xl font-bold leading-none font-mono tabular-nums tracking-tight"
                     style={{ color: '#10b981' }}
                   >
                     {avgSecurityScore}
                   </span>
-                  <span className="mb-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="mb-1 text-2xl font-semibold text-success">
                     %
                   </span>
                 </div>
-                <p className="mt-2 text-sm text-emerald-700/80 dark:text-emerald-400/80">
+                <p className="mt-2 text-sm text-success/80">
                   Score de sécurité global
                 </p>
               </div>

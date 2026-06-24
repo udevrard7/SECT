@@ -140,9 +140,9 @@ function ToggleRow({
   icon: React.ComponentType<{ className?: string }>
 }) {
   return (
-    <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors ${checked ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20' : 'border-border'} ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors ${checked ? 'border-success/30 bg-success/5' : 'border-border'} ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${checked ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="space-y-0.5 min-w-0">
@@ -194,7 +194,7 @@ function SliderRow({
   return (
     <div className="rounded-lg border p-4 space-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
@@ -202,7 +202,7 @@ function SliderRow({
             <Label htmlFor={id} className="text-sm font-medium">
               {label}
             </Label>
-            <Badge variant="secondary" className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300 font-mono text-xs">
+            <Badge variant="secondary" className="bg-info/10 text-info font-mono tabular-nums text-xs">
               {displayValue}
             </Badge>
           </div>
@@ -220,7 +220,7 @@ function SliderRow({
         step={step}
         className="w-full"
       />
-      <div className="flex justify-between text-xs text-muted-foreground">
+      <div className="flex justify-between text-xs text-muted-foreground font-mono tabular-nums">
         <span>{formatValue ? formatValue(min) : min}</span>
         <span>{formatValue ? formatValue(max) : max}</span>
       </div>
@@ -385,8 +385,8 @@ export function SecuritePage() {
         {/* ─── Header ─── */}
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-              <Shield className="h-7 w-7 text-emerald-600" />
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl font-display flex items-center gap-2">
+              <Shield className="h-7 w-7 text-success" />
               Sécurité des Évaluations
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -403,14 +403,14 @@ export function SecuritePage() {
 
         {/* ─── Stats Cards ─── */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card className="border-emerald-200 dark:border-emerald-800">
+          <Card className="border-success/30">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
                   <Eye className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                  <p className="text-2xl font-bold text-success font-mono tabular-nums">
                     {statsProctoring}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -421,14 +421,14 @@ export function SecuritePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-teal-200 dark:border-teal-800">
+          <Card className="border-info/30">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
                   <UserCheck className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-teal-700 dark:text-teal-400">
+                  <p className="text-2xl font-bold text-info font-mono tabular-nums">
                     {statsVerifIdentite}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -439,14 +439,14 @@ export function SecuritePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-amber-200 dark:border-amber-800">
+          <Card className="border-warning/30">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
                   <AlertTriangle className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                  <p className="text-2xl font-bold text-warning font-mono tabular-nums">
                     {statsAlertesFraude}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -464,7 +464,7 @@ export function SecuritePage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-2">
                 <Label className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-emerald-600" />
+                  <Building2 className="h-4 w-4 text-success" />
                   Sélectionner un établissement
                 </Label>
                 <Select
@@ -497,7 +497,7 @@ export function SecuritePage() {
               </div>
               {selectedEtablissementId && settings && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                  <Badge variant="secondary" className="bg-success/10 text-success">
                     Configuré
                   </Badge>
                 </div>
@@ -509,7 +509,7 @@ export function SecuritePage() {
         {/* ─── Loading Spinner ─── */}
         {loadingSettings && (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-success" />
             <span className="ml-3 text-sm text-muted-foreground">Chargement des paramètres...</span>
           </div>
         )}
@@ -521,8 +521,8 @@ export function SecuritePage() {
             {/* ─── Section A: Surveillance & Détection ─── */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
+                <CardTitle className="flex items-center gap-2 text-lg font-display">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success">
                     <Eye className="h-4 w-4" />
                   </div>
                   Surveillance & Détection
@@ -616,8 +616,8 @@ export function SecuritePage() {
             {/* ─── Section B: Blocage & Protection ─── */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400">
+                <CardTitle className="flex items-center gap-2 text-lg font-display">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info/10 text-info">
                     <Lock className="h-4 w-4" />
                   </div>
                   Blocage & Protection
@@ -665,8 +665,8 @@ export function SecuritePage() {
             {/* ─── Section C: Seuils & Alertes ─── */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
+                <CardTitle className="flex items-center gap-2 text-lg font-display">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10 text-warning">
                     <BellRing className="h-4 w-4" />
                   </div>
                   Seuils & Alertes
@@ -724,8 +724,8 @@ export function SecuritePage() {
             {/* ─── Section D: Analyse & Rapports ─── */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600 dark:bg-cyan-900/50 dark:text-cyan-400">
+                <CardTitle className="flex items-center gap-2 text-lg font-display">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info/10 text-info">
                     <BarChart3 className="h-4 w-4" />
                   </div>
                   Analyse & Rapports
@@ -757,17 +757,17 @@ export function SecuritePage() {
                 />
 
                 {/* Similarity explanation */}
-                <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-800 dark:bg-cyan-950/30">
-                  <h4 className="text-sm font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-2">
+                <div className="rounded-lg border border-info/30 bg-info/5 p-4">
+                  <h4 className="text-sm font-semibold text-info mb-2 flex items-center gap-2">
                     <FileSearch className="h-4 w-4" />
                     Interprétation du seuil de similarité
                   </h4>
-                  <ul className="text-sm text-cyan-700 dark:text-cyan-400 space-y-1">
+                  <ul className="text-sm text-info/80 space-y-1">
                     <li>• <strong>0.50 – 0.65</strong> : Tolérant — détecte les similarités évidentes uniquement</li>
                     <li>• <strong>0.70 – 0.85</strong> : Équilibré — bon compromis entre faux positifs et détection</li>
                     <li>• <strong>0.90 – 1.00</strong> : Strict — signale les réponses très similaires uniquement</li>
                   </ul>
-                  <p className="mt-2 text-xs text-cyan-600 dark:text-cyan-500">
+                  <p className="mt-2 text-xs text-info/80 font-mono tabular-nums">
                     Seuil actuel : <strong>{settings.seuilSimilarite.toFixed(2)}</strong> — {
                       settings.seuilSimilarite < 0.7 ? 'Tolérant' :
                       settings.seuilSimilarite < 0.9 ? 'Équilibré' : 'Strict'
@@ -780,7 +780,7 @@ export function SecuritePage() {
             {/* ─── Save Button ─── */}
             <div className="flex justify-end">
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 min-w-[180px]"
+                className="bg-success hover:bg-success/90 min-w-[180px]"
                 onClick={handleSave}
                 disabled={saving}
                 size="lg"
@@ -812,8 +812,8 @@ export function SecuritePage() {
         {/* ─── All Establishments Overview Table ─── */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Building2 className="h-5 w-5 text-emerald-600" />
+            <CardTitle className="flex items-center gap-2 text-lg font-display">
+              <Building2 className="h-5 w-5 text-success" />
               Vue d&apos;ensemble des établissements
             </CardTitle>
             <CardDescription>
@@ -833,12 +833,12 @@ export function SecuritePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Établissement</TableHead>
-                      <TableHead className="text-center">Proctoring</TableHead>
-                      <TableHead className="text-center">Vérif. identité</TableHead>
-                      <TableHead className="text-center">Blocage copie</TableHead>
-                      <TableHead className="text-center">Seuil similarité</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="font-display">Établissement</TableHead>
+                      <TableHead className="font-display text-center">Proctoring</TableHead>
+                      <TableHead className="font-display text-center">Vérif. identité</TableHead>
+                      <TableHead className="font-display text-center">Blocage copie</TableHead>
+                      <TableHead className="font-display text-center">Seuil similarité</TableHead>
+                      <TableHead className="font-display text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -857,7 +857,7 @@ export function SecuritePage() {
                             <TooltipTrigger asChild>
                               <span>
                                 {s.proctoringActif ? (
-                                  <CheckCircle2 className="h-5 w-5 text-emerald-500 inline-block" />
+                                  <CheckCircle2 className="h-5 w-5 text-success inline-block" />
                                 ) : (
                                   <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
                                 )}
@@ -873,7 +873,7 @@ export function SecuritePage() {
                             <TooltipTrigger asChild>
                               <span>
                                 {s.verificationIdentite ? (
-                                  <CheckCircle2 className="h-5 w-5 text-teal-500 inline-block" />
+                                  <CheckCircle2 className="h-5 w-5 text-info inline-block" />
                                 ) : (
                                   <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
                                 )}
@@ -889,7 +889,7 @@ export function SecuritePage() {
                             <TooltipTrigger asChild>
                               <span>
                                 {s.blocageCopie ? (
-                                  <CheckCircle2 className="h-5 w-5 text-amber-500 inline-block" />
+                                  <CheckCircle2 className="h-5 w-5 text-warning inline-block" />
                                 ) : (
                                   <XCircle className="h-5 w-5 text-muted-foreground/40 inline-block" />
                                 )}
@@ -901,16 +901,16 @@ export function SecuritePage() {
                           </Tooltip>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant="secondary" className="font-mono text-xs">
+                          <Badge variant="secondary" className="font-mono tabular-nums text-xs">
                             {s.seuilSimilarite.toFixed(2)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleSelectFromTable(s.etablissementId)}
-                            className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            className="text-success hover:bg-success/10"
                           >
                             <Settings2 className="h-4 w-4 mr-1" />
                             Configurer

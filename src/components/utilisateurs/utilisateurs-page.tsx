@@ -81,7 +81,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 
@@ -156,13 +156,13 @@ function getInitials(name: string): string {
 function getRoleBadge(role: string) {
   switch (role) {
     case 'ADMIN':
-      return <Badge className="bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800">Admin</Badge>
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 ">Admin</Badge>
     case 'RESPONSABLE':
-      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">Responsable</Badge>
+      return <Badge className="bg-warning/15 text-warning border-warning/30 ">Responsable</Badge>
     case 'ENSEIGNANT':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Enseignant</Badge>
+      return <Badge className="bg-success/15 text-success border-success/30 ">Enseignant</Badge>
     case 'ETUDIANT':
-      return <Badge className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">Étudiant</Badge>
+      return <Badge className="bg-info/15 text-info border-info/30 ">Étudiant</Badge>
     default:
       return <Badge variant="outline">{role}</Badge>
   }
@@ -170,11 +170,11 @@ function getRoleBadge(role: string) {
 
 function getAvatarColor(role: string): string {
   switch (role) {
-    case 'ADMIN': return 'bg-rose-500'
-    case 'RESPONSABLE': return 'bg-amber-500'
-    case 'ENSEIGNANT': return 'bg-emerald-500'
-    case 'ETUDIANT': return 'bg-sky-500'
-    default: return 'bg-gray-500'
+    case 'ADMIN': return 'bg-destructive/100'
+    case 'RESPONSABLE': return 'bg-warning/100'
+    case 'ENSEIGNANT': return 'bg-success'
+    case 'ETUDIANT': return 'bg-info/100'
+    default: return 'bg-muted/500'
   }
 }
 
@@ -245,11 +245,11 @@ function getInvitationStatus(inv: InvitationItem): 'pending' | 'used' | 'expired
 function getInvitationStatusBadge(status: 'pending' | 'used' | 'expired') {
   switch (status) {
     case 'pending':
-      return <Badge className="bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800">En attente</Badge>
+      return <Badge className="bg-info/15 text-info border-info/30">En attente</Badge>
     case 'used':
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Utilisée</Badge>
+      return <Badge className="bg-success/15 text-success border-success/30 ">Utilisée</Badge>
     case 'expired':
-      return <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">Expirée</Badge>
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 ">Expirée</Badge>
   }
 }
 
@@ -792,8 +792,8 @@ export function UtilisateursPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Users className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-display font-bold tracking-tight tracking-tight md:text-3xl flex items-center gap-2">
+            <Users className="h-7 w-7 text-success" />
             {isAdmin ? 'Gestion des Responsables' : 'Gestion des Utilisateurs'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -802,16 +802,16 @@ export function UtilisateursPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {!isAdmin && (
-            <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenImport}>
+            <Button variant="outline" className="border-success/30 text-success  hover:bg-success/10 " onClick={handleOpenImport}>
               <FileUp className="h-4 w-4" />
               Importer
             </Button>
           )}
-          <Button variant="outline" className="border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" onClick={handleOpenInvite}>
+          <Button variant="outline" className="border-success/30 text-success  hover:bg-success/10 " onClick={handleOpenInvite}>
             <Mail className="h-4 w-4" />
             {isAdmin ? 'Inviter un responsable' : 'Inviter'}
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+          <Button className="" onClick={handleOpenCreate}>
             <UserPlus className="h-4 w-4" />
             {isAdmin ? 'Nouveau responsable' : 'Nouvel utilisateur'}
           </Button>
@@ -820,10 +820,10 @@ export function UtilisateursPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/15">
+              <Users className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
@@ -831,10 +831,10 @@ export function UtilisateursPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <UserCheck className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/15">
+              <UserCheck className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actifs</p>
@@ -844,8 +844,8 @@ export function UtilisateursPage() {
         </Card>
         <Card className="border-l-4 border-l-gray-400">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
-              <UserX className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted ">
+              <UserX className="h-5 w-5 text-muted-foreground " />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Inactifs</p>
@@ -854,10 +854,10 @@ export function UtilisateursPage() {
           </CardContent>
         </Card>
         {isAdmin ? (
-          <Card className="border-l-4 border-l-amber-500">
+          <Card className="border-l-4 border-l-warning">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                <Building2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
+                <Building2 className="h-5 w-5 text-warning" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Avec établissement</p>
@@ -866,18 +866,18 @@ export function UtilisateursPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-l-4 border-l-amber-500">
+          <Card className="border-l-4 border-l-warning">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15">
+                <Shield className="h-5 w-5 text-warning" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Par rôle</p>
                 <p className="text-sm font-semibold">
-                  <span className="text-rose-600">{adminCount}A</span>{' '}
-                  <span className="text-amber-600">{respCount}R</span>{' '}
-                  <span className="text-emerald-600">{ensCount}E</span>{' '}
-                  <span className="text-sky-600">{etuCount}É</span>
+                  <span className="text-destructive">{adminCount}A</span>{' '}
+                  <span className="text-warning">{respCount}R</span>{' '}
+                  <span className="text-success">{ensCount}E</span>{' '}
+                  <span className="text-info">{etuCount}É</span>
                 </p>
               </div>
             </CardContent>
@@ -939,13 +939,13 @@ export function UtilisateursPage() {
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4 p-4">
-              <Skeleton className="h-10 w-10 rounded-full" />
+              <PulseSkeleton className="h-10 w-10" variant="circle" />
               <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-48" />
-                <Skeleton className="h-3 w-32" />
+                <PulseSkeleton className="h-4 w-48" />
+                <PulseSkeleton className="h-3 w-32" />
               </div>
-              <Skeleton className="h-6 w-20" />
-              <Skeleton className="h-6 w-16" />
+              <PulseSkeleton className="h-6 w-20" />
+              <PulseSkeleton className="h-6 w-16" />
             </div>
           ))}
         </div>
@@ -954,10 +954,10 @@ export function UtilisateursPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && users.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <Users className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <Users className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">{isAdmin ? 'Aucun responsable trouvé' : 'Aucun utilisateur trouvé'}</h3>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">{isAdmin ? 'Aucun responsable trouvé' : 'Aucun utilisateur trouvé'}</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {search || roleFilter !== 'all' || statusFilter !== 'all'
               ? 'Aucun résultat ne correspond à vos filtres. Essayez de modifier vos critères.'
@@ -968,12 +968,12 @@ export function UtilisateursPage() {
           {!search && roleFilter === 'all' && statusFilter === 'all' && (
             <div className="flex gap-2 mt-6">
               {!isAdmin && (
-                <Button variant="outline" className="border-emerald-200 dark:border-emerald-800" onClick={handleOpenImport}>
+                <Button variant="outline" className="border-success/30" onClick={handleOpenImport}>
                   <FileUp className="h-4 w-4" />
                   Importer
                 </Button>
               )}
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenCreate}>
+              <Button className="" onClick={handleOpenCreate}>
                 <UserPlus className="h-4 w-4" />
                 {isAdmin ? 'Créer un responsable' : 'Créer un utilisateur'}
               </Button>
@@ -1045,9 +1045,9 @@ export function UtilisateursPage() {
                     )}
                     <TableCell>
                       {u.actif ? (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Actif</Badge>
+                        <Badge className="bg-success/15 text-success border-success/30 ">Actif</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">Inactif</Badge>
+                        <Badge className="bg-muted text-muted-foreground border-border ">Inactif</Badge>
                       )}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
@@ -1082,7 +1082,7 @@ export function UtilisateursPage() {
                             )}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            className="text-red-600 dark:text-red-400"
+                            className="text-destructive"
                             onClick={() => setDeleteTarget(u)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -1137,15 +1137,15 @@ export function UtilisateursPage() {
           <Separator />
           <div>
             <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Send className="h-5 w-5 text-emerald-600" />
+              <Send className="h-5 w-5 text-success" />
               Invitations
               {pendingInvitations.length > 0 && (
-                <Badge className="bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 ml-1">
+                <Badge className="bg-info/15 text-info border-info/30 ml-1">
                   {pendingInvitations.length} en attente
                 </Badge>
               )}
               {expiredInvitations.length > 0 && (
-                <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 ml-1">
+                <Badge className="bg-destructive/15 text-destructive border-destructive/30  ml-1">
                   {expiredInvitations.length} expirée(s)
                 </Badge>
               )}
@@ -1158,7 +1158,7 @@ export function UtilisateursPage() {
           {invitationsLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 2 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <PulseSkeleton key={i} className="h-12 w-full" />
               ))}
             </div>
           ) : (
@@ -1195,7 +1195,7 @@ export function UtilisateursPage() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           <div>{formatDate(inv.createdAt)}</div>
-                          <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                          <div className="text-xs text-info flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             {getExpiryCountdown(inv.expiresAt)}
                           </div>
@@ -1207,7 +1207,7 @@ export function UtilisateursPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/30/20"
                             onClick={() => setCancelInviteTarget(inv)}
                           >
                             <X className="h-3 w-3 mr-1" />
@@ -1243,7 +1243,7 @@ export function UtilisateursPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                              className="h-7 text-xs text-success hover:text-success hover:bg-success/10  "
                               onClick={() => setRenvoyerTarget(inv)}
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
@@ -1252,7 +1252,7 @@ export function UtilisateursPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                              className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/30/20"
                               onClick={() => setCancelInviteTarget(inv)}
                             >
                               <X className="h-3 w-3" />
@@ -1306,12 +1306,12 @@ export function UtilisateursPage() {
             <DialogTitle className="flex items-center gap-2">
               {editingUser ? (
                 <>
-                  <Users className="h-5 w-5 text-emerald-600" />
+                  <Users className="h-5 w-5 text-success" />
                   {isAdmin ? 'Modifier le responsable' : 'Modifier l\'utilisateur'}
                 </>
               ) : (
                 <>
-                  <UserPlus className="h-5 w-5 text-emerald-600" />
+                  <UserPlus className="h-5 w-5 text-success" />
                   {isAdmin ? 'Nouveau responsable' : 'Nouvel utilisateur'}
                 </>
               )}
@@ -1327,13 +1327,13 @@ export function UtilisateursPage() {
             {/* ─── Registration Mode Toggle (only for new users) ─── */}
             {!editingUser && (
               <>
-                <div className="flex rounded-lg border border-emerald-200 dark:border-emerald-800 overflow-hidden">
+                <div className="flex rounded-lg border border-success/30 overflow-hidden">
                   <button
                     type="button"
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium transition-all ${
                       registrationMode === 'invitation'
-                        ? 'bg-emerald-600 text-white shadow-inner'
-                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:hover:bg-emerald-900/40'
+                        ? 'bg-success text-white shadow-inner'
+                        : 'bg-success/10 text-success hover:bg-success/15   '
                     }`}
                     onClick={() => {
                       setRegistrationMode('invitation')
@@ -1345,10 +1345,10 @@ export function UtilisateursPage() {
                   </button>
                   <button
                     type="button"
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-l border-emerald-200 dark:border-emerald-800 ${
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-l border-success/30 ${
                       registrationMode === 'direct'
-                        ? 'bg-emerald-600 text-white shadow-inner'
-                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:hover:bg-emerald-900/40'
+                        ? 'bg-success text-white shadow-inner'
+                        : 'bg-success/10 text-success hover:bg-success/15   '
                     }`}
                     onClick={() => {
                       setRegistrationMode('direct')
@@ -1362,18 +1362,18 @@ export function UtilisateursPage() {
 
                 {/* Mode description */}
                 {registrationMode === 'invitation' && (
-                  <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/30">
-                    <Mail className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                  <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 p-3">
+                    <Mail className="h-4 w-4 text-info mt-0.5 shrink-0" />
+                    <p className="text-xs text-info">
                       Un email d&apos;invitation sera envoyé à l&apos;utilisateur. Il devra cliquer sur le lien et définir son propre mot de passe. Le lien est valable <strong>48 heures</strong>.
                     </p>
                   </div>
                 )}
 
                 {registrationMode === 'direct' && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                    <KeyRound className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                  <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3  ">
+                    <KeyRound className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                    <p className="text-xs text-warning">
                       Un mot de passe temporaire sera généré automatiquement. L&apos;utilisateur devra le changer à sa première connexion.
                     </p>
                   </div>
@@ -1522,7 +1522,7 @@ export function UtilisateursPage() {
                     </SelectContent>
                   </Select>
                   {isAdmin && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <p className="text-xs text-warning flex items-center gap-1">
                       <Shield className="h-3 w-3" />
                       En tant qu&apos;admin, vous ne pouvez créer que des responsables.
                     </p>
@@ -1563,7 +1563,7 @@ export function UtilisateursPage() {
                     </SelectContent>
                   </Select>
                   {isEtablissementRequired && !formEtablissementId && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <p className="text-xs text-warning flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       Un responsable doit être rattaché à un établissement
                     </p>
@@ -1591,7 +1591,7 @@ export function UtilisateursPage() {
             {/* ─── Invitation result (after successful send) ─── */}
             {!editingUser && registrationMode === 'invitation' && invitationResult && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <div className="flex items-center gap-2 text-success">
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-semibold">Invitation envoyée avec succès</span>
                 </div>
@@ -1668,7 +1668,7 @@ export function UtilisateursPage() {
                     </SelectContent>
                   </Select>
                   {isAdmin && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <p className="text-xs text-warning flex items-center gap-1">
                       <Shield className="h-3 w-3" />
                       En tant qu&apos;admin, vous ne pouvez créer que des responsables.
                     </p>
@@ -1696,7 +1696,7 @@ export function UtilisateursPage() {
                     </SelectContent>
                   </Select>
                   {isEtablissementRequired && !formEtablissementId && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <p className="text-xs text-warning flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       Un responsable doit être rattaché à un établissement
                     </p>
@@ -1743,7 +1743,7 @@ export function UtilisateursPage() {
                   Fermer
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className=""
                   onClick={() => {
                     resetForm()
                     setRegistrationMode('invitation')
@@ -1762,7 +1762,7 @@ export function UtilisateursPage() {
                   Annuler
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className=""
                   onClick={handleSubmit}
                   disabled={isSubmitting}
                 >
@@ -1779,7 +1779,7 @@ export function UtilisateursPage() {
                   Annuler
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className=""
                   onClick={handleSubmit}
                   disabled={isSubmitting}
                 >
@@ -1805,7 +1805,7 @@ export function UtilisateursPage() {
                   Annuler
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className=""
                   onClick={handleSubmit}
                   disabled={isSubmitting}
                 >
@@ -1837,7 +1837,7 @@ export function UtilisateursPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
               Compte créé avec succès
             </DialogTitle>
             <DialogDescription>
@@ -1882,15 +1882,15 @@ export function UtilisateursPage() {
                 </div>
               </div>
 
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-amber-700 dark:text-amber-300">
+              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3  ">
+                <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                <p className="text-xs text-warning">
                   L&apos;utilisateur devra changer ce mot de passe à sa première connexion. Transmettez ces identifiants de manière sécurisée.
                 </p>
               </div>
 
               <Button
-                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                className="w-full "
                 onClick={() => {
                   const credentials = `Email: ${directCreationResult.email}\nMot de passe: ${directCreationResult.temporaryPassword}`
                   navigator.clipboard.writeText(credentials)
@@ -1921,7 +1921,7 @@ export function UtilisateursPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileUp className="h-5 w-5 text-emerald-600" />
+              <FileUp className="h-5 w-5 text-success" />
               Importer des utilisateurs
             </DialogTitle>
             <DialogDescription>
@@ -1966,8 +1966,8 @@ export function UtilisateursPage() {
             {importResult && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+                  <CheckCircle2 className="h-5 w-5 text-success" />
+                  <span className="font-semibold text-success ">
                     Import terminé : {importResult.imported} utilisateur(s) créé(s)
                   </span>
                 </div>
@@ -2010,12 +2010,12 @@ export function UtilisateursPage() {
                 )}
 
                 {importResult.errors.length > 0 && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3">
-                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1">
+                  <div className="rounded-lg border border-warning/30 bg-warning/10   p-3">
+                    <p className="text-xs font-semibold text-warning dark:text-warning mb-2 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {importResult.errors.length} erreur(s)
                     </p>
-                    <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                    <ul className="text-xs text-warning dark:text-warning space-y-1">
                       {importResult.errors.map((e, i) => (
                         <li key={i}>Ligne {e.row} ({e.email}): {e.error}</li>
                       ))}
@@ -2032,7 +2032,7 @@ export function UtilisateursPage() {
             </Button>
             {!importResult && (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className=""
                 onClick={handleImportSubmit}
                 disabled={importSubmitting}
               >
@@ -2066,7 +2066,7 @@ export function UtilisateursPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
             >
               Supprimer
@@ -2088,7 +2088,7 @@ export function UtilisateursPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleCancelInvitation}
             >
               Confirmer l&apos;annulation
@@ -2102,7 +2102,7 @@ export function UtilisateursPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-emerald-600" />
+              <RefreshCw className="h-5 w-5 text-success" />
               Renvoyer l&apos;invitation
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -2113,7 +2113,7 @@ export function UtilisateursPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className=""
               onClick={handleRenvoyerInvitation}
               disabled={isRenvoying}
             >

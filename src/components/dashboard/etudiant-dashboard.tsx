@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
 import {
   AreaChart,
   Area,
@@ -81,18 +81,19 @@ const itemVariants = {
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
+      <StatCardSkeletonGrid count={4} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-40 w-full" />
+          <PulseSkeleton className="h-24 w-full" variant="card" />
+          <PulseSkeleton className="h-40 w-full" variant="card" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-64 w-full" />
+            <PulseSkeleton className="h-64 w-full" variant="card" />
+            <PulseSkeleton className="h-64 w-full" variant="card" />
           </div>
         </div>
         <div className="lg:col-span-1 space-y-6">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <PulseSkeleton className="h-48 w-full" variant="card" />
+          <PulseSkeleton className="h-64 w-full" variant="card" />
         </div>
       </div>
     </div>
@@ -105,9 +106,9 @@ function ObjectiveCard() {
   const [isEditing, setIsEditing] = useState(false)
 
   return (
-    <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950 dark:to-teal-950 border-emerald-200 dark:border-emerald-800">
+    <Card className="bg-gradient-to-br from-success/10 to-primary/10 border-success/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+        <CardTitle className="flex items-center gap-2 text-success font-display tracking-tight">
           <Target className="h-5 w-5" />
           Mon Objectif
         </CardTitle>
@@ -119,7 +120,7 @@ function ObjectiveCard() {
               type="text"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              className="flex-grow bg-transparent border-b border-emerald-500 focus:outline-none"
+              className="flex-grow bg-transparent border-b border-success focus:outline-none"
             />
             <Button size="sm" onClick={() => setIsEditing(false)}>
               <Check className="h-4 w-4" />
@@ -142,8 +143,8 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEtudiant[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-emerald-600" />
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <CalendarDays className="h-5 w-5 text-success" />
           Épreuves à venir
         </CardTitle>
         <CardDescription>Votre planning d&apos;examens</CardDescription>
@@ -156,12 +157,12 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEtudiant[] }) {
             <div className="absolute left-0 top-0 h-full w-0.5 bg-border -translate-x-1/2 ml-3"></div>
             {epreuves.map((exam) => (
               <motion.div key={exam.id} variants={itemVariants} className="mb-8">
-                <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-emerald-500 flex items-center justify-center -translate-x-1/2 ml-0.5">
-                  <CalendarDays className="h-3 w-3 text-emerald-500" />
+                <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-success flex items-center justify-center -translate-x-1/2 ml-0.5">
+                  <CalendarDays className="h-3 w-3 text-success" />
                 </div>
                 <p className="font-semibold">{exam.titre}</p>
                 <p className="text-sm text-muted-foreground">Du {formatDateFR(exam.date)}</p>
-                <p className="text-sm text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                <p className="text-sm text-destructive font-medium flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5" />
                   Limite : {formatDateFR(exam.dateFin)}
                 </p>
@@ -187,7 +188,7 @@ function EmptyDashboard({ name }: { name: string }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
         Bonjour, {name} ! Bienvenue sur votre espace.
       </motion.h1>
 
@@ -195,15 +196,15 @@ function EmptyDashboard({ name }: { name: string }) {
 
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <GraduationCap className="h-10 w-10 text-emerald-500" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <GraduationCap className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Bienvenue sur SECT !</h3>
+          <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Bienvenue sur SECT !</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Vous n&apos;avez pas encore d&apos;épreuves ou de résultats. Consultez vos épreuves pour commencer.
           </p>
           <Button
-            className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+            className="mt-4 bg-success hover:bg-success/90"
             onClick={() => router.push('/mes-epreuves')}
           >
             <CalendarDays className="mr-2 h-4 w-4" />
@@ -308,7 +309,7 @@ export function EtudiantDashboard() {
     >
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+        <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           Bonjour, {name} ! Bienvenue sur votre espace.
         </motion.h1>
         <Button
@@ -358,19 +359,19 @@ export function EtudiantDashboard() {
       {/* ─── In-progress session alert ─── */}
       {data.sessionEnCours && (
         <motion.div variants={itemVariants}>
-          <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+          <Card className="border-warning/40 bg-warning/10">
             <CardContent className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
-                  <Clock className="h-5 w-5 text-amber-600" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20">
+                  <Clock className="h-5 w-5 text-warning" />
                 </div>
                 <div>
-                  <p className="font-semibold text-amber-800 dark:text-amber-300">Épreuve en cours</p>
-                  <p className="text-sm text-amber-700 dark:text-amber-400">{data.sessionEnCours.epreuveTitre}</p>
+                  <p className="font-semibold text-warning">Épreuve en cours</p>
+                  <p className="text-sm text-warning">{data.sessionEnCours.epreuveTitre}</p>
                 </div>
               </div>
               <Button
-                className="bg-amber-600 hover:bg-amber-700"
+                className="bg-warning hover:bg-warning/90"
                 onClick={() => router.push(`/passation?epreuveId=${data.sessionEnCours!.epreuveId}`)}
               >
                 <Play className="mr-2 h-4 w-4" /> Reprendre
@@ -396,7 +397,7 @@ export function EtudiantDashboard() {
             <motion.div variants={itemVariants}>
               <ChartCard
                 title="Évolution des scores"
-                icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
               >
                 <div className="h-72">
                   {data.evolutionScores.length > 0 ? (
@@ -448,7 +449,7 @@ export function EtudiantDashboard() {
             <motion.div variants={itemVariants}>
               <ChartCard
                 title="Performance par type"
-                icon={<BarChart3 className="h-4 w-4 text-teal-600" />}
+                icon={<BarChart3 className="h-4 w-4 text-primary" />}
               >
                 <div className="h-72">
                   {data.performanceParType.length > 0 ? (
@@ -496,7 +497,7 @@ export function EtudiantDashboard() {
           <motion.div variants={itemVariants}>
             <Card>
               <CardHeader>
-                <CardTitle>Résultats Récents</CardTitle>
+                <CardTitle className="font-display tracking-tight">Résultats Récents</CardTitle>
               </CardHeader>
               <CardContent>
                 {data.resultatsRecents.length === 0 ? (
@@ -514,7 +515,7 @@ export function EtudiantDashboard() {
                       return (
                         <div key={result.id} className="flex items-center">
                           <div
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs font-mono tabular-nums tracking-tight"
                             style={{
                               backgroundColor: `${scoreColor}20`,
                               color: scoreColor,

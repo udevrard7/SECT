@@ -49,8 +49,8 @@ export function ResultatsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight md:text-3xl">
-            <TrendingUp className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+          <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight md:text-3xl">
+            <TrendingUp className="h-7 w-7 text-success" />
             Résultats & Analyses
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -89,7 +89,7 @@ export function ResultatsPage() {
             {atRiskCount > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-1 h-5 min-w-5 justify-center bg-red-100 px-1 text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                className="ml-1 h-5 min-w-5 justify-center bg-destructive/15 px-1 text-xs text-destructive"
               >
                 {atRiskCount}
               </Badge>
@@ -100,9 +100,9 @@ export function ResultatsPage() {
         {/* ─── Vue d'ensemble ─── */}
         <TabsContent value="overview" className="mt-6 space-y-6">
           {overviewQuery.isError ? (
-            <Card className="border-l-4 border-l-red-500">
+            <Card className="border-l-4 border-l-destructive">
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <AlertTriangle className="h-10 w-10 text-red-500" />
+                <AlertTriangle className="h-10 w-10 text-destructive" />
                 <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
                 <p className="mt-1 max-w-xs text-sm text-muted-foreground">
                   Impossible de charger les analyses globales.
@@ -134,27 +134,27 @@ export function ResultatsPage() {
             <div className="space-y-6">
               {/* KPIs étudiants */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Card className="border-l-4 border-l-emerald-500">
+                <Card className="border-l-4 border-l-success">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Total étudiants évalués</p>
-                    <p className="text-2xl font-bold">
+                    <p className="font-mono text-2xl font-bold tabular-nums">
                       {new Set(overview.studentsAtRisk.map((s) => s.etudiantId)).size + atRiskCount}
                     </p>
                   </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-amber-500">
+                <Card className="border-l-4 border-l-warning">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Étudiants en difficulté</p>
-                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                    <p className="font-mono text-2xl font-bold tabular-nums text-warning">
                       {atRiskCount}
                     </p>
                     <p className="text-xs text-muted-foreground">moyenne &lt; 8/20</p>
                   </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-emerald-500">
+                <Card className="border-l-4 border-l-success">
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Étudiants en réussite</p>
-                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                    <p className="font-mono text-2xl font-bold tabular-nums text-success">
                       {Math.max(0, overview.totalSessions > 0 ? overview.totalSessions - atRiskCount : 0)}
                     </p>
                     <p className="text-xs text-muted-foreground">moyenne ≥ 10/20</p>

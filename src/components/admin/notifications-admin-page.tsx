@@ -74,7 +74,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
@@ -199,15 +199,15 @@ function getTypeIcon(type: string) {
 function getTypeBadgeClasses(type: string) {
   switch (type) {
     case 'INFO':
-      return 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800'
+      return 'bg-info/10 text-info border-info/30'
     case 'WARNING':
-      return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
+      return 'bg-warning/10 text-warning border-warning/30'
     case 'ERROR':
-      return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+      return 'bg-destructive/10 text-destructive border-destructive/30'
     case 'SUCCESS':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
+      return 'bg-success/10 text-success border-success/30'
     case 'BROADCAST':
-      return 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800'
+      return 'bg-success/10 text-success border-success/30'
     default:
       return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300'
   }
@@ -216,15 +216,15 @@ function getTypeBadgeClasses(type: string) {
 function getTypeIconColor(type: string) {
   switch (type) {
     case 'INFO':
-      return 'text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-900/40'
+      return 'text-info bg-info/10'
     case 'WARNING':
-      return 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40'
+      return 'text-warning bg-warning/10'
     case 'ERROR':
-      return 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40'
+      return 'text-destructive bg-destructive/10'
     case 'SUCCESS':
-      return 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40'
+      return 'text-success bg-success/10'
     case 'BROADCAST':
-      return 'text-teal-600 dark:text-teal-400 bg-teal-100 dark:bg-teal-900/40'
+      return 'text-success bg-success/10'
     default:
       return 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800'
   }
@@ -240,19 +240,19 @@ function getPriorityBadge(priorite: string) {
       )
     case 'NORMALE':
       return (
-        <Badge className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">
+        <Badge className="bg-info/10 text-info border-info/30">
           Normale
         </Badge>
       )
     case 'HAUTE':
       return (
-        <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+        <Badge className="bg-warning/10 text-warning border-warning/30">
           Haute
         </Badge>
       )
     case 'URGENTE':
       return (
-        <Badge className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 animate-pulse">
+        <Badge className="bg-destructive/10 text-destructive border-destructive/30 animate-pulse">
           Urgente
         </Badge>
       )
@@ -686,8 +686,8 @@ export function NotificationsAdminPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <Bell className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <Bell className="h-7 w-7 text-success" />
             Centre de Notifications
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -698,47 +698,47 @@ export function NotificationsAdminPage() {
 
       {/* ─── Stats Cards ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <EyeOff className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <EyeOff className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Non lues</p>
-              <p className="text-xl font-bold">{unreadCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{unreadCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <Megaphone className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Megaphone className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Diffusions envoyées</p>
-              <p className="text-xl font-bold">{broadcastCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{broadcastCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <CheckCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <CheckCheck className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Taux de lecture</p>
-              <p className="text-xl font-bold">{readRate}%</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{readRate}%</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-cyan-500">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
-              <Clock className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
+              <Clock className="h-5 w-5 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Aujourd&apos;hui</p>
-              <p className="text-xl font-bold">{todayNotifications}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{todayNotifications}</p>
             </div>
           </CardContent>
         </Card>
@@ -857,7 +857,7 @@ export function NotificationsAdminPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                className="border-success/30 text-success hover:bg-success/10"
                 onClick={handleMarkAllRead}
                 disabled={unreadCount === 0}
               >
@@ -867,7 +867,7 @@ export function NotificationsAdminPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10"
                 onClick={() => setDeleteAllReadOpen(true)}
                 disabled={notifications.filter((n) => n.lu).length === 0}
               >
@@ -887,11 +887,11 @@ export function NotificationsAdminPage() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <Card key={i} className="animate-pulse">
                   <CardContent className="p-4 flex items-start gap-3">
-                    <Skeleton className="h-10 w-10 rounded-lg" />
+                    <PulseSkeleton className="h-10 w-10 rounded-lg" />
                     <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                      <Skeleton className="h-3 w-1/4" />
+                      <PulseSkeleton className="h-4 w-3/4" />
+                      <PulseSkeleton className="h-3 w-1/2" />
+                      <PulseSkeleton className="h-3 w-1/4" />
                     </div>
                   </CardContent>
                 </Card>
@@ -902,15 +902,15 @@ export function NotificationsAdminPage() {
           {/* Empty state */}
           {!isLoading && notifications.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <Bell className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <Bell className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucune notification</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Aucune notification ne correspond à vos filtres. Essayez de modifier les critères ou créez une nouvelle diffusion.
               </p>
               <Button
-                className="mt-6 bg-emerald-600 hover:bg-emerald-700"
+                className="mt-6 bg-success hover:bg-success/90"
                 onClick={() => setActiveTab('diffuser')}
               >
                 <Send className="h-4 w-4" />
@@ -930,7 +930,7 @@ export function NotificationsAdminPage() {
                     key={notif.id}
                     className={`transition-all hover:shadow-md cursor-pointer group ${
                       !notif.lu
-                        ? 'border-l-4 border-l-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/10'
+                        ? 'border-l-4 border-l-success bg-success/10'
                         : 'border-l-4 border-l-transparent'
                     }`}
                     onClick={() => {
@@ -953,7 +953,7 @@ export function NotificationsAdminPage() {
                           <div className="flex items-start gap-2">
                             <h4 className="font-semibold text-sm leading-tight flex-1">
                               {!notif.lu && (
-                                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 mr-1.5 mt-1.5 float-left" />
+                                <span className="inline-block h-2 w-2 rounded-full bg-success mr-1.5 mt-1.5 float-left" />
                               )}
                               {notif.titre}
                             </h4>
@@ -984,7 +984,7 @@ export function NotificationsAdminPage() {
                             {isExpanded || !isLong ? notif.message : truncateText(notif.message, 150)}
                             {isLong && (
                               <button
-                                className="ml-1 text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
+                                className="ml-1 text-success hover:underline font-medium"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   toggleExpand(notif.id)
@@ -1001,7 +1001,7 @@ export function NotificationsAdminPage() {
                               <Button
                                 variant="link"
                                 size="sm"
-                                className="h-auto p-0 text-emerald-600 dark:text-emerald-400"
+                                className="h-auto p-0 text-success"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                 }}
@@ -1026,7 +1026,7 @@ export function NotificationsAdminPage() {
                                 </span>
                               )}
                               {notif.expireLe && (
-                                <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                                <span className="flex items-center gap-1 text-warning">
                                   <Calendar className="h-3 w-3" />
                                   Expire {formatDate(notif.expireLe)}
                                 </span>
@@ -1048,7 +1048,7 @@ export function NotificationsAdminPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                                className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setDeleteTarget(notif)
@@ -1075,14 +1075,14 @@ export function NotificationsAdminPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-10" />
-                      <TableHead>Type</TableHead>
-                      <TableHead>Titre</TableHead>
-                      <TableHead>Priorité</TableHead>
-                      <TableHead>Catégorie</TableHead>
-                      <TableHead>Destinataire</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="w-10 font-display" />
+                      <TableHead className="font-display">Type</TableHead>
+                      <TableHead className="font-display">Titre</TableHead>
+                      <TableHead className="font-display">Priorité</TableHead>
+                      <TableHead className="font-display">Catégorie</TableHead>
+                      <TableHead className="font-display">Destinataire</TableHead>
+                      <TableHead className="font-display">Date</TableHead>
+                      <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1090,7 +1090,7 @@ export function NotificationsAdminPage() {
                       <TableRow
                         key={notif.id}
                         className={`group cursor-pointer ${
-                          !notif.lu ? 'bg-emerald-50/50 dark:bg-emerald-950/10 font-medium' : ''
+                          !notif.lu ? 'bg-success/10 font-medium' : ''
                         }`}
                         onClick={() => {
                           if (!notif.lu) handleToggleRead(notif)
@@ -1131,7 +1131,7 @@ export function NotificationsAdminPage() {
                         <TableCell className="text-xs text-muted-foreground">
                           {formatRelativeTime(notif.createdAt)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           <div className="flex items-center justify-end gap-0.5">
                             <Button
                               variant="ghost"
@@ -1148,7 +1148,7 @@ export function NotificationsAdminPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setDeleteTarget(notif)
@@ -1174,8 +1174,8 @@ export function NotificationsAdminPage() {
             {/* Form */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Send className="h-5 w-5 text-emerald-600" />
+                <CardTitle className="flex items-center gap-2 text-lg font-display">
+                  <Send className="h-5 w-5 text-success" />
                   Nouvelle diffusion
                 </CardTitle>
                 <CardDescription>
@@ -1206,7 +1206,7 @@ export function NotificationsAdminPage() {
                     className="resize-y"
                   />
                   {formMessage.includes('{{') && (
-                    <p className="text-xs text-teal-600 dark:text-teal-400 flex items-center gap-1">
+                    <p className="text-xs text-success flex items-center gap-1">
                       <Sparkles className="h-3 w-3" />
                       Variables détectées : {extractVariables(formMessage).map((v) => `{{${v}}}`).join(', ')}
                     </p>
@@ -1353,7 +1353,7 @@ export function NotificationsAdminPage() {
                   Réinitialiser
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-success hover:bg-success/90"
                   onClick={handleBroadcast}
                   disabled={isSubmitting || !formTitre || !formMessage}
                 >
@@ -1371,8 +1371,8 @@ export function NotificationsAdminPage() {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Eye className="h-5 w-5 text-teal-600" />
+                  <CardTitle className="flex items-center gap-2 text-lg font-display">
+                    <Eye className="h-5 w-5 text-success" />
                     Aperçu
                   </CardTitle>
                   <CardDescription>
@@ -1416,7 +1416,7 @@ export function NotificationsAdminPage() {
                           <Button
                             variant="link"
                             size="sm"
-                            className="h-auto p-0 text-emerald-600 dark:text-emerald-400"
+                            className="h-auto p-0 text-success"
                           >
                             {formActionLabel}
                             <ArrowRight className="h-3 w-3 ml-1" />
@@ -1426,7 +1426,7 @@ export function NotificationsAdminPage() {
                           <Clock className="h-3 w-3" />
                           À l&apos;instant
                           {formExpireLe && (
-                            <span className="ml-2 text-amber-600 dark:text-amber-400">
+                            <span className="ml-2 text-warning">
                               · Expire {formatDate(formExpireLe)}
                             </span>
                           )}
@@ -1440,8 +1440,8 @@ export function NotificationsAdminPage() {
               {/* Recent broadcasts */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Megaphone className="h-5 w-5 text-teal-600" />
+                  <CardTitle className="flex items-center gap-2 text-lg font-display">
+                    <Megaphone className="h-5 w-5 text-success" />
                     Diffusions récentes
                   </CardTitle>
                 </CardHeader>
@@ -1480,9 +1480,9 @@ export function NotificationsAdminPage() {
                                 </span>
                                 <span className="flex items-center gap-1">
                                   {broadcast.lu ? (
-                                    <Eye className="h-3 w-3 text-emerald-500" />
+                                    <Eye className="h-3 w-3 text-success" />
                                   ) : (
-                                    <EyeOff className="h-3 w-3 text-amber-500" />
+                                    <EyeOff className="h-3 w-3 text-warning" />
                                   )}
                                   {broadcast.lu ? 'Lue' : 'Non lue'}
                                 </span>
@@ -1506,7 +1506,7 @@ export function NotificationsAdminPage() {
               <Card key={template.id} className="transition-shadow hover:shadow-md flex flex-col">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2 font-display">
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${getTypeIconColor(template.type)}`}>
                         {getTypeIcon(template.type)}
                       </div>
@@ -1544,9 +1544,9 @@ export function NotificationsAdminPage() {
                   {/* Variables */}
                   {template.variables.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-teal-500" />
+                      <Sparkles className="h-3 w-3 text-success" />
                       {template.variables.map((v) => (
-                        <code key={v} className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono">
+                        <code key={v} className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono tabular-nums">
                           {`{{${v}}}`}
                         </code>
                       ))}
@@ -1557,7 +1557,7 @@ export function NotificationsAdminPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+                    className="flex-1 border-success/30 text-success hover:bg-success/10"
                     onClick={() => handleUseTemplate(template)}
                   >
                     <Copy className="h-3.5 w-3.5" />
@@ -1579,8 +1579,8 @@ export function NotificationsAdminPage() {
 
           {/* Create custom template hint */}
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-8">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-              <Plus className="h-7 w-7 text-teal-500 dark:text-teal-400" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
+              <Plus className="h-7 w-7 text-success" />
             </div>
             <h3 className="mt-3 text-sm font-semibold">Besoin d&apos;un nouveau modèle ?</h3>
             <p className="mt-1 max-w-sm text-center text-xs text-muted-foreground">
@@ -1589,7 +1589,7 @@ export function NotificationsAdminPage() {
             <Button
               variant="outline"
               size="sm"
-              className="mt-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+              className="mt-3 border-success/30 text-success hover:bg-success/10"
               onClick={() => setActiveTab('diffuser')}
             >
               <Send className="h-3.5 w-3.5" />
@@ -1611,7 +1611,7 @@ export function NotificationsAdminPage() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteTarget(null)}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
             >
               Supprimer
@@ -1632,7 +1632,7 @@ export function NotificationsAdminPage() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteAllReadOpen(false)}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleDeleteAllRead}
             >
               Supprimer tout
@@ -1646,7 +1646,7 @@ export function NotificationsAdminPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-emerald-600" />
+              <Edit3 className="h-5 w-5 text-success" />
               Modifier le modèle
             </DialogTitle>
             <DialogDescription>
@@ -1683,7 +1683,7 @@ export function NotificationsAdminPage() {
                 className="resize-y"
               />
               {templateFormMessage.includes('{{') && (
-                <p className="text-xs text-teal-600 dark:text-teal-400 flex items-center gap-1">
+                <p className="text-xs text-success flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   Variables : {extractVariables(templateFormMessage).map((v) => `{{${v}}}`).join(', ')}
                 </p>
@@ -1744,7 +1744,7 @@ export function NotificationsAdminPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleSaveTemplate}
               disabled={!templateFormNom || !templateFormTitre || !templateFormMessage}
             >

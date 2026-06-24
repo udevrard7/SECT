@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
 import { KpiCard } from '@/components/resultats/kpi-card'
 import { EvolutionChart, ComparisonChart, ChartCard } from '@/components/resultats/resultats-charts'
 import { ErrorState } from '@/components/shared/error-state'
@@ -75,26 +75,22 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-6 w-24" />
+        <PulseSkeleton className="h-9 w-64" />
+        <PulseSkeleton className="h-6 w-24" />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full" />
-        ))}
-      </div>
+      <StatCardSkeletonGrid count={4} />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
+          <PulseSkeleton className="h-40 w-full" variant="card" />
+          <PulseSkeleton className="h-40 w-full" variant="card" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <Skeleton className="h-72 w-full" />
-            <Skeleton className="h-72 w-full" />
+            <PulseSkeleton className="h-72 w-full" variant="card" />
+            <PulseSkeleton className="h-72 w-full" variant="card" />
           </div>
         </div>
         <div className="lg:col-span-1 space-y-6">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <PulseSkeleton className="h-48 w-full" variant="card" />
+          <PulseSkeleton className="h-64 w-full" variant="card" />
         </div>
       </div>
     </div>
@@ -107,9 +103,9 @@ function ObjectiveCard() {
   const [isEditing, setIsEditing] = useState(false)
 
   return (
-    <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950 dark:to-teal-950 border-emerald-200 dark:border-emerald-800">
+    <Card className="bg-gradient-to-br from-success/10 to-primary/10 border-success/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+        <CardTitle className="flex items-center gap-2 text-success font-display tracking-tight">
           <Target className="h-5 w-5" />
           Mon Objectif
         </CardTitle>
@@ -121,7 +117,7 @@ function ObjectiveCard() {
               type="text"
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              className="flex-grow bg-transparent border-b border-emerald-500 focus:outline-none text-lg font-semibold"
+              className="flex-grow bg-transparent border-b border-success focus:outline-none text-lg font-semibold"
             />
             <Button size="sm" onClick={() => setIsEditing(false)}>
               <Check className="h-4 w-4" />
@@ -143,8 +139,8 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEnseignant[] })
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-emerald-600" />
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <CalendarDays className="h-5 w-5 text-success" />
           Épreuves à venir
         </CardTitle>
         <CardDescription>Votre planning d&apos;examens</CardDescription>
@@ -157,18 +153,18 @@ function EpreuvesTimeline({ epreuves }: { epreuves: EpreuveAVenirEnseignant[] })
             <div className="absolute left-0 top-0 h-full w-0.5 bg-border -translate-x-1/2 ml-3"></div>
             {epreuves.map((exam) => (
               <motion.div key={exam.id} variants={itemVariants} className="mb-8 last:mb-0">
-                <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-emerald-500 flex items-center justify-center -translate-x-1/2 ml-0.5">
-                  <CalendarDays className="h-3 w-3 text-emerald-500" />
+                <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-success flex items-center justify-center -translate-x-1/2 ml-0.5">
+                  <CalendarDays className="h-3 w-3 text-success" />
                 </div>
                 <p className="font-semibold truncate" title={exam.titre}>{exam.titre}</p>
                 <p className="text-sm text-muted-foreground">Du {formatDateFR(exam.date)}</p>
-                <p className="text-sm text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                <p className="text-sm text-destructive font-medium flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">Limite : {formatDateFR(exam.dateFin)}</span>
                 </p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <UiBadge variant="outline" className="text-[10px] shrink-0">{exam.statut}</UiBadge>
-                  <span className="text-xs text-muted-foreground">{exam.nbParticipants} participant{exam.nbParticipants !== 1 ? 's' : ''}</span>
+                  <span className="text-xs text-muted-foreground font-mono tabular-nums tracking-tight">{exam.nbParticipants}</span> participant{exam.nbParticipants !== 1 ? 's' : ''}
                 </div>
               </motion.div>
             ))}
@@ -184,8 +180,8 @@ function RecentEpreuves({ epreuves }: { epreuves: RecentEpreuve[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-emerald-600" />
+        <CardTitle className="flex items-center gap-2 font-display tracking-tight">
+          <FileText className="h-5 w-5 text-success" />
           Épreuves Récentes
         </CardTitle>
       </CardHeader>
@@ -212,7 +208,7 @@ function RecentEpreuves({ epreuves }: { epreuves: RecentEpreuve[] }) {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate" title={epreuve.titre}>{epreuve.titre}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {epreuve.nbParticipants} participant{epreuve.nbParticipants !== 1 ? 's' : ''} · {formatDateFR(epreuve.date)}
+                      <span className="font-mono tabular-nums tracking-tight">{epreuve.nbParticipants}</span> participant{epreuve.nbParticipants !== 1 ? 's' : ''} · {formatDateFR(epreuve.date)}
                     </p>
                   </div>
                   <UiBadge variant="outline" className="text-[10px] shrink-0">{epreuve.statut}</UiBadge>
@@ -237,21 +233,21 @@ function EmptyDashboard({ name }: { name: string }) {
       initial="hidden"
       animate="visible"
     >
-      <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+      <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
         Bonjour, {name} ! Bienvenue sur votre espace.
       </motion.h1>
       <ObjectiveCard />
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <ClipboardPen className="h-10 w-10 text-emerald-500" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <ClipboardPen className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Bienvenue sur SECT !</h3>
+          <h3 className="mt-4 text-lg font-semibold font-display tracking-tight">Bienvenue sur SECT !</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Vous n&apos;avez pas encore créé d&apos;épreuves. Commencez par créer votre première évaluation.
           </p>
           <Button
-            className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+            className="mt-4 bg-success hover:bg-success/90"
             onClick={() => router.push('/epreuves')}
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -355,7 +351,7 @@ export function EnseignantDashboard() {
     >
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <motion.h1 variants={itemVariants} className="text-2xl font-bold tracking-tight md:text-3xl">
+        <motion.h1 variants={itemVariants} className="text-2xl font-display font-bold tracking-tight md:text-3xl">
           Bonjour, {name} ! Bienvenue sur votre espace.
         </motion.h1>
         <Button
@@ -401,23 +397,23 @@ export function EnseignantDashboard() {
       {/* ─── Pending corrections alert ─── */}
       {data.nbCorrectionsEnAttente > 0 && (
         <motion.div variants={itemVariants}>
-          <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+          <Card className="border-warning/40 bg-warning/10">
             <CardContent className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
-                  <MessageSquareWarning className="h-5 w-5 text-amber-600" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20">
+                  <MessageSquareWarning className="h-5 w-5 text-warning" />
                 </div>
                 <div>
-                  <p className="font-semibold text-amber-800 dark:text-amber-300">
-                    {data.nbCorrectionsEnAttente} correction{data.nbCorrectionsEnAttente !== 1 ? 's' : ''} en attente
+                  <p className="font-semibold text-warning">
+                    <span className="font-mono tabular-nums tracking-tight">{data.nbCorrectionsEnAttente}</span> correction{data.nbCorrectionsEnAttente !== 1 ? 's' : ''} en attente
                   </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                  <p className="text-sm text-warning">
                     Des étudiants ont soumis des réponses à évaluer
                   </p>
                 </div>
               </div>
               <Button
-                className="bg-amber-600 hover:bg-amber-700"
+                className="bg-warning hover:bg-warning/90"
                 onClick={() => router.push('/correction')}
               >
                 <ClipboardPen className="mr-2 h-4 w-4" /> Corriger
@@ -443,7 +439,7 @@ export function EnseignantDashboard() {
             <motion.div variants={itemVariants}>
               <ChartCard
                 title="Évolution des moyennes"
-                icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
               >
                 <div className="h-72">
                   <EvolutionChart data={evolutionData} height={288} />
@@ -454,7 +450,7 @@ export function EnseignantDashboard() {
             <motion.div variants={itemVariants}>
               <ChartCard
                 title="Performance par épreuve"
-                icon={<BarChart3 className="h-4 w-4 text-teal-600" />}
+                icon={<BarChart3 className="h-4 w-4 text-primary" />}
               >
                 <div className="h-72">
                   <ComparisonChart data={comparisonData} height={288} color="#14b8a6" />
@@ -467,7 +463,7 @@ export function EnseignantDashboard() {
           <motion.div variants={itemVariants}>
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 font-display tracking-tight">
                   <Inbox className="h-5 w-5" />
                   Flux d&apos;Activité
                 </CardTitle>
@@ -476,7 +472,7 @@ export function EnseignantDashboard() {
               <CardContent className="max-h-[300px] overflow-y-auto">
                 {data.pendingCorrections.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center py-6">
-                    <CheckCircle className="h-10 w-10 text-emerald-500 mb-2" />
+                    <CheckCircle className="h-10 w-10 text-success mb-2" />
                     <p className="font-semibold">Boîte de réception vide</p>
                     <p className="text-sm text-muted-foreground">Aucune nouvelle soumission à corriger.</p>
                   </div>
@@ -485,8 +481,8 @@ export function EnseignantDashboard() {
                     <div className="absolute left-0 top-0 h-full w-0.5 bg-border -translate-x-1/2 ml-3"></div>
                     {data.pendingCorrections.map((item, index) => (
                       <motion.div key={item.sessionId + index} variants={itemVariants} className="mb-6 last:mb-0">
-                        <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-amber-500 flex items-center justify-center -translate-x-1/2 ml-0.5">
-                          <MessageSquareWarning className="h-3 w-3 text-amber-500" />
+                        <div className="absolute left-0 top-1 h-6 w-6 bg-background rounded-full border-2 border-warning flex items-center justify-center -translate-x-1/2 ml-0.5">
+                          <MessageSquareWarning className="h-3 w-3 text-warning" />
                         </div>
                         <p className="text-sm truncate">
                           Correction pour <span className="font-medium">{item.etudiantNom}</span> sur{' '}

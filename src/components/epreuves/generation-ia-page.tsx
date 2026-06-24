@@ -160,26 +160,26 @@ const DIFFICULTE_LABELS: Record<string, string> = {
 }
 
 const DIFFICULTE_COLORS: Record<string, string> = {
-  FACILE: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
-  MOYEN: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-  DIFFICILE: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800',
-  EXPERT: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800',
+  FACILE: 'bg-success/15 text-success border-success/30 ',
+  MOYEN: 'bg-warning/15 text-warning border-warning/30 ',
+  DIFFICILE: 'bg-primary/15 text-primary border-primary/30 ',
+  EXPERT: 'bg-destructive/15 text-destructive border-destructive/30 ',
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  QCU: 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800',
-  QCM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-  QRC: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
+  QCU: 'bg-info/15 text-info border-info/30 ',
+  QCM: 'bg-warning/15 text-warning border-warning/30 ',
+  QRC: 'bg-success/15 text-success border-success/30 ',
   REFLEXION: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
-  CODE: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800',
+  CODE: 'bg-secondary/15 text-secondary border-secondary/30 ',
 }
 
 const TYPE_BORDER_COLORS: Record<string, string> = {
-  QCU: 'border-l-sky-500',
-  QCM: 'border-l-amber-500',
-  QRC: 'border-l-emerald-500',
+  QCU: 'border-l-info',
+  QCM: 'border-l-warning',
+  QRC: 'border-l-success',
   REFLEXION: 'border-l-purple-500',
-  CODE: 'border-l-violet-500',
+  CODE: 'border-l-secondary',
 }
 
 // ─── Animation Variants ───
@@ -220,7 +220,7 @@ function ModernStepper({ steps, currentStep, onStepClick }: {
         <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 rounded-full bg-muted" />
         {/* Active progress fill */}
         <motion.div
-          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-emerald-500"
+          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-success"
           initial={false}
           animate={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }}
           transition={{ duration: 0.4, ease: 'easeInOut' }}
@@ -241,9 +241,9 @@ function ModernStepper({ steps, currentStep, onStepClick }: {
                 className={`
                   relative flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300
                   ${isActive
-                    ? 'border-emerald-500 bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-500/20'
+                    ? 'border-success bg-success text-white shadow-lg shadow-emerald-500/30 ring-4 ring-success/20'
                     : isCompleted
-                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      ? 'border-success bg-success text-white'
                       : 'border-muted-foreground/30 bg-background text-muted-foreground'
                   }
                 `}
@@ -285,9 +285,9 @@ function ModernStepper({ steps, currentStep, onStepClick }: {
               <span
                 className={`mt-2 text-xs font-medium transition-colors duration-300 ${
                   isActive
-                    ? 'text-emerald-600 dark:text-emerald-400'
+                    ? 'text-success'
                     : isCompleted
-                      ? 'text-emerald-500'
+                      ? 'text-success'
                       : 'text-muted-foreground'
                 }`}
               >
@@ -468,13 +468,13 @@ export function GenerationIAPage() {
 
   // Helper: file type icon/label
   function getFileTypeLabel(mime: string | null): { label: string; color: string } {
-    if (!mime) return { label: 'Fichier', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-700' }
-    if (mime.includes('pdf')) return { label: 'PDF', color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800' }
-    if (mime.includes('word') || mime.includes('document')) return { label: 'DOC', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-800' }
-    if (mime.includes('powerpoint') || mime.includes('presentation')) return { label: 'PPT', color: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-800' }
-    if (mime.includes('text')) return { label: 'TXT', color: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-800' }
-    if (mime.includes('image')) return { label: 'IMG', color: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/40 dark:text-violet-400 dark:border-violet-800' }
-    return { label: 'Fichier', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-700' }
+    if (!mime) return { label: 'Fichier', color: 'bg-muted text-muted-foreground border-border /40  ' }
+    if (mime.includes('pdf')) return { label: 'PDF', color: 'bg-destructive/15 text-destructive border-destructive/30 ' }
+    if (mime.includes('word') || mime.includes('document')) return { label: 'DOC', color: 'bg-info/15 text-info border-info/30 ' }
+    if (mime.includes('powerpoint') || mime.includes('presentation')) return { label: 'PPT', color: 'bg-primary/15 text-primary border-primary/30' }
+    if (mime.includes('text')) return { label: 'TXT', color: 'bg-success/15 text-success border-success/30 ' }
+    if (mime.includes('image')) return { label: 'IMG', color: 'bg-secondary/15 text-secondary border-secondary/30 ' }
+    return { label: 'Fichier', color: 'bg-muted text-muted-foreground border-border /40  ' }
   }
 
   const NIVEAU_OPTIONS = [
@@ -989,7 +989,7 @@ export function GenerationIAPage() {
     const isEditing = editingQuestionId === q.id
     const isExpanded = expandedExplanations.has(q.id)
     const isRegenerating = regeneratingQuestionId === q.id
-    const borderColor = TYPE_BORDER_COLORS[q.type] || 'border-l-emerald-500'
+    const borderColor = TYPE_BORDER_COLORS[q.type] || 'border-l-success'
 
     return (
       <motion.div
@@ -1004,7 +1004,7 @@ export function GenerationIAPage() {
         <div className="p-5">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success ">
               {idx + 1}
             </span>
             <Badge variant="outline" className={`gap-1 ${TYPE_COLORS[q.type] || ''}`}>
@@ -1014,7 +1014,7 @@ export function GenerationIAPage() {
               {DIFFICULTE_LABELS[q.difficulte] || q.difficulte}
             </Badge>
             {q.ueCode && (
-              <Badge variant="outline" className="gap-1 bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+              <Badge variant="outline" className="gap-1 bg-info/15 text-info border-info/30 ">
                 <Layers className="h-3 w-3" />
                 {q.ueCode}
               </Badge>
@@ -1182,21 +1182,21 @@ export function GenerationIAPage() {
                     key={pIdx}
                     className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm ${
                       isCorrect
-                        ? 'bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                        ? 'bg-success/10 border border-success/30 '
                         : 'bg-muted/30'
                     }`}
                   >
                     <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold ${
                       isCorrect
-                        ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200'
+                        ? 'bg-success/20 text-success  '
                         : 'bg-muted text-muted-foreground'
                     }`}>
                       {String.fromCharCode(65 + pIdx)}
                     </span>
-                    <span className={isCorrect ? 'font-medium text-emerald-800 dark:text-emerald-200' : ''}>
+                    <span className={isCorrect ? 'font-medium text-success' : ''}>
                       {typeof prop === 'string' ? prop : prop.text}
                     </span>
-                    {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+                    {isCorrect && <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-success" />}
                   </div>
                 )
               })}
@@ -1224,7 +1224,7 @@ export function GenerationIAPage() {
               {isExpanded && (
                 <div className={`mt-2 rounded-md border p-3 text-sm whitespace-pre-wrap ${
                   q.type === 'QRC'
-                    ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                    ? 'bg-success/10 border-success/30 '
                     : 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800/50'
                 }`}>
                   {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
@@ -1239,7 +1239,7 @@ export function GenerationIAPage() {
               {/* Language badge */}
               {q.langage && (
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="gap-1 bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800">
+                  <Badge variant="outline" className="gap-1 bg-secondary/15 text-secondary border-secondary/30 ">
                     <Hash className="h-3 w-3" />
                     {(() => { const cfg = getCodingLanguageConfig(q.langage as CodingLanguage); return `${cfg.icon} ${cfg.label}`; })()}
                   </Badge>
@@ -1290,7 +1290,7 @@ export function GenerationIAPage() {
                     Solution
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-2">
-                    <pre className="rounded-md bg-emerald-950 text-emerald-100 p-3 text-xs overflow-x-auto font-mono leading-relaxed">
+                    <pre className="rounded-md bg-muted text-success p-3 text-xs overflow-x-auto font-mono leading-relaxed">
                       {Array.isArray(q.reponseCorrecte) ? q.reponseCorrecte.join('\n') : q.reponseCorrecte}
                     </pre>
                   </CollapsibleContent>
@@ -1318,10 +1318,10 @@ export function GenerationIAPage() {
                         <div key={tIdx} className="rounded-md border bg-muted/30 p-2 text-xs">
                           <div className="font-medium text-muted-foreground">{test.nom}</div>
                           <div className="mt-1 font-mono">
-                            <span className="text-sky-600 dark:text-sky-400">Entrée:</span> <span className="text-foreground">{test.entree}</span>
+                            <span className="text-info">Entrée:</span> <span className="text-foreground">{test.entree}</span>
                           </div>
                           <div className="font-mono">
-                            <span className="text-emerald-600 dark:text-emerald-400">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
+                            <span className="text-success">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
                           </div>
                           {test.description && <div className="text-muted-foreground mt-0.5 italic">{test.description}</div>}
                         </div>
@@ -1352,10 +1352,10 @@ export function GenerationIAPage() {
                         <div key={tIdx} className="rounded-md border bg-muted/30 p-2 text-xs">
                           <div className="font-medium text-muted-foreground">{test.nom}</div>
                           <div className="mt-1 font-mono">
-                            <span className="text-sky-600 dark:text-sky-400">Entrée:</span> <span className="text-foreground">{test.entree}</span>
+                            <span className="text-info">Entrée:</span> <span className="text-foreground">{test.entree}</span>
                           </div>
                           <div className="font-mono">
-                            <span className="text-emerald-600 dark:text-emerald-400">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
+                            <span className="text-success">Attendu:</span> <span className="text-foreground">{test.sortieAttendue}</span>
                           </div>
                           {test.description && <div className="text-muted-foreground mt-0.5 italic">{test.description}</div>}
                         </div>
@@ -1395,7 +1395,7 @@ export function GenerationIAPage() {
           {/* Actions */}
           {isEditing ? (
             <div className="flex items-center gap-2">
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-8" onClick={saveEditing}>
+              <Button size="sm" className=" h-8" onClick={saveEditing}>
                 <Save className="h-3 w-3" />
                 Sauvegarder
               </Button>
@@ -1413,7 +1413,7 @@ export function GenerationIAPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                className="h-8 border-warning/40 text-warning hover:bg-warning/10  dark:text-warning dark:hover:bg-warning/10"
                 onClick={() => handleRegenerateSingleQuestion(q)}
                 disabled={isRegenerating}
               >
@@ -1426,7 +1426,7 @@ export function GenerationIAPage() {
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30">
+                  <Button size="sm" variant="outline" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/10">
                     <Trash2 className="h-3 w-3" />
                     Supprimer
                   </Button>
@@ -1440,7 +1440,7 @@ export function GenerationIAPage() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteQuestion(q.id)}>
+                    <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={() => deleteQuestion(q.id)}>
                       Supprimer
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -1471,8 +1471,8 @@ export function GenerationIAPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <Sparkles className="h-7 w-7 text-emerald-600" />
+        <h1 className="text-2xl font-display font-bold tracking-tight tracking-tight md:text-3xl flex items-center gap-2">
+          <Sparkles className="h-7 w-7 text-success" />
           Génération IA d&apos;Épreuves
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1502,7 +1502,7 @@ export function GenerationIAPage() {
                 <Card>
                   <CardContent className="py-16">
                     <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                      <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                      <Loader2 className="h-8 w-8 animate-spin text-success" />
                       <p className="text-sm font-medium">Chargement des documents...</p>
                     </div>
                   </CardContent>
@@ -1513,8 +1513,8 @@ export function GenerationIAPage() {
                 <Card>
                   <CardContent className="py-12">
                     <div className="flex flex-col items-center gap-3">
-                      <div className="rounded-full bg-amber-100 p-4 dark:bg-amber-900/30">
-                        <AlertTriangle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                      <div className="rounded-full bg-warning/15 p-4 ">
+                        <AlertTriangle className="h-8 w-8 text-warning" />
                       </div>
                       <p className="text-sm font-semibold">Aucun document analysé</p>
                       <p className="text-xs text-muted-foreground text-center max-w-sm">
@@ -1523,7 +1523,7 @@ export function GenerationIAPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        className="mt-2 border-success/40 text-success hover:bg-success/10  dark:text-success dark:hover:bg-success/10"
                         onClick={() => router.push(PAGE_ROUTES.documents)}
                       >
                         <FileText className="h-3 w-3 mr-1" />
@@ -1571,7 +1571,7 @@ export function GenerationIAPage() {
                                 setSelectedUEId(val)
                               }}>
                                 <SelectTrigger className="h-9 text-sm w-full sm:w-[200px]">
-                                  <Layers className="h-3.5 w-3.5 mr-1.5 text-emerald-600 shrink-0" />
+                                  <Layers className="h-3.5 w-3.5 mr-1.5 text-success shrink-0" />
                                   <SelectValue placeholder="Toutes les UE" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1642,7 +1642,7 @@ export function GenerationIAPage() {
                         {selectedDocIds.size > 0 && (
                           <>
                             <Separator orientation="vertical" className="h-3" />
-                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                            <span className="font-medium text-success">
                               {selectedDocIds.size} sélectionné{selectedDocIds.size > 1 ? 's' : ''}
                             </span>
                           </>
@@ -1650,7 +1650,7 @@ export function GenerationIAPage() {
                         {selectedUEIdForDocs && selectedUEIdForDocs !== '__all__' && (
                           <>
                             <Separator orientation="vertical" className="h-3" />
-                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] gap-1 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800">
+                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] gap-1 bg-info/10 text-info border-info/30  ">
                               <Layers className="h-2.5 w-2.5" />
                               UE filtrée
                             </Badge>
@@ -1665,8 +1665,8 @@ export function GenerationIAPage() {
                 <motion.div variants={itemVariants}>
                   <Card className="overflow-hidden">
                     <CardHeader className="pb-2 pt-4 px-4">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <FolderOpen className="h-4 w-4 text-emerald-600" />
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
+                        <FolderOpen className="h-4 w-4 text-success" />
                         Sélectionnez les documents sources
                       </CardTitle>
                     </CardHeader>
@@ -1706,8 +1706,8 @@ export function GenerationIAPage() {
                                   transition={{ duration: 0.2 }}
                                   className={`group flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all duration-200 ${
                                     isSelected
-                                      ? 'border-emerald-400 bg-emerald-50/80 shadow-sm shadow-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:shadow-none'
-                                      : 'border-muted hover:border-emerald-300 hover:bg-muted/30 dark:hover:border-emerald-900 dark:hover:bg-muted/20'
+                                      ? 'border-success bg-success/10/80 shadow-sm   /40 dark:shadow-none'
+                                      : 'border-muted hover:border-success/40 hover:bg-muted/30 '
                                   }`}
                                   onClick={() => toggleDocSelection(doc.id)}
                                 >
@@ -1718,9 +1718,9 @@ export function GenerationIAPage() {
                                   />
 
                                   {/* File type icon */}
-                                  <div className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg ${isSelected ? 'bg-emerald-200 dark:bg-emerald-800' : 'bg-muted'}`}>
+                                  <div className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg ${isSelected ? 'bg-success/20 ' : 'bg-muted'}`}>
                                     {doc.typeMime?.includes('pdf') ? (
-                                      <FileText className="h-4.5 w-4.5 text-red-500" />
+                                      <FileText className="h-4.5 w-4.5 text-destructive" />
                                     ) : (
                                       <File className="h-4 w-4 text-muted-foreground" />
                                     )}
@@ -1728,7 +1728,7 @@ export function GenerationIAPage() {
 
                                   {/* Document info */}
                                   <div className="min-w-0 flex-1">
-                                    <p className={`text-sm font-medium truncate ${isSelected ? 'text-emerald-800 dark:text-emerald-200' : ''}`} title={doc.nomFichier}>
+                                    <p className={`text-sm font-medium truncate ${isSelected ? 'text-success' : ''}`} title={doc.nomFichier}>
                                       {doc.nomFichier}
                                     </p>
                                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -1736,7 +1736,7 @@ export function GenerationIAPage() {
                                         {fileType.label}
                                       </Badge>
                                       {doc.uniteEnseignementCode && (
-                                        <Badge variant="outline" className="h-4.5 max-w-[140px] px-1.5 text-[9px] bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 truncate gap-0.5">
+                                        <Badge variant="outline" className="h-4.5 max-w-[140px] px-1.5 text-[9px] bg-info/15 text-info border-info/30  truncate gap-0.5">
                                           <Layers className="h-2.5 w-2.5" />
                                           {doc.uniteEnseignementCode}
                                         </Badge>
@@ -1760,7 +1760,7 @@ export function GenerationIAPage() {
                                         {doc.themesDetectes.slice(0, 4).map((theme, tIdx) => (
                                           <span
                                             key={tIdx}
-                                            className="inline-flex items-center rounded-md bg-emerald-100/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                            className="inline-flex items-center rounded-md bg-success/15/60 px-1.5 py-0.5 text-[10px] font-medium text-success "
                                           >
                                             {theme}
                                           </span>
@@ -1776,7 +1776,7 @@ export function GenerationIAPage() {
 
                                   {/* Selection indicator */}
                                   {isSelected && (
-                                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                    <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
                                   )}
                                 </motion.div>
                               )
@@ -1793,7 +1793,7 @@ export function GenerationIAPage() {
                   <div className="flex items-center justify-between rounded-xl border bg-background/95 backdrop-blur-sm p-3 shadow-sm">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 text-sm shrink-0">
-                        <FileText className="h-4 w-4 text-emerald-600" />
+                        <FileText className="h-4 w-4 text-success" />
                         <span className="font-semibold">{selectedDocIds.size}</span>
                         <span className="text-muted-foreground">document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}</span>
                       </div>
@@ -1801,7 +1801,7 @@ export function GenerationIAPage() {
                         <>
                           <Separator orientation="vertical" className="h-4 shrink-0" />
                           <div className="flex items-center gap-1.5 text-sm shrink-0">
-                            <BookOpen className="h-4 w-4 text-teal-600" />
+                            <BookOpen className="h-4 w-4 text-info" />
                             <span className="font-semibold">{selectedDocumentsTotalThemes}</span>
                             <span className="text-muted-foreground">thème{selectedDocumentsTotalThemes > 1 ? 's' : ''}</span>
                           </div>
@@ -1809,7 +1809,7 @@ export function GenerationIAPage() {
                       )}
                     </div>
                     <Button
-                      className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                      className=" shrink-0"
                       disabled={!isStepValid('select-docs')}
                       onClick={goNextStep}
                     >
@@ -1838,15 +1838,15 @@ export function GenerationIAPage() {
               <motion.div variants={itemVariants}>
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 text-emerald-600" />
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
+                      <ClipboardList className="h-4 w-4 text-success" />
                       Épreuve
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-1">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
-                        <ClipboardList className="h-3 w-3 text-teal-500" />
+                        <ClipboardList className="h-3 w-3 text-info" />
                         Type de contrôle
                       </Label>
                       <Select value={typeControle} onValueChange={(val) => {
@@ -1912,7 +1912,7 @@ export function GenerationIAPage() {
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div className="space-y-1 min-w-0">
                         <Label className="text-xs font-medium flex items-center gap-1.5">
-                          <Send className="h-3 w-3 text-amber-500" />
+                          <Send className="h-3 w-3 text-warning" />
                           Note totale
                         </Label>
                         <Input
@@ -1928,7 +1928,7 @@ export function GenerationIAPage() {
                       </div>
                       <div className="space-y-1 min-w-0">
                         <Label className="text-xs font-medium flex items-center gap-1.5">
-                          <Clock className="h-3 w-3 text-emerald-500" />
+                          <Clock className="h-3 w-3 text-success" />
                           Durée (minutes)
                         </Label>
                         <Input
@@ -1966,27 +1966,27 @@ export function GenerationIAPage() {
               <motion.div variants={itemVariants}>
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-emerald-600" />
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
+                      <Brain className="h-4 w-4 text-success" />
                       Questions
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <QuestionTypeCounter
                       label="Choix unique"
-                      badgeClass="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800"
+                      badgeClass="bg-info/15 text-info border-info/30 "
                       value={qcuCount}
                       onChange={setQcuCount}
                     />
                     <QuestionTypeCounter
                       label="Choix multiple"
-                      badgeClass="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800"
+                      badgeClass="bg-warning/15 text-warning border-warning/30 "
                       value={qcmCount}
                       onChange={setQcmCount}
                     />
                     <QuestionTypeCounter
                       label="Réponse courte"
-                      badgeClass="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800"
+                      badgeClass="bg-success/15 text-success border-success/30 "
                       value={qrcCount}
                       onChange={setQrcCount}
                     />
@@ -1998,12 +1998,12 @@ export function GenerationIAPage() {
                     />
                     <QuestionTypeCounter
                       label="Programmation / Code"
-                      badgeClass="bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800"
+                      badgeClass="bg-secondary/15 text-secondary border-secondary/30 "
                       value={codeCount}
                       onChange={setCodeCount}
                     />
 
-                    <div className={`rounded-lg border p-3 ${totalQuestions > 50 ? 'bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-800' : 'bg-muted/30'}`}>
+                    <div className={`rounded-lg border p-3 ${totalQuestions > 50 ? 'bg-warning/10 border-warning/40 ' : 'bg-muted/30'}`}>
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium">
                           Total : {totalQuestions} question{totalQuestions > 1 ? 's' : ''}
@@ -2016,13 +2016,13 @@ export function GenerationIAPage() {
                         )}
                       </div>
                       {totalQuestions > 50 && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                        <p className="text-xs text-warning mt-1 flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />
                           Grand nombre de questions — la génération peut prendre plusieurs minutes
                         </p>
                       )}
                       {totalQuestions > 100 && (
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
+                        <p className="text-xs text-destructive mt-1 flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />
                           Maximum 100 questions autorisées
                         </p>
@@ -2037,8 +2037,8 @@ export function GenerationIAPage() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Settings className="h-4 w-4 text-emerald-600" />
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
+                    <Settings className="h-4 w-4 text-success" />
                     Contexte
                   </CardTitle>
                 </CardHeader>
@@ -2046,10 +2046,10 @@ export function GenerationIAPage() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
-                        <BookOpen className="h-3 w-3 text-emerald-500" />
+                        <BookOpen className="h-3 w-3 text-success" />
                         Filière cible
                         {filieres.length === 1 && (
-                          <Badge variant="outline" className="text-[10px] py-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800">Auto</Badge>
+                          <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/30 ">Auto</Badge>
                         )}
                       </Label>
                       <Select
@@ -2080,10 +2080,10 @@ export function GenerationIAPage() {
                     </div>
                     <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
-                        <Layers className="h-3 w-3 text-sky-500" />
+                        <Layers className="h-3 w-3 text-info" />
                         Niveau cible
                         {selectedFiliereId && filieres.find((f) => f.id === selectedFiliereId)?.niveaux.length === 1 && (
-                          <Badge variant="outline" className="text-[10px] py-0 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800">Auto</Badge>
+                          <Badge variant="outline" className="text-[10px] py-0 bg-success/10 text-success border-success/30 ">Auto</Badge>
                         )}
                       </Label>
                       <Select value={selectedNiveau} onValueChange={(val) => { setSelectedNiveau(val); setSelectedUEId('') }}>
@@ -2111,7 +2111,7 @@ export function GenerationIAPage() {
                     </div>
                     <div className="space-y-1 min-w-0">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
-                        <Hash className="h-3 w-3 text-teal-500" />
+                        <Hash className="h-3 w-3 text-info" />
                         UE
                       </Label>
                       <Select value={selectedUEId} onValueChange={(val) => {
@@ -2203,7 +2203,7 @@ export function GenerationIAPage() {
                   Précédent
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className=""
                   disabled={totalQuestions === 0 || isGenerating}
                   onClick={handleGenerate}
                 >
@@ -2236,19 +2236,19 @@ export function GenerationIAPage() {
           >
             {/* Summary bar at top */}
             <motion.div variants={itemVariants}>
-              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 p-4 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
+              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-success/30 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 p-4 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-teal-950/30">
                 <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <Eye className="h-4 w-4 text-success" />
                   <span className="text-sm font-semibold">{generatedContenu.questions.length} question(s)</span>
                 </div>
                 <Separator orientation="vertical" className="hidden h-5 sm:block" />
                 <div className="flex items-center gap-2">
-                  <Send className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                  <Send className="h-4 w-4 text-info" />
                   <span className="text-sm font-semibold">{generatedContenu.baremeTotal} pts / {noteTotal}</span>
                 </div>
                 <Separator orientation="vertical" className="hidden h-5 sm:block" />
                 <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <Clock className="h-4 w-4 text-warning" />
                   <span className="text-sm font-semibold">{formatDuree(duree)}</span>
                 </div>
                 <Separator orientation="vertical" className="hidden h-5 sm:block" />
@@ -2286,7 +2286,7 @@ export function GenerationIAPage() {
                         <Separator orientation="vertical" className="hidden h-5 sm:block" />
                         <div className="flex flex-wrap gap-1.5">
                           {Array.from(ueSet).map(ueCode => (
-                            <Badge key={ueCode} variant="outline" className="text-[10px] gap-1 bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">
+                            <Badge key={ueCode} variant="outline" className="text-[10px] gap-1 bg-info/15 text-info border-info/30 ">
                               <Layers className="h-3 w-3" />
                               {ueCode}
                             </Badge>
@@ -2308,9 +2308,9 @@ export function GenerationIAPage() {
 
             {/* Consignes */}
             {generatedContenu.consignes && (
-              <motion.div variants={itemVariants} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Consignes</p>
-                <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{generatedContenu.consignes}</p>
+              <motion.div variants={itemVariants} className="rounded-lg border border-warning/30 bg-warning/10 p-3  ">
+                <p className="text-xs font-semibold text-warning dark:text-warning mb-1">Consignes</p>
+                <p className="text-sm text-warning  whitespace-pre-wrap">{generatedContenu.consignes}</p>
               </motion.div>
             )}
 
@@ -2343,8 +2343,8 @@ export function GenerationIAPage() {
                 return ueGroupArray.map(([ueKey, group]) => (
                   <motion.div key={ueKey} variants={itemVariants}>
                     <div className="flex items-center gap-2 mb-2 mt-2">
-                      <Layers className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                      <Layers className="h-4 w-4 text-success" />
+                      <span className="text-sm font-semibold text-success dark:text-success">
                         {group.code ? `${group.code} — ` : ''}{group.nom}
                       </span>
                       <Badge variant="secondary" className="text-[10px]">
@@ -2376,7 +2376,7 @@ export function GenerationIAPage() {
                   Modifier les paramètres
                 </Button>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className=""
                   onClick={() => setCurrentStep('save')}
                 >
                   Suivant : Enregistrer
@@ -2400,8 +2400,8 @@ export function GenerationIAPage() {
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Save className="h-4 w-4 text-emerald-600" />
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2 font-display tracking-tight">
+                    <Save className="h-4 w-4 text-success" />
                     Enregistrer dans la Banque d&apos;Épreuves
                   </CardTitle>
                 </CardHeader>
@@ -2409,33 +2409,33 @@ export function GenerationIAPage() {
                   {/* Clean summary grid */}
                   <div className="rounded-xl border bg-muted/20 p-5">
                     <div className="flex items-center gap-2 mb-4">
-                      <Wand2 className="h-5 w-5 text-emerald-600" />
+                      <Wand2 className="h-5 w-5 text-success" />
                       <span className="font-semibold text-base">{titreEpreuve || `Épreuve IA - ${new Date().toLocaleDateString('fr-FR')}`}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="rounded-lg border bg-background p-3 text-center">
-                        <Eye className="h-4 w-4 mx-auto text-emerald-600 mb-1" />
+                        <Eye className="h-4 w-4 mx-auto text-success mb-1" />
                         <p className="text-lg font-bold">{generatedContenu.questions.length}</p>
                         <p className="text-[10px] text-muted-foreground">Questions</p>
                       </div>
                       <div className="rounded-lg border bg-background p-3 text-center">
-                        <Send className="h-4 w-4 mx-auto text-teal-600 mb-1" />
+                        <Send className="h-4 w-4 mx-auto text-info mb-1" />
                         <p className="text-lg font-bold">{generatedContenu.baremeTotal}/{noteTotal}</p>
                         <p className="text-[10px] text-muted-foreground">Points</p>
                       </div>
                       <div className="rounded-lg border bg-background p-3 text-center">
-                        <Clock className="h-4 w-4 mx-auto text-amber-600 mb-1" />
+                        <Clock className="h-4 w-4 mx-auto text-warning mb-1" />
                         <p className="text-lg font-bold">{formatDuree(duree)}</p>
                         <p className="text-[10px] text-muted-foreground">Durée</p>
                       </div>
                       <div className="rounded-lg border bg-background p-3 text-center">
-                        <FileText className="h-4 w-4 mx-auto text-sky-600 mb-1" />
+                        <FileText className="h-4 w-4 mx-auto text-info mb-1" />
                         <p className="text-lg font-bold">{selectedDocIds.size}</p>
                         <p className="text-[10px] text-muted-foreground">Documents</p>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="gap-1 bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800">
+                      <Badge variant="outline" className="gap-1 bg-info/10 text-info border-info/30  ">
                         <Sparkles className="h-3 w-3" />
                         Générée par IA
                       </Badge>
@@ -2491,7 +2491,7 @@ export function GenerationIAPage() {
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    className="border-success/40 text-success hover:bg-success/10  dark:text-success dark:hover:bg-success/10"
                     onClick={() => router.push(PAGE_ROUTES['banque-epreuves'])}
                   >
                     <Layers className="h-4 w-4" />
@@ -2502,7 +2502,7 @@ export function GenerationIAPage() {
                     whileTap={{ scale: 0.98 }}
                   >
                     <Button
-                      className="bg-emerald-600 hover:bg-emerald-700 min-w-[140px]"
+                      className=" min-w-[140px]"
                       disabled={isSaving}
                       onClick={handleSave}
                     >

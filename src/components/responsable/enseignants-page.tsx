@@ -63,7 +63,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table,
@@ -235,11 +235,11 @@ function downloadCSV(content: string, filename: string) {
 
 function getNiveauBadgeColor(niveau: string): string {
   switch (niveau) {
-    case 'L1': return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-    case 'L2': return 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800'
-    case 'L3': return 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-700'
-    case 'M1': return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
-    case 'M2': return 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-700'
+    case 'L1': return 'bg-success/10 text-success border-success/30'
+    case 'L2': return 'bg-success/10 text-success border-success/30'
+    case 'L3': return 'bg-success/10 text-success border-success/30'
+    case 'M1': return 'bg-warning/10 text-warning border-warning/30'
+    case 'M2': return 'bg-warning/10 text-warning border-warning/30'
     default: return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
   }
 }
@@ -1076,8 +1076,8 @@ export function EnseignantsPage() {
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <BookOpen className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <BookOpen className="h-7 w-7 text-success" />
             Gestion des Enseignants
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -1103,11 +1103,11 @@ export function EnseignantsPage() {
             <Download className="h-4 w-4" />
             Template CSV
           </Button>
-          <Button variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950" onClick={handleOpenImport}>
+          <Button variant="outline" className="border-warning/30 text-warning hover:bg-warning/10" onClick={handleOpenImport}>
             <Upload className="h-4 w-4" />
             Importer CSV
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenAdd}>
+          <Button className="bg-success hover:bg-success/90" onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" />
             Ajouter un enseignant
           </Button>
@@ -1116,47 +1116,47 @@ export function EnseignantsPage() {
 
       {/* ─── Stats bar ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Users className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total enseignants</p>
-              <p className="text-xl font-bold">{totalEnseignants}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalEnseignants}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <BookOpen className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <BookOpen className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Actifs</p>
-              <p className="text-xl font-bold">{activeEnseignants}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{activeEnseignants}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-emerald-400">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-              <GraduationCap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <GraduationCap className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Avec affectations</p>
-              <p className="text-xl font-bold">{withAssignments}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{withAssignments}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Settings2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <Settings2 className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Affectations niveau</p>
-              <p className="text-xl font-bold">{totalLevelAssignments}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{totalLevelAssignments}</p>
             </div>
           </CardContent>
         </Card>
@@ -1201,15 +1201,15 @@ export function EnseignantsPage() {
 
       {/* ─── Bulk action toolbar ─── */}
       {selectedIds.size > 0 && !isLoading && (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3">
-          <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+        <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
+          <span className="text-sm font-medium text-success">
             {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
           </span>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+              className="h-8 text-xs border-success/30 text-success hover:bg-success/10"
               onClick={() => setBulkActionDialog('activate')}
             >
               <Power className="h-3.5 w-3.5 mr-1" />
@@ -1227,7 +1227,7 @@ export function EnseignantsPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+              className="h-8 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
               onClick={() => setBulkActionDialog('delete')}
             >
               <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -1281,8 +1281,8 @@ export function EnseignantsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && filteredEnseignants.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <BookOpen className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <BookOpen className="h-10 w-10 text-success" />
           </div>
           <h3 className="mt-4 text-lg font-semibold">Aucun enseignant trouvé</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -1294,11 +1294,11 @@ export function EnseignantsPage() {
           </p>
           {!search && filiereFilter === 'all' && statusFilter === 'all' && filieres.length > 0 && (
             <div className="mt-6 flex gap-3">
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleOpenAdd}>
+              <Button className="bg-success hover:bg-success/90" onClick={handleOpenAdd}>
                 <Plus className="h-4 w-4" />
                 Ajouter un enseignant
               </Button>
-              <Button variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950" onClick={handleOpenImport}>
+              <Button variant="outline" className="border-warning/30 text-warning hover:bg-warning/10" onClick={handleOpenImport}>
                 <Upload className="h-4 w-4" />
                 Importer CSV
               </Button>
@@ -1314,7 +1314,7 @@ export function EnseignantsPage() {
             const teacherAssigns = (assignmentMap[enseignant.id] || []).filter((a) => filiereIds.includes(a.filiereId))
 
             return (
-              <Card key={enseignant.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(enseignant.id) ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}>
+              <Card key={enseignant.id} className={`group transition-shadow hover:shadow-md ${selectedIds.has(enseignant.id) ? 'ring-2 ring-success border-success' : ''}`}>
                 <CardContent className="flex flex-col gap-4 p-6">
                   {/* Header with checkbox */}
                   <div className="flex items-start gap-3">
@@ -1324,7 +1324,7 @@ export function EnseignantsPage() {
                         onCheckedChange={() => toggleSelect(enseignant.id)}
                         aria-label={`Sélectionner ${enseignant.name}`}
                       />
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success">
                         {getInitials(enseignant.name)}
                       </div>
                     </div>
@@ -1364,7 +1364,7 @@ export function EnseignantsPage() {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
+                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
                           onClick={() => setDeleteTarget(enseignant)}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
@@ -1377,9 +1377,9 @@ export function EnseignantsPage() {
                   {/* Status badge */}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {enseignant.actif ? (
-                      <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
+                      <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
                     ) : (
-                      <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
+                      <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                     )}
                   </div>
 
@@ -1393,7 +1393,7 @@ export function EnseignantsPage() {
                       ))}
                     </div>
                   ) : (
-                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-800 w-fit">
+                    <Badge variant="outline" className="text-xs text-warning border-warning/30 w-fit">
                       Sans affectation
                     </Badge>
                   )}
@@ -1412,25 +1412,25 @@ export function EnseignantsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">
+                    <TableHead className="w-12 font-display">
                       <Checkbox
                         checked={selectedIds.size === filteredEnseignants.length && filteredEnseignants.length > 0}
                         onCheckedChange={toggleSelectAll}
                         aria-label="Tout sélectionner"
                       />
                     </TableHead>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Filière / Niveau</TableHead>
-                    <TableHead>Statut</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="font-display">Nom</TableHead>
+                    <TableHead className="font-display">Email</TableHead>
+                    <TableHead className="font-display">Filière / Niveau</TableHead>
+                    <TableHead className="font-display">Statut</TableHead>
+                    <TableHead className="text-right font-display">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredEnseignants.map((enseignant) => {
                     const teacherAssigns = (assignmentMap[enseignant.id] || []).filter((a) => filiereIds.includes(a.filiereId))
                     return (
-                      <TableRow key={enseignant.id} className={selectedIds.has(enseignant.id) ? 'bg-emerald-50 dark:bg-emerald-950/20' : ''}>
+                      <TableRow key={enseignant.id} className={selectedIds.has(enseignant.id) ? 'bg-success/10' : ''}>
                         <TableCell>
                           <Checkbox
                             checked={selectedIds.has(enseignant.id)}
@@ -1440,7 +1440,7 @@ export function EnseignantsPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                               {getInitials(enseignant.name)}
                             </div>
                             <span className="truncate">{enseignant.name}</span>
@@ -1462,12 +1462,12 @@ export function EnseignantsPage() {
                         </TableCell>
                         <TableCell>
                           {enseignant.actif ? (
-                            <Badge className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800 text-xs">Actif</Badge>
+                            <Badge className="bg-success/10 text-success border-success/30 text-xs">Actif</Badge>
                           ) : (
-                            <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800 text-xs">Archivé</Badge>
+                            <Badge className="bg-warning/10 text-warning border-warning/30 text-xs">Archivé</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -1499,7 +1499,7 @@ export function EnseignantsPage() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                 onClick={() => setDeleteTarget(enseignant)}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
@@ -1522,9 +1522,9 @@ export function EnseignantsPage() {
       {pendingInvitations.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-emerald-600" />
-            <h2 className="text-lg font-semibold">Invitations en attente</h2>
-            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+            <Mail className="h-5 w-5 text-success" />
+            <h2 className="text-lg font-semibold font-display">Invitations en attente</h2>
+            <Badge className="bg-success/10 text-success border-success/30">
               {pendingInvitations.length}
             </Badge>
           </div>
@@ -1534,12 +1534,12 @@ export function EnseignantsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Nom</TableHead>
-                      <TableHead>Filière</TableHead>
-                      <TableHead>Expire dans</TableHead>
-                      <TableHead>Envoyée le</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="font-display">Email</TableHead>
+                      <TableHead className="font-display">Nom</TableHead>
+                      <TableHead className="font-display">Filière</TableHead>
+                      <TableHead className="font-display">Expire dans</TableHead>
+                      <TableHead className="font-display">Envoyée le</TableHead>
+                      <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1565,9 +1565,9 @@ export function EnseignantsPage() {
                               <Clock className="h-3.5 w-3.5" />
                               <span className={`text-sm ${
                                 timeRemaining.isExpired
-                                  ? 'text-red-600 font-semibold'
+                                  ? 'text-destructive font-semibold'
                                   : timeRemaining.isUrgent
-                                    ? 'text-amber-600 font-semibold'
+                                    ? 'text-warning font-semibold'
                                     : 'text-muted-foreground'
                               }`}>
                                 {timeRemaining.text}
@@ -1577,12 +1577,12 @@ export function EnseignantsPage() {
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDateTimeFR(invitation.createdAt)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right font-mono tabular-nums">
                             <div className="flex items-center justify-end gap-1.5">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+                                className="h-8 text-xs border-success/30 text-success hover:bg-success/10"
                                 onClick={() => handleResendInvitation(invitation)}
                                 disabled={isResending === invitation.id}
                               >
@@ -1596,7 +1596,7 @@ export function EnseignantsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+                                className="h-8 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
                                 onClick={() => setCancelInvitationTarget(invitation)}
                               >
                                 <Ban className="h-3.5 w-3.5" />
@@ -1620,7 +1620,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-emerald-600" />
+              <BookOpen className="h-5 w-5 text-success" />
               Ajouter un enseignant
             </DialogTitle>
             <DialogDescription>
@@ -1630,13 +1630,13 @@ export function EnseignantsPage() {
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             {/* ─── Mode Toggle ─── */}
-            <div className="flex rounded-lg border border-emerald-200 dark:border-emerald-800 p-1 bg-emerald-50/50 dark:bg-emerald-950/30">
+            <div className="flex rounded-lg border border-success/30 p-1 bg-success/10">
               <button
                 type="button"
                 className={`flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
                   registrationMode === 'invitation'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-emerald-700 hover:bg-emerald-100 dark:text-emerald-400 dark:hover:bg-emerald-900/30'
+                    ? 'bg-success text-white shadow-sm'
+                    : 'text-success hover:bg-success/10'
                 }`}
                 onClick={() => setRegistrationMode('invitation')}
               >
@@ -1647,8 +1647,8 @@ export function EnseignantsPage() {
                 type="button"
                 className={`flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
                   registrationMode === 'direct'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-emerald-700 hover:bg-emerald-100 dark:text-emerald-400 dark:hover:bg-emerald-900/30'
+                    ? 'bg-success text-white shadow-sm'
+                    : 'text-success hover:bg-success/10'
                 }`}
                 onClick={() => setRegistrationMode('direct')}
               >
@@ -1660,10 +1660,10 @@ export function EnseignantsPage() {
             {/* ─── Invitation Mode ─── */}
             {registrationMode === 'invitation' && (
               <>
-                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                <div className="rounded-lg border border-info/30 bg-info/10 p-3">
                   <div className="flex items-start gap-2">
-                    <Mail className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <div className="text-xs text-blue-700 dark:text-blue-300">
+                    <Mail className="h-4 w-4 text-info mt-0.5 shrink-0" />
+                    <div className="text-xs text-info">
                       L&apos;enseignant recevra un lien d&apos;inscription par email pour créer son propre mot de passe. Le lien est valide 48h.
                     </div>
                   </div>
@@ -1702,7 +1702,7 @@ export function EnseignantsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+                      className="h-7 text-xs border-success/30 text-success hover:bg-success/10"
                       onClick={handleAddAssignmentRow}
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -1749,7 +1749,7 @@ export function EnseignantsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-9 w-9 shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          className="h-9 w-9 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => handleRemoveAssignmentRow(index)}
                         >
                           <X className="h-4 w-4" />
@@ -1761,8 +1761,8 @@ export function EnseignantsPage() {
 
                 {/* Token link display after invitation success */}
                 {invitationTokenLink && (
-                  <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3 space-y-2">
-                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                  <div className="rounded-lg border border-success/30 bg-success/10 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-success">
                       <CheckCircle2 className="h-4 w-4" />
                       <span className="text-sm font-medium">Invitation envoyée avec succès</span>
                     </div>
@@ -1790,10 +1790,10 @@ export function EnseignantsPage() {
             {/* ─── Direct Creation Mode ─── */}
             {registrationMode === 'direct' && (
               <>
-                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
                   <div className="flex items-start gap-2">
-                    <ShieldAlert className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                    <div className="text-xs text-amber-700 dark:text-amber-300">
+                    <ShieldAlert className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                    <div className="text-xs text-warning">
                       Un mot de passe temporaire sera généré automatiquement. L&apos;enseignant devra le changer à sa première connexion.
                     </div>
                   </div>
@@ -1829,7 +1829,7 @@ export function EnseignantsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+                      className="h-7 text-xs border-success/30 text-success hover:bg-success/10"
                       onClick={handleAddAssignmentRow}
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -1876,7 +1876,7 @@ export function EnseignantsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-9 w-9 shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          className="h-9 w-9 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => handleRemoveAssignmentRow(index)}
                         >
                           <X className="h-4 w-4" />
@@ -1892,7 +1892,7 @@ export function EnseignantsPage() {
           <DialogFooter className="pt-4 border-t">
             {registrationMode === 'invitation' ? (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
                 onClick={handleInvitationSubmit}
                 disabled={isSubmitting}
               >
@@ -1910,7 +1910,7 @@ export function EnseignantsPage() {
               </Button>
             ) : (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
                 onClick={handleDirectSubmit}
                 disabled={isSubmitting}
               >
@@ -1936,7 +1936,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
               Compte enseignant créé
             </DialogTitle>
             <DialogDescription>
@@ -1946,7 +1946,7 @@ export function EnseignantsPage() {
 
           {directCreationResult && (
             <div className="space-y-4">
-              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-4 space-y-3">
+              <div className="rounded-lg border border-success/30 bg-success/10 p-4 space-y-3">
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Email</Label>
                   <div className="flex items-center gap-2">
@@ -1967,7 +1967,7 @@ export function EnseignantsPage() {
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Mot de passe temporaire</Label>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 text-sm bg-white dark:bg-gray-900 border rounded px-3 py-2 font-mono">
+                    <code className="flex-1 text-sm bg-white dark:bg-gray-900 border rounded px-3 py-2 font-mono tabular-nums">
                       {directCreationResult.tempPassword}
                     </code>
                     <Button
@@ -1982,10 +1982,10 @@ export function EnseignantsPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
                 <div className="flex items-start gap-2">
-                  <ShieldAlert className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                  <div className="text-xs text-amber-700 dark:text-amber-300">
+                  <ShieldAlert className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                  <div className="text-xs text-warning">
                     <strong>Attention :</strong> Ce mot de passe est temporaire et doit être communiqué à l&apos;enseignant de manière sécurisée.
                     L&apos;enseignant sera obligé de le changer lors de sa première connexion.
                   </div>
@@ -1996,7 +1996,7 @@ export function EnseignantsPage() {
 
           <DialogFooter>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={() => setDirectResultDialogOpen(false)}
             >
               Fermer
@@ -2010,7 +2010,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-emerald-600" />
+              <Edit3 className="h-5 w-5 text-success" />
               Modifier l&apos;enseignant
             </DialogTitle>
             <DialogDescription>
@@ -2043,7 +2043,7 @@ export function EnseignantsPage() {
               <Button
                 variant={editActif ? 'default' : 'outline'}
                 size="sm"
-                className={editActif ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                className={editActif ? 'bg-success hover:bg-success/90' : ''}
                 onClick={() => setEditActif(!editActif)}
               >
                 {editActif ? (
@@ -2066,7 +2066,7 @@ export function EnseignantsPage() {
               Annuler
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/90"
               onClick={handleEditSubmit}
               disabled={isSubmitting}
             >
@@ -2088,7 +2088,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-teal-600" />
+              <Settings2 className="h-5 w-5 text-success" />
               Affectations de {assignmentEnseignant?.name}
             </DialogTitle>
             <DialogDescription>
@@ -2110,7 +2110,7 @@ export function EnseignantsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => setDeleteAssignmentTarget(ta)}
                       >
                         <X className="h-3.5 w-3.5" />
@@ -2158,7 +2158,7 @@ export function EnseignantsPage() {
                   </Select>
                 </div>
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                  className="bg-success hover:bg-success/90 shrink-0"
                   onClick={handleAddAssignment}
                   disabled={isSavingAssignments}
                 >
@@ -2185,7 +2185,7 @@ export function EnseignantsPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5 text-amber-600" />
+              <Upload className="h-5 w-5 text-warning" />
               Importer des enseignants
             </DialogTitle>
             <DialogDescription>
@@ -2216,8 +2216,8 @@ export function EnseignantsPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="text-xs">Nom</TableHead>
-                              <TableHead className="text-xs">Email</TableHead>
+                              <TableHead className="text-xs font-display">Nom</TableHead>
+                              <TableHead className="text-xs font-display">Email</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -2236,7 +2236,7 @@ export function EnseignantsPage() {
               </>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <div className="flex items-center gap-2 text-success">
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-medium">{importResult.imported} enseignant{importResult.imported > 1 ? 's' : ''} importé{importResult.imported > 1 ? 's' : ''}</span>
                 </div>
@@ -2255,9 +2255,9 @@ export function EnseignantsPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="text-xs">Nom</TableHead>
-                              <TableHead className="text-xs">Email</TableHead>
-                              <TableHead className="text-xs">Mot de passe</TableHead>
+                              <TableHead className="text-xs font-display">Nom</TableHead>
+                              <TableHead className="text-xs font-display">Email</TableHead>
+                              <TableHead className="text-xs font-display">Mot de passe</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -2265,7 +2265,7 @@ export function EnseignantsPage() {
                               <TableRow key={i}>
                                 <TableCell className="text-xs py-1">{u.name}</TableCell>
                                 <TableCell className="text-xs py-1">{u.email}</TableCell>
-                                <TableCell className="text-xs py-1 font-mono">
+                                <TableCell className="text-xs py-1 font-mono tabular-nums">
                                   <div className="flex items-center gap-1">
                                     <span>{u.password}</span>
                                     <Button
@@ -2289,11 +2289,11 @@ export function EnseignantsPage() {
 
                 {importResult.errors.length > 0 && (
                   <div className="space-y-2">
-                    <Label className="text-sm text-red-600">Erreurs</Label>
-                    <ScrollArea className="max-h-32 rounded-md border border-red-200">
+                    <Label className="text-sm text-destructive">Erreurs</Label>
+                    <ScrollArea className="max-h-32 rounded-md border border-destructive/30">
                       <div className="p-2 space-y-1">
                         {importResult.errors.map((e, i) => (
-                          <div key={i} className="text-xs text-red-600">
+                          <div key={i} className="text-xs text-destructive">
                             Ligne {e.row} ({e.email}): {e.error}
                           </div>
                         ))}
@@ -2316,7 +2316,7 @@ export function EnseignantsPage() {
                   Annuler
                 </Button>
                 <Button
-                  className="bg-amber-600 hover:bg-amber-700"
+                  className="bg-warning hover:bg-warning/90"
                   onClick={handleImportSubmit}
                   disabled={isImporting || importParsedData.length === 0}
                 >
@@ -2353,7 +2353,7 @@ export function EnseignantsPage() {
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveAssignment}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               Retirer
             </AlertDialogAction>
@@ -2376,7 +2376,7 @@ export function EnseignantsPage() {
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleCancelInvitation}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               Confirmer l&apos;annulation
             </AlertDialogAction>
@@ -2389,7 +2389,7 @@ export function EnseignantsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-red-600" />
+              <Trash2 className="h-5 w-5 text-destructive" />
               Supprimer définitivement l&apos;enseignant
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -2397,16 +2397,16 @@ export function EnseignantsPage() {
                 <p>
                   Êtes-vous sûr de vouloir supprimer définitivement <strong>{deleteTarget?.name}</strong> ?
                 </p>
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/40">
-                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                  <p className="text-sm font-semibold text-destructive">
                     ⚠️ Action irréversible
                   </p>
-                  <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                  <p className="mt-1 text-sm text-destructive">
                     L&apos;enseignant sera définitivement supprimé de la base de données <strong>avec tout son historique</strong> (épreuves, devoirs, sessions). Cette action est irréversible.
                   </p>
                 </div>
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
-                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                <div className="rounded-lg border border-info/30 bg-info/10 p-3">
+                  <p className="text-sm text-info">
                     💡 <strong>Alternative :</strong> Pour archiver le compte sans supprimer les données, utilisez le bouton <em>« Archiver »</em>. L&apos;enseignant restera visible dans la liste mais marqué comme inactif, et pourra être réactivé à tout moment.
                   </p>
                 </div>
@@ -2418,7 +2418,7 @@ export function EnseignantsPage() {
             <AlertDialogAction
               onClick={handleDeleteEnseignant}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               {isDeleting ? (
                 <>
@@ -2457,7 +2457,7 @@ export function EnseignantsPage() {
             <AlertDialogAction
               onClick={handleBulkAction}
               disabled={isBulkProcessing}
-              className={bulkActionDialog === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              className={bulkActionDialog === 'delete' ? 'bg-destructive hover:bg-destructive/90' : 'bg-success hover:bg-success/90'}
             >
               {isBulkProcessing ? (
                 <>

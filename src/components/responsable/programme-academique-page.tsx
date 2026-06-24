@@ -57,7 +57,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import {
   Table,
   TableBody,
@@ -151,50 +151,50 @@ const NIVEAU_LABELS: Record<string, string> = {
 }
 
 const NIVEAU_COLORS: Record<string, string> = {
-  L1: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  L2: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
-  L3: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
-  M1: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  M2: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  DOCTORAT: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  L1: 'bg-success/10 text-success',
+  L2: 'bg-success/10 text-success',
+  L3: 'bg-info/10 text-info',
+  M1: 'bg-warning/10 text-warning',
+  M2: 'bg-warning/10 text-warning',
+  DOCTORAT: 'bg-secondary/10 text-secondary',
 }
 
 const NIVEAU_CONFIG = [
   {
     key: 'L1', label: 'L1 - Licence 1ère année', shortLabel: 'L1',
-    bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200', textColor: 'text-emerald-700',
-    darkBgColor: 'dark:bg-emerald-950/30', darkBorderColor: 'dark:border-emerald-800',
-    darkTextColor: 'dark:text-emerald-300', iconBg: 'bg-emerald-100', darkIconBg: 'dark:bg-emerald-900/40',
+    bgColor: 'bg-success/10', borderColor: 'border-success/30', textColor: 'text-success',
+    darkBgColor: 'dark:bg-success/20', darkBorderColor: 'dark:border-success/70',
+    darkTextColor: 'dark:text-success/80', iconBg: 'bg-success/10', darkIconBg: 'dark:bg-success/40',
   },
   {
     key: 'L2', label: 'L2 - Licence 2ème année', shortLabel: 'L2',
-    bgColor: 'bg-teal-50', borderColor: 'border-teal-200', textColor: 'text-teal-700',
-    darkBgColor: 'dark:bg-teal-950/30', darkBorderColor: 'dark:border-teal-800',
-    darkTextColor: 'dark:text-teal-300', iconBg: 'bg-teal-100', darkIconBg: 'dark:bg-teal-900/40',
+    bgColor: 'bg-success/10', borderColor: 'border-success/30', textColor: 'text-success',
+    darkBgColor: 'dark:bg-success/20', darkBorderColor: 'dark:border-success/70',
+    darkTextColor: 'dark:text-success/80', iconBg: 'bg-success/10', darkIconBg: 'dark:bg-success/40',
   },
   {
     key: 'L3', label: 'L3 - Licence 3ème année', shortLabel: 'L3',
-    bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200', textColor: 'text-cyan-700',
-    darkBgColor: 'dark:bg-cyan-950/30', darkBorderColor: 'dark:border-cyan-800',
-    darkTextColor: 'dark:text-cyan-300', iconBg: 'bg-cyan-100', darkIconBg: 'dark:bg-cyan-900/40',
+    bgColor: 'bg-info/10', borderColor: 'border-info/30', textColor: 'text-info',
+    darkBgColor: 'dark:bg-info/20', darkBorderColor: 'dark:border-info/70',
+    darkTextColor: 'dark:text-info/80', iconBg: 'bg-info/10', darkIconBg: 'dark:bg-info/40',
   },
   {
     key: 'M1', label: 'M1 - Master 1ère année', shortLabel: 'M1',
-    bgColor: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700',
-    darkBgColor: 'dark:bg-amber-950/30', darkBorderColor: 'dark:border-amber-800',
-    darkTextColor: 'dark:text-amber-300', iconBg: 'bg-amber-100', darkIconBg: 'dark:bg-amber-900/40',
+    bgColor: 'bg-warning/10', borderColor: 'border-warning/30', textColor: 'text-warning',
+    darkBgColor: 'dark:bg-warning/20', darkBorderColor: 'dark:border-warning/70',
+    darkTextColor: 'dark:text-warning/80', iconBg: 'bg-warning/10', darkIconBg: 'dark:bg-warning/40',
   },
   {
     key: 'M2', label: 'M2 - Master 2ème année', shortLabel: 'M2',
-    bgColor: 'bg-orange-50', borderColor: 'border-orange-200', textColor: 'text-orange-700',
-    darkBgColor: 'dark:bg-orange-950/30', darkBorderColor: 'dark:border-orange-800',
-    darkTextColor: 'dark:text-orange-300', iconBg: 'bg-orange-100', darkIconBg: 'dark:bg-orange-900/40',
+    bgColor: 'bg-warning/10', borderColor: 'border-warning/30', textColor: 'text-warning',
+    darkBgColor: 'dark:bg-warning/20', darkBorderColor: 'dark:border-warning/70',
+    darkTextColor: 'dark:text-warning/80', iconBg: 'bg-warning/10', darkIconBg: 'dark:bg-warning/40',
   },
   {
     key: 'DOCTORAT', label: 'Doctorat', shortLabel: 'Doctorat',
-    bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700',
-    darkBgColor: 'dark:bg-purple-950/30', darkBorderColor: 'dark:border-purple-800',
-    darkTextColor: 'dark:text-purple-300', iconBg: 'bg-purple-100', darkIconBg: 'dark:bg-purple-900/40',
+    bgColor: 'bg-secondary/10', borderColor: 'border-secondary/30', textColor: 'text-secondary',
+    darkBgColor: 'dark:bg-secondary/20', darkBorderColor: 'dark:border-secondary/70',
+    darkTextColor: 'dark:text-secondary/80', iconBg: 'bg-secondary/10', darkIconBg: 'dark:bg-secondary/40',
   },
 ]
 
@@ -203,17 +203,17 @@ const TYPE_SEANCE_LABELS: Record<string, string> = {
 }
 
 const AFFECTATION_STATUT_COLORS: Record<string, string> = {
-  PROVISOIRE: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800',
-  VALIDEE: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800',
-  PUBLIEE: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800',
+  PROVISOIRE: 'bg-warning/10 text-warning border-warning/30',
+  VALIDEE: 'bg-success/10 text-success border-success/30',
+  PUBLIEE: 'bg-success/10 text-success border-success/30',
 }
 
 // ─── Utility Functions ───
 
 function getCoverageColor(rate: number) {
-  if (rate >= 80) return { bar: 'bg-emerald-500', bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700', darkText: 'dark:text-emerald-300' }
-  if (rate >= 50) return { bar: 'bg-amber-500', bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700', darkText: 'dark:text-amber-300' }
-  return { bar: 'bg-red-500', bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700', darkText: 'dark:text-red-300' }
+  if (rate >= 80) return { bar: 'bg-success', bg: 'bg-success/10', text: 'text-success', darkText: 'dark:text-success/80' }
+  if (rate >= 50) return { bar: 'bg-warning', bg: 'bg-warning/10', text: 'text-warning', darkText: 'dark:text-warning/80' }
+  return { bar: 'bg-destructive', bg: 'bg-destructive/10', text: 'text-destructive', darkText: 'dark:text-destructive/80' }
 }
 
 // ─── Helper: get all filières for a UE (owner + supplementary) ───
@@ -226,9 +226,9 @@ function getAllFilieresForUE(ue: UEItem): { id: string; nom: string; code: strin
 }
 
 function getCoverageBadge(rate: number) {
-  if (rate >= 80) return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Bien couvert</Badge>
-  if (rate >= 50) return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800 text-xs"><Info className="h-3 w-3 mr-1" />Partiel</Badge>
-  return <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Insuffisant</Badge>
+  if (rate >= 80) return <Badge className="bg-success/10 text-success border-success/30 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Bien couvert</Badge>
+  if (rate >= 50) return <Badge className="bg-warning/10 text-warning border-warning/30 text-xs"><Info className="h-3 w-3 mr-1" />Partiel</Badge>
+  return <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Insuffisant</Badge>
 }
 
 // ─── Main Component ───
@@ -614,8 +614,8 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       {/* ─── Header ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            <GraduationCap className="h-7 w-7 text-emerald-600" />
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+            <GraduationCap className="h-7 w-7 text-success" />
             Programme académique
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -644,7 +644,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               <span className="hidden sm:inline">Gestion des UEs</span>
             </button>
           </div>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => handleOpenAdd()}>
+          <Button className="bg-success hover:bg-success/90" onClick={() => handleOpenAdd()}>
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Nouvelle UE</span>
           </Button>
@@ -655,44 +655,44 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       {isLoading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}><CardContent className="flex items-center gap-3 p-4"><Skeleton className="h-10 w-10 rounded-lg" /><div className="space-y-2"><Skeleton className="h-3 w-24" /><Skeleton className="h-6 w-12" /></div></CardContent></Card>
+            <Card key={i}><CardContent className="flex items-center gap-3 p-4"><PulseSkeleton className="h-10 w-10 rounded-lg" /><div className="space-y-2"><PulseSkeleton className="h-3 w-24" /><PulseSkeleton className="h-6 w-12" /></div></CardContent></Card>
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card className="border-l-4 border-l-emerald-500">
+          <Card className="border-l-4 border-l-success">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40"><Layers className="h-5 w-5 text-emerald-600 dark:text-emerald-400" /></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><Layers className="h-5 w-5 text-success" /></div>
               <div>
                 <p className="text-xs text-muted-foreground">Niveaux actifs</p>
-                <p className="text-xl font-bold">{nbNiveauxActifs}<span className="text-sm text-muted-foreground font-normal"> / 6</span></p>
+                <p className="text-xl font-bold font-mono tabular-nums">{nbNiveauxActifs}<span className="text-sm text-muted-foreground font-normal"> / 6</span></p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-teal-500">
+          <Card className="border-l-4 border-l-success">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40"><BookMarked className="h-5 w-5 text-teal-600 dark:text-teal-400" /></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><BookMarked className="h-5 w-5 text-success" /></div>
               <div>
                 <p className="text-xs text-muted-foreground">Total UEs</p>
-                <p className="text-xl font-bold">{ues.length}</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{ues.length}</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-amber-500">
+          <Card className="border-l-4 border-l-warning">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40"><Users className="h-5 w-5 text-amber-600 dark:text-amber-400" /></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10"><Users className="h-5 w-5 text-warning" /></div>
               <div>
                 <p className="text-xs text-muted-foreground">Enseignants affectés</p>
-                <p className="text-xl font-bold">{nbEnseignants}</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{nbEnseignants}</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-cyan-500">
+          <Card className="border-l-4 border-l-info">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 dark:bg-cyan-900/40"><GraduationCap className="h-5 w-5 text-cyan-600 dark:text-cyan-400" /></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10"><GraduationCap className="h-5 w-5 text-info" /></div>
               <div>
                 <p className="text-xs text-muted-foreground">Couverture globale</p>
-                <p className="text-xl font-bold">{globalCoverage}%</p>
+                <p className="text-xl font-bold font-mono tabular-nums">{globalCoverage}%</p>
               </div>
             </CardContent>
           </Card>
@@ -704,14 +704,14 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <div className="space-y-6">
           {/* Niveau Cards */}
           <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-emerald-600" />
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 font-display">
+              <GraduationCap className="h-5 w-5 text-success" />
               Distribution par niveau
             </h2>
             {isLoading ? (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Card key={i} className="animate-pulse"><CardContent className="p-4 space-y-3"><Skeleton className="h-5 w-16" /><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-20" /><Skeleton className="h-2 w-full" /></CardContent></Card>
+                  <Card key={i} className="animate-pulse"><CardContent className="p-4 space-y-3"><PulseSkeleton className="h-5 w-16" /><PulseSkeleton className="h-4 w-24" /><PulseSkeleton className="h-4 w-20" /><PulseSkeleton className="h-2 w-full" /></CardContent></Card>
                 ))}
               </div>
             ) : (
@@ -770,16 +770,16 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
 
           {/* Filière × Niveau Matrix (includes DOCTORAT) */}
           <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <BookMarked className="h-5 w-5 text-teal-600" />
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 font-display">
+              <BookMarked className="h-5 w-5 text-success" />
               Matrice Filière × Niveau
             </h2>
             {isLoading ? (
-              <Card><CardContent className="p-6 space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></CardContent></Card>
+              <Card><CardContent className="p-6 space-y-4"><PulseSkeleton className="h-10 w-full" /><PulseSkeleton className="h-10 w-full" /><PulseSkeleton className="h-10 w-full" /></CardContent></Card>
             ) : filieres.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                  <Layers className="h-8 w-8 text-emerald-500 dark:text-emerald-400" />
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+                  <Layers className="h-8 w-8 text-success" />
                 </div>
                 <h3 className="mt-4 text-base font-semibold">Aucune filière trouvée</h3>
                 <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -793,7 +793,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Filière</TableHead>
+                          <TableHead className="sticky left-0 bg-background z-10 min-w-[200px] font-display">Filière</TableHead>
                           {ALL_NIVEAU_KEYS.map((niveau) => (
                             <TableHead key={niveau} className="text-center min-w-[100px]">{niveau}</TableHead>
                           ))}
@@ -804,10 +804,10 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                           <TableRow key={row.filiere.id}>
                             <TableCell className="sticky left-0 bg-background z-10 font-medium">
                               <div className="flex items-center gap-2">
-                                <GraduationCap className="h-4 w-4 text-emerald-600" />
+                                <GraduationCap className="h-4 w-4 text-success" />
                                 <div>
                                   <p className="text-sm font-medium">{row.filiere.nom}</p>
-                                  {row.filiere.code && <p className="text-xs text-muted-foreground font-mono">{row.filiere.code}</p>}
+                                  {row.filiere.code && <p className="text-xs text-muted-foreground font-mono tabular-nums">{row.filiere.code}</p>}
                                 </div>
                               </div>
                             </TableCell>
@@ -834,7 +834,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                                     title={`${cell.nbUEs} UE${cell.nbUEs > 1 ? 's' : ''} en ${niveau} — Couverture : ${cell.tauxCouverture}%`}
                                     onClick={() => handleMatrixCellClick(niveau)}
                                   >
-                                    <span className={`text-sm font-bold ${coverage.text} ${coverage.darkText}`}>{cell.nbUEs} UE{cell.nbUEs > 1 ? 's' : ''}</span>
+                                    <span className={`text-sm font-bold ${coverage.text} ${coverage.darkText} font-mono tabular-nums`}>{cell.nbUEs} UE{cell.nbUEs > 1 ? 's' : ''}</span>
                                     <span className={`text-xs ${coverage.text} ${coverage.darkText}`}>{cell.tauxCouverture}%</span>
                                   </button>
                                 </TableCell>
@@ -905,16 +905,16 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                     <div className="rounded-lg border">
                       {Array.from({ length: 5 }).map((_, i) => (
                         <div key={i} className="flex items-center gap-4 p-4 border-b last:border-0">
-                          <Skeleton className="h-4 w-4" /><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-40" />
-                          <Skeleton className="h-5 w-12 rounded-full" />
+                          <PulseSkeleton className="h-4 w-4" /><PulseSkeleton className="h-4 w-24" /><PulseSkeleton className="h-4 w-40" />
+                          <PulseSkeleton className="h-5 w-12 rounded-full" />
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : filteredUEs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                      <BookMarked className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                      <BookMarked className="h-10 w-10 text-success" />
                     </div>
                     <h3 className="mt-4 text-lg font-semibold">Aucune UE trouvée</h3>
                     <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -923,7 +923,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                         : `Aucune unité d'enseignement en ${NIVEAU_LABELS[niveau] ?? niveau}. Commencez par en ajouter.`}
                     </p>
                     {!search && filiereFilter === 'all' && semestreFilter === 'all' && (
-                      <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={() => handleOpenAdd(niveau)}>
+                      <Button className="mt-6 bg-success hover:bg-success/90" onClick={() => handleOpenAdd(niveau)}>
                         <Plus className="h-4 w-4" />Ajouter une UE
                       </Button>
                     )}
@@ -933,16 +933,16 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-10"></TableHead>
-                          <TableHead>Code</TableHead>
-                          <TableHead className="hidden md:table-cell">Nom</TableHead>
-                          <TableHead className="hidden lg:table-cell">Filière</TableHead>
-                          <TableHead>Sem.</TableHead>
-                          <TableHead>ECTS</TableHead>
-                          <TableHead className="hidden sm:table-cell">Vol.</TableHead>
-                          <TableHead>Obl.</TableHead>
-                          <TableHead className="text-center hidden sm:table-cell">Aff.</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead className="w-10 font-display"></TableHead>
+                          <TableHead className="font-display">Code</TableHead>
+                          <TableHead className="hidden md:table-cell font-display">Nom</TableHead>
+                          <TableHead className="hidden lg:table-cell font-display">Filière</TableHead>
+                          <TableHead className="font-display">Sem.</TableHead>
+                          <TableHead className="font-display">ECTS</TableHead>
+                          <TableHead className="hidden sm:table-cell font-display">Vol.</TableHead>
+                          <TableHead className="font-display">Obl.</TableHead>
+                          <TableHead className="text-center hidden sm:table-cell font-display">Aff.</TableHead>
+                          <TableHead className="text-right font-display">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -976,16 +976,16 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                   <div className="rounded-lg border">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="flex items-center gap-4 p-4 border-b last:border-0">
-                        <Skeleton className="h-4 w-4" /><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-40" />
-                        <Skeleton className="h-5 w-12 rounded-full" />
+                        <PulseSkeleton className="h-4 w-4" /><PulseSkeleton className="h-4 w-24" /><PulseSkeleton className="h-4 w-40" />
+                        <PulseSkeleton className="h-5 w-12 rounded-full" />
                       </div>
                     ))}
                   </div>
                 </div>
               ) : filteredUEs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                    <BookMarked className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                    <BookMarked className="h-10 w-10 text-success" />
                   </div>
                   <h3 className="mt-4 text-lg font-semibold">Aucune unité d&apos;enseignement trouvée</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -994,7 +994,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                       : 'Commencez par ajouter des unités d\'enseignement à vos filières.'}
                   </p>
                   {!search && filiereFilter === 'all' && semestreFilter === 'all' && (
-                    <Button className="mt-6 bg-emerald-600 hover:bg-emerald-700" onClick={() => handleOpenAdd()}>
+                    <Button className="mt-6 bg-success hover:bg-success/90" onClick={() => handleOpenAdd()}>
                       <Plus className="h-4 w-4" />Ajouter une UE
                     </Button>
                   )}
@@ -1004,17 +1004,17 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-10"></TableHead>
-                        <TableHead>Code</TableHead>
-                        <TableHead className="hidden md:table-cell">Nom</TableHead>
-                        <TableHead className="hidden lg:table-cell">Filière</TableHead>
-                        <TableHead>Niveau</TableHead>
-                        <TableHead>Sem.</TableHead>
-                        <TableHead>ECTS</TableHead>
-                        <TableHead className="hidden sm:table-cell">Vol.</TableHead>
-                        <TableHead>Obl.</TableHead>
-                        <TableHead className="text-center hidden sm:table-cell">Aff.</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="w-10 font-display"></TableHead>
+                        <TableHead className="font-display">Code</TableHead>
+                        <TableHead className="hidden md:table-cell font-display">Nom</TableHead>
+                        <TableHead className="hidden lg:table-cell font-display">Filière</TableHead>
+                        <TableHead className="font-display">Niveau</TableHead>
+                        <TableHead className="font-display">Sem.</TableHead>
+                        <TableHead className="font-display">ECTS</TableHead>
+                        <TableHead className="hidden sm:table-cell font-display">Vol.</TableHead>
+                        <TableHead className="font-display">Obl.</TableHead>
+                        <TableHead className="text-center hidden sm:table-cell font-display">Aff.</TableHead>
+                        <TableHead className="text-right font-display">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1050,7 +1050,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookMarked className="h-5 w-5 text-emerald-600" />
+              <BookMarked className="h-5 w-5 text-success" />
               Nouvelle unité d&apos;enseignement
             </DialogTitle>
             <DialogDescription>Créez une nouvelle unité d&apos;enseignement dans vos filières.</DialogDescription>
@@ -1076,7 +1076,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Annuler</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleAddSubmit} disabled={isSubmitting}>
+            <Button className="bg-success hover:bg-success/90" onClick={handleAddSubmit} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Créer l&apos;UE
             </Button>
@@ -1089,7 +1089,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit3 className="h-5 w-5 text-amber-600" />
+              <Edit3 className="h-5 w-5 text-warning" />
               Modifier l&apos;UE
             </DialogTitle>
             <DialogDescription>Modifiez les informations de l&apos;unité d&apos;enseignement.</DialogDescription>
@@ -1114,7 +1114,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Annuler</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleEditSubmit} disabled={isSubmitting}>
+            <Button className="bg-success hover:bg-success/90" onClick={handleEditSubmit} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Enregistrer
             </Button>
@@ -1127,7 +1127,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-teal-600" />
+              <Users className="h-5 w-5 text-success" />
               Affectations — {viewingUE?.code} {viewingUE?.nom}
             </DialogTitle>
             <DialogDescription>Enseignants affectés à cette unité d&apos;enseignement</DialogDescription>
@@ -1138,10 +1138,10 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Enseignant</TableHead>
-                      <TableHead>Type séance</TableHead>
-                      <TableHead>Heures</TableHead>
-                      <TableHead>Statut</TableHead>
+                      <TableHead className="font-display">Enseignant</TableHead>
+                      <TableHead className="font-display">Type séance</TableHead>
+                      <TableHead className="font-display">Heures</TableHead>
+                      <TableHead className="font-display">Statut</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1183,7 +1183,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">Désactiver</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Désactiver</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1252,7 +1252,7 @@ function UEForm({
       {/* ─── Multi-filière sharing ─── */}
       <div className="space-y-2">
         <Label className="text-sm font-medium flex items-center gap-2">
-          <Share2 className="h-4 w-4 text-teal-500" />
+          <Share2 className="h-4 w-4 text-success" />
           Filières partagées
         </Label>
         <p className="text-xs text-muted-foreground">
@@ -1269,7 +1269,7 @@ function UEForm({
                     key={f.id}
                     className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 cursor-pointer text-sm transition-colors ${
                       isChecked
-                        ? 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800'
+                        ? 'bg-success/10 text-success border-success/30'
                         : 'text-muted-foreground border-muted hover:bg-muted/50'
                     }`}
                   >
@@ -1301,7 +1301,7 @@ function UEForm({
           <div className="flex items-center justify-between">
             <Label htmlFor={`${mode}-code`}>Code UE *</Label>
             {mode === 'add' && suggestedCode && (
-              <Button variant="ghost" size="sm" className="h-6 text-xs text-emerald-600 hover:text-emerald-700" onClick={() => setCode(suggestedCode)}>
+              <Button variant="ghost" size="sm" className="h-6 text-xs text-success hover:text-success" onClick={() => setCode(suggestedCode)}>
                 Auto: {suggestedCode}
               </Button>
             )}
@@ -1350,7 +1350,7 @@ function UEForm({
       {/* Volume horaire */}
       <div>
         <Label className="text-sm font-medium flex items-center gap-2 mb-3">
-          <Clock className="h-4 w-4 text-amber-500" />
+          <Clock className="h-4 w-4 text-warning" />
           Volume horaire
         </Label>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -1393,7 +1393,7 @@ function UETableRow({
         <TableCell>
           {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </TableCell>
-        <TableCell className="font-mono text-sm font-medium">{ue.code}</TableCell>
+        <TableCell className="font-mono tabular-nums text-sm font-medium">{ue.code}</TableCell>
         <TableCell className="hidden md:table-cell font-medium">{ue.nom}</TableCell>
         <TableCell className="hidden lg:table-cell text-sm">
           <div className="flex flex-wrap gap-1">
@@ -1403,8 +1403,8 @@ function UETableRow({
                 variant="outline"
                 className={`text-[10px] px-1.5 py-0 ${
                   f.isOwner
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
-                    : 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800'
+                    ? 'bg-success/10 text-success border-success/30'
+                    : 'bg-success/10 text-success border-success/30'
                 }`}
               >
                 {!f.isOwner && <Share2 className="h-2.5 w-2.5 mr-0.5" />}{f.isOwner && '★ '}{f.nom}
@@ -1418,29 +1418,29 @@ function UETableRow({
         <TableCell className="text-sm">{ue.semestre ? `S${ue.semestre}` : '—'}</TableCell>
         <TableCell className="text-sm">{ue.creditsECTS ?? '—'}</TableCell>
         <TableCell className="hidden sm:table-cell text-sm">
-          <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5 text-amber-500" />{totalHours}h</span>
+          <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5 text-warning" />{totalHours}h</span>
         </TableCell>
         <TableCell>
           {ue.obligatoire ? (
-            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800 text-xs">Obl.</Badge>
+            <Badge className="bg-success/10 text-success border-success/30 text-xs">Obl.</Badge>
           ) : (
             <Badge variant="outline" className="text-xs text-muted-foreground">Opt.</Badge>
           )}
         </TableCell>
         <TableCell className="text-center hidden sm:table-cell">
-          <Badge variant="secondary" className={`text-xs ${ue._count.affectations > 0 ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+          <Badge variant="secondary" className={`text-xs ${ue._count.affectations > 0 ? 'bg-success/10 text-success' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
             {ue._count.affectations}
           </Badge>
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell className="text-right font-mono tabular-nums">
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950" onClick={() => onEdit(ue)}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10" onClick={() => onEdit(ue)}>
               <Edit3 className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950" onClick={() => onViewAffectations(ue)}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10" onClick={() => onViewAffectations(ue)}>
               <Eye className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950" onClick={() => onDelete(ue)}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDelete(ue)}>
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
@@ -1461,8 +1461,8 @@ function UETableRow({
                       variant="outline"
                       className={`text-[10px] px-1.5 py-0 ${
                         f.isOwner
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
-                          : 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800'
+                          ? 'bg-success/10 text-success border-success/30'
+                          : 'bg-success/10 text-success border-success/30'
                       }`}
                     >
                       {!f.isOwner && <Share2 className="h-2.5 w-2.5 mr-0.5" />}{f.isOwner && '★ '}{f.nom}
@@ -1475,10 +1475,10 @@ function UETableRow({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs">Enseignant</TableHead>
-                        <TableHead className="text-xs">Type</TableHead>
-                        <TableHead className="text-xs">Heures</TableHead>
-                        <TableHead className="text-xs">Statut</TableHead>
+                        <TableHead className="text-xs font-display">Enseignant</TableHead>
+                        <TableHead className="text-xs font-display">Type</TableHead>
+                        <TableHead className="text-xs font-display">Heures</TableHead>
+                        <TableHead className="text-xs font-display">Statut</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>

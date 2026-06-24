@@ -31,22 +31,22 @@ import { toast } from 'sonner'
 const ROLE_INFO: Record<UserRole, { label: string; color: string; description: string }> = {
   ADMIN: {
     label: 'Administrateur',
-    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    color: 'bg-destructive/15 text-destructive',
     description: 'Accès complet à la plateforme',
   },
   RESPONSABLE: {
     label: 'Responsable des études',
-    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    color: 'bg-warning/15 text-warning',
     description: 'Gestion des formations et du personnel',
   },
   ENSEIGNANT: {
     label: 'Enseignant',
-    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    color: 'bg-success/15 text-success',
     description: 'Création et gestion des évaluations',
   },
   ETUDIANT: {
     label: 'Étudiant',
-    color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+    color: 'bg-info/15 text-info',
     description: 'Passation des épreuves et devoirs',
   },
 }
@@ -153,7 +153,7 @@ export function ProfilPage() {
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative group">
               <Avatar className="h-24 w-24 ring-4 ring-background shadow-lg">
-                <AvatarFallback className="bg-emerald-100 text-emerald-700 text-2xl font-bold dark:bg-emerald-900/30 dark:text-emerald-400">
+                <AvatarFallback className="bg-success/15 text-success text-2xl font-display font-bold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -165,12 +165,12 @@ export function ProfilPage() {
               </button>
             </div>
             <div className="flex-1 text-center sm:text-left">
-              <h2 className="text-2xl font-bold">{user.name}</h2>
-              <p className="text-muted-foreground mt-0.5">{user.email}</p>
+              <h2 className="text-2xl font-display font-bold tracking-tight">{user.name}</h2>
+              <p className="text-muted-foreground mt-0.5 font-mono text-sm">{user.email}</p>
               <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
                 <Badge className={roleInfo.color}>{roleInfo.label}</Badge>
                 {user.matricule && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs font-mono tabular-nums">
                     Matricule : {user.matricule}
                   </Badge>
                 )}
@@ -186,7 +186,6 @@ export function ProfilPage() {
           variant={activeTab === 'infos' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setActiveTab('infos')}
-          className={activeTab === 'infos' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
         >
           <User className="h-4 w-4 mr-2" />
           Informations personnelles
@@ -195,7 +194,6 @@ export function ProfilPage() {
           variant={activeTab === 'password' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setActiveTab('password')}
-          className={activeTab === 'password' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
         >
           <Lock className="h-4 w-4 mr-2" />
           Mot de passe
@@ -208,7 +206,7 @@ export function ProfilPage() {
           {/* Edit form */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Modifier mes informations</CardTitle>
+              <CardTitle className="text-lg font-display tracking-tight">Modifier mes informations</CardTitle>
               <CardDescription>
                 Mettez à jour vos informations personnelles
               </CardDescription>
@@ -238,7 +236,7 @@ export function ProfilPage() {
               <Button
                 onClick={handleSaveProfile}
                 disabled={isSubmitting || editName === user.name}
-                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                className="w-full"
               >
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">
@@ -258,7 +256,7 @@ export function ProfilPage() {
           {/* Info summary */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Détails du compte</CardTitle>
+              <CardTitle className="text-lg font-display tracking-tight">Détails du compte</CardTitle>
               <CardDescription>
                 Résumé de vos informations
               </CardDescription>
@@ -321,13 +319,13 @@ export function ProfilPage() {
               <div className="flex items-center gap-2">
                 {user.actif ? (
                   <>
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    <span className="text-sm text-emerald-600 dark:text-emerald-400">Compte actif</span>
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <span className="text-sm text-success">Compte actif</span>
                   </>
                 ) : (
                   <>
-                    <AlertCircle className="h-4 w-4 text-red-500" />
-                    <span className="text-sm text-red-600 dark:text-red-400">Compte désactivé</span>
+                    <AlertCircle className="h-4 w-4 text-destructive" />
+                    <span className="text-sm text-destructive">Compte désactivé</span>
                   </>
                 )}
               </div>
@@ -340,7 +338,7 @@ export function ProfilPage() {
       {activeTab === 'password' && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Changer mon mot de passe</CardTitle>
+            <CardTitle className="text-lg font-display tracking-tight">Changer mon mot de passe</CardTitle>
             <CardDescription>
               Pour votre sécurité, entrez votre mot de passe actuel et choisissez-en un nouveau
             </CardDescription>
@@ -386,7 +384,7 @@ export function ProfilPage() {
                 </button>
               </div>
               {newPassword && newPassword.length < 8 && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
+                <p className="text-xs text-warning">
                   Le mot de passe doit contenir au moins 8 caractères
                 </p>
               )}
@@ -401,12 +399,12 @@ export function ProfilPage() {
                 placeholder="Confirmez votre nouveau mot de passe"
               />
               {confirmPassword && newPassword !== confirmPassword && (
-                <p className="text-xs text-red-600 dark:text-red-400">
+                <p className="text-xs text-destructive">
                   Les mots de passe ne correspondent pas
                 </p>
               )}
               {confirmPassword && newPassword === confirmPassword && newPassword.length >= 8 && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <p className="text-xs text-success flex items-center gap-1">
                   <CheckCircle2 className="h-3 w-3" /> Les mots de passe correspondent
                 </p>
               )}
@@ -421,7 +419,7 @@ export function ProfilPage() {
                 newPassword !== confirmPassword ||
                 newPassword.length < 8
               }
-              className="w-full bg-emerald-600 hover:bg-emerald-700"
+              className="w-full"
             >
               {isSubmitting ? (
                 <span className="flex items-center gap-2">

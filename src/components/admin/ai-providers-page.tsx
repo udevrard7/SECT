@@ -47,7 +47,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
@@ -95,50 +95,50 @@ const PROVIDER_META: Record<AIProviderType, {
     description: 'Z.ai Intelligence Artificielle',
     icon: Zap,
     color: '#8b5cf6',
-    bgClass: 'bg-violet-50 dark:bg-violet-950/30',
-    textClass: 'text-violet-700 dark:text-violet-400',
-    borderClass: 'border-violet-200 dark:border-violet-800',
-    gradientClass: 'from-violet-500/10 via-purple-500/5 to-fuchsia-500/10',
+    bgClass: 'bg-secondary/10',
+    textClass: 'text-secondary',
+    borderClass: 'border-secondary/30',
+    gradientClass: 'from-secondary via-secondary to-secondary',
   },
   OPENAI: {
     label: 'OpenAI',
     description: 'GPT-4, GPT-4o, GPT-3.5',
     icon: Brain,
     color: '#10b981',
-    bgClass: 'bg-emerald-50 dark:bg-emerald-950/30',
-    textClass: 'text-emerald-700 dark:text-emerald-400',
-    borderClass: 'border-emerald-200 dark:border-emerald-800',
-    gradientClass: 'from-emerald-500/10 via-teal-500/5 to-green-500/10',
+    bgClass: 'bg-success/10',
+    textClass: 'text-success',
+    borderClass: 'border-success/30',
+    gradientClass: 'from-success via-success to-success',
   },
   OPENAI_COMPATIBLE: {
     label: 'OpenAI-Compatible',
     description: 'Groq, Together, Ollama, Mistral...',
     icon: Plug,
     color: '#f59e0b',
-    bgClass: 'bg-amber-50 dark:bg-amber-950/30',
-    textClass: 'text-amber-700 dark:text-amber-400',
-    borderClass: 'border-amber-200 dark:border-amber-800',
-    gradientClass: 'from-amber-500/10 via-orange-500/5 to-yellow-500/10',
+    bgClass: 'bg-warning/10',
+    textClass: 'text-warning',
+    borderClass: 'border-warning/30',
+    gradientClass: 'from-warning via-warning to-warning',
   },
   ANTHROPIC: {
     label: 'Anthropic',
     description: 'Claude 3.5 Sonnet, Claude 3 Opus',
     icon: MessageSquare,
     color: '#ef4444',
-    bgClass: 'bg-red-50 dark:bg-red-950/30',
-    textClass: 'text-red-700 dark:text-red-400',
-    borderClass: 'border-red-200 dark:border-red-800',
-    gradientClass: 'from-red-500/10 via-rose-500/5 to-pink-500/10',
+    bgClass: 'bg-destructive/10',
+    textClass: 'text-destructive',
+    borderClass: 'border-destructive/30',
+    gradientClass: 'from-destructive via-destructive to-pink-500/10',
   },
   GOOGLE: {
     label: 'Google AI',
     description: 'Gemini Pro, Gemini Flash',
     icon: Globe,
     color: '#3b82f6',
-    bgClass: 'bg-sky-50 dark:bg-sky-950/30',
-    textClass: 'text-sky-700 dark:text-sky-400',
-    borderClass: 'border-sky-200 dark:border-sky-800',
-    gradientClass: 'from-sky-500/10 via-cyan-500/5 to-teal-500/10',
+    bgClass: 'bg-info/10',
+    textClass: 'text-info',
+    borderClass: 'border-info/30',
+    gradientClass: 'from-info via-info to-success',
   },
 }
 
@@ -779,11 +779,11 @@ export function AIProvidersPage() {
 
   const formatEventType = (type: string) => {
     switch (type) {
-      case 'FAIL_OVER': return { label: 'Basculement', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', icon: ArrowRightLeft }
-      case 'RECOVERY': return { label: 'Récupération', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', icon: CheckCircle2 }
-      case 'MANUAL_SWITCH': return { label: 'Manuel', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', icon: Settings2 }
-      case 'COOLDOWN_EXPIRED': return { label: 'Cooldown', color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/30', icon: Timer }
-      case 'ALL_FAILED': return { label: 'Échec total', color: 'text-red-600 bg-red-50 dark:bg-red-950/30', icon: X }
+      case 'FAIL_OVER': return { label: 'Basculement', color: 'text-warning bg-warning/10', icon: ArrowRightLeft }
+      case 'RECOVERY': return { label: 'Récupération', color: 'text-success bg-success/10', icon: CheckCircle2 }
+      case 'MANUAL_SWITCH': return { label: 'Manuel', color: 'text-secondary bg-secondary/10', icon: Settings2 }
+      case 'COOLDOWN_EXPIRED': return { label: 'Cooldown', color: 'text-info bg-info/10', icon: Timer }
+      case 'ALL_FAILED': return { label: 'Échec total', color: 'text-destructive bg-destructive/10', icon: X }
       default: return { label: type, color: 'text-gray-600 bg-gray-50 dark:bg-gray-950/30', icon: Activity }
     }
   }
@@ -797,13 +797,13 @@ export function AIProvidersPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <Skeleton className="h-7 w-48 mb-1" />
-            <Skeleton className="h-4 w-72" />
+            <PulseSkeleton className="h-7 w-48 mb-1" />
+            <PulseSkeleton className="h-4 w-72" />
           </div>
-          <Skeleton className="h-9 w-28" />
+          <PulseSkeleton className="h-9 w-28" />
         </div>
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <PulseSkeleton className="h-10 w-full" />
+        <PulseSkeleton className="h-64 w-full" />
       </div>
     )
   }
@@ -813,8 +813,8 @@ export function AIProvidersPage() {
       {/* ─── Compact Header ─── */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-violet-600" />
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 font-display">
+            <Sparkles className="h-5 w-5 text-secondary" />
             Fournisseurs IA
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -822,7 +822,7 @@ export function AIProvidersPage() {
           </p>
         </div>
         <Button
-          className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+          className="bg-secondary hover:bg-secondary/90 text-white shrink-0"
           onClick={() => openCreate()}
         >
           <Plus className="h-4 w-4 mr-1.5" />
@@ -840,22 +840,22 @@ export function AIProvidersPage() {
         <div className="flex items-center gap-1.5">
           {activeProvider ? (
             <>
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
               <span className="text-xs font-medium">{activeProvider.name}</span>
             </>
           ) : (
             <>
-              <span className="h-2 w-2 rounded-full bg-amber-500" />
-              <span className="text-xs text-amber-600">Aucun actif</span>
+              <span className="h-2 w-2 rounded-full bg-warning" />
+              <span className="text-xs text-warning">Aucun actif</span>
             </>
           )}
         </div>
         <Separator orientation="vertical" className="h-4" />
         <div className="flex items-center gap-1.5">
           {activeProvider?.lastTestOk === true ? (
-            <><Wifi className="h-3.5 w-3.5 text-emerald-600" /><span className="text-xs text-emerald-600">Test OK</span></>
+            <><Wifi className="h-3.5 w-3.5 text-success" /><span className="text-xs text-success">Test OK</span></>
           ) : activeProvider?.lastTestOk === false ? (
-            <><WifiOff className="h-3.5 w-3.5 text-red-500" /><span className="text-xs text-red-500">Test échoué</span></>
+            <><WifiOff className="h-3.5 w-3.5 text-destructive" /><span className="text-xs text-destructive">Test échoué</span></>
           ) : (
             <><Activity className="h-3.5 w-3.5 text-gray-400" /><span className="text-xs text-muted-foreground">Non testé</span></>
           )}
@@ -889,7 +889,7 @@ export function AIProvidersPage() {
             <ShieldCheck className="h-3.5 w-3.5" />
             Failover
             {failoverStatus?.config.enabled && (
-              <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
             )}
           </TabsTrigger>
         </TabsList>
@@ -903,15 +903,15 @@ export function AIProvidersPage() {
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-col items-center justify-center py-16 px-4"
             >
-              <div className="p-4 rounded-full bg-violet-50 dark:bg-violet-950/30 mb-4">
-                <Server className="h-8 w-8 text-violet-500" />
+              <div className="p-4 rounded-full bg-secondary/10 mb-4">
+                <Server className="h-8 w-8 text-secondary" />
               </div>
               <h3 className="text-lg font-semibold mb-1">Aucun fournisseur IA configuré</h3>
               <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
                 Le système utilise <strong>Z-AI par défaut</strong>. Ajoutez un fournisseur pour personnaliser le comportement de l&apos;IA.
               </p>
               <Button
-                className="bg-violet-600 hover:bg-violet-700 text-white"
+                className="bg-secondary hover:bg-secondary/90 text-white"
                 onClick={() => openCreate()}
               >
                 <Plus className="h-4 w-4 mr-1.5" />
@@ -937,7 +937,7 @@ export function AIProvidersPage() {
                       transition={{ delay: index * 0.03 }}
                       className={`relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 py-3 transition-colors ${
                         provider.isActive
-                          ? 'bg-violet-50/60 dark:bg-violet-950/20 border-l-[3px] border-l-violet-500'
+                          ? 'bg-secondary/10 border-l-[3px] border-l-secondary'
                           : 'border-l-[3px] border-l-transparent hover:bg-muted/30'
                       } ${index < providers.length - 1 ? 'border-b border-border/50' : ''}`}
                     >
@@ -952,12 +952,12 @@ export function AIProvidersPage() {
                             <Badge variant="outline" className="text-[10px] shrink-0">
                               {meta.label}
                             </Badge>
-                            <Badge variant="secondary" className="text-[10px] font-mono shrink-0">
+                            <Badge variant="secondary" className="text-[10px] font-mono tabular-nums shrink-0">
                               {provider.model || '—'}
                             </Badge>
                             {provider.isActive && (
-                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-[10px] shrink-0 gap-1">
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                              <Badge className="bg-success/10 text-success text-[10px] shrink-0 gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
                                 Actif
                               </Badge>
                             )}
@@ -969,7 +969,7 @@ export function AIProvidersPage() {
                             {provider.hasApiKey && (
                               <>
                                 <span className="text-muted-foreground/40">·</span>
-                                <Shield className="h-3 w-3 text-emerald-500" />
+                                <Shield className="h-3 w-3 text-success" />
                               </>
                             )}
                           </div>
@@ -980,17 +980,17 @@ export function AIProvidersPage() {
                       <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                         {/* Connection status */}
                         {provider.lastTestOk === true && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600">
+                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-success/10 text-success">
                             <Check className="h-3.5 w-3.5" />
                           </span>
                         )}
                         {provider.lastTestOk === false && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600">
+                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-destructive/10 text-destructive">
                             <X className="h-3.5 w-3.5" />
                           </span>
                         )}
                         {provider.lastTestOk == null && (
-                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-600">
+                          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-warning/10 text-warning">
                             <AlertCircle className="h-3.5 w-3.5" />
                           </span>
                         )}
@@ -1067,17 +1067,17 @@ export function AIProvidersPage() {
         <TabsContent value="failover" className="mt-4">
           {isFailoverLoading ? (
             <div className="space-y-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-48 w-full" />
-              <Skeleton className="h-32 w-full" />
+              <PulseSkeleton className="h-10 w-full" />
+              <PulseSkeleton className="h-48 w-full" />
+              <PulseSkeleton className="h-32 w-full" />
             </div>
           ) : failoverStatus ? (
             <div className="space-y-4">
               {/* ─── Enable/Disable Toggle ─── */}
               <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-md bg-teal-50 dark:bg-teal-950/30">
-                    <ShieldCheck className="h-4 w-4 text-teal-600" />
+                  <div className="p-1.5 rounded-md bg-success/10">
+                    <ShieldCheck className="h-4 w-4 text-success" />
                   </div>
                   <div>
                     <p className="text-sm font-medium">Basculement automatique (Failover)</p>
@@ -1088,7 +1088,7 @@ export function AIProvidersPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {failoverStatus.config.enabled && (
-                    <Badge className="bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300 text-[10px] gap-1">
+                    <Badge className="bg-success/10 text-success text-[10px] gap-1">
                       <HeartPulse className="h-3 w-3 animate-pulse" />
                       Actif
                     </Badge>
@@ -1103,9 +1103,9 @@ export function AIProvidersPage() {
 
               {/* Warning if < 2 providers */}
               {failoverStatus.summary.totalProviders < 2 && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30">
+                  <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                  <p className="text-xs text-warning">
                     <strong>Minimum 2 fournisseurs requis.</strong> Ajoutez au moins un fournisseur de secours pour que le failover fonctionne.
                   </p>
                 </div>
@@ -1113,32 +1113,32 @@ export function AIProvidersPage() {
 
               {/* ─── Summary Stats ─── */}
               <div className="grid grid-cols-4 gap-2">
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/20">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Sains</p>
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{failoverStatus.summary.healthy}</p>
+                    <p className="text-sm font-bold text-success font-mono tabular-nums">{failoverStatus.summary.healthy}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/20">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10">
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Dégradés</p>
-                    <p className="text-sm font-bold text-amber-700 dark:text-amber-400">{failoverStatus.summary.degraded}</p>
+                    <p className="text-sm font-bold text-warning font-mono tabular-nums">{failoverStatus.summary.degraded}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/20">
-                  <Clock className="h-3.5 w-3.5 text-red-600 shrink-0" />
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10">
+                  <Clock className="h-3.5 w-3.5 text-destructive shrink-0" />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Cooldown</p>
-                    <p className="text-sm font-bold text-red-700 dark:text-red-400">{failoverStatus.summary.coolingDown}</p>
+                    <p className="text-sm font-bold text-destructive font-mono tabular-nums">{failoverStatus.summary.coolingDown}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-50 dark:bg-violet-950/20">
-                  <TrendingUp className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-secondary/10">
+                  <TrendingUp className="h-3.5 w-3.5 text-secondary shrink-0" />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Basculements</p>
-                    <p className="text-sm font-bold text-violet-700 dark:text-violet-400">{failoverStatus.summary.totalFailovers}</p>
+                    <p className="text-sm font-bold text-secondary font-mono tabular-nums">{failoverStatus.summary.totalFailovers}</p>
                   </div>
                 </div>
               </div>
@@ -1148,7 +1148,7 @@ export function AIProvidersPage() {
                 <Card>
                   <CardHeader className="pb-3 pt-4 px-4">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm flex items-center gap-1.5">
+                      <CardTitle className="text-sm flex items-center gap-1.5 font-display">
                         <ArrowUpDown className="h-3.5 w-3.5" />
                         Ordre de failover
                       </CardTitle>
@@ -1170,18 +1170,18 @@ export function AIProvidersPage() {
                             transition={{ duration: 0.15, delay: idx * 0.02 }}
                             className={`flex items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
                               p.status === 'COOLING_DOWN'
-                                ? 'border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20'
+                                ? 'border-destructive/30 bg-destructive/10'
                                 : p.status === 'DEGRADED'
-                                  ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20'
+                                  ? 'border-warning/30 bg-warning/10'
                                   : p.isActive
-                                    ? 'border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20'
+                                    ? 'border-secondary/30 bg-secondary/10'
                                     : 'border-border'
                             }`}
                           >
                             {/* Priority number */}
                             <div className={`flex items-center justify-center h-6 w-6 rounded-full text-[11px] font-bold shrink-0 ${
                               idx === 0
-                                ? 'bg-violet-600 text-white'
+                                ? 'bg-secondary text-white'
                                 : 'bg-muted text-muted-foreground'
                             }`}>
                               {idx + 1}
@@ -1192,13 +1192,13 @@ export function AIProvidersPage() {
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium truncate">{p.name}</span>
                                 {p.isActive && (
-                                  <Badge className="bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300 text-[9px] h-4 px-1">
+                                  <Badge className="bg-secondary/10 text-secondary text-[9px] h-4 px-1">
                                     PRINCIPAL
                                   </Badge>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[11px] text-muted-foreground font-mono">{p.model || '—'}</span>
+                                <span className="text-[11px] text-muted-foreground font-mono tabular-nums">{p.model || '—'}</span>
                                 {p.health && p.health.totalCalls > 0 && (
                                   <span className="text-[10px] text-muted-foreground">
                                     {p.health.totalCalls} appels · {(p.health.totalFailures / p.health.totalCalls * 100).toFixed(0)}% échec
@@ -1210,13 +1210,13 @@ export function AIProvidersPage() {
                             {/* Status indicator */}
                             <div className="hidden sm:flex items-center shrink-0">
                               {p.status === 'HEALTHY' && (
-                                <span className="flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-full">
+                                <span className="flex items-center gap-1 text-[10px] text-success bg-success/10 px-2 py-0.5 rounded-full">
                                   <CheckCircle2 className="h-3 w-3" />
                                   Sain
                                 </span>
                               )}
                               {p.status === 'DEGRADED' && (
-                                <span className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full">
+                                <span className="flex items-center gap-1 text-[10px] text-warning bg-warning/10 px-2 py-0.5 rounded-full">
                                   <AlertTriangle className="h-3 w-3" />
                                   Dégradé
                                   {p.health?.consecutiveFailures && (
@@ -1225,7 +1225,7 @@ export function AIProvidersPage() {
                                 </span>
                               )}
                               {p.status === 'COOLING_DOWN' && (
-                                <span className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full">
+                                <span className="flex items-center gap-1 text-[10px] text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
                                   <Clock className="h-3 w-3" />
                                   Cooldown
                                 </span>
@@ -1240,7 +1240,7 @@ export function AIProvidersPage() {
                                 className={`h-6 w-6 rounded-md flex items-center justify-center border transition-colors ${
                                   idx === 0
                                     ? 'border-border/30 text-muted-foreground/20 cursor-not-allowed'
-                                    : 'border-border/60 text-muted-foreground hover:bg-violet-100 hover:text-violet-700 hover:border-violet-300 dark:hover:bg-violet-950/50 dark:hover:border-violet-700 dark:hover:text-violet-300'
+                                    : 'border-border/60 text-muted-foreground hover:bg-secondary/10 hover:text-secondary hover:border-secondary/30'
                                 }`}
                                 title="Monter en priorité"
                               >
@@ -1256,7 +1256,7 @@ export function AIProvidersPage() {
                                 className={`h-6 w-6 rounded-md flex items-center justify-center border transition-colors ${
                                   idx === failoverStatus.providers.length - 1
                                     ? 'border-border/30 text-muted-foreground/20 cursor-not-allowed'
-                                    : 'border-border/60 text-muted-foreground hover:bg-violet-100 hover:text-violet-700 hover:border-violet-300 dark:hover:bg-violet-950/50 dark:hover:border-violet-700 dark:hover:text-violet-300'
+                                    : 'border-border/60 text-muted-foreground hover:bg-secondary/10 hover:text-secondary hover:border-secondary/30'
                                 }`}
                                 title="Descendre en priorité"
                               >
@@ -1278,7 +1278,7 @@ export function AIProvidersPage() {
               {/* ─── Configuration ─── */}
               <Card>
                 <CardHeader className="pb-3 pt-4 px-4">
-                  <CardTitle className="text-sm flex items-center gap-1.5">
+                  <CardTitle className="text-sm flex items-center gap-1.5 font-display">
                     <Settings2 className="h-3.5 w-3.5" />
                     Configuration
                   </CardTitle>
@@ -1301,7 +1301,7 @@ export function AIProvidersPage() {
                             disabled={isUpdatingFailoverConfig}
                             className={`h-7 w-7 rounded-md text-xs font-bold transition-all ${
                               failoverStatus.config.maxConsecutiveFailures === n
-                                ? 'bg-violet-600 text-white'
+                                ? 'bg-secondary text-white'
                                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
                             }`}
                           >
@@ -1332,7 +1332,7 @@ export function AIProvidersPage() {
                             disabled={isUpdatingFailoverConfig}
                             className={`h-7 px-2 rounded-md text-[11px] font-bold transition-all ${
                               failoverStatus.config.cooldownDurationMs === opt.value
-                                ? 'bg-violet-600 text-white'
+                                ? 'bg-secondary text-white'
                                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
                             }`}
                           >
@@ -1368,7 +1368,7 @@ export function AIProvidersPage() {
                 <Card>
                   <CardHeader className="pb-3 pt-4 px-4">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsEventsExpanded(!isEventsExpanded)}>
-                      <CardTitle className="text-sm flex items-center gap-1.5">
+                      <CardTitle className="text-sm flex items-center gap-1.5 font-display">
                         <Activity className="h-3.5 w-3.5" />
                         Événements récents
                         <Badge variant="outline" className="text-[10px] ml-1">
@@ -1456,7 +1456,7 @@ export function AIProvidersPage() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-violet-600" />
+              <Plus className="h-5 w-5 text-secondary" />
               Ajouter un fournisseur IA
             </DialogTitle>
             <DialogDescription>
@@ -1476,7 +1476,7 @@ export function AIProvidersPage() {
               Annuler
             </Button>
             <Button
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              className="bg-secondary hover:bg-secondary/90 text-white"
               onClick={handleCreate}
               disabled={isSaving || !formData.name}
             >
@@ -1492,7 +1492,7 @@ export function AIProvidersPage() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-violet-600" />
+              <Pencil className="h-5 w-5 text-secondary" />
               Modifier le fournisseur
             </DialogTitle>
             <DialogDescription>
@@ -1513,7 +1513,7 @@ export function AIProvidersPage() {
               Annuler
             </Button>
             <Button
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              className="bg-secondary hover:bg-secondary/90 text-white"
               onClick={handleUpdate}
               disabled={isSaving || !formData.name}
             >
@@ -1551,7 +1551,7 @@ export function AIProvidersPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-violet-600" />
+              <Layers className="h-5 w-5 text-secondary" />
               Changer de modèle
             </DialogTitle>
             <DialogDescription>
@@ -1562,7 +1562,7 @@ export function AIProvidersPage() {
           <div className="space-y-3">
             {isLoadingModels ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+                <Loader2 className="h-6 w-6 animate-spin text-secondary" />
                 <span className="ml-2 text-sm text-muted-foreground">Chargement des modèles...</span>
               </div>
             ) : dynamicModels.length > 0 ? (
@@ -1574,22 +1574,22 @@ export function AIProvidersPage() {
                     disabled={switchingModel !== null}
                     className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-all flex items-center justify-between group ${
                       model === activeProvider?.model
-                        ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/30'
-                        : 'border-transparent hover:border-violet-200 hover:bg-violet-50/50 dark:hover:border-violet-800 dark:hover:bg-violet-950/20'
+                        ? 'border-secondary/30 bg-secondary/10'
+                        : 'border-transparent hover:border-secondary/30 hover:bg-secondary/10'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       {model === activeProvider?.model ? (
-                        <Check className="h-4 w-4 text-violet-600 shrink-0" />
+                        <Check className="h-4 w-4 text-secondary shrink-0" />
                       ) : (
-                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0 group-hover:border-violet-400" />
+                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0 group-hover:border-secondary" />
                       )}
-                      <span className={`font-mono text-xs ${model === activeProvider?.model ? 'font-bold text-violet-700 dark:text-violet-300' : ''}`}>
+                      <span className={`font-mono text-xs ${model === activeProvider?.model ? 'font-bold text-secondary' : ''}`}>
                         {model}
                       </span>
                     </div>
                     {switchingModel === model && (
-                      <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                      <Loader2 className="h-4 w-4 animate-spin text-secondary" />
                     )}
                   </button>
                 ))}
@@ -1606,7 +1606,7 @@ export function AIProvidersPage() {
               <div className="flex gap-2">
                 <Input
                   placeholder="nom-du-modèle"
-                  className="flex-1 text-sm font-mono"
+                  className="flex-1 text-sm font-mono tabular-nums"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const target = e.target as HTMLInputElement
@@ -1617,7 +1617,7 @@ export function AIProvidersPage() {
                 />
                 <Button
                   size="sm"
-                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                  className="bg-secondary hover:bg-secondary/90 text-white"
                   onClick={() => {
                     const input = document.getElementById('manual-model-input') as HTMLInputElement
                     if (input?.value.trim()) handleQuickModelSwitch(input.value.trim())
@@ -1747,8 +1747,8 @@ function ProviderForm({
 
       {/* ZAI-specific fields */}
       {formData.provider === 'ZAI' && (
-        <div className="space-y-4 rounded-lg border border-violet-200 bg-violet-50/50 p-4 dark:border-violet-800 dark:bg-violet-950/20">
-          <p className="text-xs text-violet-700 dark:text-violet-400 font-medium">
+        <div className="space-y-4 rounded-lg border border-secondary/30 bg-secondary/10 p-4">
+          <p className="text-xs text-secondary font-medium">
             Configuration Z-AI (optionnel — sinon les variables d&apos;environnement sont utilisées)
           </p>
           <div className="space-y-2">
@@ -1832,7 +1832,7 @@ function ProviderForm({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>Température</Label>
-          <span className="text-sm font-mono text-muted-foreground">{formData.temperature.toFixed(1)}</span>
+          <span className="text-sm font-mono tabular-nums text-muted-foreground">{formData.temperature.toFixed(1)}</span>
         </div>
         <Slider
           value={[formData.temperature]}

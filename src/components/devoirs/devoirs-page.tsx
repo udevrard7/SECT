@@ -35,7 +35,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '@/components/ui/sheet'
 import { Slider } from '@/components/ui/slider'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   Tooltip as RechartsTooltip, CartesianGrid,
@@ -740,7 +740,7 @@ export function DevoirsPage() {
               </span>
             </div>
             <div>
-              <h1 className="ng-text-gradient text-2xl font-bold tracking-tight sm:text-3xl">
+              <h1 className="ng-text-gradient font-display text-2xl font-bold tracking-tight sm:text-3xl">
                 Mes Devoirs
               </h1>
               <p className="mt-1 text-sm text-slate-300/70">
@@ -997,9 +997,9 @@ function KpiCard({
         <div className="min-w-0">
           <p className="truncate text-xs font-medium uppercase tracking-wider text-slate-300/60">{label}</p>
           {loading ? (
-            <div className="mt-2 h-8 w-20 rounded ng-skeleton" />
+            <PulseSkeleton className="mt-2 h-8 w-20" />
           ) : (
-            <p className="mt-1 bg-gradient-to-br from-white to-cyan-100 bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
+            <p className="mt-1 bg-gradient-to-br from-white to-cyan-100 bg-clip-text text-3xl font-bold text-transparent font-mono tabular-nums sm:text-4xl">
               {value}
             </p>
           )}
@@ -1163,7 +1163,7 @@ function GridView({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="ng-card h-56 p-4">
-              <div className="ng-skeleton h-full w-full rounded" />
+              <PulseSkeleton variant="card" className="h-full w-full" />
             </div>
           ))}
         </div>
@@ -1399,7 +1399,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="ng-card h-64 p-4">
-            <div className="ng-skeleton h-full w-full rounded" />
+            <PulseSkeleton variant="card" className="h-full w-full" />
           </div>
         ))}
       </div>
@@ -1432,7 +1432,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
               <div key={t.type}>
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <span className="text-slate-200">{t.label}</span>
-                  <span className="font-bold text-cyan-200">{t.count}</span>
+                  <span className="font-bold text-cyan-200 font-mono tabular-nums">{t.count}</span>
                 </div>
                 <div className="h-2.5 overflow-hidden rounded-full bg-slate-700/50">
                   <div
@@ -1771,19 +1771,19 @@ function SoumissionsSheet({
               <div className="grid grid-cols-4 gap-2">
                 <div className="ng-card p-2.5 text-center">
                   <p className="text-xs text-slate-300/60">Total</p>
-                  <p className="text-xl font-bold text-slate-50">{soumStats.total}</p>
+                  <p className="text-xl font-bold text-slate-50 font-mono tabular-nums">{soumStats.total}</p>
                 </div>
                 <div className="ng-card p-2.5 text-center">
                   <p className="text-xs text-slate-300/60">En attente</p>
-                  <p className="text-xl font-bold text-cyan-200">{soumStats.enAttente}</p>
+                  <p className="text-xl font-bold text-cyan-200 font-mono tabular-nums">{soumStats.enAttente}</p>
                 </div>
                 <div className="ng-card p-2.5 text-center">
                   <p className="text-xs text-slate-300/60">Corrigées</p>
-                  <p className="text-xl font-bold text-emerald-200">{soumStats.corrigees}</p>
+                  <p className="text-xl font-bold text-emerald-200 font-mono tabular-nums">{soumStats.corrigees}</p>
                 </div>
                 <div className="ng-card p-2.5 text-center">
                   <p className="text-xs text-slate-300/60">Moyenne</p>
-                  <p className="text-xl font-bold text-amber-200">
+                  <p className="text-xl font-bold text-amber-200 font-mono tabular-nums">
                     {soumStats.avgNote !== null ? soumStats.avgNote.toFixed(1) : '—'}
                   </p>
                 </div>
@@ -1803,7 +1803,7 @@ function SoumissionsSheet({
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="ng-card h-16 p-3">
-                      <div className="ng-skeleton h-full w-full rounded" />
+                      <PulseSkeleton variant="card" className="h-full w-full" />
                     </div>
                   ))}
                 </div>
@@ -1899,7 +1899,7 @@ function SoumissionsSheet({
                                     onValueChange={(v) => quickGrade.setValue(v[0])}
                                     className="flex-1"
                                   />
-                                  <span className="w-10 text-right text-xs font-bold text-amber-200">{quickGrade.value}/{noteMax}</span>
+                                  <span className="w-10 text-right text-xs font-bold text-amber-200 font-mono tabular-nums">{quickGrade.value}/{noteMax}</span>
                                 </div>
                                 <Button size="sm" onClick={quickGrade.submit} disabled={quickGrade.isGrading}
                                   className="ng-btn-primary ng-focus h-7 px-2 text-xs">

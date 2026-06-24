@@ -1092,7 +1092,7 @@ export function PassationPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-success" />
           <p className="text-sm text-muted-foreground">Chargement de l&apos;épreuve...</p>
         </div>
       </div>
@@ -1105,7 +1105,7 @@ export function PassationPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-full max-w-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">Aucune épreuve sélectionnée</CardTitle>
+            <CardTitle className="text-xl font-display tracking-tight">Aucune épreuve sélectionnée</CardTitle>
             <CardDescription>
               Veuillez sélectionner une épreuve depuis votre tableau de bord.
             </CardDescription>
@@ -1113,7 +1113,7 @@ export function PassationPage() {
           <CardContent className="flex justify-center">
             <Button
               variant="outline"
-              className="border-emerald-600 text-emerald-600 hover:bg-emerald-50"
+              className="border-success/40 text-success hover:bg-success/10"
               onClick={() => router.push('/mes-epreuves')}
             >
               <Home className="h-4 w-4 mr-2" />
@@ -1132,12 +1132,12 @@ export function PassationPage() {
   if (phase === 'pre-exam') {
     return (
       <div className="flex items-center justify-center min-h-[70vh] p-4">
-        <Card className="w-full max-w-2xl border-emerald-200 dark:border-emerald-900">
+        <Card className="w-full max-w-2xl border-success/30 ">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50">
-              <ShieldCheck className="h-8 w-8 text-emerald-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ">
+              <ShieldCheck className="h-8 w-8 text-success" />
             </div>
-            <CardTitle className="text-2xl">{epreuve.titre}</CardTitle>
+            <CardTitle className="text-2xl font-display tracking-tight">{epreuve.titre}</CardTitle>
             {epreuve.description && (
               <CardDescription className="mt-1">{epreuve.description}</CardDescription>
             )}
@@ -1145,14 +1145,14 @@ export function PassationPage() {
           <CardContent className="space-y-6">
             {/* Exam info */}
             <div className="grid grid-cols-3 gap-4 text-center">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/50">
-                <Clock className="mx-auto h-5 w-5 text-emerald-600 mb-1" />
-                <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{epreuve.duree} min</p>
+              <div className="rounded-lg border border-success/30 bg-success/10 p-3  /50">
+                <Clock className="mx-auto h-5 w-5 text-success mb-1" />
+                <p className="text-lg font-bold text-success dark:text-success">{epreuve.duree} min</p>
                 <p className="text-xs text-muted-foreground">Durée</p>
               </div>
-              <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 dark:border-teal-800 dark:bg-teal-950/50">
-                <BookOpen className="mx-auto h-5 w-5 text-teal-600 mb-1" />
-                <p className="text-lg font-bold text-teal-700 dark:text-teal-400">{questions.length}</p>
+              <div className="rounded-lg border border-info/30 bg-info/10 p-3  ">
+                <BookOpen className="mx-auto h-5 w-5 text-info mb-1" />
+                <p className="text-lg font-bold text-info dark:text-info">{questions.length}</p>
                 <p className="text-xs text-muted-foreground">Questions</p>
               </div>
               <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-800 dark:bg-cyan-950/50">
@@ -1164,15 +1164,15 @@ export function PassationPage() {
 
             {/* Dynamic Rules */}
             <div className="rounded-lg border bg-muted/30 p-4">
-              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-emerald-600" />
+              <h3 className="font-display font-semibold tracking-tight text-sm mb-3 flex items-center gap-2">
+                <Lock className="h-4 w-4 text-success" />
                 Règles de l&apos;épreuve
               </h3>
               <ul className="space-y-2.5">
                 {examRules.map((rule, i) => (
                   <li key={i} className={`flex items-start gap-2.5 text-sm ${rule.highlight ? 'font-medium' : ''}`}>
-                    <rule.icon className={`h-4 w-4 mt-0.5 shrink-0 ${rule.highlight ? 'text-red-500' : 'text-emerald-600'}`} />
-                    <span className={rule.highlight ? 'text-red-700 dark:text-red-400' : ''}>{rule.text}</span>
+                    <rule.icon className={`h-4 w-4 mt-0.5 shrink-0 ${rule.highlight ? 'text-destructive' : 'text-success'}`} />
+                    <span className={rule.highlight ? 'text-destructive ' : ''}>{rule.text}</span>
                   </li>
                 ))}
               </ul>
@@ -1180,14 +1180,14 @@ export function PassationPage() {
 
             {/* Penalty warning box */}
             {securityConfig.detectionFullscreen && securityConfig.penaliteFullscreenExit > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-4  ">
                 <div className="flex items-start gap-3">
-                  <MinusCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <MinusCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    <p className="text-sm font-semibold text-warning">
                       Système de pénalité plein écran
                     </p>
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <p className="text-xs text-warning">
                       1ère sortie : avertissement sans pénalité. À partir de la 2ème sortie :
                       -{securityConfig.penaliteFullscreenExit} points par sortie.
                       {securityConfig.fullscreenObligatoire && ' L\'épreuve sera bloquée tant que vous n\'êtes pas en plein écran.'}
@@ -1198,12 +1198,12 @@ export function PassationPage() {
             )}
 
             {/* Consent checkbox */}
-            <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+            <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-success/10/50 p-4  ">
               <Checkbox
                 id="consent"
                 checked={consentAccepted}
                 onCheckedChange={(checked) => setConsentAccepted(checked === true)}
-                className="mt-0.5 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                className="mt-0.5 data-[state=checked]:bg-success data-[state=checked]:border-success"
               />
               <Label htmlFor="consent" className="text-sm font-normal cursor-pointer leading-relaxed">
                 J&apos;accepte les règles de l&apos;épreuve et je m&apos;engage à la réaliser de manière honnête et autonome.
@@ -1215,7 +1215,7 @@ export function PassationPage() {
             <Button
               onClick={startExam}
               disabled={!consentAccepted || isStarting}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-base"
+              className="w-full  text-white h-11 text-base"
               size="lg"
             >
               {isStarting ? (
@@ -1258,12 +1258,12 @@ export function PassationPage() {
 
     return (
       <div className="flex items-center justify-center min-h-[70vh] p-4">
-        <Card className="w-full max-w-lg border-emerald-200 dark:border-emerald-900">
+        <Card className="w-full max-w-lg border-success/30 ">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50">
-              <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ">
+              <CheckCircle2 className="h-8 w-8 text-success" />
             </div>
-            <CardTitle className="text-2xl">Épreuve soumise !</CardTitle>
+            <CardTitle className="text-2xl font-display tracking-tight">Épreuve soumise !</CardTitle>
             <CardDescription className="mt-1">
               {autoSubmitted && autoSubmitReason && autoSubmitMessages[autoSubmitReason]
                 ? autoSubmitMessages[autoSubmitReason].description
@@ -1275,7 +1275,7 @@ export function PassationPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-4 text-center">
-                <p className="text-2xl font-bold text-emerald-600">{answeredCount}</p>
+                <p className="text-2xl font-bold text-success">{answeredCount}</p>
                 <p className="text-xs text-muted-foreground mt-1">Questions répondues</p>
               </div>
               <div className="rounded-lg border p-4 text-center">
@@ -1286,20 +1286,20 @@ export function PassationPage() {
 
             {/* Scenario A: Show final score immediately */}
             {submitResult && submitResult.scenario === 'A' && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+              <div className="rounded-lg border border-success/30 bg-success/10 p-4  ">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                  <CheckCircle2 className="h-5 w-5 text-success" />
+                  <p className="text-sm font-semibold text-success">
                     Correction automatique terminée
                   </p>
                 </div>
                 <div className="flex items-baseline gap-1 ml-7">
-                  <span className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                  <span className="text-3xl font-bold text-success">
                     {submitResult.score.toFixed(1)}
                   </span>
                   <span className="text-lg text-muted-foreground">/{submitResult.totalPossible}</span>
                 </div>
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 ml-7 mt-1">
+                <p className="text-xs text-success ml-7 mt-1">
                   Toutes les questions ont été corrigées automatiquement. Votre note finale est disponible.
                 </p>
               </div>
@@ -1308,31 +1308,31 @@ export function PassationPage() {
             {/* Scenario B: Show partial score with pending correction */}
             {submitResult && submitResult.scenario === 'B' && (
               <div className="space-y-3">
-                <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 dark:border-teal-800 dark:bg-teal-950/30">
+                <div className="rounded-lg border border-info/30 bg-info/10 p-4  ">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle2 className="h-5 w-5 text-teal-600" />
-                    <p className="text-sm font-semibold text-teal-800 dark:text-teal-200">
+                    <CheckCircle2 className="h-5 w-5 text-info" />
+                    <p className="text-sm font-semibold text-info">
                       Note partielle (questions auto-corrigées)
                     </p>
                   </div>
                   <div className="flex items-baseline gap-1 ml-7">
-                    <span className="text-3xl font-bold text-teal-700 dark:text-teal-300">
+                    <span className="text-3xl font-bold text-info">
                       {submitResult.score.toFixed(1)}
                     </span>
                     <span className="text-lg text-muted-foreground">/{submitResult.autoGradedTotal}</span>
                   </div>
-                  <p className="text-xs text-teal-700 dark:text-teal-300 ml-7 mt-1">
+                  <p className="text-xs text-info ml-7 mt-1">
                     Score basé uniquement sur les questions à choix (QCU/QCM).
                   </p>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3  ">
                   <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-amber-600" />
-                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    <Clock className="h-4 w-4 text-warning" />
+                    <p className="text-sm font-semibold text-warning">
                       En attente de correction manuelle
                     </p>
                   </div>
-                  <p className="text-xs text-amber-700 dark:text-amber-300 ml-6 mt-1">
+                  <p className="text-xs text-warning ml-6 mt-1">
                     {submitResult.pendingCorrection} question{submitResult.pendingCorrection > 1 ? 's' : ''} ouverte{submitResult.pendingCorrection > 1 ? 's' : ''} (QRC/Réflexion) nécessite{submitResult.pendingCorrection > 1 ? 'nt' : ''} une correction par l&apos;enseignant.
                     Votre note définitive sera disponible après correction.
                   </p>
@@ -1342,14 +1342,14 @@ export function PassationPage() {
 
             {/* Penalty display */}
             {penalite > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3  ">
                 <div className="flex items-center gap-2 mb-1">
-                  <MinusCircle className="h-4 w-4 text-amber-600" />
-                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  <MinusCircle className="h-4 w-4 text-warning" />
+                  <p className="text-sm font-semibold text-warning">
                     Pénalité appliquée : -{penalite} point{penalite > 1 ? 's' : ''}
                   </p>
                 </div>
-                <p className="text-xs text-amber-700 dark:text-amber-300 ml-6">
+                <p className="text-xs text-warning ml-6">
                   Retrait pour {fullscreenExitCount - 1} sortie{fullscreenExitCount - 1 > 1 ? 's' : ''} du plein écran au-delà de la 1ère
                   ({securityConfig.penaliteFullscreenExit} pts × {fullscreenExitCount - 1} = -{penalite} pts)
                 </p>
@@ -1360,7 +1360,7 @@ export function PassationPage() {
             {totalAlertCount > 0 && (
               <div className="rounded-lg border p-3">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-amber-600" />
+                  <ShieldAlert className="h-4 w-4 text-warning" />
                   <p className="text-sm font-medium">
                     {totalAlertCount} alerte{totalAlertCount > 1 ? 's' : ''} de sécurité enregistrée{totalAlertCount > 1 ? 's' : ''}
                   </p>
@@ -1372,13 +1372,13 @@ export function PassationPage() {
             )}
 
             {autoSubmitted && autoSubmitReason && autoSubmitMessages[autoSubmitReason] && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                <FileWarning className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3  ">
+                <FileWarning className="h-5 w-5 text-warning mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  <p className="text-sm font-semibold text-warning">
                     {autoSubmitMessages[autoSubmitReason].title}
                   </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                  <p className="text-sm text-warning">
                     {autoSubmitMessages[autoSubmitReason].description}
                   </p>
                 </div>
@@ -1386,7 +1386,7 @@ export function PassationPage() {
             )}
 
             <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="w-full  text-white"
               onClick={() => router.push('/mes-epreuves')}
             >
               <Home className="h-4 w-4 mr-2" />
@@ -1409,17 +1409,17 @@ export function PassationPage() {
   // Alert counter color
   const alertRatio = securityConfig.nbAlertesMax > 0 ? totalAlertCount / securityConfig.nbAlertesMax : 0
   const alertBadgeColor = alertRatio >= 0.8
-    ? 'border-red-400 text-red-600 bg-red-50 dark:border-red-800 dark:text-red-400 dark:bg-red-950/50'
+    ? 'border-destructive/40 text-destructive bg-destructive/10'
     : alertRatio >= 0.5
-      ? 'border-amber-400 text-amber-600 bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:bg-amber-950/50'
-      : 'border-emerald-300 text-emerald-600 bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:bg-emerald-950/50'
+      ? 'border-warning text-warning bg-warning/10  dark:text-warning '
+      : 'border-success/40 text-success bg-success/10  dark:text-success /50'
 
   // Inactivity badge color
   const inactivityBadgeColor = inactivityRatio >= 0.8
-    ? 'text-red-600 dark:text-red-400'
+    ? 'text-destructive'
     : inactivityRatio >= 0.5
-      ? 'text-amber-600 dark:text-amber-400'
-      : 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-warning'
+      : 'text-success'
 
   return (
     <div
@@ -1433,26 +1433,26 @@ export function PassationPage() {
       {isFullscreenBlocked && securityConfig.fullscreenObligatoire && (
         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
           <div className="text-center space-y-6 p-8 max-w-md">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/50">
-              <Maximize className="h-10 w-10 text-red-600" />
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-destructive/15 dark:bg-destructive/30/50">
+              <Maximize className="h-10 w-10 text-destructive" />
             </div>
-            <h2 className="text-2xl font-bold text-white">Mode plein écran requis</h2>
-            <p className="text-gray-300">
+            <h2 className="text-2xl font-display font-bold tracking-tight text-white">Mode plein écran requis</h2>
+            <p className="text-muted-foreground">
               Vous avez quitté le mode plein écran. L&apos;épreuve est bloquée tant que vous n&apos;êtes pas en plein écran.
             </p>
             {fullscreenExitCount >= 2 && (
-              <div className="rounded-lg bg-amber-900/50 border border-amber-500 p-3">
-                <p className="text-amber-200 text-sm font-medium">
+              <div className="rounded-lg bg-warning/30/50 border border-warning p-3">
+                <p className="text-warning text-sm font-medium">
                   ⚠️ Pénalité de -{securityConfig.penaliteFullscreenExit} points appliquée
                   (sortie n°{fullscreenExitCount})
                 </p>
-                <p className="text-amber-300 text-xs mt-1">
+                <p className="text-warning text-xs mt-1">
                   Total pénalités : -{penalite} points
                 </p>
               </div>
             )}
             {securityConfig.autoSubmitOnViolation && (
-              <p className="text-gray-400 text-sm">
+              <p className="text-muted-foreground text-sm">
                 Alertes restantes avant soumission automatique : {Math.max(0, securityConfig.nbAlertesMax - totalAlertCount)}
               </p>
             )}
@@ -1468,13 +1468,13 @@ export function PassationPage() {
                   })
                 }
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-base px-8"
+              className=" text-white h-12 text-base px-8"
               size="lg"
             >
               <Maximize className="h-5 w-5 mr-2" />
               Revenir en plein écran
             </Button>
-            <p className="text-gray-500 text-xs">
+            <p className="text-muted-foreground text-xs">
               Le chronomètre continue de tourner pendant que vous n&apos;êtes pas en plein écran.
             </p>
           </div>
@@ -1483,15 +1483,15 @@ export function PassationPage() {
 
       {/* ─── Screenshot capture flash indicator ─────────────────────────── */}
       {showCaptureFlash && (
-        <div className="fixed top-4 right-4 z-[90] flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 shadow-lg dark:border-blue-800 dark:bg-blue-950/80 animate-pulse">
-          <Camera className="h-4 w-4 text-blue-600" />
-          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Capture d&apos;écran</span>
+        <div className="fixed top-4 right-4 z-[90] flex items-center gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 shadow-lg animate-pulse">
+          <Camera className="h-4 w-4 text-info" />
+          <span className="text-xs font-medium text-info">Capture d&apos;écran</span>
         </div>
       )}
 
       {/* ─── Grace Period Banner ─────────────────────────────────────────── */}
       {inGracePeriod && gracePeriodEndsAt && !isEpreuveClosed && (
-        <div className="fixed top-0 left-0 right-0 z-[95] bg-amber-500 text-white px-4 py-2 text-center shadow-lg">
+        <div className="fixed top-0 left-0 right-0 z-[95] bg-warning text-white px-4 py-2 text-center shadow-lg">
           <div className="flex items-center justify-center gap-2">
             <AlertTriangle className="h-5 w-5 animate-pulse" />
             <span className="font-bold text-sm">
@@ -1508,7 +1508,7 @@ export function PassationPage() {
       <Dialog open={showClosureDialog} onOpenChange={setShowClosureDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+            <DialogTitle className="flex items-center gap-2 text-destructive ">
               <Lock className="h-5 w-5" />
               Épreuve clôturée
             </DialogTitle>
@@ -1520,8 +1520,8 @@ export function PassationPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/50">
-              <Lock className="h-8 w-8 text-red-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/15 dark:bg-destructive/30/50">
+              <Lock className="h-8 w-8 text-destructive" />
             </div>
             <p className="text-sm text-muted-foreground">
               Les soumissions ne sont plus acceptées. Votre travail a été sauvegardé automatiquement.
@@ -1556,14 +1556,14 @@ export function PassationPage() {
 
         {/* Center: Timer + Penalty */}
         <div className="flex items-center gap-2 shrink-0">
-          <Clock className={`h-5 w-5 ${isVeryLowTime ? 'text-red-600' : isLowTime ? 'text-red-500' : 'text-emerald-600'}`} />
+          <Clock className={`h-5 w-5 ${isVeryLowTime ? 'text-destructive' : isLowTime ? 'text-destructive' : 'text-success'}`} />
           <span
             className={`text-lg font-mono font-bold tabular-nums ${
               isVeryLowTime
-                ? 'text-red-600 animate-pulse'
+                ? 'text-destructive animate-pulse'
                 : isLowTime
-                  ? 'text-red-500'
-                  : 'text-emerald-700 dark:text-emerald-400'
+                  ? 'text-destructive'
+                  : 'text-success dark:text-success'
             }`}
           >
             {formatTime(timeRemaining)}
@@ -1573,7 +1573,7 @@ export function PassationPage() {
           {penalite > 0 && (
             <Badge
               variant="outline"
-              className="text-xs border-red-400 text-red-600 bg-red-50 dark:border-red-800 dark:text-red-400 dark:bg-red-950/50"
+              className="text-xs border-destructive/40 text-destructive bg-destructive/10"
             >
               <MinusCircle className="h-3 w-3 mr-1" />
               -{penalite} pts
@@ -1593,7 +1593,7 @@ export function PassationPage() {
 
           {/* Capture indicator */}
           {securityConfig.captureEcran && lastCaptureTime && (
-            <Badge variant="outline" className="text-xs border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400">
+            <Badge variant="outline" className="text-xs border-blue-300 text-info dark:border-blue-700 ">
               <Camera className="h-3 w-3 mr-1" />
               Capt.
             </Badge>
@@ -1612,13 +1612,13 @@ export function PassationPage() {
 
           {/* Fullscreen exit counter */}
           {securityConfig.detectionFullscreen && fullscreenExitCount > 0 && (
-            <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:bg-amber-950/50">
+            <Badge variant="outline" className="text-xs border-warning text-warning bg-warning/10  dark:text-warning ">
               <Maximize className="h-3 w-3 mr-1" />
               Sorties: {fullscreenExitCount}
             </Badge>
           )}
 
-          <Badge variant="outline" className="text-xs border-emerald-300 dark:border-emerald-700">
+          <Badge variant="outline" className="text-xs border-success/40 ">
             {currentIndex + 1}/{questions.length}
           </Badge>
 
@@ -1632,7 +1632,7 @@ export function PassationPage() {
           <Button
             variant="outline"
             size="sm"
-            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10  dark:hover:bg-destructive/10"
             onClick={() => submitExam(false)}
             disabled={isSubmitting}
           >
@@ -1682,9 +1682,9 @@ export function PassationPage() {
                   const isCurrent = idx === currentIndex
 
                   let bgClass = 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  if (isCurrent) bgClass = 'ring-2 ring-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                  else if (isFlagged) bgClass = 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300'
-                  else if (isAnswered) bgClass = 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300'
+                  if (isCurrent) bgClass = 'ring-2 ring-success bg-success/10 text-success  dark:text-success'
+                  else if (isFlagged) bgClass = 'bg-warning/15 text-warning hover:bg-warning/20'
+                  else if (isAnswered) bgClass = 'bg-success/15 text-success hover:bg-success/20 '
 
                   return (
                     <button
@@ -1702,7 +1702,7 @@ export function PassationPage() {
               {/* Legend */}
               <div className="mt-4 space-y-1.5 text-xs text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-sm bg-emerald-100 dark:bg-emerald-900/50" />
+                  <div className="h-3 w-3 rounded-sm bg-success/15 " />
                   <span>Répondu</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1710,11 +1710,11 @@ export function PassationPage() {
                   <span>Non répondu</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-sm bg-amber-100 dark:bg-amber-900/50" />
+                  <div className="h-3 w-3 rounded-sm bg-warning/15 dark:bg-warning/30/50" />
                   <span>Marqué pour révision</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-sm ring-2 ring-emerald-500" />
+                  <div className="h-3 w-3 rounded-sm ring-2 ring-success" />
                   <span>Question actuelle</span>
                 </div>
               </div>
@@ -1723,7 +1723,7 @@ export function PassationPage() {
               <div className="mt-4 pt-4 border-t space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Répondues</span>
-                  <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 text-xs">
+                  <Badge variant="secondary" className="bg-success/15 text-success  text-xs">
                     {answeredCount}
                   </Badge>
                 </div>
@@ -1735,7 +1735,7 @@ export function PassationPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Marquées</span>
-                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 text-xs">
+                  <Badge variant="secondary" className="bg-warning/15 text-warning dark:bg-warning/30/50 dark:text-warning text-xs">
                     {flaggedQuestions.size}
                   </Badge>
                 </div>
@@ -1750,7 +1750,7 @@ export function PassationPage() {
                 {penalite > 0 && (
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Pénalité</span>
-                    <Badge variant="secondary" className="text-xs bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                    <Badge variant="secondary" className="text-xs bg-destructive/15 text-destructive dark:bg-destructive/30/50 ">
                       -{penalite} pts
                     </Badge>
                   </div>
@@ -1758,7 +1758,7 @@ export function PassationPage() {
                 {securityConfig.detectionFullscreen && (
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Sorties plein écran</span>
-                    <Badge variant="secondary" className={`text-xs ${fullscreenExitCount > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' : ''}`}>
+                    <Badge variant="secondary" className={`text-xs ${fullscreenExitCount > 0 ? 'bg-warning/15 text-warning dark:bg-warning/30/50 dark:text-warning' : ''}`}>
                       {fullscreenExitCount}
                     </Badge>
                   </div>
@@ -1809,9 +1809,9 @@ export function PassationPage() {
                     const isCurrent = idx === currentIndex
 
                     let bgClass = 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    if (isCurrent) bgClass = 'ring-2 ring-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                    else if (isFlagged) bgClass = 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300'
-                    else if (isAnswered) bgClass = 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300'
+                    if (isCurrent) bgClass = 'ring-2 ring-success bg-success/10 text-success  dark:text-success'
+                    else if (isFlagged) bgClass = 'bg-warning/15 text-warning hover:bg-warning/20'
+                    else if (isAnswered) bgClass = 'bg-success/15 text-success hover:bg-success/20 '
 
                     return (
                       <button
@@ -1830,8 +1830,8 @@ export function PassationPage() {
 
                 {/* Mobile penalty info */}
                 {penalite > 0 && (
-                  <div className="mt-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-3">
-                    <p className="text-xs font-medium text-red-700 dark:text-red-300">
+                  <div className="mt-4 rounded-lg bg-destructive/10 border border-destructive/30 p-3">
+                    <p className="text-xs font-medium text-destructive">
                       Pénalité : -{penalite} pts ({fullscreenExitCount - 1} sortie{fullscreenExitCount - 1 > 1 ? 's' : ''} plein écran)
                     </p>
                   </div>
@@ -1858,16 +1858,16 @@ export function PassationPage() {
                       <Badge
                         className={
                           currentQuestion.question.type === 'QCU'
-                            ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+                            ? 'bg-info/15 text-info border-info/30'
                             : currentQuestion.question.type === 'QCM'
-                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                              ? 'bg-warning/15 text-warning dark:bg-warning/30/50 dark:text-warning border-warning/30'
                               : currentQuestion.question.type === 'QRC'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                ? 'bg-success/15 text-success  border-success/30'
                                 : currentQuestion.question.type === 'REFLEXION'
                                   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                   : currentQuestion.question.type === 'CODE'
-                                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300 border-violet-200 dark:border-violet-800'
-                                    : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                    ? 'bg-secondary/15 text-secondary border-secondary/30'
+                                    : 'bg-destructive/15 text-destructive border-destructive/30 '
                         }
                       >
                         {currentQuestion.question.type}
@@ -1882,7 +1882,7 @@ export function PassationPage() {
                     {currentQuestion.question.themes && currentQuestion.question.themes.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {currentQuestion.question.themes.slice(0, 3).map((theme, i) => (
-                          <Badge key={i} variant="outline" className="text-xs border-teal-300 text-teal-700 dark:border-teal-700 dark:text-teal-300">
+                          <Badge key={i} variant="outline" className="text-xs border-info/40 text-info">
                             {theme}
                           </Badge>
                         ))}
@@ -1897,8 +1897,8 @@ export function PassationPage() {
                     onClick={() => toggleFlag(currentQuestion.questionId)}
                     className={`shrink-0 ${
                       flaggedQuestions.has(currentQuestion.questionId)
-                        ? 'text-amber-600 hover:text-amber-700'
-                        : 'text-muted-foreground hover:text-amber-600'
+                        ? 'text-warning hover:text-warning'
+                        : 'text-muted-foreground hover:text-warning'
                     }`}
                   >
                     {flaggedQuestions.has(currentQuestion.questionId) ? (
@@ -1938,7 +1938,7 @@ export function PassationPage() {
                             key={idx}
                             className={`flex items-center gap-3 rounded-lg border p-3 sm:p-4 transition-colors cursor-pointer ${
                               reponses[currentQuestion.questionId] === letter
-                                ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/40'
+                                ? 'border-success bg-success/10 '
                                 : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAnswerChange(currentQuestion.questionId, letter)}
@@ -1946,13 +1946,13 @@ export function PassationPage() {
                             <RadioGroupItem
                               value={letter}
                               id={`qcu-${currentQuestion.questionId}-${letter}`}
-                              className="data-[state=checked]:border-emerald-600 data-[state=checked]:text-emerald-600"
+                              className="data-[state=checked]:border-success data-[state=checked]:text-success"
                             />
                             <Label
                               htmlFor={`qcu-${currentQuestion.questionId}-${letter}`}
                               className="flex items-center gap-3 cursor-pointer flex-1"
                             >
-                              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 shrink-0">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success  shrink-0">
                                 {letter}
                               </span>
                               <span className="text-sm leading-relaxed">{prop}</span>
@@ -1976,7 +1976,7 @@ export function PassationPage() {
                             key={idx}
                             className={`flex items-center gap-3 rounded-lg border p-3 sm:p-4 transition-colors cursor-pointer ${
                               isChecked
-                                ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/40'
+                                ? 'border-success bg-success/10 '
                                 : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleQCMToggle(currentQuestion.questionId, letter)}
@@ -1984,13 +1984,13 @@ export function PassationPage() {
                             <div
                               className={`flex h-4 w-4 items-center justify-center rounded-[4px] border shrink-0 transition-colors ${
                                 isChecked
-                                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                                  ? 'bg-success text-success-foreground'
                                   : 'border-input bg-background'
                               }`}
                             >
                               {isChecked && <CheckCircle2 className="h-3 w-3" />}
                             </div>
-                            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-sm font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 shrink-0">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success/15 text-sm font-bold text-success  shrink-0">
                               {letter}
                             </span>
                             <span className="text-sm leading-relaxed">{prop}</span>
@@ -2048,24 +2048,24 @@ export function PassationPage() {
                       </div>
                       <div className="relative">
                         {/* Paper-like writing area */}
-                        <div className="rounded-lg border-2 border-amber-200 dark:border-amber-900 bg-gradient-to-b from-amber-50/80 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/10 overflow-hidden">
+                        <div className="rounded-lg border-2 border-warning/30  bg-gradient-to-b from-warning/10 to-primary/5 overflow-hidden">
                           {/* Paper header */}
-                          <div className="flex items-center justify-between px-4 py-2 border-b border-amber-200 dark:border-amber-900 bg-amber-100/50 dark:bg-amber-950/30">
+                          <div className="flex items-center justify-between px-4 py-2 border-b border-warning/30  ">
                             <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-                              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                              <BookOpen className="h-4 w-4 text-warning dark:text-warning" />
+                              <span className="text-xs font-semibold text-warning dark:text-warning">
                                 Feuille de réponse
                               </span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                              <span className="text-[10px] text-warning">
                                 {(() => {
                                   const text = reponses[currentQuestion.questionId] || ''
                                   const words = text.trim() ? text.trim().split(/\s+/).length : 0
                                   return `${words} mot${words > 1 ? 's' : ''}`
                                 })()}
                               </span>
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                              <span className="text-[10px] text-warning">
                                 {(() => {
                                   const text = reponses[currentQuestion.questionId] || ''
                                   return `${text.length} car.`
@@ -2079,7 +2079,7 @@ export function PassationPage() {
                             onChange={(e) => handleAnswerChange(currentQuestion.questionId, e.target.value)}
                             onPaste={securityConfig.blocageCopie ? handlePastePrevent : undefined}
                             placeholder="Rédigez votre réponse ici...&#10;&#10;Conseil : Structurez votre réponse en plusieurs parties :&#10;1. Analyse de la situation&#10;2. Arguments et développements&#10;3. Conclusion et ouverture"
-                            className="min-h-[400px] sm:min-h-[500px] resize-y text-base leading-[2rem] border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-4 sm:p-6 placeholder:text-amber-400/60 dark:placeholder:text-amber-600/40"
+                            className="min-h-[400px] sm:min-h-[500px] resize-y text-base leading-[2rem] border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-4 sm:p-6 placeholder:text-warning/60 dark:placeholder:text-warning/40"
                             style={{
                               backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, rgba(180,140,80,0.15) 31px, rgba(180,140,80,0.15) 32px)',
                               backgroundSize: '100% 32px',
@@ -2113,7 +2113,7 @@ export function PassationPage() {
                         return (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between text-[10px]">
-                              <span className={`font-medium ${progress >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                              <span className={`font-medium ${progress >= 100 ? 'text-success' : 'text-warning'}`}>
                                 {progress >= 100 ? '✓ Réponse suffisamment développée' : `Minimum recommandé : ${minWords} mots`}
                               </span>
                               <span className="text-muted-foreground">{wordCount}/{minWords} mots</span>
@@ -2121,7 +2121,7 @@ export function PassationPage() {
                             <div className="h-1 rounded-full bg-muted overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all duration-300 ${
-                                  progress >= 100 ? 'bg-emerald-500' : progress >= 50 ? 'bg-amber-500' : 'bg-red-400'
+                                  progress >= 100 ? 'bg-success' : progress >= 50 ? 'bg-warning' : 'bg-destructive'
                                 }`}
                                 style={{ width: `${progress}%` }}
                               />
@@ -2200,7 +2200,7 @@ export function PassationPage() {
                   {currentIndex < questions.length - 1 ? (
                     <Button
                       onClick={() => navigateToQuestion(currentIndex + 1)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                      className=" text-white gap-1"
                     >
                       Suivante
                       <ChevronRight className="h-4 w-4" />
@@ -2209,7 +2209,7 @@ export function PassationPage() {
                     <Button
                       onClick={() => submitExam(false)}
                       disabled={isSubmitting}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                      className=" text-white gap-1"
                     >
                       {isSubmitting ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -2230,7 +2230,7 @@ export function PassationPage() {
       <Dialog open={showFullscreenWarning && !securityConfig.fullscreenObligatoire} onOpenChange={setShowFullscreenWarning}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <DialogTitle className="flex items-center gap-2 text-warning">
               <AlertTriangle className="h-5 w-5" />
               Mode plein écran requis
             </DialogTitle>
@@ -2258,7 +2258,7 @@ export function PassationPage() {
                 }
                 setShowFullscreenWarning(false)
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className=" text-white"
             >
               <Maximize className="h-4 w-4 mr-2" />
               Revenir en plein écran
@@ -2271,7 +2271,7 @@ export function PassationPage() {
       <Dialog open={showTabSwitchWarning} onOpenChange={setShowTabSwitchWarning}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <DialogTitle className="flex items-center gap-2 text-warning">
               <AlertTriangle className="h-5 w-5" />
               Changement d&apos;onglet détecté
             </DialogTitle>
@@ -2286,7 +2286,7 @@ export function PassationPage() {
           <DialogFooter>
             <Button
               onClick={() => setShowTabSwitchWarning(false)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className=" text-white"
             >
               J&apos;ai compris
             </Button>
@@ -2298,7 +2298,7 @@ export function PassationPage() {
       <Dialog open={showInactivityWarning} onOpenChange={setShowInactivityWarning}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <DialogTitle className="flex items-center gap-2 text-warning">
               <Timer className="h-5 w-5" />
               Inactivité détectée
             </DialogTitle>
@@ -2316,7 +2316,7 @@ export function PassationPage() {
                 lastActivityRef.current = Date.now()
                 setShowInactivityWarning(false)
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className=" text-white"
             >
               Je suis toujours présent
             </Button>
@@ -2328,7 +2328,7 @@ export function PassationPage() {
       <Dialog open={showViolationDialog} onOpenChange={setShowViolationDialog}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <ShieldAlert className="h-5 w-5" />
               Soumission automatique
             </DialogTitle>
@@ -2346,7 +2346,7 @@ export function PassationPage() {
           <DialogFooter>
             <Button
               onClick={handleViolationSubmit}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               Compris
             </Button>

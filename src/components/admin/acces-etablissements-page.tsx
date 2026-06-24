@@ -62,7 +62,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PulseSkeleton } from '@/components/ds'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
@@ -127,21 +127,21 @@ function getStatutBadge(statut: string) {
   switch (statut) {
     case 'EN_ATTENTE':
       return (
-        <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+        <Badge className="bg-warning/10 text-warning border-warning/30">
           <Clock className="h-3 w-3 mr-1" />
           En attente
         </Badge>
       )
     case 'APPROUVE':
       return (
-        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+        <Badge className="bg-success/10 text-success border-success/30">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Approuvé
         </Badge>
       )
     case 'REFUSE':
       return (
-        <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
+        <Badge className="bg-destructive/10 text-destructive border-destructive/30">
           <X className="h-3 w-3 mr-1" />
           Refusé
         </Badge>
@@ -344,8 +344,8 @@ export function AccesEtablissementsPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <KeyRound className="h-7 w-7 text-emerald-600" />
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
+          <KeyRound className="h-7 w-7 text-success" />
           Accès aux Établissements
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -354,12 +354,12 @@ export function AccesEtablissementsPage() {
       </div>
 
       {/* ─── Notice box ─── */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+      <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
         <div className="flex items-start gap-3">
-          <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-          <div className="text-sm text-amber-800 dark:text-amber-200">
+          <Lock className="h-5 w-5 text-warning mt-0.5 shrink-0" />
+          <div className="text-sm text-warning">
             <p className="font-medium">Confidentialité des données</p>
-            <p className="mt-1 text-amber-700 dark:text-amber-300">
+            <p className="mt-1 text-warning">
               En tant que propriétaire de la plateforme, vous ne pouvez pas accéder aux données
               d&apos;un établissement sans autorisation explicite. Ce mécanisme garantit la
               confidentialité des données de chaque établissement client.
@@ -370,25 +370,25 @@ export function AccesEtablissementsPage() {
 
       {/* ─── Stats Row ─── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <ShieldCheck className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Autorisations actives</p>
-              <p className="text-xl font-bold">{approuveCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{approuveCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <Clock className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">En attente</p>
-              <p className="text-xl font-bold">{enAttenteCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{enAttenteCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -399,18 +399,18 @@ export function AccesEtablissementsPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Expirées</p>
-              <p className="text-xl font-bold">{expireCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{expireCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <Building2 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Building2 className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Établissements disponibles</p>
-              <p className="text-xl font-bold">{activeEtablissementsCount}</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{activeEtablissementsCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -438,20 +438,20 @@ export function AccesEtablissementsPage() {
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
+                <PulseSkeleton key={i} className="h-14 w-full" />
               ))}
             </div>
           ) : accessRecords.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                <KeyRound className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <KeyRound className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucune autorisation</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez encore demandé accès à aucun établissement.
               </p>
               <Button
-                className="mt-6 bg-emerald-600 hover:bg-emerald-700"
+                className="mt-6 bg-success hover:bg-success/90"
                 onClick={() => setActiveTab('demander-acces')}
               >
                 <Plus className="h-4 w-4" />
@@ -464,12 +464,12 @@ export function AccesEtablissementsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Établissement</TableHead>
-                      <TableHead>Motif</TableHead>
-                      <TableHead>Statut</TableHead>
-                      <TableHead>Date début</TableHead>
-                      <TableHead>Date fin</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="font-display">Établissement</TableHead>
+                      <TableHead className="font-display">Motif</TableHead>
+                      <TableHead className="font-display">Statut</TableHead>
+                      <TableHead className="font-display">Date début</TableHead>
+                      <TableHead className="font-display">Date fin</TableHead>
+                      <TableHead className="text-right font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -477,7 +477,7 @@ export function AccesEtablissementsPage() {
                       <TableRow key={record.id} className="group">
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success">
                               {record.etablissement.nom.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -496,12 +496,12 @@ export function AccesEtablissementsPage() {
                         <TableCell>{getStatutBadge(record.statut)}</TableCell>
                         <TableCell className="text-sm">{formatDate(record.dateDebut)}</TableCell>
                         <TableCell className="text-sm">{formatDate(record.dateFin)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-mono tabular-nums">
                           {record.statut === 'EN_ATTENTE' && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                              className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={() => setCancelTarget(record)}
                             >
                               <X className="h-4 w-4 mr-1" />
@@ -512,7 +512,7 @@ export function AccesEtablissementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                              className="h-8 text-success hover:text-success hover:bg-success/10"
                               onClick={() =>
                                 toast.info('Navigation', {
                                   description: `Accès aux données de ${record.etablissement.nom} (à venir).`,
@@ -527,7 +527,7 @@ export function AccesEtablissementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950"
+                              className="h-8 text-warning hover:text-warning hover:bg-warning/10"
                               onClick={() => handleRenew(record)}
                             >
                               <RotateCcw className="h-4 w-4 mr-1" />
@@ -538,7 +538,7 @@ export function AccesEtablissementsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950"
+                              className="h-8 text-warning hover:text-warning hover:bg-warning/10"
                               onClick={() => handleRenew(record)}
                             >
                               <RotateCcw className="h-4 w-4 mr-1" />
@@ -559,8 +559,8 @@ export function AccesEtablissementsPage() {
         <TabsContent value="demander-acces">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Send className="h-5 w-5 text-teal-600" />
+              <CardTitle className="flex items-center gap-2 text-lg font-display">
+                <Send className="h-5 w-5 text-success" />
                 Demander un accès
               </CardTitle>
               <CardDescription>
@@ -572,8 +572,8 @@ export function AccesEtablissementsPage() {
             <CardContent>
               {availableEtablissements.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-                    <Building2 className="h-8 w-8 text-teal-500 dark:text-teal-400" />
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+                    <Building2 className="h-8 w-8 text-success" />
                   </div>
                   <h3 className="mt-4 font-semibold">Aucun établissement disponible</h3>
                   <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
@@ -658,7 +658,7 @@ export function AccesEtablissementsPage() {
                   {/* Submit */}
                   <div className="flex justify-end">
                     <Button
-                      className="bg-emerald-600 hover:bg-emerald-700"
+                      className="bg-success hover:bg-success/90"
                       onClick={handleSubmitRequest}
                       disabled={isSubmitting}
                     >
@@ -698,15 +698,15 @@ export function AccesEtablissementsPage() {
             </div>
           ) : authorizedEtablissements.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/30">
-                <ShieldCheck className="h-10 w-10 text-teal-500 dark:text-teal-400" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+                <ShieldCheck className="h-10 w-10 text-success" />
               </div>
               <h3 className="mt-4 text-lg font-semibold">Aucun accès autorisé</h3>
               <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
                 Vous n&apos;avez pas encore d&apos;autorisation d&apos;accès approuvée.
               </p>
               <Button
-                className="mt-6 bg-emerald-600 hover:bg-emerald-700"
+                className="mt-6 bg-success hover:bg-success/90"
                 onClick={() => setActiveTab('demander-acces')}
               >
                 <Plus className="h-4 w-4" />
@@ -724,16 +724,16 @@ export function AccesEtablissementsPage() {
                 return (
                   <Card
                     key={etab.id}
-                    className="transition-shadow hover:shadow-md border-t-4 border-t-emerald-500"
+                    className="transition-shadow hover:shadow-md border-t-4 border-t-success"
                   >
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-sm font-bold text-success">
                             {etab.nom.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <CardTitle className="text-base">{etab.nom}</CardTitle>
+                            <CardTitle className="text-base font-display">{etab.nom}</CardTitle>
                             {etab.ville && (
                               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                                 <MapPin className="h-3 w-3" />
@@ -766,7 +766,7 @@ export function AccesEtablissementsPage() {
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                         <Badge
-                          className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800 text-xs"
+                          className="bg-success/10 text-success border-success/30 text-xs"
                         >
                           Abonné
                         </Badge>
@@ -785,19 +785,19 @@ export function AccesEtablissementsPage() {
                       {/* Data visibility badges */}
                       <div className="flex flex-wrap gap-1.5">
                         <Badge
-                          className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/30 dark:text-teal-300 dark:border-teal-800 text-[10px]"
+                          className="bg-success/10 text-success border-success/30 text-[10px]"
                         >
                           <FileText className="h-2.5 w-2.5 mr-1" />
                           Données utilisateurs
                         </Badge>
                         <Badge
-                          className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800 text-[10px]"
+                          className="bg-warning/10 text-warning border-warning/30 text-[10px]"
                         >
                           <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                           Évaluations
                         </Badge>
                         <Badge
-                          className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800 text-[10px]"
+                          className="bg-success/10 text-success border-success/30 text-[10px]"
                         >
                           <BarChart3Icon className="h-2.5 w-2.5 mr-1" />
                           Résultats
@@ -806,7 +806,7 @@ export function AccesEtablissementsPage() {
 
                       {/* Access button */}
                       <Button
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2"
+                        className="w-full bg-success hover:bg-success/90 mt-2"
                         size="sm"
                         onClick={() =>
                           toast.info('Accès aux données', {
@@ -844,7 +844,7 @@ export function AccesEtablissementsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Non, garder la demande</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={handleCancelRequest}
             >
               Oui, annuler

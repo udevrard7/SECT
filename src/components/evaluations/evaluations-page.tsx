@@ -48,6 +48,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
+import { PulseSkeleton } from '@/components/ds'
 
 // ─── Types ───
 
@@ -162,21 +163,21 @@ function getStatutBadge(statut: string) {
       )
     case 'PLANIFIEE':
       return (
-        <Badge variant="outline" className="gap-1 bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
+        <Badge variant="outline" className="gap-1 bg-warning/10 text-warning border-warning/20">
           <Calendar className="h-3 w-3" />
           Planifiée
         </Badge>
       )
     case 'EN_COURS':
       return (
-        <Badge variant="outline" className="gap-1 bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
+        <Badge variant="outline" className="gap-1 bg-success/10 text-success border-success/20">
           <Activity className="h-3 w-3" />
           En cours
         </Badge>
       )
     case 'TERMINEE':
       return (
-        <Badge variant="outline" className="gap-1 bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">
+        <Badge variant="outline" className="gap-1 bg-info/10 text-info border-info/20">
           <Check className="h-3 w-3" />
           Terminée
         </Badge>
@@ -194,33 +195,33 @@ function getStatutBadge(statut: string) {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 10) return 'text-emerald-600 dark:text-emerald-400'
-  if (score >= 8) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
+  if (score >= 10) return 'text-success'
+  if (score >= 8) return 'text-warning'
+  return 'text-destructive'
 }
 
 function getScoreBadgeClasses(score: number): string {
-  if (score >= 10) return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-  if (score >= 8) return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
-  return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+  if (score >= 10) return 'bg-success/10 text-success border-success/20'
+  if (score >= 8) return 'bg-warning/10 text-warning border-warning/20'
+  return 'bg-destructive/10 text-destructive border-destructive/20'
 }
 
 function getSessionBadge(statut: string) {
   switch (statut) {
     case 'EN_COURS':
-      return <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">En cours</Badge>
+      return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">En cours</Badge>
     case 'SOUMISE':
-      return <Badge variant="outline" className="bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800">Soumise</Badge>
+      return <Badge variant="outline" className="bg-info/10 text-info border-info/20">Soumise</Badge>
     case 'CORRIGEE':
-      return <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">Corrigée</Badge>
+      return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Corrigée</Badge>
     case 'RETOURNEE':
-      return <Badge variant="outline" className="bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800">Retournée</Badge>
+      return <Badge variant="outline" className="bg-secondary/10 text-secondary border-secondary/20">Retournée</Badge>
     case 'NON_COMMENCEE':
       return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">Non commencée</Badge>
     case 'ABSENT':
-      return <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">Absent</Badge>
+      return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">Absent</Badge>
     case 'NON_SOUMIS':
-      return <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">Non soumis</Badge>
+      return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">Non soumis</Badge>
     default:
       return <Badge variant="outline">{statut}</Badge>
   }
@@ -233,13 +234,13 @@ function ScoreDistributionChart({ sessions }: { sessions: Session[] }) {
   if (scored.length === 0) return null
 
   const bins = [
-    { label: '0-4', min: 0, max: 4, count: 0, color: 'bg-red-400' },
-    { label: '4-8', min: 4, max: 8, count: 0, color: 'bg-amber-400' },
-    { label: '8-10', min: 8, max: 10, count: 0, color: 'bg-amber-500' },
-    { label: '10-12', min: 10, max: 12, count: 0, color: 'bg-emerald-400' },
-    { label: '12-14', min: 12, max: 14, count: 0, color: 'bg-emerald-500' },
-    { label: '14-16', min: 14, max: 16, count: 0, color: 'bg-teal-400' },
-    { label: '16-20', min: 16, max: 20, count: 0, color: 'bg-teal-500' },
+    { label: '0-4', min: 0, max: 4, count: 0, color: 'bg-destructive' },
+    { label: '4-8', min: 4, max: 8, count: 0, color: 'bg-warning' },
+    { label: '8-10', min: 8, max: 10, count: 0, color: 'bg-warning' },
+    { label: '10-12', min: 10, max: 12, count: 0, color: 'bg-success' },
+    { label: '12-14', min: 12, max: 14, count: 0, color: 'bg-success' },
+    { label: '14-16', min: 14, max: 16, count: 0, color: 'bg-secondary' },
+    { label: '16-20', min: 16, max: 20, count: 0, color: 'bg-secondary' },
   ]
 
   scored.forEach((s) => {
@@ -421,8 +422,8 @@ export function EvaluationsPage() {
     <div className="space-y-6">
       {/* ─── Header ─── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <ClipboardCheck className="h-7 w-7 text-emerald-600" />
+        <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+          <ClipboardCheck className="h-7 w-7 text-success" />
           Suivi des Évaluations
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -432,58 +433,58 @@ export function EvaluationsPage() {
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <ClipboardCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <ClipboardCheck className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
-              <p className="text-xl font-bold">{totalEvaluations}</p>
+              <p className="font-mono text-xl font-bold tabular-nums">{totalEvaluations}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-              <Activity className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Activity className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">En cours</p>
-              <p className="text-xl font-bold">{enCoursCount}</p>
+              <p className="font-mono text-xl font-bold tabular-nums">{enCoursCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-              <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <Calendar className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Planifiées</p>
-              <p className="text-xl font-bold">{planifieesCount}</p>
+              <p className="font-mono text-xl font-bold tabular-nums">{planifieesCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-secondary">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40">
-              <Trophy className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/10">
+              <Trophy className="h-5 w-5 text-secondary" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Terminées</p>
-              <p className="text-xl font-bold">{termineesCount}</p>
+              <p className="font-mono text-xl font-bold tabular-nums">{termineesCount}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-destructive">
           <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Alertes</p>
-              <p className="text-xl font-bold">{totalAlerts}</p>
+              <p className="font-mono text-xl font-bold tabular-nums">{totalAlerts}</p>
             </div>
           </CardContent>
         </Card>
@@ -550,7 +551,7 @@ export function EvaluationsPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-emerald-600 hover:text-emerald-700"
+              className="text-success hover:text-success"
               onClick={resetFilters}
             >
               <X className="h-3.5 w-3.5 mr-1" />
@@ -561,19 +562,19 @@ export function EvaluationsPage() {
           {statutFilter !== 'all' && (
             <Badge variant="secondary" className="gap-1">
               Statut: {statutFilter === 'BROUILLON' ? 'Brouillon' : statutFilter === 'PLANIFIEE' ? 'Planifiée' : statutFilter === 'EN_COURS' ? 'En cours' : statutFilter === 'TERMINEE' ? 'Terminée' : 'Clôturée'}
-              <button onClick={() => setStatutFilter('all')} className="ml-1 hover:text-red-500"><X className="h-3 w-3" /></button>
+              <button onClick={() => setStatutFilter('all')} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
             </Badge>
           )}
           {filiereFilter !== 'all' && (
             <Badge variant="secondary" className="gap-1">
               Filière: {filieres.find(f => f.id === filiereFilter)?.nom ?? filiereFilter}
-              <button onClick={() => setFiliereFilter('all')} className="ml-1 hover:text-red-500"><X className="h-3 w-3" /></button>
+              <button onClick={() => setFiliereFilter('all')} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
             </Badge>
           )}
           {search.trim() && (
             <Badge variant="secondary" className="gap-1">
               Recherche: &ldquo;{search.trim().length > 20 ? search.trim().slice(0, 20) + '...' : search.trim()}&rdquo;
-              <button onClick={() => setSearch('')} className="ml-1 hover:text-red-500"><X className="h-3 w-3" /></button>
+              <button onClick={() => setSearch('')} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
             </Badge>
           )}
         </div>
@@ -620,27 +621,25 @@ export function EvaluationsPage() {
       {isLoading && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="flex flex-col gap-3 p-6">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-5 w-48" />
-                    <Skeleton className="h-3 w-32" />
-                  </div>
-                  <Skeleton className="h-6 w-20 rounded-full" />
+            <div key={i} className="flex flex-col gap-3 p-6 rounded-lg border border-border bg-card">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <PulseSkeleton className="h-5 w-48" />
+                  <PulseSkeleton className="h-3 w-32" />
                 </div>
-                <Skeleton className="h-3 w-full" />
-                <div className="flex gap-4">
-                  <Skeleton className="h-3 w-16" />
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-3 w-20" />
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <Skeleton className="h-8 w-24" />
-                  <Skeleton className="h-8 w-24" />
-                </div>
-              </CardContent>
-            </Card>
+                <PulseSkeleton className="h-6 w-20" variant="circle" />
+              </div>
+              <PulseSkeleton className="h-3 w-full" />
+              <div className="flex gap-4">
+                <PulseSkeleton className="h-3 w-16" />
+                <PulseSkeleton className="h-3 w-24" />
+                <PulseSkeleton className="h-3 w-20" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <PulseSkeleton className="h-8 w-24" />
+                <PulseSkeleton className="h-8 w-24" />
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -648,10 +647,10 @@ export function EvaluationsPage() {
       {/* ─── Empty state ─── */}
       {!isLoading && filteredEpreuves.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <ClipboardCheck className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+            <ClipboardCheck className="h-10 w-10 text-success" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Aucune évaluation trouvée</h3>
+          <h3 className="mt-4 font-display text-lg font-semibold">Aucune évaluation trouvée</h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             {hasActiveFilters
               ? 'Aucun résultat ne correspond à vos critères de recherche. Essayez de modifier vos filtres.'
@@ -660,7 +659,7 @@ export function EvaluationsPage() {
           {hasActiveFilters && (
             <Button
               variant="outline"
-              className="mt-6 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+              className="mt-6 border-success/30 text-success hover:bg-success/10"
               onClick={resetFilters}
             >
               Réinitialiser les filtres
@@ -676,12 +675,12 @@ export function EvaluationsPage() {
             const stats = getEpreuveStats(epreuve)
 
             return (
-              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
+              <Card key={epreuve.id} className="group transition-shadow hover:shadow-md ds-lift">
                 <CardContent className="flex flex-col gap-4 p-6">
                   {/* Title + Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold leading-tight">{epreuve.titre}</h3>
+                      <h3 className="font-display text-base font-semibold leading-tight">{epreuve.titre}</h3>
                       {epreuve.description && (
                         <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                           {truncateText(epreuve.description, 100)}
@@ -695,13 +694,13 @@ export function EvaluationsPage() {
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
                     {epreuve.enseignant && (
                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <User className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                        <User className="h-3.5 w-3.5 text-secondary" />
                         <span className="font-medium text-foreground">{epreuve.enseignant.name}</span>
                       </div>
                     )}
                     {epreuve.filiere && (
                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <ClipboardCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <ClipboardCheck className="h-3.5 w-3.5 text-success" />
                         <span>{epreuve.filiere.nom}</span>
                       </div>
                     )}
@@ -710,27 +709,27 @@ export function EvaluationsPage() {
                   {/* Duration + Date range */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <Clock className="h-3.5 w-3.5 text-success" />
                       {epreuve.duree} min
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                      <Calendar className="h-3.5 w-3.5 text-secondary" />
                       {formatDateTime(epreuve.dateDebut)} — {formatDateTime(epreuve.dateFin)}
                     </span>
                   </div>
 
                   {/* Question count + total points + participants + completion */}
                   <div className="flex flex-wrap gap-3">
-                    <Badge variant="secondary" className="gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                    <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
                       <HelpCircle className="h-3 w-3" />
                       {stats.questionCount} question{stats.questionCount > 1 ? 's' : ''}
                     </Badge>
-                    <Badge variant="secondary" className="gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                    <Badge variant="secondary" className="gap-1 bg-secondary/10 text-secondary">
                       <Trophy className="h-3 w-3" />
                       {stats.totalPoints} point{stats.totalPoints > 1 ? 's' : ''}
                     </Badge>
                     {stats.totalSessions > 0 ? (
-                      <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                      <Badge variant="secondary" className="gap-1 bg-warning/10 text-warning">
                         <Users className="h-3 w-3" />
                         {stats.completedSessions}/{stats.totalSessions} ({stats.completionRate}%)
                       </Badge>
@@ -745,8 +744,8 @@ export function EvaluationsPage() {
                   {/* Alert count */}
                   {stats.totalAlerts > 0 && (
                     <div className="flex items-center gap-1.5 text-sm">
-                      <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                      <span className="text-red-700 dark:text-red-400 font-medium">
+                      <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                      <span className="text-destructive font-medium">
                         {stats.totalAlerts} alerte{stats.totalAlerts > 1 ? 's' : ''}
                       </span>
                     </div>
@@ -772,7 +771,7 @@ export function EvaluationsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                      className="border-success/30 text-success hover:bg-success/10"
                       onClick={() => handleOpenDetail(epreuve)}
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -782,7 +781,7 @@ export function EvaluationsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400 dark:hover:bg-teal-950"
+                        className="border-secondary/30 text-secondary hover:bg-secondary/10"
                         onClick={() => handleOpenResults(epreuve)}
                       >
                         <BarChart3 className="h-3.5 w-3.5" />
@@ -804,12 +803,12 @@ export function EvaluationsPage() {
             <DialogTitle className="flex items-center gap-2">
               {dialogMode === 'details' ? (
                 <>
-                  <Eye className="h-5 w-5 text-emerald-600" />
+                  <Eye className="h-5 w-5 text-success" />
                   Détails de l’évaluation
                 </>
               ) : (
                 <>
-                  <BarChart3 className="h-5 w-5 text-teal-600" />
+                  <BarChart3 className="h-5 w-5 text-secondary" />
                   Résultats de l’évaluation
                 </>
               )}
@@ -823,13 +822,13 @@ export function EvaluationsPage() {
 
           {detailLoading ? (
             <div className="flex-1 space-y-4 py-4">
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-full" />
+              <PulseSkeleton className="h-6 w-48" />
+              <PulseSkeleton className="h-4 w-full" />
               <div className="grid grid-cols-2 gap-4">
-                <Skeleton className="h-20" />
-                <Skeleton className="h-20" />
+                <PulseSkeleton className="h-20" />
+                <PulseSkeleton className="h-20" />
               </div>
-              <Skeleton className="h-40" />
+              <PulseSkeleton className="h-40" />
             </div>
           ) : detailEpreuve ? (
             <div className="flex-1 overflow-y-auto min-h-0 pr-1">
@@ -841,7 +840,7 @@ export function EvaluationsPage() {
                   {/* Title & Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-lg font-bold">{detailEpreuve.titre}</h3>
+                      <h3 className="font-display text-lg font-bold">{detailEpreuve.titre}</h3>
                       {detailEpreuve.description && (
                         <p className="mt-1 text-sm text-muted-foreground">{detailEpreuve.description}</p>
                       )}
@@ -852,8 +851,8 @@ export function EvaluationsPage() {
                   {/* Teacher info */}
                   {detailEpreuve.enseignant && (
                     <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/40">
-                        <User className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary/10">
+                        <User className="h-4 w-4 text-secondary" />
                       </div>
                       <div>
                         <p className="text-sm font-medium">{detailEpreuve.enseignant.name}</p>
@@ -872,40 +871,40 @@ export function EvaluationsPage() {
 
                   {/* Info grid */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Card className="border-l-4 border-l-emerald-500">
+                    <Card className="border-l-4 border-l-success">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Durée</p>
-                        <p className="text-sm font-semibold flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-emerald-600" />
+                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5 text-success" />
                           {detailEpreuve.duree} min
                         </p>
                       </CardContent>
                     </Card>
-                    <Card className="border-l-4 border-l-teal-500">
+                    <Card className="border-l-4 border-l-secondary">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Questions</p>
-                        <p className="text-sm font-semibold flex items-center gap-1">
-                          <HelpCircle className="h-3.5 w-3.5 text-teal-600" />
+                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
+                          <HelpCircle className="h-3.5 w-3.5 text-secondary" />
                           {detailEpreuve.questions && detailEpreuve.questions.length > 0 ? detailEpreuve.questions.length : (detailEpreuve.questionCount ?? 0)}
                         </p>
                       </CardContent>
                     </Card>
-                    <Card className="border-l-4 border-l-amber-500">
+                    <Card className="border-l-4 border-l-warning">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Points total</p>
-                        <p className="text-sm font-semibold flex items-center gap-1">
-                          <Trophy className="h-3.5 w-3.5 text-amber-600" />
+                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
+                          <Trophy className="h-3.5 w-3.5 text-warning" />
                           {detailEpreuve.questions != null && detailEpreuve.questions.length > 0
                             ? detailEpreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
                             : (detailEpreuve.totalPoints ?? detailEpreuve.noteTotal ?? 0)}
                         </p>
                       </CardContent>
                     </Card>
-                    <Card className="border-l-4 border-l-sky-500">
+                    <Card className="border-l-4 border-l-info">
                       <CardContent className="p-3">
                         <p className="text-xs text-muted-foreground">Participants</p>
-                        <p className="text-sm font-semibold flex items-center gap-1">
-                          <Users className="h-3.5 w-3.5 text-sky-600" />
+                        <p className="font-mono text-sm font-semibold tabular-nums flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5 text-info" />
                           {detailEpreuve.sessions?.length ?? 0}
                         </p>
                       </CardContent>
@@ -941,7 +940,7 @@ export function EvaluationsPage() {
                           </Badge>
                         )}
                         {detailEpreuve.blocageRetour && (
-                          <Badge variant="outline" className="text-xs gap-1 text-red-600 dark:text-red-400">
+                          <Badge variant="outline" className="text-xs gap-1 text-destructive">
                             Retour bloqué
                           </Badge>
                         )}
@@ -958,7 +957,7 @@ export function EvaluationsPage() {
                           .sort((a, b) => a.ordre - b.ordre)
                           .map((eq, idx) => (
                           <div key={eq.id} className="flex items-start gap-3 rounded-lg border p-3">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/40 text-xs font-medium text-teal-700 dark:text-teal-300">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-secondary">
                               {eq.ordre || idx + 1}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -972,8 +971,8 @@ export function EvaluationsPage() {
                                 </Badge>
                                 {eq.question.difficulte && (
                                   <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
-                                    eq.question.difficulte === 'FACILE' ? 'text-emerald-600' :
-                                    eq.question.difficulte === 'MOYEN' ? 'text-amber-600' : 'text-red-600'
+                                    eq.question.difficulte === 'FACILE' ? 'text-success' :
+                                    eq.question.difficulte === 'MOYEN' ? 'text-warning' : 'text-destructive'
                                   }`}>
                                     {eq.question.difficulte}
                                   </Badge>
@@ -1000,7 +999,7 @@ export function EvaluationsPage() {
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Groupes cibles</p>
                         <div className="flex flex-wrap gap-2">
                           {niveau && (
-                            <Badge variant="secondary" className="text-xs gap-1 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                            <Badge variant="secondary" className="text-xs gap-1 bg-secondary/10 text-secondary">
                               <ClipboardCheck className="h-3 w-3" />
                               Niveau : {niveau}
                             </Badge>
@@ -1021,7 +1020,7 @@ export function EvaluationsPage() {
                   {/* Title & Status */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-lg font-bold">{detailEpreuve.titre}</h3>
+                      <h3 className="font-display text-lg font-bold">{detailEpreuve.titre}</h3>
                       <p className="text-sm text-muted-foreground">
                         {detailEpreuve.enseignant?.name} {detailEpreuve.filiere ? `• ${detailEpreuve.filiere.nom}` : ''}
                       </p>
@@ -1055,17 +1054,17 @@ export function EvaluationsPage() {
                     return (
                       <>
                         <div className="grid grid-cols-3 gap-3">
-                          <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+                          <div className="text-center p-3 rounded-lg bg-success/10">
                             <p className="text-xs text-muted-foreground">Moyenne</p>
                             <p className={`text-lg font-bold ${getScoreColor(avg)}`}>{avg}/20</p>
                           </div>
-                          <div className="text-center p-3 rounded-lg bg-teal-50 dark:bg-teal-950/30">
+                          <div className="text-center p-3 rounded-lg bg-secondary/10">
                             <p className="text-xs text-muted-foreground">Médiane</p>
                             <p className={`text-lg font-bold ${getScoreColor(median)}`}>{median}/20</p>
                           </div>
-                          <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
+                          <div className="text-center p-3 rounded-lg bg-warning/10">
                             <p className="text-xs text-muted-foreground">Réussite</p>
-                            <p className="text-lg font-bold text-amber-700 dark:text-amber-400">{passRate}%</p>
+                            <p className="font-mono text-lg font-bold tabular-nums text-warning">{passRate}%</p>
                           </div>
                         </div>
 
@@ -1086,13 +1085,13 @@ export function EvaluationsPage() {
                           <Card className="border-l-4 border-l-emerald-500">
                             <CardContent className="p-3">
                               <p className="text-xs text-muted-foreground">Réussis</p>
-                              <p className="text-sm font-semibold text-emerald-600">{passedCount}</p>
+                              <p className="text-sm font-semibold text-success">{passedCount}</p>
                             </CardContent>
                           </Card>
                           <Card className="border-l-4 border-l-red-500">
                             <CardContent className="p-3">
                               <p className="text-xs text-muted-foreground">Échoués</p>
-                              <p className="text-sm font-semibold text-red-600">{failedCount}</p>
+                              <p className="text-sm font-semibold text-destructive">{failedCount}</p>
                             </CardContent>
                           </Card>
                         </div>
@@ -1105,7 +1104,7 @@ export function EvaluationsPage() {
                   <div>
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-semibold flex items-center gap-2">
-                        <Trophy className="h-4 w-4 text-amber-500" />
+                        <Trophy className="h-4 w-4 text-warning" />
                         Classement des participants
                       </h4>
                     </div>
@@ -1125,7 +1124,7 @@ export function EvaluationsPage() {
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                                rank === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' :
+                                rank === 0 ? 'bg-warning/10 text-warning' :
                                 rank === 1 ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' :
                                 rank === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' :
                                 'bg-muted text-muted-foreground'
@@ -1147,7 +1146,7 @@ export function EvaluationsPage() {
                               )}
                               {getSessionBadge(session.statut)}
                               {session.alertes > 0 && (
-                                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800 gap-1">
+                                <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 gap-1">
                                   <AlertTriangle className="h-3 w-3" />
                                   {session.alertes}
                                 </Badge>
