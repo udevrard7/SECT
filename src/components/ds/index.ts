@@ -56,3 +56,4 @@ export {
   type WeeklyGoal,
   type WeeklyGoalsProps,
 } from './weekly-goals'
+export { ThemeToggle } from './theme-toggle'

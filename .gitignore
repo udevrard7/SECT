@@ -55,3 +55,4 @@ server.log
 upload/
 tool-results/
 agent-ctx/
+audit-screenshots/

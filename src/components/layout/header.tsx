@@ -1,8 +1,7 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { useTheme } from 'next-themes'
-import { Moon, Sun, LogOut, User, Settings, ChevronRight } from 'lucide-react'
+import { LogOut, User, Settings, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -16,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { ThemeToggle } from '@/components/ds'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
 import { NotificationBell } from '@/components/layout/notification-bell'
@@ -30,7 +30,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
 }
 
 export function AppHeader() {
-  const { theme, setTheme } = useTheme()
   const { user, logout } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
@@ -96,17 +95,8 @@ export function AppHeader() {
 
         {/* Right actions */}
         <div className="flex items-center gap-0.5">
-          {/* Theme toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label="Changer le thème"
-            className="rounded-lg hover:bg-muted/60 h-9 w-9"
-          >
-            <Sun className="h-[18px] w-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0 text-muted-foreground" />
-            <Moon className="absolute h-[18px] w-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100 text-muted-foreground" />
-          </Button>
+          {/* Theme toggle (DS) */}
+          <ThemeToggle />
 
           {/* Notifications in-app */}
           <NotificationBell />

@@ -119,7 +119,7 @@ function FloatingParticles() {
       x: Math.random() * 100,
       y: Math.random() * 100,
       size: Math.random() * 3 + 1,
-      isEmerald: Math.random() > 0.5,
+      isIndigo: Math.random() > 0.5,
     })),
   [])
 
@@ -129,7 +129,7 @@ function FloatingParticles() {
         <div
           key={p.id}
           ref={(el) => { if (el) particlesRef.current[i] = el }}
-          className={`absolute rounded-full ${p.isEmerald ? 'bg-emerald-400' : 'bg-white'}`}
+          className={`absolute rounded-full ${p.isIndigo ? 'bg-indigo-400' : 'bg-white'}`}
           style={{
             width: p.size,
             height: p.size,
@@ -341,21 +341,21 @@ function FeatureCard({ feature, index }: { feature: typeof features[0]; index: n
       ref={cardRef}
       className={`flex items-center gap-3 rounded-xl px-3.5 py-3 border transition-colors duration-300 cursor-default ${
         hovered
-          ? 'bg-white/[0.12] backdrop-blur-xl border-white/20 shadow-lg shadow-emerald-500/10'
+          ? 'bg-white/[0.12] backdrop-blur-xl border-white/20 shadow-lg shadow-indigo-500/10'
           : 'bg-white/[0.04] backdrop-blur-sm border-white/[0.08] hover:bg-white/[0.08]'
       }`}
       style={{ opacity: 0, transform: 'translateY(20px) rotateX(15deg)' }}
     >
       <div
         ref={iconRef}
-        className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10 flex items-center justify-center shrink-0 border border-emerald-400/20"
+        className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/10 flex items-center justify-center shrink-0 border border-indigo-400/20"
       >
-        <feature.icon className="w-4 h-4 text-emerald-300" />
+        <feature.icon className="w-4 h-4 text-indigo-300" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-white/90">{feature.label}</p>
-          <span className="text-[9px] font-bold text-emerald-300/80 bg-emerald-400/15 px-1.5 py-0.5 rounded-full">
+          <span className="text-[9px] font-bold text-indigo-300/80 bg-indigo-400/15 px-1.5 py-0.5 rounded-full">
             {feature.stat}
           </span>
         </div>
@@ -452,7 +452,7 @@ function GradientButton({ children, onClick, disabled, className, btnRef }: {
         type="submit"
         onClick={onClick}
         disabled={disabled}
-        className={`relative w-full h-12 rounded-[10px] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold shadow-lg shadow-emerald-600/25 hover:shadow-emerald-500/40 transition-all duration-300 text-sm ${className || ''}`}
+        className={`relative w-full h-12 rounded-[10px] bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/25 hover:shadow-indigo-500/40 transition-all duration-300 text-sm ${className || ''}`}
       >
         {children}
       </Button>
@@ -472,7 +472,7 @@ function GradientButton({ children, onClick, disabled, className, btnRef }: {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// GSAP MODE TOGGLE — emerald sliding pill
+// GSAP MODE TOGGLE — indigo sliding pill
 // ═══════════════════════════════════════════════════════════════
 
 function LoginModeToggle({ mode, onModeChange }: {
@@ -493,17 +493,18 @@ function LoginModeToggle({ mode, onModeChange }: {
 
   return (
     <div className="relative flex rounded-xl bg-white/[0.04] p-[3px] mb-7 border border-white/[0.06]">
-      {/* Sliding indicator — emerald pill */}
+      {/* Sliding indicator — indigo pill */}
       <div
         ref={indicatorRef}
-        className="absolute top-[3px] bottom-[3px] rounded-[9px] bg-gradient-to-r from-emerald-600/90 to-teal-600/90 shadow-lg shadow-emerald-500/20"
+        className="absolute top-[3px] bottom-[3px] rounded-[9px] bg-gradient-to-r from-indigo-600/90 to-violet-600/90 shadow-lg shadow-indigo-500/20"
         style={{ left: '3px', width: 'calc(50% - 3px)' }}
       />
 
       <button
         type="button"
         onClick={() => onModeChange('personnel')}
-        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 ${
+        aria-pressed={mode === 'personnel'}
+        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
           mode === 'personnel'
             ? 'text-white'
             : 'text-white/40 hover:text-white/60'
@@ -526,7 +527,8 @@ function LoginModeToggle({ mode, onModeChange }: {
       <button
         type="button"
         onClick={() => onModeChange('etudiant')}
-        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 ${
+        aria-pressed={mode === 'etudiant'}
+        className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
           mode === 'etudiant'
             ? 'text-white'
             : 'text-white/40 hover:text-white/60'
@@ -1026,8 +1028,8 @@ export function LoginForm({ onBack }: LoginFormProps) {
             />
           </div>
 
-          {/* Multi-layer dark overlay with emerald tints */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-emerald-950/50 to-black/80" />
+          {/* Multi-layer dark overlay with indigo tints */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-indigo-950/50 to-black/80" />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/30" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/30" />
 
@@ -1059,7 +1061,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
             {/* ANIMATION 3: Logo with bounce + glow */}
             <div className="flex items-center gap-5 mb-10">
               <div ref={logoBoxRef} className="relative" style={{ opacity: 0 }}>
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600/30 to-teal-600/20 backdrop-blur-xl border border-emerald-400/20 flex items-center justify-center shadow-2xl">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600/30 to-violet-600/20 backdrop-blur-xl border border-indigo-400/20 flex items-center justify-center shadow-2xl">
                   <img
                     src="/sect-logo.png"
                     alt="SECT"
@@ -1077,13 +1079,13 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 {/* Glow ring */}
                 <div
                   ref={logoGlowRef}
-                  className="absolute -inset-1.5 rounded-2xl border-2 border-emerald-400/25"
+                  className="absolute -inset-1.5 rounded-2xl border-2 border-indigo-400/25"
                   style={{ boxShadow: '0 0 20px rgba(16,185,129,0.15), inset 0 0 20px rgba(16,185,129,0.08)' }}
                 />
                 {/* Sparkle badge */}
                 <div
                   ref={logoSparkRef}
-                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 border-2 border-emerald-900 flex items-center justify-center shadow-lg shadow-yellow-500/30"
+                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 border-2 border-indigo-900 flex items-center justify-center shadow-lg shadow-yellow-500/30"
                 >
                   <Sparkles className="w-3 h-3 text-yellow-900" />
                 </div>
@@ -1098,7 +1100,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 </h1>
                 <p
                   ref={subtitleRef}
-                  className="text-emerald-400/70 text-[10px] font-bold tracking-[0.3em] uppercase mt-1"
+                  className="text-indigo-400/70 text-[10px] font-bold tracking-[0.3em] uppercase mt-1"
                   style={{ opacity: 0 }}
                 >
                   Système d&apos;Évaluation Casse-Tête
@@ -1113,15 +1115,15 @@ export function LoginForm({ onBack }: LoginFormProps) {
               style={{ opacity: 0 }}
             >
               <p className="text-xl xl:text-2xl text-white/80 font-light leading-relaxed">
-                L&apos;évaluation réinventée par l&apos;
-              </p>
-              <p className="text-xl xl:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 inline-block min-h-[2rem]">
-                {typedText}
-                <span
-                  ref={cursorRef}
-                  className="inline-block w-0.5 h-6 bg-emerald-300 ml-1 align-middle"
-                  style={{ opacity: 1 }}
-                />
+                L&apos;évaluation réinventée par l&apos;{' '}
+                <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-violet-200 to-cyan-300 inline-block min-h-[2rem]">
+                  {typedText}
+                  <span
+                    ref={cursorRef}
+                    className="inline-block w-0.5 h-6 bg-indigo-300 ml-1 align-middle"
+                    style={{ opacity: 1 }}
+                  />
+                </span>
               </p>
             </div>
 
@@ -1150,7 +1152,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
             ].map((stat) => (
               <div key={stat.label} data-stat className="text-center">
                 <div className="flex items-center justify-center gap-1.5">
-                  <stat.icon className="w-3 h-3 text-emerald-500/50" />
+                  <stat.icon className="w-3 h-3 text-indigo-500/50" />
                   <p className="text-xl font-black text-white/80">{stat.value}</p>
                 </div>
                 <p className="text-[9px] text-white/30 font-semibold uppercase tracking-wider">{stat.label}</p>
@@ -1175,8 +1177,8 @@ export function LoginForm({ onBack }: LoginFormProps) {
 
           {/* Subtle gradient accents */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-emerald-500/[0.03] blur-[100px]" />
-            <div className="absolute -bottom-40 -left-40 w-[400px] h-[400px] rounded-full bg-teal-500/[0.03] blur-[100px]" />
+            <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-indigo-500/[0.03] blur-[100px]" />
+            <div className="absolute -bottom-40 -left-40 w-[400px] h-[400px] rounded-full bg-violet-500/[0.03] blur-[100px]" />
           </div>
 
           {/* Mobile header */}
@@ -1193,7 +1195,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
             <div className="flex items-center gap-2 ml-auto">
               <div
                 ref={mobileLogoRef}
-                className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-600/80 to-teal-600/80 flex items-center justify-center"
+                className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600/80 to-violet-600/80 flex items-center justify-center"
               >
                 <span className="text-white font-bold text-sm">S</span>
               </div>
@@ -1208,13 +1210,13 @@ export function LoginForm({ onBack }: LoginFormProps) {
               {/* Header */}
               <div className="text-center lg:text-left">
                 <div className="lg:hidden flex items-center justify-center gap-3 mb-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600/80 to-teal-600/80 flex items-center justify-center shadow-xl shadow-emerald-500/20">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600/80 to-violet-600/80 flex items-center justify-center shadow-xl shadow-indigo-500/20">
                     <GraduationCap className="w-7 h-7 text-white" />
                   </div>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   Bon retour
-                  <span className="inline-block ml-1.5 text-emerald-400">✦</span>
+                  <span className="inline-block ml-1.5 text-indigo-400">✦</span>
                 </h2>
                 <p className="mt-2 text-white/40 text-sm sm:text-base">
                   Connectez-vous pour accéder à votre espace
@@ -1249,7 +1251,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                             exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
                             transition={{ duration: 0.2 }}
                           >
-                            <IdentifierIcon className="h-4 w-4 text-white/25 group-focus-within:text-emerald-400 transition-colors duration-300" />
+                            <IdentifierIcon className="h-4 w-4 text-white/25 group-focus-within:text-indigo-400 transition-colors duration-300" />
                           </motion.div>
                         </AnimatePresence>
                         <Input
@@ -1257,7 +1259,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                           type={isPersonnel ? 'email' : 'text'}
                           placeholder={identifierPlaceholder}
                           autoComplete={isPersonnel ? 'email' : 'off'}
-                          className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2 transition-all duration-300"
+                          className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2 transition-all duration-300"
                           {...form.register('identifier', { setValueAs: undefined })}
                           ref={(e) => {
                             identifierInputRef.current = e
@@ -1290,12 +1292,12 @@ export function LoginForm({ onBack }: LoginFormProps) {
                         Mot de passe
                       </Label>
                       <div className="relative group">
-                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25 group-focus-within:text-emerald-400 transition-colors duration-300" />
+                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25 group-focus-within:text-indigo-400 transition-colors duration-300" />
                         <Input
                           id="password"
                           type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
-                          className="pl-10 pr-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2 transition-all duration-300"
+                          className="pl-10 pr-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:bg-white/[0.08] focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2 transition-all duration-300"
                           {...form.register('password')}
                           ref={(e) => {
                             passwordInputRef.current = e
@@ -1342,7 +1344,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                       <button
                         type="button"
                         onClick={openResetDialog}
-                        className="text-xs font-semibold text-emerald-400/80 hover:text-emerald-300 transition-colors duration-200"
+                        className="text-xs font-semibold text-indigo-400/80 hover:text-indigo-300 transition-colors duration-200"
                       >
                         Mot de passe oublié ?
                       </button>
@@ -1417,8 +1419,8 @@ export function LoginForm({ onBack }: LoginFormProps) {
         <DialogContent className="sm:max-w-md rounded-2xl bg-[#0a0a0a] border-white/[0.08] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2.5 text-lg text-white">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-                <KeyRound className="w-4 h-4 text-emerald-400" />
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
+                <KeyRound className="w-4 h-4 text-indigo-400" />
               </div>
               Réinitialiser le mot de passe
             </DialogTitle>
@@ -1439,7 +1441,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     placeholder="votre.email@universite.fr"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
-                    className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2"
+                    className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2"
                     onKeyDown={(e) => e.key === 'Enter' && handleResetRequest()}
                   />
                 </div>
@@ -1448,7 +1450,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl h-10 border-white/[0.08] bg-transparent text-white/60 hover:text-white hover:bg-white/[0.05]">
                   Annuler
                 </Button>
-                <Button onClick={handleResetRequest} disabled={resetSending} className="rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500 text-white">
+                <Button onClick={handleResetRequest} disabled={resetSending} className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white">
                   {resetSending ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -1465,18 +1467,18 @@ export function LoginForm({ onBack }: LoginFormProps) {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 text-center"
+                className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-4 text-center"
               >
                 <motion.div
                   animate={{ scale: [1, 1.2, 1] }}
                   transition={{ duration: 0.4 }}
                 >
-                  <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+                  <CheckCircle2 className="w-10 h-10 text-indigo-400 mx-auto mb-2" />
                 </motion.div>
-                <p className="text-sm font-medium text-emerald-300">
+                <p className="text-sm font-medium text-indigo-300">
                   Demande envoyée avec succès
                 </p>
-                <p className="text-xs text-emerald-400/50 mt-1">
+                <p className="text-xs text-indigo-400/50 mt-1">
                   Vérifiez votre boîte mail pour le token de réinitialisation.
                 </p>
               </motion.div>
@@ -1489,11 +1491,11 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 >
                   <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
                     <p className="text-xs font-medium text-white/40 mb-1">Token reçu :</p>
-                    <code className="text-sm font-mono bg-white/[0.06] px-2 py-1 rounded break-all text-emerald-300">{resetToken}</code>
+                    <code className="text-sm font-mono bg-white/[0.06] px-2 py-1 rounded break-all text-indigo-300">{resetToken}</code>
                   </div>
                   <Button
                     onClick={() => openConfirmDialog(resetToken)}
-                    className="w-full rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500 text-white"
+                    className="w-full rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white"
                   >
                     Définir un nouveau mot de passe
                   </Button>
@@ -1518,7 +1520,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 {!resetToken && (
                   <Button
                     onClick={() => openConfirmDialog()}
-                    className="rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500 text-white"
+                    className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white"
                   >
                     J&apos;ai déjà un token
                   </Button>
@@ -1536,8 +1538,8 @@ export function LoginForm({ onBack }: LoginFormProps) {
         <DialogContent className="sm:max-w-md rounded-2xl bg-[#0a0a0a] border-white/[0.08] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2.5 text-lg text-white">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-                <Lock className="w-4 h-4 text-emerald-400" />
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
+                <Lock className="w-4 h-4 text-indigo-400" />
               </div>
               Nouveau mot de passe
             </DialogTitle>
@@ -1556,7 +1558,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                   placeholder="Entrez le token ici"
                   value={confirmToken}
                   onChange={(e) => setConfirmToken(e.target.value)}
-                  className="h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2"
+                  className="h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2"
                 />
               </div>
               <div className="space-y-2">
@@ -1569,7 +1571,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-emerald-500/50 focus:ring-emerald-500/20 focus:ring-2"
+                    className="pl-10 h-11 rounded-xl bg-white/[0.05] border-white/[0.08] text-white placeholder:text-white/20 focus:border-indigo-500/50 focus:ring-indigo-500/20 focus:ring-2"
                     onKeyDown={(e) => e.key === 'Enter' && handleResetConfirm()}
                   />
                 </div>
@@ -1578,7 +1580,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                 <Button variant="outline" onClick={() => setConfirmDialogOpen(false)} className="rounded-xl h-10 border-white/[0.08] bg-transparent text-white/60 hover:text-white hover:bg-white/[0.05]">
                   Annuler
                 </Button>
-                <Button onClick={handleResetConfirm} disabled={confirmSubmitting} className="rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500 text-white">
+                <Button onClick={handleResetConfirm} disabled={confirmSubmitting} className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white">
                   {confirmSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -1595,10 +1597,10 @@ export function LoginForm({ onBack }: LoginFormProps) {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 text-center"
+                className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-4 text-center"
               >
-                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
-                <p className="text-sm font-medium text-emerald-300">
+                <CheckCircle2 className="w-10 h-10 text-indigo-400 mx-auto mb-2" />
+                <p className="text-sm font-medium text-indigo-300">
                   Mot de passe mis à jour avec succès !
                 </p>
               </motion.div>
@@ -1608,7 +1610,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     setConfirmDialogOpen(false)
                     setResetDialogOpen(false)
                   }}
-                  className="w-full rounded-xl h-10 bg-emerald-600 hover:bg-emerald-500 text-white"
+                  className="w-full rounded-xl h-10 bg-indigo-600 hover:bg-indigo-500 text-white"
                 >
                   Retour à la connexion
                 </Button>

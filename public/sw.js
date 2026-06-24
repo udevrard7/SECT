@@ -96,18 +96,26 @@ self.addEventListener('fetch', (event) => {
   }
 
   // ─── Navigation (pages HTML) : network-first, fallback cache + offline page ───
+  // IMPORTANT : ne cache QUE les réponses 200 (pas les redirects 307 d'auth).
+  // Sinon offline /dashboard → cache du 307 → /login au lieu de /offline.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache la page pour offline
-          const clone = response.clone()
-          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, clone))
+          // Cache seulement les pages valides (200, type basic = same-origin)
+          // Ne PAS cacher les redirects (3xx) qui cassent le fallback offline
+          if (response.ok && response.status === 200 && response.type === 'basic') {
+            const clone = response.clone()
+            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, clone))
+          }
           return response
         })
         .catch(() => {
-          // Offline : retourne la page cachée, sinon la page /offline pré-cachée
-          return caches.match(request).then((cached) => cached || caches.match('/offline'))
+          // Offline : retourne la page cachée si valide (200), sinon /offline
+          return caches.match(request).then((cached) => {
+            if (cached && cached.ok && cached.status === 200) return cached
+            return caches.match('/offline')
+          })
         })
     )
     return
