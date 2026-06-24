@@ -56,7 +56,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
-import { NAV_CATEGORIES, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
+import { NAV_CATEGORIES, PAGE_ROUTES, getPageContext, type PageId } from '@/lib/routes'
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -105,7 +105,11 @@ export function AppSidebar() {
 
   if (!user) return null
 
-  const currentPageId = ROUTE_TO_PAGE[pathname] ?? 'dashboard'
+  // Résolution fiable du PageId canonique pour le highlighting de la sidebar.
+  // Utilise getPageContext (part de NAV_CATEGORIES[user.role]) plutôt que
+  // ROUTE_TO_PAGE, qui souffre de collisions (ex. /programme-academique est
+  // mappé à 3 PageId différents, seul le dernier gagne de manière fragile).
+  const { pageId: currentPageId } = getPageContext(pathname, user.role)
   const categories = NAV_CATEGORIES[user.role] ?? []
 
   const initials = user.name
