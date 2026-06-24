@@ -262,98 +262,109 @@ export function LoginForm() {
   return (
     <div className="min-h-screen flex bg-[#1E1B4B]">
       {/* ════════════════════════════════════════════════════════════════
-          CÔTÉ GAUCHE (60%) — Bleu nuit + Kente riche + SECT branding
+          CÔTÉ GAUCHE (60%) — Bleu nuit + Kente riche + Avantages SECT
           ════════════════════════════════════════════════════════════════ */}
       <div className="hidden lg:flex lg:w-[60%] relative flex-col overflow-hidden">
         {/* ── Fond : dégradé bleu nuit profond ── */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1E1B4B] via-[#1a1740] to-[#0f0d2e]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0A1931] via-[#1E1B4B] to-[#0f0d2e]" />
 
-        {/* ── Motif Kente riche (multi-couches, inspiration tissage traditionnel) ── */}
-        {/* Couche 1 : bandes verticales kente tricolores */}
+        {/* ── Motif Kente riche (inspiration tissage traditionnel, opacité augmentée) ── */}
+        {/* Couche 1 : bandes verticales kente tricolores (plus visibles) */}
         <div
-          className="absolute inset-0 opacity-[0.06] pointer-events-none"
+          className="absolute inset-0 opacity-[0.12] pointer-events-none"
           style={{
             backgroundImage: `
               repeating-linear-gradient(90deg,
-                transparent 0, transparent 60px,
-                #84CC16 60px, #84CC16 64px,
-                transparent 64px, transparent 68px,
-                #F59E0B 68px, #F59E0B 70px,
-                transparent 70px, transparent 74px,
-                #C2410C 74px, #C2410C 76px,
-                transparent 76px, transparent 120px
+                transparent 0, transparent 50px,
+                #84CC16 50px, #84CC16 55px,
+                transparent 55px, transparent 58px,
+                #F59E0B 58px, #F59E0B 61px,
+                transparent 61px, transparent 64px,
+                #C2410C 64px, #C2410C 66px,
+                transparent 66px, transparent 100px
               )
             `,
           }}
         />
-        {/* Couche 2 : losanges diagonaux (motif bogolan) */}
+        {/* Couche 2 : triangles diagonaux (motif kente traditionnel) */}
         <div
-          className="absolute inset-0 opacity-[0.04] pointer-events-none"
+          className="absolute inset-0 opacity-[0.08] pointer-events-none"
           style={{
             backgroundImage: `
-              repeating-linear-gradient(45deg, transparent 0, transparent 30px, #F59E0B 30px, #F59E0B 34px, transparent 34px, transparent 60px),
-              repeating-linear-gradient(-45deg, transparent 0, transparent 30px, #84CC16 30px, #84CC16 34px, transparent 34px, transparent 60px)
+              repeating-linear-gradient(45deg, transparent 0, transparent 25px, #F59E0B 25px, #F59E0B 30px, transparent 30px, transparent 50px),
+              repeating-linear-gradient(-45deg, transparent 0, transparent 25px, #84CC16 25px, #84CC16 30px, transparent 30px, transparent 50px)
             `,
           }}
         />
         {/* Couche 3 : points dorés (motif mandala) */}
         <div
-          className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          className="absolute inset-0 opacity-[0.05] pointer-events-none"
           style={{
-            backgroundImage: `radial-gradient(circle, #F59E0B 1px, transparent 1px)`,
-            backgroundSize: '24px 24px',
+            backgroundImage: `radial-gradient(circle, #F59E0B 1.5px, transparent 1.5px)`,
+            backgroundSize: '20px 20px',
           }}
         />
 
-        {/* ── Bande kente décorative verticale (bord droit, 4 couleurs) ── */}
+        {/* ── Bande kente verticale (bord droit, 4 couleurs, plus large) ── */}
         <div
-          className="absolute top-0 bottom-0 right-0 w-3 z-20"
+          className="absolute top-0 bottom-0 right-0 w-4 z-20"
           style={{
             backgroundImage: `repeating-linear-gradient(
               0deg,
-              #84CC16 0px, #84CC16 50px,
-              #C2410C 50px, #C2410C 100px,
-              #F59E0B 100px, #F59E0B 150px,
-              #1E1B4B 150px, #1E1B4B 200px
+              #84CC16 0px, #84CC16 60px,
+              #C2410C 60px, #C2410C 120px,
+              #F59E0B 120px, #F59E0B 180px,
+              #1E1B4B 180px, #1E1B4B 240px
             )`,
           }}
         />
 
-        {/* ── Particules flottantes dorées/vertes ── */}
-        <FloatingParticle delay={0} duration={4} x="15%" y="30%" size={4} color="#F59E0B" />
-        <FloatingParticle delay={1} duration={5} x="80%" y="20%" size={3} color="#84CC16" />
-        <FloatingParticle delay={2} duration={3.5} x="25%" y="70%" size={5} color="#F59E0B" />
-        <FloatingParticle delay={0.5} duration={4.5} x="70%" y="60%" size={3} color="#84CC16" />
-        <FloatingParticle delay={1.5} duration={3} x="50%" y="15%" size={4} color="#C2410C" />
-        <FloatingParticle delay={2.5} duration={4} x="90%" y="80%" size={3} color="#F59E0B" />
+        {/* ── Particules dorées flottantes (plus nombreuses) ── */}
+        <FloatingParticle delay={0} duration={4} x="10%" y="25%" size={4} color="#F59E0B" />
+        <FloatingParticle delay={0.8} duration={5} x="85%" y="15%" size={3} color="#84CC16" />
+        <FloatingParticle delay={1.5} duration={3.5} x="20%" y="65%" size={5} color="#F59E0B" />
+        <FloatingParticle delay={0.3} duration={4.5} x="75%" y="55%" size={3} color="#84CC16" />
+        <FloatingParticle delay={1.2} duration={3} x="45%" y="10%" size={4} color="#C2410C" />
+        <FloatingParticle delay={2} duration={4} x="90%" y="75%" size={3} color="#F59E0B" />
+        <FloatingParticle delay={0.6} duration={5.5} x="15%" y="85%" size={4} color="#84CC16" />
+        <FloatingParticle delay={1.8} duration={3.8} x="60%" y="40%" size={3} color="#F59E0B" />
 
-        {/* ── Motifs géométriques africains en coins (losanges concentriques) ── */}
+        {/* ── Motifs géométriques africains (losanges rotatifs) ── */}
         <motion.div
-          className="absolute top-6 right-12 w-28 h-28 pointer-events-none z-10"
+          className="absolute top-8 right-16 w-32 h-32 pointer-events-none z-10"
           animate={{ rotate: 360 }}
-          transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
+          transition={{ duration: 50, repeat: Infinity, ease: 'linear' }}
         >
           <svg viewBox="0 0 100 100" fill="none">
-            <polygon points="50,5 95,50 50,95 5,50" stroke="#F59E0B" strokeWidth="1.5" fill="none" opacity="0.3" />
-            <polygon points="50,20 80,50 50,80 20,50" stroke="#F59E0B" strokeWidth="1" fill="none" opacity="0.2" />
-            <polygon points="50,35 65,50 50,65 35,50" stroke="#84CC16" strokeWidth="1" fill="none" opacity="0.15" />
+            <polygon points="50,5 95,50 50,95 5,50" stroke="#F59E0B" strokeWidth="2" fill="none" opacity="0.35" />
+            <polygon points="50,20 80,50 50,80 20,50" stroke="#F59E0B" strokeWidth="1.5" fill="none" opacity="0.25" />
+            <polygon points="50,35 65,50 50,65 35,50" stroke="#84CC16" strokeWidth="1" fill="none" opacity="0.2" />
+            <circle cx="50" cy="50" r="4" fill="#F59E0B" opacity="0.3" />
           </svg>
         </motion.div>
         <motion.div
-          className="absolute bottom-12 left-12 w-36 h-36 pointer-events-none z-10"
+          className="absolute bottom-16 left-12 w-40 h-40 pointer-events-none z-10"
           animate={{ rotate: -360 }}
-          transition={{ duration: 80, repeat: Infinity, ease: 'linear' }}
+          transition={{ duration: 70, repeat: Infinity, ease: 'linear' }}
         >
           <svg viewBox="0 0 120 120" fill="none">
-            <polygon points="60,5 115,60 60,115 5,60" stroke="#84CC16" strokeWidth="1.5" fill="none" opacity="0.25" />
-            <polygon points="60,25 95,60 60,95 25,60" stroke="#84CC16" strokeWidth="1" fill="none" opacity="0.15" />
-            <circle cx="60" cy="60" r="8" fill="#F59E0B" opacity="0.1" />
+            <polygon points="60,5 115,60 60,115 5,60" stroke="#84CC16" strokeWidth="2" fill="none" opacity="0.3" />
+            <polygon points="60,25 95,60 60,95 25,60" stroke="#84CC16" strokeWidth="1.5" fill="none" opacity="0.2" />
+            <circle cx="60" cy="60" r="6" fill="#F59E0B" opacity="0.15" />
           </svg>
         </motion.div>
 
-        {/* ── Halo lumineux (glow) derrière le contenu ── */}
-        <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full bg-[#84CC16] opacity-[0.04] blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-[#F59E0B] opacity-[0.03] blur-[100px] pointer-events-none" />
+        {/* ── Glow doré animé pulsant ── */}
+        <motion.div
+          className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full bg-[#F59E0B] blur-[130px] pointer-events-none"
+          animate={{ opacity: [0.03, 0.08, 0.03], scale: [1, 1.1, 1] }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+          className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-[#84CC16] blur-[110px] pointer-events-none"
+          animate={{ opacity: [0.02, 0.06, 0.02], scale: [1, 1.15, 1] }}
+          transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+        />
 
         {/* ═══ Contenu du côté gauche ═══ */}
         <div className="relative z-20 flex flex-col justify-between h-full p-12 xl:p-16">
@@ -365,19 +376,19 @@ export function LoginForm() {
             transition={{ duration: 0.6, ease: 'easeOut' }}
             className="flex items-center gap-3"
           >
-            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center shadow-xl shadow-[#84CC16]/20">
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center shadow-xl shadow-[#84CC16]/30">
               <GraduationCap className="h-8 w-8 text-[#1E1B4B]" />
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white tracking-tight">SECT</h1>
-              <p className="text-xs text-[#F59E0B]/70 font-medium tracking-wider uppercase">Système d'Évaluation</p>
+              <p className="text-xs text-[#F59E0B]/80 font-medium tracking-wider uppercase">Système d'Évaluation</p>
             </div>
           </motion.div>
 
-          {/* ── Section centrale : titre + stats + témoignage ── */}
+          {/* ── Section centrale : titre + avantages ── */}
           <div className="flex-1 flex flex-col justify-center max-w-xl">
 
-            {/* Titre principal animé */}
+            {/* Titre principal */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
@@ -391,108 +402,66 @@ export function LoginForm() {
                 </span>
               </h2>
               <p className="text-white/50 text-lg leading-relaxed max-w-md">
-                Générez vos sujets, surveillez les examens en ligne et corrigez
-                automatiquement. Conçu pour les universités d'Afrique de l'Ouest.
+                Générez, surveillez et corrigez vos examens en quelques minutes.
+                Conçu pour les universités d'Afrique de l'Ouest.
               </p>
             </motion.div>
 
-            {/* Stats animées (compteurs) */}
+            {/* ── Avantages de la plateforme (pas de témoignages) ── */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.5, ease: 'easeOut' }}
-              className="grid grid-cols-4 gap-4 mt-10"
+              transition={{ duration: 0.7, delay: 0.5 }}
+              className="mt-8 space-y-3"
             >
-              {stats.map((stat, i) => (
+              {[
+                { icon: Sparkles, title: 'Génération IA de sujets', desc: 'Créez QCM, QRC et exercices de code à partir de vos cours en 60 secondes' },
+                { icon: Shield, title: 'Surveillance anti-fraude', desc: 'Détection de triche en temps réel : onglets, copier-coller, reconnaissance faciale' },
+                { icon: Zap, title: 'Correction automatique', desc: 'L\'IA corrige 200 copies pendant votre café avec 98% de précision' },
+                { icon: TrendingUp, title: 'Analytics pédagogiques', desc: 'Statistiques détaillées : moyennes, taux de réussite, questions à risque' },
+              ].map((advantage, i) => (
                 <motion.div
-                  key={stat.label}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.6 + i * 0.1, type: 'spring', damping: 15 }}
-                  className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
+                  key={advantage.title}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 + i * 0.12, type: 'spring', damping: 18 }}
+                  className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors"
                 >
-                  <stat.icon className="h-5 w-5" style={{ color: stat.color }} />
-                  <span className="text-xl font-bold text-white">
-                    <AnimatedCounter value={stat.value} suffix={stat.suffix} />
-                  </span>
-                  <span className="text-[10px] text-white/40 uppercase tracking-wider text-center">{stat.label}</span>
+                  <div className="shrink-0 h-9 w-9 rounded-lg bg-gradient-to-br from-[#F59E0B]/20 to-[#C2410C]/10 flex items-center justify-center border border-[#F59E0B]/20">
+                    <advantage.icon className="h-4.5 w-4.5 text-[#F59E0B]" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-white">{advantage.title}</h3>
+                    <p className="text-xs text-white/45 mt-0.5 leading-relaxed">{advantage.desc}</p>
+                  </div>
                 </motion.div>
               ))}
             </motion.div>
-
-            {/* Témoignage rotatif */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.7, delay: 1 }}
-              className="mt-8 p-5 rounded-2xl bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm"
-            >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTestimonial}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <p className="text-white/70 text-sm italic leading-relaxed mb-3">
-                    "{testimonials[activeTestimonial].text}"
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#F59E0B] to-[#C2410C] flex items-center justify-center text-xs font-bold text-white">
-                      {testimonials[activeTestimonial].author.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-white">{testimonials[activeTestimonial].author}</p>
-                      <p className="text-[10px] text-white/40">{testimonials[activeTestimonial].role}</p>
-                    </div>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-              {/* Indicateurs */}
-              <div className="flex gap-1.5 mt-3">
-                {testimonials.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setActiveTestimonial(i)}
-                    className={`h-1 rounded-full transition-all ${i === activeTestimonial ? 'w-6 bg-[#84CC16]' : 'w-2 bg-white/20'}`}
-                    aria-label={`Témoignage ${i + 1}`}
-                  />
-                ))}
-              </div>
-            </motion.div>
           </div>
 
-          {/* ── Features badges (bas) ── */}
+          {/* ── Footer gauche ── */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 1.2 }}
-            className="flex items-center gap-6 mt-8"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.4 }}
+            className="flex items-center justify-between mt-8"
           >
-            {[
-              { icon: Sparkles, label: 'IA Intégrée' },
-              { icon: Shield, label: 'Anti-Triche' },
-              { icon: TrendingUp, label: 'Analytics' },
-              { icon: CheckCircle2, label: 'Multi-rôles' },
-            ].map((feature, i) => (
-              <motion.div
-                key={feature.label}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.3 + i * 0.1 }}
-                className="flex items-center gap-2"
-              >
-                <feature.icon className="h-4 w-4 text-[#F59E0B]" />
-                <span className="text-xs text-white/50 font-medium">{feature.label}</span>
-              </motion.div>
-            ))}
+            <div className="flex items-center gap-4">
+              {[
+                { icon: Users, label: '500+ étudiants' },
+                { icon: Award, label: '4 rôles' },
+                { icon: CheckCircle2, label: '98% précision' },
+              ].map((stat) => (
+                <div key={stat.label} className="flex items-center gap-1.5">
+                  <stat.icon className="h-3.5 w-3.5 text-[#84CC16]" />
+                  <span className="text-xs text-white/40 font-medium">{stat.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-white/25">
+              © 2025 SECT 🇨🇮
+            </p>
           </motion.div>
-
-          {/* ── Footer ── */}
-          <p className="text-xs text-white/25 mt-6">
-            © 2025 SECT — Conçu en Côte d'Ivoire 🇨🇮
-          </p>
         </div>
       </div>
 
