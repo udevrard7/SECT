@@ -168,6 +168,25 @@ export function getPageContext(pathname: string, role: UserRole): PageContext {
   }
 }
 
+/**
+ * Page de paramètres dédiée au rôle, ou `null` si le rôle n'en a pas.
+ *
+ * - ADMIN → `configuration` (configuration du système PaaS/SaaS)
+ * - RESPONSABLE → `parametres` (paramètres de l'établissement)
+ * - ENSEIGNANT / ÉTUDIANT → `null` (pas de page dédiée ; l'entrée
+ *   « Paramètres » est masquée du menu utilisateur)
+ */
+export function getSettingsPageId(role: UserRole): PageId | null {
+  switch (role) {
+    case 'ADMIN':
+      return 'configuration'
+    case 'RESPONSABLE':
+      return 'parametres'
+    default:
+      return null
+  }
+}
+
 // ─── Page labels ───
 export const PAGE_LABELS: Record<PageId, string> = {
   dashboard: 'Tableau de bord',

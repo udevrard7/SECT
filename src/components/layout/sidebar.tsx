@@ -54,11 +54,11 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { useAuthStore, type UserRole } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
 import { NAV_CATEGORIES, PAGE_ROUTES, getPageContext, type PageId } from '@/lib/routes'
 import { useSidebar } from '@/components/ui/sidebar'
+import { SidebarUserCard } from '@/components/layout/sidebar-user-card'
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -93,13 +93,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ScrollText,
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  ADMIN: 'Admin',
-  RESPONSABLE: 'Responsable',
-  ENSEIGNANT: 'Enseignant',
-  ETUDIANT: 'Étudiant',
-}
-
 export function AppSidebar() {
   const router = useRouter()
   const pathname = usePathname()
@@ -126,13 +119,6 @@ export function AppSidebar() {
   const handleMouseLeave = () => {
     if (!isMobile && mode === 'hover') setOpen(false)
   }
-
-  const initials = user.name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
 
   const navigateTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
@@ -176,24 +162,9 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      {/* ─── Footer : utilisateur ─── */}
-      <SidebarFooter className="p-3 border-t border-sidebar-border">
-        <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
-          <div className="relative">
-            <Avatar className="h-8 w-8 shrink-0">
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-primary" />
-          </div>
-          <div className="flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden min-w-0">
-            <span className="text-sm font-medium truncate leading-tight text-sidebar-foreground">{user.name}</span>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-primary">
-              {ROLE_LABELS[user.role]}
-            </span>
-          </div>
-        </div>
+      {/* ─── Footer : carte utilisateur (popover vers le haut) ─── */}
+      <SidebarFooter className="p-2 border-t border-sidebar-border">
+        <SidebarUserCard />
       </SidebarFooter>
 
       <SidebarRail className="after:bg-sidebar-border" />

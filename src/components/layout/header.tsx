@@ -3,54 +3,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LogOut, User, Settings, ChevronRight,
-  Search,
+  ChevronRight, Search, Repeat, LogIn,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { SidebarControl } from '@/components/layout/sidebar-control'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { ThemeToggle } from '@/components/ds'
-import { useAuthStore, type UserRole } from '@/stores/auth-store'
-import { PAGE_ROUTES, getPageContext, type PageId } from '@/lib/routes'
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  ADMIN: 'Administrateur',
-  RESPONSABLE: 'Responsable des études',
-  ENSEIGNANT: 'Enseignant',
-  ETUDIANT: 'Étudiant',
-}
-
-/**
- * Page de paramètres dédiée au rôle, ou `null` si le rôle n'en a pas.
- *
- * - ADMIN → /configuration (configuration du système PaaS/SaaS)
- * - RESPONSABLE → /parametres (paramètres de l'établissement)
- * - ENSEIGNANT / ÉTUDIANT → null (pas de page dédiée ; l'item « Paramètres »
- *   est masqué du dropdown utilisateur pour éviter la redirection trompeuse
- *   vers /profil, déjà couvert par l'item « Mon profil »)
- */
-function getSettingsPageId(role: UserRole): PageId | null {
-  switch (role) {
-    case 'ADMIN':
-      return 'configuration'
-    case 'RESPONSABLE':
-      return 'parametres'
-    default:
-      return null
-  }
-}
+import { useAuthStore } from '@/stores/auth-store'
+import { useSwitchAccountStore } from '@/stores/switch-account-store'
+import { getPageContext } from '@/lib/routes'
 
 // ─── Horloge temps réel ───
 function useClock() {
@@ -67,12 +30,26 @@ function useClock() {
 const DAYS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc']
 
+/**
+ * AppHeader — Barre supérieure de l'espace authentifié.
+ *
+ * La carte utilisateur (avatar + nom + menu profil/paramètres/déconnexion)
+ * a été déplacée vers le bas de la sidebar (`SidebarUserCard`), pattern
+ * moderne type Linear/Vercel/Notion. Le header ne porte plus que des
+ * actions transverses :
+ *  - thème, notifications, horloge, recherche (⌘K)
+ *  - « Switch Account » : ouvre le `SwitchAccountDialog` (basculer vers un
+ *    autre compte sans repasser par la page de login)
+ *  - « Login » : déconnexion + redirect vers /login (se reconnecter avec un
+ *    autre compte via le formulaire classique)
+ */
 export function AppHeader() {
   const { user, logout } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
   const now = useClock()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const openSwitchAccount = useSwitchAccountStore((s) => s.openDialog)
 
   // Formatage heure/date (memoized — doit être avant early return)
   const { timeStr, dateStr } = useMemo(() => ({
@@ -101,12 +78,10 @@ export function AppHeader() {
   // vers la même route) en partant de NAV_CATEGORIES[user.role].
   const { pageTitle, parentCategory } = getPageContext(pathname, user.role)
 
-  // Page de paramètres dédiée au rôle (null pour ENSEIGNANT/ÉTUDIANT → item masqué)
-  const settingsPageId = getSettingsPageId(user.role)
-
-  const navigateTo = (pageId: PageId) => {
-    const route = PAGE_ROUTES[pageId]
-    if (route) router.push(route)
+  // « Login » : déconnexion du compte courant puis redirect vers /login.
+  const handleLogin = async () => {
+    await logout()
+    router.push('/login')
   }
 
   return (
@@ -176,7 +151,7 @@ export function AppHeader() {
         <div className="hidden xl:block h-5 w-px bg-sidebar-border mx-1" />
 
         {/* ─── Actions droite ─── */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1.5">
           {/* Theme toggle */}
           <ThemeToggle />
 
@@ -184,65 +159,33 @@ export function AppHeader() {
           <NotificationBell className="h-9 w-9 rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" />
 
           {/* Séparateur */}
-          <div className="h-5 w-px bg-sidebar-border mx-1.5" />
+          <div className="h-5 w-px bg-sidebar-border mx-0.5" />
 
-          {/* User dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 h-9 px-1.5 rounded-lg hover:bg-sidebar-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="hidden sm:flex flex-col items-start leading-tight">
-                  <span className="text-xs font-semibold text-sidebar-foreground truncate max-w-[100px]">{user.name}</span>
-                  <span className="text-[10px] text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</span>
-                </div>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 rounded-xl border-border" align="end" forceMount>
-              <DropdownMenuLabel className="font-normal py-3">
-                <div className="flex flex-col space-y-1.5">
-                  <div className="flex items-center gap-2.5">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
-                        {initials}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-semibold leading-none">{user.name}</p>
-                      <p className="text-xs leading-none text-muted-foreground mt-0.5">{user.email}</p>
-                    </div>
-                  </div>
-                  <span className="inline-flex self-start text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary-text">
-                    {ROLE_LABELS[user.role]}
-                  </span>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => navigateTo('profil')} className="cursor-pointer rounded-md">
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Mon profil</span>
-                </DropdownMenuItem>
-                {settingsPageId && (
-                  <DropdownMenuItem
-                    onClick={() => navigateTo(settingsPageId)}
-                    className="cursor-pointer rounded-md"
-                  >
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Paramètres</span>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => logout()} className="cursor-pointer text-destructive focus:text-destructive rounded-md">
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Déconnexion</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Switch Account — ouvre le dialog de bascule de compte */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openSwitchAccount}
+            className="h-9 gap-1.5 px-2.5 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-lg"
+            aria-label="Changer de compte"
+            title="Changer de compte"
+          >
+            <Repeat className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs font-medium">Switch</span>
+          </Button>
+
+          {/* Login — déconnexion + redirect vers /login */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogin}
+            className="h-9 gap-1.5 px-2.5 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-lg"
+            aria-label="Se connecter avec un autre compte"
+            title="Se connecter avec un autre compte"
+          >
+            <LogIn className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs font-medium">Login</span>
+          </Button>
         </div>
       </div>
 
