@@ -31,6 +31,7 @@ import {
   AcademicCalendar,
   GradeTable,
   AIAssistant,
+  ThemeToggle,
   type NavSection,
   type UserStatsData,
   type Reward,
@@ -88,9 +89,12 @@ export function DesignSystemShowcase() {
       userStats={userStats}
       user={{ name: 'Ulrich Devrard', role: 'Enseignant' }}
       topbarActions={
-        <Button size="sm" variant="ghost" aria-label="Notifications">
-          <Zap className="h-4 w-4" />
-        </Button>
+        <>
+          <ThemeToggle />
+          <Button size="sm" variant="ghost" aria-label="Notifications">
+            <Zap className="h-4 w-4" />
+          </Button>
+        </>
       }
       sidebarFooter={
         <div className="rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 p-3 text-xs">
