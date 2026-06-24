@@ -17,7 +17,7 @@
  * exhaustif (les URLs Turbopack sont dynamiques) — on cache à la volée.
  */
 
-const CACHE_VERSION = 'sect-v1'
+const CACHE_VERSION = 'sect-v2'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
