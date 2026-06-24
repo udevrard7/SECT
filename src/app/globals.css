@@ -255,6 +255,18 @@
 .ds-lift:hover {
   transform: translateY(-2px);
 }
+/* ── Press feedback (tactile) : scale-0.98 sur active ── */
+.ds-lift:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ── Press feedback universel pour boutons ── */
+.ds-press {
+  transition: transform 0.1s ease;
+}
+.ds-press:active {
+  transform: scale(0.98);
+}
 
 /* ── Gamification : lueur par tier (subtile, pas excessive) ── */
 .ds-glow-bronze { box-shadow: 0 0 12px -4px oklch(0.665 0.151 54.5); }

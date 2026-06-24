@@ -1,9 +1,10 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Award, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { playRewardSound } from '@/lib/sounds'
 import type { GamificationTier } from './user-stats'
 
 export interface RewardToastProps {
@@ -65,14 +66,28 @@ export function RewardToast({
   icon: Icon = Award,
   duration = 4000,
 }: RewardToastProps) {
+  // Son de récompense à l'ouverture (optionnel, respecte prefers-reduced-motion)
+  useEffect(() => {
+    if (open) playRewardSound()
+  }, [open])
+
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          initial={{ opacity: 0, y: -60, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -30, scale: 0.95 }}
-          transition={{ type: 'spring', damping: 20, stiffness: 280 }}
+          initial={{ opacity: 0, y: -80, scale: 0.85 }}
+          animate={{
+            opacity: 1,
+            y: [0, -8, 0], // bounce subtil après l'entrée
+            scale: 1,
+          }}
+          exit={{ opacity: 0, y: -40, scale: 0.9 }}
+          transition={{
+            type: 'spring',
+            damping: 14, // moins de damping = plus de bounce
+            stiffness: 320,
+            mass: 0.8,
+          }}
           className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm"
           role="status"
           aria-live="assertive"
@@ -82,8 +97,24 @@ export function RewardToast({
             }
           }}
         >
-          <div className="ds-glass rounded-xl shadow-2xl p-4 flex items-center gap-3.5">
-            {/* Icône de récompense avec pulse */}
+          <motion.div
+            className="ds-glass rounded-xl shadow-2xl p-4 flex items-center gap-3.5 relative overflow-hidden"
+            animate={{
+              boxShadow: tier
+                ? [
+                    '0 25px 50px -12px rgba(0,0,0,0.25)',
+                    `0 25px 50px -12px color-mix(in oklch, var(--${tier}) 30%, transparent)`,
+                    '0 25px 50px -12px rgba(0,0,0,0.25)',
+                  ]
+                : [
+                    '0 25px 50px -12px rgba(0,0,0,0.25)',
+                    '0 25px 50px -12px color-mix(in oklch, var(--xp) 30%, transparent)',
+                    '0 25px 50px -12px rgba(0,0,0,0.25)',
+                  ],
+            }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            {/* Icône de récompense avec pulse + bounce marqué */}
             <motion.div
               className="shrink-0 h-12 w-12 rounded-full flex items-center justify-center"
               style={{
@@ -91,11 +122,12 @@ export function RewardToast({
                   ? `color-mix(in oklch, var(--${tier}) 15%, transparent)`
                   : 'color-mix(in oklch, var(--xp) 15%, transparent)',
               }}
+              initial={{ scale: 0, rotate: -180 }}
               animate={{
-                scale: [1, 1.15, 1],
-                rotate: [0, -5, 5, 0],
+                scale: [0, 1.3, 1], // pop-in overshoot
+                rotate: [-180, 10, 0],
               }}
-              transition={{ duration: 0.6, ease: 'easeInOut' }}
+              transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }}
             >
               <Icon
                 className="h-6 w-6"
@@ -139,7 +171,7 @@ export function RewardToast({
                 </svg>
               </button>
             )}
-          </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
