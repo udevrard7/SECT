@@ -10,6 +10,7 @@ import { PageContent } from '@/components/layout/page-content'
 import { ForceChangePasswordPage } from '@/components/auth/force-change-password-page'
 import { AIAssistant } from '@/components/ds'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
+import { useSidebarModeStore } from '@/stores/sidebar-store'
 import { getPageIdFromSlug, PAGE_LABELS } from '@/lib/routes'
 import { Loader2 } from 'lucide-react'
 
@@ -18,6 +19,11 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, mustChangePassword, clearMustChangePassword, syncFromSession, setUser } = useAuthStore()
+  // Mode de sidebar persisté — sert à initialiser `defaultOpen` du provider
+  // pour éviter un flash au rechargement (le cookie shadcn n'est pas relu à
+  // l'init). Hook appelé avant les early returns pour respecter les Rules of
+  // Hooks.
+  const sidebarMode = useSidebarModeStore((s) => s.mode)
 
   // Sync session data to auth store
   useEffect(() => {
@@ -78,7 +84,7 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={sidebarMode === 'expanded'}>
       <AppSidebar />
       <SidebarInset>
         <AppHeader />
