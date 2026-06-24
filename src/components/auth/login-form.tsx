@@ -466,43 +466,82 @@ export function LoginForm() {
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
-          CÔTÉ DROIT (40%) — Formulaire sur fond clair, centré verticalement
+          CÔTÉ DROIT (40%) — Carte flottante premium, centrée
           ════════════════════════════════════════════════════════════════ */}
-      <div className="w-full lg:w-[40%] flex flex-col items-center justify-center bg-[#F8FAFC] px-8 py-10 sm:px-12 relative">
-        {/* Motifs géométriques dorés dans les coins */}
-        <div className="absolute top-6 right-6 w-16 h-16 opacity-10 pointer-events-none">
-          <svg viewBox="0 0 60 60" fill="none">
-            <polygon points="30,5 55,30 30,55 5,30" stroke="#F59E0B" strokeWidth="1.5" fill="none" />
+      <div className="w-full lg:w-[40%] flex items-center justify-center bg-gradient-to-br from-[#F8FAFC] via-[#F0F2F5] to-[#E8EAF0] px-6 py-8 relative overflow-hidden">
+
+        {/* ── Motifs géométriques décoratifs (coins) ── */}
+        <div className="absolute top-4 right-4 w-20 h-20 opacity-[0.08] pointer-events-none">
+          <svg viewBox="0 0 80 80" fill="none">
+            <polygon points="40,5 75,40 40,75 5,40" stroke="#F59E0B" strokeWidth="2" fill="none" />
+            <polygon points="40,20 60,40 40,60 20,40" stroke="#F59E0B" strokeWidth="1.5" fill="none" />
+            <circle cx="40" cy="40" r="4" fill="#F59E0B" opacity="0.3" />
           </svg>
         </div>
-        <div className="absolute bottom-6 left-6 w-20 h-20 opacity-10 pointer-events-none">
-          <svg viewBox="0 0 80 80" fill="none">
-            <polygon points="40,5 75,40 40,75 5,40" stroke="#84CC16" strokeWidth="1.5" fill="none" />
-            <polygon points="40,20 60,40 40,60 20,40" stroke="#84CC16" strokeWidth="1" fill="none" />
+        <div className="absolute bottom-4 left-4 w-24 h-24 opacity-[0.06] pointer-events-none">
+          <svg viewBox="0 0 96 96" fill="none">
+            <polygon points="48,5 91,48 48,91 5,48" stroke="#84CC16" strokeWidth="2" fill="none" />
+            <polygon points="48,24 72,48 48,72 24,48" stroke="#84CC16" strokeWidth="1.5" fill="none" />
           </svg>
         </div>
 
+        {/* ── Glow subtil en fond ── */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-[#84CC16] opacity-[0.03] blur-[80px] pointer-events-none" />
+
+        {/* ── Carte flottante ── */}
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3, ease: 'easeOut' }}
-          className="w-full max-w-[360px] flex flex-col"
+          initial={{ opacity: 0, y: 20, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="relative w-full max-w-[380px] bg-white rounded-2xl shadow-2xl shadow-[#1E1B4B]/10 border border-[#1E1B4B]/8 p-8"
         >
-          {/* Logo mobile */}
-          <div className="lg:hidden flex items-center gap-2.5 mb-6 justify-center">
+          {/* ── Bande kente supérieure (signature) ── */}
+          <div
+            className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl"
+            style={{
+              backgroundImage: `repeating-linear-gradient(90deg,
+                #84CC16 0px, #84CC16 20px,
+                #C2410C 20px, #C2410C 40px,
+                #F59E0B 40px, #F59E0B 60px
+              )`,
+            }}
+          />
+
+          {/* ── Logo mobile ── */}
+          <div className="lg:hidden flex items-center gap-2.5 mb-5 justify-center">
             <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#84CC16] to-[#65A30D] flex items-center justify-center">
               <GraduationCap className="h-6 w-6 text-[#1E1B4B]" />
             </div>
             <span className="text-xl font-bold text-[#1E1B4B]">SECT</span>
           </div>
 
-          {/* Toggle Personnel / Étudiant */}
-          <div className="relative flex bg-[#1E1B4B]/5 rounded-xl p-1 mb-6 border border-[#1E1B4B]/10">
+          {/* ── Titre + sous-titre (AU-DESSUS du toggle) ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.4 }}
+            className="mb-5 text-center"
+          >
+            <h2 className="text-2xl font-bold text-[#1E1B4B] tracking-tight leading-tight">
+              Bon retour ! 👋
+            </h2>
+            <p className="text-sm text-[#1E1B4B]/50 mt-1.5">
+              Accédez à votre espace d'évaluation
+            </p>
+          </motion.div>
+
+          {/* ── Toggle Personnel / Étudiant ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.4 }}
+            className="relative flex bg-[#1E1B4B]/[0.04] rounded-xl p-1 mb-5 border border-[#1E1B4B]/8"
+          >
             <motion.div
-              className="absolute top-1 bottom-1 rounded-lg bg-[#84CC16] shadow-md"
+              className="absolute top-1 bottom-1 rounded-lg bg-[#84CC16] shadow-md shadow-[#84CC16]/30"
               initial={false}
               animate={{ left: isPersonnel ? '4px' : '50%', width: 'calc(50% - 4px)' }}
-              transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 320 }}
             />
             <button
               type="button"
@@ -522,46 +561,43 @@ export function LoginForm() {
               <GraduationCap className="w-4 h-4" />
               Étudiant
             </button>
-          </div>
+          </motion.div>
 
-          {/* Titre + sous-titre */}
-          <div className="mb-5">
-            <h2 className="text-2xl font-bold text-[#1E1B4B] tracking-tight leading-tight">
-              Connexion
-            </h2>
-            <p className="text-sm text-[#1E1B4B]/50 mt-1.5">
-              Accédez à votre espace d'évaluation
-            </p>
-          </div>
-
-          {/* Erreur */}
+          {/* ── Erreur ── */}
           <AnimatePresence>
             {loginError && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-3 px-3 py-2.5 rounded-lg bg-[#C2410C]/10 border border-[#C2410C]/20 text-sm text-[#C2410C] font-medium"
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                className="px-3 py-2.5 rounded-lg bg-[#C2410C]/8 border border-[#C2410C]/15 text-sm text-[#C2410C] font-medium flex items-center gap-2"
               >
+                <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-[#C2410C]" />
                 {loginError}
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Formulaire */}
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* ── Formulaire ── */}
+          <motion.form
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.4 }}
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4"
+          >
             {/* Email / Matricule */}
             <div className="space-y-1.5">
-              <Label htmlFor="identifier" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+              <Label htmlFor="identifier" className="text-xs font-semibold text-[#1E1B4B]/60 uppercase tracking-wider">
                 {identifierLabel}
               </Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B]" />
+              <div className="relative group">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
                 <Input
                   id="identifier"
                   type={isPersonnel ? 'email' : 'text'}
                   placeholder={isPersonnel ? 'votre.email@universite.fr' : 'ETU-XXXXXX ou email'}
-                  className="pl-10 h-11 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 transition-all"
+                  className="pl-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/25 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
                   {...form.register('identifier')}
                 />
               </div>
@@ -572,22 +608,22 @@ export function LoginForm() {
 
             {/* Mot de passe */}
             <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
+              <Label htmlFor="password" className="text-xs font-semibold text-[#1E1B4B]/60 uppercase tracking-wider">
                 Mot de passe
               </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B]" />
+              <div className="relative group">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#F59E0B] transition-transform group-focus-within:scale-110" />
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
-                  className="pl-10 pr-10 h-11 rounded-xl border-[#1E1B4B]/15 bg-white text-[#1E1B4B] placeholder:text-[#1E1B4B]/30 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20 transition-all"
+                  className="pl-10 pr-10 h-12 rounded-xl border-[#1E1B4B]/12 bg-[#F8FAFC] text-[#1E1B4B] placeholder:text-[#1E1B4B]/25 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/15 focus:bg-white transition-all"
                   {...form.register('password')}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1E1B4B]/40 hover:text-[#1E1B4B] transition-colors"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#1E1B4B]/35 hover:text-[#1E1B4B] transition-colors"
                   aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -599,35 +635,41 @@ export function LoginForm() {
             </div>
 
             {/* Lien mot de passe oublié */}
-            <div className="flex justify-end -mt-1">
+            <div className="flex justify-end -mt-0.5">
               <button
                 type="button"
                 onClick={() => { setResetDialogOpen(true); setResetSent(false); setResetEmail('') }}
-                className="text-xs font-medium text-[#1E1B4B] hover:text-[#C2410C] transition-colors underline-offset-2 hover:underline"
+                className="text-xs font-medium text-[#1E1B4B]/60 hover:text-[#C2410C] transition-colors underline-offset-2 hover:underline"
               >
                 Mot de passe oublié ?
               </button>
             </div>
 
             {/* Bouton principal */}
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2 mt-1"
+            <motion.div
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="pt-1"
             >
-              {isLoading ? (
-                <><Loader2 className="h-5 w-5 animate-spin mr-2" /> Connexion...</>
-              ) : (
-                'Se connecter'
-              )}
-            </Button>
-          </form>
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full h-12 rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold text-sm shadow-lg shadow-[#84CC16]/25 hover:shadow-xl hover:shadow-[#84CC16]/40 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-[#84CC16] focus-visible:ring-offset-2"
+              >
+                {isLoading ? (
+                  <><Loader2 className="h-5 w-5 animate-spin mr-2" /> Connexion...</>
+                ) : (
+                  'Se connecter'
+                )}
+              </Button>
+            </motion.div>
+          </motion.form>
 
-          {/* Retour landing */}
-          <div className="mt-6 text-center">
+          {/* ── Retour landing ── */}
+          <div className="mt-5 pt-4 border-t border-[#1E1B4B]/8 text-center">
             <a
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/50 hover:text-[#1E1B4B] transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-[#1E1B4B]/45 hover:text-[#1E1B4B] transition-colors"
             >
               <ArrowLeft className="h-3 w-3" />
               Retour à l'accueil
