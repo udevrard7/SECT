@@ -245,19 +245,25 @@ export function LoginForm() {
     { icon: Award, value: 4, suffix: '', label: 'Rôles', color: '#F59E0B' },
   ]
 
-  // Témoignages
-  const testimonials = [
-    { text: 'Mes corrections passent de 2 semaines à 2 minutes. Incroyable !', author: 'Pr. Aïcha K.', role: 'Université Félix Houphouët-Boigny' },
-    { text: "L'IA génère mes QCM à partir de mes cours. Un gain de temps énorme.", author: 'Dr. Konan Y.', role: 'ENS Abidjan' },
+  // Textes promotionnels rotatifs
+  const promoTexts = [
+    '✨ Générez des QCM, QRC et exercices de code à partir de vos cours en 60 secondes',
+    '🛡️ Détection de fraude en temps réel : onglets, copier-coller, reconnaissance faciale',
+    '⚡ Corrigez 200 copies pendant votre café avec 98% de précision',
+    '📊 Statistiques détaillées : moyennes, taux de réussite, questions à risque',
+    '🎓 4 rôles : Admin, Responsable, Enseignant, Étudiant — une expérience pour chacun',
+    '🌐 Fonctionne hors ligne — vos examens sont sauvegardés et synchronisés automatiquement',
+    '🔔 Notifications push — soyez alerté en temps réel des nouveaux résultats et badges',
+    '🇨🇮 Conçu en Côte d\'Ivoire pour les universités d\'Afrique de l\'Ouest',
   ]
-  const [activeTestimonial, setActiveTestimonial] = useState(0)
+  const [activePromo, setActivePromo] = useState(0)
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveTestimonial((prev) => (prev + 1) % testimonials.length)
-    }, 5000)
+      setActivePromo((prev) => (prev + 1) % promoTexts.length)
+    }, 4000)
     return () => clearInterval(interval)
-  }, [testimonials.length])
+  }, [promoTexts.length])
 
   return (
     <div className="min-h-screen flex bg-[#1E1B4B]">
@@ -404,8 +410,24 @@ export function LoginForm() {
               </h2>
               <p className="text-white/65 text-lg leading-relaxed max-w-md">
                 Générez, surveillez et corrigez vos examens en quelques minutes.
-                Conçu pour les universités d'Afrique de l'Ouest.
+                Conçu pour les universités d'Afrique.
               </p>
+
+              {/* Texte promotionnel dynamique rotatif */}
+              <div className="mt-3 h-7 overflow-hidden">
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={activePromo}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -15 }}
+                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                    className="text-sm text-[#FBBF24]/80 font-medium"
+                  >
+                    {promoTexts[activePromo]}
+                  </motion.p>
+                </AnimatePresence>
+              </div>
             </motion.div>
 
             {/* ── Avantages de la plateforme (pas de témoignages) ── */}
