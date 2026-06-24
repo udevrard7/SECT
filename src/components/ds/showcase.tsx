@@ -11,6 +11,9 @@ import {
   BookOpen,
   CheckCircle2,
   Zap,
+  Calendar,
+  Trophy,
+  Sparkles,
 } from 'lucide-react'
 import {
   AppShell,
@@ -22,8 +25,17 @@ import {
   RewardToast,
   PulseSkeleton,
   StatCardSkeletonGrid,
+  ProgressBar,
+  BadgeCard,
+  RewardCenter,
+  AcademicCalendar,
+  GradeTable,
+  AIAssistant,
   type NavSection,
   type UserStatsData,
+  type Reward,
+  type CalendarEvent,
+  type GradeEntry,
 } from '@/components/ds'
 import { Button } from '@/components/ui/button'
 
@@ -267,6 +279,8 @@ export function DesignSystemShowcase() {
             { name: 'Success (Emerald)', cls: 'bg-success text-success-foreground' },
             { name: 'Warning (Amber)', cls: 'bg-warning text-warning-foreground' },
             { name: 'Danger (Red)', cls: 'bg-destructive text-destructive-foreground' },
+            { name: 'Info (Blue)', cls: 'bg-info text-info-foreground' },
+            { name: 'Tech (Cyan)', cls: 'bg-tech text-tech-foreground' },
             { name: 'XP', cls: 'bg-xp text-white' },
             { name: 'Bronze', cls: 'bg-bronze text-white' },
             { name: 'Silver', cls: 'bg-silver text-black' },
@@ -280,6 +294,109 @@ export function DesignSystemShowcase() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ── Section 7 : ProgressBar (animée) ── */}
+      <section className="mb-8">
+        <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-tech" />
+          ProgressBar — barres animées (8 accents)
+        </h2>
+        <div className="p-5 rounded-lg border border-border bg-card space-y-4">
+          <div>
+            <div className="flex justify-between mb-1.5"><span className="text-xs text-muted-foreground">Cours algorithmique</span><span className="font-mono text-xs">75%</span></div>
+            <ProgressBar value={75} accent="primary" index={0} />
+          </div>
+          <div>
+            <div className="flex justify-between mb-1.5"><span className="text-xs text-muted-foreground">Réussite examen</span><span className="font-mono text-xs">87%</span></div>
+            <ProgressBar value={87} accent="success" index={1} />
+          </div>
+          <div>
+            <div className="flex justify-between mb-1.5"><span className="text-xs text-muted-foreground">Objectif hebdo</span><span className="font-mono text-xs">40%</span></div>
+            <ProgressBar value={40} accent="warning" index={2} />
+          </div>
+          <div>
+            <div className="flex justify-between mb-1.5"><span className="text-xs text-muted-foreground">XP niveau 13</span><span className="font-mono text-xs">81%</span></div>
+            <ProgressBar value={81} accent="xp" size="lg" showGlow index={3} />
+          </div>
+          <div>
+            <div className="flex justify-between mb-1.5"><span className="text-xs text-muted-foreground">IA (cyan tech)</span><span className="font-mono text-xs">62%</span></div>
+            <ProgressBar value={62} accent="tech" index={4} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Section 8 : RewardCenter (gamification) ── */}
+      <section className="mb-8">
+        <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-gold" />
+          RewardCenter — Centre de récompenses
+        </h2>
+        <RewardCenter
+          userProgress={{ xp: 2840, nextLevelXp: 3500, level: 12 }}
+          rewards={[
+            { id: '1', title: 'Streak 7 jours', description: 'Connecté 7 jours de suite', tier: 'gold', icon: Zap, unlocked: true, unlockedAt: new Date(Date.now() - 86400000) },
+            { id: '2', title: '50 copies corrigées', description: 'Sans erreur cette semaine', tier: 'platinum', icon: CheckCircle2, unlocked: true, unlockedAt: new Date(Date.now() - 3600000) },
+            { id: '3', title: 'Premier examen', description: 'Votre première épreuve créée', tier: 'bronze', icon: FileText, unlocked: true, unlockedAt: new Date(Date.now() - 604800000) },
+            { id: '4', title: '100 copies', description: 'Corriger 100 copies au total', tier: 'silver', icon: Award, unlocked: false, progress: 45 },
+            { id: '5', title: 'Maître IA', description: 'Utiliser 50 fois l\'assistant IA', tier: 'platinum', icon: Sparkles, unlocked: false, progress: 12 },
+            { id: '6', title: 'Excellence', description: 'Obtenir 20/20 à un examen', tier: 'gold', icon: Trophy, unlocked: false, progress: 0 },
+          ]}
+        />
+      </section>
+
+      {/* ── Section 9 : AcademicCalendar ── */}
+      <section className="mb-8">
+        <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-info" />
+          AcademicCalendar — Calendrier académique
+        </h2>
+        <div className="max-w-md">
+          <AcademicCalendar
+            events={[
+              { id: '1', date: new Date(2025, new Date().getMonth(), 15), title: 'Examen final algorithmique', type: 'exam' },
+              { id: '2', date: new Date(2025, new Date().getMonth(), 20), title: 'Rendu projet API', type: 'deadline' },
+              { id: '3', date: new Date(2025, new Date().getMonth(), 10), title: 'Cours BDD', type: 'course' },
+            ]}
+          />
+        </div>
+      </section>
+
+      {/* ── Section 10 : GradeTable ── */}
+      <section className="mb-8">
+        <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+          <GraduationCap className="h-4 w-4 text-success" />
+          GradeTable — Tableau des notes premium
+        </h2>
+        <GradeTable
+          grades={[
+            { id: '1', subject: 'Algorithmique', examTitle: 'Examen final', score: 16, maxScore: 20, date: '2025-06-23', coefficient: 3, comment: 'Très bonne maîtrise des AVL' },
+            { id: '2', subject: 'Bases de données', examTitle: 'QCM', score: 18, maxScore: 20, date: '2025-06-20', coefficient: 2 },
+            { id: '3', subject: 'Structures de données', examTitle: 'Devoir', score: 14, maxScore: 20, date: '2025-06-18', coefficient: 2, comment: 'Revoir les graphes' },
+            { id: '4', subject: 'API REST', examTitle: 'Projet', score: 19, maxScore: 20, date: '2025-06-15', coefficient: 4 },
+            { id: '5', subject: 'Réseaux', examTitle: 'Partiel', score: 9, maxScore: 20, date: '2025-06-10', coefficient: 2, comment: 'Insuffisant, revoir le cours' },
+          ]}
+        />
+      </section>
+
+      {/* ── Section 11 : AIAssistant (note : composant flottant, visible en bas à droite) ── */}
+      <section className="mb-8">
+        <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-tech" />
+          AIAssistant — Assistant IA pédagogique (bouton flottant en bas à droite →)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Cliquez sur le bouton flottant cyan en bas à droite de l'écran pour ouvrir l'assistant IA.
+          Il propose des suggestions rapides, garde l'historique des messages, et gère le focus trap + Escape.
+        </p>
+        <AIAssistant
+          title="Assistant pédagogique"
+          suggestions={["Explique les arbres AVL", "Donne un exemple de tri rapide", "Comment optimiser une requête SQL ?"]}
+          onSend={async (msg) => {
+            await new Promise(r => setTimeout(r, 800))
+            return `Voici ma réponse à votre question : "${msg}". [Réponse simulée pour la démo — en production, cette fonction appellerait l'API IA via le système de failover Mistral→Groq→OpenRouter.]`
+          }}
+        />
       </section>
 
       {/* ── GlassModal ── */}

@@ -1159,3 +1159,146 @@ Stage Summary:
   5. Card hover → ds-lift sur cartes interactives
   6. Thèmes custom (.sv-gaming surveillance, .ng-theme devoirs) → CONSERVÉS, alignement DS uniquement sur fonts/spacing
 - État du projet : STABLE. Toutes les pages authentifiées utilisent désormais le Design System unifié. L'identité visuelle est cohérente (indigo/violet + fonts Inter/JetBrains Mono + glassmorphism sur topbar + gamification tokens). Le shell (header glass + sidebar shadcn indigo) est unifié pour toutes les pages.
+
+---
+Task ID: T8-B
+Agent: full-stack-developer (DS premium components B)
+Task: Build GradeTable, AIAssistant, ProgressBar
+
+Work Log:
+- Read conventions from existing DS components (`stat-card.tsx`, `progress-ring.tsx`, `glass-modal.tsx`, `reward-toast.tsx`), `ds/index.ts` barrel, `globals.css` (token définitions `--tech`, `--xp`, tiers), `ui/table.tsx` (shadcn).
+- Créé `src/components/ds/progress-bar.tsx` : barre animée Framer Motion spring, 8 accents (primary/secondary/success/warning/destructive/info/tech/xp) via Record statique (purge-safe), 3 tailles (sm/md/lg = h-1.5/2/3), option `showGlow` (box-shadow inline), `role="progressbar"` + ARIA, stagger `index * 0.05s`.
+- Créé `src/components/ds/grade-table.tsx` : table desktop (shadcn `<Table>`) avec `<th scope="col">` `font-display` + cartes mobile (`md:hidden`), badges score colorés selon ratio (≥0.8 success, ≥0.5 warning, <0.5 danger) en `font-mono tabular-nums`, footer moyenne pondérée /20 avec `ProgressRing`, hover `ds-lift` + focus-visible ring sur lignes/cartes interactives, animation Framer Motion `staggerChildren` sur les rows.
+- Créé `src/components/ds/ai-assistant.tsx` : bouton flottant `ds-glass` `bg-tech` (Sparkles) avec pulse ring animé quand fermé, panneau 350×500 desktop / `calc(100vw - 2rem)` mobile, header `bg-tech/10` + bouton close, messages user droite `bg-primary text-primary-foreground` / assistant gauche `bg-muted`, indicateur typing 3 dots animés (custom variants), suggestions chips, textarea Enter-to-send (Shift+Enter = newline), focus trap (Tab/Shift+Tab cyclé), Escape to close, restoration du focus à la fermeture, `role="dialog" aria-modal="true"` + `aria-live="polite"` sur la zone messages.
+- Mis à jour `src/components/ds/index.ts` : ajouté 3 exports nommés (GradeTable+types, AIAssistant+types, ProgressBar+types) — exports existants préservés.
+- Vérification : `bunx tsc --noEmit` → 0 erreur sur les 3 fichiers ; `bunx eslint` sur les 3 fichiers → 0 erreur, 0 warning (retiré directive eslint-disable inutile sur console.error).
+
+Stage Summary:
+- Files created: `src/components/ds/progress-bar.tsx`, `src/components/ds/grade-table.tsx`, `src/components/ds/ai-assistant.tsx`
+- Files modified: `src/components/ds/index.ts` (append-only — 3 nouveaux exports)
+- Key decisions:
+  * Record maps statiques pour accents (`ACCENT_FILL`, `ACCENT_GLOW_VAR`, `LEVEL_BADGE`) — Tailwind v4 purge-safe (jamais `bg-${var}`).
+  * Glow via `style={{ boxShadow }}` inline (valeur `var(--xxx)`) pour éviter la purge Tailwind.
+  * `motion.tr` direct (pas `TableRow` shadcn) pour pouvoir animer chaque ligne avec `variants` + `staggerChildren`.
+  * Moyenne pondérée calculée côté composant (pure fn `computeWeightedAverage`) — pas de dépendance externe, `ProgressRing` réutilisé pour la visualisation /20.
+  * Focus trap manuel (querySelectorAll focusables + Tab/Shift+Tab cyclé) — pas de dépendance `focus-trap` externe, conforme au besoin "keyboard nav + focus trap when open".
+  * `AnimatePresence mode="wait"` sur l'icône du bouton (Sparkles ↔ X) pour transition propre.
+  * Respect `prefers-reduced-motion` via le media query global du DS (globals.css ligne 266) qui neutralise animations/transitions.
+- Aucun commit/push (main agent fera commit unifié).
+
+---
+Task ID: T8-A
+Agent: full-stack-developer (DS premium components A)
+Task: Build AcademicCalendar, RewardCenter, BadgeCard
+
+Work Log:
+- Lecture du worklog (T6 description du DS, T7-A/C/E migration DS) + lecture des composants DS existants (entity-card, progress-ring, user-stats, reward-toast, index.ts) pour aligner conventions (props typés, maps statiques Record<Tier, string>, Framer Motion variants, ds-glow/ds-lift/ds-glass, prefers-reduced-motion).
+- Vérification des tokens DS dans globals.css : `--color-tech`, `--color-bronze/silver/gold/platinum/xp`, classes `.ds-glow-{tier}` (non purgées car CSS natif hors layer Tailwind), `.ds-lift`, `.ds-glass`. Tailwind v4 génère `bg-bronze`, `text-gold`, etc. depuis `@theme inline`.
+
+Step 1 — BadgeCard (src/components/ds/badge-card.tsx, 224 lignes) :
+- API : `BadgeCard({ badge: BadgeData, index?: number })` avec `BadgeData = { title, description, tier: GamificationTier, icon: LucideIcon, unlocked, unlockedAt?, progress? }`.
+- Maps statiques : `TIER_TEXT` (text-bronze/...), `TIER_GLOW` (ds-glow-bronze/...), `TIER_LABEL` (Bronze/Argent/Or/Platine).
+- Helpers : `tierOnBgColor(tier)` (noir pour silver/platinum, blanc sinon) + `formatFrDate(date)` via Intl.DateTimeFormat fr-FR.
+- Cercle icône coloré par tier (fond translucide via `color-mix(in oklch, var(--${tier}) 18%, transparent)`, icône couleur tier pleine).
+- Si débloqué : `ds-glow-{tier}` sur la card + `ds-lift` au hover + `group-hover:scale-110` sur le cercle + date de déblocage en font-mono ("Débloqué le 12 mars 2024").
+- Si verrouillé : `grayscale opacity-60` + overlay `Lock` en bas-droite du cercle + barre de progression animée Framer Motion (width 0→N%, delay = index*60ms + 150ms) avec couleur tier.
+- Tier label en badge plein (backgroundColor var(--tier), texte noir/blanc selon tier).
+- Titre `font-display`, description `text-xs muted line-clamp-2 min-h-[2rem]` (hauteur stable).
+- `motion.article` avec initial/animate stagger (delay = index*60ms).
+- Accessibilité : `role="article"` + `aria-label` détaillé (titre + tier + état + date ou progression) + `tabIndex={0}` pour focus clavier.
+
+Step 2 — RewardCenter (src/components/ds/reward-center.tsx, 184 lignes) :
+- API : `RewardCenter({ rewards: Reward[], userProgress?: UserProgress, className? })` avec `Reward extends BadgeData` (ajoute `id`) + `UserProgress = { xp, nextLevelXp, level }`.
+- Header gamifié (si userProgress fourni) : `ProgressRing` (value = xp/nextLevelXp * 100, size 88, accent "xp", sublabel "XP") + niveau (font-display + font-mono text-xp) + "X XP vers niveau Y" (font-mono tabular-nums) + "Plus que Z XP" (font-mono text-xp).
+- Halo décoratif : cercle flou violet (var(--xp)) en absolu top-right, opacity-20, blur-3xl, pointer-events-none.
+- Grille responsive : `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3` de BadgeCard (passe directement `reward` à `badge` prop — structural typing OK car Reward extends BadgeData).
+- Compteur de badges débloqués/total en font-mono dans le h4 "Badges (X/Y)".
+- État vide : message "Aucune récompense disponible pour le moment."
+- Animations : header fade-in (y -8 → 0) + grille `staggerChildren: 0.07, delayChildren: 0.1` avec itemVariants (y 14→0, scale 0.96→1).
+- Accessibilité : `role="region"` + `aria-label="Centre de récompenses"`.
+
+Step 3 — AcademicCalendar (src/components/ds/academic-calendar.tsx, 413 lignes) :
+- API : `AcademicCalendar({ events: CalendarEvent[], month?: Date, onDateClick?, className? })` avec `CalendarEvent = { id, date, title, type: 'exam'|'deadline'|'course'|'holiday', color? }`.
+- Maps statiques : `TYPE_DOT_BG` (exam→bg-destructive, deadline→bg-warning, course→bg-primary, holiday→bg-success), `TYPE_LABEL` (Examen/Échéance/Cours/Férié).
+- Helpers : `isSameDay`, `isSameMonth`, `dayKey` (YYYY-M-D), `buildMonthMatrix` (42 cellules, semaine commence lundi via `(getDay() + 6) % 7`).
+- Layout : header (prev chevron + titre mois font-display + next chevron) + row d'en-têtes de jours (Lun–Dim, role="columnheader") + grille 7×6 + légende des types en footer.
+- Jour courant : `bg-primary text-primary-foreground font-semibold`. Jours hors-mois : `text-muted-foreground/40`. Cellule focalisée : `ring-2 ring-ring`. Cellules cliquables : `cursor-pointer` + `hover:bg-accent`.
+- Points d'événements : max 3 visibles (`h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full`), "+N" en font-sans si plus. Couleur = `color` override si fourni, sinon `TYPE_DOT_BG[type]`.
+- Mobile-first : `min-h-[44px]` par cellule (touch target), `text-xs sm:text-sm`, `gap-1`.
+- Animation : `AnimatePresence mode="wait"` + variants custom functions `(dir: number) => ({ opacity, x: dir * 24 })` via `custom={direction}`. Parent `variants={gridVariants}` initial="hidden" animate="visible" exit="exit" + `staggerChildren: 0.008`. Cellules `variants={cellVariants}` (héritage Framer Motion).
+- Ré-sync prop `month` → state : pattern React "storing information from previous renders" (track `prevMonthProp` dans state, comparaison pendant render, setState conditionnel). Évite `useEffect` qui déclencherait `react-hooks/set-state-in-effect`.
+- Accessibilité : `role="application"` + `aria-label` ("Calendrier académique — Mars 2024") sur conteneur externe. `role="grid"` sur la grille. `role="gridcell"` + `aria-label` détaillé par cellule (date + aujourd'hui + nb événements + titres). `aria-current="date"` sur aujourd'hui. `aria-selected` sur cellule focalisée. Roving tabindex (`tabIndex={isFocused ? 0 : -1}`).
+- Navigation clavier complète : ←/→ (jour ±1), ↑/↓ (jour ±7), Enter/Espace (onDateClick), PageUp/PageDown (mois ±1), Home/End (1er/dernier jour du mois). Auto-change de mois si navigation sort de la vue courante.
+
+Step 4 — Barrel export (src/components/ds/index.ts) :
+- Ajout de 3 exports : BadgeCard + BadgeCardProps + BadgeData, RewardCenter + RewardCenterProps + Reward + UserProgress, AcademicCalendar + AcademicCalendarProps + CalendarEvent.
+- Conservation des exports existants (aucun breaking change).
+
+Vérifications finales :
+- `bunx tsc --noEmit` → EXIT=0 (0 erreur globale). Filtre `grep -E "academic-calendar|reward-center|badge-card"` → 0 résultat.
+- `bunx eslint src/components/ds/academic-calendar.tsx src/components/ds/reward-center.tsx src/components/ds/badge-card.tsx` → EXIT=0 (0 erreur, 0 warning).
+- Dev server (tail dev.log) → `✓ Ready in 1291ms`, `GET / 200` récurrents. Stable.
+- 1 itération de correction lint : retrait `useEffect` (interdit par `react-hooks/set-state-in-effect` dans React 19) → migré vers pattern "storing information from previous renders".
+
+Stage Summary:
+- Files created (3) :
+  * src/components/ds/badge-card.tsx (224 lignes) — BadgeCard standalone + type BadgeData
+  * src/components/ds/reward-center.tsx (184 lignes) — RewardCenter + types Reward/UserProgress (réutilise ProgressRing + BadgeCard)
+  * src/components/ds/academic-calendar.tsx (413 lignes) — AcademicCalendar + type CalendarEvent (grille mensuelle 7×6 + AnimatePresence slide + nav clavier complète)
+- Files modified (1) :
+  * src/components/ds/index.ts — 3 nouveaux exports (BadgeCard, RewardCenter, AcademicCalendar) ajoutés
+- Key decisions :
+  * Pattern React "storing previous prop in state" pour sync prop `month` → state `viewDate` (évite cascading renders signalés par react-hooks/set-state-in-effect en React 19).
+  * Variants Framer Motion custom functions + prop `custom={direction}` pour propager la direction du slide à AnimatePresence.
+  * Maps statiques Record<Tier, string> pour TIER_TEXT/TIER_GLOW/TIER_LABEL/TYPE_DOT_BG/TYPE_LABEL (Tailwind v4 ne génère pas les classes dynamiques).
+  * Fonds tier via inline `style={{ backgroundColor: 'var(--${tier})' }}` (couleur pleine) ou `color-mix(in oklch, var(--${tier}) 18%, transparent)` (fond translucide).
+  * `Reward extends BadgeData` : permet à RewardCenter de passer directement chaque Reward à BadgeCard sans projection (structural typing TS).
+  * `formatFrDate` via Intl.DateTimeFormat fr-FR (cohérent avec la locale du projet).
+  * Légende des types en footer du calendrier (UX + accessibilité — rend les couleurs des points signifiantes).
+  * Roving tabindex + navigation clavier complète (←↑→↓, Enter/Espace, PageUp/PageDown, Home/End) sur AcademicCalendar.
+  * Aucun commit/push effectué — le main agent fera le commit unifié.
+
+---
+Task ID: T8 (Design System v2 — identité premium + composants + PWA + spec)
+Agent: Z.ai (Senior Product Designer EdTech/SaaS)
+Task: Concevoir une identité UI/UX moderne, premium et engageante — enrichir le DS avec cyan, nouveaux composants premium, PWA, et document de spécification complet.
+
+Work Log:
+- Étape 1 — Palette : ajout du token `--tech` (Cyan #06B6D4 / oklch 0.715 0.143 194.7) pour la technologie/IA/data. Versions light + dark. Token exposé via @theme inline (`--color-tech`, `--color-tech-foreground`). Le cyan est l'accent de l'Assistant IA et des éléments "tech".
+- Étape 2 — PWA : création `public/manifest.json` (name, short_name, start_url=/dashboard, display=standalone, theme_color=#4F46E5, background_color=#0F172A, 6 icônes, 3 shortcuts : Dashboard/Épreuves/Correction). Ajout meta tags dans layout.tsx : theme-color adaptatif light/dark, apple-mobile-web-app-capable, status-bar-style black-translucent, viewport viewport-fit=cover (safe areas iOS), apple-touch-icon, format-detection telephone=no.
+- Étape 3 — 6 nouveaux composants premium (2 sous-agents parallèles) :
+  * T8-A : AcademicCalendar (calendrier mensuel + nav clavier + AnimatePresence), RewardCenter (grille badges + ProgressRing XP), BadgeCard (carte badge standalone avec tier glow)
+  * T8-B : GradeTable (tableau notes premium + scores colorés + moyenne pondérée ProgressRing + responsive cards mobile), AIAssistant (chat flottant bg-tech + focus trap + suggestions + typing indicator), ProgressBar (8 accents + spring animation + glow optionnel)
+- Étape 4 — Document de spécification design complet `docs/design-system.md` (~600 lignes) couvrant les 9 livrables demandés :
+  1. Vision & principes UX (expériences émotionnelles, principes directeurs, inspirations)
+  2. Design System complet (architecture, stratégie d'intégration, tokens)
+  3. Palette de couleurs (7 sémantiques + 5 tiers gamification + glassmorphism + contraste WCAG)
+  4. Règles typographiques (Inter + JetBrains Mono, échelle 8 niveaux)
+  5. Composants UI (14 DS + shadcn, états des composants)
+  6. Patterns UX (navigation, layouts, feedback, gamification)
+  7. Wireframes des principales pages (7 wireframes ASCII : dashboard étudiant/enseignant, liste épreuves, notes, récompenses, calendrier, assistant IA)
+  8. Animations & micro-interactions (catalogue 13 animations + patterns Framer Motion)
+  9. Bonnes pratiques PWA (installabilité, safe areas, SW, push, performance)
+  10. Guidelines responsive (breakpoints, patterns par composant, touch targets, typography responsive)
+  + Annexe checklist qualité
+- Étape 5 — Update showcase : ajout sections 7-11 (ProgressBar, RewardCenter, AcademicCalendar, GradeTable, AIAssistant) + ajout Cyan/Info à la palette. La showcase démontre maintenant les 14 composants DS.
+- Vérifications : tsc 0 erreur, eslint 0 erreur (1 warning préexistant), serveur dev Ready 1242ms GET / 200.
+- Commit + push.
+
+Stage Summary:
+- Fichiers créés (9) :
+  * public/manifest.json (PWA)
+  * docs/design-system.md (spec complète, ~600 lignes)
+  * src/components/ds/academic-calendar.tsx (413 lignes)
+  * src/components/ds/reward-center.tsx (184 lignes)
+  * src/components/ds/badge-card.tsx (224 lignes)
+  * src/components/ds/grade-table.tsx (composant notes premium)
+  * src/components/ds/ai-assistant.tsx (assistant IA flottant bg-tech)
+  * src/components/ds/progress-bar.tsx (8 accents + spring + glow)
+  * (index.ts mis à jour avec 6 nouveaux exports)
+- Fichiers modifiés (3) :
+  * src/app/globals.css — ajout token --tech (cyan) light+dark
+  * src/app/layout.tsx — meta tags PWA complets
+  * src/components/ds/showcase.tsx — 5 nouvelles sections démo + palette cyan
+- DS v2 final : 14 composants premium + 8 accents (primary/secondary/success/warning/destructive/info/tech/xp) + 4 tiers gamification (bronze/silver/gold/platinum) + PWA installable + spec doc complète.
+- État du projet : STABLE. Le DS est désormais complet et documenté. L'identité premium indigo/violet/cyan est unifiée. La plateforme est PWA-ready (installable Android/iOS/Desktop). Le document de spec sert de référence pour toute évolution future.
