@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LogOut, User, Settings, ChevronRight,
-  Search, Bell, Loader2,
+  Search, Loader2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { SidebarControl } from '@/components/layout/sidebar-control'
+import { NotificationBell } from '@/components/layout/notification-bell'
 import { ThemeToggle } from '@/components/ds'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { NAV_ITEMS, NAV_CATEGORIES, PROFILE_PAGE, PAGE_ROUTES, ROUTE_TO_PAGE, type PageId } from '@/lib/routes'
@@ -180,8 +181,8 @@ export function AppHeader() {
           {/* Theme toggle */}
           <ThemeToggle />
 
-          {/* Notifications (une seule cloche, unifiée) */}
-          <NotificationDropdown userRole={user.role} />
+          {/* Notifications — composant réel connecté aux APIs /api/alertes & /api/notifications/admin */}
+          <NotificationBell className="h-9 w-9 rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" />
 
           {/* Séparateur */}
           <div className="h-5 w-px bg-sidebar-border mx-1.5" />
@@ -247,88 +248,5 @@ export function AppHeader() {
         </div>
       </div>
     </header>
-  )
-}
-
-// ─── Composant : Dropdown Notifications unifié (remplace NotificationBell + PushNotificationManager) ───
-function NotificationDropdown({ userRole: _userRole }: { userRole: UserRole }) {
-  const [unread, setUnread] = useState(3) // Simulation : 3 notifications non lues
-  const [open, setOpen] = useState(false)
-
-  // Notifications simulées (en production : API /api/notifications)
-  const notifications = [
-    { id: 1, title: 'Nouvel étudiant inscrit', desc: 'Konan Y. rejoint L3 Informatique', time: 'il y a 5 min', icon: '👤' },
-    { id: 2, title: 'Examen corrigé', desc: 'Algorithmique — 15 copies traitées', time: 'il y a 1h', icon: '✅' },
-    { id: 3, title: 'Badge débloqué', desc: 'Vous avez corrigé 50 copies cette semaine', time: 'il y a 3h', icon: '🏆' },
-  ]
-
-  const markAllRead = () => {
-    setUnread(0)
-  }
-
-  return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="relative h-9 w-9 rounded-lg flex items-center justify-center text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ''}`}
-        >
-          <Bell className="h-[18px] w-[18px]" />
-          {unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-              {unread}
-            </span>
-          )}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-80 rounded-xl border-border p-0" align="end">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">Notifications</h3>
-            {unread > 0 && (
-              <span className="h-5 px-1.5 rounded-full bg-primary/10 text-primary-text text-[10px] font-bold flex items-center">
-                {unread} non lues
-              </span>
-            )}
-          </div>
-          {unread > 0 && (
-            <button
-              onClick={markAllRead}
-              className="text-[11px] font-medium text-primary-text hover:underline"
-            >
-              Tout marquer lu
-            </button>
-          )}
-        </div>
-
-        {/* Liste */}
-        <div className="max-h-80 overflow-y-auto scrollbar-thin">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              className="flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer border-b border-border/50 last:border-0"
-            >
-              <span className="shrink-0 text-lg">{n.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{n.title}</p>
-                <p className="text-xs text-muted-foreground truncate">{n.desc}</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-0.5">{n.time}</p>
-              </div>
-              {unread > 0 && (
-                <span className="shrink-0 h-2 w-2 rounded-full bg-primary mt-1.5" />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-2.5 border-t border-border">
-          <button className="w-full text-center text-xs font-medium text-primary-text hover:underline py-1">
-            Voir toutes les notifications
-          </button>
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
