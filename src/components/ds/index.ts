@@ -23,4 +23,31 @@ export { GlassModal, type GlassModalProps } from './glass-modal'
 export { ProgressRing, type ProgressRingProps } from './progress-ring'
 export { RewardToast, type RewardToastProps } from './reward-toast'
 export { PulseSkeleton, type PulseSkeletonProps, StatCardSkeletonGrid } from './pulse-skeleton'
+export { BadgeCard, type BadgeCardProps, type BadgeData } from './badge-card'
+export {
+  RewardCenter,
+  type RewardCenterProps,
+  type Reward,
+  type UserProgress,
+} from './reward-center'
+export {
+  AcademicCalendar,
+  type AcademicCalendarProps,
+  type CalendarEvent,
+} from './academic-calendar'
 export { DesignSystemShowcase } from './showcase'
+export {
+  GradeTable,
+  type GradeEntry,
+  type GradeTableProps,
+} from './grade-table'
+export {
+  AIAssistant,
+  type AIAssistantMessage,
+  type AIAssistantProps,
+} from './ai-assistant'
+export {
+  ProgressBar,
+  type ProgressBarAccent,
+  type ProgressBarProps,
+} from './progress-bar'

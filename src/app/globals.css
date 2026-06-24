@@ -51,6 +51,10 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
 
+  /* ── Cyan (technologie) — accent premium pour IA, tech, data ── */
+  --color-tech: var(--tech);
+  --color-tech-foreground: var(--tech-foreground);
+
   /* ── Nouveaux tokens DS : tiers de gamification ── */
   --color-bronze: var(--bronze);
   --color-silver: var(--silver);
@@ -128,6 +132,10 @@
   --info: oklch(0.623 0.214 259.8);          /* blue-600 */
   --info-foreground: oklch(0.985 0 0);
 
+  /* ── Cyan (technologie) — #06B6D4 cyan-500 ── */
+  --tech: oklch(0.715 0.143 194.7);
+  --tech-foreground: oklch(0.985 0 0);
+
   /* ── Nouveaux : tiers de gamification ── */
   --bronze: oklch(0.665 0.151 54.5);         /* #CD7F32 */
   --silver: oklch(0.72 0.015 250);           /* #C0C0C0 */
@@ -194,6 +202,10 @@
   --warning-foreground: oklch(0.145 0 0);
   --info: oklch(0.623 0.214 259.8);
   --info-foreground: oklch(0.985 0 0);
+
+  /* Cyan dark — plus lumineux */
+  --tech: oklch(0.78 0.13 194.7);           /* cyan-400 */
+  --tech-foreground: oklch(0.145 0 0);
 
   /* Tiers gamification dark (légèrement plus lumineux) */
   --bronze: oklch(0.72 0.16 54.5);
