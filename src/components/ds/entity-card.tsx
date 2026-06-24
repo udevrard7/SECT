@@ -113,13 +113,13 @@ export function EntityCard({
           </div>
         )}
 
-        {/* Badge overlay (tier ou custom) */}
+        {/* Badge overlay (tier ou custom) — alignés top-right, tailles égales */}
         {(tier || badge) && (
-          <div className="absolute top-2 right-2 flex gap-1.5">
+          <div className="absolute top-2 right-2 flex gap-1.5 items-center">
             {tier && (
               <span
                 className={cn(
-                  'h-6 px-2 rounded-full text-[10px] font-bold flex items-center gap-1 capitalize backdrop-blur-sm',
+                  'h-6 min-w-[1.5rem] px-2 rounded-full text-[10px] font-bold flex items-center justify-center gap-1 capitalize backdrop-blur-sm shadow-sm',
                   `ds-glow-${tier}`
                 )}
                 style={{
@@ -133,7 +133,7 @@ export function EntityCard({
             {badge && (
               <span
                 className={cn(
-                  'h-6 px-2 rounded-full text-[10px] font-semibold flex items-center',
+                  'h-6 min-w-[1.5rem] px-2 rounded-full text-[10px] font-semibold flex items-center justify-center shadow-sm',
                   BADGE_VARIANT_MAP[badge.variant ?? 'primary']
                 )}
               >

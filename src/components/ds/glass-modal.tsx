@@ -84,24 +84,25 @@ export function GlassModal({
             }
           }}
         >
-          {/* Overlay */}
+          {/* Overlay — assombri + blur pour focus sur la modale */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
             onClick={closeOnOverlayClick ? onClose : undefined}
           />
 
-          {/* Modale */}
+          {/* Modale — glass renforcé (opacité 90% + blur 16px) pour contraste WCAG */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: 'spring', damping: 26, stiffness: 300, duration: 0.25 }}
             className={cn(
-              'relative w-full ds-glass rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
+              'relative w-full rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
+              'bg-card/95 dark:bg-card/90 backdrop-blur-xl border border-border',
               SIZE_MAP[size]
             )}
           >
