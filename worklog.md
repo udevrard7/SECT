@@ -1706,3 +1706,37 @@ Stage Summary:
   * src/proxy.ts (/offline public)
 - Score audit estimé : 75% → ~88% (P0 tous résolus + P1 majeurs résolus)
 - État du projet : STABLE. Toutes les corrections P0 (critiques) sont appliquées. Les P1 majeurs (skeletons, touch targets, offline) sont résolus. Reste en P1 : déprécier KpiCard (transition progressive, non bloquant).
+
+---
+Task ID: T12 (Corrections audit UX — suite P1 + compléments)
+Agent: Z.ai (tuteur/assistant — exécution)
+Task: Continuer l'implémentation des corrections de l'audit (P1-5 KpiCard + compléments correction-utils + EntityCard level).
+
+Work Log:
+- P1-5 : Déprécier KpiCard → migrer vers StatCard :
+  * StatCard enrichi avec 2 nouveaux props : `suffix` (string après la valeur) + `scoreOn20` (number qui colore dynamiquement la valeur : ≥16 success, ≥10 warning, <10 danger — override l'accent pour la valeur).
+  * KpiCard transformé en wrapper de compatibilité qui délègue à StatCard. Mapping accentColor legacy → accent DS (emerald→success, teal→primary, amber→warning, red→danger, sky→info, violet→secondary). Marqué @deprecated.
+  * Avantage : 1 source de vérité (StatCard), 0 régression (8 call sites conservent leur API KpiCard), migration progressive possible.
+
+- Complément : correction-utils.ts couleurs legacy → tokens DS :
+  * 14 occurrences de couleurs legacy (emerald/amber/red/violet/blue/teal/sky/orange/rose) migrées vers tokens DS (success/warning/destructive/secondary/info/tech).
+  * Suppression des variants `dark:` (les tokens oklch s'adaptent automatiquement).
+  * Functions migrées : getCorrectionBadge, getDifficulteDotColor, getScoreColor, getScoreCircleColor, getStudentStatusDot.
+  * 0 couleur legacy restante dans correction-utils ✅
+
+- Complément : progression par cours/module dans EntityCard (exigence brief "niveaux d'apprentissage") :
+  * Nouveau prop `level?: { current: number; max: number; label?: string }` sur EntityCard.
+  * Affichage : label "Niveau" (ou custom) + dots de progression (1 par niveau, primary si atteint, muted sinon) + "X/Y" en font-mono.
+  * Permet la gamification par cours/module (ex: "Algorithmique — Niveau 3/5").
+  * Place dans le footer avant meta, non conditionné par loading.
+
+- Vérifications : tsc 0 erreur, eslint 0 erreur (1 warning préexistant), serveur dev Ready 1386ms GET / 200 GET /?preview=ds 200.
+
+Stage Summary:
+- Fichiers modifiés (4) :
+  * src/components/ds/stat-card.tsx (+props suffix + scoreOn20 + valueColorClass)
+  * src/components/resultats/kpi-card.tsx (wrapper de compat → StatCard, @deprecated)
+  * src/lib/correction-utils.ts (14 couleurs legacy → tokens DS)
+  * src/components/ds/entity-card.tsx (+prop level pour gamification par cours)
+- Score audit estimé : ~88% → ~93% (tous P0 + tous P1 résolus + compléments)
+- État du projet : STABLE. Toutes les corrections de l'audit sont désormais implémentées. Le DS est unifié (1 seul KPI component : StatCard), les couleurs legacy sont éliminées du module correction (composants + utils), et la gamification par cours/module est supportée.
