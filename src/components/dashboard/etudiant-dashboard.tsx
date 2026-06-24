@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CalendarDays,
@@ -28,7 +28,12 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
+import {
+  PulseSkeleton,
+  StatCardSkeletonGrid,
+  AcademicCalendar,
+  type CalendarEvent,
+} from '@/components/ds'
 import {
   AreaChart,
   Area,
@@ -258,6 +263,47 @@ export function EtudiantDashboard() {
     return () => clearTimeout(t)
   }, [newlyUnlockedBadge])
 
+  // ─── Mapping des épreuves à venir vers CalendarEvent[] ───
+  // Chaque épreuve produit 2 événements : 'exam' sur la date de début,
+  // 'deadline' sur la date de fin (échéance de soumission).
+  // Les dates invalides (NaN) sont filtrées pour éviter les warnings React.
+  // Les hooks sont appelés AVANT les retours anticipés (rules-of-hooks).
+  const calendarEvents: CalendarEvent[] = useMemo(() => {
+    const epreuves = statsQuery.data?.epreuvesAVenir
+    if (!epreuves) return []
+    return epreuves.flatMap((epreuve): CalendarEvent[] => {
+      const events: CalendarEvent[] = []
+      const startDate = new Date(epreuve.date)
+      if (!Number.isNaN(startDate.getTime())) {
+        events.push({
+          id: `${epreuve.id}-start`,
+          date: startDate,
+          title: epreuve.titre,
+          type: 'exam',
+        })
+      }
+      const endDate = new Date(epreuve.dateFin)
+      if (!Number.isNaN(endDate.getTime())) {
+        events.push({
+          id: `${epreuve.id}-deadline`,
+          date: endDate,
+          title: epreuve.titre,
+          type: 'deadline',
+        })
+      }
+      return events
+    })
+  }, [statsQuery.data?.epreuvesAVenir])
+
+  // Liste triée par date (chronologique) pour l'affichage à côté du calendrier.
+  const upcomingEventsSorted: CalendarEvent[] = useMemo(
+    () =>
+      [...calendarEvents].sort(
+        (a, b) => a.date.getTime() - b.date.getTime()
+      ),
+    [calendarEvents]
+  )
+
   // ─── Loading ───
   if (statsQuery.isLoading && !statsQuery.data) {
     return <DashboardSkeleton />
@@ -380,6 +426,75 @@ export function EtudiantDashboard() {
           </Card>
         </motion.div>
       )}
+
+      {/* ─── Calendrier académique + Prochaines échéances ─── */}
+      <motion.div
+        variants={itemVariants}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display tracking-tight">
+              Calendrier académique
+            </CardTitle>
+            <CardDescription>
+              Vos épreuves et échéances du mois
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center lg:justify-start">
+            <AcademicCalendar
+              events={calendarEvents}
+              onDateClick={(date) => router.push('/mes-epreuves')}
+              className="max-w-md w-full"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display tracking-tight">
+              Prochaines échéances
+            </CardTitle>
+            <CardDescription>
+              {calendarEvents.length} événement
+              {calendarEvents.length > 1 ? 's' : ''} à venir
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="max-h-96 overflow-y-auto">
+            {upcomingEventsSorted.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                Aucune échéance planifiée.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {upcomingEventsSorted.map((ev) => (
+                  <li
+                    key={ev.id}
+                    className="flex items-start gap-3 rounded-md p-2 hover:bg-muted/40 transition-colors"
+                  >
+                    <span
+                      className={
+                        'mt-1.5 h-2 w-2 rounded-full shrink-0 ' +
+                        (ev.type === 'exam' ? 'bg-destructive' : 'bg-warning')
+                      }
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">
+                        {ev.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {ev.type === 'exam' ? 'Début épreuve' : 'Échéance'} —{' '}
+                        {formatDateFR(ev.date)}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-6 space-y-6 lg:space-y-0">
         {/* ─── Main column (2/3) ─── */}

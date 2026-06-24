@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   User,
   Mail,
@@ -15,6 +15,29 @@ import {
   EyeOff,
   CheckCircle2,
   AlertCircle,
+  Award,
+  Star,
+  Trophy,
+  Zap,
+  Flame,
+  ThumbsUp,
+  CheckCircle2 as CheckCircle2Icon,
+  CalendarCheck,
+  FileText,
+  PenTool,
+  Sparkles,
+  GraduationCap as GraduationCapIcon,
+  Library,
+  Clock,
+  ClipboardCheck,
+  Users,
+  Eye as EyeIcon,
+  Network,
+  Shield as ShieldIcon,
+  Target,
+  Cpu,
+  HeartHandshake,
+  type LucideIcon,
 } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,7 +48,115 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
+import { useBadges } from '@/hooks/use-dashboard'
+import { RewardCenter, type Reward, type GamificationTier } from '@/components/ds'
+import type { BadgeWithProgress, NiveauBadge } from '@/lib/badges-engine'
 import { toast } from 'sonner'
+
+// ─────────────────────────────────────────────────────────────
+// Mapping BadgeWithProgress → Reward (pour le RewardCenter DS)
+//
+// Le moteur de badges (lib/badges-engine.ts) expose des badges au
+// format BadgeWithProgress (clé, titre, description, icône Lucide
+// nommée en string, niveauActuel BRONZE/ARGENT/OR/DIAMANT,
+// progression 0-100, debloque, dateObtention…). On projette ces
+// données vers le format Reward attendu par le DS RewardCenter.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Map statique : nom d'icône Lucide (stocké en DB sous `badge.icone`)
+ * → composant LucideIcon. Couvre toutes les icônes référencées dans
+ * BADGE_DEFINITIONS (lib/badges-engine.ts). Fallback explicite : Award.
+ */
+const BADGE_ICON_MAP: Record<string, LucideIcon> = {
+  Award,
+  Star,
+  Trophy,
+  Zap,
+  Flame,
+  ThumbsUp,
+  CheckCircle2: CheckCircle2Icon,
+  CalendarCheck,
+  FileText,
+  PenTool,
+  Sparkles,
+  GraduationCap: GraduationCapIcon,
+  Library,
+  Clock,
+  ClipboardCheck,
+  Users,
+  Eye: EyeIcon,
+  Network,
+  Shield: ShieldIcon,
+  Target,
+  Cpu,
+  HeartHandshake,
+}
+
+/**
+ * Map statique : NiveauBadge (moteur de gamification)
+ * → GamificationTier (DS BadgeCard / RewardCenter).
+ *
+ *   BRONZE  → bronze
+ *   ARGENT  → silver
+ *   OR      → gold
+ *   DIAMANT → platinum
+ *
+ * Si la valeur est inconnue, on fallback sur 'bronze' pour les
+ * badges verrouillés et 'gold' pour les badges débloqués (bon
+ * défaut visuel).
+ */
+function mapRarityToTier(
+  niveau: NiveauBadge | string | undefined,
+  unlocked: boolean,
+): GamificationTier {
+  switch (niveau) {
+    case 'BRONZE':
+      return 'bronze'
+    case 'ARGENT':
+      return 'silver'
+    case 'OR':
+      return 'gold'
+    case 'DIAMANT':
+      return 'platinum'
+    default:
+      return unlocked ? 'gold' : 'bronze'
+  }
+}
+
+/**
+ * Récupère l'icône Lucide associée à un badge (par nom string).
+ * Fallback : Award (icône générique de récompense).
+ */
+function getBadgeIcon(iconName: string): LucideIcon {
+  return BADGE_ICON_MAP[iconName] ?? Award
+}
+
+/**
+ * Projection BadgeWithProgress → Reward.
+ *
+ *   Reward.id          ← badge.cle (clé unique du badge)
+ *   Reward.title       ← badge.titre
+ *   Reward.description ← badge.description
+ *   Reward.tier        ← mapRarityToTier(badge.niveauActuel, badge.debloque)
+ *   Reward.icon        ← getBadgeIcon(badge.icone)
+ *   Reward.unlocked    ← badge.debloque
+ *   Reward.unlockedAt  ← badge.dateObtention ? new Date(...) : undefined
+ *   Reward.progress    ← badge.progression (0-100)
+ */
+function mapBadgeToReward(badge: BadgeWithProgress): Reward {
+  const unlocked = badge.debloque
+  return {
+    id: badge.cle,
+    title: badge.titre,
+    description: badge.description,
+    tier: mapRarityToTier(badge.niveauActuel, unlocked),
+    icon: getBadgeIcon(badge.icone),
+    unlocked,
+    unlockedAt: badge.dateObtention ? new Date(badge.dateObtention) : undefined,
+    progress: badge.progression,
+  }
+}
 
 // ─── Role display info ───
 const ROLE_INFO: Record<UserRole, { label: string; color: string; description: string }> = {
@@ -66,6 +197,20 @@ export function ProfilPage() {
   // Profile edit state
   const [editName, setEditName] = useState(user?.name ?? '')
   const [editEmail] = useState(user?.email ?? '') // Email is read-only
+
+  // ─── Badges / récompenses ───
+  // Le hook useBadges est appelé inconditionnellement (règle des hooks).
+  // Il est désactivé tant que user?.id est undefined (enabled: !!userId).
+  const badgesQuery = useBadges(user?.id)
+
+  // Projection BadgeWithProgress[] → Reward[] pour le RewardCenter DS.
+  // On ignore les erreurs réseau (la section récompenses n'est pas
+  // critique — on affiche simplement un état vide en cas de échec).
+  const rewards: Reward[] = useMemo(() => {
+    const badges = badgesQuery.data?.badges
+    if (!badges || badges.length === 0) return []
+    return badges.map(mapBadgeToReward)
+  }, [badgesQuery.data?.badges])
 
   if (!user) return null
 
@@ -436,6 +581,22 @@ export function ProfilPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ─── Mes récompenses (RewardCenter DS) ─── */}
+      {/* userProgress est omis : l'AuthUser ne contient pas d'XP/niveau,
+          et le hook useBadges ne renvoie pas non plus d'XP. Le
+          RewardCenter gère correctement le cas `userProgress` undefined
+          (il masque simplement le header de progression XP). */}
+      <section className="space-y-4 pt-2" aria-label="Mes récompenses">
+        <h2 className="text-xl font-display font-bold tracking-tight md:text-2xl">
+          Mes récompenses
+        </h2>
+        <Card>
+          <CardContent className="p-6">
+            <RewardCenter rewards={rewards} />
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }

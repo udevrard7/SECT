@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
+import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 
 // ── Design System fonts ──
 // Inter : display (titres) + body (corps) — weights 400/500/700
@@ -113,6 +114,7 @@ export default function RootLayout({
         <Providers>
           {children}
         </Providers>
+        <ServiceWorkerRegister />
         <Toaster />
       </body>
     </html>

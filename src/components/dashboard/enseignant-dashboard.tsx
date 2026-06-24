@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/card'
 import { Badge as UiBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
+import { PulseSkeleton, StatCardSkeletonGrid, AcademicCalendar, type CalendarEvent } from '@/components/ds'
 import { KpiCard } from '@/components/resultats/kpi-card'
 import { EvolutionChart, ComparisonChart, ChartCard } from '@/components/resultats/resultats-charts'
 import { ErrorState } from '@/components/shared/error-state'
@@ -297,6 +297,41 @@ export function EnseignantDashboard() {
     return () => clearTimeout(t)
   }, [newlyUnlockedBadge])
 
+  // ─── Mapping des épreuves à venir vers CalendarEvent[] ───
+  // Chaque épreuve produit 2 événements : 'exam' sur la date de début
+  // (dateDebut = date) et 'deadline' sur la date de fin (échéance de
+  // soumission / fin de session). Les dates invalides (NaN) sont filtrées.
+  // Les corrections en attente (pendingCorrections) ne sont pas incluses
+  // ici car elles n'exposent pas de date d'échéance côté API — uniquement
+  // un `submittedAt`. On se concentre donc sur les sessions d'examen.
+  // Les hooks sont appelés AVANT les retours anticipés (rules-of-hooks).
+  const calendarEvents: CalendarEvent[] = useMemo(() => {
+    const epreuves = statsQuery.data?.epreuvesAVenir
+    if (!epreuves) return []
+    return epreuves.flatMap((epreuve): CalendarEvent[] => {
+      const events: CalendarEvent[] = []
+      const startDate = new Date(epreuve.date)
+      if (!Number.isNaN(startDate.getTime())) {
+        events.push({
+          id: `${epreuve.id}-start`,
+          date: startDate,
+          title: epreuve.titre,
+          type: 'exam',
+        })
+      }
+      const endDate = new Date(epreuve.dateFin)
+      if (!Number.isNaN(endDate.getTime())) {
+        events.push({
+          id: `${epreuve.id}-deadline`,
+          date: endDate,
+          title: epreuve.titre,
+          type: 'deadline',
+        })
+      }
+      return events
+    })
+  }, [statsQuery.data?.epreuvesAVenir])
+
   // ─── Loading ───
   if (statsQuery.isLoading && !statsQuery.data) {
     return <DashboardSkeleton />
@@ -502,6 +537,27 @@ export function EnseignantDashboard() {
 
         {/* ─── Sidebar (1/3) ─── */}
         <div className="lg:col-span-1 space-y-6">
+          {/* ─── Calendrier académique ─── */}
+          <motion.div variants={itemVariants}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display tracking-tight">
+                  Calendrier académique
+                </CardTitle>
+                <CardDescription>
+                  Sessions d&apos;examen et échéances à venir
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-center">
+                <AcademicCalendar
+                  events={calendarEvents}
+                  onDateClick={(date) => router.push('/epreuves')}
+                  className="max-w-md w-full"
+                />
+              </CardContent>
+            </Card>
+          </motion.div>
+
           <motion.div variants={itemVariants}>
             <EpreuvesTimeline epreuves={data.epreuvesAVenir} />
           </motion.div>
