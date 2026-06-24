@@ -370,6 +370,43 @@
   border-radius: inherit;
 }
 
+/* ── Shimmer : effet de lumière qui traverse un bouton au survol ── */
+.ds-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.ds-shimmer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  transition: none;
+}
+.ds-shimmer:hover::before {
+  animation: ds-shimmer-slide 0.6s ease-out;
+}
+@keyframes ds-shimmer-slide {
+  from { left: -100%; }
+  to { left: 100%; }
+}
+
+/* ── Logo glow pulse : pulse subtil au chargement ── */
+.ds-logo-glow {
+  animation: ds-logo-pulse 3s ease-in-out infinite;
+}
+@keyframes ds-logo-pulse {
+  0%, 100% { box-shadow: 0 0 20px -5px rgba(132, 204, 22, 0.3); }
+  50% { box-shadow: 0 0 30px -2px rgba(132, 204, 22, 0.6); }
+}
+
 /* ── Hover lift pour cartes interactives (translateY -2px) ── */
 .ds-lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
