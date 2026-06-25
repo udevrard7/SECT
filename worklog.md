@@ -2616,3 +2616,46 @@ Stage Summary:
   5. `git push origin main` → déploiement automatique sur Vercel
 - Variables d'environnement IA (ZAI_API_KEY, etc.) non configurées — à fournir par l'utilisateur si fonctionnalités IA nécessaires
 - Serveur dev démarré via : `python3 /tmp/start-dev-daemon.py` (le script est conservé pour redémarrage ultérieur)
+
+---
+Task ID: 1A
+Agent: Z.ai (tuteur principal)
+Task: Sous-étape 1.A — Conversion du schéma Prisma → SQL DDL canonique (première étape de la migration vers monorepo Go + Next.js UI sur Neon)
+
+Work Log:
+- Analyse du schéma Prisma actuel : 49 modèles, 23 enums, ~90 relations FK, 109 index, 1280 lignes dans prisma/schema.prisma.
+- Inventaire du volume de données Supabase : 1369 lignes réparties sur 32 tables non vides (top : reponse 677, auditLog 417, badgeProgression 37, resultat 34, sessionPassation 34).
+- Décisions confirmées avec l'utilisateur pour la migration globale :
+  * Neon Postgres (projet existant, token à transmettre)
+  * RLS Option A : claims de session posés par le backend Go (current_setting('app.claims.*'))
+  * Tooling Go : pgx + sqlc (génération type-safe depuis SQL)
+  * Transition progressive : Next.js + Prisma + Supabase restent actifs pendant la construction du backend Go + Neon en parallèle
+- Génération du DDL canonique via `prisma migrate diff --from-empty --to-schema-datamodel --script` (outil officiel Prisma → SQL exact, 1526 lignes).
+- Découpage du DDL monolithique en 5 migrations versionnées (format golang-migrate) via script awk :
+  * 000001_create_enums (23 types ENUM, 72 lignes)
+  * 000002_create_tables (49 tables avec contraintes PK, 884 lignes)
+  * 000003_create_indexes (109 index uniques + secondaires, 327 lignes)
+  * 000004_add_foreign_keys (81 FK avec ON DELETE/UPDATE, 243 lignes)
+  * 000005_create_updated_at_trigger (fonction set_updated_at() + triggers BEFORE UPDATE sur 31 tables)
+- Création des fichiers .down.sql (rollback idempotent) pour chaque migration via blocs DO $$ dynamiques (introspection information_schema/pg_constraint/pg_indexes).
+- Fichier de référence consolidé db/reference/schema.sql (concat des 5 up, 1576 lignes, lecture seule).
+- Rédaction du README db/README.md expliquant : structure, conventions (camelCase, TIMESTAMP(3), CUID TEXT), commandes golang-migrate (CLI + Docker), requêtes de vérification.
+- Conventions conservées pour compatibilité avec données Supabase existantes : noms camelCase entre guillemets, TIMESTAMP(3), CUID TEXT (pas de SERIAL), index/FK nommés selon convention Prisma.
+- Migration 000005 clé : remplace @updatedAt Prisma (géré côté JS) par trigger PostgreSQL BEFORE UPDATE — nécessaire car le backend Go n'utilisera pas Prisma.
+- Lint : 0 erreur, 1 warning préexistant (jsx-a11y/alt-text sans rapport).
+- Commit d7ea213 poussé sur main → déclenchement déploiement Vercel automatique.
+- Serveur dev vérifié : GET / → HTTP 200 (Next.js + Prisma + Supabase toujours opérationnels, transition progressive respectée).
+
+Stage Summary:
+- Fichiers créés (12) :
+  * db/migrations/000001_create_enums.up.sql + .down.sql
+  * db/migrations/000002_create_tables.up.sql + .down.sql
+  * db/migrations/000003_create_indexes.up.sql + .down.sql
+  * db/migrations/000004_add_foreign_keys.up.sql + .down.sql
+  * db/migrations/000005_create_updated_at_trigger.up.sql + .down.sql
+  * db/reference/schema.sql (consolidé, lecture seule)
+  * db/README.md
+- Commit : d7ea213 "feat(db): migration Prisma → SQL DDL canonique (sous-étape 1.A)"
+- État : schéma SQL prêt à être appliqué sur Neon (en attente token pour 1.C)
+- Prochaine étape (1.B) : activation RLS + fonctions helper de claims (current_user_id(), current_role_claim(), current_etablissement_id()) + policies par table selon la hiérarchie des rôles (ADMIN full access, RESPONSABLE scoped par etablissement, ENSEIGNANT par enseignantId, ETUDIANT par etudiantId)
+- Rien n'a cassé le fonctionnement actuel : Prisma continue de gérer la DB Supabase, les fichiers SQL sont en parallèle pour le futur backend Go
