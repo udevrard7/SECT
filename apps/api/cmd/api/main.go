@@ -70,13 +70,14 @@ func main() {
         r2AccessKey := os.Getenv("R2_ACCESS_KEY_ID")
         r2SecretKey := os.Getenv("R2_SECRET_ACCESS_KEY")
         r2Bucket := os.Getenv("R2_BUCKET_NAME")
+        r2Endpoint := os.Getenv("R2_ENDPOINT")
         if r2AccountID != "" && r2AccessKey != "" && r2SecretKey != "" {
-                r2Client, err := storage.NewR2Client(context.Background(), r2AccountID, r2AccessKey, r2SecretKey, r2Bucket)
+                r2Client, err := storage.NewR2Client(context.Background(), r2AccountID, r2AccessKey, r2SecretKey, r2Bucket, r2Endpoint)
                 if err != nil {
                         logger.Warn("R2 client init failed, storage disabled", "error", err)
                 } else {
                         storageClient = r2Client
-                        logger.Info("Cloudflare R2 storage enabled", "bucket", r2Bucket)
+                        logger.Info("Cloudflare R2 storage enabled", "bucket", r2Bucket, "endpoint", r2Endpoint)
                 }
         } else {
                 logger.Info("R2 credentials not provided, storage disabled (documents will use DB-only mode)")
