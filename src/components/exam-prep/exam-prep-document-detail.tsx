@@ -5,7 +5,7 @@
  *
  * 6 onglets (respectent l'identité Savane EdTech) :
  *  1. Aperçu — chapitres + résumé + thèmes
- *  2. Q&A IA — chat RAG ancré au document (exige exam-prep-qa-tab)
+ *  2. Questions au cours — chat RAG ancré au document (exige exam-prep-qa-tab)
  *  3. Entraînement — génération de questions + correction (exam-prep-practice-tab)
  *  4. Planning — sessions de révision + spaced repetition (exam-prep-planning-tab)
  *  5. Aide prof — messagerie étudiant↔enseignant (exam-prep-help-tab)
@@ -92,8 +92,8 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
           </TabsTrigger>
           <TabsTrigger value="qa" className="gap-1.5">
             <Sparkles className="h-4 w-4" />
-            <span className="hidden sm:inline">Q&A IA</span>
-            <span className="sm:hidden">Q&A</span>
+            <span className="hidden sm:inline">Questions au cours</span>
+            <span className="sm:hidden">Questions</span>
           </TabsTrigger>
           <TabsTrigger value="practice" className="gap-1.5">
             <Award className="h-4 w-4" />
@@ -135,7 +135,7 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
                 {doc.chapters.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">
                     Aucun chapitre structuré détecté lors de l'analyse. Vous pouvez
-                    quand même utiliser le Q&A IA et l'entraînement sur l'ensemble du document.
+                    quand même utiliser « Questions au cours » et l'entraînement sur l'ensemble du document.
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -214,7 +214,7 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
               </div>
             </TabsContent>
 
-            {/* ─── Q&A IA ─── */}
+            {/* ─── Questions au cours ─── */}
             <TabsContent value="qa" className="mt-0">
               <ExamPrepQaTab documentId={doc.id} chapters={doc.chapters} />
             </TabsContent>
