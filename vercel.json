@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/exam-prep/rappels",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 8 * * *"
     }
   ],
   "headers": [
