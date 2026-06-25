@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAIProvider } from '@/lib/ai-providers'
+import { persistChapters } from '@/lib/exam-prep/chapters'
 
 export const maxDuration = 60
 
@@ -172,6 +173,16 @@ Réponds en JSON avec la structure suivante:
         erreurAnalyse: usedFallback ? 'Analyse IA de secours (format de réponse invalide)' : null,
       },
     })
+
+    // Persiste les chapitres pour le module Préparation aux examens
+    // (auparavant jetés — l'IA les produisait mais ils n'étaient pas stockés).
+    try {
+      const nbChapters = await persistChapters(id, analysisResult.chapitres)
+      console.log(`[Document Analyze] ${id}: ${nbChapters} chapitre(s) persisté(s)`)
+    } catch (chapError) {
+      // Non bloquant : les chapitres sont un bonus pour l'exam-prep.
+      console.error(`[Document Analyze] ${id}: échec persistance chapitres:`, chapError)
+    }
 
     const response: Record<string, unknown> = {
       analysis: analysisResult,

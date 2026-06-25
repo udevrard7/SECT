@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { extractTextFromBuffer, getMimeType, isSupportedFileType, isWithinSizeLimit } from '@/lib/text-extraction'
 import { getAIProvider } from '@/lib/ai-providers'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { persistChapters } from '@/lib/exam-prep/chapters'
 
 async function _POST(request: NextRequest, context: { params: any; user: AuthenticatedUser }) {
   try {
@@ -311,6 +312,17 @@ Réponds en JSON avec la structure suivante:
       resumeAnalyse: analysisResult.resumeCourt || null,
     },
   })
+
+  // Persiste les chapitres pour le module Préparation aux examens
+  // (auparavant jetés — l'IA les produisait mais ils n'étaient pas stockés).
+  try {
+    const nbChapters = await persistChapters(documentId, analysisResult.chapitres)
+    console.log(`Document ${documentId}: ${nbChapters} chapitre(s) persisté(s)`)
+  } catch (chapError) {
+    // Non bloquant : les chapitres sont un bonus pour l'exam-prep,
+    // l'analyse principale (thèmes/concepts) a déjà réussi.
+    console.error(`Document ${documentId}: échec persistance chapitres:`, chapError)
+  }
 
   console.log(`Document ${documentId} analyzed successfully`)
   return analysisResult
