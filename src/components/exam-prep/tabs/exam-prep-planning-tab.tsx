@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   Clock, Calendar, Plus, CheckCircle2, Loader2, Zap, TrendingUp,
+  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -73,8 +74,10 @@ export function ExamPrepPlanningTab({ documentId, chapters }: Props) {
   const [formChapterIds, setFormChapterIds] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // Charge les données. `initial` distingue le 1er chargement (skeleton)
+  // des refreshs ultérieurs (mise à jour en arrière-plan sans flash).
+  const load = useCallback(async (initial = false) => {
+    if (initial) setLoading(true)
     try {
       const [reviewRes, planRes] = await Promise.all([
         fetch(`/api/exam-prep/review?documentId=${documentId}`),
@@ -92,11 +95,11 @@ export function ExamPrepPlanningTab({ documentId, chapters }: Props) {
     } catch {
       // silent
     } finally {
-      setLoading(false)
+      if (initial) setLoading(false)
     }
   }, [documentId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(true) }, [load])
 
   const handleMarkReviewed = async (item: DueItem) => {
     setMarking(item.id)
@@ -110,7 +113,7 @@ export function ExamPrepPlanningTab({ documentId, chapters }: Props) {
       toast.success('Chapitre révisé', {
         description: 'Prochaine révision planifiée par spaced repetition.',
       })
-      load()
+      load(false)
     } catch {
       toast.error('Échec de la mise à jour')
     } finally {
@@ -138,16 +141,33 @@ export function ExamPrepPlanningTab({ documentId, chapters }: Props) {
         }),
       })
       if (!res.ok) throw new Error()
-      toast.success('Session planifiée')
+      toast.success('Session planifiée', {
+        description: 'Un rappel vous sera envoyé avant la session.',
+      })
       setShowForm(false)
       setFormDate('')
       setFormTitle('')
       setFormChapterIds([])
-      load()
+      load(false)
     } catch {
       toast.error('Échec de la création')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleUpdateSession = async (sessionId: string, statut: 'TERMINEE' | 'ANNULEE') => {
+    try {
+      const res = await fetch(`/api/exam-prep/planning/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success(statut === 'TERMINEE' ? 'Session terminée' : 'Session annulée')
+      load(false)
+    } catch {
+      toast.error('Échec de la mise à jour')
     }
   }
 
@@ -330,7 +350,34 @@ export function ExamPrepPlanningTab({ documentId, chapters }: Props) {
                       {s.chapterIds.length > 0 && ` · ${s.chapterIds.length} chap.`}
                     </p>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">{s.statut}</Badge>
+                  {s.statut === 'PLANIFIEE' ? (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleUpdateSession(s.id, 'TERMINEE')}
+                        className="h-7 w-7 p-0 text-success-text hover:bg-success/10"
+                        title="Marquer comme terminée"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleUpdateSession(s.id, 'ANNULEE')}
+                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                        title="Annuler"
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Badge variant="outline" className={`text-[10px] ${
+                      s.statut === 'TERMINEE' ? 'bg-success/10 text-success-text border-success/30'
+                      : s.statut === 'ANNULEE' ? 'bg-destructive/10 text-destructive border-destructive/30'
+                      : 'bg-muted text-muted-foreground'
+                    }`}>{s.statut}</Badge>
+                  )}
                 </div>
               )
             })

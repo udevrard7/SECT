@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 import { requireStudentScope, studentUeFilter, isChapterAccessible } from '@/lib/exam-prep/scope'
+import { sendPushToUser } from '@/lib/push'
 
 /**
  * Planning de révision (StudySession).
@@ -117,6 +118,51 @@ async function _POST(request: NextRequest, context: { params: unknown; user: Aut
         },
       })
     )
+
+    // ─── Crée une Alerte (type RAPPEL) + NotificationAdmin pour l'étudiant ───
+    // Le système d'alertes existant (NotificationBell dans le header) affichera
+    // ce rappel. L'étudiant peut le marquer comme lu/disparu.
+    const sessionLabel = body.titre || `Session de révision du ${dateDebut.toLocaleDateString('fr-FR')}`
+    try {
+      await withRetry(() =>
+        db.alerte.create({
+          data: {
+            titre: '📚 Session de révision planifiée',
+            description: `${sessionLabel} — ${dateDebut.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} (${dureeMin} min)`,
+            severity: 'INFO',
+            type: 'RAPPEL',
+            userId: user.id,
+          },
+        })
+      )
+
+      await withRetry(() =>
+        db.notificationAdmin.create({
+          data: {
+            type: 'STUDY_SESSION',
+            titre: '📚 Session de révision planifiée',
+            message: sessionLabel,
+            destinataireId: user.id,
+            destinataireRole: 'ETUDIANT',
+            actionUrl: '/exam-prep',
+            actionLabel: 'Voir le planning',
+            priorite: 'NORMALE',
+            categorie: 'PEDAGOGIE',
+            icone: 'CalendarCheck',
+          },
+        })
+      )
+
+      // Push notification de confirmation (non bloquant)
+      sendPushToUser(user.id, {
+        title: '📚 Révision planifiée',
+        body: sessionLabel,
+        url: '/exam-prep',
+        tag: `session-${session.id}`,
+      }).catch(() => {})
+    } catch (notifError) {
+      console.error('[exam-prep/planning] notif failed:', notifError)
+    }
 
     return NextResponse.json({ session: { ...session, chapterIds: body.chapterIds ?? [] } }, { status: 201 })
   } catch (error) {
