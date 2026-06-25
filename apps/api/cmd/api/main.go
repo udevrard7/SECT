@@ -1,8 +1,4 @@
 // Package main est le point d'entrée du backend Go SECT.
-//
-// Le serveur expose une API REST sur le port 8080 (configurable via PORT).
-// Il se connecte à Neon Postgres via pgxpool et utilise les claims RLS
-// pour le filtrage automatique des données par rôle.
 package main
 
 import (
@@ -16,9 +12,11 @@ import (
 
 	"github.com/udevrard7/sect/apps/api/internal/config"
 	appdb "github.com/udevrard7/sect/apps/api/internal/db"
+	"github.com/udevrard7/sect/apps/api/internal/jwt"
 	"github.com/udevrard7/sect/apps/api/internal/middleware"
 	"github.com/udevrard7/sect/apps/api/internal/repository"
 	httptransport "github.com/udevrard7/sect/apps/api/internal/transport/http"
+	"github.com/udevrard7/sect/apps/api/internal/usecase"
 )
 
 func main() {
@@ -27,20 +25,17 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	logger.Info("starting SECT API server", "version", "0.1.0")
+	logger.Info("starting SECT API server", "version", "0.2.0")
 
-	// 1. Charger la configuration
+	// 1. Configuration
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("configuration loaded",
-		"env", cfg.Environment,
-		"port", cfg.Port,
-	)
+	logger.Info("configuration loaded", "env", cfg.Environment, "port", cfg.Port)
 
-	// 2. Connexion à Neon Postgres
+	// 2. Connexion Neon
 	pool, err := appdb.New(cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to Neon", "error", err)
@@ -49,11 +44,15 @@ func main() {
 	defer pool.Close()
 	logger.Info("connected to Neon Postgres")
 
-	// 3. Initialiser les repositories
+	// 3. Initialiser repositories + usecases
 	userRepo := repository.NewUserRepository(pool)
+	authRepo := repository.NewAuthRepository(pool)
+	signer := jwt.NewSigner(cfg.JWTSecret)
+	authUC := usecase.NewAuthUseCase(authRepo, signer)
 
 	// 4. Configurer le serveur HTTP
-	server := httptransport.NewServer(userRepo, cfg.JWTSecret, cfg.CORSAllowedOrigins)
+	authMiddleware := middleware.Auth(signer)
+	server := httptransport.NewServer(userRepo, authUC, cfg.CORSAllowedOrigins, authMiddleware)
 
 	httpServer := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -63,7 +62,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// 5. Démarrer le serveur (graceful shutdown)
+	// 5. Démarrer (graceful shutdown)
 	go func() {
 		logger.Info("HTTP server listening", "port", cfg.Port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -72,7 +71,6 @@ func main() {
 		}
 	}()
 
-	// Attendre SIGINT / SIGTERM
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
