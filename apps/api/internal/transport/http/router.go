@@ -31,6 +31,7 @@ type Server struct {
         documentUC  *usecase.DocumentUseCase
         certificatUC *usecase.CertificatUseCase
         correctionUC *usecase.CorrectionUseCase
+        examPrepUC   *usecase.ExamPrepUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -51,6 +52,7 @@ func NewServer(
         documentUC *usecase.DocumentUseCase,
         certificatUC *usecase.CertificatUseCase,
         correctionUC *usecase.CorrectionUseCase,
+        examPrepUC *usecase.ExamPrepUseCase,
         corsOrigins []string,
         authMiddleware func(http.Handler) http.Handler,
 ) *Server {
@@ -71,6 +73,7 @@ func NewServer(
                 documentUC:   documentUC,
                 certificatUC: certificatUC,
                 correctionUC: correctionUC,
+                examPrepUC:   examPrepUC,
         }
         s.setupRouter(corsOrigins, authMiddleware)
         return s
@@ -252,6 +255,31 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/retourner-batch", s.retournerBatch)
                         r.Post("/{sessionId}/retourner", s.retournerSession)
                         r.Patch("/reponses/{reponseId}", s.updateReponse)
+                })
+
+                // /api/exam-prep
+                r.Route("/api/exam-prep", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        // Dashboard
+                        r.Get("/dashboard", s.examPrepDashboard)
+                        // Documents (student-scoped)
+                        r.Get("/documents", s.listExamPrepDocuments)
+                        // Review (spaced repetition)
+                        r.Get("/review", s.listReviewItems)
+                        r.Post("/review", s.markReviewed)
+                        // Planning (study sessions)
+                        r.Get("/planning", s.listStudySessions)
+                        r.Post("/planning", s.createStudySession)
+                        r.Delete("/planning/{id}", s.deleteStudySession)
+                        // Practice
+                        r.Get("/practice", s.listPracticeAttempts)
+                        r.Post("/practice/{id}/submit", s.submitPractice)
+                        // Help threads
+                        r.Get("/help", s.listHelpThreads)
+                        r.Post("/help", s.createHelpThread)
+                        r.Post("/help/{id}/close", s.closeHelpThread)
+                        r.Get("/help/{id}/messages", s.listHelpMessages)
+                        r.Post("/help/{id}/messages", s.createHelpMessage)
                 })
         })
 
