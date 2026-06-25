@@ -33,6 +33,7 @@ import {
   Trash2,
   Wrench,
   ScrollText,
+  HelpCircle,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -91,6 +92,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Trash2,
   Wrench,
   ScrollText,
+  HelpCircle,
 }
 
 export function AppSidebar() {
