@@ -151,6 +151,86 @@ export const BADGE_DEFINITIONS: BadgeDefinitionConfig[] = [
   },
 
   // ═══════════════════════════════════════════
+  // 📚 BADGES ÉTUDIANT — Module Préparation aux examens (engagement révision)
+  // ═══════════════════════════════════════════
+
+  {
+    cle: 'premier_pas_revision',
+    titre: 'Premier Pas',
+    description: "S'entraîner avec des questions générées par l'IA",
+    icone: 'Sparkles',
+    categorie: 'ENGAGEMENT',
+    rolesCibles: ['ETUDIANT'],
+    niveaux: [
+      { niveau: 'BRONZE', seuil: 1, label: 'Répondre à 1 question d\'entraînement' },
+      { niveau: 'ARGENT', seuil: 25, label: 'Répondre à 25 questions' },
+      { niveau: 'OR', seuil: 100, label: 'Répondre à 100 questions' },
+      { niveau: 'DIAMANT', seuil: 500, label: 'Répondre à 500 questions' },
+    ],
+    ordre: 7,
+  },
+  {
+    cle: 'curieux',
+    titre: 'Curieux',
+    description: 'Poser des questions à l\'IA sur les documents de cours',
+    icone: 'HelpCircle',
+    categorie: 'ENGAGEMENT',
+    rolesCibles: ['ETUDIANT'],
+    niveaux: [
+      { niveau: 'BRONZE', seuil: 1, label: 'Poser 1 question IA' },
+      { niveau: 'ARGENT', seuil: 15, label: 'Poser 15 questions IA' },
+      { niveau: 'OR', seuil: 50, label: 'Poser 50 questions IA' },
+      { niveau: 'DIAMANT', seuil: 200, label: 'Poser 200 questions IA' },
+    ],
+    ordre: 8,
+  },
+  {
+    cle: 'plannificateur',
+    titre: 'Plannificateur',
+    description: 'Planifier des sessions de révision régulières',
+    icone: 'CalendarCheck',
+    categorie: 'ENGAGEMENT',
+    rolesCibles: ['ETUDIANT'],
+    niveaux: [
+      { niveau: 'BRONZE', seuil: 1, label: 'Planifier 1 session' },
+      { niveau: 'ARGENT', seuil: 5, label: 'Planifier 5 sessions' },
+      { niveau: 'OR', seuil: 20, label: 'Planifier 20 sessions' },
+      { niveau: 'DIAMANT', seuil: 50, label: 'Planifier 50 sessions' },
+    ],
+    ordre: 9,
+  },
+  {
+    cle: 'maitre_chapitre',
+    titre: 'Maître des Chapitres',
+    description: 'Atteindre une maîtrise élevée sur les chapitres (SRS ≥ 70%)',
+    icone: 'BookMarked',
+    categorie: 'PEDAGOGIE',
+    rolesCibles: ['ETUDIANT'],
+    niveaux: [
+      { niveau: 'BRONZE', seuil: 1, label: 'Maîtriser 1 chapitre' },
+      { niveau: 'ARGENT', seuil: 3, label: 'Maîtriser 3 chapitres' },
+      { niveau: 'OR', seuil: 7, label: 'Maîtriser 7 chapitres' },
+      { niveau: 'DIAMANT', seuil: 15, label: 'Maîtriser 15 chapitres' },
+    ],
+    ordre: 10,
+  },
+  {
+    cle: 'assidu',
+    titre: 'Assidu',
+    description: 'Maintenir une série de jours de révision consécutifs',
+    icone: 'Flame',
+    categorie: 'ENGAGEMENT',
+    rolesCibles: ['ETUDIANT'],
+    niveaux: [
+      { niveau: 'BRONZE', seuil: 3, label: 'Série de 3 jours' },
+      { niveau: 'ARGENT', seuil: 7, label: 'Série de 7 jours' },
+      { niveau: 'OR', seuil: 30, label: 'Série de 30 jours' },
+      { niveau: 'DIAMANT', seuil: 100, label: 'Série de 100 jours' },
+    ],
+    ordre: 11,
+  },
+
+  // ═══════════════════════════════════════════
   // 👨‍🏫 BADGES ENSEIGNANT
   // ═══════════════════════════════════════════
 
@@ -429,6 +509,12 @@ interface BadgeMetrics {
   nbEpreuvesRapides?: number
   nbScoresParfaits?: number
   nbJoursConnexion?: number
+  // ── Module Préparation aux examens (engagement révision) ──
+  nbPracticeAttempts?: number
+  nbQaQuestions?: number
+  nbStudySessions?: number
+  nbChaptersMastered?: number
+  revisionStreak?: number
 
   // Enseignant
   nbEpreuvesCreees?: number
@@ -464,6 +550,13 @@ function getMetricValue(cle: string, metrics: BadgeMetrics): number {
     case 'eclair_de_genie': return metrics.nbEpreuvesRapides ?? 0
     case 'persévérant': return metrics.nbJoursConnexion ?? 0
     case 'zero_faute': return metrics.nbScoresParfaits ?? 0
+
+    // ── Module Préparation aux examens (engagement révision) ──
+    case 'premier_pas_revision': return metrics.nbPracticeAttempts ?? 0
+    case 'curieux': return metrics.nbQaQuestions ?? 0
+    case 'plannificateur': return metrics.nbStudySessions ?? 0
+    case 'maitre_chapitre': return metrics.nbChaptersMastered ?? 0
+    case 'assidu': return metrics.revisionStreak ?? 0
 
     // Enseignant
     case 'premiere_epreuve': return metrics.nbEpreuvesCreees ?? 0
@@ -612,6 +705,53 @@ export async function collectEtudiantMetrics(userId: string): Promise<BadgeMetri
     ? Math.max(1, Math.floor((Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24)))
     : 0
 
+  // ─── Métriques Module Préparation aux examens (engagement révision) ───
+  // 1. nbPracticeAttempts : nombre total de questions d'entraînement répondues
+  // 2. nbQaQuestions : nombre de questions posées à l'IA (messages user des ChatThread)
+  // 3. nbStudySessions : nombre de sessions de révision planifiées
+  // 4. nbChaptersMastered : nombre de chapitres avec masteryLevel ≥ 0.7
+  // 5. revisionStreak : série de jours consécutifs avec au moins une PracticeAttempt
+  const [
+    practiceCount,
+    qaCount,
+    sessionCount,
+    masteredCount,
+    attemptDates,
+  ] = await Promise.all([
+    withRetry(() => db.practiceAttempt.count({ where: { userId } })),
+    withRetry(() => db.chatMessage.count({ where: { thread: { userId }, role: 'user' } })),
+    withRetry(() => db.studySession.count({ where: { userId } })),
+    withRetry(() => db.reviewItem.count({ where: { userId, masteryLevel: { gte: 0.7 } } })),
+    withRetry(() =>
+      db.practiceAttempt.findMany({
+        where: { userId },
+        select: { createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      })
+    ),
+  ])
+
+  // Calcul du streak (jours consécutifs avec au moins une tentative, en
+  // comptant à rebours depuis aujourd'hui). Si pas de tentative aujourd'hui,
+  // on tolère un écart d'hier (l'étudiant a peut-être pas encore révisé
+  // aujourd'hui).
+  let revisionStreak = 0
+  if (attemptDates.length > 0) {
+    const uniqueDays = new Set(
+      attemptDates.map((a) => a.createdAt.toISOString().slice(0, 10))
+    )
+    const today = new Date()
+    let cursor = new Date(today)
+    // Si pas de tentative aujourd'hui, on commence le comptage à hier
+    if (!uniqueDays.has(cursor.toISOString().slice(0, 10))) {
+      cursor.setDate(cursor.getDate() - 1)
+    }
+    while (uniqueDays.has(cursor.toISOString().slice(0, 10))) {
+      revisionStreak++
+      cursor.setDate(cursor.getDate() - 1)
+    }
+  }
+
   return {
     nbEpreuvesTerminees,
     nbNotesSup12,
@@ -619,6 +759,12 @@ export async function collectEtudiantMetrics(userId: string): Promise<BadgeMetri
     nbEpreuvesRapides,
     nbScoresParfaits,
     nbJoursConnexion,
+    // Module Préparation aux examens
+    nbPracticeAttempts: practiceCount,
+    nbQaQuestions: qaCount,
+    nbStudySessions: sessionCount,
+    nbChaptersMastered: masteredCount,
+    revisionStreak,
   }
 }
 
