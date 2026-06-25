@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
+import { requireStudentScope, isChapterAccessible } from '@/lib/exam-prep/scope'
 
 /**
  * Spaced repetition (ReviewItem).
