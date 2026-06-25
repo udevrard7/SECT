@@ -20,6 +20,10 @@ type Server struct {
 	authUC    *usecase.AuthUseCase
 	etabUC    *usecase.EtablissementUseCase
 	accessUC  *usecase.AccessUseCase
+	filiereUC *usecase.FiliereUseCase
+	ueUC      *usecase.UEUseCase
+	efUC      *usecase.EnseignantFiliereUseCase
+	anneeUC   *usecase.AnneeUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -29,15 +33,23 @@ func NewServer(
 	authUC *usecase.AuthUseCase,
 	etabUC *usecase.EtablissementUseCase,
 	accessUC *usecase.AccessUseCase,
+	filiereUC *usecase.FiliereUseCase,
+	ueUC *usecase.UEUseCase,
+	efUC *usecase.EnseignantFiliereUseCase,
+	anneeUC *usecase.AnneeUseCase,
 	corsOrigins []string,
 	authMiddleware func(http.Handler) http.Handler,
 ) *Server {
 	s := &Server{
-		userRepo: userRepo,
-		userUC:   userUC,
-		authUC:   authUC,
-		etabUC:   etabUC,
-		accessUC: accessUC,
+		userRepo:  userRepo,
+		userUC:    userUC,
+		authUC:    authUC,
+		etabUC:    etabUC,
+		accessUC:  accessUC,
+		filiereUC: filiereUC,
+		ueUC:      ueUC,
+		efUC:      efUC,
+		anneeUC:   anneeUC,
 	}
 	s.setupRouter(corsOrigins, authMiddleware)
 	return s
@@ -81,7 +93,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.With(middleware.RequireAuth).Get("/api/me", s.me)
 		r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
 
-		// /api/users — CRUD utilisateurs
+		// /api/users
 		r.Route("/api/users", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listUsers)
@@ -91,7 +103,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Delete("/{id}", s.deleteUser)
 		})
 
-		// /api/etablissements — CRUD établissements
+		// /api/etablissements
 		r.Route("/api/etablissements", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listEtablissements)
@@ -104,7 +116,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Patch("/{id}/watermark", s.updateWatermark)
 		})
 
-		// /api/etablissement-access — gestion des accès ADMIN
+		// /api/etablissement-access
 		r.Route("/api/etablissement-access", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listAccess)
@@ -112,6 +124,43 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/check", s.checkAccess)
 			r.Get("/authorized-etablissements", s.authorizedEtablissements)
 			r.Patch("/{id}", s.updateAccess)
+		})
+
+		// /api/filieres
+		r.Route("/api/filieres", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listFilieres)
+			r.Post("/", s.createFiliere)
+			r.Patch("/bulk", s.bulkFilieres)
+			r.Get("/export", s.exportFilieres)
+			r.Get("/{id}", s.getFiliere)
+			r.Patch("/{id}", s.updateFiliere)
+			r.Delete("/{id}", s.deleteFiliere)
+		})
+
+		// /api/unites-enseignement
+		r.Route("/api/unites-enseignement", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listUEs)
+			r.Post("/", s.createUE)
+			r.Get("/{id}", s.getUE)
+			r.Patch("/{id}", s.updateUE)
+			r.Delete("/{id}", s.deleteUE)
+		})
+
+		// /api/enseignant-filieres
+		r.Route("/api/enseignant-filieres", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listEnseignantFilieres)
+			r.Post("/", s.createEnseignantFilieres)
+			r.Delete("/", s.deleteEnseignantFilieres)
+		})
+
+		// /api/annees-academiques
+		r.Route("/api/annees-academiques", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listAnnees)
+			r.Post("/", s.createAnnee)
 		})
 	})
 

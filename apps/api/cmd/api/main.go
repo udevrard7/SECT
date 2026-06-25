@@ -49,15 +49,23 @@ func main() {
         authRepo := repository.NewAuthRepository(pool)
         etabRepo := repository.NewEtablissementRepository(pool)
         accessRepo := repository.NewEtablissementAccessRepository(pool)
+        filiereRepo := repository.NewFiliereRepository(pool)
+        ueRepo := repository.NewUERepository(pool)
+        efRepo := repository.NewEnseignantFiliereRepository(pool)
+        anneeRepo := repository.NewAnneeAcademiqueRepository(pool)
         signer := jwt.NewSigner(cfg.JWTSecret)
         authUC := usecase.NewAuthUseCase(authRepo, signer)
         userUC := usecase.NewUserUseCase(userRepo)
         etabUC := usecase.NewEtablissementUseCase(etabRepo)
         accessUC := usecase.NewAccessUseCase(accessRepo)
+        filiereUC := usecase.NewFiliereUseCase(filiereRepo)
+        ueUC := usecase.NewUEUseCase(ueRepo)
+        efUC := usecase.NewEnseignantFiliereUseCase(efRepo)
+        anneeUC := usecase.NewAnneeUseCase(anneeRepo)
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, cfg.CORSAllowedOrigins, authMiddleware)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, cfg.CORSAllowedOrigins, authMiddleware)
 
         httpServer := &http.Server{
                 Addr:         ":" + cfg.Port,
