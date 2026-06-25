@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 import { getAIProvider } from '@/lib/ai-providers'
+import { requireStudentScope, isChapterAccessible } from '@/lib/exam-prep/scope'
 
 /**
  * POST /api/exam-prep/practice/[id]/submit
@@ -67,6 +68,17 @@ async function _POST(
       (ue.niveau === user.niveau || (ue.niveaux && ue.niveaux.includes(user.niveau ?? '')))
     if (!hasAccess) {
       return NextResponse.json({ error: 'Accès non autorisé à cette question.' }, { status: 403 })
+    }
+
+    // ─── Sécurité : valide le chapterId fourni (si présent) ───
+    // Empêche l'injection d'un SRS sur un chapitre d'un document inaccessible.
+    if (chapterId) {
+      const scope = requireStudentScope(user)
+      if (scope.response) return scope.response
+      const chapterOk = await isChapterAccessible(chapterId, scope.filiereId, scope.niveau)
+      if (!chapterOk) {
+        return NextResponse.json({ error: 'Chapitre non accessible' }, { status: 403 })
+      }
     }
 
     // ─── Correction ───

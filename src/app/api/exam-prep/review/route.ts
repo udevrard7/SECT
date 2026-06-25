@@ -105,6 +105,16 @@ async function _POST(request: NextRequest, context: { params: unknown; user: Aut
       return NextResponse.json({ error: 'chapterId est requis' }, { status: 400 })
     }
 
+    // ─── Sécurité : vérifie que l'étudiant a accès au document du chapitre ───
+    // Empêche l'injection d'un SRS sur un chapitre d'un document auquel
+    // l'étudiant n'a pas accès (autre filière/niveau).
+    const scope = requireStudentScope(user)
+    if (scope.response) return scope.response
+    const accessible = await isChapterAccessible(chapterId, scope.filiereId, scope.niveau)
+    if (!accessible) {
+      return NextResponse.json({ error: 'Chapitre non accessible' }, { status: 403 })
+    }
+
     const existing = await withRetry(() =>
       db.reviewItem.findUnique({
         where: { userId_chapterId: { userId: user.id, chapterId } },
@@ -112,8 +122,10 @@ async function _POST(request: NextRequest, context: { params: unknown; user: Aut
     )
 
     if (!existing) {
-      // Crée un ReviewItem initial si inexistant (session de lecture/flashcards)
-      const interval = quality < 3 ? 1 : 1
+      // Crée un ReviewItem initial si inexistant (session de lecture/flashcards).
+      // Pour un nouvel item, l'intervalle initial est toujours 1 jour
+      // (indépendamment de la qualité — le SM-2 s'ajustera ensuite).
+      const interval = 1
       const nextReviewAt = new Date(Date.now() + interval * 86400000)
       const created = await withRetry(() =>
         db.reviewItem.create({
