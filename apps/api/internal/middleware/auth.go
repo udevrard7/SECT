@@ -102,7 +102,7 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 // MapDomainError convertit une erreur domaine en code HTTP approprié.
 func MapDomainError(w http.ResponseWriter, err error) {
         w.Header().Set("Content-Type", "application/json")
-        switch err.(type) {
+        switch e := err.(type) {
         case *domain.InvalidCredentialsError:
                 w.WriteHeader(http.StatusUnauthorized)
                 _, _ = w.Write([]byte(`{"error":"identifiants incorrects"}`))
@@ -117,7 +117,16 @@ func MapDomainError(w http.ResponseWriter, err error) {
                 _, _ = w.Write([]byte(`{"error":"token invalide"}`))
         case *domain.NotFoundError:
                 w.WriteHeader(http.StatusNotFound)
-                _, _ = w.Write([]byte(`{"error":"ressource introuvable"}`))
+                _, _ = w.Write([]byte(`{"error":"` + e.Entity + ` introuvable"}`))
+        case *domain.ConflictError:
+                w.WriteHeader(http.StatusConflict)
+                _, _ = w.Write([]byte(`{"error":"` + e.Message + `"}`))
+        case *domain.UnauthorizedError:
+                w.WriteHeader(http.StatusForbidden)
+                _, _ = w.Write([]byte(`{"error":"` + e.Message + `"}`))
+        case *domain.ValidationError:
+                w.WriteHeader(http.StatusBadRequest)
+                _, _ = w.Write([]byte(`{"error":"` + e.Message + `"}`))
         default:
                 w.WriteHeader(http.StatusInternalServerError)
                 _, _ = w.Write([]byte(`{"error":"erreur interne"}`))
