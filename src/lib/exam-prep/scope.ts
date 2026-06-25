@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NiveauEtude } from '@prisma/client'
 import type { AuthenticatedUser } from '@/lib/auth-session'
+import { db, withRetry } from '@/lib/db'
 
 /**
  * Scope étudiant : garantit que l'utilisateur a une filière ET un niveau
@@ -48,4 +49,34 @@ export function studentUeFilter(filiereId: string, niveau: NiveauEtude) {
       { niveaux: { contains: niveau } },
     ],
   }
+}
+
+/**
+ * Vérifie qu'un chapterId appartient bien à un document accessible à
+ * l'étudiant (via le scoping filière+niveau de l'UE du document).
+ *
+ * À appeler avant de lier un ReviewItem / PracticeAttempt à un chapterId
+ * fourni par le client, pour empêcher l'injection d'un SRS sur un chapitre
+ * d'un document auquel l'étudiant n'a pas accès.
+ *
+ * Retourne true si le chapitre existe ET appartient à un document accessible.
+ */
+export async function isChapterAccessible(
+  chapterId: string,
+  filiereId: string,
+  niveau: NiveauEtude
+): Promise<boolean> {
+  const chapter = await withRetry(() =>
+    db.chapter.findFirst({
+      where: {
+        id: chapterId,
+        document: {
+          deletedAt: null,
+          uniteEnseignement: studentUeFilter(filiereId, niveau),
+        },
+      },
+      select: { id: true },
+    })
+  )
+  return chapter !== null
 }
