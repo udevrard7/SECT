@@ -60,6 +60,9 @@ agent-ctx/
 audit-screenshots/
 tool-results/
 upload/
+migration-log.txt
+migration-stdout.txt
+migration.pid
 *.bak
 rb.ts
 reset-both.ts
