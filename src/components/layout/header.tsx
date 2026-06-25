@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  ChevronRight, Search, Repeat, LogIn,
+  ChevronRight, Search, LogOut,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,6 @@ import { NotificationBell } from '@/components/layout/notification-bell'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { ThemeToggle } from '@/components/ds'
 import { useAuthStore } from '@/stores/auth-store'
-import { useSwitchAccountStore } from '@/stores/switch-account-store'
 import { getPageContext } from '@/lib/routes'
 
 // ─── Horloge temps réel ───
@@ -33,15 +32,15 @@ const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep',
 /**
  * AppHeader — Barre supérieure de l'espace authentifié.
  *
- * La carte utilisateur (avatar + nom + menu profil/paramètres/déconnexion)
- * a été déplacée vers le bas de la sidebar (`SidebarUserCard`), pattern
- * moderne type Linear/Vercel/Notion. Le header ne porte plus que des
- * actions transverses :
+ * La carte utilisateur (avatar + nom + menu profil/paramètres) a été
+ * déplacée vers le bas de la sidebar (`SidebarUserCard`), pattern moderne
+ * type Linear/Vercel/Notion. Le header ne porte plus que des actions
+ * transverses, sans séparateur vertical visible (look épuré) :
  *  - thème, notifications, horloge, recherche (⌘K)
- *  - « Switch Account » : ouvre le `SwitchAccountDialog` (basculer vers un
- *    autre compte sans repasser par la page de login)
- *  - « Login » : déconnexion + redirect vers /login (se reconnecter avec un
- *    autre compte via le formulaire classique)
+ *  - « Déconnexion » : logout + redirect vers /login
+ *
+ * Le bascule de compte (Switch Account) reste accessible depuis la carte
+ * utilisateur de la sidebar (popover → « Changer de compte »).
  */
 export function AppHeader() {
   const { user, logout } = useAuthStore()
@@ -49,7 +48,6 @@ export function AppHeader() {
   const pathname = usePathname()
   const now = useClock()
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const openSwitchAccount = useSwitchAccountStore((s) => s.openDialog)
 
   // Formatage heure/date (memoized — doit être avant early return)
   const { timeStr, dateStr } = useMemo(() => ({
@@ -78,8 +76,8 @@ export function AppHeader() {
   // vers la même route) en partant de NAV_CATEGORIES[user.role].
   const { pageTitle, parentCategory } = getPageContext(pathname, user.role)
 
-  // « Login » : déconnexion du compte courant puis redirect vers /login.
-  const handleLogin = async () => {
+  // Déconnexion : logout du compte courant puis redirect vers /login.
+  const handleLogout = async () => {
     await logout()
     router.push('/login')
   }
@@ -89,14 +87,11 @@ export function AppHeader() {
       {/* Bande kente tricolore */}
       <div className="h-[3px] w-full ds-african-divider" />
 
-      {/* Header h-14 — bleu nuit */}
-      <div className="flex h-14 items-center gap-2 bg-sidebar border-b border-sidebar-border px-3">
+      {/* Header h-14 — bleu nuit, sans séparateur vertical (look épuré) */}
+      <div className="flex h-14 items-center gap-2.5 bg-sidebar border-b border-sidebar-border px-3">
 
         {/* Sidebar control */}
         <SidebarControl className="-ml-1" />
-
-        {/* Séparateur */}
-        <div className="h-5 w-px bg-sidebar-border mx-1" />
 
         {/* Breadcrumb */}
         <div className="hidden md:flex items-center gap-1.5 min-w-0">
@@ -138,7 +133,7 @@ export function AppHeader() {
         <div className="flex-1 lg:flex-none" />
 
         {/* ─── Horloge (desktop uniquement) ─── */}
-        <div className="hidden xl:flex flex-col items-end leading-tight mr-1">
+        <div className="hidden xl:flex flex-col items-end leading-tight">
           <span className="text-sm font-mono font-semibold text-sidebar-foreground/80 tabular-nums">
             {timeStr}
           </span>
@@ -146,9 +141,6 @@ export function AppHeader() {
             {dateStr}
           </span>
         </div>
-
-        {/* Séparateur */}
-        <div className="hidden xl:block h-5 w-px bg-sidebar-border mx-1" />
 
         {/* ─── Actions droite ─── */}
         <div className="flex items-center gap-1.5">
@@ -158,33 +150,17 @@ export function AppHeader() {
           {/* Notifications — composant réel connecté aux APIs /api/alertes & /api/notifications/admin */}
           <NotificationBell className="h-9 w-9 rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent" />
 
-          {/* Séparateur */}
-          <div className="h-5 w-px bg-sidebar-border mx-0.5" />
-
-          {/* Switch Account — ouvre le dialog de bascule de compte */}
+          {/* Déconnexion — logout + redirect vers /login */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={openSwitchAccount}
-            className="h-9 gap-1.5 px-2.5 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-lg"
-            aria-label="Changer de compte"
-            title="Changer de compte"
+            onClick={handleLogout}
+            className="h-9 gap-1.5 px-2.5 text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/5 rounded-lg"
+            aria-label="Se déconnecter"
+            title="Se déconnecter"
           >
-            <Repeat className="h-4 w-4" />
-            <span className="hidden sm:inline text-xs font-medium">Switch</span>
-          </Button>
-
-          {/* Login — déconnexion + redirect vers /login */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogin}
-            className="h-9 gap-1.5 px-2.5 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-lg"
-            aria-label="Se connecter avec un autre compte"
-            title="Se connecter avec un autre compte"
-          >
-            <LogIn className="h-4 w-4" />
-            <span className="hidden sm:inline text-xs font-medium">Login</span>
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs font-medium">Déconnexion</span>
           </Button>
         </div>
       </div>
