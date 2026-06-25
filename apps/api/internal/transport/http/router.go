@@ -14,10 +14,12 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-	router   *chi.Mux
-	userRepo *repository.UserRepository
-	userUC   *usecase.UserUseCase
-	authUC   *usecase.AuthUseCase
+	router    *chi.Mux
+	userRepo  *repository.UserRepository
+	userUC    *usecase.UserUseCase
+	authUC    *usecase.AuthUseCase
+	etabUC    *usecase.EtablissementUseCase
+	accessUC  *usecase.AccessUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -25,10 +27,18 @@ func NewServer(
 	userRepo *repository.UserRepository,
 	userUC *usecase.UserUseCase,
 	authUC *usecase.AuthUseCase,
+	etabUC *usecase.EtablissementUseCase,
+	accessUC *usecase.AccessUseCase,
 	corsOrigins []string,
 	authMiddleware func(http.Handler) http.Handler,
 ) *Server {
-	s := &Server{userRepo: userRepo, userUC: userUC, authUC: authUC}
+	s := &Server{
+		userRepo: userRepo,
+		userUC:   userUC,
+		authUC:   authUC,
+		etabUC:   etabUC,
+		accessUC: accessUC,
+	}
 	s.setupRouter(corsOrigins, authMiddleware)
 	return s
 }
@@ -67,10 +77,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware)
 
-		// /api/me — profil utilisateur courant
+		// /api/me
 		r.With(middleware.RequireAuth).Get("/api/me", s.me)
-
-		// /api/auth/change-password
 		r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
 
 		// /api/users — CRUD utilisateurs
@@ -81,6 +89,29 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/{id}", s.getUser)
 			r.Patch("/{id}", s.updateUser)
 			r.Delete("/{id}", s.deleteUser)
+		})
+
+		// /api/etablissements — CRUD établissements
+		r.Route("/api/etablissements", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listEtablissements)
+			r.Post("/", s.createEtablissement)
+			r.Get("/{id}", s.getEtablissement)
+			r.Patch("/{id}", s.updateEtablissement)
+			r.Delete("/{id}", s.deleteEtablissement)
+			r.Post("/upload-logo", s.uploadLogo)
+			r.Get("/{id}/watermark", s.getWatermark)
+			r.Patch("/{id}/watermark", s.updateWatermark)
+		})
+
+		// /api/etablissement-access — gestion des accès ADMIN
+		r.Route("/api/etablissement-access", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listAccess)
+			r.Post("/", s.createAccess)
+			r.Get("/check", s.checkAccess)
+			r.Get("/authorized-etablissements", s.authorizedEtablissements)
+			r.Patch("/{id}", s.updateAccess)
 		})
 	})
 
