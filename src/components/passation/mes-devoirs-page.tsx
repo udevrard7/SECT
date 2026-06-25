@@ -127,7 +127,7 @@ function getTypeSeanceBadgeClasses(type: string): string {
     case 'TP':
       return 'bg-warning/10 text-warning border-warning/20'
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800'
+      return 'bg-muted text-muted-foreground border-border'
   }
 }
 
@@ -136,7 +136,7 @@ function getSoumissionStatutBadge(statut: string): { label: string; classes: str
     case 'BROUILLON':
       return {
         label: 'Brouillon',
-        classes: 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800',
+        classes: 'bg-muted text-muted-foreground border-border',
         icon: <FileText className="h-3 w-3" />,
       }
     case 'SOUMIS':
@@ -160,7 +160,7 @@ function getSoumissionStatutBadge(statut: string): { label: string; classes: str
     default:
       return {
         label: statut,
-        classes: 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800',
+        classes: 'bg-muted text-muted-foreground border-border',
         icon: null,
       }
   }
@@ -314,22 +314,43 @@ export function MesDevoirsPage() {
 
   return (
     <div className="space-y-6">
-      {/* ─── Header ─── */}
-      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
-        <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
-          Mes Devoirs
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Consultez et soumettez vos devoirs
-        </p>
+      {/* ─── Hero canonique ─── */}
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 ds-logo-glow">
+            <BookOpen className="h-6 w-6 text-primary-text" />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
+              Mes Devoirs
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Consultez et soumettez vos devoirs
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {overdueCount > 0 && (
+            <Badge variant="secondary" className="gap-1.5 bg-destructive/15 text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {overdueCount} en retard
+            </Badge>
+          )}
+          {draftCount > 0 && (
+            <Badge variant="secondary" className="gap-1.5 bg-warning/15 text-warning">
+              <FileText className="h-3.5 w-3.5" />
+              {draftCount} brouillon{draftCount > 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* ─── Stats cards ─── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card className="border-l-4 border-l-primary">
+        <Card className="border-l-4 border-l-success">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10">
                 <BookOpen className="h-4 w-4 text-success-text" />
               </div>
               <div>
@@ -339,10 +360,10 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-primary">
+        <Card className="border-l-4 border-l-warning">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/10">
                 <FileText className="h-4 w-4 text-warning" />
               </div>
               <div>
@@ -352,10 +373,10 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-primary">
+        <Card className="border-l-4 border-l-destructive">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
               </div>
               <div>
@@ -365,11 +386,11 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-primary">
+        <Card className="border-l-4 border-l-info">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10">
-                <CheckCircle2 className="h-4 w-4 text-secondary" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-info/10">
+                <Send className="h-4 w-4 text-info" />
               </div>
               <div>
                 <p className="font-mono text-2xl font-bold tabular-nums">{devoirsSoumis.length}</p>
@@ -378,72 +399,43 @@ export function MesDevoirsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-primary sm:col-span-2 lg:col-span-1">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10">
-                <Sparkles className="h-4 w-4 text-secondary" />
-              </div>
-              <div>
-                <p className="font-mono text-2xl font-bold tabular-nums">{devoirsCorriges.length}</p>
-                <p className="text-xs text-muted-foreground">Corrigés{avgNote !== null ? ` · ${avgNote.toFixed(1)} moy` : ''}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* ─── Search ─── */}
-      <div className="relative">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Rechercher un devoir..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
-      {/* ─── Tabs ─── */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="a-faire" className="gap-1.5">
-            <BookOpen className="h-4 w-4" />
-            À faire
-            {devoirsAFaire.filter(filterBySearch).length > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-success/10 text-success-text"
-              >
-                {devoirsAFaire.filter(filterBySearch).length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="soumis" className="gap-1.5">
-            <Send className="h-4 w-4" />
-            Soumis
-            {devoirsSoumis.filter(filterBySearch).length > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-info/10 text-info"
-              >
-                {devoirsSoumis.filter(filterBySearch).length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="corriges" className="gap-1.5">
-            <Sparkles className="h-4 w-4" />
-            Corrigés
-            {devoirsCorriges.filter(filterBySearch).length > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-1 h-5 min-w-5 px-1.5 text-[10px] bg-secondary/10 text-secondary"
-              >
-                {devoirsCorriges.filter(filterBySearch).length}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+      {/* ─── Search + Tabs ─── */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
+            <TabsTrigger value="a-faire" className="gap-1.5">
+              <BookOpen className="h-4 w-4" />
+              <span className="hidden sm:inline">À faire</span>
+              <span className="sm:hidden">À faire</span>
+              {devoirsAFaire.filter(filterBySearch).length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center px-1 text-[10px] font-bold bg-success/15 text-success-text font-mono tabular-nums">
+                  {devoirsAFaire.filter(filterBySearch).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="soumis" className="gap-1.5">
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">Soumis</span>
+              <span className="sm:hidden">Soumis</span>
+              {devoirsSoumis.filter(filterBySearch).length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center px-1 text-[10px] font-bold bg-info/15 text-info font-mono tabular-nums">
+                  {devoirsSoumis.filter(filterBySearch).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="corriges" className="gap-1.5">
+              <Sparkles className="h-4 w-4" />
+              <span className="hidden sm:inline">Corrigés</span>
+              <span className="sm:hidden">Corrigés</span>
+              {devoirsCorriges.filter(filterBySearch).length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center px-1 text-[10px] font-bold bg-secondary/15 text-secondary font-mono tabular-nums">
+                  {devoirsCorriges.filter(filterBySearch).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
         {/* ─── À faire tab ─── */}
         <TabsContent value="a-faire">
@@ -518,7 +510,7 @@ export function MesDevoirsPage() {
                       {canSubmit && (
                         <Button
                           size="sm"
-                          className="bg-success hover:bg-success"
+                          className="bg-success hover:bg-success/90 gap-1.5"
                           onClick={() => handleOpenSubmit(devoir)}
                         >
                           <Send className="h-4 w-4" />
@@ -763,6 +755,17 @@ export function MesDevoirsPage() {
         </TabsContent>
       </Tabs>
 
+      <div className="relative w-full sm:w-64">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Rechercher un devoir…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 h-9 text-sm"
+        />
+      </div>
+      </div>
+
       {/* ─── Submit Dialog ─── */}
       <Dialog open={submitDialogOpen} onOpenChange={setSubmitDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh]">
@@ -838,7 +841,7 @@ export function MesDevoirsPage() {
               Sauvegarder en brouillon
             </Button>
             <Button
-              className="bg-success hover:bg-success"
+              className="bg-success hover:bg-success/90 gap-1.5"
               onClick={() => handleSubmit('SOUMIS')}
               disabled={isSubmitting}
             >
@@ -882,7 +885,7 @@ export function MesDevoirsPage() {
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="text-xs bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/40 dark:text-gray-300 dark:border-gray-800"
+                      className="text-xs bg-muted text-muted-foreground border-border"
                     >
                       {detailDevoir.noteMax} pts
                     </Badge>
