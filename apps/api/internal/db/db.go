@@ -59,6 +59,7 @@ type SessionClaims struct {
         UserID          string // CUID de l'utilisateur courant
         Role            string // ADMIN | RESPONSABLE | ENSEIGNANT | ETUDIANT
         EtablissementID string // CUID de l'établissement ('' pour ADMIN)
+        FiliereID       string // CUID de la filière ('' si non applicable)
 }
 
 // SetClaimsTx pose les claims RLS sur une transaction pgx.
@@ -81,6 +82,13 @@ func SetClaimsTx(ctx context.Context, tx pgx.Tx, claims SessionClaims) error {
         }
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID); err != nil {
                 return fmt.Errorf("set etablissement_id claim: %w", err)
+        }
+        // filiere_id n'est pas utilisé par les policies RLS actuelles, mais on le pose
+        // pour future utilisation (policies par filière).
+        if claims.FiliereID != "" {
+                if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.filiere_id', $1, true)", claims.FiliereID); err != nil {
+                        return fmt.Errorf("set filiere_id claim: %w", err)
+                }
         }
         return nil
 }

@@ -2837,3 +2837,105 @@ Stage Summary:
   * Authentification JWT native Go (remplacement NextAuth)
   * Déplacement Next.js vers apps/web/
   * Stockage Cloudflare R2
+
+---
+Task ID: 3
+Agent: Z.ai (tuteur principal)
+Task: Étape 3 — Authentification Go native (JWT HMAC-SHA256 + refresh tokens + bcrypt + lockout)
+
+Work Log:
+- Analyse approfondie de l'auth NextAuth actuelle via sous-agent Explore :
+  * NextAuth v4, JWT 24h, cookies HttpOnly, 2 providers (credentials-email + credentials-matricule)
+  * bcryptjs cost 10, champs loginAttempts/lockedUntil présents mais jamais utilisés
+  * Claims JWT : sub, role, etablissementId, filiereId, actif, matricule, mustChangePwd, name
+  * withAuth re-vérifie actif en DB à chaque appel (ne fait pas confiance au JWT)
+- Décisions de conception validées avec l'utilisateur :
+  * Transport : Authorization: Bearer (standard REST, aligné API-first)
+  * Refresh token : access 15min + refresh 7j (rotation à chaque /refresh)
+  * Login unifié : POST /api/auth/login avec champ identifier (email OU matricule)
+- Migration 000008 (table RefreshToken) :
+  * id, userId, tokenHash (SHA-256), expiresAt, revokedAt, createdAt, userAgent, ip
+  * Index sur tokenHash (unique), userId, expiresAt (nettoyage)
+  * FK vers User (ON DELETE CASCADE)
+  * RLS activé + policies (user ne voit que ses propres tokens)
+  * Appliquée sur Neon : 1 table, 4 index, 2 policies ✅
+- Domain auth (internal/domain/auth.go) :
+  * Credentials, AuthSession, RefreshToken (avec IsRevoked/IsExpired/IsValid)
+  * AuthUser (User + Password + LoginAttempts + LockedUntil + DerniereConnexion)
+  * AuditLogEntry + actions standardisées (LOGIN, LOGIN_FAILED, LOGIN_LOCKED, LOGOUT, TOKEN_REFRESHED, CHANGE_PASSWORD, PASSWORD_RESET)
+  * Interface AuthRepository (12 méthodes : FindUserForAuth, UpdateLoginSuccess, IncrementLoginAttempts, CreateRefreshToken, FindRefreshTokenByHash, RevokeRefreshToken, RevokeAllUserRefreshTokens, CreateAuditLog, GetUserByID, UpdatePassword)
+  * Erreurs typées : InvalidCredentialsError, AccountDisabledError, AccountLockedError, InvalidTokenError
+- JWT natif Go (internal/jwt/jwt.go) :
+  * Signer avec secret HMAC-SHA256 (constant-time comparison via hmac.Equal)
+  * GenerateAccessToken : claims sub/role/etablissement_id/filiere_id/email/name/iat/exp/typ, TTL 15min
+  * VerifyAccessToken : vérifie signature + expiration + type=access
+  * GenerateRefreshToken : 64 bytes aléatoires (crypto/rand) → 128 chars hex
+  * HashRefreshToken : SHA-256 pour stockage/lookup DB (jamais le plaintext en base)
+- Repository auth (internal/repository/auth.go) :
+  * Toutes les méthodes bypassent RLS (SET LOCAL row_security = off) car exécutées avant pose des claims
+  * FindUserForAuth : détection automatique email vs matricule (présence de @)
+  * IncrementLoginAttempts : incrémente + pose lockedUntil si seuil atteint
+  * AuditLog : utilise INSERT avec policy WITH CHECK(true) (pas besoin de bypass)
+- UseCase auth (internal/usecase/auth.go) :
+  * Login : FindUserForAuth → check lockedUntil → bcrypt compare → si échec increment + audit → si succès reset attempts + create refresh token + generate access token + audit LOGIN
+  * Refresh : hash + find by hash → check IsValid → get user → check actif → revoke old (rotation) → create new → generate new access → audit
+  * Logout : find by hash → revoke → audit LOGOUT (no-op si token inexistant)
+  * ChangePassword : bcrypt compare old → hash new (cost 10) → update → revoke ALL refresh tokens (force re-login) → audit
+  * Constantes : MaxLoginAttempts=5, LockDuration=15min, BcryptCost=10 (compatible bcryptjs)
+- Middleware auth (internal/middleware/auth.go) réécrit :
+  * Auth(signer) : extrait Bearer token → VerifyAccessToken (signature HMAC-SHA256) → pose SessionClaims dans context
+  * RequireAuth : 401 si pas de claims
+  * RequireRole(roles...) : 403 si rôle non autorisé
+  * MapDomainError : convertit erreurs domaine en codes HTTP (401/403/429/404/500)
+  * Bug corrigé : ClaimsFromContext délègue maintenant à db.ClaimsFromContext (clé de context unifiée)
+- Handlers HTTP (internal/transport/http/auth_handlers.go) :
+  * POST /api/auth/login — body {identifier, password} → {user, accessToken, refreshToken, expiresAt}
+  * POST /api/auth/refresh — body {refreshToken} → nouveau token pair
+  * POST /api/auth/logout — body {refreshToken} → révoque le token
+  * POST /api/auth/change-password (auth requis) — body {currentPassword, newPassword}
+  * clientIP : extrait IP de X-Forwarded-For / X-Real-IP / RemoteAddr
+- Routeur chi (internal/transport/http/router.go) réorganisé :
+  * Routes publiques (Group) : /health, /api/auth/login, /api/auth/refresh, /api/auth/logout
+  * Routes authentifiées (Group + middleware Auth) : /api/me, /api/auth/change-password
+- Migration 000008 (RefreshToken) appliquée sur Neon ✅
+- Build Go réussi (bin/sect-api 15MB)
+- Serveur Go démarré (daemon double-fork, port 8080)
+- Tests E2E (16 tests) :
+  * Login ADMIN (email) ✅
+  * GET /api/me ADMIN ✅ (RLS filtre correctement)
+  * GET /api/me sans token → 401 ✅
+  * GET /api/me token invalide → 401 ✅
+  * Login mauvais password → 401 ✅
+  * POST /api/auth/refresh ✅ (rotation)
+  * Refresh avec ancien token → 401 (révoqué) ✅
+  * POST /api/auth/logout ✅
+  * Refresh après logout → 401 ✅
+  * Login ENSEIGNANT ✅
+  * GET /api/me ENSEIGNANT (etablissementId présent) ✅
+  * Change password ✅ (ancien invalidé, nouveau fonctionne)
+  * Login RESPONSABLE ✅
+- Vérification DB :
+  * 16 LOGIN, 10 LOGIN_FAILED, 2 CHANGE_PASSWORD, 2 TOKEN_REFRESHED, 1 LOGOUT dans AuditLog
+  * 18 RefreshToken créés (12 actifs, 6 révoqués)
+  * loginAttempts=0 après logins réussis, derniereConnexion mis à jour
+
+Stage Summary:
+- Fichiers créés (6) :
+  * apps/api/internal/domain/auth.go
+  * apps/api/internal/jwt/jwt.go
+  * apps/api/internal/repository/auth.go
+  * apps/api/internal/usecase/auth.go
+  * apps/api/internal/transport/http/auth_handlers.go
+  * db/migrations/000008_create_refresh_tokens.up.sql + .down.sql
+- Fichiers modifiés (6) :
+  * apps/api/cmd/api/main.go (instanciation signer + authUC)
+  * apps/api/internal/db/db.go (ajout FiliereID dans SessionClaims)
+  * apps/api/internal/middleware/auth.go (vérif signature HMAC + MapDomainError)
+  * apps/api/internal/transport/http/router.go (Group routes + middleware)
+  * apps/api/internal/transport/http/handlers.go (me handler simplifié)
+  * apps/api/go.mod + go.sum (ajout golang.org/x/crypto pour bcrypt)
+- Fichiers supprimés (1) : apps/api/internal/middleware/jwt.go (remplacé par internal/jwt/)
+- Backend Go maintenant autonome pour l'auth (plus dépendant de NextAuth)
+- Endpoints auth complets : login, refresh, logout, change-password, /me
+- Sécurité : bcrypt cost 10, HMAC-SHA256, refresh rotation, lockout 5 tentatives/15min, audit log
+- Transition progressive : NextAuth (Next.js) toujours actif, Go JWT en parallèle

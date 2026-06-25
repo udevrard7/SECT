@@ -2,63 +2,75 @@
 package http
 
 import (
-        "net/http"
+	"net/http"
 
-        "github.com/go-chi/chi/v5"
-        chimw "github.com/go-chi/chi/v5/middleware"
-        "github.com/go-chi/cors"
-        "github.com/udevrard7/sect/apps/api/internal/middleware"
-        "github.com/udevrard7/sect/apps/api/internal/repository"
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/udevrard7/sect/apps/api/internal/middleware"
+	"github.com/udevrard7/sect/apps/api/internal/repository"
+	"github.com/udevrard7/sect/apps/api/internal/usecase"
 )
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-        router      *chi.Mux
-        userRepo    *repository.UserRepository
-        jwtSecret   string
+	router   *chi.Mux
+	userRepo *repository.UserRepository
+	authUC   *usecase.AuthUseCase
 }
 
-// NewServer crée et configure le serveur HTTP avec tous les middlewares et routes.
-func NewServer(userRepo *repository.UserRepository, jwtSecret string, corsOrigins []string) *Server {
-        s := &Server{
-                userRepo:  userRepo,
-                jwtSecret: jwtSecret,
-        }
-        s.setupRouter(corsOrigins)
-        return s
+// NewServer crée et configure le serveur HTTP.
+func NewServer(
+	userRepo *repository.UserRepository,
+	authUC *usecase.AuthUseCase,
+	corsOrigins []string,
+	authMiddleware func(http.Handler) http.Handler,
+) *Server {
+	s := &Server{userRepo: userRepo, authUC: authUC}
+	s.setupRouter(corsOrigins, authMiddleware)
+	return s
 }
 
-// ServeHTTP implémente http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-        s.router.ServeHTTP(w, r)
+	s.router.ServeHTTP(w, r)
 }
 
-func (s *Server) setupRouter(corsOrigins []string) {
-        r := chi.NewRouter()
+func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Handler) http.Handler) {
+	r := chi.NewRouter()
 
-        // Middlewares globaux
-        r.Use(chimw.RequestID)
-        r.Use(chimw.RealIP)
-        r.Use(chimw.Recoverer)
-        r.Use(cors.Handler(cors.Options{
-                AllowedOrigins:   corsOrigins,
-                AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-                AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-                ExposedHeaders:   []string{"Link"},
-                AllowCredentials: true,
-                MaxAge:           300,
-        }))
+	// Middlewares globaux
+	r.Use(chimw.RequestID)
+	r.Use(chimw.RealIP)
+	r.Use(chimw.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   corsOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
-        // Routes publiques (health)
-        r.Get("/health", s.health)
+	// Health check (public)
+	r.Get("/health", s.health)
 
-        // Routes API (authentifiées)
-        r.Route("/api", func(r chi.Router) {
-                r.Use(middleware.Auth(s.jwtSecret))
+	// Auth routes publiques (login, refresh, logout — pas de middleware Auth)
+	r.Group(func(r chi.Router) {
+		r.Post("/api/auth/login", s.login)
+		r.Post("/api/auth/refresh", s.refresh)
+		r.Post("/api/auth/logout", s.logout)
+	})
 
-                // /api/me — retourne l'utilisateur courant (démo RLS)
-                r.With(middleware.RequireAuth).Get("/me", s.me)
-        })
+	// Routes authentifiées — middleware Auth appliqué via Group
+	r.Group(func(r chi.Router) {
+		r.Use(authMiddleware)
 
-        s.router = r
+		// /api/me
+		r.With(middleware.RequireAuth).Get("/api/me", s.me)
+
+		// /api/auth/change-password
+		r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
+	})
+
+	s.router = r
 }
