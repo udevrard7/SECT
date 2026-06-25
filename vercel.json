@@ -1,12 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["fra1"],
-  "crons": [
-    {
-      "path": "/api/exam-prep/rappels",
-      "schedule": "0 8 * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/api/(.*)",
