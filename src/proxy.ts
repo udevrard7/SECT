@@ -33,6 +33,7 @@ const PUBLIC_PATHS = [
   '/api/certificats/verify',  // Public certificate verification endpoint
   '/api/landing-demo',        // Public interactive demo on landing page (rate-limited)
   '/api/push/vapid-public-key', // Public VAPID key for push subscription (client needs it before auth)
+  '/api/exam-prep/rappels',   // Cron rappels (appelé par cron-job.org, pas d'auth NextAuth)
   '/offline',                  // PWA offline fallback page (accessible without auth)
 ]
 
