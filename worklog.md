@@ -2764,3 +2764,76 @@ Stage Summary:
   * Top tables : Reponse 677, AuditLog 417, BadgeProgression 37, Resultat 34, SessionPassation 34, ValidationUE 20, User 18, Affectation 15, EpreuveDocument 12, Document 10
 - Transition progressive respectée : Supabase reste actif pour le Next.js, Neon est prêt pour le backend Go
 - Prochaine étape (1.D) : mise en place golang-migrate + sqlc pour le backend Go (génération code type-safe depuis le SQL)
+
+---
+Task ID: 2A
+Agent: Z.ai (tuteur principal)
+Task: Étape 2 — Structure monorepo + squelette backend Go (Clean Architecture) + connexion Neon + RLS
+
+Work Log:
+- Installation Go 1.23.4 (téléchargement tarball vers /tmp/go-install/go/ car /usr/local inaccessible)
+- Installation golang-migrate + sqlc via `go install` (daemon double-fork)
+- Création de la structure monorepo :
+  * apps/api/ — backend Go (nouveau)
+  * packages/shared/ — partagé (vide pour l'instant)
+  * Next.js reste à la racine (transition progressive — sera déplacé vers apps/web/ plus tard)
+- Squelette Clean Architecture Go (apps/api/) :
+  * cmd/api/main.go — point d'entrée (config → db pool → repos → router → graceful shutdown)
+  * internal/config/config.go — chargement .env (NEON_DATABASE_URL, JWT_SECRET, CORS, etc.)
+  * internal/db/db.go — pgxpool + helpers RLS (SetClaimsTx, WithTx, ClaimsFromContext, WithClaimsContext)
+  * internal/domain/user.go — entité User + interface UserRepository + erreurs domaine (NotFoundError)
+  * internal/usecase/user.go — UserUseCase.GetProfile (orchestre repo avec claims)
+  * internal/repository/user.go — implémentation pgx (FindByID, FindByEmail, ListByEtablissement) avec RLS automatique
+  * internal/transport/http/router.go — routeur chi (cors, RequestID, RealIP, Recoverer, routes /health + /api/me)
+  * internal/transport/http/handlers.go — handlers health + me + writeError
+  * internal/middleware/auth.go — Auth (JWT → claims context), RequireAuth, RequireRole
+  * internal/middleware/jwt.go — parseJWT (décode payload HS256, extraction sub/role/etablissementId)
+  * internal/middleware/logging.go — Logging (slog JSON, method/path/status/duration)
+- Configuration sqlc (sqlc.yaml) :
+  * engine postgresql, queries db/queries/, schema ../../db/reference/schema.sql
+  * gen go package sqlcgen, pgx/v5, emit_json_tags, emit_pointers_for_null_types, emit_interface
+- Requêtes SQL exemple pour sqlc (db/queries/user.sql) : GetUserByID, GetUserByEmail, ListUsersByEtablissement, CountUsersByRole
+- Makefile (dev, build, run, test, lint, tidy, migrate-up/down/version, sqlc-gen, clean)
+- go mod tidy : dépendances téléchargées (pgx/v5, chi/v5, cors, uuid, crypto)
+- Build réussi : bin/sect-api (15MB)
+- Démarrage serveur Go (daemon double-fork, port 8080) :
+  * Connecté à Neon Postgres ✅
+  * GET /health → 200 {"status":"ok","service":"sect-api","version":"0.1.0"} ✅
+  * GET /api/me sans auth → 401 {"error":"authentication required"} ✅
+  * GET /api/me avec JWT ETUDIANT → 200 (profil complet retourné, RLS filtre correctement) ✅
+  * GET /api/me avec JWT ADMIN → 200 (profil admin, pas de etablissementId/filiereId) ✅
+  * Logging structuré slog JSON opérationnel (method, path, status, duration_ms) ✅
+- Flux RLS complet validé de bout en bout :
+  1. Middleware Auth extrait JWT → claims dans context
+  2. Handler récupère claims
+  3. UseCase appelle repository avec context
+  4. Repository extrait claims, appelle db.WithTx
+  5. db.WithTx BeginTx + SetClaimsTx (pose app.claims.user_id/role/etablissement_id)
+  6. pgx Query → Neon RLS filtre automatiquement
+  7. Commit (claims nettoyés)
+
+Stage Summary:
+- Fichiers créés (14) :
+  * apps/api/go.mod + go.sum
+  * apps/api/Makefile
+  * apps/api/sqlc.yaml
+  * apps/api/README.md
+  * apps/api/cmd/api/main.go
+  * apps/api/internal/config/config.go
+  * apps/api/internal/db/db.go
+  * apps/api/internal/domain/user.go
+  * apps/api/internal/usecase/user.go
+  * apps/api/internal/repository/user.go
+  * apps/api/internal/transport/http/router.go
+  * apps/api/internal/transport/http/handlers.go
+  * apps/api/internal/middleware/auth.go + jwt.go + logging.go
+  * apps/api/db/queries/user.sql
+- Fichiers modifiés (2) : .gitignore (ajout apps/api/bin/), worklog.md
+- État : backend Go opérationnel sur port 8080, connecté à Neon, RLS fonctionnel
+- Transition progressive : Next.js + Supabase toujours actifs (port 3000), Go + Neon en parallèle (port 8080)
+- Prochaines étapes possibles :
+  * Migration des routes API une par une (Next.js → Go)
+  * Génération code sqlc pour tous les domaines
+  * Authentification JWT native Go (remplacement NextAuth)
+  * Déplacement Next.js vers apps/web/
+  * Stockage Cloudflare R2
