@@ -30,7 +30,9 @@ type R2Client struct {
 //   R2_ACCESS_KEY_ID    — Access Key ID
 //   R2_SECRET_ACCESS_KEY — Secret Access Key
 //   R2_BUCKET_NAME      — Nom du bucket (default: sect-documents)
-func NewR2Client(ctx context.Context, accountID, accessKey, secretKey, bucket string) (*R2Client, error) {
+//   R2_ENDPOINT         — Endpoint S3 (optionnel, default: https://{account_id}.r2.cloudflarestorage.com)
+//                         Pour l'UE: https://{account_id}.eu.r2.cloudflarestorage.com
+func NewR2Client(ctx context.Context, accountID, accessKey, secretKey, bucket, endpointOverride string) (*R2Client, error) {
         if accountID == "" || accessKey == "" || secretKey == "" {
                 return nil, fmt.Errorf("R2 credentials required: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY")
         }
@@ -38,8 +40,11 @@ func NewR2Client(ctx context.Context, accountID, accessKey, secretKey, bucket st
                 bucket = "sect-documents"
         }
 
-        // Endpoint R2 : https://{account_id}.r2.cloudflarestorage.com
-        endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", accountID)
+        // Endpoint R2 : override ou default
+        endpoint := endpointOverride
+        if endpoint == "" {
+                endpoint = fmt.Sprintf("https://%s.r2.cloudflarestorage.com", accountID)
+        }
 
         // Charger la config AWS avec credentials statiques + resolver d'endpoint personnalisé
         cfg, err := awscfg.LoadDefaultConfig(ctx,
