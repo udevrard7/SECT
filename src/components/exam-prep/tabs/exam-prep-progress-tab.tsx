@@ -23,6 +23,7 @@ interface Chapter { id: string; titre: string; ordre: number; sujets: string[] }
 interface Dashboard {
   scoreMoyen: number
   totalAttempts: number
+  uniqueQuestionsCount?: number
   tauxReussite: number
   tempsRevisionSec: number
   lacunesParChapitre: Array<{
@@ -106,7 +107,7 @@ export function ExamPrepProgressTab({ documentId }: Props) {
             icon: Award, accent: 'primary' as const, border: 'border-l-primary',
           },
           {
-            label: 'Tentatives', value: String(data.totalAttempts),
+            label: 'Questions répondues', value: String(data.uniqueQuestionsCount ?? data.totalAttempts),
             icon: TrendingUp, accent: 'info' as const, border: 'border-l-info',
           },
           {

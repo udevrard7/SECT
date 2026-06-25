@@ -10,7 +10,7 @@
  * - Feedback : score, correct, explication, réponse attendue, SRS
  */
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Award, Loader2, Sparkles, CheckCircle2, XCircle, Send,
@@ -93,6 +93,15 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
   const [selectedProps, setSelectedProps] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
+  // ─── Timer pour mesurer le temps de réponse (dureeSec) ───
+  // Démarre à chaque nouvelle question (changement d'index ou génération).
+  // Le temps écoulé est envoyé au submit pour alimenter le KPI « Temps de
+  // révision » du tableau de bord Progression.
+  const questionStartTime = useRef<number>(Date.now())
+  useEffect(() => {
+    questionStartTime.current = Date.now()
+  }, [currentIdx, questions.length])
+
   // Récupère le résultat stocké pour la question courante (restauration après changement d'onglet)
   const currentQuestion = questions[currentIdx]
   const result = currentQuestion ? (sessionResults[currentQuestion.id] as SubmitResult | undefined) ?? null : null
@@ -157,6 +166,8 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
     }
 
     setSubmitting(true)
+    // Calcule le temps de réponse en secondes
+    const dureeSec = Math.round((Date.now() - questionStartTime.current) / 1000)
     try {
       const res = await fetch(`/api/exam-prep/practice/${q.id}/submit`, {
         method: 'POST',
@@ -164,6 +175,7 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
         body: JSON.stringify({
           reponse,
           chapterId: chapterId || undefined,
+          dureeSec,
         }),
       })
       if (!res.ok) {

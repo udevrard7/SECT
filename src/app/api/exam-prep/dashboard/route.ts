@@ -34,13 +34,20 @@ async function _GET(request: NextRequest, context: { params: unknown; user: Auth
     const attempts = await withRetry(() =>
       db.practiceAttempt.findMany({
         where: attemptWhere,
-        select: { score: true, correct: true, dureeSec: true, chapterId: true, createdAt: true },
+        select: { questionId: true, score: true, correct: true, dureeSec: true, chapterId: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
         take: 500, // limite perf
       })
     )
 
     const totalAttempts = attempts.length
+
+    // ─── Questions distinctes tentées (un étudiant peut refaire une question) ───
+    // Le KPI « Questions répondues » compte le nombre de questions uniques,
+    // pas le nombre total de tentatives (qui peut être > si l'étudiant
+    // refait une question plusieurs fois).
+    const uniqueQuestionIds = new Set(attempts.map((a) => a.questionId))
+
     const scoreMoyen = totalAttempts > 0
       ? attempts.reduce((s, a) => s + (a.score ?? 0), 0) / totalAttempts
       : 0
@@ -144,6 +151,7 @@ async function _GET(request: NextRequest, context: { params: unknown; user: Auth
     return NextResponse.json({
       scoreMoyen: Math.round(scoreMoyen * 100) / 100,
       totalAttempts,
+      uniqueQuestionsCount: uniqueQuestionIds.size,
       tauxReussite: Math.round(tauxReussite * 100),
       tempsRevisionSec: tempsRevision,
       lacunesParChapitre,
