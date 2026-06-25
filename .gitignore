@@ -51,11 +51,16 @@ prompt
 
 server.log
 # Skills directory
-/skills/*.bak
-upload/
-tool-results/
+/skills/
+
+# Sandbox-specific (not part of the SECT project)
+.zscripts/
+.idx/
 agent-ctx/
 audit-screenshots/
+tool-results/
+upload/
+*.bak
 rb.ts
 reset-both.ts
 check-*.ts
