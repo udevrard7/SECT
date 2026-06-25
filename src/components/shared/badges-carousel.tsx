@@ -6,7 +6,7 @@ import {
   Award, Star, Trophy, Zap, Flame, ThumbsUp, CheckCircle2, CalendarCheck,
   FileText, PenTool, Sparkles, GraduationCap, Library, Clock, ClipboardCheck,
   Users, Eye, Network, Shield, Target, Cpu, HeartHandshake, ChevronRight,
-  Lock, X
+  HelpCircle, BookMarked, Lock, X
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -40,6 +40,8 @@ function BadgeIcon({ name, className }: { name: string; className?: string }) {
     case 'Target': return <Target className={className} />
     case 'Cpu': return <Cpu className={className} />
     case 'HeartHandshake': return <HeartHandshake className={className} />
+    case 'HelpCircle': return <HelpCircle className={className} />
+    case 'BookMarked': return <BookMarked className={className} />
     default: return <Award className={className} />
   }
 }
