@@ -26,7 +26,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap, FileText, BookOpen, ArrowLeft, Loader2,
-  AlertCircle, Sparkles, Clock, Award,
+  AlertCircle, Sparkles, Clock, Award, Eye, Download,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,7 @@ import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 import { ExamPrepDocumentDetail } from './exam-prep-document-detail'
+import { DocumentReader } from './document-reader'
 
 // ─── Types ───
 
@@ -73,6 +74,7 @@ export function ExamPrepPage() {
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get('documentId')
   )
+  const [readerDocumentId, setReaderDocumentId] = useState<string | null>(null)
 
   // ─── Fetch documents ───
   const fetchDocuments = useCallback(async () => {
@@ -305,6 +307,35 @@ export function ExamPrepPage() {
                       <span>{new Date(doc.dateUpload).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
                     </div>
 
+                    {/* Actions : Lire + Télécharger (ne déclenchent pas le clic carte) */}
+                    <div className="mt-2 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setReaderDocumentId(doc.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Lire
+                      </button>
+                      <a
+                        href={`/api/exam-prep/documents/${doc.id}/download?format=pdf`}
+                        download
+                        className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
+                        title="Télécharger en PDF"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">PDF</span>
+                      </a>
+                      <a
+                        href={`/api/exam-prep/documents/${doc.id}/download?format=txt`}
+                        download
+                        className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
+                        title="Télécharger en TXT"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">TXT</span>
+                      </a>
+                    </div>
+
                     {/* CTA hover */}
                     <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary-text opacity-0 group-hover:opacity-100 transition-opacity">
                       <Sparkles className="h-3.5 w-3.5" />
@@ -317,6 +348,9 @@ export function ExamPrepPage() {
           </motion.div>
         </>
       )}
+
+      {/* Visionneuse de document (lecture directe) */}
+      <DocumentReader documentId={readerDocumentId} onClose={() => setReaderDocumentId(null)} />
     </div>
   )
 }
