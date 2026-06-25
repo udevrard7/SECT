@@ -914,6 +914,31 @@ export function EtudiantsPage() {
     toast.success('Export réussi', { description: `${etudiants.length} étudiant(s) exporté(s).` })
   }
 
+  // ─── Download relevé de notes (PDF par semestre) ───
+  const [downloadingReleveId, setDownloadingReleveId] = useState<string | null>(null)
+  const handleDownloadReleve = async (etudiant: EtudiantItem) => {
+    setDownloadingReleveId(etudiant.id)
+    try {
+      const res = await fetch(`/api/etudiants/${etudiant.id}/releve-notes`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Échec')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `releve_notes_${etudiant.name.replace(/\s+/g, '_')}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Relevé de notes téléchargé', { description: etudiant.name })
+    } catch (err) {
+      toast.error('Échec du téléchargement', { description: err instanceof Error ? err.message : 'Réessayez.' })
+    } finally {
+      setDownloadingReleveId(null)
+    }
+  }
+
   // ─── Reset import state ───
   const handleOpenImport = () => {
     setImportFile(null)
@@ -1278,6 +1303,10 @@ export function EtudiantsPage() {
                       <DropdownMenuItem onClick={() => handleViewDetail(etudiant)}>
                         <Eye className="h-4 w-4" />
                         Détails
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDownloadReleve(etudiant)}>
+                        <Download className="h-4 w-4" />
+                        Relevé de notes
                       </DropdownMenuItem>
                       {etudiant.filiereId && (
                         <DropdownMenuItem onClick={() => setRemoveFiliereTarget(etudiant)}>
