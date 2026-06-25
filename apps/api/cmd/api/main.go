@@ -47,13 +47,17 @@ func main() {
         // 3. Initialiser repositories + usecases
         userRepo := repository.NewUserRepository(pool)
         authRepo := repository.NewAuthRepository(pool)
+        etabRepo := repository.NewEtablissementRepository(pool)
+        accessRepo := repository.NewEtablissementAccessRepository(pool)
         signer := jwt.NewSigner(cfg.JWTSecret)
         authUC := usecase.NewAuthUseCase(authRepo, signer)
         userUC := usecase.NewUserUseCase(userRepo)
+        etabUC := usecase.NewEtablissementUseCase(etabRepo)
+        accessUC := usecase.NewAccessUseCase(accessRepo)
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        server := httptransport.NewServer(userRepo, userUC, authUC, cfg.CORSAllowedOrigins, authMiddleware)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, cfg.CORSAllowedOrigins, authMiddleware)
 
         httpServer := &http.Server{
                 Addr:         ":" + cfg.Port,
