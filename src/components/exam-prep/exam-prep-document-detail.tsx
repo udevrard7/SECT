@@ -13,7 +13,6 @@
  */
 
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, FileText, Sparkles, Award, Clock, BookOpen, TrendingUp,
   ChevronRight,
@@ -116,17 +115,9 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
           </TabsTrigger>
         </TabsList>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={tab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.2 }}
-            className="mt-5"
-          >
-            {/* ─── Aperçu ─── */}
-            <TabsContent value="overview" className="mt-0 space-y-4">
+        <div className="mt-5">
+          {/* ─── Aperçu ─── */}
+          <TabsContent value="overview" className="mt-0 space-y-4">
               {/* Chapitres */}
               <div>
                 <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3">
@@ -238,8 +229,7 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
             <TabsContent value="progress" className="mt-0">
               <ExamPrepProgressTab documentId={doc.id} chapters={doc.chapters} />
             </TabsContent>
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </Tabs>
     </div>
   )

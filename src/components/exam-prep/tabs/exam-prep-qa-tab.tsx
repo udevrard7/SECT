@@ -15,6 +15,7 @@ import { Sparkles, Send, Loader2, BookOpen, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { MarkdownRenderer } from '../markdown-renderer'
 
 interface Chapter {
   id: string
@@ -183,7 +184,11 @@ export function ExamPrepQaTab({ documentId, chapters }: Props) {
                         ? 'bg-primary text-primary-foreground rounded-tr-sm'
                         : 'bg-muted rounded-tl-sm'
                     }`}>
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      {msg.role === 'assistant' ? (
+                        <MarkdownRenderer content={msg.content} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      )}
                     </div>
                     {/* Citations */}
                     {msg.citations && msg.citations.length > 0 && (
