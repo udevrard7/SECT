@@ -12,9 +12,11 @@ import (
 
         "github.com/udevrard7/sect/apps/api/internal/config"
         appdb "github.com/udevrard7/sect/apps/api/internal/db"
+        "github.com/udevrard7/sect/apps/api/internal/domain"
         "github.com/udevrard7/sect/apps/api/internal/jwt"
         "github.com/udevrard7/sect/apps/api/internal/middleware"
         "github.com/udevrard7/sect/apps/api/internal/repository"
+        "github.com/udevrard7/sect/apps/api/internal/storage"
         httptransport "github.com/udevrard7/sect/apps/api/internal/transport/http"
         "github.com/udevrard7/sect/apps/api/internal/usecase"
 )
@@ -57,6 +59,26 @@ func main() {
         questionRepo := repository.NewQuestionRepository(pool)
         sessionRepo := repository.NewSessionRepository(pool)
         resultatRepo := repository.NewResultatRepository(pool)
+        documentRepo := repository.NewDocumentRepository(pool)
+
+        // R2 storage client (optionnel — si credentials non fournis, storage = nil)
+        var storageClient domain.StorageClient
+        r2AccountID := os.Getenv("R2_ACCOUNT_ID")
+        r2AccessKey := os.Getenv("R2_ACCESS_KEY_ID")
+        r2SecretKey := os.Getenv("R2_SECRET_ACCESS_KEY")
+        r2Bucket := os.Getenv("R2_BUCKET_NAME")
+        if r2AccountID != "" && r2AccessKey != "" && r2SecretKey != "" {
+                r2Client, err := storage.NewR2Client(context.Background(), r2AccountID, r2AccessKey, r2SecretKey, r2Bucket)
+                if err != nil {
+                        logger.Warn("R2 client init failed, storage disabled", "error", err)
+                } else {
+                        storageClient = r2Client
+                        logger.Info("Cloudflare R2 storage enabled", "bucket", r2Bucket)
+                }
+        } else {
+                logger.Info("R2 credentials not provided, storage disabled (documents will use DB-only mode)")
+        }
+
         signer := jwt.NewSigner(cfg.JWTSecret)
         authUC := usecase.NewAuthUseCase(authRepo, signer)
         userUC := usecase.NewUserUseCase(userRepo)
@@ -70,10 +92,11 @@ func main() {
         questionUC := usecase.NewQuestionUseCase(questionRepo)
         sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
         resultatUC := usecase.NewResultatUseCase(resultatRepo)
+        documentUC := usecase.NewDocumentUseCase(documentRepo, storageClient)
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, cfg.CORSAllowedOrigins, authMiddleware)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, cfg.CORSAllowedOrigins, authMiddleware)
 
         httpServer := &http.Server{
                 Addr:         ":" + cfg.Port,

@@ -28,6 +28,7 @@ type Server struct {
         questionUC  *usecase.QuestionUseCase
         sessionUC   *usecase.SessionUseCase
         resultatUC  *usecase.ResultatUseCase
+        documentUC  *usecase.DocumentUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -45,6 +46,7 @@ func NewServer(
         questionUC *usecase.QuestionUseCase,
         sessionUC *usecase.SessionUseCase,
         resultatUC *usecase.ResultatUseCase,
+        documentUC *usecase.DocumentUseCase,
         corsOrigins []string,
         authMiddleware func(http.Handler) http.Handler,
 ) *Server {
@@ -62,6 +64,7 @@ func NewServer(
                 questionUC:  questionUC,
                 sessionUC:   sessionUC,
                 resultatUC:  resultatUC,
+                documentUC:  documentUC,
         }
         s.setupRouter(corsOrigins, authMiddleware)
         return s
@@ -213,6 +216,16 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listResultats)
                         r.Get("/overview", s.resultatsOverview)
                         r.Get("/etudiant-overview", s.resultatsEtudiantOverview)
+                })
+
+                // /api/documents
+                r.Route("/api/documents", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listDocuments)
+                        r.Post("/", s.uploadDocument)
+                        r.Get("/{id}", s.getDocument)
+                        r.Delete("/{id}", s.deleteDocument)
+                        r.Get("/{id}/download", s.downloadDocument)
                 })
         })
 
