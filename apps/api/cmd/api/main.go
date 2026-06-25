@@ -62,6 +62,7 @@ func main() {
         documentRepo := repository.NewDocumentRepository(pool)
         certificatRepo := repository.NewCertificatRepository(pool)
         correctionRepo := repository.NewCorrectionRepository(pool)
+        examPrepRepo := repository.NewExamPrepRepository(pool)
 
         // R2 storage client (optionnel — si credentials non fournis, storage = nil)
         var storageClient domain.StorageClient
@@ -97,10 +98,11 @@ func main() {
         documentUC := usecase.NewDocumentUseCase(documentRepo, storageClient)
         certificatUC := usecase.NewCertificatUseCase(certificatRepo)
         correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
+        examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo)
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, cfg.CORSAllowedOrigins, authMiddleware)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, cfg.CORSAllowedOrigins, authMiddleware)
 
         httpServer := &http.Server{
                 Addr:         ":" + cfg.Port,
