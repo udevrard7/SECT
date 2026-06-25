@@ -14,18 +14,20 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-        router     *chi.Mux
-        userRepo   *repository.UserRepository
-        userUC     *usecase.UserUseCase
-        authUC     *usecase.AuthUseCase
-        etabUC     *usecase.EtablissementUseCase
-        accessUC   *usecase.AccessUseCase
-        filiereUC  *usecase.FiliereUseCase
-        ueUC       *usecase.UEUseCase
-        efUC       *usecase.EnseignantFiliereUseCase
-        anneeUC    *usecase.AnneeUseCase
-        epreuveUC  *usecase.EpreuveUseCase
-        questionUC *usecase.QuestionUseCase
+        router      *chi.Mux
+        userRepo    *repository.UserRepository
+        userUC      *usecase.UserUseCase
+        authUC      *usecase.AuthUseCase
+        etabUC      *usecase.EtablissementUseCase
+        accessUC    *usecase.AccessUseCase
+        filiereUC   *usecase.FiliereUseCase
+        ueUC        *usecase.UEUseCase
+        efUC        *usecase.EnseignantFiliereUseCase
+        anneeUC     *usecase.AnneeUseCase
+        epreuveUC   *usecase.EpreuveUseCase
+        questionUC  *usecase.QuestionUseCase
+        sessionUC   *usecase.SessionUseCase
+        resultatUC  *usecase.ResultatUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -41,21 +43,25 @@ func NewServer(
         anneeUC *usecase.AnneeUseCase,
         epreuveUC *usecase.EpreuveUseCase,
         questionUC *usecase.QuestionUseCase,
+        sessionUC *usecase.SessionUseCase,
+        resultatUC *usecase.ResultatUseCase,
         corsOrigins []string,
         authMiddleware func(http.Handler) http.Handler,
 ) *Server {
         s := &Server{
-                userRepo:   userRepo,
-                userUC:     userUC,
-                authUC:     authUC,
-                etabUC:     etabUC,
-                accessUC:   accessUC,
-                filiereUC:  filiereUC,
-                ueUC:       ueUC,
-                efUC:       efUC,
-                anneeUC:    anneeUC,
-                epreuveUC:  epreuveUC,
-                questionUC: questionUC,
+                userRepo:    userRepo,
+                userUC:      userUC,
+                authUC:      authUC,
+                etabUC:      etabUC,
+                accessUC:    accessUC,
+                filiereUC:   filiereUC,
+                ueUC:        ueUC,
+                efUC:        efUC,
+                anneeUC:     anneeUC,
+                epreuveUC:   epreuveUC,
+                questionUC:  questionUC,
+                sessionUC:   sessionUC,
+                resultatUC:  resultatUC,
         }
         s.setupRouter(corsOrigins, authMiddleware)
         return s
@@ -189,6 +195,24 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/{id}", s.getQuestion)
                         r.Patch("/{id}", s.updateQuestion)
                         r.Delete("/{id}", s.deleteQuestion)
+                })
+
+                // /api/sessions
+                r.Route("/api/sessions", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listSessions)
+                        r.Post("/", s.startSession)
+                        r.Put("/", s.saveReponse)
+                        r.Get("/{id}", s.getSession)
+                        r.Post("/{id}/submit", s.submitSession)
+                })
+
+                // /api/resultats
+                r.Route("/api/resultats", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listResultats)
+                        r.Get("/overview", s.resultatsOverview)
+                        r.Get("/etudiant-overview", s.resultatsEtudiantOverview)
                 })
         })
 
