@@ -29,6 +29,8 @@ type Server struct {
         sessionUC   *usecase.SessionUseCase
         resultatUC  *usecase.ResultatUseCase
         documentUC  *usecase.DocumentUseCase
+        certificatUC *usecase.CertificatUseCase
+        correctionUC *usecase.CorrectionUseCase
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -47,24 +49,28 @@ func NewServer(
         sessionUC *usecase.SessionUseCase,
         resultatUC *usecase.ResultatUseCase,
         documentUC *usecase.DocumentUseCase,
+        certificatUC *usecase.CertificatUseCase,
+        correctionUC *usecase.CorrectionUseCase,
         corsOrigins []string,
         authMiddleware func(http.Handler) http.Handler,
 ) *Server {
         s := &Server{
-                userRepo:    userRepo,
-                userUC:      userUC,
-                authUC:      authUC,
-                etabUC:      etabUC,
-                accessUC:    accessUC,
-                filiereUC:   filiereUC,
-                ueUC:        ueUC,
-                efUC:        efUC,
-                anneeUC:     anneeUC,
-                epreuveUC:   epreuveUC,
-                questionUC:  questionUC,
-                sessionUC:   sessionUC,
-                resultatUC:  resultatUC,
-                documentUC:  documentUC,
+                userRepo:     userRepo,
+                userUC:       userUC,
+                authUC:       authUC,
+                etabUC:       etabUC,
+                accessUC:     accessUC,
+                filiereUC:    filiereUC,
+                ueUC:         ueUC,
+                efUC:         efUC,
+                anneeUC:      anneeUC,
+                epreuveUC:    epreuveUC,
+                questionUC:   questionUC,
+                sessionUC:    sessionUC,
+                resultatUC:   resultatUC,
+                documentUC:   documentUC,
+                certificatUC: certificatUC,
+                correctionUC: correctionUC,
         }
         s.setupRouter(corsOrigins, authMiddleware)
         return s
@@ -99,6 +105,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/auth/refresh", s.refresh)
                 r.Post("/api/auth/logout", s.logout)
         })
+
+        // Certificats verify (public — no auth required for verification)
+        r.Get("/api/certificats/verify/{code}", s.verifyCertificat)
 
         // Routes authentifiées
         r.Group(func(r chi.Router) {
@@ -226,6 +235,23 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/{id}", s.getDocument)
                         r.Delete("/{id}", s.deleteDocument)
                         r.Get("/{id}/download", s.downloadDocument)
+                })
+
+                // /api/certificats (verify est publique, définie plus haut)
+                r.Route("/api/certificats", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listCertificats)
+                        r.Get("/{id}", s.getCertificat)
+                        r.Post("/{id}/revoquer", s.revokeCertificat)
+                })
+
+                // /api/correction
+                r.Route("/api/correction", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listCorrectionSessions)
+                        r.Post("/retourner-batch", s.retournerBatch)
+                        r.Post("/{sessionId}/retourner", s.retournerSession)
+                        r.Patch("/reponses/{reponseId}", s.updateReponse)
                 })
         })
 
