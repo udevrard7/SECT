@@ -2659,3 +2659,68 @@ Stage Summary:
 - État : schéma SQL prêt à être appliqué sur Neon (en attente token pour 1.C)
 - Prochaine étape (1.B) : activation RLS + fonctions helper de claims (current_user_id(), current_role_claim(), current_etablissement_id()) + policies par table selon la hiérarchie des rôles (ADMIN full access, RESPONSABLE scoped par etablissement, ENSEIGNANT par enseignantId, ETUDIANT par etudiantId)
 - Rien n'a cassé le fonctionnement actuel : Prisma continue de gérer la DB Supabase, les fichiers SQL sont en parallèle pour le futur backend Go
+
+---
+Task ID: 1B
+Agent: Z.ai (tuteur principal)
+Task: Sous-étape 1.B — Activation RLS (Option A : claims de session) + récupération connexion Neon + application migrations sur Neon
+
+Work Log:
+- Récupération de la connection string Neon via l'API Neon (token napi_ fourni par l'utilisateur) :
+  * Projet : autumn-rain-10233998 (nom "SECT"), région aws-eu-central-1 (Francfort — même région que Supabase)
+  * Branche : production (br-damp-band-asma2vx8), PostgreSQL 18.4
+  * Endpoint direct : ep-muddy-river-asz862wj.c-4.eu-central-1.aws.neon.tech
+  * Endpoint poolé : ep-muddy-river-asz862wj-pooler.c-4.eu-central-1.aws.neon.tech
+  * Database : neondb, Role : neondb_owner
+  * Mot de passe reset via API POST /reset_password (retourne le nouveau password npg_O1hsIlNtP0nx)
+- Ajout variables Neon dans .env : NEON_DATABASE_URL (poolé) + NEON_DIRECT_URL (direct)
+- Test connexion Neon via pg/Bun : PostgreSQL 18.4, base vide (0 table, 0 enum) ✅
+- Application des 5 migrations 000001-000005 sur Neon via script Bun (split statements dollar-quoted) :
+  * 000001: 24 statements (enums + schema)
+  * 000002: 49 statements (tables)
+  * 000003: 109 statements (index)
+  * 000004: 81 statements (foreign keys)
+  * 000005: 2 statements (function + triggers)
+  * Vérification : 49 tables, 23 enums, 81 FK, 109 index, 35 triggers updated_at ✅
+- Décision ADMIN confirmée par l'utilisateur : ADMIN = propriétaire PaaS, NON lié à un établissement. Accès aux données d'établissement UNIQUEMENT via autorisation explicite (table EtablissementAccess). Gère uniquement les tables plateforme (Plan, PlatformSettings, IpWhitelist, Facture, MonitoringEvent, AIProviderConfig, etc.)
+- Création migration 000006_enable_rls_with_claims (helpers + activation RLS) :
+  * 9 fonctions helper : current_user_id(), current_role_claim(), current_etablissement_id(), is_admin(), is_responsable(), is_enseignant(), is_etudiant(), admin_has_etablissement_access(eta_id), belongs_to_etablissement(eta_id)
+  * Activation ENABLE + FORCE ROW LEVEL SECURITY sur les 49 tables (FORCE nécessaire car neondb_owner est propriétaire des tables et bypasserait RLS sinon — Neon n'a pas de superuser pour notre rôle)
+  * Fichier down : NO FORCE + DISABLE RLS + drop fonctions (ordre des dépendances)
+- Création migration 000007_rls_policies (96 policies couvrant les 49 tables, organisées en 9 groupes) :
+  * Groupe 1 (ADMIN only, 6 tables) : Plan, PlatformSettings, AIProviderConfig, AIFailoverEvent, MonitoringEvent, NotificationAdmin
+  * Groupe 2 (plateforme + scoping étab, 4 tables) : IpWhitelist, Facture, Abonnement, BadgeDefinition
+  * Groupe 3 (étab core, 4 tables) : Etablissement, EtablissementAccess, SecuritySettings, AnneeAcademique
+  * Groupe 4 (structure académique, 5 tables) : Filiere, UniteEnseignement, UniteEnseignementFiliere, EnseignantFiliere, Affectation
+  * Groupe 5 (contenu pédagogique, 8 tables) : Question, Epreuve, EpreuveQuestion, EpreuveDocument, Document, Chapter, Devoir, GrilleEvaluation
+  * Groupe 6 (utilisateurs, 4 tables) : User, Invitation, PasswordReset, PushSubscription
+  * Groupe 7 (évaluation, 7 tables) : SessionPassation, Reponse, Resultat, Soumission, Certificat, ValidationUE, SessionSpeciale
+  * Groupe 8 (apprentissage, 9 tables) : ChatThread, ChatMessage, ReviewItem, Flashcard, StudySession, PracticeAttempt, HelpThread, HelpMessage, BadgeProgression
+  * Groupe 9 (système, 2 tables) : AuditLog, Alerte
+  * Chaque policy utilise les helpers (current_user_id, is_admin, belongs_to_etablissement, admin_has_etablissement_access) pour des conditions lisibles et performantes
+  * Subqueries EXISTS avec jointures sur Filiere/Etablissement pour le scoping multi-niveau (UE → Filiere → Etablissement)
+  * Pattern FOR ALL + USING + WITH CHECK pour la plupart des tables ; FOR SELECT/INSERT/UPDATE/DELETE séparés quand les permissions diffèrent (ex: SessionPassation, Soumission)
+  * Tables système (AuditLog, Alerte, AIFailoverEvent, MonitoringEvent) : INSERT WITH CHECK(true) pour permettre l'écriture par le backend, SELECT restreint par rôle
+- Application des migrations 000006 + 000007 sur Neon :
+  * 000006: 10 statements (9 fonctions + bloc DO pour RLS)
+  * 000007: 96 statements (96 CREATE POLICY)
+  * Vérification : 49/49 tables RLS enabled, 49/49 FORCE RLS, 96 policies, 9/9 fonctions ✅
+- Test fonctionnel RLS (transactions explicites car set_config is_local=true) :
+  * Sans claims → deny all (0 lignes partout) ✅
+  * Claims ETUDIANT (transaction) → current_user_id/is_enseignant/is_etudiant fonctionnent, voit 0 données (fake id), 0 sur Plan ✅
+  * Claims ADMIN (transaction) → is_admin()=true, accès Plan (plateforme), 0 sur User/Etablissement (pas d'accès établissement) ✅
+- Mise à jour db/reference/schema.sql (concat 000001-000007, 2902 lignes)
+- Serveur dev vérifié : GET / → HTTP 200 (Next.js + Prisma + Supabase toujours opérationnels, transition progressive respectée)
+
+Stage Summary:
+- Fichiers créés (5) :
+  * db/migrations/000006_enable_rls_with_claims.up.sql + .down.sql (helpers + RLS activation)
+  * db/migrations/000007_rls_policies.up.sql + .down.sql (96 policies, 49 tables)
+- Fichiers modifiés (3) :
+  * .env (ajout NEON_DATABASE_URL + NEON_DIRECT_URL)
+  * db/reference/schema.sql (ajout migrations 6+7, maintenant 2902 lignes)
+  * worklog.md (cette entrée)
+- État Neon : schéma complet + RLS opérationnel (49 tables, 23 enums, 81 FK, 109 index, 96 policies, 9 fonctions helper, 35 triggers updated_at)
+- État Supabase : inchangé (toujours actif pour le Next.js, transition progressive)
+- Prochaine étape (1.C) : migration des données Supabase → Neon (pg_dump data-only → pg_restore) — 1369 lignes sur 32 tables non vides
+- Prochaine étape (1.D) : mise en place golang-migrate + sqlc pour le backend Go
