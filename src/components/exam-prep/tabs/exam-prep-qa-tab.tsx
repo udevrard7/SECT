@@ -55,6 +55,7 @@ export function ExamPrepQaTab({ documentId, chapters }: Props) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const hasInitiallyScrolled = useRef(false)
 
   // ─── Charge l'historique ───
   const loadHistory = useCallback(async () => {
@@ -76,9 +77,14 @@ export function ExamPrepQaTab({ documentId, chapters }: Props) {
     loadHistory()
   }, [loadHistory])
 
-  // Scroll en bas à chaque nouveau message
+  // Scroll en bas :
+  // - au chargement initial de l'historique → instant (behavior: 'auto')
+  //   pour éviter l'animation de scroll depuis le haut qui est disgracieuse
+  // - pour chaque nouveau message → smooth (behavior: 'smooth')
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    const behavior: ScrollBehavior = hasInitiallyScrolled.current ? 'smooth' : 'auto'
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior })
+    hasInitiallyScrolled.current = true
   }, [messages])
 
   const handleSend = async (text?: string) => {

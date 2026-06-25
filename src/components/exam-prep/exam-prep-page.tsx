@@ -94,16 +94,19 @@ export function ExamPrepPage() {
     fetchDocuments()
   }, [fetchDocuments])
 
-  // Synchronise ?documentId dans l'URL (pour partage/refresh)
+  // Synchronise ?documentId dans l'URL (pour partage/refresh).
+  // Utilise router.replace (Next.js) plutôt que window.history.replaceState
+  // pour préserver la navigation SPA et l'état du router.
   useEffect(() => {
-    const url = new URL(window.location.href)
+    const params = new URLSearchParams(searchParams.toString())
     if (selectedId) {
-      url.searchParams.set('documentId', selectedId)
+      params.set('documentId', selectedId)
     } else {
-      url.searchParams.delete('documentId')
+      params.delete('documentId')
     }
-    window.history.replaceState({}, '', url.toString())
-  }, [selectedId])
+    const qs = params.toString()
+    router.replace(qs ? `/exam-prep?${qs}` : '/exam-prep', { scroll: false })
+  }, [selectedId, router, searchParams])
 
   // ─── Vue détail ───
   const selectedDocument = documents.find((d) => d.id === selectedId) ?? null

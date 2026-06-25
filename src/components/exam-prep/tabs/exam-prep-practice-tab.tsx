@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { usePracticeSessionStore } from '@/stores/practice-session-store'
 
 interface Chapter {
   id: string
@@ -64,19 +65,46 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
   const [type, setType] = useState<QType>('MIXTE')
   const [diff, setDiff] = useState<QDiff>('MIXTE')
   const [chapterId, setChapterId] = useState<string>('')
-  const [generating, setGenerating] = useState(false)
-  const [questions, setQuestions] = useState<PracticeQuestion[]>([])
-  const [currentIdx, setCurrentIdx] = useState(0)
+
+  // ─── Session persistée (survit au changement d'onglet) ───
+  // Le store conserve la série liée à un documentId. Si l'étudiant change
+  // d'onglet puis revient, la série est restaurée (questions + index +
+  // résultats). On ne garde qu'une série active à la fois.
+  const sessionDocumentId = usePracticeSessionStore((s) => s.documentId)
+  const sessionQuestions = usePracticeSessionStore((s) => s.questions)
+  const sessionCurrentIndex = usePracticeSessionStore((s) => s.currentIndex)
+  const sessionResults = usePracticeSessionStore((s) => s.results)
+  const sessionGenerating = usePracticeSessionStore((s) => s.generating)
+  const setSession = usePracticeSessionStore((s) => s.setSession)
+  const setSessionQuestions = usePracticeSessionStore((s) => s.setQuestions)
+  const setSessionCurrentIndex = usePracticeSessionStore((s) => s.setCurrentIndex)
+  const setSessionResult = usePracticeSessionStore((s) => s.setResult)
+  const setSessionGenerating = usePracticeSessionStore((s) => s.setGenerating)
+  const clearSession = usePracticeSessionStore((s) => s.clearSession)
+
+  // Restaure la session si elle correspond à ce document, sinon aucune série
+  const hasActiveSession = sessionDocumentId === documentId && sessionQuestions.length > 0
+  const questions = hasActiveSession ? sessionQuestions : []
+  const currentIdx = hasActiveSession ? sessionCurrentIndex : 0
+  const generating = sessionGenerating && sessionDocumentId === documentId
+
+  // State local (liés à la question courante, réinitialisés à chaque navigation)
   const [answer, setAnswer] = useState<string>('')
   const [selectedProps, setSelectedProps] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<SubmitResult | null>(null)
+
+  // Récupère le résultat stocké pour la question courante (restauration après changement d'onglet)
+  const currentQuestion = questions[currentIdx]
+  const result = currentQuestion ? (sessionResults[currentQuestion.id] as SubmitResult | undefined) ?? null : null
+
+  // Restaure answer/selectedProps si on revient sur une question déjà répondue
+  // (les inputs sont remis à zéro à la navigation, mais si l'utilisateur
+  // revient sur une question sans résultat, on garde vide).
 
   const handleGenerate = async () => {
-    setGenerating(true)
-    setQuestions([])
-    setCurrentIdx(0)
-    setResult(null)
+    // Démarre une nouvelle session dans le store
+    setSession(documentId, { count, type, difficulte: diff, chapterId })
+    setSessionGenerating(true)
     setAnswer('')
     setSelectedProps([])
     try {
@@ -96,7 +124,7 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
         throw new Error(err?.error ?? 'Erreur')
       }
       const data = await res.json()
-      setQuestions(data.questions ?? [])
+      setSessionQuestions(data.questions ?? [])
       if (data.questions?.length === 0) {
         toast.error('Aucune question générée. Réessayez.')
       } else {
@@ -105,7 +133,7 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Échec de la génération')
     } finally {
-      setGenerating(false)
+      setSessionGenerating(false)
     }
   }
 
@@ -142,8 +170,8 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.error ?? 'Erreur')
       }
-      const data = await res.json()
-      setResult(data)
+      const data = await res.json() as SubmitResult
+      setSessionResult(q.id, { ...data, questionId: q.id })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Échec de la correction')
     } finally {
@@ -153,15 +181,12 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
 
   const handleNext = () => {
     if (currentIdx < questions.length - 1) {
-      setCurrentIdx(currentIdx + 1)
-      setResult(null)
+      setSessionCurrentIndex(currentIdx + 1)
       setAnswer('')
       setSelectedProps([])
     } else {
       // Fin de la série
-      setQuestions([])
-      setCurrentIdx(0)
-      setResult(null)
+      clearSession()
       toast.success('Série terminée ! Continuez avec une nouvelle génération.')
     }
   }
@@ -283,7 +308,7 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
             {q.difficulte}
           </Badge>
         )}
-        <Button variant="ghost" size="sm" onClick={() => { setQuestions([]); setResult(null) }} className="ml-auto gap-1.5 text-xs">
+        <Button variant="ghost" size="sm" onClick={() => { clearSession(); setAnswer(''); setSelectedProps([]) }} className="ml-auto gap-1.5 text-xs">
           <RotateCw className="h-3.5 w-3.5" /> Nouvelle série
         </Button>
       </div>
