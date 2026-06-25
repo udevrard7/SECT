@@ -1,7 +1,7 @@
 'use client'
 
 import { getGreeting } from '@/lib/micro-copy'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CalendarDays,
@@ -33,8 +33,6 @@ import {
   PulseSkeleton,
   StatCardSkeletonGrid,
   StatCard,
-  AcademicCalendar,
-  type CalendarEvent,
 } from '@/components/ds'
 import {
   AreaChart,
@@ -263,38 +261,6 @@ export function EtudiantDashboard() {
     const t = setTimeout(() => setNewlyUnlockedBadge(null), 5000)
     return () => clearTimeout(t)
   }, [newlyUnlockedBadge])
-
-  // ─── Mapping des épreuves à venir vers CalendarEvent[] ───
-  // Chaque épreuve produit 2 événements : 'exam' sur la date de début,
-  // 'deadline' sur la date de fin (échéance de soumission).
-  // Les dates invalides (NaN) sont filtrées pour éviter les warnings React.
-  // Les hooks sont appelés AVANT les retours anticipés (rules-of-hooks).
-  const calendarEvents: CalendarEvent[] = useMemo(() => {
-    const epreuves = statsQuery.data?.epreuvesAVenir
-    if (!epreuves) return []
-    return epreuves.flatMap((epreuve): CalendarEvent[] => {
-      const events: CalendarEvent[] = []
-      const startDate = new Date(epreuve.date)
-      if (!Number.isNaN(startDate.getTime())) {
-        events.push({
-          id: `${epreuve.id}-start`,
-          date: startDate,
-          title: epreuve.titre,
-          type: 'exam',
-        })
-      }
-      const endDate = new Date(epreuve.dateFin)
-      if (!Number.isNaN(endDate.getTime())) {
-        events.push({
-          id: `${epreuve.id}-deadline`,
-          date: endDate,
-          title: epreuve.titre,
-          type: 'deadline',
-        })
-      }
-      return events
-    })
-  }, [statsQuery.data?.epreuvesAVenir])
 
   // ─── Loading ───
   if (statsQuery.isLoading && !statsQuery.data) {
@@ -575,30 +541,6 @@ export function EtudiantDashboard() {
                     })}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* ─── Calendrier académique (repositionné sous Résultats Récents) ─── */}
-          <motion.div variants={itemVariants}>
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-display tracking-tight">
-                  Calendrier académique
-                </CardTitle>
-                <CardDescription>
-                  Vos épreuves et échéances du mois
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-center">
-                {/* w-full (sans max-w-md) pour s'adapter à la colonne 1/3 sans
-                    débordement. Le composant AcademicCalendar est responsive
-                    (grid-cols-7 gap-1, cellules min-h-[44px] text-xs sm:text-sm). */}
-                <AcademicCalendar
-                  events={calendarEvents}
-                  onDateClick={(date) => router.push('/mes-epreuves')}
-                  className="w-full"
-                />
               </CardContent>
             </Card>
           </motion.div>
