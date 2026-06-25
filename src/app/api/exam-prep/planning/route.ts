@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
-import { requireStudentScope, studentUeFilter } from '@/lib/exam-prep/scope'
+import { requireStudentScope, studentUeFilter, isChapterAccessible } from '@/lib/exam-prep/scope'
 
 /**
  * Planning de révision (StudySession).
@@ -91,6 +91,16 @@ async function _POST(request: NextRequest, context: { params: unknown; user: Aut
       )
       if (!accessible) {
         return NextResponse.json({ error: 'Document non accessible' }, { status: 403 })
+      }
+
+      // Valide que les chapterIds appartiennent à un document accessible
+      if (Array.isArray(body.chapterIds) && body.chapterIds.length > 0) {
+        const checks = await Promise.all(
+          body.chapterIds.map((cid) => isChapterAccessible(cid, scope.filiereId, scope.niveau))
+        )
+        if (!checks.every(Boolean)) {
+          return NextResponse.json({ error: 'Un ou plusieurs chapitres non accessibles' }, { status: 403 })
+        }
       }
     }
 

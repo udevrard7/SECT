@@ -30,10 +30,16 @@ async function _GET(request: NextRequest, context: { params: unknown; user: Auth
       where.etudiantId = user.id
     } else if (user.role === 'ENSEIGNANT') {
       where.enseignantId = user.id
-    } else {
-      // RESPONSABLE / ADMIN : voient les threads des documents de leur tenant
-      // (filtre large — on suppose le tenant isolation déjà appliquée plus haut)
+    } else if (user.role === 'RESPONSABLE' && user.etablissementId) {
+      // RESPONSABLE : voit uniquement les threads des documents de SON établissement
+      // (tenant isolation via document → UE → filière → établissement)
+      where.document = {
+        uniteEnseignement: {
+          filiere: { etablissementId: user.etablissementId },
+        },
+      }
     }
+    // ADMIN : voit tous les threads (accès global)
 
     const threads = await withRetry(() =>
       db.helpThread.findMany({
