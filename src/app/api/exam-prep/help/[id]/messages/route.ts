@@ -129,7 +129,13 @@ async function _GET(
         select: {
           id: true, statut: true, etudiantId: true, enseignantId: true, sujet: true,
           passageContext: true,
-          document: { select: { id: true, nomFichier: true } },
+          document: {
+            select: {
+              id: true, nomFichier: true,
+              // Inclut l'établissement (via UE → filière) pour la vérification RESPONSABLE
+              uniteEnseignement: { select: { filiere: { select: { etablissementId: true } } } },
+            },
+          },
           chapter: { select: { id: true, titre: true } },
           messages: {
             orderBy: { createdAt: 'asc' },
@@ -143,10 +149,21 @@ async function _GET(
       return NextResponse.json({ error: 'Thread introuvable' }, { status: 404 })
     }
 
-    // Vérifie l'accès
+    // Vérifie l'accès :
+    // - ETUDIANT : propriétaire du thread
+    // - ENSEIGNANT : assigné au thread
+    // - RESPONSABLE : même établissement que le document du thread
+    // - ADMIN : accès global
     const isEtudiant = user.role === 'ETUDIANT' && thread.etudiantId === user.id
     const isEnseignant = user.role === 'ENSEIGNANT' && thread.enseignantId === user.id
-    if (!isEtudiant && !isEnseignant && user.role !== 'ADMIN' && user.role !== 'RESPONSABLE') {
+    const isAdmin = user.role === 'ADMIN'
+    const threadEtablissementId = thread.document?.uniteEnseignement?.filiere?.etablissementId ?? null
+    const isResponsableSameEtab =
+      user.role === 'RESPONSABLE' &&
+      user.etablissementId !== null &&
+      threadEtablissementId === user.etablissementId
+
+    if (!isEtudiant && !isEnseignant && !isAdmin && !isResponsableSameEtab) {
       return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
     }
 
