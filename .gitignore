@@ -67,3 +67,8 @@ migration.pid
 rb.ts
 reset-both.ts
 check-*.ts
+
+# Go backend (apps/api)
+apps/api/bin/
+apps/api/tmp/
+*.exe
