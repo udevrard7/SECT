@@ -39,6 +39,7 @@ export type PageId =
   | 'surveillance'
   | 'mes-certificats'
   | 'exam-prep'
+  | 'aide-etudiants'
   | 'profil'
   | 'parametres'
 
@@ -81,6 +82,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   surveillance: '/surveillance',
   'mes-certificats': '/mes-certificats',
   'exam-prep': '/exam-prep',
+  'aide-etudiants': '/aide-etudiants',
   profil: '/profil',
   parametres: '/parametres',
 }
@@ -228,6 +230,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   surveillance: 'Surveillance & Alertes',
   'mes-certificats': 'Mes certificats',
   'exam-prep': 'Préparation examens',
+  'aide-etudiants': 'Aide des étudiants',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -271,6 +274,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   surveillance: 'Consultez les alertes anti-fraude et captures d\'écran',
   'mes-certificats': 'Consulter et télécharger vos certificats',
   'exam-prep': "Transformez vos supports de cours en moteur de préparation actif : Q&A IA, entraînement, planning et aide de l'enseignant",
+  'aide-etudiants': "Répondez aux questions de vos étudiants sur les documents de cours",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -438,6 +442,15 @@ const ENSEIGNANT_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'correction', label: 'Correction', icon: 'PenTool' },
       { id: 'resultats', label: 'Résultats & Analyses', icon: 'TrendingUp' },
+    ],
+  },
+  {
+    id: 'ens-aide',
+    label: 'Accompagnement',
+    icon: 'HelpCircle',
+    defaultOpen: true,
+    items: [
+      { id: 'aide-etudiants', label: 'Aide des étudiants', icon: 'HelpCircle' },
     ],
   },
   {

@@ -22,6 +22,7 @@ import { ResultatsPage } from '@/components/resultats/resultats-page'
 import { MesResultatsPage } from '@/components/passation/mes-resultats-page'
 import { MesCertificatsPage } from '@/components/passation/mes-certificats-page'
 import { ExamPrepPage } from '@/components/exam-prep/exam-prep-page'
+import { AideEtudiantsPage } from '@/components/enseignant/aide-etudiants-page'
 import { CorrectionPage } from '@/components/correction/correction-page'
 import { UtilisateursPage } from '@/components/utilisateurs/utilisateurs-page'
 import { EtablissementsPage } from '@/components/etablissements/etablissements-page'
@@ -73,6 +74,7 @@ const PAGE_COMPONENTS: Partial<Record<PageId, React.ComponentType<any>>> = {
   'mes-resultats': MesResultatsPage,
   'mes-certificats': MesCertificatsPage,
   'exam-prep': ExamPrepPage,
+  'aide-etudiants': AideEtudiantsPage,
   utilisateurs: UtilisateursPage,
   etablissements: EtablissementsPage,
   configuration: ConfigurationPage,
