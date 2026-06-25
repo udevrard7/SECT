@@ -46,6 +46,14 @@ model User {
   validationsUE           ValidationUE[]
   pushSubscriptions       PushSubscription[]
   certificats             Certificat[]
+  // ── Module Préparation aux examens ──
+  chatThreads             ChatThread[]
+  reviewItems             ReviewItem[]
+  studySessions           StudySession[]
+  helpThreadsEtudiant     HelpThread[]          @relation("HelpThreadEtudiant")
+  helpThreadsEnseignant   HelpThread[]          @relation("HelpThreadEnseignant")
+  helpMessages            HelpMessage[]
+  practiceAttempts        PracticeAttempt[]
   certificatsEmis         Certificat[]          @relation("CertificatsEmis")
 
   @@index([etablissementId])
@@ -223,6 +231,12 @@ model Document {
   uniteEnseignement   UniteEnseignement? @relation(fields: [uniteEnseignementId], references: [id], onDelete: SetNull)
   questions           Question[]
   epreuveSources      EpreuveDocument[]
+  // ── Module Préparation aux examens ──
+  chapters            Chapter[]
+  chatThreads         ChatThread[]
+  flashcards          Flashcard[]
+  studySessions       StudySession[]
+  helpThreads         HelpThread[]
 
   @@index([ownerId])
   @@index([uniteEnseignementId])
@@ -248,6 +262,9 @@ model Question {
   deletedAt        DateTime? // Soft delete — null means active, set date when moved to Corbeille
   epreuveQuestions EpreuveQuestion[]
   document         Document?         @relation(fields: [documentId], references: [id])
+  // ── Module Préparation aux examens ──
+  reviewItems      ReviewItem[]
+  practiceAttempts PracticeAttempt[]
 
   @@index([documentId])
 }
@@ -1044,4 +1061,220 @@ model PushSubscription {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODULE « PRÉPARATION AUX EXAMENS »
+// ════════════════════════════════════════════════════════════════
+// Système actif de préparation d'examen articulé autour d'un document
+// de cours : Q&A IA contextuel (RAG), génération de questions
+// d'entraînement, spaced repetition (SM-2), planning de révision,
+// messagerie étudiant↔enseignant, et tableau de bord de progression.
+//
+// Réutilisation maximale de l'existant :
+//  - getAIProvider() pour tous les appels IA (failover transparent)
+//  - extractTextFromBuffer() côté upload (déjà en place)
+//  - sendPushToUser() pour les rappels de révision
+//  - NotificationAdmin + Alerte (TypeAlerte.RAPPEL) pour les notifs
+//  - BadgeDefinition/BadgeProgression (CategorieBadge.ENGAGEMENT/PEDAGOGIE)
+// ════════════════════════════════════════════════════════════════
+
+// ─── Chapitre d'un document ───
+// Persisté depuis l'analyse IA (qui le produisait déjà mais le jetait).
+// Sert d'unité de révision : ancrage du RAG, génération de questions
+// ciblée, flashcards, spaced repetition, planning.
+model Chapter {
+  id         String   @id @default(cuid())
+  documentId String
+  titre      String
+  ordre      Int      @default(0) // ordre d'apparition dans le document
+  contenu    String? // extrait textuel du chapitre (si extractable)
+  sujets     String? // JSON array des sujets détectés
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  document         Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  reviewItems      ReviewItem[]
+  flashcards       Flashcard[]
+  practiceAttempts PracticeAttempt[]
+  helpThreads      HelpThread[]
+
+  @@index([documentId])
+}
+
+// ─── Thread de chat IA (Q&A contextuel sur un document) ───
+// Un thread par couple (user, document) — l'historique est conservé
+// pour permettre une conversation continue et la reprise de session.
+model ChatThread {
+  id         String   @id @default(cuid())
+  userId     String
+  documentId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@unique([userId, documentId]) // un seul thread par couple user/document
+  @@index([userId])
+  @@index([documentId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  role      String // 'user' | 'assistant'
+  content   String
+  // Citations RAG : JSON array de { chapterId, chapterTitle, passage }
+  // renvoyées par l'IA pour ancrer sa réponse dans le document.
+  citations String?
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+}
+
+// ─── Spaced Repetition (algorithme SM-2) ───
+// Un ReviewItem par couple (user, chapter) OU (user, question) — l'un
+// des deux seulement est renseigné. L'algorithme SM-2 (SuperMemo 2)
+// calcule le prochain intervalle de révision selon la qualité de la
+// dernière réponse (0..5).
+model ReviewItem {
+  id             String    @id @default(cuid())
+  userId         String
+  chapterId      String?
+  questionId     String?
+  // ── Champs SM-2 ──
+  interval       Int       @default(0) // jours avant prochaine révision
+  easeFactor     Float     @default(2.5) // facteur de facilité (≥1.3)
+  repetitions    Int       @default(0) // nombre de révisions réussies consécutives
+  lastReviewedAt DateTime?
+  nextReviewAt   DateTime  @default(now()) // échéance de prochaine révision
+  masteryLevel   Float     @default(0) // 0..1 — maîtrise estimée
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter  Chapter?  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  question Question? @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // Un seul des deux (chapterId / questionId) doit être renseigné.
+  // Contrainte d'unicité par couple pour éviter les doublons.
+  @@unique([userId, chapterId])
+  @@unique([userId, questionId])
+  @@index([userId, nextReviewAt])
+  @@index([chapterId])
+}
+
+// ─── Flashcard ───
+// Carte recto/verso auto-générée depuis un chapitre (par l'IA) ou
+// créée manuellement. Peut servir de support de révision active.
+model Flashcard {
+  id         String   @id @default(cuid())
+  chapterId  String?
+  documentId String?
+  recto      String // question / terme
+  verso      String // réponse / définition
+  createdAt  DateTime @default(now())
+
+  chapter  Chapter?  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id])
+
+  @@index([chapterId])
+  @@index([documentId])
+}
+
+// ─── Session de révision planifiée ───
+// Créneau planifié par l'étudiant : date, durée, chapitres ciblés.
+// Déclenche un rappel push (sendPushToUser) avant l'heure de début.
+model StudySession {
+  id           String   @id @default(cuid())
+  userId       String
+  documentId   String?
+  chapterIds   String? // JSON array des chapterId ciblés
+  titre        String?
+  dateDebut    DateTime
+  dureeMin     Int      @default(30)
+  statut       String   @default("PLANIFIEE") // PLANIFIEE | EN_COURS | TERMINEE | ANNULEE
+  rappelEnvoye Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dateDebut])
+  @@index([documentId])
+}
+
+// ─── Messagerie étudiant ↔ enseignant (aide contextuelle) ───
+// Thread lié à un document (et optionnellement un chapitre) avec un
+// passage contextuel automatique. L'enseignant reçoit une notification
+// (NotificationAdmin + push) à chaque nouvelle question étudiant.
+model HelpThread {
+  id             String   @id @default(cuid())
+  documentId     String
+  chapterId      String?
+  etudiantId     String
+  enseignantId   String? // l'enseignant du document (owner) — null si non assigné
+  statut         String   @default("OUVERT") // OUVERT | REPONDU | CLOS
+  sujet          String // titre court de la question
+  passageContext String? // extrait du document concerné (auto)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  document   Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chapter    Chapter?      @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  etudiant   User          @relation("HelpThreadEtudiant", fields: [etudiantId], references: [id], onDelete: Cascade)
+  enseignant User?         @relation("HelpThreadEnseignant", fields: [enseignantId], references: [id], onDelete: SetNull)
+  messages   HelpMessage[]
+
+  @@index([documentId])
+  @@index([etudiantId])
+  @@index([enseignantId])
+}
+
+model HelpMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  auteurId  String
+  role      String // 'etudiant' | 'enseignant'
+  content   String
+  createdAt DateTime @default(now())
+
+  thread HelpThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  auteur User       @relation(fields: [auteurId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([auteurId])
+}
+
+// ─── Tentative de réponse à une question d'entraînement ───
+// Trace chaque réponse de l'étudiant aux questions d'entraînement
+// générées depuis un document. Sert au tableau de bord de progression
+// (score, lacunes par chapitre, taux de réussite) et alimente le
+// ReviewItem (SRS) si la question est liée à un chapter.
+model PracticeAttempt {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  documentId String?
+  chapterId  String?
+  reponse    String? // réponse de l'étudiant
+  score      Float? // score attribué (sur le barème de la question)
+  feedback   String? // feedback explicatif IA
+  correct    Boolean? // vraie/faux (si applicable)
+  dureeSec   Int? // temps de réponse
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  chapter  Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([questionId])
+  @@index([documentId])
+  @@index([chapterId])
 }
