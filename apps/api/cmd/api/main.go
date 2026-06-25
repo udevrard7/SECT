@@ -55,6 +55,8 @@ func main() {
         anneeRepo := repository.NewAnneeAcademiqueRepository(pool)
         epreuveRepo := repository.NewEpreuveRepository(pool)
         questionRepo := repository.NewQuestionRepository(pool)
+        sessionRepo := repository.NewSessionRepository(pool)
+        resultatRepo := repository.NewResultatRepository(pool)
         signer := jwt.NewSigner(cfg.JWTSecret)
         authUC := usecase.NewAuthUseCase(authRepo, signer)
         userUC := usecase.NewUserUseCase(userRepo)
@@ -66,10 +68,12 @@ func main() {
         anneeUC := usecase.NewAnneeUseCase(anneeRepo)
         epreuveUC := usecase.NewEpreuveUseCase(epreuveRepo)
         questionUC := usecase.NewQuestionUseCase(questionRepo)
+        sessionUC := usecase.NewSessionUseCase(sessionRepo, resultatRepo, epreuveRepo)
+        resultatUC := usecase.NewResultatUseCase(resultatRepo)
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, cfg.CORSAllowedOrigins, authMiddleware)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, cfg.CORSAllowedOrigins, authMiddleware)
 
         httpServer := &http.Server{
                 Addr:         ":" + cfg.Port,
