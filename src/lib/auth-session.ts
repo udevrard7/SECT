@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import type { NiveauEtude } from '@prisma/client'
 
 // ─── Extended user type from NextAuth session ───
 export interface SessionUser {
@@ -28,6 +29,7 @@ export interface AuthenticatedUser {
   actif: boolean
   etablissementId: string | null
   filiereId: string | null
+  niveau: NiveauEtude | null
 }
 
 // ─── Handler type for protected API routes ───
@@ -65,6 +67,7 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
       actif: true,
       etablissementId: true,
       filiereId: true,
+      niveau: true,
     },
   })
 

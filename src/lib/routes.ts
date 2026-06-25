@@ -38,6 +38,7 @@ export type PageId =
   | 'ai-providers'
   | 'surveillance'
   | 'mes-certificats'
+  | 'exam-prep'
   | 'profil'
   | 'parametres'
 
@@ -79,6 +80,7 @@ export const PAGE_ROUTES: Record<PageId, string> = {
   'ai-providers': '/ai-providers',
   surveillance: '/surveillance',
   'mes-certificats': '/mes-certificats',
+  'exam-prep': '/exam-prep',
   profil: '/profil',
   parametres: '/parametres',
 }
@@ -225,6 +227,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   'ai-providers': 'Fournisseurs IA',
   surveillance: 'Surveillance & Alertes',
   'mes-certificats': 'Mes certificats',
+  'exam-prep': 'Préparation examens',
   profil: 'Mon profil',
   parametres: 'Paramètres établissement',
 }
@@ -267,6 +270,7 @@ export const PAGE_DESCRIPTIONS: Record<PageId, string> = {
   'ai-providers': "Configurer et gérer les fournisseurs d'intelligence artificielle",
   surveillance: 'Consultez les alertes anti-fraude et captures d\'écran',
   'mes-certificats': 'Consulter et télécharger vos certificats',
+  'exam-prep': "Transformez vos supports de cours en moteur de préparation actif : Q&A IA, entraînement, planning et aide de l'enseignant",
   profil: 'Gérer vos informations personnelles et préférences',
   parametres: 'Configurer les paramètres de votre établissement',
 }
@@ -485,6 +489,7 @@ const ETUDIANT_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'mes-resultats', label: 'Notes & résultats', icon: 'Award' },
       { id: 'mes-certificats', label: 'Mes certificats', icon: 'ScrollText' },
+      { id: 'exam-prep', label: 'Préparation examens', icon: 'GraduationCap' },
     ],
   },
 ]

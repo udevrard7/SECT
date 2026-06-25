@@ -57,7 +57,7 @@ describe('auth-session helpers', () => {
     })
 
     it('returns false for regular user objects', () => {
-      const user = { id: '1', email: 'test@test.com', name: 'Test', role: 'ADMIN', actif: true, etablissementId: null, filiereId: null }
+      const user = { id: '1', email: 'test@test.com', name: 'Test', role: 'ADMIN', actif: true, etablissementId: null, filiereId: null, niveau: null }
       expect(isAuthError(user)).toBe(false)
     })
   })

@@ -41,18 +41,21 @@ async function _GET(_request: Request, context: { params: unknown; user: Authent
       })
     }
 
+    const filiereId: string = user.filiereId
+    const niveau = user.niveau
+
     // Récupère les UE de la filière+niveau de l'étudiant
     const ues = await withRetry(() =>
       db.uniteEnseignement.findMany({
         where: {
-          filiereId: user.filiereId,
+          filiereId,
           actif: true,
           // L'UE peut cibler un niveau unique (champ `niveau`) ou plusieurs
           // niveaux (champ JSON `niveaux`). On retient les UE qui matchent
           // au moins l'un des deux.
           OR: [
-            { niveau: user.niveau },
-            { niveaux: { contains: user.niveau } },
+            { niveau },
+            { niveaux: { contains: niveau } },
           ],
         },
         select: { id: true },

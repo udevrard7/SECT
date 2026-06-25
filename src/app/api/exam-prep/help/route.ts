@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 import { sendPushToUser } from '@/lib/push'
+import { requireStudentScope, studentUeFilter } from '@/lib/exam-prep/scope'
 
 /**
  * Messagerie étudiant ↔ enseignant (aide contextuelle).
@@ -80,19 +81,14 @@ async function _POST(request: NextRequest, context: { params: unknown; user: Aut
     }
 
     // ─── Vérifie l'accès au document + récupère l'enseignant propriétaire ───
+    const scope = requireStudentScope(user)
+    if (scope.response) return scope.response
     const document = await withRetry(() =>
       db.document.findFirst({
         where: {
           id: documentId,
           deletedAt: null,
-          uniteEnseignement: {
-            filiereId: user.filiereId ?? '___none___',
-            actif: true,
-            OR: [
-              { niveau: user.niveau ?? '___none___' },
-              { niveaux: { contains: user.niveau ?? '___none___' } },
-            ],
-          },
+          uniteEnseignement: studentUeFilter(scope.filiereId, scope.niveau),
         },
         select: { id: true, ownerId: true, nomFichier: true },
       })

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, withRetry } from '@/lib/db'
 import { withAuth, type AuthenticatedUser } from '@/lib/auth-session'
 import { getAIProvider } from '@/lib/ai-providers'
+import { requireStudentScope, studentUeFilter } from '@/lib/exam-prep/scope'
 
 /**
  * POST /api/exam-prep/qa
@@ -51,21 +52,15 @@ async function _POST(request: NextRequest, context: { params: unknown; user: Aut
     }
 
     // ─── Vérifie l'accès au document (scoping étudiant) ───
+    const scope = requireStudentScope(user)
+    if (scope.response) return scope.response
     const document = await withRetry(() =>
       db.document.findFirst({
         where: {
           id: documentId,
           deletedAt: null,
           statutAnalyse: 'ANALYSE',
-          // L'étudiant ne peut accéder qu'aux documents de ses UE (filière+niveau)
-          uniteEnseignement: {
-            filiereId: user.filiereId ?? '___none___',
-            actif: true,
-            OR: [
-              { niveau: user.niveau ?? '___none___' },
-              { niveaux: { contains: user.niveau ?? '___none___' } },
-            ],
-          },
+          uniteEnseignement: studentUeFilter(scope.filiereId, scope.niveau),
         },
         select: {
           id: true,
