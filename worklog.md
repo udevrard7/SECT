@@ -3138,3 +3138,30 @@ Stage Summary:
 - Sécurité préservée : sans cookie → 401, comportement attendu
 - Backend Go inchangé : cookie prioritaire, Authorization: Bearer reste supporté comme fallback pour mobiles/API
 - Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
+
+---
+Task ID: TUTOR-ONBOARDING-2
+Agent: Z.ai Code (tutor mode)
+Task: Reprise en main du projet par l'utilisateur — clonage, vérification live des services, établissement du workflow
+
+Work Log:
+- Cloné le dépôt GitHub udevrard7/SECT dans /home/z/my-project/sect-repo (branche main, working tree clean)
+- Configuré l'identité git : user.name=udevrard7, user.email=ulrichdouh@gmail.com (local + global)
+- Vérifié l'historique récent : derniers commits concernent la simplification du proxy.ts (PROXY-SIMPLIFY-1) et le fix /api/stats/enseignant
+- Identifié une branche distante divergente `feat/responsable-dashboard-modules` (1052 fichiers, restructuration frontend à la racine) → NON touchée, reste sur main
+- Vérifié les 3 services live :
+  * Render backend : GET /health → 200 {"status":"ok","version":"0.2.0"} ✅
+  * Vercel frontend : GET / → HTTP 200 (0.94s) ✅
+  * Neon DB : connexion OK, 50 tables public, 98 RLS policies (conforme README) ✅
+- Listé les 50 tables (PascalCase) : User, Etablissement, Epreuve, Question, SessionPassation, etc.
+- Vérifié les 8 migrations golang-migrate dans backend/db/db/migrations/ (000001→000008)
+- Lu la config backend (config.go) : vars requises NEON_DATABASE_URL, NEON_DIRECT_URL, JWT_SECRET, R2_*, CORS_ORIGINS
+- Confirmé le workflow CI/CD : push main → auto-deploy Vercel (frontend) + Render (backend)
+
+Stage Summary:
+- Environnement de travail opérationnel : clone à jour, identité git correcte, 3 services live vérifiés
+- Architecture confirmée : monorepo frontend/ (Next.js 16→Vercel) + backend/ (Go 1.24→Render) + Neon (PostgreSQL 18, RLS) + R2 (fichiers)
+- Workflow établi : edit → commit (udevrard7) → push main → auto-deploy Vercel+Render → vérif live → worklog
+- Pour le DB : migrations golang-migrate dans backend/db/db/migrations/, applicables directement sur Neon via NEON_DIRECT_URL
+- Convention de commit : conventional commits (type(scope): description), scopes frontend|backend|db|auth|api|ci
+- Prêt à recevoir les prochaines tâches de développement de l'utilisateur
