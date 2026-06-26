@@ -102,7 +102,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	}))
 
 	// Health check (public)
+	// /health pour Render healthCheckPath (sans préfixe /api)
+	// /api/health pour le rewrite Vercel (préfixe /api/* → Go /api/*)
 	r.Get("/health", s.health)
+	r.Get("/api/health", s.health)
 
 	// Auth routes publiques
 	r.Group(func(r chi.Router) {
