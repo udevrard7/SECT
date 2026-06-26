@@ -3,7 +3,6 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/usecase"
@@ -105,18 +104,8 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	_, _ = w.Write([]byte(`{"error":"` + msg + `"}`))
 }
 
-// clientIP extrait l'IP du client en tenant compte des headers proxy.
+// clientIP utilise la fonction partagée GetClientIP du middleware pour
+// extraire l'IP RÉELLE du client (via headers Vercel X-Forwarded-For / X-Real-IP).
 func clientIP(r *http.Request) string {
-	// X-Forwarded-For (format: client, proxy1, proxy2)
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		return strings.TrimSpace(parts[0])
-	}
-	// X-Real-IP (posé par Caddy)
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	// Fallback: RemoteAddr (host:port)
-	return strings.SplitN(r.RemoteAddr, ":", 2)[0]
+	return middleware.GetClientIP(r)
 }
