@@ -3,14 +3,12 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense } from 'react'
 import { AcceptInvitationPage } from '@/components/auth/accept-invitation-page'
-import { useAuthStore } from '@/stores/auth-store'
-import { useEffect } from 'react'
 
 function InvitationContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get('token')
-  const { status } = useAuthStore()
+  // useAuthStore retiré — cette page est publique (acceptation d'invitation)
 
   // If no token, redirect to login
   if (!token) {

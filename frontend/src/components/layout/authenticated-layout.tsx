@@ -15,29 +15,27 @@ import { getPageIdFromSlug, PAGE_LABELS } from '@/lib/routes'
 import { Loader2 } from 'lucide-react'
 
 export function AuthenticatedLayout({ slug }: { slug: string[] }) {
-  const { user: session, isLoading: status } = useAuthStore()
+  const { user, isAuthenticated, isLoading, mustChangePassword, clearMustChangePassword, refreshSession } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
-  const { user, mustChangePassword, clearMustChangePassword, syncFromSession, setUser } = useAuthStore()
-  // Mode de sidebar persisté — sert à initialiser `defaultOpen` du provider
-  // pour éviter un flash au rechargement (le cookie shadcn n'est pas relu à
-  // l'init). Hook appelé avant les early returns pour respecter les Rules of
-  // Hooks.
   const sidebarMode = useSidebarModeStore((s) => s.mode)
 
-  // Sync session data to auth store
+  // Hydrater la session au montage si pas déjà authentifié
   useEffect(() => {
-    if (!status && session?.user) {
-      if (!user || user.id !== session.user.id) {
-        syncFromSession(session)
-      }
-    } else if (status === 'unauthenticated') {
+    if (!isAuthenticated && !isLoading) {
+      refreshSession()
+    }
+  }, [isAuthenticated, isLoading, refreshSession])
+
+  // Redirect to login if not authenticated (after session check)
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [session, status, router, syncFromSession, user])
+  }, [isLoading, isAuthenticated, router])
 
   // Show loading while session is being checked
-  if (status) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
@@ -48,8 +46,8 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
     )
   }
 
-  // If not authenticated, redirect to login
-  if (status === 'unauthenticated' || !user) {
+  // If not authenticated, return null (redirect happening)
+  if (!isAuthenticated || !user) {
     return null
   }
 
