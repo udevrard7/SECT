@@ -1,6 +1,6 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
+import { useAuthStore } from '@/stores/auth-store'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 import { LandingPage } from '@/components/landing/landing-page'
@@ -45,7 +45,7 @@ export default function Home() {
  * la page et le build échoue (CSR bailout).
  */
 function HomeContent() {
-  const { data: session, status } = useSession()
+  const { user: session, isLoading: status } = useAuthStore()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [initializing, setInitializing] = useState(true)
@@ -64,7 +64,7 @@ function HomeContent() {
 
   // Redirect to dashboard if authenticated (sauf en mode preview DS)
   useEffect(() => {
-    if (status === 'authenticated' && !isDsPreview) {
+    if (!status && !isDsPreview) {
       router.push('/dashboard')
     }
   }, [status, router, isDsPreview])
@@ -75,7 +75,7 @@ function HomeContent() {
   }
 
   // Show loading while initializing the database
-  if (initializing || status === 'loading') {
+  if (initializing || status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950 dark:via-teal-950 dark:to-emerald-900">
         <div className="flex flex-col items-center gap-4">
@@ -89,7 +89,7 @@ function HomeContent() {
   }
 
   // If authenticated, redirecting (show nothing while redirect happens)
-  if (status === 'authenticated') {
+  if (!status) {
     return null
   }
 

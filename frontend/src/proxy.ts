@@ -2,13 +2,9 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Next.js 16 Proxy (anciennement `middleware.ts`).
- *
- * Pendant la transition: supporte les DEUX auth:
- * 1. NextAuth (cookie next-auth.session-token) — ancien
- * 2. Go JWT (cookie access_token) — nouveau
- *
- * Pour les routes /api/*, ajoute Authorization: Bearer si cookie access_token présent.
+ * Next.js 16 Proxy.
+ * Auth gate: vérifie le cookie access_token (JWT Go).
+ * Pour /api/*: ajoute Authorization: Bearer depuis le cookie.
  */
 
 const PUBLIC_PATHS = [
@@ -16,13 +12,8 @@ const PUBLIC_PATHS = [
   '/login',
   '/invitation',
   '/verify',
-  '/api/auth',
   '/api/go-auth',
   '/api/certificats/verify',
-  '/api/epreuves/auto-close',
-  '/api/landing-demo',
-  '/api/push/vapid-public-key',
-  '/api/exam-prep/rappels',
   '/offline',
 ]
 
@@ -45,7 +36,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Pour les routes /api/*, ajouter Authorization: Bearer si cookie Go JWT présent
+  // Pour /api/*: ajouter Authorization: Bearer si cookie présent
   if (pathname.startsWith('/api/')) {
     const accessToken = request.cookies.get('access_token')?.value
     if (accessToken) {
@@ -56,12 +47,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Pages protégées: vérifier UN des deux cookies d'auth
-  const goToken = request.cookies.get('access_token')?.value
-  const nextAuthToken = request.cookies.get('next-auth.session-token')?.value ||
-                        request.cookies.get('__Secure-next-auth.session-token')?.value
+  // Pages protégées: vérifier cookie access_token
+  const accessToken = request.cookies.get('access_token')?.value
 
-  if (!goToken && !nextAuthToken) {
+  if (!accessToken) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('error', 'SessionExpired')
     return NextResponse.redirect(loginUrl)

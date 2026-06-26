@@ -1,6 +1,5 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
@@ -16,7 +15,7 @@ import { getPageIdFromSlug, PAGE_LABELS } from '@/lib/routes'
 import { Loader2 } from 'lucide-react'
 
 export function AuthenticatedLayout({ slug }: { slug: string[] }) {
-  const { data: session, status } = useSession()
+  const { user: session, isLoading: status } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
   const { user, mustChangePassword, clearMustChangePassword, syncFromSession, setUser } = useAuthStore()
@@ -28,7 +27,7 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
 
   // Sync session data to auth store
   useEffect(() => {
-    if (status === 'authenticated' && session?.user) {
+    if (!status && session?.user) {
       if (!user || user.id !== session.user.id) {
         syncFromSession(session)
       }
@@ -38,7 +37,7 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   }, [session, status, router, syncFromSession, user])
 
   // Show loading while session is being checked
-  if (status === 'loading') {
+  if (status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
