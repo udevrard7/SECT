@@ -12,40 +12,51 @@ import (
 )
 
 // ClaimsFromContext récupère les claims de session depuis le context.
-// Délègue à db.ClaimsFromContext pour utiliser la même clé de context
-// que db.WithClaimsContext (utilisée par le middleware Auth).
 func ClaimsFromContext(ctx context.Context) (db.SessionClaims, bool) {
 	return db.ClaimsFromContext(ctx)
 }
 
-// Auth middleware : extrait le JWT du header Authorization, vérifie la signature
-// HMAC-SHA256, et pose les claims dans le context.
+// Auth middleware : extrait le JWT depuis DEUX sources possibles :
+//  1. Cookie httpOnly "access_token" (envoyé par le navigateur via rewrite Vercel — 0 CPU Vercel)
+//  2. Header "Authorization: Bearer" (pour API clients directs, mobile, etc.)
 //
-// La vérification de signature est faite avec le signer partagé (secret JWT_SECRET).
-// Pour la sécurité, on ne fait PAS de DB re-check ici (c'est au handler de décider,
-// via RequireAuthWithDBCheck si besoin).
+// Le cookie est prioritaire car il permet au rewrite next.config.ts de transférer
+// la requête SANS middleware Next.js (0 CPU Vercel, 0 Edge invocation).
 func Auth(signer *jwt.Signer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
+			var tokenString string
+
+			// 1. Essayer le cookie httpOnly "access_token" (navigateur via rewrite)
+			if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
+				tokenString = cookie.Value
+			}
+
+			// 2. Fallback: header "Authorization: Bearer" (API clients, mobile)
+			if tokenString == "" {
+				authHeader := r.Header.Get("Authorization")
+				if authHeader != "" {
+					parts := strings.SplitN(authHeader, " ", 2)
+					if len(parts) == 2 && parts[0] == "Bearer" {
+						tokenString = parts[1]
+					}
+				}
+			}
+
+			// Pas de token → pas de claims (pour endpoints publics)
+			if tokenString == "" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				writeJSONError(w, http.StatusUnauthorized, "invalid authorization header")
-				return
-			}
-
-			claims, err := signer.VerifyAccessToken(parts[1])
+			// Vérifier le token
+			claims, err := signer.VerifyAccessToken(tokenString)
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, "invalid or expired token")
+				next.ServeHTTP(w, r) // Token invalide → pas de claims (RequireAuth bloquera)
 				return
 			}
 
-			// Construire les SessionClaims depuis les claims JWT
+			// Construire les SessionClaims
 			sessionClaims := db.SessionClaims{
 				UserID:          claims.Subject,
 				Role:            claims.Role,
@@ -95,7 +106,6 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	// Ignore error — best-effort
 	_, _ = w.Write([]byte(`{"error":"` + msg + `"}`))
 }
 
