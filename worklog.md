@@ -2939,3 +2939,51 @@ Stage Summary:
 - Endpoints auth complets : login, refresh, logout, change-password, /me
 - Sécurité : bcrypt cost 10, HMAC-SHA256, refresh rotation, lockout 5 tentatives/15min, audit log
 - Transition progressive : NextAuth (Next.js) toujours actif, Go JWT en parallèle
+
+---
+Task ID: ONBOARDING-1
+Agent: Z.ai Code (tutor mode)
+Task: Reprise en main du projet SECT — clonage, audit complet de l'architecture et vérification de l'état live de tous les services
+
+Work Log:
+- Cloné le dépôt GitHub https://github.com/udevrard7/SECT.git dans /home/z/my-project/sect-app (branche main, commit HEAD 4a9a911)
+- Configuré l'identité git : user.name=udevrard7, user.email=ulrichdouh@gmail.com (local + global)
+- Récupéré aussi la branche feat/responsable-dashboard-modules (en retard sur main — travail récent fait directement sur main)
+- Vérifié l'accès réseau sandbox → GitHub (200), Neon (OK), Vercel API (308) — tous joignables
+- Audit architecture (monorepo sur main) :
+  * frontend/ : Next.js 16 + React 19 + TS + Tailwind 4 + shadcn/ui (Vercel, region fra1)
+  * backend/ : Go (chi router, pgxpool v5, sqlc, clean architecture : cmd/internal/{config,db,domain,jwt,middleware,repository,storage,transport/http,usecase}) (Render Docker, Frankfurt, port 8080, plan free, autoDeploy=true)
+  * render.yaml : config Render (NEON_DATABASE_URL, JWT_SECRET, R2_* secrets)
+  * frontend/vercel.json : headers sécurité + regions fra1
+  * frontend/next.config.ts : rewrite afterFiles /api/:path* → https://sect-s1pb.onrender.com/api/:path* (NEXT_PUBLIC_API_URL overridable)
+  * frontend/src/proxy.ts : middleware Next.js 16 — injecte Authorization: Bearer depuis cookie access_token avant le rewrite ; redirect /login si page protégée sans cookie
+  * backend/cmd/api/main.go : 16 repositories + 16 usecases + JWT signer + R2 storage optionnel + graceful shutdown
+  * backend/db/db/migrations/ : 8 migrations SQL (enums, tables, indexes, FKs, updated_at trigger, RLS enable+claims, RLS policies, refresh_tokens) — PAS de table schema_migrations (golang-migrate manuel)
+- Évolution architecturale notée : commit c9c6de0 "suppression DÉFINITIVE de Prisma + Supabase" du frontend → tout l'accès DB passe par le backend Go (RLS Neon). Frontend = pure client HTTP.
+- Vérifications live :
+  * Render backend GET /health → 200 {"service":"sect-api","status":"ok","version":"0.2.0"}
+  * Vercel frontend GET / → 200 (https://sect-app.vercel.app)
+  * Vercel projet sect-app : latestDeployment READY/PROMOTED, commit 4a9a911, framework nextjs, node 24.x, plan hobby, integration GitHub active
+  * Git push --dry-run → "Everything up-to-date" (permission push OK)
+- Audit base Neon (PostgreSQL 18.4) via @neondatabase/serverless :
+  * 48 tables (PascalCase) — toutes avec RLS activé
+  * 23 enums (Role, TypeQuestion, Difficulte, NiveauEtude, StatutEpreuve, StatutSession, etc.)
+  * Comptes : User=18, Etablissement=1, Filiere=3, Epreuve=8, Question=9, SessionPassation=34, Resultat=34, RefreshToken=95, AuditLog=534, Document=14, Certificat=14, AIProviderConfig=5, Plan=4, Abonnement=1
+  * 18 utilisateurs : 1 ADMIN (ulrichdouh@gmail.com, mustChangePwd=true), 1 RESPONSABLE (registrar@uniabidjan.com), 1 ENSEIGNANT (prof01@uniabidjan.com), 15 ETUDIANT
+  * 1 étudiant désactivé (genie.tech@uniabidjan.net) ; 1 compte bloqué (sambake.thiam, loginAttempts=5)
+  * AI Providers : Mistral AI active (priority 1), 4 autres désactivés (MuleRouter, Groq, OpenRouter, Z-AI)
+  * AuditLog 7 jours : 118 LOGIN, 12 LOGIN_FAILED, 8 LOGIN_MATRICULE, 6 LOGIN_LOCKED, 5 CHANGE_PASSWORD, 2 TOKEN_REFRESHED, 2 LOGOUT — système très actif
+- Contraintes sandbox identifiées :
+  * Go NON installé → impossible de compiler/tester le backend localement (Render build via Docker catch les erreurs)
+  * psql NON installé → utilisation @neondatabase/serverless (HTTP) pour requêtes Neon
+  * Le sandbox tourne un projet Next.js par défaut sur port 3000 (template) — le frontend SECT n'est PAS servi localement ; tests frontend via l'URL Vercel en production
+
+Stage Summary:
+- Projet SECT entièrement repris en main et audité
+- Architecture : monorepo frontend (Next.js/Vercel) + backend (Go/Render) + DB (Neon Postgres/RLS) + fichiers (Cloudflare R2)
+- État live : Vercel READY, Render healthy (v0.2.0), Neon OK (48 tables, RLS partout, données réelles)
+- CI/CD confirmé : push GitHub main → auto-deploy Vercel (frontend) + Render (backend)
+- Workflow établi : édition code dans /home/z/my-project/sect-app → commit (udevrard7) → push main → vérif live via curl + worklog
+- Identité git configurée : udevrard7 <ulrichdouh@gmail.com>
+- Limitation clé : backend Go ne peut pas être compilé localement (feedback loop via Render build)
+- Prêt à recevoir les prochaines tâches de développement du tuteur
