@@ -16,6 +16,14 @@ const (
 	StatutAnalyseErreur    StatutAnalyse = "ERREUR"
 )
 
+// DocumentRef est une référence légère à un document (ENS-AUDIT-3).
+// Utilisé pour inclure le nom du fichier dans les listes de HelpThread sans
+// alourdir la réponse avec toute l'entité Document.
+type DocumentRef struct {
+	ID         string `json:"id"`
+	NomFichier string `json:"nomFichier"`
+}
+
 // Document représente un fichier uploadé (PDF, DOCX, TXT, etc.).
 type Document struct {
 	ID                  string        `json:"id"`

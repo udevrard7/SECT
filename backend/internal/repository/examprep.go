@@ -53,12 +53,12 @@ func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, do
 
 		// Score moyen, total, taux réussite, temps révision
 		row := tx.QueryRow(ctx, `
-                        SELECT count(*)::int,
-                               COALESCE(avg("score"), 0)::float,
-                               COALESCE(sum(CASE WHEN "correct" THEN 1 ELSE 0 END)::float / NULLIF(count(*), 0), 0),
-                               COALESCE(sum("dureeSec"), 0)::int
-                        FROM "PracticeAttempt" `+where+`
-                `, args...)
+			SELECT count(*)::int,
+			       COALESCE(avg("score"), 0)::float,
+			       COALESCE(sum(CASE WHEN "correct" THEN 1 ELSE 0 END)::float / NULLIF(count(*), 0), 0),
+			       COALESCE(sum("dureeSec"), 0)::int
+			FROM "PracticeAttempt" `+where+`
+		`, args...)
 		err := row.Scan(&dash.TotalAttempts, &dash.ScoreMoyen, &dash.TauxReussite, &dash.TempsRevision)
 		if err != nil {
 			return fmt.Errorf("query practice stats: %w", err)
@@ -66,36 +66,36 @@ func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, do
 
 		// Sessions à venir
 		err = tx.QueryRow(ctx, `
-                        SELECT count(*) FROM "StudySession"
-                        WHERE "userId" = $1 AND "statut" = 'PLANIFIEE' AND "dateDebut" >= CURRENT_TIMESTAMP
-                `, userID).Scan(&dash.SessionsAVenir)
+			SELECT count(*) FROM "StudySession"
+			WHERE "userId" = $1 AND "statut" = 'PLANIFIEE' AND "dateDebut" >= CURRENT_TIMESTAMP
+		`, userID).Scan(&dash.SessionsAVenir)
 		if err != nil {
 			return fmt.Errorf("query sessions a venir: %w", err)
 		}
 
 		// SRS stats
 		err = tx.QueryRow(ctx, `
-                        SELECT count(*)::int,
-                               COALESCE(sum(CASE WHEN "nextReviewAt" <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0)::int,
-                               COALESCE(sum(CASE WHEN "repetitions" >= 5 THEN 1 ELSE 0 END), 0)::int,
-                               COALESCE(avg("easeFactor"), 0)::float
-                        FROM "ReviewItem" WHERE "userId" = $1
-                `, userID).Scan(&dash.ItemsSrs.Total, &dash.ItemsSrs.DusAujourdhui, &dash.ItemsSrs.Masterises, &dash.ItemsSrs.AvgMastery)
+			SELECT count(*)::int,
+			       COALESCE(sum(CASE WHEN "nextReviewAt" <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0)::int,
+			       COALESCE(sum(CASE WHEN "repetitions" >= 5 THEN 1 ELSE 0 END), 0)::int,
+			       COALESCE(avg("easeFactor"), 0)::float
+			FROM "ReviewItem" WHERE "userId" = $1
+		`, userID).Scan(&dash.ItemsSrs.Total, &dash.ItemsSrs.DusAujourdhui, &dash.ItemsSrs.Masterises, &dash.ItemsSrs.AvgMastery)
 		if err != nil {
 			return fmt.Errorf("query srs stats: %w", err)
 		}
 
 		// Lacunes par chapitre (avgScore < 0.5)
 		rows, err := tx.Query(ctx, `
-                        SELECT c."id", c."titre", avg(p."score") as avg_score, count(*) as attempts
-                        FROM "PracticeAttempt" p
-                        JOIN "Chapter" c ON c."id" = p."chapterId"
-                        WHERE p."userId" = $1
-                        GROUP BY c."id", c."titre"
-                        HAVING avg(p."score") < 0.5
-                        ORDER BY avg_score ASC
-                        LIMIT 10
-                `, userID)
+			SELECT c."id", c."titre", avg(p."score") as avg_score, count(*) as attempts
+			FROM "PracticeAttempt" p
+			JOIN "Chapter" c ON c."id" = p."chapterId"
+			WHERE p."userId" = $1
+			GROUP BY c."id", c."titre"
+			HAVING avg(p."score") < 0.5
+			ORDER BY avg_score ASC
+			LIMIT 10
+		`, userID)
 		if err != nil {
 			return fmt.Errorf("query lacunes: %w", err)
 		}
@@ -131,14 +131,14 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
 	var result []*domain.Document
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		query := fmt.Sprintf(`
-                        SELECT %s FROM "Document" d
-                        WHERE d."deletedAt" IS NULL
-                          AND d."uniteEnseignementId" IN (
-                            SELECT ue."id" FROM "UniteEnseignement" ue
-                            WHERE ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)
-                          )
-                        ORDER BY d."dateUpload" DESC
-                `, columnsDocument)
+			SELECT %s FROM "Document" d
+			WHERE d."deletedAt" IS NULL
+			  AND d."uniteEnseignementId" IN (
+			    SELECT ue."id" FROM "UniteEnseignement" ue
+			    WHERE ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)
+			  )
+			ORDER BY d."dateUpload" DESC
+		`, columnsDocument)
 		rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
 		if err != nil {
 			return fmt.Errorf("query student documents: %w", err)
@@ -194,10 +194,10 @@ func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.
 		}
 
 		query := fmt.Sprintf(`
-                        SELECT "id", "userId", "chapterId", "questionId", "interval", "easeFactor",
-                               "nextReviewAt", "lastReviewAt", "repetitions", "createdAt", "updatedAt"
-                        FROM "ReviewItem" WHERE %s ORDER BY "nextReviewAt" ASC
-                `, strings.Join(where, " AND "))
+			SELECT "id", "userId", "chapterId", "questionId", "interval", "easeFactor",
+			       "nextReviewAt", "lastReviewAt", "repetitions", "createdAt", "updatedAt"
+			FROM "ReviewItem" WHERE %s ORDER BY "nextReviewAt" ASC
+		`, strings.Join(where, " AND "))
 
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
@@ -261,11 +261,11 @@ func (r *ExamPrepRepository) MarkReviewed(ctx context.Context, itemID string, qu
 	}
 
 	_, err = tx.Exec(ctx, `
-                UPDATE "ReviewItem" SET "interval" = $2, "easeFactor" = $3, "repetitions" = $4,
-                        "nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
-                        "lastReviewAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1
-        `, itemID, newInterval, newEase, newRepetitions)
+		UPDATE "ReviewItem" SET "interval" = $2, "easeFactor" = $3, "repetitions" = $4,
+			"nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
+			"lastReviewAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+		WHERE "id" = $1
+	`, itemID, newInterval, newEase, newRepetitions)
 	if err != nil {
 		return fmt.Errorf("update review item: %w", err)
 	}
@@ -287,10 +287,10 @@ func (r *ExamPrepRepository) ListStudySessions(ctx context.Context, userID strin
 	var result []*domain.StudySession
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-                        SELECT "id", "userId", "documentId", "chapterIds", "titre",
-                               "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
-                        FROM "StudySession" WHERE "userId" = $1 ORDER BY "dateDebut" DESC
-                `, userID)
+			SELECT "id", "userId", "documentId", "chapterIds", "titre",
+			       "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
+			FROM "StudySession" WHERE "userId" = $1 ORDER BY "dateDebut" DESC
+		`, userID)
 		if err != nil {
 			return fmt.Errorf("query study sessions: %w", err)
 		}
@@ -340,12 +340,12 @@ func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID stri
 
 	id := uuid.NewString()
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "StudySession" ("id", "userId", "documentId", "chapterIds", "titre",
-                        "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, NULL, $4, $5, 0, 'PLANIFIEE', false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "userId", "documentId", "chapterIds", "titre",
-                        "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
-        `, id, userID, nullableStrPtr(input.DocumentID), input.Type, dateDebut)
+		INSERT INTO "StudySession" ("id", "userId", "documentId", "chapterIds", "titre",
+			"dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt")
+		VALUES ($1, $2, $3, NULL, $4, $5, 0, 'PLANIFIEE', false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING "id", "userId", "documentId", "chapterIds", "titre",
+			"dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
+	`, id, userID, nullableStrPtr(input.DocumentID), input.Type, dateDebut)
 
 	s := &domain.StudySession{}
 	var chapterIds, titre *string
@@ -451,11 +451,11 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
 
 	id := uuid.NewString()
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "PracticeAttempt" ("id", "userId", "questionId", "documentId", "chapterId",
-                        "score", "correct", "dureeSec", "createdAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
-                RETURNING "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt"
-        `, id, userID, input.QuestionID, nullableStrPtr(input.DocumentID), nullableStrPtr(input.ChapterID),
+		INSERT INTO "PracticeAttempt" ("id", "userId", "questionId", "documentId", "chapterId",
+			"score", "correct", "dureeSec", "createdAt")
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+		RETURNING "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt"
+	`, id, userID, input.QuestionID, nullableStrPtr(input.DocumentID), nullableStrPtr(input.ChapterID),
 		input.Score, input.Correct, nullableIntPtr(input.DureeSec))
 
 	p := &domain.PracticeAttempt{}
@@ -484,17 +484,28 @@ func (r *ExamPrepRepository) ListHelpThreads(ctx context.Context, userID string,
 
 	var result []*domain.HelpThread
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		var query string
+		var where string
 		var args []any
 		if role == "ENSEIGNANT" {
-			query = `SELECT "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
-                                FROM "HelpThread" WHERE "enseignantId" = $1 OR "enseignantId" IS NULL ORDER BY "createdAt" DESC`
+			where = `WHERE t."enseignantId" = $1 OR t."enseignantId" IS NULL`
 			args = []any{userID}
 		} else {
-			query = `SELECT "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
-                                FROM "HelpThread" WHERE "etudiantId" = $1 ORDER BY "createdAt" DESC`
+			where = `WHERE t."etudiantId" = $1`
 			args = []any{userID}
 		}
+
+		// BUGFIX (ENS-AUDIT-3) : LEFT JOIN User (étudiant) + Document pour
+		// peupler les refs. LEFT JOIN (et non INNER) pour ne pas perdre les
+		// threads dont l'étudiant/document aurait été supprimé.
+		query := fmt.Sprintf(`
+			SELECT t."id", t."documentId", t."etudiantId", t."enseignantId", t."sujet", t."statut", t."createdAt", t."updatedAt",
+			       u."id", u."name", u."email",
+			       d."id", d."nomFichier"
+			FROM "HelpThread" t
+			LEFT JOIN "User" u ON u."id" = t."etudiantId"
+			LEFT JOIN "Document" d ON d."id" = t."documentId"
+			%s
+			ORDER BY t."createdAt" DESC`, where)
 
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
@@ -504,9 +515,26 @@ func (r *ExamPrepRepository) ListHelpThreads(ctx context.Context, userID string,
 
 		for rows.Next() {
 			t := &domain.HelpThread{}
+			var etuID, etuName, etuEmail *string
+			var docID, docNom *string
 			if err := rows.Scan(&t.ID, &t.DocumentID, &t.EtudiantID, &t.EnseignantID,
-				&t.Sujet, &t.Statut, &t.CreatedAt, &t.UpdatedAt); err != nil {
+				&t.Sujet, &t.Statut, &t.CreatedAt, &t.UpdatedAt,
+				&etuID, &etuName, &etuEmail,
+				&docID, &docNom); err != nil {
 				return fmt.Errorf("scan help thread: %w", err)
+			}
+			if etuID != nil && etuName != nil {
+				t.Etudiant = &domain.UserRef{
+					ID:    *etuID,
+					Name:  *etuName,
+					Email: derefStr(etuEmail),
+				}
+			}
+			if docID != nil && docNom != nil {
+				t.Document = &domain.DocumentRef{
+					ID:         *docID,
+					NomFichier: *docNom,
+				}
 			}
 			result = append(result, t)
 		}
@@ -535,10 +563,10 @@ func (r *ExamPrepRepository) CreateHelpThread(ctx context.Context, etudiantID st
 
 	threadID := uuid.NewString()
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "HelpThread" ("id", "documentId", "chapterId", "etudiantId", "enseignantId", "sujet", "statut", "passageContext", "createdAt", "updatedAt")
-                VALUES ($1, $2, NULL, $3, NULL, $4, 'OUVERT', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
-        `, threadID, input.DocumentID, etudiantID, input.Sujet)
+		INSERT INTO "HelpThread" ("id", "documentId", "chapterId", "etudiantId", "enseignantId", "sujet", "statut", "passageContext", "createdAt", "updatedAt")
+		VALUES ($1, $2, NULL, $3, NULL, $4, 'OUVERT', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
+	`, threadID, input.DocumentID, etudiantID, input.Sujet)
 
 	t := &domain.HelpThread{}
 	err = row.Scan(&t.ID, &t.DocumentID, &t.EtudiantID, &t.EnseignantID, &t.Sujet, &t.Statut, &t.CreatedAt, &t.UpdatedAt)
@@ -550,9 +578,9 @@ func (r *ExamPrepRepository) CreateHelpThread(ctx context.Context, etudiantID st
 	if input.MessageInitial != "" {
 		msgID := uuid.NewString()
 		_, err = tx.Exec(ctx, `
-                        INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
-                        VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
-                `, msgID, threadID, etudiantID, input.MessageInitial)
+			INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
+			VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
+		`, msgID, threadID, etudiantID, input.MessageInitial)
 		if err != nil {
 			return nil, fmt.Errorf("create help message: %w", err)
 		}
@@ -597,9 +625,9 @@ func (r *ExamPrepRepository) ListHelpMessages(ctx context.Context, threadID stri
 	var result []*domain.HelpMessage
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-                        SELECT "id", "threadId", "auteurId", "content", "createdAt"
-                        FROM "HelpMessage" WHERE "threadId" = $1 ORDER BY "createdAt" ASC
-                `, threadID)
+			SELECT "id", "threadId", "auteurId", "content", "createdAt"
+			FROM "HelpMessage" WHERE "threadId" = $1 ORDER BY "createdAt" ASC
+		`, threadID)
 		if err != nil {
 			return fmt.Errorf("query help messages: %w", err)
 		}
@@ -637,10 +665,10 @@ func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, au
 
 	id := uuid.NewString()
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
-                VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
-                RETURNING "id", "threadId", "auteurId", "content", "createdAt"
-        `, id, threadID, auteurID, input.Contenu)
+		INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
+		VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
+		RETURNING "id", "threadId", "auteurId", "content", "createdAt"
+	`, id, threadID, auteurID, input.Contenu)
 
 	m := &domain.HelpMessage{}
 	err = row.Scan(&m.ID, &m.ThreadID, &m.AuteurID, &m.Contenu, &m.CreatedAt)

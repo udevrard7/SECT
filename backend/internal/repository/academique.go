@@ -32,6 +32,21 @@ const columnsUE = `"id", "code", "nom", "description", "filiereId", "niveau", "n
 	"semestre", "creditsECTS", "volumeHeuresCM", "volumeHeuresTD", "volumeHeuresTP",
 	"obligatoire", "actif", "createdAt", "updatedAt"`
 
+// columnsUEQualified : mêmes colonnes que columnsUE mais qualifiées avec le
+// nom de table, pour éviter l'ambiguïté lors d'un JOIN (ex. avec "Filiere"
+// qui possède aussi "id", "nom", "code"). Utilisé par List (ENS-AUDIT-2).
+const columnsUEQualified = `"UniteEnseignement"."id", "UniteEnseignement"."code", "UniteEnseignement"."nom", "UniteEnseignement"."description", "UniteEnseignement"."filiereId", "UniteEnseignement"."niveau", "UniteEnseignement"."niveaux",
+	"UniteEnseignement"."semestre", "UniteEnseignement"."creditsECTS", "UniteEnseignement"."volumeHeuresCM", "UniteEnseignement"."volumeHeuresTD", "UniteEnseignement"."volumeHeuresTP",
+	"UniteEnseignement"."obligatoire", "UniteEnseignement"."actif", "UniteEnseignement"."createdAt", "UniteEnseignement"."updatedAt"`
+
+// derefStr retourne la valeur pointée ou "" si nil (helper local au package).
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func scanUE(s scanner) (*domain.UniteEnseignement, error) {
 	u := &domain.UniteEnseignement{}
 	err := s.Scan(
@@ -72,6 +87,16 @@ func (r *UERepository) FindByID(ctx context.Context, id string) (*domain.UniteEn
 }
 
 // List liste les UEs (RLS actif).
+//
+// BUGFIX (ENS-AUDIT-2) : deux correctifs apportés ici :
+//  1. Inclusion de la relation `filiere` (LEFT JOIN Filiere) pour que le
+//     frontend puisse afficher le nom de la filière sans crash (le frontend
+//     accédait à `ue.filiere.nom` sur un objet toujours nil avant ce fix).
+//  2. Application effective du filtre `enseignantId` (jusqu'ici ignoré) : on
+//     ne renvoie que les UEs des filières assignées à l'enseignant (table
+//     EnseignantFiliere), en couvrant aussi les UEs partagées via
+//     UniteEnseignementFiliere. Sans ce filtre, /api/unites-enseignement
+//     ?enseignantId=X renvoyait TOUTES les UEs visibles sous RLS.
 func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]*domain.UniteEnseignement, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok {
@@ -86,28 +111,41 @@ func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]
 
 		// filiereId : UE owned by this filière OR shared with it
 		if params.FiliereID != "" {
-			where = append(where, fmt.Sprintf(`("filiereId" = $%d OR EXISTS (
+			where = append(where, fmt.Sprintf(`("UniteEnseignement"."filiereId" = $%d OR EXISTS (
 				SELECT 1 FROM "UniteEnseignementFiliere" uef WHERE uef."uniteEnseignementId" = "UniteEnseignement"."id" AND uef."filiereId" = $%d))`, argIdx, argIdx))
 			args = append(args, params.FiliereID)
 			argIdx++
 		}
+		// enseignantId : UEs des filières assignées à l'enseignant
+		// (couvre l'UE propriétaire + les UEs partagées via UniteEnseignementFiliere).
+		if params.EnseignantID != "" {
+			where = append(where, fmt.Sprintf(`EXISTS (
+				SELECT 1 FROM "EnseignantFiliere" ef
+				WHERE ef."enseignantId" = $%d
+				  AND (ef."filiereId" = "UniteEnseignement"."filiereId"
+				       OR EXISTS (SELECT 1 FROM "UniteEnseignementFiliere" uef
+						  WHERE uef."uniteEnseignementId" = "UniteEnseignement"."id"
+						    AND uef."filiereId" = ef."filiereId")))`, argIdx))
+			args = append(args, params.EnseignantID)
+			argIdx++
+		}
 		if params.Niveau != "" {
-			where = append(where, fmt.Sprintf(`("niveau" = $%d OR "niveaux" LIKE $%d)`, argIdx, argIdx+1))
+			where = append(where, fmt.Sprintf(`("UniteEnseignement"."niveau" = $%d OR "UniteEnseignement"."niveaux" LIKE $%d)`, argIdx, argIdx+1))
 			args = append(args, params.Niveau, "%\""+params.Niveau+"\"%")
 			argIdx += 2
 		}
 		if params.Semestre != nil {
-			where = append(where, fmt.Sprintf(`"semestre" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"UniteEnseignement"."semestre" = $%d`, argIdx))
 			args = append(args, *params.Semestre)
 			argIdx++
 		}
 		if params.Actif != nil {
-			where = append(where, fmt.Sprintf(`"actif" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"UniteEnseignement"."actif" = $%d`, argIdx))
 			args = append(args, *params.Actif)
 			argIdx++
 		}
 		if params.Search != "" {
-			where = append(where, fmt.Sprintf(`("nom" ILIKE $%d OR "code" ILIKE $%d)`, argIdx, argIdx))
+			where = append(where, fmt.Sprintf(`("UniteEnseignement"."nom" ILIKE $%d OR "UniteEnseignement"."code" ILIKE $%d)`, argIdx, argIdx))
 			args = append(args, "%"+params.Search+"%")
 			argIdx++
 		}
@@ -117,7 +155,16 @@ func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]
 			whereClause = "WHERE " + strings.Join(where, " AND ")
 		}
 
-		query := fmt.Sprintf(`SELECT %s FROM "UniteEnseignement" %s ORDER BY "createdAt" DESC`, columnsUE, whereClause)
+		// LEFT JOIN Filiere pour peupler la relation (nil si filiereId est NULL
+		// ou si la filière a été supprimée — ne casse pas le listage).
+		// On utilise columnsUEQualified pour éviter l'ambiguïté des colonnes
+		// "id"/"nom"/"code" partagées entre "UniteEnseignement" et "Filiere".
+		query := fmt.Sprintf(`
+			SELECT %s, f."id", f."nom", f."code"
+			FROM "UniteEnseignement"
+			LEFT JOIN "Filiere" f ON f."id" = "UniteEnseignement"."filiereId"
+			%s
+			ORDER BY "UniteEnseignement"."createdAt" DESC`, columnsUEQualified, whereClause)
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query ues: %w", err)
@@ -125,9 +172,23 @@ func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]
 		defer rows.Close()
 
 		for rows.Next() {
-			u, err := scanUE(rows)
+			u := &domain.UniteEnseignement{}
+			var filiereID, filiereNom, filiereCode *string
+			err := rows.Scan(
+				&u.ID, &u.Code, &u.Nom, &u.Description, &u.FiliereID, &u.Niveau, &u.Niveaux,
+				&u.Semestre, &u.CreditsECTS, &u.VolumeHeuresCM, &u.VolumeHeuresTD, &u.VolumeHeuresTP,
+				&u.Obligatoire, &u.Actif, &u.CreatedAt, &u.UpdatedAt,
+				&filiereID, &filiereNom, &filiereCode,
+			)
 			if err != nil {
 				return fmt.Errorf("scan ue: %w", err)
+			}
+			if filiereID != nil && filiereNom != nil {
+				u.Filiere = &domain.FiliereRef{
+					ID:   *filiereID,
+					Nom:  *filiereNom,
+					Code: derefStr(filiereCode),
+				}
 			}
 			result = append(result, u)
 		}
