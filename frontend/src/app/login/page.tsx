@@ -6,18 +6,19 @@ import { useEffect } from 'react'
 import { LoginForm } from '@/components/auth/login-form'
 
 export default function LoginPage() {
-  const { user: session, isLoading: status } = useAuthStore()
+  const { user, isAuthenticated, isLoading } = useAuthStore()
   const router = useRouter()
 
   // Redirect to dashboard if already authenticated
   useEffect(() => {
-    if (!status) {
+    if (isAuthenticated && user) {
       router.push('/dashboard')
     }
-  }, [status, router])
+  }, [isAuthenticated, user, router])
 
-  if (status) return null
-  if (!status) return null
+  // Si déjà authentifié, ne pas afficher le formulaire
+  if (isAuthenticated) return null
 
+  // Sinon, afficher le formulaire de connexion
   return <LoginForm />
 }
