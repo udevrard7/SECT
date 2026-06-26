@@ -274,7 +274,14 @@ export function EnseignantDashboard() {
   // callback surfaces newly unlocked badges via the notification component
   // (avoids setState in useEffect body, which is forbidden by
   // react-hooks/set-state-in-effect).
-  const recalculateBadges = useRecalculateBadges(userId, {
+  //
+  // BUGFIX (ENS-AUDIT-1) : on ne déstructure QUE `mutate` (garantie stable par
+  // React Query, à l'instar de `dispatch` de useReducer) afin que l'effet ne se
+  // ré-exécute qu'au changement de `userId`. Dépendre de l'objet mutation
+  // complet (`recalculateBadges`) provoquait une boucle infinie : nouvelle
+  // identité à chaque rendu → effet re-déclenché → mutate() → re-rendu → …
+  // (des milliers de POST /api/badges par session, DDoS du backend).
+  const { mutate: recalculateBadges } = useRecalculateBadges(userId, {
     onSuccess: (data) => {
       if (data.newlyUnlocked?.length) {
         setNewlyUnlockedBadge(data.newlyUnlocked[0])
@@ -286,7 +293,7 @@ export function EnseignantDashboard() {
   // Trigger the recalculation once on mount (preserves original behavior).
   useEffect(() => {
     if (!userId) return
-    recalculateBadges.mutate()
+    recalculateBadges()
   }, [userId, recalculateBadges])
 
   // Auto-dismiss the badge notification with a cleanup-based timer

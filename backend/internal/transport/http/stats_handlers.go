@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
+	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 )
 
@@ -26,18 +27,18 @@ import (
 // Contrat attendu par le frontend (cf. EnseignantStatsData dans
 // frontend/src/hooks/use-dashboard.ts) :
 //
-//	{
-//	  nbDocuments, nbQuestionsTotal, nbEpreuves, nbEpreuvesActives,
-//	  nbCorrectionsEnAttente,
-//	  pendingCorrections: [{ sessionId, etudiantNom, etudiantEmail,
-//	    epreuveTitre, questionType, questionPreview, submittedAt }],
-//	  recentEpreuves:    [{ id, titre, statut, nbParticipants, moyenne?, date }],
-//	  performanceParEpreuve: [{ titre, moyenne, tauxReussite }],
-//	  evolutionMoyennes: [{ mois, moyenne, nbEvaluations }],
-//	  epreuvesAVenir:    [{ id, titre, date, dateFin, duree, statut,
-//	    nbParticipants }],
-//	  badges?: [...]  // ignoré par le frontend (utilise /api/badges)
-//	}
+//      {
+//        nbDocuments, nbQuestionsTotal, nbEpreuves, nbEpreuvesActives,
+//        nbCorrectionsEnAttente,
+//        pendingCorrections: [{ sessionId, etudiantNom, etudiantEmail,
+//          epreuveTitre, questionType, questionPreview, submittedAt }],
+//        recentEpreuves:    [{ id, titre, statut, nbParticipants, moyenne?, date }],
+//        performanceParEpreuve: [{ titre, moyenne, tauxReussite }],
+//        evolutionMoyennes: [{ mois, moyenne, nbEvaluations }],
+//        epreuvesAVenir:    [{ id, titre, date, dateFin, duree, statut,
+//          nbParticipants }],
+//        badges?: [...]  // ignoré par le frontend (utilise /api/badges)
+//      }
 //
 // Tous les tableaux sont des slices vides (non null) quand il n'y a pas de
 // données, pour éviter les crashes runtime côté frontend (ex: .map() sur undefined).
@@ -175,7 +176,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 			SELECT e.id, e.titre, e.statut, e."dateDebut",
 			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e.id) AS nb_participants,
 			       (SELECT AVG(s2.score) FROM "SessionPassation" s2
-			        WHERE s2."epreuveId" = e.id AND s2.statut IN ('CORRIGEE', 'RETOURNEE') AND s2.score IS NOT NULL) AS moyenne
+				WHERE s2."epreuveId" = e.id AND s2.statut IN ('CORRIGEE', 'RETOURNEE') AND s2.score IS NOT NULL) AS moyenne
 			FROM "Epreuve" e
 			WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
 			ORDER BY e."createdAt" DESC
@@ -210,8 +211,8 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 			SELECT e.titre,
 			       COALESCE(AVG(s.score), 0) AS moyenne,
 			       CASE WHEN COUNT(s.id) > 0
-			            THEN (COUNT(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / COUNT(s.id) * 100
-			            ELSE 0 END AS taux_reussite
+				    THEN (COUNT(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / COUNT(s.id) * 100
+				    ELSE 0 END AS taux_reussite
 			FROM "Epreuve" e
 			LEFT JOIN "SessionPassation" s ON s."epreuveId" = e.id
 			  AND s.statut IN ('CORRIGEE', 'RETOURNEE')
@@ -321,17 +322,17 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 //
 // Contrat attendu par le frontend (EtudiantStatsData) :
 //
-//	{
-//	  nbEpreuvesAVenir, nbEpreuvesTerminees, moyenne, meilleureNote,
-//	  epreuvesAVenir: [{ id, titre, date, dateFin, duree, enseignant,
-//	    nbQuestions, totalPoints }],
-//	  resultatsRecents: [{ id, epreuveId, titre, enseignant, date, score,
-//	    statut, resultat: { scoreFinal, totalPossible } | null }],
-//	  evolutionScores: [{ titre, score, date }],
-//	  performanceParType: [{ type, moyenne, nbReponses }],
-//	  sessionEnCours: { id, epreuveId, epreuveTitre, dateDebut } | null,
-//	  badges?: [...]
-//	}
+//      {
+//        nbEpreuvesAVenir, nbEpreuvesTerminees, moyenne, meilleureNote,
+//        epreuvesAVenir: [{ id, titre, date, dateFin, duree, enseignant,
+//          nbQuestions, totalPoints }],
+//        resultatsRecents: [{ id, epreuveId, titre, enseignant, date, score,
+//          statut, resultat: { scoreFinal, totalPossible } | null }],
+//        evolutionScores: [{ titre, score, date }],
+//        performanceParType: [{ type, moyenne, nbReponses }],
+//        sessionEnCours: { id, epreuveId, epreuveTitre, dateDebut } | null,
+//        badges?: [...]
+//      }
 func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -618,6 +619,15 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	// BUGFIX (ENS-AUDIT-4) : restriction au rôle RESPONSABLE (et ADMIN qui
+	// hérite de toutes les permissions). Avant ce fix, tout utilisateur
+	// authentifié — y compris ENSEIGNANT et ETUDIANT — pouvait appeler cet
+	// endpoint et récupérer les compteurs globaux (nb enseignants, étudiants,
+	// épreuves, sessions) de l'établissement : fuite d'information.
+	if claims.Role != string(domain.RoleResponsable) && claims.Role != string(domain.RoleAdmin) {
+		writeJSONError(w, http.StatusForbidden, "réservé au rôle RESPONSABLE")
 		return
 	}
 

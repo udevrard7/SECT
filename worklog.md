@@ -3165,3 +3165,54 @@ Stage Summary:
 - Pour le DB : migrations golang-migrate dans backend/db/db/migrations/, applicables directement sur Neon via NEON_DIRECT_URL
 - Convention de commit : conventional commits (type(scope): description), scopes frontend|backend|db|auth|api|ci
 - Prêt à recevoir les prochaines tâches de développement de l'utilisateur
+
+---
+Task ID: ENS-AUDIT-1
+Agent: Z.ai Code (tutor mode)
+Task: Audit + correction des bugs des pages enseignant (vérification via agent-browser en production)
+
+Work Log:
+- Login enseignant sur https://sect-app.vercel.app (prof01@uniabidjan.com) via agent-browser
+- Vérification des 11 pages enseignant (dashboard, documents, questions-ia, epreuves, devoirs, correction, resultats, mes-etudiants, aide-etudiants, surveillance, corbeille, profil)
+- 3 bugs critiques + 2 bugs de sécurité/correctness identifiés et corrigés :
+
+BUG #1 (CRITIQUE) — Boucle infinie POST/GET /api/badges sur /dashboard
+  - Symptôme : 25 217 requêtes /api/badges cumulées en une session (DDoS du backend)
+  - Cause : useEffect dépendait de `recalculateBadges` (objet mutation React Query, nouvelle identité à chaque rendu) → effet re-déclenché en boucle → mutate() → re-rendu → …
+  - Fix : déstructurer `mutate` (garantie stable par React Query, comme dispatch) et dépendre sur lui. Appliqué aux 2 dashboards (enseignant + etudiant).
+  - Fichiers : frontend/src/components/dashboard/enseignant-dashboard.tsx, etudiant-dashboard.tsx
+
+BUG #2 (CRITIQUE) — Crash client-side sur /documents
+  - Symptôme : "Application error: a client-side exception" — TypeError: Cannot read properties of undefined (reading 'nom')
+  - Cause : template accédait à `ue.filiere.nom` mais l'API /api/unites-enseignement ne retournait que `filiereId` (string), pas l'objet imbriqué `filiere`
+  - Fix frontend : type `filiere` rendu optionnel + optional chaining + fallback partout (5 points de crash)
+  - Fix backend : LEFT JOIN Filiere dans UERepository.List + peuplement de FiliereRef. Bonus : filtre `enseignantId` (ignoré jusqu'ici) maintenant appliqué (WHERE EXISTS EnseignantFiliere)
+  - Fichiers : frontend documents-page.tsx ; backend repository/academique.go (columnsUEQualified + derefStr helper + List réécrite)
+
+BUG #3 (CRITIQUE) — Crash client-side sur /aide-etudiants
+  - Symptôme : "Application error" — TypeError: Cannot read properties of undefined (reading 'name')
+  - Cause : template accédait à `t.etudiant.name` mais l'API /api/exam-prep/help ne retournait que `etudiantId`, pas l'objet imbriqué `etudiant`
+  - Fix frontend : type `etudiant` rendu optionnel + optional chaining + fallback "Étudiant inconnu" (3 points de crash)
+  - Fix backend : ajout champ `Etudiant *UserRef` + `Document *DocumentRef` au struct HelpThread ; LEFT JOIN User + Document dans ListHelpThreads ; nouveau type DocumentRef réutilisable
+  - Fichiers : frontend aide-etudiants-page.tsx ; backend domain/examprep.go, domain/document.go, repository/examprep.go
+
+BUG #4 (SÉCURITÉ) — /api/stats/responsable accessible à tous les rôles
+  - Symptôme : un ENSEIGNANT/ETUDIANT pouvait appeler /api/stats/responsable et récupérer les compteurs globaux (nb enseignants, étudiants, épreuves, sessions) : fuite d'information
+  - Fix : contrôle de rôle dans statsResponsable (403 si non RESPONSABLE/ADMIN). Le notification-bell gère le 403 gracieusement (notifications vides).
+  - Fichier : backend transport/http/stats_handlers.go
+
+BUG #5 (CORRECTNESS) — Filtre enseignantId ignoré dans /api/unites-enseignement
+  - Cause : le handler parseait `enseignantId` mais le repository ne l'utilisait jamais → toutes les UEs visibles sous RLS étaient renvoyées
+  - Fix : ajout clause WHERE EXISTS (EnseignantFiliere) couvrant UE propriétaire + UEs partagées (UniteEnseignementFiliere)
+  - Fichier : backend repository/academique.go (intégré au fix #2)
+
+- Lint frontend : 0 erreurs (1 warning préexistant sans rapport)
+- Build Go : Go non installable localement (timeout download) — revue manuelle des types effectuée, validation dépendante du build Render
+- Convention respectée : conventional commits, auteur udevrard7, tabs restaurés via unexpand (gofmt-compatible)
+
+Stage Summary:
+- 3 crashes de page corrigés (/dashboard badges loop, /documents, /aide-etudiants)
+- 1 faille de sécurité comblée (stats/responsable) + 1 bug de correctness (filtre enseignantId)
+- 9 fichiers modifiés (4 frontend, 5 backend), ~164 insertions logiques
+- Pages OK sans bug : questions-ia, epreuves, devoirs, correction, resultats, mes-etudiants, surveillance, corbeille, profil
+- En attente : validation du build Render (Go) + vérif live agent-browser post-déploiement

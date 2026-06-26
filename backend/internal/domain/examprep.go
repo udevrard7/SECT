@@ -107,15 +107,22 @@ type SubmitPracticeInput struct {
 // ============================================================
 
 // HelpThread représente un fil d'aide étudiant ↔ enseignant.
+//
+// BUGFIX (ENS-AUDIT-3) : ajout des relations `Etudiant` et `Document` peuplées
+// par ListHelpThreads (LEFT JOIN). Avant ce fix, l'API ne renvoyait que les
+// IDs (etudiantId, documentId), ce qui faisait crasher le frontend
+// aide-etudiants-page.tsx qui accédait à `t.etudiant.name` (undefined.nom).
 type HelpThread struct {
-	ID           string    `json:"id"`
-	DocumentID   string    `json:"documentId"`
-	EtudiantID   string    `json:"etudiantId"`
-	EnseignantID *string   `json:"enseignantId,omitempty"`
-	Sujet        string    `json:"sujet"`
-	Statut       string    `json:"statut"` // "OUVERT", "CLOS"
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID           string       `json:"id"`
+	DocumentID   string       `json:"documentId"`
+	EtudiantID   string       `json:"etudiantId"`
+	EnseignantID *string      `json:"enseignantId,omitempty"`
+	Sujet        string       `json:"sujet"`
+	Statut       string       `json:"statut"` // "OUVERT", "CLOS"
+	CreatedAt    time.Time    `json:"createdAt"`
+	UpdatedAt    time.Time    `json:"updatedAt"`
+	Etudiant     *UserRef     `json:"etudiant,omitempty"`
+	Document     *DocumentRef `json:"document,omitempty"`
 }
 
 // HelpMessage représente un message dans un fil d'aide.

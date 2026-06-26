@@ -239,7 +239,11 @@ export function EtudiantDashboard() {
   // Combined with useBadges (GET /api/badges), TanStack Query dedups the
   // requests so we no longer have the previous race condition between two
   // parallel useEffects calling setData in non-deterministic order.
-  const recalculateBadges = useRecalculateBadges(userId, {
+  // BUGFIX (ENS-AUDIT-1) : on ne déstructure QUE `mutate` (garantie stable par
+  // React Query) afin que l'effet ne se ré-exécute qu'au changement de userId.
+  // L'ancien code dépendait de l'objet mutation complet (identité changée à
+  // chaque rendu) → boucle infinie de POST /api/badges (DDoS du backend).
+  const { mutate: recalculateBadges } = useRecalculateBadges(userId, {
     onSuccess: (data) => {
       if (data.newlyUnlocked?.length) {
         setNewlyUnlockedBadge(data.newlyUnlocked[0])
@@ -251,7 +255,7 @@ export function EtudiantDashboard() {
   // Trigger the recalculation once on mount (preserves original behavior).
   useEffect(() => {
     if (!userId) return
-    recalculateBadges.mutate()
+    recalculateBadges()
   }, [userId, recalculateBadges])
 
   // Auto-dismiss the badge notification with a cleanup-based timer

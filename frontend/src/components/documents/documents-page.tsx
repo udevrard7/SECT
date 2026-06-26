@@ -110,7 +110,12 @@ interface UE {
   nom: string
   niveau: string
   niveaux: string | null
-  filiere: { id: string; nom: string }
+  // BUGFIX (ENS-AUDIT-2) : l'API /api/unites-enseignement retourne filiereId
+  // (string) et, depuis le fix backend associé, l'objet imbriqué `filiere`.
+  // Rendu optionnel + optional chaining partout pour ne jamais crasher si
+  // l'include backend est absent (vieilles réponses en cache, autres appels).
+  filiere?: { id: string; nom: string } | null
+  filiereId?: string | null
 }
 
 interface Document {
@@ -130,7 +135,8 @@ interface Document {
     nom: string
     niveau: string
     niveaux: string | null
-    filiere: { id: string; nom: string }
+    // BUGFIX (ENS-AUDIT-2) : filiere optionnel (l'include backend peut être absent).
+    filiere?: { id: string; nom: string } | null
   } | null
 }
 
@@ -1137,7 +1143,7 @@ export function DocumentsPage() {
                       <SelectItem value="__none__">Aucune UE</SelectItem>
                       {ues.map((ue) => (
                         <SelectItem key={ue.id} value={ue.id}>
-                          {ue.code} — {ue.nom} ({ue.filiere.nom}, {ue.niveau})
+                          {ue.code} — {ue.nom}{ue.filiere ? ` (${ue.filiere.nom}, ${ue.niveau})` : ue.niveau ? ` (${ue.niveau})` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1454,9 +1460,11 @@ export function DocumentsPage() {
                                 >
                                   {ue!.niveau}
                                 </Badge>
-                                <span className="text-xs text-muted-foreground hidden sm:inline">
-                                  {ue!.filiere.nom}
-                                </span>
+                                {ue!.filiere && (
+                                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                                    {ue!.filiere.nom}
+                                  </span>
+                                )}
                               </>
                             )}
                           </div>
@@ -1615,7 +1623,9 @@ export function DocumentsPage() {
                       {selectedDocument.uniteEnseignement.code} — {selectedDocument.uniteEnseignement.nom}
                     </p>
                     <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                      {selectedDocument.uniteEnseignement.filiere.nom} · {selectedDocument.uniteEnseignement.niveau}
+                      {selectedDocument.uniteEnseignement.filiere?.nom
+                        ? `${selectedDocument.uniteEnseignement.filiere.nom} · `
+                        : ''}{selectedDocument.uniteEnseignement.niveau}
                     </p>
                   </div>
                 </div>

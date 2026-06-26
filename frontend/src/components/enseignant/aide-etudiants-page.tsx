@@ -36,7 +36,11 @@ interface Thread {
   updatedAt: string
   document: { id: string; nomFichier: string } | null
   chapter: { id: string; titre: string } | null
-  etudiant: { id: string; name: string }
+  // BUGFIX (ENS-AUDIT-3) : etudiant optionnel — l'API peut ne pas inclure la
+  // relation (avant le fix backend ListHelpThreads). Optional chaining +
+  // fallback partout pour éviter le crash `Cannot read 'name' of undefined`.
+  etudiant?: { id: string; name: string } | null
+  etudiantId?: string
   _count?: { messages: number }
 }
 
@@ -96,7 +100,7 @@ export function AideEtudiantsPage() {
       const q = searchQuery.toLowerCase()
       return (
         t.sujet.toLowerCase().includes(q) ||
-        t.etudiant.name.toLowerCase().includes(q) ||
+        (t.etudiant?.name ?? '').toLowerCase().includes(q) ||
         (t.document?.nomFichier ?? '').toLowerCase().includes(q)
       )
     }
@@ -259,7 +263,7 @@ export function AideEtudiantsPage() {
                           </span>
                         )}
                         <span>·</span>
-                        <span className="font-medium text-foreground/80">{t.etudiant.name}</span>
+                        <span className="font-medium text-foreground/80">{t.etudiant?.name ?? 'Étudiant inconnu'}</span>
                       </div>
 
                       {/* Passage contextuel (aperçu) */}
@@ -394,7 +398,7 @@ function ConversationView({
               <span className="flex items-center gap-1"><FileText className="h-3 w-3" />{thread.document?.nomFichier ?? '—'}</span>
               {thread.chapter && <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" />{thread.chapter.titre}</span>}
               <span>·</span>
-              <span className="font-medium text-foreground/80">{thread.etudiant.name}</span>
+              <span className="font-medium text-foreground/80">{thread.etudiant?.name ?? 'Étudiant inconnu'}</span>
             </div>
             {thread.passageContext && (
               <p className="text-xs text-muted-foreground italic mt-2 line-clamp-3 border-l-2 border-border pl-2">
