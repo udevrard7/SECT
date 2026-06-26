@@ -2,52 +2,48 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Next.js 16 Proxy.
- * Auth gate: vérifie le cookie access_token (JWT Go).
- * Pour /api/*: ajoute Authorization: Bearer depuis le cookie.
+ * Next.js 16 Proxy — MINIMAL (0 CPU pour les routes API).
+ *
+ * RÔLE UNIQUE: rediriger vers /login si pas de cookie access_token sur les PAGES.
+ *
+ * POUR LES ROUTES /api/*: NE RIEN FAIRE.
+ * Le rewrite next.config.ts (afterFiles) transfère directement vers le Go backend.
+ * Le navigateur envoie le cookie httpOnly automatiquement.
+ * Le Go backend lit le cookie directement (0 CPU Vercel, 0 Edge invocation).
  */
 
-const PUBLIC_PATHS = [
+const PUBLIC_PAGES = [
   '/',
   '/login',
   '/invitation',
   '/verify',
-  '/api/go-auth',
-  '/api/certificats/verify',
   '/offline',
 ]
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Assets statiques
+  // Assets statiques — laisser passer
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname.startsWith('/fonts') ||
-    pathname.startsWith('/public') ||
     pathname.includes('.')
   ) {
     return NextResponse.next()
   }
 
-  // Routes publiques
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
-    return NextResponse.next()
-  }
-
-  // Pour /api/*: ajouter Authorization: Bearer si cookie présent
+  // Routes API — NE PAS intercepter (le rewrite s'en charge, 0 CPU)
   if (pathname.startsWith('/api/')) {
-    const accessToken = request.cookies.get('access_token')?.value
-    if (accessToken) {
-      const requestHeaders = new Headers(request.headers)
-      requestHeaders.set('Authorization', `Bearer ${accessToken}`)
-      return NextResponse.next({ request: { headers: requestHeaders } })
-    }
     return NextResponse.next()
   }
 
-  // Pages protégées: vérifier cookie access_token
+  // Pages publiques — laisser passer
+  if (PUBLIC_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+    return NextResponse.next()
+  }
+
+  // Pages protégées — vérifier cookie access_token
   const accessToken = request.cookies.get('access_token')?.value
 
   if (!accessToken) {
@@ -60,7 +56,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // Matcher: exclure /api/* (géré par rewrite, pas par proxy)
+  // et les assets statiques
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|fonts|public).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|fonts|public).*)',
   ],
 }
