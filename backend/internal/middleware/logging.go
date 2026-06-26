@@ -88,4 +88,3 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// Test ignored build step
