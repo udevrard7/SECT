@@ -1,3 +1,4 @@
+# Backend Go — .dockerignore
 bin/
 tmp/
 *.exe
