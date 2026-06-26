@@ -1,20 +1,10 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# SECT — .gitignore (monorepo frontend/ + backend/)
 
 # dependencies
-node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
+node_modules/
 
 # next.js
-/.next/
+.next/
 /out/
 
 # production
@@ -25,52 +15,35 @@ node_modules
 *.pem
 
 # debug
+*.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (jamais committés)
 .env*
 
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
-.claude
-.z-ai-config
-*.log
-dev.log
-dev.out.log
-test
-prompt
 
-server.log
-# Skills directory
-/skills/
-
-# Sandbox-specific (not part of the SECT project)
+# sandbox (ne fait pas partie du projet)
 .zscripts/
 .idx/
 agent-ctx/
-audit-screenshots/
 tool-results/
 upload/
-migration-log.txt
-migration-stdout.txt
-migration.pid
+download/
+skills/
+Caddyfile
 *.bak
-rb.ts
-reset-both.ts
-check-*.ts
 
-# Go backend (apps/api)
-apps/api/bin/
-apps/api/tmp/
-*.exe
-frontend/.next/
+# Go backend
 backend/bin/
+backend/tmp/
+*.exe
+
+# Frontend
+frontend/.next/
