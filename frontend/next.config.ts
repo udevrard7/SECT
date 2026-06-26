@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-s1pb.onrender.com'
+
 const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
@@ -14,8 +16,18 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.vercel.app' },
     ],
   },
-  // Le proxy /api/* est géré par src/proxy.ts (proxy direct avec injection Authorization)
-  // Pas de rewrite next.config.ts car les rewrites ne forwardent pas les headers modifiés
+  // Rewrite: /api/* → Go backend. Le proxy.ts injecte Authorization: Bearer
+  // avant que le rewrite ne s'exécute (afterFiles).
+  async rewrites() {
+    return {
+      afterFiles: [
+        {
+          source: '/api/:path*',
+          destination: `${API_URL}/api/:path*`,
+        },
+      ],
+    }
+  },
 };
 
 export default nextConfig;
