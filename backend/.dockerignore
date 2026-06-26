@@ -1,0 +1,10 @@
+bin/
+tmp/
+*.exe
+.git
+.gitignore
+README.md
+Makefile
+sqlc.yaml
+db/queries/
+db/reference/
