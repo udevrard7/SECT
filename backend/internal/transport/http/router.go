@@ -7,6 +7,7 @@ import (
         "github.com/go-chi/chi/v5"
         chimw "github.com/go-chi/chi/v5/middleware"
         "github.com/go-chi/cors"
+        "github.com/jackc/pgx/v5/pgxpool"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/repository"
         "github.com/udevrard7/sect/backend/internal/usecase"
@@ -15,6 +16,7 @@ import (
 // Server holds the HTTP server dependencies.
 type Server struct {
         router       *chi.Mux
+        dbPool       *pgxpool.Pool
         userRepo     *repository.UserRepository
         userUC       *usecase.UserUseCase
         authUC       *usecase.AuthUseCase
@@ -53,10 +55,12 @@ func NewServer(
         certificatUC *usecase.CertificatUseCase,
         correctionUC *usecase.CorrectionUseCase,
         examPrepUC *usecase.ExamPrepUseCase,
+        dbPool *pgxpool.Pool,
         corsOrigins []string,
         authMiddleware func(http.Handler) http.Handler,
 ) *Server {
         s := &Server{
+                dbPool:       dbPool,
                 userRepo:     userRepo,
                 userUC:       userUC,
                 authUC:       authUC,
