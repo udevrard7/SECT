@@ -3,14 +3,14 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense } from 'react'
 import { AcceptInvitationPage } from '@/components/auth/accept-invitation-page'
-import { useSession } from 'next-auth/react'
+import { useAuthStore } from '@/stores/auth-store'
 import { useEffect } from 'react'
 
 function InvitationContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get('token')
-  const { status } = useSession()
+  const { status } = useAuthStore()
 
   // If no token, redirect to login
   if (!token) {

@@ -2,8 +2,8 @@
 
 import { ThemeProvider } from 'next-themes'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { SessionProvider } from 'next-auth/react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuthStore } from '@/stores/auth-store'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -18,13 +18,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
       })
   )
 
+  const refreshSession = useAuthStore((s) => s.refreshSession)
+
+  // Hydrater la session au démarrage (remplace SessionProvider)
+  useEffect(() => {
+    refreshSession()
+  }, [refreshSession])
+
   return (
-    <SessionProvider>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          {children}
-        </ThemeProvider>
-      </QueryClientProvider>
-    </SessionProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+        {children}
+      </ThemeProvider>
+    </QueryClientProvider>
   )
 }
