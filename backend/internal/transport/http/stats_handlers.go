@@ -22,16 +22,16 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 	// TODO: implémenter avec vraies requêtes DB
 	// Pour l'instant, retourner des données de base
 	stats := map[string]any{
-		"totalEpreuves":      0,
-		"totalSessions":      0,
-		"totalEtudiants":     0,
-		"totalCorrigees":     0,
-		"moyenneGenerale":    0,
-		"tauxReussite":       0,
-		"epreuvesActives":    0,
-		"sessionsEnCours":    0,
-		"sessionsATraiter":   0,
-		"badges":             []any{},
+		"totalEpreuves":    0,
+		"totalSessions":    0,
+		"totalEtudiants":   0,
+		"totalCorrigees":   0,
+		"moyenneGenerale":  0,
+		"tauxReussite":     0,
+		"epreuvesActives":  0,
+		"sessionsEnCours":  0,
+		"sessionsATraiter": 0,
+		"badges":           []any{},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -140,9 +140,9 @@ func (s *Server) devoirsStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"total":      0,
-		"enCours":    0,
-		"corriges":   0,
+		"total":    0,
+		"enCours":  0,
+		"corriges": 0,
 	})
 }
 

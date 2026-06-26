@@ -286,6 +286,112 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/help/{id}/messages", s.listHelpMessages)
 			r.Post("/help/{id}/messages", s.createHelpMessage)
 		})
+
+		// ── Endpoints stubs (éviter 404 sur le dashboard) ──
+		r.Route("/api/stats", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/enseignant", s.statsEnseignant)
+			r.Get("/etudiant", s.statsEtudiant)
+			r.Get("/admin", s.statsAdmin)
+			r.Get("/responsable", s.statsResponsable)
+		})
+
+		r.Route("/api/badges", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.badgesList)
+			r.Post("/", s.badgesList)
+		})
+
+		r.Route("/api/devoirs", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.devoirsList)
+			r.Get("/stats", s.devoirsStats)
+		})
+
+		r.Route("/api/alertes", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.alertesList)
+		})
+
+		r.Route("/api/surveillance", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/stats", s.surveillanceStats)
+		})
+
+		r.Route("/api/corbeille", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.corbeilleList)
+		})
+
+		r.Route("/api/notifications", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.notificationsList)
+			r.Get("/admin", s.notificationsAdmin)
+		})
+
+		r.Route("/api/abonnements", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.abonnementsList)
+		})
+
+		r.Route("/api/factures", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.facturesList)
+		})
+
+		r.Route("/api/plans", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.plansList)
+		})
+
+		r.Route("/api/platform-settings", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.platformSettings)
+		})
+
+		r.Route("/api/ai-providers", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.aiProvidersList)
+		})
+
+		r.Route("/api/monitoring", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.monitoringEvents)
+		})
+
+		r.Route("/api/logs", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.logsList)
+		})
+
+		r.Route("/api/ip-whitelist", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.ipWhitelistList)
+		})
+
+		r.Route("/api/security-settings", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.securitySettingsGet)
+		})
+
+		r.Route("/api/enseignant", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/context", s.enseignantContext)
+			r.Get("/etudiants", s.enseignantEtudiants)
+		})
+
+		r.Route("/api/etudiants", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.etudiantsList)
+		})
+
+		r.Route("/api/validations-ue", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.validationsUE)
+		})
+
+		// Catch-all pour les routes API non implémentées (évite 404 brut)
+		r.NotFound(s.apiNotFound)
 	})
 
 	s.router = r
