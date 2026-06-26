@@ -121,11 +121,6 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         r.Group(func(r chi.Router) {
                 r.Use(authMiddleware)
 
-                // DEBUG (temporaire — test cookie forwarding Vercel→Render)
-                // Public (pas de RequireAuth) mais authMiddleware tourne et pose les claims si token valide.
-                // À SUPPRIMER après validation du test.
-                r.Get("/api/debug/auth-echo", s.debugAuthEcho)
-
                 // /api/me
                 r.With(middleware.RequireAuth).Get("/api/me", s.me)
                 r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
