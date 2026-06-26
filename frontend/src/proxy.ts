@@ -2,17 +2,14 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Next.js 16 Proxy — MINIMAL (0 CPU pour les routes API).
+ * Next.js 16 Proxy.
  *
- * RÔLE UNIQUE: rediriger vers /login si pas de cookie access_token sur les PAGES.
- *
- * POUR LES ROUTES /api/*: NE RIEN FAIRE.
- * Le rewrite next.config.ts (afterFiles) transfère directement vers le Go backend.
- * Le navigateur envoie le cookie httpOnly automatiquement.
- * Le Go backend lit le cookie directement (0 CPU Vercel, 0 Edge invocation).
+ * 1. Pour /api/* : lit le cookie access_token, injecte Authorization: Bearer
+ *    (Vercel rewrites ne forwardent PAS les cookies vers les URLs externes)
+ * 2. Pour les pages : redirect /login si pas de cookie
  */
 
-const PUBLIC_PAGES = [
+const PUBLIC_PATHS = [
   '/',
   '/login',
   '/invitation',
@@ -20,10 +17,16 @@ const PUBLIC_PAGES = [
   '/offline',
 ]
 
+const PUBLIC_API_PATHS = [
+  '/api/go-auth',
+  '/api/health',
+  '/api/certificats/verify',
+]
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Assets statiques — laisser passer
+  // Assets statiques
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
@@ -33,19 +36,29 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Routes API — NE PAS intercepter (le rewrite s'en charge, 0 CPU)
+  // Routes API publiques — laisser passer sans modification
+  if (PUBLIC_API_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+
+  // Pour les routes /api/* protégées : injecter Authorization depuis le cookie
   if (pathname.startsWith('/api/')) {
+    const accessToken = request.cookies.get('access_token')?.value
+    if (accessToken) {
+      const requestHeaders = new Headers(request.headers)
+      requestHeaders.set('Authorization', `Bearer ${accessToken}`)
+      return NextResponse.next({ request: { headers: requestHeaders } })
+    }
     return NextResponse.next()
   }
 
-  // Pages publiques — laisser passer
-  if (PUBLIC_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+  // Pages publiques
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next()
   }
 
-  // Pages protégées — vérifier cookie access_token
+  // Pages protégées : vérifier cookie access_token
   const accessToken = request.cookies.get('access_token')?.value
-
   if (!accessToken) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('error', 'SessionExpired')
@@ -56,9 +69,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Matcher: exclure /api/* (géré par rewrite, pas par proxy)
-  // et les assets statiques
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|fonts|public).*)',
+    '/((?!_next/static|_next/image|favicon.ico|fonts|public).*)',
   ],
 }
