@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { signIn, signOut } from 'next-auth/react'
 
 export type UserRole = 'ADMIN' | 'RESPONSABLE' | 'ENSEIGNANT' | 'ETUDIANT'
 
@@ -29,12 +28,13 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   mustChangePassword: boolean
-  login: (email: string, password: string) => Promise<boolean>
+  login: (identifier: string, password: string) => Promise<boolean>
   loginStudent: (matricule: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   setUser: (user: AuthUser | null) => void
   clearMustChangePassword: () => void
   syncFromSession: (session: any) => void
+  refreshSession: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
@@ -43,177 +43,101 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   isLoading: false,
   mustChangePassword: false,
 
-  loginStudent: async (matricule: string, password: string) => {
+  login: async (identifier: string, password: string) => {
     set({ isLoading: true })
     try {
-      const result = await signIn('credentials-matricule', {
-        matricule,
-        password,
-        redirect: false,
+      const resp = await fetch('/api/go-auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
       })
 
-      if (result?.error) {
+      const data = await resp.json()
+
+      if (!resp.ok) {
         set({ isLoading: false })
-        const error: LoginError = {
-          status: 401,
-          message: result.error === 'CredentialsSignin'
-            ? 'Matricule, email ou mot de passe incorrect'
-            : result.error,
-        }
-        throw error
+        throw { status: resp.status, message: data.error || 'Identifiants incorrects' } as LoginError
       }
 
-      if (!result?.ok) {
-        set({ isLoading: false })
-        throw { status: 0, message: 'Erreur de connexion' } as LoginError
-      }
-
-      // Fetch session to get user data
-      const sessionRes = await fetch('/api/auth/session')
-      const session = await sessionRes.json()
-
-      if (session?.user) {
+      if (data.user) {
         const user: AuthUser = {
-          id: session.user.id,
-          email: session.user.email ?? '',
-          name: session.user.name ?? '',
-          role: session.user.role as UserRole,
-          etablissementId: session.user.etablissementId,
-          filiereId: session.user.filiereId,
-          etablissement: session.user.etablissement,
-          filiere: session.user.filiere,
-          image: session.user.image,
-          actif: session.user.actif,
-          matricule: session.user.matricule,
-          mustChangePwd: session.user.mustChangePwd,
+          id: data.user.id,
+          email: data.user.email ?? '',
+          name: data.user.name ?? '',
+          role: data.user.role as UserRole,
+          etablissementId: data.user.etablissementId ?? null,
+          filiereId: data.user.filiereId ?? null,
+          etablissement: null,
+          filiere: null,
+          image: data.user.image ?? null,
+          actif: data.user.actif,
+          matricule: data.user.matricule ?? null,
+          mustChangePwd: data.user.mustChangePwd,
+          derniereConnexion: data.user.derniereConnexion ?? null,
         }
 
-        if (user.mustChangePwd) {
-          set({
-            user,
-            isAuthenticated: true,
-            isLoading: false,
-            mustChangePassword: true,
-          })
-          return true
-        }
-
-        set({ user, isAuthenticated: true, isLoading: false })
+        set({ user, isAuthenticated: true, isLoading: false, mustChangePassword: user.mustChangePwd || false })
         return true
       }
 
       set({ isLoading: false })
-      throw { status: 0, message: 'Session non disponible' } as LoginError
-    } catch (err) {
+      return false
+    } catch (error: any) {
       set({ isLoading: false })
-      if (err && typeof err === 'object' && 'status' in err) {
-        throw err
-      }
-      throw { status: 0, message: 'Erreur réseau' } as LoginError
+      if (error.status) throw error
+      throw { status: 0, message: 'Erreur de connexion' } as LoginError
     }
   },
 
-  login: async (email: string, password: string) => {
-    set({ isLoading: true })
-    try {
-      const result = await signIn('credentials-email', {
-        email,
-        password,
-        redirect: false,
-      })
-
-      if (result?.error) {
-        set({ isLoading: false })
-        const error: LoginError = {
-          status: 401,
-          message: result.error === 'CredentialsSignin'
-            ? 'Identifiants incorrects'
-            : result.error,
-        }
-        throw error
-      }
-
-      if (!result?.ok) {
-        set({ isLoading: false })
-        throw { status: 0, message: 'Erreur de connexion' } as LoginError
-      }
-
-      // Fetch session to get user data
-      const sessionRes = await fetch('/api/auth/session')
-      const session = await sessionRes.json()
-
-      if (session?.user) {
-        const user: AuthUser = {
-          id: session.user.id,
-          email: session.user.email ?? '',
-          name: session.user.name ?? '',
-          role: session.user.role as UserRole,
-          etablissementId: session.user.etablissementId,
-          filiereId: session.user.filiereId,
-          etablissement: session.user.etablissement,
-          filiere: session.user.filiere,
-          image: session.user.image,
-          actif: session.user.actif,
-          matricule: session.user.matricule,
-          mustChangePwd: session.user.mustChangePwd,
-        }
-
-        if (user.mustChangePwd) {
-          set({
-            user,
-            isAuthenticated: true,
-            isLoading: false,
-            mustChangePassword: true,
-          })
-          return true
-        }
-
-        set({ user, isAuthenticated: true, isLoading: false })
-        return true
-      }
-
-      set({ isLoading: false })
-      throw { status: 0, message: 'Session non disponible' } as LoginError
-    } catch (err) {
-      set({ isLoading: false })
-      if (err && typeof err === 'object' && 'status' in err) {
-        throw err
-      }
-      throw { status: 0, message: 'Erreur réseau' } as LoginError
-    }
+  loginStudent: async (matricule: string, password: string) => {
+    return get().login(matricule, password)
   },
 
   logout: async () => {
     try {
-      await signOut({ redirect: false })
-    } finally {
+      await fetch('/api/go-auth/logout', { method: 'POST' })
+    } catch {}
+    set({ user: null, isAuthenticated: false, mustChangePassword: false })
+  },
+
+  setUser: (user: AuthUser | null) => set({ user, isAuthenticated: !!user }),
+
+  clearMustChangePassword: () => set({ mustChangePassword: false }),
+
+  syncFromSession: (session: any) => {
+    if (session?.user) {
+      const user: AuthUser = {
+        id: session.user.id,
+        email: session.user.email ?? '',
+        name: session.user.name ?? '',
+        role: session.user.role as UserRole,
+        etablissementId: session.user.etablissementId ?? null,
+        filiereId: session.user.filiereId ?? null,
+        etablissement: session.user.etablissement ?? null,
+        filiere: session.user.filiere ?? null,
+        image: session.user.image ?? null,
+        actif: session.user.actif,
+        matricule: session.user.matricule ?? null,
+        mustChangePwd: session.user.mustChangePwd,
+        derniereConnexion: session.user.derniereConnexion ?? null,
+      }
+      set({ user, isAuthenticated: true, mustChangePassword: user.mustChangePwd || false })
+    } else {
       set({ user: null, isAuthenticated: false })
     }
   },
 
-  setUser: (user) => set({ user, isAuthenticated: !!user }),
-
-  clearMustChangePassword: () => set({ mustChangePassword: false }),
-
-  syncFromSession: (session) => {
-    if (!session?.user?.id) {
+  refreshSession: async () => {
+    try {
+      const resp = await fetch('/api/go-auth/session')
+      const session = await resp.json()
+      if (session?.user) {
+        get().syncFromSession(session)
+      } else {
+        set({ user: null, isAuthenticated: false })
+      }
+    } catch {
       set({ user: null, isAuthenticated: false })
-      return
     }
-    const user: AuthUser = {
-      id: session.user.id,
-      email: session.user.email ?? '',
-      name: session.user.name ?? '',
-      role: session.user.role as UserRole,
-      etablissementId: session.user.etablissementId,
-      filiereId: session.user.filiereId,
-      etablissement: session.user.etablissement,
-      filiere: session.user.filiere,
-      image: session.user.image,
-      actif: session.user.actif,
-      matricule: session.user.matricule,
-      mustChangePwd: session.user.mustChangePwd,
-    }
-    set({ user, isAuthenticated: true })
   },
 }))
