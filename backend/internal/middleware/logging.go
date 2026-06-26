@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -21,44 +22,49 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 // GetClientIP extrait l'IP RÉELLE du client depuis les headers de proxy.
 //
-// Vercel (rewrite) injecte ces headers lors du transfert vers Render:
+// Ordre de priorité (sécurisé contre l'usurpation):
+//  1. CF-Connecting-IP (Cloudflare — non usurpable, écrasé par CF)
+//  2. X-Forwarded-For (Vercel injecte toujours ce header)
+//  3. X-Real-IP (standard pour certains proxies)
+//  4. RemoteAddr (fallback — IP de la connexion directe)
 //
-//	X-Forwarded-For: client_ip, vercel_proxy1, vercel_proxy2
-//	X-Real-IP: client_ip (parfois)
-//
-// Ordre de priorité:
-//  1. X-Forwarded-For (première IP = client réel)
-//  2. X-Real-IP
-//  3. CF-Connecting-IP (Cloudflare, si utilisé)
-//  4. RemoteAddr (fallback — IP du proxy direct)
+// Note sécurité: CF-Connecting-IP est vérifié EN PREMIER car Cloudflare
+// garantit qu'il contient l'IP réelle du client, même si l'utilisateur
+// a truqué X-Forwarded-For dans son navigateur.
 func GetClientIP(r *http.Request) string {
-	// 1. X-Forwarded-For (format: "client, proxy1, proxy2")
-	// Vercel injecte toujours ce header lors d'un rewrite
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		ip := strings.TrimSpace(parts[0])
-		if ip != "" {
-			return ip
+	// 1. CF-Connecting-IP (Cloudflare — le plus fiable si présent car non usurpable)
+	if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
+		return strings.TrimSpace(cfIP)
+	}
+
+	// 2. X-Forwarded-For (Vercel injecte toujours ce header)
+	//    Format: "client_ip, vercel_proxy1, vercel_proxy2"
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			clientIP := strings.TrimSpace(ips[0])
+			if clientIP != "" {
+				return clientIP
+			}
 		}
 	}
 
-	// 2. X-Real-IP (posé par certains proxies)
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+	// 3. X-Real-IP (Standard pour certains autres proxies)
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return strings.TrimSpace(xrip)
 	}
 
-	// 3. CF-Connecting-IP (Cloudflare, si le trafic passe par CF)
-	if cf := r.Header.Get("CF-Connecting-IP"); cf != "" {
-		return strings.TrimSpace(cf)
+	// 4. RemoteAddr (Fallback — IP de la connexion réseau directe)
+	// RemoteAddr contient l'IP au format "IP:port" (ex: "192.0.2.1:54321")
+	// On utilise net.SplitHostPort pour retirer proprement le port.
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// Si le format n'a pas de port (rare mais possible selon l'environnement),
+		// on nettoie et on retourne la valeur brute.
+		return strings.TrimSpace(r.RemoteAddr)
 	}
 
-	// 4. Fallback: RemoteAddr (host:port) — IP du proxy direct (Render/Vercel)
-	addr := r.RemoteAddr
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		return addr[:idx]
-	}
-	return addr
+	return ip
 }
 
 // Logging middleware : log chaque requête HTTP avec method, path, status, durée, IP réelle.
@@ -75,7 +81,7 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 				"path", r.URL.Path,
 				"status", rec.status,
 				"duration_ms", time.Since(start).Milliseconds(),
-				"client_ip", GetClientIP(r), // IP RÉELLE du client (via Vercel headers)
+				"client_ip", GetClientIP(r),
 				"user_agent", r.Header.Get("User-Agent"),
 			)
 		})
