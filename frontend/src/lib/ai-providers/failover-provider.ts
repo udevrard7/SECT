@@ -313,7 +313,7 @@ export class FailoverProvider implements AIProvider {
     }
 
     try {
-      const { db } = await import('@/lib/db')
+      const db = null // DB déplacée vers Go backend
       const configs = await db.aIProviderConfig.findMany({
         orderBy: [{ priority: 'asc' }, { isActive: 'desc' }, { name: 'asc' }],
       })
@@ -441,7 +441,7 @@ export class FailoverProvider implements AIProvider {
     errorDetails: string | null
   ): Promise<void> {
     try {
-      const { db } = await import('@/lib/db')
+      const db = null // DB déplacée vers Go backend
       await db.aIFailoverEvent.create({
         data: {
           eventType,
