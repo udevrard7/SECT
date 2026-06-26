@@ -2,49 +2,43 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Next.js 16 Proxy.
+ * Next.js 16 Proxy — version simplifiée (0 CPU Edge pour /api/*).
  *
- * Pour /api/* : injecte Authorization: Bearer depuis le cookie, puis
- * laisse le rewrite next.config.ts faire le proxy vers Render.
+ * Pour /api/* : laisse passer — le rewrite next.config.ts (afterFiles) forward
+ * la requête vers Render en incluant le cookie httpOnly "access_token". Le
+ * middleware Auth du backend Go lit ce cookie en priorité, avec fallback sur
+ * l'en-tête Authorization: Bearer pour les clients mobiles/API directs.
  *
- * Pour les pages : redirect /login si pas de cookie
+ * Validé par test A/B en preview Vercel (voir worklog, Task ID COOKIE-TEST-1) :
+ * le cookie est bien forwardé par Vercel vers Render cross-origin, l'auth
+ * fonctionne avec le cookie seul, sans injection d'en-tête Authorization.
+ *
+ * Pour les pages : redirect /login si pas de cookie.
  */
 
 const PUBLIC_PATHS = ['/', '/login', '/invitation', '/verify', '/offline']
-const PUBLIC_API_PATHS = ['/api/go-auth', '/api/health', '/api/certificats/verify']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Assets statiques
+  // Assets statiques — ne jamais intercepter
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/fonts') || pathname.includes('.')) {
     return NextResponse.next()
   }
 
-  // Routes API publiques — laisser passer
-  if (PUBLIC_API_PATHS.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next()
-  }
-
-  // Pour les routes /api/* : injecter Authorization depuis le cookie
+  // Routes /api/* — laisser passer (0 manipulation, 0 CPU Edge).
+  // Le cookie httpOnly est forwardé tel quel par le rewrite Vercel → Render.
+  // Le backend Go gère lui-même l'auth : cookie en priorité, Authorization en fallback.
   if (pathname.startsWith('/api/')) {
-    const accessToken = request.cookies.get('access_token')?.value
-    if (accessToken) {
-      const requestHeaders = new Headers(request.headers)
-      requestHeaders.set('Authorization', `Bearer ${accessToken}`)
-      return NextResponse.next({
-        request: { headers: requestHeaders },
-      })
-    }
     return NextResponse.next()
   }
 
-  // Pages publiques
+  // Pages publiques — laisser passer sans vérification
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next()
   }
 
-  // Pages protégées
+  // Pages protégées — redirect /login si pas de cookie access_token
   const accessToken = request.cookies.get('access_token')?.value
   if (!accessToken) {
     const loginUrl = new URL('/login', request.url)
