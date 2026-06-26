@@ -3083,3 +3083,58 @@ Stage Summary:
 - Recommandation : appliquer Option A (simplifier proxy.ts en prod) pour gagner 0 CPU Edge par requête /api/*
 - Nettoyage complet effectué : aucun artefact de test restant (endpoint, branche, utilisateur, SSO)
 - 2 commits poussés : 438c043 (ajout debug) + 18f08f3 (retrait debug)
+
+---
+Task ID: PROXY-SIMPLIFY-1
+Agent: Z.ai Code (tutor mode)
+Task: Appliquer la simplification du proxy.ts sur main (Option A validée par test COOKIE-TEST-1)
+
+Work Log:
+- Lu le proxy.ts actuel (version avec injection Authorization pour /api/*)
+- Écrit la version simplifiée :
+  * Suppression complète de l'injection Authorization pour /api/*
+  * Suppression de PUBLIC_API_PATHS (n'a plus de sens : tout /api/* passe directement)
+  * Pour /api/* : return NextResponse.next() — 0 manipulation de headers
+  * Pages protégées : redirect /login si pas de cookie (inchangé)
+  * Commentaires mis à jour avec référence au test de validation (COOKIE-TEST-1)
+- Commit 4b1906e "perf(frontend): proxy.ts minimal — 0 CPU Edge pour /api/*"
+- Push main → Vercel auto-deploy déclenché
+- Poll déploiement : BUILDING (10-40s) → READY (50s) sur le SHA 4b1906e
+- Recréé user de test temporaire (cookie-test@sect-debug.test) pour valider en live
+- 6 tests de validation exécutés sur la PRODUCTION avec le nouveau proxy.ts :
+
+  TEST 1 — Login POST /api/go-auth/login
+    ✅ "Login réussi" + cookies access_token (361 chars) + refresh_token (128 chars) reçus
+
+  TEST 2 — GET /api/me avec cookie (auth réelle, proxy.ts MINIMAL en prod)
+    ✅ HTTP 200 + données utilisateur complètes retournées
+    (id, email, name, role, etablissementId, actif, mustChangePwd, derniereConnexion)
+    → CONFIRME : le cookie httpOnly est forwardé par Vercel vers Render
+    → CONFIRME : le backend Go authentifie avec le cookie SEUL, sans Authorization header
+
+  TEST 3 — GET /api/users avec cookie (route authentifiée standard)
+    ✅ HTTP 200 — route protégée accessible normalement
+
+  TEST 4 — GET /api/me SANS cookie (contrôle négatif)
+    ✅ HTTP 401 {"error":"authentication required"} — sécurité préservée
+
+  TEST 5 — GET /api/health (route publique)
+    ✅ HTTP 200 {"service":"sect-api","status":"ok","version":"0.2.0"}
+
+  TEST 6 — GET / (page publique)
+    ✅ HTTP 200 — landing page accessible sans cookie
+
+- Nettoyage : user de test supprimé de Neon (+ audit logs + refresh tokens associés)
+- Vérification finale : Render healthy, Vercel prod 200, /api/health 200
+
+Stage Summary:
+- Simplification appliquée en production : proxy.ts ne fait plus d'injection Authorization pour /api/*
+- Bénéfices opérationnels :
+  * 0 invocation Edge Function par requête /api/* (avant : 1 + manipulation Headers)
+  * Quota Vercel Hobby économisé (1M invocations/mois → plus de marge)
+  * Code simplifié : 6 lignes de logique d'injection supprimées
+  * Moins de surface d'attaque (le proxy ne touche plus aux tokens JWT)
+- Aucune régression : tous les tests d'auth (login, /api/me, /api/users) passent en prod
+- Sécurité préservée : sans cookie → 401, comportement attendu
+- Backend Go inchangé : cookie prioritaire, Authorization: Bearer reste supporté comme fallback pour mobiles/API
+- Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
