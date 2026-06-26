@@ -72,3 +72,5 @@ check-*.ts
 apps/api/bin/
 apps/api/tmp/
 *.exe
+frontend/.next/
+backend/bin/
