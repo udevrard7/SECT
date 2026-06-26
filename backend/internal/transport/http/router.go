@@ -87,8 +87,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 	r := chi.NewRouter()
 
 	// Middlewares globaux
+	// NOTE: chimw.RealIP retiré — on utilise middleware.GetClientIP() qui lit
+	// X-Forwarded-For / X-Real-IP directement (Vercel injecte ces headers).
+	// chimw.RealIP modifie r.RemoteAddr ce qui peut causer des conflits.
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
 	r.Use(chimw.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
