@@ -1012,7 +1012,9 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 
 		badges := []badgeWithProgress{}
 		unlocked := 0
+		rowsIterated := 0
 		for rows.Next() {
+			rowsIterated++
 			b := badgeWithProgress{
 				Niveaux: []niveauSeuil{},
 			}
@@ -1020,17 +1022,31 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 			var niveauActuel *string
 			var valeurProchain *int
 			var dateObtention *time.Time
+			// BUGFIX (BADGES-FIX-1d) : les colonnes du LEFT JOIN
+			// (BadgeProgression) sont NULLables. On scan dans des
+			// pointeurs puis on déférence avec fallback.
+			var valeurActuelle, valeurPalier *int
+			var debloque *bool
 			err := rows.Scan(
 				&b.ID, &b.Cle, &b.Titre, &b.Description, &b.Icone,
 				&b.Categorie, &b.RoleCible, &niveauxArr,
-				&niveauActuel, &b.ValeurActuelle, &b.ValeurPalier,
-				&valeurProchain, &b.Debloque, &dateObtention,
+				&niveauActuel, &valeurActuelle, &valeurPalier,
+				&valeurProchain, &debloque, &dateObtention,
 			)
 			if err != nil {
 				return fmt.Errorf("scan badge: %w", err)
 			}
 			b.NiveauActuel = niveauActuel
 			b.ValeurProchain = valeurProchain
+			if valeurActuelle != nil {
+				b.ValeurActuelle = *valeurActuelle
+			}
+			if valeurPalier != nil {
+				b.ValeurPalier = *valeurPalier
+			}
+			if debloque != nil {
+				b.Debloque = *debloque
+			}
 			if dateObtention != nil {
 				s := dateObtention.UTC().Format(time.RFC3339)
 				b.DateObtention = &s
@@ -1083,6 +1099,7 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 	if errBadges != nil {
 		stats["error"] = errBadges.Error()
 	}
+	stats["debug_rowsIterated"] = rowsIterated
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
