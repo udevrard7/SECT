@@ -220,6 +220,9 @@ type Epreuve struct {
 	// nil sérialise en `null` qui fait crasher le frontend
 	// (ep.sessions.some → TypeError). Le repo init toujours à []SessionRef{}.
 	Sessions []SessionRef `json:"sessions"`
+	// BUGFIX (ETU-AUDIT-1b) : Enseignant peuplé par LEFT JOIN User dans List.
+	// Le frontend affiche ep.enseignant.name dans /mes-epreuves.
+	Enseignant *UserRef `json:"enseignant,omitempty"`
 }
 
 // SessionRef est une référence légère à une SessionPassation (pour /mes-epreuves).

@@ -32,6 +32,16 @@ const columnsEpreuve = `"id", "enseignantId", "titre", "description", "duree", "
 	"generationMode", "isTemplate", "noteTotal", "clotureeAt", "clotureeAutomatiquement",
 	"raisonCloture", "clotureePar", "delaiGrace", "etudiantsAutorises", "epreuveOrigineId"`
 
+// columnsEpreuveQualified : mêmes colonnes qualifiées avec "Epreuve". pour
+// éviter l'ambiguïté lors d'un LEFT JOIN User (qui a aussi "id", "name").
+// BUGFIX (ETU-AUDIT-1b).
+const columnsEpreuveQualified = `"Epreuve"."id", "Epreuve"."enseignantId", "Epreuve"."titre", "Epreuve"."description", "Epreuve"."duree", "Epreuve"."dateDebut", "Epreuve"."dateFin",
+	"Epreuve"."melangeQuestions", "Epreuve"."melangePropositions", "Epreuve"."blocageRetour", "Epreuve"."statut", "Epreuve"."groupesCibles", "Epreuve"."contenu",
+	"Epreuve"."filiereId", "Epreuve"."uniteEnseignementId", "Epreuve"."niveau", "Epreuve"."sessionExamen", "Epreuve"."anneeAcademiqueId",
+	"Epreuve"."createdAt", "Epreuve"."updatedAt", "Epreuve"."deletedAt", "Epreuve"."proctoringActif", "Epreuve"."verificationIdentite",
+	"Epreuve"."generationMode", "Epreuve"."isTemplate", "Epreuve"."noteTotal", "Epreuve"."clotureeAt", "Epreuve"."clotureeAutomatiquement",
+	"Epreuve"."raisonCloture", "Epreuve"."clotureePar", "Epreuve"."delaiGrace", "Epreuve"."etudiantsAutorises", "Epreuve"."epreuveOrigineId"`
+
 func scanEpreuve(s scanner) (*domain.Epreuve, error) {
 	e := &domain.Epreuve{}
 	err := s.Scan(
@@ -183,16 +193,43 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				result = append(result, e)
 			}
 		} else {
-			query = fmt.Sprintf(`SELECT %s FROM "Epreuve" %s ORDER BY "dateDebut" DESC`, columnsEpreuve, whereClause)
+			// BUGFIX (ETU-AUDIT-1b) : LEFT JOIN User pour peupler la
+			// relation enseignant (UserRef{ID, Name, Email}). Le
+			// frontend affiche ep.enseignant.name dans /mes-epreuves.
+			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" %s ORDER BY "Epreuve"."dateDebut" DESC`, columnsEpreuveQualified, whereClause)
 			rows, err := tx.Query(ctx, query, args...)
 			if err != nil {
 				return fmt.Errorf("query epreuves: %w", err)
 			}
 			defer rows.Close()
 			for rows.Next() {
-				e, err := scanEpreuve(rows)
+				e := &domain.Epreuve{}
+				var ensID, ensName, ensEmail *string
+				err := rows.Scan(
+					&e.ID, &e.EnseignantID, &e.Titre, &e.Description, &e.Duree, &e.DateDebut, &e.DateFin,
+					&e.MelangeQuestions, &e.MelangePropositions, &e.BlocageRetour, &e.Statut,
+					&e.GroupesCibles, &e.Contenu,
+					&e.FiliereID, &e.UniteEnseignementID, &e.Niveau, &e.SessionExamen, &e.AnneeAcademiqueID,
+					&e.CreatedAt, &e.UpdatedAt, &e.DeletedAt,
+					&e.ProctoringActif, &e.VerificationIdentite,
+					&e.GenerationMode, &e.IsTemplate, &e.NoteTotal,
+					&e.ClotureeAt, &e.ClotureeAutomatiquement, &e.RaisonCloture, &e.ClotureePar,
+					&e.DelaiGrace, &e.EtudiantsAutorises, &e.EpreuveOrigineID,
+					&ensID, &ensName, &ensEmail,
+				)
 				if err != nil {
 					return fmt.Errorf("scan epreuve: %w", err)
+				}
+				// Sanitize json.RawMessage fields (reproduit scanEpreuve)
+				e.GroupesCibles = sanitizeEpreuveRawMessage(e.GroupesCibles)
+				e.Contenu = sanitizeEpreuveRawMessage(e.Contenu)
+				e.EtudiantsAutorises = sanitizeEpreuveRawMessage(e.EtudiantsAutorises)
+				if ensID != nil && ensName != nil {
+					e.Enseignant = &domain.UserRef{
+						ID:    *ensID,
+						Name:  *ensName,
+						Email: derefStr(ensEmail),
+					}
 				}
 				// BUGFIX (ETU-AUDIT-1) : init Sessions à [] par défaut.
 				e.Sessions = []domain.SessionRef{}
