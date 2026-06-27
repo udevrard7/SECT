@@ -41,6 +41,12 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
 	config.MaxConns = 20
 	config.MinConns = 2
 
+	// BUGFIX (SCORES-NORM-1): désactiver les prepared statements car le
+	// pooler Neon (PgBouncer) ne les supporte pas correctement → erreur
+	// "prepared statement name is already in use (SQLSTATE 08P01)".
+	// En mode simple protocol, pgx envoie chaque query sans préparation.
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
@@ -68,11 +74,11 @@ type SessionClaims struct {
 //
 // Usage typique dans un repository :
 //
-//	tx, _ := pool.BeginTx(ctx, pgx.TxOptions{})
-//	defer tx.Rollback(ctx)
-//	db.SetClaimsTx(ctx, tx, claims)
-//	// ... queries ...
-//	tx.Commit(ctx)
+//      tx, _ := pool.BeginTx(ctx, pgx.TxOptions{})
+//      defer tx.Rollback(ctx)
+//      db.SetClaimsTx(ctx, tx, claims)
+//      // ... queries ...
+//      tx.Commit(ctx)
 func SetClaimsTx(ctx context.Context, tx pgx.Tx, claims SessionClaims) error {
 	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID); err != nil {
 		return fmt.Errorf("set user_id claim: %w", err)
@@ -98,10 +104,10 @@ func SetClaimsTx(ctx context.Context, tx pgx.Tx, claims SessionClaims) error {
 //
 // Usage :
 //
-//	err := db.WithTx(ctx, pool, claims, func(tx pgx.Tx) error {
-//	    // queries ici, claims déjà posés
-//	    return nil
-//	})
+//      err := db.WithTx(ctx, pool, claims, func(tx pgx.Tx) error {
+//          // queries ici, claims déjà posés
+//          return nil
+//      })
 func WithTx(ctx context.Context, pool *pgxpool.Pool, claims SessionClaims, fn func(pgx.Tx) error) error {
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
