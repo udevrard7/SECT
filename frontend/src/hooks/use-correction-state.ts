@@ -177,8 +177,8 @@ export function useCorrectionState(user: CurrentUser | null) {
     if (!searchFilter) return true
     const q = searchFilter.toLowerCase()
     return (
-      s.etudiant.name.toLowerCase().includes(q) ||
-      s.etudiant.email.toLowerCase().includes(q)
+      (s.etudiant?.name ?? s.etudiantNom ?? '').toLowerCase().includes(q) ||
+      (s.etudiant?.email ?? s.etudiantEmail ?? '').toLowerCase().includes(q)
     )
   })
 
