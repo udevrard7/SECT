@@ -1418,7 +1418,7 @@ export function DocumentsPage() {
       {!isLoading && filteredDocuments.length > 0 && viewMode === 'folders' && (
         <div className="space-y-2">
           {documentsByUE.length > 0 ? (
-            <Accordion type="multiple" defaultValue={documentsByUE.map((g) => g.ueId ?? '__unassigned__')} className="space-y-3">
+            <Accordion type="multiple" defaultValue={[]} className="space-y-3">
               {documentsByUE.map((group) => {
                 const groupKey = group.ueId ?? '__unassigned__'
                 const isUnassigned = group.ueId === null
