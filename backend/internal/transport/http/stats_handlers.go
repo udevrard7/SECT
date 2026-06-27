@@ -988,7 +988,7 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 	// l'état actuel). TODO: implémenter le recalcul si besoin.
 	_ = ctx
 
-	_ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
+	errBadges := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
 		// BUGFIX (BADGES-FIX-1) : LEFT JOIN BadgeProgression pour récupérer
 		// les définitions de badges + la progression de l'utilisateur.
 		// Filtrage par roleCible : l'utilisateur ne voit que les badges de
@@ -1079,6 +1079,10 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+	// DEBUG (BADGES-FIX-1): capturer l'erreur pour diagnostic
+	if errBadges != nil {
+		stats["error"] = errBadges.Error()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
