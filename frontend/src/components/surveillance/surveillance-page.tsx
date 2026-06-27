@@ -267,7 +267,7 @@ export function SurveillancePage() {
   const handleExportCSV = () => {
     const rows: string[] = [['Étudiant', 'Email', 'Épreuve', 'Statut', 'Alertes', 'Pénalité', 'Score risque', 'Niveau risque', 'Date début', 'Date fin'].join(';')]
     for (const s of sessions) {
-      rows.push([s.etudiant.name, s.etudiant.email, s.epreuve.titre, s.statut, s.alertes, s.totalPenalite, s.riskScore ?? 0, s.riskLevel ?? 'safe', s.dateDebut ? formatDateTime(s.dateDebut) : '', s.dateFin ? formatDateTime(s.dateFin) : ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+      rows.push([(s.etudiant?.name ?? s.etudiantNom ?? '—'), (s.etudiant?.email ?? ''), (s.epreuve?.titre ?? s.epreuveTitre ?? '—'), s.statut, s.alertes, s.totalPenalite, s.riskScore ?? 0, s.riskLevel ?? 'safe', s.dateDebut ? formatDateTime(s.dateDebut) : '', s.dateFin ? formatDateTime(s.dateFin) : ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
     }
     const csv = '\ufeff' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -478,7 +478,7 @@ function SessionCard({ session, expanded, onToggle, onOpenDetail, onFlag, flaggi
                 <button onClick={onToggle} className="flex items-center gap-1.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={expanded}>
                   {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                 </button>
-                <h3 className="truncate font-display font-semibold tracking-tight">{session.etudiant.name}</h3>
+                <h3 className="truncate font-display font-semibold tracking-tight">{(session.etudiant?.name ?? session.etudiantNom ?? '—')}</h3>
                 <Badge variant="outline" className={`text-xs ${getStatutClasses(session.statut)}`}>
                   {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-success animate-pulse" />}
                   {getStatutLabel(session.statut)}
@@ -486,8 +486,8 @@ function SessionCard({ session, expanded, onToggle, onOpenDetail, onFlag, flaggi
                 {session.flagged && (<Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30"><Flag className="mr-1 h-3 w-3" />Signalée</Badge>)}
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{session.etudiant.email}</span>
-                <span className="inline-flex items-center gap-1"><FileText className="h-3 w-3" />{session.epreuve.titre}</span>
+                <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{(session.etudiant?.email ?? '')}</span>
+                <span className="inline-flex items-center gap-1"><FileText className="h-3 w-3" />{(session.epreuve?.titre ?? session.epreuveTitre ?? '—')}</span>
                 <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{session.dateDebut ? formatDateTime(session.dateDebut) : '—'}</span>
               </div>
             </div>
@@ -639,7 +639,7 @@ function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot }: {
         {session && (<>
           <SheetHeader>
             <SheetTitle>Détails de surveillance</SheetTitle>
-            <SheetDescription>{session.etudiant.name} — {session.epreuve.titre}</SheetDescription>
+            <SheetDescription>{(session.etudiant?.name ?? session.etudiantNom ?? '—')} — {(session.epreuve?.titre ?? session.epreuveTitre ?? '—')}</SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-5">
             <div className="grid grid-cols-3 gap-3">
@@ -649,7 +649,7 @@ function DetailSheet({ session, onClose, onFlag, flagging, onOpenScreenshot }: {
             </div>
             <Card><CardContent className="space-y-2 p-4 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Statut</span><Badge variant="outline" className={getStatutClasses(session.statut)}>{getStatutLabel(session.statut)}</Badge></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span>{session.etudiant.email}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span>{(session.etudiant?.email ?? '')}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Début</span><span>{formatDateTime(session.dateDebut)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Fin</span><span>{formatDateTime(session.dateFin)}</span></div>
               {session.score !== null && <div className="flex justify-between"><span className="text-muted-foreground">Score</span><span className="font-bold text-success-text">{session.score}/20</span></div>}
