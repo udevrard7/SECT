@@ -787,7 +787,7 @@ function ModelesTab() {
  <h3 className="font-display tracking-tight text-base font-semibold leading-tight">{epreuve.titre}</h3>
  {epreuve.description && (
  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
- {epreuve.description.length > 100 ? epreuve.description.slice(0, 100) +'...' : epreuve.description}
+ {(epreuve.description ?? "").length > 100 ? epreuve.description.slice(0, 100) +'...' : epreuve.description}
  </p>
  )}
  </div>
@@ -818,7 +818,7 @@ function ModelesTab() {
  </div>
  )}
 
- {epreuve.sourceDocuments.length > 0 && (
+ {(epreuve.sourceDocuments ?? []).length > 0 && (
  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
  <FileText className="h-3 w-3" />
  {epreuve.sourceDocuments.map((d) => d.nomFichier).join(',')}
@@ -1830,8 +1830,8 @@ function SessionsTab() {
  const renderEpreuveCard = (epreuve: SessionEpreuve) => {
  const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
  const contenuQuestions = contenuData?.questions ?? []
- const questionCount = epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
- const pts = epreuve.questions.length > 0
+ const questionCount = (epreuve.questions ?? []).length > 0 ? (epreuve.questions ?? []).length : contenuQuestions.length
+ const pts = (epreuve.questions ?? []).length > 0
  ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
  : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
  const sessionCount = epreuve.sessions.length
@@ -2063,8 +2063,8 @@ function SessionsTab() {
  {filteredEpreuves.map((epreuve) => {
  const contenuData = epreuve.contenu as { questions?: Array<{ bareme: number }> } | null
  const contenuQuestions = contenuData?.questions ?? []
- const questionCount = epreuve.questions.length > 0 ? epreuve.questions.length : contenuQuestions.length
- const pts = epreuve.questions.length > 0
+ const questionCount = (epreuve.questions ?? []).length > 0 ? (epreuve.questions ?? []).length : contenuQuestions.length
+ const pts = (epreuve.questions ?? []).length > 0
  ? epreuve.questions.reduce((sum, eq) => sum + eq.bareme, 0)
  : contenuQuestions.reduce((sum, q) => sum + (q.bareme || 1), 0)
  const sessionCount = epreuve.sessions.length
