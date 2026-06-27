@@ -3216,3 +3216,48 @@ Stage Summary:
 - 9 fichiers modifiés (4 frontend, 5 backend), ~164 insertions logiques
 - Pages OK sans bug : questions-ia, epreuves, devoirs, correction, resultats, mes-etudiants, surveillance, corbeille, profil
 - En attente : validation du build Render (Go) + vérif live agent-browser post-déploiement
+
+---
+Task ID: ENS-AUDIT-1-VERIFY
+Agent: Z.ai Code (tutor mode)
+Task: Vérification live post-déploiement des 5 fixes (agent-browser sur prod)
+
+Work Log:
+- Commit 5e28479 poussé sur main → auto-deploy Vercel (frontend) + Render (backend Go)
+- Build Render Go : SUCCÈS (health 200, version 0.2.0, nouvelles routes actives)
+- Re-login enseignant (prof01@uniabidjan.com) — session fraîche
+
+Vérifications live (toutes confirmées ✅) :
+
+1. Boucle infinie badges (Fix #1)
+   - Avant : 25 217 requêtes /api/badges cumulées (POST+GET en boucle)
+   - Après : exactement 2 requêtes au montage du dashboard (1 POST recalculate + 1 GET list)
+   - Verdict : boucle infinie éliminée
+
+2. Crash /documents (Fix #2 + #5)
+   - Avant : "Application error: Cannot read 'nom' of undefined" (ue.filiere)
+   - Après : page /documents s'affiche correctement, affiche "UE-INFO-L204 — Génie Logiciel L2 INFORMATIQUE"
+   - API : /api/unites-enseignement?enseignantId=X renvoie maintenant l'objet filiere {id,nom,code}
+   - Bonus : filtre enseignantId appliqué → 5 UEs (celles du prof) au lieu de toutes les UEs
+
+3. Crash /aide-etudiants (Fix #3)
+   - Avant : "Application error: Cannot read 'name' of undefined" (t.etudiant)
+   - Après : page /aide-etudiants s'affiche, montre le thread avec "AHOU Assre Guylaine Grâce Rebecca" (nom étudiant) + "test-doc2.txt" (document)
+   - API : /api/exam-prep/help renvoie maintenant etudiant {id,name,email} + document {id,nomFichier}
+
+4. Sécurité /api/stats/responsable (Fix #4)
+   - Avant : 200 OK pour un ENSEIGNANT (fuite de compteurs globaux)
+   - Après : HTTP 403 {"error":"réservé au rôle RESPONSABLE"}
+   - notification-bell gère le 403 gracieusement (notifications vides, pas de crash)
+
+5. Filtre enseignantId (Fix #5)
+   - Avant : /api/unites-enseignement?enseignantId=X ignorait le filtre → toutes les UEs
+   - Après : 5 UEs retournées (uniquement celles assignées au prof via EnseignantFiliere)
+
+Stage Summary:
+- 5/5 fixes vérifiés en production via agent-browser (login réel, navigation, appels API)
+- 3 crashes de page éliminés (/dashboard boucle, /documents, /aide-etudiants)
+- 1 faille sécurité comblée + 1 bug correctness corrigé
+- Performance : dashboard passe de 25k+ requêtes réseau à 2 requêtes
+- Aucune régression : les 8 autres pages enseignant restent fonctionnelles
+- Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
