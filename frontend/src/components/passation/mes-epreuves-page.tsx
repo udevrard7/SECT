@@ -54,14 +54,16 @@ interface StudentEpreuve {
   questionCount: number
   totalPoints: number
   noteTotal: number
-  enseignant: { id: string; name: string }
-  sessions: Array<{
+  enseignant?: { id: string; name: string }
+  // BUGFIX (ETU-AUDIT-1) : sessions optionnel (l'API peut ne pas l'inclure).
+  // Normalisé à [] dans fetchEpreuves. Le type reste optionnel pour la sécurité.
+  sessions?: Array<{
     id: string
     statut: string
     score: number | null
     dateDebut: string | null
     dateFin: string | null
-    resultat: {
+    resultat?: {
       id: string
       scoreFinal: number
       totalPossible?: number
@@ -294,7 +296,14 @@ export function MesEpreuvesPage() {
       const res = await fetch(`/api/epreuves?etudiantId=${user.id}`)
       if (res.ok) {
         const data = await res.json()
-        setEpreuves(data.epreuves ?? [])
+        // BUGFIX (ETU-AUDIT-1) : garantit que sessions est toujours un array
+        // (l'API peut ne pas l'inclure pour les anciennes réponses ou selon
+        // le contexte). Safety net en plus du fix backend.
+        const eps = (data.epreuves ?? []).map((ep: StudentEpreuve) => ({
+          ...ep,
+          sessions: ep.sessions ?? [],
+        }))
+        setEpreuves(eps)
       }
     } catch {
       toast.error('Erreur de chargement', {

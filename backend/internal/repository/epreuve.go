@@ -26,11 +26,11 @@ func NewEpreuveRepository(pool *pgxpool.Pool) *EpreuveRepository {
 }
 
 const columnsEpreuve = `"id", "enseignantId", "titre", "description", "duree", "dateDebut", "dateFin",
-        "melangeQuestions", "melangePropositions", "blocageRetour", "statut", "groupesCibles", "contenu",
-        "filiereId", "uniteEnseignementId", "niveau", "sessionExamen", "anneeAcademiqueId",
-        "createdAt", "updatedAt", "deletedAt", "proctoringActif", "verificationIdentite",
-        "generationMode", "isTemplate", "noteTotal", "clotureeAt", "clotureeAutomatiquement",
-        "raisonCloture", "clotureePar", "delaiGrace", "etudiantsAutorises", "epreuveOrigineId"`
+	"melangeQuestions", "melangePropositions", "blocageRetour", "statut", "groupesCibles", "contenu",
+	"filiereId", "uniteEnseignementId", "niveau", "sessionExamen", "anneeAcademiqueId",
+	"createdAt", "updatedAt", "deletedAt", "proctoringActif", "verificationIdentite",
+	"generationMode", "isTemplate", "noteTotal", "clotureeAt", "clotureeAutomatiquement",
+	"raisonCloture", "clotureePar", "delaiGrace", "etudiantsAutorises", "epreuveOrigineId"`
 
 func scanEpreuve(s scanner) (*domain.Epreuve, error) {
 	e := &domain.Epreuve{}
@@ -177,6 +177,9 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				if err := rows.Scan(&e.ID, &e.Titre, &e.DateDebut, &e.DateFin, &e.Statut, &e.NoteTotal); err != nil {
 					return fmt.Errorf("scan epreuve summary: %w", err)
 				}
+				// BUGFIX (ETU-AUDIT-1) : init Sessions à [] pour éviter
+				// null dans le JSON (qui crasherait le frontend).
+				e.Sessions = []domain.SessionRef{}
 				result = append(result, e)
 			}
 		} else {
@@ -191,11 +194,51 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				if err != nil {
 					return fmt.Errorf("scan epreuve: %w", err)
 				}
+				// BUGFIX (ETU-AUDIT-1) : init Sessions à [] par défaut.
+				e.Sessions = []domain.SessionRef{}
 				result = append(result, e)
 			}
 		}
 		if result == nil {
 			result = []*domain.Epreuve{}
+		}
+
+		// BUGFIX (ETU-AUDIT-1) : hydratation des sessions pour la vue étudiant.
+		// Quand EtudiantID est fourni (vue /mes-epreuves), on fait une requête
+		// batch pour récupérer les sessions de passation de cet étudiant pour
+		// chaque épreuve. Le frontend utilise ep.sessions.some(s => s.statut === ...)
+		// pour filtrer upcoming vs completed — sans cet include, ep.sessions est
+		// undefined → TypeError: Cannot read properties of undefined (reading 'some').
+		if params.EtudiantID != "" && len(result) > 0 {
+			epreuveIDs := make([]string, len(result))
+			for i, e := range result {
+				epreuveIDs[i] = e.ID
+			}
+			sessRows, err := tx.Query(ctx, `
+				SELECT "id", "epreuveId", "statut", "dateDebut", "dateFin", "score"
+				FROM "SessionPassation"
+				WHERE "etudiantId" = $1 AND "epreuveId" = ANY($2)
+				ORDER BY "createdAt" DESC`,
+				params.EtudiantID, epreuveIDs)
+			if err != nil {
+				return fmt.Errorf("query epreuve sessions: %w", err)
+			}
+			defer sessRows.Close()
+
+			sessionsByEpreuve := make(map[string][]domain.SessionRef)
+			for sessRows.Next() {
+				sr := domain.SessionRef{}
+				var epreuveID string
+				if err := sessRows.Scan(&sr.ID, &epreuveID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score); err != nil {
+					return fmt.Errorf("scan session ref: %w", err)
+				}
+				sessionsByEpreuve[epreuveID] = append(sessionsByEpreuve[epreuveID], sr)
+			}
+			for _, e := range result {
+				if sessions, ok := sessionsByEpreuve[e.ID]; ok {
+					e.Sessions = sessions
+				}
+			}
 		}
 		return nil
 	})
@@ -262,16 +305,16 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
 	}
 
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "Epreuve" ("id", "enseignantId", "titre", "description", "duree", "dateDebut", "dateFin",
-                        "melangeQuestions", "melangePropositions", "blocageRetour", "statut", "groupesCibles", "contenu",
-                        "filiereId", "uniteEnseignementId", "niveau", "sessionExamen", "anneeAcademiqueId",
-                        "createdAt", "updatedAt", "deletedAt", "proctoringActif", "verificationIdentite",
-                        "generationMode", "isTemplate", "noteTotal", "clotureeAt", "clotureeAutomatiquement",
-                        "raisonCloture", "clotureePar", "delaiGrace", "etudiantsAutorises", "epreuveOrigineId")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'BROUILLON', $11, $12,
-                        $13, $14, $15, $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, false, false,
-                        $18, false, $19, NULL, false, NULL, NULL, 3, NULL, NULL)
-                RETURNING `+columnsEpreuve,
+		INSERT INTO "Epreuve" ("id", "enseignantId", "titre", "description", "duree", "dateDebut", "dateFin",
+			"melangeQuestions", "melangePropositions", "blocageRetour", "statut", "groupesCibles", "contenu",
+			"filiereId", "uniteEnseignementId", "niveau", "sessionExamen", "anneeAcademiqueId",
+			"createdAt", "updatedAt", "deletedAt", "proctoringActif", "verificationIdentite",
+			"generationMode", "isTemplate", "noteTotal", "clotureeAt", "clotureeAutomatiquement",
+			"raisonCloture", "clotureePar", "delaiGrace", "etudiantsAutorises", "epreuveOrigineId")
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'BROUILLON', $11, $12,
+			$13, $14, $15, $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, false, false,
+			$18, false, $19, NULL, false, NULL, NULL, 3, NULL, NULL)
+		RETURNING `+columnsEpreuve,
 		id, input.EnseignantID, input.Titre, nullableStrPtr(input.Description), input.Duree, dateDebut, dateFin,
 		melangeQ, melangeP, blocageR, groupesCibles, contenu,
 		nullableStrPtr(input.FiliereID), nullableStrPtr(input.UniteEnseignementID), nullableStrPtr(input.Niveau),
@@ -291,10 +334,10 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
 				bareme = 1.0
 			}
 			_, err := tx.Exec(ctx, `
-                                INSERT INTO "EpreuveQuestion" ("id", "epreuveId", "questionId", "bareme", "ordre")
-                                VALUES ($1, $2, $3, $4, $5)
-                                ON CONFLICT DO NOTHING
-                        `, uuid.NewString(), id, eq.QuestionID, bareme, i)
+				INSERT INTO "EpreuveQuestion" ("id", "epreuveId", "questionId", "bareme", "ordre")
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT DO NOTHING
+			`, uuid.NewString(), id, eq.QuestionID, bareme, i)
 			if err != nil {
 				return nil, fmt.Errorf("create epreuve question: %w", err)
 			}
@@ -305,10 +348,10 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
 	if len(input.DocumentIDs) > 0 {
 		for _, docID := range input.DocumentIDs {
 			_, err := tx.Exec(ctx, `
-                                INSERT INTO "EpreuveDocument" ("id", "epreuveId", "documentId")
-                                VALUES ($1, $2, $3)
-                                ON CONFLICT DO NOTHING
-                        `, uuid.NewString(), id, docID)
+				INSERT INTO "EpreuveDocument" ("id", "epreuveId", "documentId")
+				VALUES ($1, $2, $3)
+				ON CONFLICT DO NOTHING
+			`, uuid.NewString(), id, docID)
 			if err != nil {
 				return nil, fmt.Errorf("create epreuve document: %w", err)
 			}
@@ -358,10 +401,10 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
 				clotureePar = *input.UserID
 			}
 			_, err := tx.Exec(ctx, `
-                                UPDATE "Epreuve" SET "statut" = $2, "clotureeAt" = $3, "clotureeAutomatiquement" = false,
-                                        "clotureePar" = $4, "updatedAt" = CURRENT_TIMESTAMP
-                                WHERE "id" = $1 AND "deletedAt" IS NULL
-                        `, id, newStatut, now, nullableStr(&clotureePar))
+				UPDATE "Epreuve" SET "statut" = $2, "clotureeAt" = $3, "clotureeAutomatiquement" = false,
+					"clotureePar" = $4, "updatedAt" = CURRENT_TIMESTAMP
+				WHERE "id" = $1 AND "deletedAt" IS NULL
+			`, id, newStatut, now, nullableStr(&clotureePar))
 			if err != nil {
 				return nil, fmt.Errorf("cloturer epreuve: %w", err)
 			}
@@ -374,9 +417,9 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
 		}
 
 		_, err := tx.Exec(ctx, `
-                        UPDATE "Epreuve" SET "statut" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $1 AND "deletedAt" IS NULL
-                `, id, newStatut)
+			UPDATE "Epreuve" SET "statut" = $2, "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $1 AND "deletedAt" IS NULL
+		`, id, newStatut)
 		if err != nil {
 			return nil, fmt.Errorf("update statut epreuve: %w", err)
 		}
@@ -536,9 +579,9 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 	var result []*domain.EpreuveQuestion
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-                        SELECT "id", "epreuveId", "questionId", "bareme", "ordre"
-                        FROM "EpreuveQuestion" WHERE "epreuveId" = $1 ORDER BY "ordre" ASC
-                `, epreuveID)
+			SELECT "id", "epreuveId", "questionId", "bareme", "ordre"
+			FROM "EpreuveQuestion" WHERE "epreuveId" = $1 ORDER BY "ordre" ASC
+		`, epreuveID)
 		if err != nil {
 			return fmt.Errorf("query epreuve questions: %w", err)
 		}
