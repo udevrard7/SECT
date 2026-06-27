@@ -452,7 +452,16 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
 			whereClause = "WHERE " + strings.Join(where, " AND ")
 		}
 
-		query := fmt.Sprintf(`SELECT %s FROM "EnseignantFiliere" %s ORDER BY "createdAt" DESC`, columnsEF, whereClause)
+		// BUGFIX (RESP-AUDIT-3) : LEFT JOIN Filiere pour peupler la relation
+		// filiere (FiliereRef{ID, Nom, Code}) attendue par le frontend
+		// (enseignants-page.tsx : assignment.filiere.nom).
+		query := fmt.Sprintf(`
+			SELECT ef."id", ef."enseignantId", ef."filiereId", ef."niveau", ef."createdAt", ef."updatedAt",
+			       f."id", f."nom", f."code"
+			FROM "EnseignantFiliere" ef
+			LEFT JOIN "Filiere" f ON f."id" = ef."filiereId"
+			%s
+			ORDER BY ef."createdAt" DESC`, whereClause)
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query enseignant-filieres: %w", err)
@@ -460,11 +469,22 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
 		defer rows.Close()
 
 		for rows.Next() {
-			e, err := scanEnseignantFiliere(rows)
+			ef := &domain.EnseignantFiliere{}
+			var filID, filNom *string
+			var filCode *string
+			err := rows.Scan(&ef.ID, &ef.EnseignantID, &ef.FiliereID, &ef.Niveau, &ef.CreatedAt, &ef.UpdatedAt,
+				&filID, &filNom, &filCode)
 			if err != nil {
 				return fmt.Errorf("scan ef: %w", err)
 			}
-			result = append(result, e)
+			if filID != nil && filNom != nil {
+				ef.Filiere = &domain.FiliereRef{
+					ID:   *filID,
+					Nom:  *filNom,
+					Code: derefStr(filCode),
+				}
+			}
+			result = append(result, ef)
 		}
 		if result == nil {
 			result = []*domain.EnseignantFiliere{}
