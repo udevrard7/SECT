@@ -307,9 +307,8 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		// Log l'erreur mais ne crash pas — retourne les valeurs par défaut (zéros + slices vides)
-		// pour que le frontend puisse afficher le dashboard même si une requête échoue.
-		http.Error(w, `{"error":"failed to load teacher stats"}`, http.StatusInternalServerError)
+		// DEBUG: retourner l'erreur exacte pour diagnostic
+		http.Error(w, fmt.Sprintf(`{"error":"failed to load teacher stats","detail":"%s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 
