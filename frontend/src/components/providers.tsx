@@ -4,7 +4,6 @@ import { ThemeProvider } from 'next-themes'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
-import { PageCacheProvider } from '@/components/layout/page-cache-provider'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -29,12 +28,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-        {/* BUGFIX (KEEPALIVE-PAGES-1) : cache keep-alive des pages au niveau
-            Providers (ne se remonte jamais, contrairement à PageContent qui
-            est remonté à chaque navigation par le catch-all route). */}
-        <PageCacheProvider>
-          {children}
-        </PageCacheProvider>
+        {children}
       </ThemeProvider>
     </QueryClientProvider>
   )

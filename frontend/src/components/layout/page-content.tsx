@@ -1,8 +1,7 @@
 'use client'
 
-import { Suspense, useEffect } from 'react'
+import { Suspense } from 'react'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
-import { usePageCache } from '@/components/layout/page-cache-provider'
 
 // ─── Dashboard imports ───
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard'
@@ -130,99 +129,33 @@ function PlaceholderPage({ pageId }: { pageId: PageId }) {
 }
 
 // ─── Main content router ───
-//
-// BUGFIX (KEEPALIVE-PAGES-1) : PageContent enregistre sa page dans le cache
-// (PageCacheProvider au niveau Providers) et définit la page courante.
-// Le RENDU des pages cachées est géré par PageCacheProvider lui-même
-// (qui ne se remonte jamais). PageContent ne rend que le fallback de chargement
-// (le temps que la page soit enregistrée) ou le dashboard/placeholder.
 export function PageContent({ pageId }: { pageId: PageId }) {
   const { user } = useAuthStore()
-  const { cache, registerPage, touchPage } = usePageCache()
-
-  // Enregistrer la page courante dans le cache si pas déjà présente.
-  // + la marquer comme utilisée (LRU).
-  useEffect(() => {
-    if (!user) return
-    if (pageId === 'dashboard') return
-    const legacy = LEGACY_REDIRECTS[pageId]
-    if (legacy) return
-    const PageComponent = PAGE_COMPONENTS[pageId]
-    if (!PageComponent) return
-
-    if (!cache.has(pageId)) {
-      registerPage(pageId, (
-        <Suspense fallback={<PageLoadingFallback />}>
-          <PageComponent />
-        </Suspense>
-      ))
-    } else {
-      touchPage(pageId)
-    }
-  }, [pageId, user, cache, registerPage, touchPage])
 
   if (!user) return null
 
-  // Dashboard : pas de cache (dépend du rôle)
+  // Dashboard: render role-specific component
   if (pageId === 'dashboard') {
     const DashboardComponent = DASHBOARD_COMPONENTS[user.role]
-    return (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <DashboardComponent />
-      </Suspense>
-    )
+    return <DashboardComponent />
   }
 
-  // Legacy redirects (pas de cache)
+  // Check legacy redirects first
   const legacy = LEGACY_REDIRECTS[pageId]
   if (legacy) {
+    return <legacy.component {...legacy.props} />
+  }
+
+  // Check main page component registry
+  const PageComponent = PAGE_COMPONENTS[pageId]
+  if (PageComponent) {
     return (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <legacy.component {...legacy.props} />
+      <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
+        <PageComponent />
       </Suspense>
     )
   }
 
-  // Page enregistrée : rendre toutes les pages cachées (l'active visible,
-  // les autres en display:none). Le cache vient du Context (persistant).
-  const PageComponent = PAGE_COMPONENTS[pageId]
-  if (PageComponent) {
-    // Si la page courante n'est pas encore en cache (1er render avant useEffect),
-    // la rendre directement avec un fallback.
-    if (!cache.has(pageId)) {
-      return (
-        <Suspense fallback={<PageLoadingFallback />}>
-          <PageComponent />
-        </Suspense>
-      )
-    }
-
-    // Rendre toutes les pages cachées. L'active en display:block, les autres
-    // en display:none. Comme le cache est dans le Context (Providers), il
-    // survit au remontage de PageContent → les pages restent montées.
-    return (
-      <>
-        {Array.from(cache.entries()).map(([k, v]) => (
-          <div
-            key={k}
-            style={k === pageId ? undefined : { display: 'none' }}
-            aria-hidden={k !== pageId}
-          >
-            {v.el}
-          </div>
-        ))}
-      </>
-    )
-  }
-
-  // Placeholder
+  // All other pages: placeholder
   return <PlaceholderPage pageId={pageId} />
-}
-
-function PageLoadingFallback() {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
-    </div>
-  )
 }
