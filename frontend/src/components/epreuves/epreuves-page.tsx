@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
  Clock,
  Calendar,
@@ -426,11 +427,34 @@ export function EpreuvesPage() {
 function ModelesTab() {
  const user = useAuthStore((s) => s.user)
  const router = useRouter()
+ const queryClient = useQueryClient()
 
- const [epreuves, setEpreuves] = useState<ModeleEpreuve[]>([])
- const [isLoading, setIsLoading] = useState(true)
  const [search, setSearch] = useState('')
  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+ // BUGFIX (QUERY-MIGRATION-1) : migration de useEffect+fetch vers TanStack
+ // Query. Le cache survit au démontage -> 0 refetch au retour, 0 skeleton,
+ // navigation instantanee. Le queryKey inclut debouncedSearch pour refetch
+ // automatique quand la recherche change.
+ const banqueQuery = useQuery<{ epreuves: ModeleEpreuve[] }>({
+  queryKey: ['epreuves-modeles', user?.id, debouncedSearch],
+  queryFn: async () => {
+   const params = new URLSearchParams({ enseignantId: user!.id })
+   if (debouncedSearch) params.set('search', debouncedSearch)
+   const res = await fetch(`/api/epreuves?${params.toString()}`)
+   if (!res.ok) throw new Error('Failed to fetch modeles')
+   return res.json()
+  },
+  enabled: !!user?.id,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+
+ const epreuves = banqueQuery.data?.epreuves ?? []
+ const isLoading = banqueQuery.isLoading
+
+ const refreshModeles = () =>
+  queryClient.invalidateQueries({ queryKey: ['epreuves-modeles', user?.id] })
 
  // View mode (flat list or grouped) — miroir SessionsTab
  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
@@ -450,27 +474,6 @@ function ModelesTab() {
  const timer = setTimeout(() => setDebouncedSearch(search), 300)
  return () => clearTimeout(timer)
  }, [search])
-
- // Fetch
- const fetchBanque = useCallback(async () => {
- if (!user?.id) return
- setIsLoading(true)
- try {
- const params = new URLSearchParams({ enseignantId: user.id })
- if (debouncedSearch) params.set('search', debouncedSearch)
- const res = await fetch(`/api/epreuves?${params.toString()}`)
- if (res.ok) {
- const data = await res.json()
- setEpreuves(data.epreuves ?? [])
- }
- } catch {
- toast.error('Erreur', { description:'Impossible de charger les modèles.' })
- } finally {
- setIsLoading(false)
- }
- }, [user?.id, debouncedSearch])
-
- useEffect(() => { fetchBanque() }, [fetchBanque])
 
  const toggleExpand = (id: string) => {
  setExpandedQuestions((prev) => {
@@ -493,7 +496,7 @@ function ModelesTab() {
  if (!res.ok) throw new Error('Erreur')
  toast.success('Modèle supprimé', { description:`"${deleteTarget.titre}" a été déplacé vers la corbeille.` })
  setDeleteTarget(null)
- await fetchBanque()
+ await refreshModeles()
  } catch (err) {
  toast.error('Erreur', { description:'Impossible de supprimer.' })
  }
@@ -548,7 +551,7 @@ function ModelesTab() {
  }
  toast.success('Modèle dupliqué', { description:`"${duplicateTitre}" a été ajouté.` })
  setDuplicateTarget(null)
- await fetchBanque()
+ await refreshModeles()
  } catch (err) {
  const msg = err instanceof Error ? err.message : 'Impossible de dupliquer.'
  toast.error('Erreur', { description: msg })
@@ -1157,9 +1160,8 @@ interface AnneeAcademiqueOption {
 function SessionsTab() {
  const user = useAuthStore((s) => s.user)
  const router = useRouter()
+ const queryClient = useQueryClient()
 
- const [epreuves, setEpreuves] = useState<SessionEpreuve[]>([])
- const [isLoading, setIsLoading] = useState(true)
  const [statutFilter, setStatutFilter] = useState('TOUS')
 
  // ─── Advanced filter state ───
@@ -1178,6 +1180,49 @@ function SessionsTab() {
  const timer = setTimeout(() => setDebouncedSessionsSearch(sessionsSearch), 300)
  return () => clearTimeout(timer)
  }, [sessionsSearch])
+
+ // BUGFIX (QUERY-MIGRATION-1) : migration de useEffect+fetch vers TanStack
+ // Query. Le cache survit au démontage -> 0 refetch au retour, 0 skeleton,
+ // navigation instantanee. Le queryKey inclut tous les filtres + la recherche
+ // debounced pour refetch automatique quand ils changent.
+ const sessionsQuery = useQuery<{ epreuves: SessionEpreuve[] }>({
+  queryKey: [
+   'epreuves-sessions',
+   user?.id,
+   statutFilter,
+   debouncedSessionsSearch,
+   filterAnneeAcademiqueId,
+   filterFiliereId,
+   filterNiveau,
+   filterUEId,
+   filterSessionExamen,
+  ],
+  queryFn: async () => {
+   const params = new URLSearchParams({ enseignantId: user!.id })
+   if (statutFilter !== 'TOUS') params.set('statut', statutFilter)
+   if (debouncedSessionsSearch) params.set('search', debouncedSessionsSearch)
+   if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
+   if (filterFiliereId) params.set('filiereId', filterFiliereId)
+   if (filterNiveau) params.set('niveau', filterNiveau)
+   if (filterUEId) params.set('uniteEnseignementId', filterUEId)
+   if (filterSessionExamen) params.set('sessionExamen', filterSessionExamen)
+   const res = await fetch(`/api/epreuves?${params.toString()}`)
+   if (!res.ok) throw new Error('Failed to fetch sessions')
+   return res.json()
+  },
+  enabled: !!user?.id,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+
+ const epreuves = sessionsQuery.data?.epreuves ?? []
+ const isLoading = sessionsQuery.isLoading
+
+ // Helper pour invalider le cache apres mutation (planifier, status, delete,
+ // edit dates, session speciale). Conserve le comportement historique : on
+ // ne rafraichit PAS la classification tree ici (pas fait avant non plus).
+ const refreshSessions = () =>
+  queryClient.invalidateQueries({ queryKey: ['epreuves-sessions', user?.id] })
 
  // ─── Advanced filter data ───
  const [anneesAcademiques, setAnneesAcademiques] = useState<AnneeAcademiqueOption[]>([])
@@ -1223,8 +1268,22 @@ function SessionsTab() {
 
  // Planifier dialog
  const [planifierDialogOpen, setPlanifierDialogOpen] = useState(false)
- const [modeles, setModeles] = useState<ModeleEpreuve[]>([])
- const [isLoadingModeles, setIsLoadingModeles] = useState(false)
+ // BUGFIX (QUERY-MIGRATION-1) : modeles chargés via TanStack Query, lazy
+ // (enabled: !!planifierDialogOpen) pour ne pas fetch tant que le dialog
+ // n'est pas ouvert. Cache reuse : 0 refetch si on ferme/rouvre rapidement.
+ const modelesQuery = useQuery<{ epreuves: ModeleEpreuve[] }>({
+  queryKey: ['epreuves-modeles-planifier', user?.id],
+  queryFn: async () => {
+   const res = await fetch(`/api/epreuves?enseignantId=${user!.id}`)
+   if (!res.ok) throw new Error('Failed to fetch modeles')
+   return res.json()
+  },
+  enabled: !!user?.id && planifierDialogOpen,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+ const modeles = modelesQuery.data?.epreuves ?? []
+ const isLoadingModeles = modelesQuery.isLoading
  const [selectedModeleId, setSelectedModeleId] = useState<string | null>(null)
  const [planTitre, setPlanTitre] = useState('')
  const [planDateDebut, setPlanDateDebut] = useState('')
@@ -1266,45 +1325,44 @@ function SessionsTab() {
  // ─── Classification system state ───
  const [viewMode, setViewMode] = useState<'flat' |'grouped'>('flat')
  const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
- const [classificationTree, setClassificationTree] = useState<ClassificationTree>({ filieres: [], nonClassees: 0 })
  const [selectedPath, setSelectedPath] = useState<SelectedPath>({})
 
- // Fetch classification data
- const fetchClassification = useCallback(async () => {
- if (!user?.id) return
- try {
- const params = new URLSearchParams({ enseignantId: user.id })
- const res = await fetch(`/api/epreuves?${params.toString()}`)
- if (res.ok) {
- const data = await res.json()
- // Build tree from API response
- const treeData: ClassificationTree = {
- filieres: (data.tree || []).map((f: any) => ({
- id: f.filiereId ||'__none__',
- nom: f.filiereNom ||'Non classée',
- code: f.filiereCode || null,
- count: f.count || 0,
- niveaux: (f.byNiveau || []).map((n: any) => ({
- niveau: n.niveau ||'NON_DEFINI',
- count: n.count || 0,
- unites: (n.byUE || []).map((u: any) => ({
- id: u.ueId ||'__none__',
- code: u.ueCode ||'N/A',
- nom: u.ueNom ||'Non classée',
- count: u.count || 0,
- })),
- })),
- })),
- nonClassees: data.uncategorizedCount || 0,
- }
- setClassificationTree(treeData)
- }
- } catch {
- // Silently ignore classification fetch failures
- }
- }, [user?.id])
-
- useEffect(() => { fetchClassification() }, [fetchClassification])
+ // BUGFIX (QUERY-MIGRATION-1) : classification tree via TanStack Query.
+ // Le tree est construit dans queryFn (pure) puis exposé via .data.
+ // Fallback sur tree vide si la query n'a pas encore de données.
+ const classificationQuery = useQuery<ClassificationTree>({
+  queryKey: ['epreuves-classification', user?.id],
+  queryFn: async () => {
+   const params = new URLSearchParams({ enseignantId: user!.id })
+   const res = await fetch(`/api/epreuves?${params.toString()}`)
+   if (!res.ok) throw new Error('Failed to fetch classification')
+   const data = await res.json()
+   // Build tree from API response
+   return {
+    filieres: (data.tree || []).map((f: any) => ({
+     id: f.filiereId || '__none__',
+     nom: f.filiereNom || 'Non classée',
+     code: f.filiereCode || null,
+     count: f.count || 0,
+     niveaux: (f.byNiveau || []).map((n: any) => ({
+      niveau: n.niveau || 'NON_DEFINI',
+      count: n.count || 0,
+      unites: (n.byUE || []).map((u: any) => ({
+       id: u.ueId || '__none__',
+       code: u.ueCode || 'N/A',
+       nom: u.ueNom || 'Non classée',
+       count: u.count || 0,
+      })),
+     })),
+    })),
+    nonClassees: data.uncategorizedCount || 0,
+   } as ClassificationTree
+  },
+  enabled: !!user?.id,
+  staleTime: 60 * 1000,
+  refetchOnWindowFocus: false,
+ })
+ const classificationTree: ClassificationTree = classificationQuery.data ?? { filieres: [], nonClassees: 0 }
 
  // Handle sidebar path selection → apply as filters
  const handleSidebarSelect = (path: SelectedPath) => {
@@ -1341,56 +1399,13 @@ function SessionsTab() {
  const [isLoadingSpecialSessions, setIsLoadingSpecialSessions] = useState(false)
  const [specialSessionsOpen, setSpecialSessionsOpen] = useState(false)
 
- // Fetch sessions
- const fetchSessions = useCallback(async () => {
- if (!user?.id) return
- setIsLoading(true)
- try {
- const params = new URLSearchParams({ enseignantId: user.id })
- if (statutFilter !=='TOUS') params.set('statut', statutFilter)
- // Search (mode liste)
- if (debouncedSessionsSearch) params.set('search', debouncedSessionsSearch)
- // Advanced classification filters
- if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
- if (filterFiliereId) params.set('filiereId', filterFiliereId)
- if (filterNiveau) params.set('niveau', filterNiveau)
- if (filterUEId) params.set('uniteEnseignementId', filterUEId)
- if (filterSessionExamen) params.set('sessionExamen', filterSessionExamen)
- const res = await fetch(`/api/epreuves?${params.toString()}`)
- if (res.ok) {
- const data = await res.json()
- setEpreuves(data.epreuves ?? [])
- }
- } catch {
- toast.error('Erreur', { description:'Impossible de charger les sessions.' })
- } finally {
- setIsLoading(false)
- }
- }, [user?.id, statutFilter, debouncedSessionsSearch, filterAnneeAcademiqueId, filterFiliereId, filterNiveau, filterUEId, filterSessionExamen])
-
- useEffect(() => { fetchSessions() }, [fetchSessions])
-
- // Fetch modeles for planifier dialog
- const fetchModeles = useCallback(async () => {
- if (!user?.id) return
- setIsLoadingModeles(true)
- try {
- const res = await fetch(`/api/epreuves?enseignantId=${user.id}`)
- if (res.ok) {
- const data = await res.json()
- setModeles(data.epreuves ?? [])
- }
- } catch {
- toast.error('Erreur', { description:'Impossible de charger les modèles.' })
- } finally {
- setIsLoadingModeles(false)
- }
- }, [user?.id])
-
  const openPlanifier = () => {
  resetPlanForm()
  setPlanifierDialogOpen(true)
- fetchModeles()
+ // BUGFIX (QUERY-MIGRATION-1) : fetchModeles() supprimé. Le modelesQuery
+ // (déclaré plus haut) a `enabled: !!planifierDialogOpen` et se déclenche
+ // automatiquement à l'ouverture du dialog. Le cache est réutilisé si on
+ // ferme/rouvre rapidement (staleTime 60s).
  fetchPlanFilieres()
  }
 
@@ -1527,7 +1542,7 @@ function SessionsTab() {
  toast.success('Session planifiée', { description:`"${planTitre}" a été créée en brouillon.` })
  setPlanifierDialogOpen(false)
  resetPlanForm()
- await fetchSessions()
+ await refreshSessions()
  } catch (err) {
  toast.error('Erreur', { description: err instanceof Error ? err.message :'Une erreur est survenue.' })
  } finally {
@@ -1545,7 +1560,7 @@ function SessionsTab() {
  })
  if (!res.ok) throw new Error('Erreur')
  toast.success(successMsg)
- await fetchSessions()
+ await refreshSessions()
  } catch {
  toast.error('Erreur', { description:'Impossible d\'effectuer cette action.' })
  }
@@ -1569,7 +1584,7 @@ function SessionsTab() {
  if (!res.ok) throw new Error('Erreur')
  toast.success('Session déplacée vers la corbeille')
  setDeleteTarget(null)
- await fetchSessions()
+ await refreshSessions()
  } catch {
  toast.error('Erreur', { description:'Impossible de supprimer.' })
  }
@@ -1640,7 +1655,7 @@ function SessionsTab() {
  if (!res.ok) throw new Error('Erreur')
  toast.success('Dates mises à jour')
  setDateEditTarget(null)
- await fetchSessions()
+ await refreshSessions()
  } catch {
  toast.error('Erreur lors de la mise à jour des dates')
  }
@@ -2754,7 +2769,7 @@ function SessionsTab() {
  open={sessionSpecialeDialogOpen}
  onOpenChange={setSessionSpecialeDialogOpen}
  epreuve={sessionSpecialeEpreuve}
- onSuccess={() => { fetchSessions() }}
+ onSuccess={() => { refreshSessions() }}
  />
  </div>
  )

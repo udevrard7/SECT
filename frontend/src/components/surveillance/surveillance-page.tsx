@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Shield, ShieldAlert, Eye, AlertTriangle, Camera, Monitor, Clock,
@@ -156,13 +157,8 @@ function useDebounce<T>(value: T, delay = 350): T {
 
 export function SurveillancePage() {
   const { user } = useAuthStore()
-  const [sessions, setSessions] = useState<SurveillanceSession[]>([])
-  const [epreuves, setEpreuves] = useState<EpreuveOption[]>([])
-  const [stats, setStats] = useState<SurveillanceStats | null>(null)
+  const queryClient = useQueryClient()
   const [alertes, setAlertes] = useState<AlerteItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [isLive, setIsLive] = useState(true)
   const [epreuveId, setEpreuveId] = useState('all')
   const [severity, setSeverity] = useState('all')
@@ -174,46 +170,72 @@ export function SurveillancePage() {
   const [detailSession, setDetailSession] = useState<SurveillanceSession | null>(null)
   const [screenshotViewer, setScreenshotViewer] = useState<{ events: LogEvent[]; index: number } | null>(null)
   const [flagging, setFlagging] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
 
-  const fetchSessions = useCallback(async (silent = false) => {
-    if (!user?.id) return
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    if (!silent) setLoading(true)
-    setError(null)
-    try {
+  // ═══════════════════════════════════════════════════════════════
+  // DATA FETCHING (BUGFIX QUERY-MIGRATION-1 : TanStack Query)
+  // ═══════════════════════════════════════════════════════════════
+  //
+  // NOTE : le queryKey inclut les filtres (epreuveId, severity, typeFilter,
+  // debouncedSearch) car l'API /api/surveillance les prend en query params
+  // (comme les deps du useCallback original). Quand un filtre change, la
+  // query est recréée et refetch automatiquement.
+  //
+  // Polling : refetchInterval: isLive ? 30000 : false. Préserve le bouton
+  // Pause/Live — si isLive est false, aucun refetch. refetchIntervalInBackground:
+  // false arrête le polling si l'onglet est caché (économie réseau).
+  const sessionsQuery = useQuery<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>({
+    queryKey: ['surveillance-sessions', user?.id, epreuveId, severity, typeFilter, debouncedSearch],
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (epreuveId !== 'all') params.set('epreuveId', epreuveId)
       if (severity !== 'all') params.set('severity', severity)
       if (typeFilter !== 'all') params.set('type', typeFilter)
       if (debouncedSearch) params.set('search', debouncedSearch)
-      const res = await fetch(`/api/surveillance?${params.toString()}`, { signal: controller.signal })
+      const res = await fetch(`/api/surveillance?${params.toString()}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setSessions(data.sessions || [])
-      setEpreuves(data.epreuves || [])
-      setLastRefresh(new Date())
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return
-      console.error('Fetch surveillance error:', err)
-      setError('Impossible de charger les données de surveillance.')
-      if (!silent) toast.error('Erreur de chargement')
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [user?.id, epreuveId, severity, typeFilter, debouncedSearch])
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 1000, // 5s : la surveillance est temps-réel, on accepte un refetch rapide au retour
+    refetchOnWindowFocus: false,
+    refetchInterval: isLive ? 30000 : false,
+    refetchIntervalInBackground: false,
+  })
 
-  const fetchStats = useCallback(async () => {
-    if (!user?.id) return
-    try {
+  const sessions = sessionsQuery.data?.sessions ?? []
+  const epreuves = sessionsQuery.data?.epreuves ?? []
+  const loading = sessionsQuery.isLoading
+  const error = sessionsQuery.error
+    ? 'Impossible de charger les données de surveillance.'
+    : null
+  // dataUpdatedAt est mis à jour à chaque fetch réussi (initial + polling).
+  // Équivalent fonctionnel du setLastRefresh(new Date()) original.
+  const lastRefresh = sessionsQuery.dataUpdatedAt > 0 ? new Date(sessionsQuery.dataUpdatedAt) : null
+
+  const statsQuery = useQuery<SurveillanceStats>({
+    queryKey: ['surveillance-stats', user?.id],
+    queryFn: async () => {
       const res = await fetch('/api/surveillance/stats')
-      if (!res.ok) return
-      setStats(await res.json())
-    } catch (err) { console.error('Fetch stats error:', err) }
-  }, [user?.id])
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 1000,
+    refetchOnWindowFocus: false,
+    refetchInterval: isLive ? 30000 : false,
+    refetchIntervalInBackground: false,
+  })
 
+  const stats = statsQuery.data ?? null
+
+  // Helpers pour invalider le cache après mutation (flag, refresh manuel).
+  const refreshSessions = () =>
+    queryClient.invalidateQueries({ queryKey: ['surveillance-sessions', user?.id] })
+  const refreshStats = () =>
+    queryClient.invalidateQueries({ queryKey: ['surveillance-stats', user?.id] })
+
+  // fetchAlertes conservé tel quel (useCallback + useEffect). Non concerné
+  // par la migration QUERY-MIGRATION-1 (pas de polling, chargement one-shot).
   const fetchAlertes = useCallback(async () => {
     if (!user?.id) return
     try {
@@ -224,18 +246,7 @@ export function SurveillancePage() {
     } catch (err) { console.error('Fetch alertes error:', err) }
   }, [user?.id])
 
-  useEffect(() => {
-    fetchSessions()
-    return () => abortRef.current?.abort()
-  }, [fetchSessions])
-
-  useEffect(() => { fetchStats(); fetchAlertes() }, [fetchStats, fetchAlertes])
-
-  useEffect(() => {
-    if (!isLive) return
-    const interval = setInterval(() => { fetchSessions(true); fetchStats() }, 30000)
-    return () => clearInterval(interval)
-  }, [isLive, fetchSessions, fetchStats])
+  useEffect(() => { fetchAlertes() }, [fetchAlertes])
 
   const handleFlag = async (sessionId: string) => {
     setFlagging(sessionId)
@@ -247,7 +258,18 @@ export function SurveillancePage() {
         else throw new Error(data.error || 'Erreur')
       } else {
         toast.success('Session signalée — alerte fraude créée', { description: data.alerte?.titre })
-        setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, flagged: true } : s)))
+        // BUGFIX (QUERY-MIGRATION-1) : optimist update via setQueryData sur
+        // le cache TanStack Query. Équivalent fonctionnel du setSessions()
+        // original — l'UI se met à jour instantanément sans attendre le
+        // prochain polling. Si le queryKey actif n'est pas en cache (cas
+        // rare), le callback reçoit undefined et on retourne undefined
+        // (pas d'update, le prochain refetch corrigera).
+        queryClient.setQueryData<{ sessions: SurveillanceSession[]; epreuves: EpreuveOption[] }>(
+          ['surveillance-sessions', user?.id, epreuveId, severity, typeFilter, debouncedSearch],
+          (old) => old
+            ? { ...old, sessions: old.sessions.map((s) => (s.id === sessionId ? { ...s, flagged: true } : s)) }
+            : old,
+        )
         fetchAlertes()
       }
     } catch (err) { console.error('Flag error:', err); toast.error('Impossible de signaler la session') }
@@ -331,7 +353,7 @@ export function SurveillancePage() {
           <Button variant="outline" size="sm" onClick={() => setIsLive((v) => !v)} className="gap-1.5">
             {isLive ? <><span className="h-2 w-2 rounded-full bg-success animate-pulse" /> Live</> : <><span className="h-2 w-2 rounded-full bg-muted-foreground" /> Pause</>}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { fetchSessions(); fetchStats(); fetchAlertes() }} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => { refreshSessions(); refreshStats(); fetchAlertes() }} className="gap-1.5">
             <RefreshCw className="h-3.5 w-3.5" /> Actualiser
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={sessions.length === 0} className="gap-1.5">

@@ -5051,3 +5051,119 @@ Stage Summary:
 - Aucune modification de states, handlers, fetch, useEffect, signatures de composants ou
   props. Seules les classes Tailwind et la balise outer des cartes (div→Card) ont changé.
 - Lint OK (0 erreur), TypeScript OK pour devoirs-page.tsx.
+
+---
+Task ID: QUERY-MIGRATION-1
+Agent: full-stack-developer
+Task: Migration TanStack Query de 3 pages (epreuves, devoirs, surveillance)
+
+Work Log:
+- Pattern de référence relu : `documents-page.tsx` lignes 370-420 (commit 3b73158) —
+  `useQuery` + `useQueryClient`, `staleTime: 60s`, `refetchOnWindowFocus: false`,
+  `refreshX = () => queryClient.invalidateQueries(...)`.
+
+- **Page 1 — `/epreuves` (`epreuves-page.tsx`)** :
+  - `ModelesTab` : suppression de `useState<epreuves>` + `useState<isLoading>` +
+    `fetchBanque` (useCallback) + `useEffect(mount)`. Remplacés par `banqueQuery`
+    (`queryKey: ['epreuves-modeles', user?.id, debouncedSearch]`, `staleTime: 60s`).
+    `refreshModeles()` = invalidateQueries. Les 2 appels `await fetchBanque()` (delete,
+    duplicate) → `await refreshModeles()`. Le queryKey inclut `debouncedSearch` pour
+    refetch auto quand la recherche change (l'API prend `?search=` en param).
+  - `SessionsTab` : 4 fetch migrés vers 4 `useQuery` distincts :
+    - `sessionsQuery` (`['epreuves-sessions', user?.id, statutFilter,
+      debouncedSessionsSearch, filterAnneeAcademiqueId, filterFiliereId, filterNiveau,
+      filterUEId, filterSessionExamen]`, `staleTime: 60s`) — queryKey inclut TOUS les
+      filtres car l'API `/api/epreuves` les prend en query params.
+    - `modelesQuery` (`['epreuves-modeles-planifier', user?.id]`,
+      `enabled: !!user?.id && planifierDialogOpen`, `staleTime: 60s`) — remplace
+      `fetchModeles` qui était appelé à l'ouverture du dialog. Lazy : pas de fetch tant
+      que le dialog n'est pas ouvert. `fetchModeles()` retiré du `openPlanifier`.
+    - `classificationQuery` (`['epreuves-classification', user?.id]`, `staleTime: 60s`)
+      — remplace `fetchClassification` (useCallback + useEffect). Le tree est construit
+      dans `queryFn` (pure) puis exposé via `.data`. Fallback sur tree vide.
+    - `refreshSessions()` = invalidateQueries pour les 5 mutations
+      (planifier/status/delete/editDates/sessionSpeciale).
+  - `fetchFilterData` (annees-academiques + enseignant/context pour filieres) CONSERVÉ
+    tel quel (useEffect one-shot) — hors périmètre de la migration.
+  - Imports : `useCallback` retiré (plus aucun usage), `useEffect` conservé (debounce
+    + fetchFilterData + auto-refresh monitoring), `useMemo` conservé (QuestionSelector).
+
+- **Page 2 — `/devoirs` (`devoirs-page.tsx`)** :
+  - 3 fetch migrés vers 3 `useQuery` :
+    - `devoirsQuery` (`['devoirs', user?.id]`, `staleTime: 60s`). NOTE : l'API
+      `/api/devoirs` ne prend PAS les filtres en paramètres — le filtrage/tri se fait
+      côté client (`filteredDevoirs` useMemo). Le queryKey n'inclut donc QUE `user.id`
+      (comme les deps `[user?.id]` du useCallback original). Inclure les filtres dans
+      le queryKey aurait cassé le comportement (refetchs inutiles à chaque changement
+      de filtre). `loadError` dérivé de `devoirsQuery.error` (préserve l'UI d'erreur
+      inline dans GridView).
+    - `statsQuery` (`['devoirs-stats', user?.id]`, `staleTime: 60s`).
+    - `uesQuery` (`['devoirs-ues', user?.id]`, `staleTime: 5 * 60 * 1000` — 5 min car
+      les UEs changent rarement). Pas de `enabled: !!user?.id` (l'original appelait
+      l'API dans un useEffect avec deps `[]`, pas conditionnel à user).
+  - `AbortController` (abortRef) supprimé — TanStack Query gère automatiquement la
+    cancellation des queries précédentes (race condition fix builtin).
+  - `refreshDevoirs()` = invalidateQueries pour `['devoirs']` ET `['devoirs-stats']`
+    (les deux étaient rafraîchis après chaque mutation dans l'original).
+  - 4 mutations (create/update/delete/status) + bouton "Actualiser" : tous les
+    `await fetchDevoirs(); await fetchStats()` → `await refreshDevoirs()`.
+  - Imports : `useCallback` et `useRef` retirés, `useEffect` (useDebounce) et
+    `useMemo` conservés.
+
+- **Page 3 — `/surveillance` (`surveillance-page.tsx`)** :
+  - 2 fetch migrés vers 2 `useQuery` avec polling via `refetchInterval` :
+    - `sessionsQuery` (`['surveillance-sessions', user?.id, epreuveId, severity,
+      typeFilter, debouncedSearch]`, `staleTime: 5s`,
+      `refetchInterval: isLive ? 30000 : false`, `refetchIntervalInBackground: false`).
+      Le queryKey inclut les filtres car l'API les prend en query params. La réponse
+      contient `{ sessions, epreuves }` — les deux sont extraits du `.data`. `loading`
+      dérivé de `.isLoading`, `error` dérivé de `.error`, `lastRefresh` dérivé de
+      `.dataUpdatedAt` (préserve l'affichage "MAJ : HH:MM:SS" dans le hero).
+    - `statsQuery` (`['surveillance-stats', user?.id]`, `staleTime: 5s`,
+      `refetchInterval: isLive ? 30000 : false`, `refetchIntervalInBackground: false`).
+  - `setInterval(fetchSessions, 30000)` manuel + cleanup supprimés — remplacés par
+    `refetchInterval` (auto-cleanup au démontage). `refetchInterval: isLive ? 30000 :
+    false` préserve le bouton Pause/Live (si `isLive` est false, aucun refetch —
+    identique au `if (!isLive) return` original).
+  - `fetchAlertes` CONSERVÉ tel quel (useCallback + useEffect one-shot) — hors
+    périmètre de la migration (pas de polling, chargement one-shot au mount + appels
+    manuels après flag).
+  - `handleFlag` : optimist update `setSessions(prev => prev.map(...))` →
+    `queryClient.setQueryData(['surveillance-sessions', ...], (old) => ...)` pour
+    préserver la mise à jour instantanée de l'UI sans attendre le prochain polling.
+  - Bouton "Actualiser" : `fetchSessions(); fetchStats(); fetchAlertes()` →
+    `refreshSessions(); refreshStats(); fetchAlertes()`.
+  - Imports : `useRef` retiré (abortRef supprimé), `useCallback` conservé
+    (fetchAlertes), `useEffect` (useDebounce + fetchAlertes mount) et `useMemo`
+    conservés.
+
+- Vérification de non-régression :
+  - `bun run lint` : **0 erreur**, 1 warning préexistant (`certificat-pdf-react.tsx:312
+    jsx-a11y/alt-text`, hors périmètre).
+  - `bunx tsc --noEmit` : aucune NOUVELLE erreur TS introduite. Les erreurs pré-existantes
+    dans les 3 fichiers migrés (epreuves-page lignes 604/605/706/923/925 sur
+    `ModeleEpreuve.dateDebut/dateFin/sourceDocuments` + GroupableEpreuve ; surveillance-page
+    lignes 292/503/512/664 sur `etudiantNom/epreuveTitre`) sont identiques avant/après
+    (vérifié par `git stash` + comparaison). devoirs-page : 0 erreur TS.
+  - Aucune suppression de fonctionnalité : tous les boutons (Actualiser, Live/Pause,
+    Export CSV, Planifier, Dupliquer, Supprimer, Signaler/Flag, etc.), dialogs
+    (planifier, monitoring, delete, dateEdit, sessionSpeciale, grade, quickGrade),
+    filters (statut, UE, type, niveau, session, filiere, search, severity, type), sheets
+    (soumissions, screenshot viewer) et handlers sont intacts.
+  - Imports inutilisés nettoyés : `useCallback` (epreuves-page, devoirs-page),
+    `useRef` (devoirs-page, surveillance-page).
+
+Stage Summary:
+- 3 pages migrées de `useEffect + fetch + useState` vers TanStack Query en suivant
+  EXACTEMENT le pattern de référence `documents-page.tsx` (commit 3b73158).
+- 9 `useQuery` au total : 1 (ModelesTab) + 3 (SessionsTab) + 3 (DevoirsPage) + 2
+  (SurveillancePage) = 9 queries.
+- 5 helpers `refreshX()` = `queryClient.invalidateQueries(...)` pour les mutations.
+- Polling manuel (`setInterval`) supprimé au profit de `refetchInterval` (auto-cleanup,
+  pas de fuite mémoire). `refetchInterval: isLive ? 30000 : false` préserve le bouton
+  Pause/Live de la surveillance.
+- Cache TanStack Query : navigation instantanée au retour sur une page (0 refetch si
+  staleTime non expiré), 0 skeleton flash, économie réseau (pas de refetch au focus
+  fenêtre).
+- Lint 0 erreur, TypeScript 0 nouvelle erreur. Logique métier 100% conservée
+  (handlers, dialogs, forms, filters, états UI).
