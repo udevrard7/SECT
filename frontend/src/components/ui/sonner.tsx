@@ -15,6 +15,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
+          // BUGFIX (DUP-SRCDocs-1) : z-index élevé pour apparaître au-dessus
+          // des dialogs Radix (z-50) et de leur overlay (z-50).
+          zIndex: 100,
         } as React.CSSProperties
       }
       {...props}

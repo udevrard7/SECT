@@ -169,7 +169,10 @@ interface ModeleEpreuve {
  baremeTotal: number
  noteTotal: number
  typeDistribution?: Record<string, number>
- sourceDocuments: Array<{ id: string; nomFichier: string }>
+ // BUGFIX (DUP-SRCDocs-1) : sourceDocuments peut être absent de la réponse
+ // API (l'Epreuve List du backend ne renvoie pas toujours ce champ).
+ // Marqué optionnel + fallback ?? [] partout où il est utilisé.
+ sourceDocuments?: Array<{ id: string; nomFichier: string }>
  filiere?: { id: string; nom: string; code: string | null } | null
  uniteEnseignement?: { id: string; nom: string; code: string | null } | null
  // BUGFIX (DUPLICATE-UE-1) : l'API renvoie uniteEnseignementId (champ plat,
@@ -528,13 +531,9 @@ function ModelesTab() {
  }
 
  const handleDuplicate = async () => {
- // DEBUG-DUP: temporary diagnostic log
- console.log('[DEBUG-DUP] handleDuplicate called', { hasTarget: !!duplicateTarget, hasUser: !!user, userId: user?.id, titre: duplicateTitre })
  if (!duplicateTarget || !user?.id) return
- console.log('[DEBUG-DUP] passed early return, setting isDuplicating=true')
  setIsDuplicating(true)
  try {
- console.log('[DEBUG-DUP] building body...', { hasSourceDocs: !!duplicateTarget.sourceDocuments, sourceDocsLen: duplicateTarget.sourceDocuments?.length, hasContenu: !!duplicateTarget.contenu })
  // IMPORTANT: transmettre TOUS les champs de classification pour que
  // la copie conserve la même filière / UE / niveau / session que l'original.
  // Le backend (usecase Epreuve.Create) exige uniteEnseignementId non vide.
@@ -546,7 +545,10 @@ function ModelesTab() {
  dateDebut: new Date().toISOString(),
  dateFin: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
  generationMode: duplicateTarget.generationMode,
- documentIds: duplicateTarget.sourceDocuments.map((d) => d.id),
+ // BUGFIX (DUP-SRCDocs-1) : sourceDocuments peut être undefined (API ne
+ // renvoie pas toujours ce champ). Optional chaining + fallback [] évite
+ // le TypeError: Cannot read properties of undefined (reading 'map').
+ documentIds: duplicateTarget.sourceDocuments?.map((d) => d.id) ?? [],
  // Classification — récupérée depuis l'épreuve source.
  // BUGFIX (DUPLICATE-UE-1) : l'API List renvoie uniteEnseignementId (champ
  // plat) et NON un objet imbriqué uniteEnseignement (aucun JOIN dans le
@@ -560,14 +562,12 @@ function ModelesTab() {
  noteTotal: duplicateTarget.noteTotal ?? 20,
  }
  if (duplicateTarget.contenu) body.contenu = duplicateTarget.contenu
- console.log('[DEBUG-DUP] body built, sending fetch...', { bodyKeys: Object.keys(body), hasContenu: !!body.contenu })
 
  const res = await fetch('/api/epreuves', {
  method:'POST',
  headers: {'Content-Type':'application/json' },
  body: JSON.stringify(body),
  })
- console.log('[DEBUG-DUP] fetch response', { status: res.status, ok: res.ok })
  if (!res.ok) {
  // Récupérer le vrai message backend pour aider au debug
  let detail = 'Impossible de dupliquer.'
@@ -581,11 +581,9 @@ function ModelesTab() {
  setDuplicateTarget(null)
  await fetchBanque()
  } catch (err) {
- console.log('[DEBUG-DUP] CAUGHT ERROR', err)
  const msg = err instanceof Error ? err.message : 'Impossible de dupliquer.'
  toast.error('Erreur', { description: msg })
  } finally {
- console.log('[DEBUG-DUP] finally block, setting isDuplicating=false')
  setIsDuplicating(false)
  }
  }
@@ -1538,7 +1536,8 @@ function SessionsTab() {
  blocageRetour: planBlocageRetour,
  groupesCibles: groupes.length > 0 ? groupes : null,
  generationMode: modele?.generationMode ||'MANUELLE',
- documentIds: modele?.sourceDocuments.map((d) => d.id) || [],
+ // BUGFIX (DUP-SRCDocs-1) : optional chaining sur sourceDocuments aussi
+ documentIds: modele?.sourceDocuments?.map((d) => d.id) ?? [],
  noteTotal: planNoteTotal,
  filiereId: planFiliereId && planFiliereId !=='__all__' ? planFiliereId : null,
  uniteEnseignementId: planUEId && planUEId !=='__none__' ? planUEId : null,
