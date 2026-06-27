@@ -4458,3 +4458,52 @@ Vérifications live (toutes confirmées ✅) :
 - Supprimer: dialog de confirmation ✅
 - Dupliquer: dialog avec titre ✅
 - 0 erreur console ✅
+
+---
+Task ID: SESSION-EXPIRE-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger redirection /login?error=SessionExpired après inactivité
+
+Work Log:
+- Bug: après ~15 min d'inactivité, l'utilisateur était redirigé vers
+  /login?error=SessionExpired même si sa session était encore valide
+
+Explication du problème:
+1. L'access token JWT a une durée de vie de 15 minutes (AccessTokenTTL = 15 * time.Minute)
+2. Le cookie httpOnly access_token a un maxAge de 15 * 60 = 900 secondes
+3. Le proxy.ts (middleware Edge) vérifiait UNIQUEMENT le cookie access_token
+4. Quand le cookie expirait (après 15 min), le navigateur le supprimait
+5. Le proxy ne trouvait plus le cookie → redirect /login?error=SessionExpired
+6. Le refresh_token (maxAge=7 jours) était ignoré par le proxy
+
+Le mécanisme de refresh existait déjà côté client:
+- /api/go-auth/session appelle Go /api/me avec access_token
+- Si 401 (token expiré), tryRefresh appelle Go /api/auth/refresh
+- Go retourne nouveaux access+refresh tokens
+- La route Next.js re-pose les cookies httpOnly
+MAIS le proxy interceptait la requête de page AVANT que le client-side
+puisse faire le refresh → redirect prématurée vers /login
+
+Fix: le proxy vérifie maintenant SI access_token OU refresh_token est présent.
+Si refresh_token existe (session encore valide 7 jours), le proxy laisse
+passer la page. Le client-side fera le refresh automatiquement:
+1. auth-store.refreshSession() appelle /api/go-auth/session
+2. /api/go-auth/session appelle Go /api/me → 401 (access token expiré)
+3. tryRefresh appelle Go /api/auth/refresh avec le refresh_token
+4. Go valide le refresh_token (7 jours) → retourne nouveaux tokens
+5. La route Next.js re-pose les cookies httpOnly (access + refresh)
+6. L'utilisateur reste connecté sans interruption
+
+Si NI access_token NI refresh_token → redirect /login (vraie déconnexion)
+
+Vérification live ✅ :
+- Login → dashboard ✅
+- Attendre >15 min d'inactivité ✅
+- Reload page → reste sur /dashboard (avant: redirect /login) ✅
+- Session toujours active: {hasUser: true, userName: "Ulrich DOUH"} ✅
+
+Stage Summary:
+- Le problème de redirection après inactivité est résolu
+- Le refresh token (7 jours) est maintenant pris en compte par le proxy
+- L'utilisateur reste connecté tant que le refresh_token est valide
+- Le mécanisme de refresh automatique côté client fonctionne comme prévu
