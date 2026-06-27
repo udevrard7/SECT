@@ -526,6 +526,9 @@ function ModelesTab() {
  if (!duplicateTarget || !user?.id) return
  setIsDuplicating(true)
  try {
+ // IMPORTANT: transmettre TOUS les champs de classification pour que
+ // la copie conserve la même filière / UE / niveau / session que l'original.
+ // Le backend (usecase Epreuve.Create) exige uniteEnseignementId non vide.
  const body: Record<string, unknown> = {
  enseignantId: user.id,
  titre: duplicateTitre,
@@ -535,6 +538,13 @@ function ModelesTab() {
  dateFin: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
  generationMode: duplicateTarget.generationMode,
  documentIds: duplicateTarget.sourceDocuments.map((d) => d.id),
+ // Classification — récupérée depuis l'épreuve source
+ uniteEnseignementId: duplicateTarget.uniteEnseignement?.id ?? null,
+ filiereId: duplicateTarget.filiere?.id ?? null,
+ niveau: duplicateTarget.niveau ?? null,
+ sessionExamen: duplicateTarget.sessionExamen ?? 'NORMALE',
+ anneeAcademiqueId: duplicateTarget.anneeAcademiqueId ?? null,
+ noteTotal: duplicateTarget.noteTotal ?? 20,
  }
  if (duplicateTarget.contenu) body.contenu = duplicateTarget.contenu
 
@@ -543,12 +553,21 @@ function ModelesTab() {
  headers: {'Content-Type':'application/json' },
  body: JSON.stringify(body),
  })
- if (!res.ok) throw new Error('Erreur')
+ if (!res.ok) {
+ // Récupérer le vrai message backend pour aider au debug
+ let detail = 'Impossible de dupliquer.'
+ try {
+ const err = await res.json()
+ detail = err?.error || err?.message || detail
+ } catch { /* ignore parse error */ }
+ throw new Error(detail)
+ }
  toast.success('Modèle dupliqué', { description:`"${duplicateTitre}" a été ajouté.` })
  setDuplicateTarget(null)
  await fetchBanque()
- } catch {
- toast.error('Erreur', { description:'Impossible de dupliquer.' })
+ } catch (err) {
+ const msg = err instanceof Error ? err.message : 'Impossible de dupliquer.'
+ toast.error('Erreur', { description: msg })
  } finally {
  setIsDuplicating(false)
  }
