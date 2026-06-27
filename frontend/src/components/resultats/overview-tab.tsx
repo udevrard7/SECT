@@ -44,22 +44,22 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
   const comparisonData = useMemo(
     () =>
-      data.epreuves
+      epreuves
         .slice(0, 8)
         .map((e) => ({
           name: e.titre.length > 18 ? e.titre.slice(0, 18) + '…' : e.titre,
           value: Number((e.moyenne ?? 0).toFixed(2)),
           count: e.nbSessions,
         })),
-    [data.epreuves]
+    [epreuves]
   )
 
   const evolutionData = useMemo(
-    () => data.evolution.map((e) => ({ ...e, mois: formatMonthShortFR(e.mois) })),
-    [data.evolution]
+    () => evolution.map((e) => ({ ...e, mois: formatMonthShortFR(e.mois) })),
+    [evolution]
   )
 
-  const topQuestions = data.topQuestions.slice(0, 5)
+  const topQuestions = (data?.topQuestions ?? []).slice(0, 5)
 
   return (
     <div className="space-y-6">
