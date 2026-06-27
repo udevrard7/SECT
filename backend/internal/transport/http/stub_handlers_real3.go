@@ -283,7 +283,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 		}
 		rows2, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score) / e."noteTotal" * 20, 0) AS moyenne,
 			       count(*) AS nb_eval
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
@@ -313,7 +313,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE u."role" = 'ETUDIANT' %s
 			GROUP BY u."id", u."name", u."email", f."nom"
-			HAVING AVG(s.score) < 8
+			HAVING AVG(s.score / e."noteTotal" * 20) < 8
 			ORDER BY moy ASC LIMIT 10
 		`, whereE2), args2...)
 		if err == nil {
@@ -416,8 +416,9 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 		// 1. Évolution mensuelle
 		rows, err := tx.Query(r.Context(), `
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score), 0), count(*)
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0), count(*)
 			FROM "SessionPassation" s
+			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
 			  AND s."updatedAt" > now() - interval '6 months'
 			GROUP BY mois ORDER BY mois ASC

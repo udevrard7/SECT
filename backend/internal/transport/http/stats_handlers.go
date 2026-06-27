@@ -210,7 +210,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		// 4. Performance par épreuve (épreuves terminées/corrigées avec moyenne)
 		rows3, err := tx.Query(ctx, `
 			SELECT e.titre,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score) / e."noteTotal" * 20, 0) AS moyenne,
 			       CASE WHEN COUNT(s.id) > 0
 				    THEN (COUNT(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / COUNT(s.id) * 100
 				    ELSE 0 END AS taux_reussite
@@ -242,7 +242,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		// 5. Évolution des moyennes (6 derniers mois)
 		rows4, err := tx.Query(ctx, `
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score) / e."noteTotal" * 20, 0) AS moyenne,
 			       count(*) AS nb_evaluations
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e.id = s."epreuveId"
@@ -418,12 +418,13 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 		stats["nbEpreuvesAVenir"] = nbAVenir
 		stats["nbEpreuvesTerminees"] = nbTerminees
 
-		// Moyenne et meilleure note
+		// Moyenne et meilleure note (normalisées sur /20)
 		var moyenne, meilleure pgtype.Float8
 		_ = tx.QueryRow(ctx, `
-			SELECT COALESCE(AVG(score), 0), COALESCE(MAX(score), 0)
-			FROM "SessionPassation"
-			WHERE "etudiantId" = $1 AND statut IN ('CORRIGEE', 'RETOURNEE') AND score IS NOT NULL
+			SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0), COALESCE(MAX(s.score / e."noteTotal" * 20), 0)
+			FROM "SessionPassation" s
+			JOIN "Epreuve" e ON e."id" = s."epreuveId"
+			WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
 		`, etudiantID).Scan(&moyenne, &meilleure)
 		if moyenne.Valid {
 			stats["moyenne"] = moyenne.Float64
@@ -918,7 +919,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN "Filiere" f ON f.id = u."filiereId"
 			WHERE u.role = 'ETUDIANT' %s
 			GROUP BY u.id, u.name, u.email, f.nom
-			HAVING AVG(s.score) < 8
+			HAVING AVG(s.score / e."noteTotal" * 20) < 8
 			ORDER BY moyenne ASC
 			LIMIT 5
 		`, filiereFilter))
