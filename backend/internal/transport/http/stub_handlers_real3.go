@@ -90,99 +90,6 @@ func (s *Server) notificationsListReal(w http.ResponseWriter, r *http.Request) {
 // 2. GET /api/enseignant/context — filieres + niveaux + etudiants de l'enseignant
 // ──────────────────────────────────────────────────────────────────────────
 
-func (s *Server) enseignantContextReal(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims.UserID == "" {
-		writeJSONError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
-	enseignantID := r.URL.Query().Get("enseignantId")
-	if enseignantID == "" {
-		enseignantID = claims.UserID
-	}
-
-	type filiereCtx struct {
-		ID     string `json:"id"`
-		Nom    string `json:"nom"`
-		Code   string `json:"code"`
-		Niveau string `json:"niveau"`
-	}
-	type etudiantCtx struct {
-		ID        string  `json:"id"`
-		Name      string  `json:"name"`
-		Email     string  `json:"email"`
-		Matricule *string `json:"matricule,omitempty"`
-		Niveau    *string `json:"niveau,omitempty"`
-	}
-
-	filieres := []filiereCtx{}
-	niveaux := []string{}
-	etudiants := []etudiantCtx{}
-
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// 1. Filières de l'enseignant (via EnseignantFiliere JOIN Filiere)
-		rows, err := tx.Query(r.Context(), `
-			SELECT f."id", f."nom", f."code", ef."niveau"
-			FROM "EnseignantFiliere" ef
-			JOIN "Filiere" f ON f."id" = ef."filiereId"
-			WHERE ef."enseignantId" = $1
-			ORDER BY f."nom"
-		`, enseignantID)
-		if err == nil {
-			defer rows.Close()
-			niveauSet := map[string]bool{}
-			for rows.Next() {
-				f := filiereCtx{}
-				if err := rows.Scan(&f.ID, &f.Nom, &f.Code, &f.Niveau); err == nil {
-					filieres = append(filieres, f)
-					if f.Niveau != "" && !niveauSet[f.Niveau] {
-						niveauSet[f.Niveau] = true
-						niveaux = append(niveaux, f.Niveau)
-					}
-				}
-			}
-		}
-
-		// 2. Étudiants dans les filières de l'enseignant
-		if len(filieres) > 0 {
-			filiereIDs := make([]string, len(filieres))
-			for i, f := range filieres {
-				filiereIDs[i] = f.ID
-			}
-			rows2, err := tx.Query(r.Context(), `
-				SELECT u."id", u."name", u."email", u."matricule", u."niveau"
-				FROM "User" u
-				WHERE u."role" = 'ETUDIANT' AND u."actif" = true
-				  AND u."filiereId" = ANY($1)
-				ORDER BY u."name"
-				LIMIT 500
-			`, filiereIDs)
-			if err == nil {
-				defer rows2.Close()
-				for rows2.Next() {
-					e := etudiantCtx{}
-					if err := rows2.Scan(&e.ID, &e.Name, &e.Email, &e.Matricule, &e.Niveau); err == nil {
-						etudiants = append(etudiants, e)
-					}
-				}
-			}
-		}
-		return nil
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"filieres":  filieres,
-		"niveaux":   niveaux,
-		"etudiants": etudiants,
-	})
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// 3. GET /api/enseignant/etudiants — étudiants de l'enseignant
-// ──────────────────────────────────────────────────────────────────────────
-
 func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -558,5 +465,160 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 		"performanceParType": performanceParType,
 		"distribution":       distribution,
 		"recentResults":      recentResults,
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 2. GET /api/enseignant/context — filieres (avec niveaux[] + UEs) + etudiants
+// ──────────────────────────────────────────────────────────────────────────
+//
+// BUGFIX (EPREUVES-FIX-1) : format adapté pour matcher EnseignantFiliereContext
+// attendu par generation-ia-page.tsx et epreuves-page.tsx :
+// - filieres[].niveaux: string[] (array, pas string)
+// - filieres[].unitesEnseignement: array avec code, nom, niveau, niveaux, typeSeances
+// - etudiants: array avec id, name, email, matricule, niveau
+
+func (s *Server) enseignantContextReal(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	enseignantID := r.URL.Query().Get("enseignantId")
+	if enseignantID == "" {
+		enseignantID = claims.UserID
+	}
+
+	type ueCtx struct {
+		ID           string   `json:"id"`
+		Code         string   `json:"code"`
+		Nom          string   `json:"nom"`
+		Niveau       string   `json:"niveau"`
+		Niveaux      *string  `json:"niveaux"`
+		TypeSeances  []string `json:"typeSeances"`
+	}
+	type filiereCtx struct {
+		ID                  string  `json:"id"`
+		Nom                 string  `json:"nom"`
+		Code                string  `json:"code"`
+		Niveaux             []string `json:"niveaux"`
+		UnitesEnseignement  []ueCtx `json:"unitesEnseignement"`
+	}
+	type etudiantCtx struct {
+		ID        string  `json:"id"`
+		Name      string  `json:"name"`
+		Email     string  `json:"email"`
+		Matricule *string `json:"matricule,omitempty"`
+		Niveau    *string `json:"niveau,omitempty"`
+	}
+
+	filieres := []filiereCtx{}
+	etudiants := []etudiantCtx{}
+
+	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		// 1. Filières de l'enseignant avec niveaux
+		rows, err := tx.Query(r.Context(), `
+			SELECT f."id", f."nom", f."code", ef."niveau"
+			FROM "EnseignantFiliere" ef
+			JOIN "Filiere" f ON f."id" = ef."filiereId"
+			WHERE ef."enseignantId" = $1
+			ORDER BY f."nom"
+		`, enseignantID)
+		if err == nil {
+			defer rows.Close()
+			filiereMap := map[string]*filiereCtx{}
+			var filiereOrder []string
+			for rows.Next() {
+				var fID, fNom, fCode, niveau string
+				if err := rows.Scan(&fID, &fNom, &fCode, &niveau); err == nil {
+					if _, exists := filiereMap[fID]; !exists {
+						f := filiereCtx{
+							ID: fID, Nom: fNom, Code: fCode,
+							Niveaux:             []string{},
+							UnitesEnseignement:  []ueCtx{},
+						}
+						filiereMap[fID] = &f
+						filiereOrder = append(filiereOrder, fID)
+					}
+					if niveau != "" {
+						found := false
+						for _, n := range filiereMap[fID].Niveaux {
+							if n == niveau {
+								found = true
+								break
+							}
+						}
+						if !found {
+							filiereMap[fID].Niveaux = append(filiereMap[fID].Niveaux, niveau)
+						}
+					}
+				}
+			}
+			for _, fID := range filiereOrder {
+				filieres = append(filieres, *filiereMap[fID])
+			}
+		}
+
+		// 2. UEs pour chaque filière de l'enseignant
+		if len(filieres) > 0 {
+			filiereIDs := make([]string, len(filieres))
+			for i, f := range filieres {
+				filiereIDs[i] = f.ID
+			}
+			ueRows, err := tx.Query(r.Context(), `
+				SELECT ue."id", ue."code", ue."nom", ue."niveau", ue."niveaux", ue."filiereId"
+				FROM "UniteEnseignement" ue
+				WHERE ue."filiereId" = ANY($1) AND ue."actif" = true
+				ORDER BY ue."nom"
+			`, filiereIDs)
+			if err == nil {
+				defer ueRows.Close()
+				for ueRows.Next() {
+					ue := ueCtx{TypeSeances: []string{"CM", "TD", "TP"}}
+					var filiereID string
+					if err := ueRows.Scan(&ue.ID, &ue.Code, &ue.Nom, &ue.Niveau, &ue.Niveaux, &filiereID); err == nil {
+						for i := range filieres {
+							if filieres[i].ID == filiereID {
+								filieres[i].UnitesEnseignement = append(filieres[i].UnitesEnseignement, ue)
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// 3. Étudiants dans les filières de l'enseignant
+		if len(filieres) > 0 {
+			filiereIDs := make([]string, len(filieres))
+			for i, f := range filieres {
+				filiereIDs[i] = f.ID
+			}
+			etuRows, err := tx.Query(r.Context(), `
+				SELECT u."id", u."name", u."email", u."matricule", u."niveau"
+				FROM "User" u
+				WHERE u."role" = 'ETUDIANT' AND u."actif" = true
+				  AND u."filiereId" = ANY($1)
+				ORDER BY u."name"
+				LIMIT 500
+			`, filiereIDs)
+			if err == nil {
+				defer etuRows.Close()
+				for etuRows.Next() {
+					e := etudiantCtx{}
+					if err := etuRows.Scan(&e.ID, &e.Name, &e.Email, &e.Matricule, &e.Niveau); err == nil {
+						etudiants = append(etudiants, e)
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"filieres":  filieres,
+		"etudiants": etudiants,
 	})
 }
