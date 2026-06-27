@@ -16,7 +16,6 @@ import {
  Square,
  BarChart3,
  Lock,
- Download,
  Search,
  Filter,
  Check,
@@ -1686,10 +1685,6 @@ function SessionsTab() {
  edit()
  }
 
- const handleExport = (epreuve: SessionEpreuve) => {
- toast.success('Export lancé', { description:`Résultats de"${epreuve.titre}" en cours d'export.` })
- }
-
  // PDF export for SessionsTab
  const [exportingPdfId, setExportingPdfId] = useState<string | null>(null)
 
@@ -1855,9 +1850,6 @@ function SessionsTab() {
  {pdfDropdown}
  <Button variant="outline" size="sm" className="border-warning/40 text-warning hover:bg-warning/10" onClick={() => { setSessionSpecialeEpreuve(epreuve); setSessionSpecialeDialogOpen(true) }}>
  <RotateCcw className="h-3.5 w-3.5" /> Session spéciale
- </Button>
- <Button variant="outline" size="sm" onClick={() => handleExport(epreuve)}>
- <Download className="h-3.5 w-3.5" /> Exporter
  </Button>
  </div>
  )
