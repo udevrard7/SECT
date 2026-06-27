@@ -481,7 +481,7 @@ function ModelesTab() {
  const params = new URLSearchParams({ enseignantId: user.id })
  if (debouncedSearch) params.set('search', debouncedSearch)
  if (modeFilter !=='TOUS') params.set('generationMode', modeFilter)
- const res = await fetch(`/api/epreuves/banque?${params.toString()}`)
+ const res = await fetch(`/api/epreuves?${params.toString()}`)
  if (res.ok) {
  const data = await res.json()
  setEpreuves(data.epreuves ?? [])
@@ -1250,7 +1250,7 @@ function SessionsTab() {
  if (!user?.id) return
  try {
  const params = new URLSearchParams({ enseignantId: user.id })
- const res = await fetch(`/api/epreuves/classification?${params.toString()}`)
+ const res = await fetch(`/api/epreuves?${params.toString()}`)
  if (res.ok) {
  const data = await res.json()
  // Build tree from API response
@@ -1349,7 +1349,7 @@ function SessionsTab() {
  if (!user?.id) return
  setIsLoadingModeles(true)
  try {
- const res = await fetch(`/api/epreuves/banque?enseignantId=${user.id}`)
+ const res = await fetch(`/api/epreuves?enseignantId=${user.id}`)
  if (res.ok) {
  const data = await res.json()
  setModeles(data.epreuves ?? [])
