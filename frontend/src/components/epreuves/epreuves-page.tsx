@@ -531,8 +531,10 @@ function ModelesTab() {
  // DEBUG-DUP: temporary diagnostic log
  console.log('[DEBUG-DUP] handleDuplicate called', { hasTarget: !!duplicateTarget, hasUser: !!user, userId: user?.id, titre: duplicateTitre })
  if (!duplicateTarget || !user?.id) return
+ console.log('[DEBUG-DUP] passed early return, setting isDuplicating=true')
  setIsDuplicating(true)
  try {
+ console.log('[DEBUG-DUP] building body...', { hasSourceDocs: !!duplicateTarget.sourceDocuments, sourceDocsLen: duplicateTarget.sourceDocuments?.length, hasContenu: !!duplicateTarget.contenu })
  // IMPORTANT: transmettre TOUS les champs de classification pour que
  // la copie conserve la même filière / UE / niveau / session que l'original.
  // Le backend (usecase Epreuve.Create) exige uniteEnseignementId non vide.
@@ -558,12 +560,14 @@ function ModelesTab() {
  noteTotal: duplicateTarget.noteTotal ?? 20,
  }
  if (duplicateTarget.contenu) body.contenu = duplicateTarget.contenu
+ console.log('[DEBUG-DUP] body built, sending fetch...', { bodyKeys: Object.keys(body), hasContenu: !!body.contenu })
 
  const res = await fetch('/api/epreuves', {
  method:'POST',
  headers: {'Content-Type':'application/json' },
  body: JSON.stringify(body),
  })
+ console.log('[DEBUG-DUP] fetch response', { status: res.status, ok: res.ok })
  if (!res.ok) {
  // Récupérer le vrai message backend pour aider au debug
  let detail = 'Impossible de dupliquer.'
@@ -577,9 +581,11 @@ function ModelesTab() {
  setDuplicateTarget(null)
  await fetchBanque()
  } catch (err) {
+ console.log('[DEBUG-DUP] CAUGHT ERROR', err)
  const msg = err instanceof Error ? err.message : 'Impossible de dupliquer.'
  toast.error('Erreur', { description: msg })
  } finally {
+ console.log('[DEBUG-DUP] finally block, setting isDuplicating=false')
  setIsDuplicating(false)
  }
  }
