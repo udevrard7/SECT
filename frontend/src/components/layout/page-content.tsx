@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 
 // ─── Dashboard imports ───
@@ -129,33 +129,118 @@ function PlaceholderPage({ pageId }: { pageId: PageId }) {
 }
 
 // ─── Main content router ───
+//
+// BUGFIX (KEEPALIVE-PAGES-1) : avant ce cache, chaque navigation entre pages
+// démontait le composant actif et remontait le nouveau. Le composant remonté
+// perdait son state (liste, filtres, position scroll) et refetchait
+// systématiquement (useEffect au montage) → flash de skeleton + requêtes
+// API redondantes → mauvaise UX ("boucle d'actualisation").
+//
+// Solution : cache keep-alive des pages déjà visitées. Les composants restent
+// montés en arrière-plan (display:none) et retrouvent leur state intact quand
+// on revient. Le cache est limité à MAX_CACHED_PAGES pour éviter une fuite
+// mémoire. Les pages non visitées sont rendered lazily au 1er accès.
+//
+// Bénéfice : navigation instantanée entre pages déjà visitées, 0 refetch, 0
+// flash de skeleton. Les données restent fraîches car les pages qui ont un
+// polling (documents, surveillance) continuent de poller en arrière-plan.
+const MAX_CACHED_PAGES = 8
+
 export function PageContent({ pageId }: { pageId: PageId }) {
   const { user } = useAuthStore()
+  // Cache des pages déjà montées (key = pageId). On garde l'ordre LRU pour
+  // évicter la plus ancienne quand on dépasse MAX_CACHED_PAGES.
+  const cacheRef = useRef<Map<PageId, { el: React.ReactElement; lastUsed: number }>>(new Map())
+  const [, forceUpdate] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    const cache = cacheRef.current
+    // Marquer la page courante comme utilisée (LRU)
+    if (cache.has(pageId)) {
+      cache.get(pageId)!.lastUsed = Date.now()
+    }
+    // Évicter la plus ancienne si dépassement
+    if (cache.size > MAX_CACHED_PAGES) {
+      let oldestKey: PageId | null = null
+      let oldestTime = Infinity
+      for (const [k, v] of cache) {
+        if (k !== pageId && v.lastUsed < oldestTime) {
+          oldestTime = v.lastUsed
+          oldestKey = k
+        }
+      }
+      if (oldestKey) cache.delete(oldestKey)
+    }
+    forceUpdate((n) => n + 1)
+  }, [pageId, user])
 
   if (!user) return null
 
-  // Dashboard: render role-specific component
+  const cache = cacheRef.current
+
+  // Dashboard : pas de cache (dépend du rôle, peut changer)
   if (pageId === 'dashboard') {
     const DashboardComponent = DASHBOARD_COMPONENTS[user.role]
-    return <DashboardComponent />
-  }
-
-  // Check legacy redirects first
-  const legacy = LEGACY_REDIRECTS[pageId]
-  if (legacy) {
-    return <legacy.component {...legacy.props} />
-  }
-
-  // Check main page component registry
-  const PageComponent = PAGE_COMPONENTS[pageId]
-  if (PageComponent) {
     return (
-      <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
-        <PageComponent />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <DashboardComponent />
       </Suspense>
     )
   }
 
-  // All other pages: placeholder
+  // Legacy redirects
+  const legacy = LEGACY_REDIRECTS[pageId]
+  if (legacy) {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <legacy.component {...legacy.props} />
+      </Suspense>
+    )
+  }
+
+  // Page enregistrée : rendre + mettre en cache
+  const PageComponent = PAGE_COMPONENTS[pageId]
+  if (PageComponent) {
+    // Si pas encore en cache, l'ajouter
+    if (!cache.has(pageId)) {
+      cache.set(pageId, {
+        el: (
+          <Suspense fallback={<PageLoadingFallback />}>
+            <PageComponent />
+          </Suspense>
+        ),
+        lastUsed: Date.now(),
+      })
+    } else {
+      cache.get(pageId)!.lastUsed = Date.now()
+    }
+
+    // Render toutes les pages cachées, masquer les non-courantes (display:none)
+    // pour préserver leur state + leurs intervals/polling.
+    return (
+      <>
+        {Array.from(cache.entries()).map(([k, v]) => (
+          <div
+            key={k}
+            style={k === pageId ? undefined : { display: 'none' }}
+            aria-hidden={k !== pageId}
+          >
+            {v.el}
+          </div>
+        ))}
+      </>
+    )
+  }
+
+  // Placeholder
   return <PlaceholderPage pageId={pageId} />
+}
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
+    </div>
+  )
 }

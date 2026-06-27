@@ -492,11 +492,19 @@ export function DocumentsPage() {
   }, [fetchDocuments, fetchUEs])
 
   // Polling for EN_COURS or EN_ATTENTE documents
+  // BUGFIX (KEEPALIVE-PAGES-1) : polling 5s → 10s (les analyses IA prennent
+  // 30-60s, pas besoin de polling aussi agressif = 6x moins de requêtes).
+  // Suspendu quand l'onglet est caché (économie backend).
   useEffect(() => {
     const hasAnalysing = documents.some((d) => d.statutAnalyse === 'EN_COURS' || d.statutAnalyse === 'EN_ATTENTE')
     if (hasAnalysing) {
       if (!pollingRef.current) {
-        pollingRef.current = setInterval(fetchDocuments, 5000)
+        const poll = () => {
+          if (document.visibilityState === 'visible') {
+            fetchDocuments()
+          }
+        }
+        pollingRef.current = setInterval(poll, 10000)
       }
     } else {
       if (pollingRef.current) {
