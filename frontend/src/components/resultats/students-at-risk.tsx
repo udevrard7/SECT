@@ -82,7 +82,7 @@ export function StudentsAtRiskList({ students }: StudentsAtRiskListProps) {
                     variant="outline"
                     className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800"
                   >
-                    {s.moyenne.toFixed(1)}/20
+                    {(s.moyenne ?? 0).toFixed(1)}/20
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     {s.nbExamens} épreuve{s.nbExamens > 1 ? 's' : ''}

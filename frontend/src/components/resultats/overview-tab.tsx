@@ -48,7 +48,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
         .slice(0, 8)
         .map((e) => ({
           name: e.titre.length > 18 ? e.titre.slice(0, 18) + '…' : e.titre,
-          value: Number(e.moyenne.toFixed(2)),
+          value: Number((e.moyenne ?? 0).toFixed(2)),
           count: e.nbSessions,
         })),
     [data.epreuves]
@@ -81,7 +81,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
         <StatCard
           icon={Target}
           label="Moyenne globale"
-          value={data.globalMoyenne.toFixed(1)}
+          value={(data?.globalMoyenne ?? 0).toFixed(1)}
           suffix="/20"
           accent="info"
           scoreOn20={data.globalMoyenne}
@@ -238,10 +238,10 @@ export function OverviewTab({ data }: OverviewTabProps) {
                         </span>
                       </td>
                       <td className={`py-3 pr-4 text-center text-sm font-bold ${getScoreColor(scoreOn20)}`}>
-                        {e.moyenne.toFixed(1)}/20
+                        {(e.moyenne ?? 0).toFixed(1)}/20
                       </td>
                       <td className="py-3 pr-4 text-center text-sm text-muted-foreground">
-                        {e.mediane.toFixed(1)}
+                        {(e.mediane ?? 0).toFixed(1)}
                       </td>
                       <td className="py-3 text-center">
                         <Badge
