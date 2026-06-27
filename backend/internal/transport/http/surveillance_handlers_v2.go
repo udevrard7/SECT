@@ -300,7 +300,7 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
 
 //   : heartbeat
 
-  (commentaire SSE pour keep-alive)
+//   (commentaire SSE pour keep-alive)
 func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
