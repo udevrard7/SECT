@@ -55,6 +55,9 @@ interface StudentEpreuve {
   totalPoints: number
   noteTotal: number
   enseignant?: { id: string; name: string }
+  // BUGFIX (FILIERE-FIX-1b) : filiere + niveau pour affichage dans /mes-epreuves
+  filiere?: { id: string; nom: string; code?: string | null } | null
+  niveau?: string | null
   // BUGFIX (ETU-AUDIT-1) : sessions optionnel (l'API peut ne pas l'inclure).
   // Normalisé à [] dans fetchEpreuves. Le type reste optionnel pour la sécurité.
   sessions?: Array<{
@@ -443,7 +446,7 @@ export function MesEpreuvesPage() {
                     key={ep.id}
                     index={idx}
                     title={ep.titre}
-                    subtitle={ep.enseignant?.name ?? '—'}
+                    subtitle={`${ep.enseignant?.name ?? '—'}${ep.filiere?.nom ? ' · ' + ep.filiere.nom : ''}${ep.niveau ? ' · ' + ep.niveau : ''}`}
                     thumbnailIcon={ClipboardList}
                     badge={{ label: statusInfo.label, variant: badgeVariant }}
                     meta={`${ep.duree} min · ${ep.questionCount} question${ep.questionCount > 1 ? 's' : ''} · ${ep.totalPoints} pts`}
@@ -580,7 +583,7 @@ export function MesEpreuvesPage() {
                     key={ep.id}
                     index={idx}
                     title={ep.titre}
-                    subtitle={ep.enseignant?.name ?? '—'}
+                    subtitle={`${ep.enseignant?.name ?? '—'}${ep.filiere?.nom ? ' · ' + ep.filiere.nom : ''}${ep.niveau ? ' · ' + ep.niveau : ''}`}
                     thumbnailIcon={thumbnailIcon}
                     progress={isAbsent || isNonSoumis ? undefined : percentage}
                     badge={{ label: badgeLabel, variant: badgeVariant }}

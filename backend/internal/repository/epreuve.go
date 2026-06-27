@@ -194,9 +194,10 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			}
 		} else {
 			// BUGFIX (ETU-AUDIT-1b) : LEFT JOIN User pour peupler la
-			// relation enseignant (UserRef{ID, Name, Email}). Le
-			// frontend affiche ep.enseignant.name dans /mes-epreuves.
-			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" %s ORDER BY "Epreuve"."dateDebut" DESC`, columnsEpreuveQualified, whereClause)
+			// relation enseignant (UserRef{ID, Name, Email}).
+			// BUGFIX (FILIERE-FIX-1b) : LEFT JOIN Filiere pour peupler la
+			// relation filiere (FiliereRef{ID, Nom, Code}).
+			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" %s ORDER BY "Epreuve"."dateDebut" DESC`, columnsEpreuveQualified, whereClause)
 			rows, err := tx.Query(ctx, query, args...)
 			if err != nil {
 				return fmt.Errorf("query epreuves: %w", err)
@@ -205,6 +206,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			for rows.Next() {
 				e := &domain.Epreuve{}
 				var ensID, ensName, ensEmail *string
+				var filID, filNom, filCode *string
 				err := rows.Scan(
 					&e.ID, &e.EnseignantID, &e.Titre, &e.Description, &e.Duree, &e.DateDebut, &e.DateFin,
 					&e.MelangeQuestions, &e.MelangePropositions, &e.BlocageRetour, &e.Statut,
@@ -216,6 +218,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 					&e.ClotureeAt, &e.ClotureeAutomatiquement, &e.RaisonCloture, &e.ClotureePar,
 					&e.DelaiGrace, &e.EtudiantsAutorises, &e.EpreuveOrigineID,
 					&ensID, &ensName, &ensEmail,
+					&filID, &filNom, &filCode,
 				)
 				if err != nil {
 					return fmt.Errorf("scan epreuve: %w", err)
@@ -229,6 +232,13 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 						ID:    *ensID,
 						Name:  *ensName,
 						Email: derefStr(ensEmail),
+					}
+				}
+				if filID != nil && filNom != nil {
+					e.Filiere = &domain.FiliereRef{
+						ID:   *filID,
+						Nom:  *filNom,
+						Code: derefStr(filCode),
 					}
 				}
 				// BUGFIX (ETU-AUDIT-1) : init Sessions à [] par défaut.
