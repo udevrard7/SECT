@@ -3854,3 +3854,58 @@ Stage Summary:
 - Bilan cumulé STUBS-FIX-1 + STUBS-FIX-2 : 17 stubs remplacés par de vraies requêtes
 - Données maintenant visibles : 601 logs + 5 AI providers + 2 alertes + 20 validations + 1 abonnement + 4 plans + 1 notification + 1 platform settings + 1 security settings + 23 alertes surveillance + 15 étudiants + 10 items corbeille = 684 rows
 - Les tables vides (Facture, MonitoringEvent, IpWhitelist, Devoir) retournent [] légitimement
+
+---
+Task ID: STUBS-FIX-3
+Agent: Z.ai Code (tutor mode)
+Task: Audit approfondi — 5 stubs cachés trouvés et implémentés
+
+Work Log:
+- L'audit précédent (STUBS-FIX-1 + STUBS-FIX-2) avait manqué 5 stubs cachés
+  qui n'étaient pas dans la liste évidente des "stubs prioritaires"
+- Méthode: grep exhaustif de []any{} dans TOUS les fichiers de handlers +
+  vérification croisée avec les références du router
+
+5 stubs cachés trouvés et implémentés :
+
+1. GET /api/notifications (notificationsList) — retournait {notifications: []}
+   - Implémenté: Alerte filtrée par userId + filtre lue + limit
+   - Données: notifications "Épreuve clôturée automatiquement" etc.
+
+2. GET /api/enseignant/context (enseignantContext) — retournait {filieres: [], niveaux: [], etudiants: []}
+   - Implémenté: EnseignantFiliere JOIN Filiere + niveaux distincts +
+     étudiants dans ces filières (LEFT JOIN User)
+   - Impact: /epreuves et /questions-ia (dropdowns filières/niveaux)
+
+3. GET /api/enseignant/etudiants (enseignantEtudiants) — retournait {etudiants: []}
+   - Implémenté: User JOIN EnseignantFiliere + LEFT JOIN Filiere
+   - Impact: /mes-etudiants (page "Mes étudiants" enseignant)
+
+4. GET /api/resultats/overview (resultatsOverview → GetOverview placeholder) — retournait arrays vides
+   - Implémenté: queries SQL agrégées (epreuves avec stats, evolution mensuelle,
+     studentsAtRisk)
+   - Impact: /resultats (page "Résultats & Analyses")
+
+5. GET /api/resultats/etudiant-overview (resultatsEtudiantOverview → placeholder) — retournait arrays vides
+   - Implémenté: evolution mensuelle étudiant + distribution notes + recentResults
+   - Impact: hooks use-resultats (vue étudiant)
+
+Vérifications live (toutes confirmées ✅) :
+- /api/notifications → 200, notifications avec titre/description ✅
+- /api/enseignant/context → 200, étudiants (AHOU Assre etc.) + filières ✅
+- /api/enseignant/etudiants → 200, étudiants avec filière ✅
+- /api/resultats/overview → 200, epreuves avec moyenne 52.57 + tauxReussite 100% ✅
+- /api/resultats/etudiant-overview → 200, distribution + structure complète ✅
+- Build Render : live (53989b4)
+
+Vérification finale exhaustive :
+- 0 stub actif référencé par le router (grep croisé []any{} × router refs)
+- Tous les anciens stubs dans stats_handlers.go sont non référencés (dead code)
+
+Stage Summary:
+- 5 stubs cachés supplémentaires implémentés (total: 22 stubs sur 3 passes)
+- Audit vraiment exhaustif cette fois: grep de TOUS les patterns []any{} +
+  vérification croisée avec router.go
+- 0 stub restant confirmé par double vérification
+- Les pages /epreuves, /questions-ia, /mes-etudiants, /resultats ont maintenant
+  leurs données de contexte (filières, niveaux, étudiants, agrégations)
