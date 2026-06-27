@@ -243,7 +243,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 		rows, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT e."id", e."titre",
 			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id") AS nb_part,
-			       (SELECT AVG(s2.score) / NULLIF(e."noteTotal", 0) * 20 FROM "SessionPassation" s2
+			       (SELECT AVG(s2.score) / e."noteTotal" * 20 FROM "SessionPassation" s2
 				WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL) AS moy,
 			       CASE WHEN count(s3.id) > 0
 				    THEN (count(s3.id) FILTER (WHERE s3.score >= e."noteTotal" * 0.5))::float / count(s3.id) * 100
@@ -283,7 +283,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 		}
 		rows2, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score) / NULLIF(e."noteTotal", 0) * 20, 0) AS moyenne,
+			       COALESCE(AVG(s.score) / e."noteTotal" * 20, 0) AS moyenne,
 			       count(*) AS nb_eval
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
@@ -304,7 +304,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 
 		// 3. Étudiants en difficulté (moyenne < 8/20)
 		rows3, err := tx.Query(r.Context(), fmt.Sprintf(`
-			SELECT u."id", u."name", u."email", COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moy,
+			SELECT u."id", u."name", u."email", COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moy,
 			       COALESCE(f."nom", '—') AS filiere
 			FROM "User" u
 			JOIN "SessionPassation" s ON s."etudiantId" = u."id"
@@ -313,7 +313,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE u."role" = 'ETUDIANT' %s
 			GROUP BY u."id", u."name", u."email", f."nom"
-			HAVING AVG(s.score / NULLIF(e."noteTotal", 0) * 20) < 8
+			HAVING AVG(s.score / e."noteTotal" * 20) < 8
 			ORDER BY moy ASC LIMIT 10
 		`, whereE2), args2...)
 		if err == nil {
@@ -416,7 +416,7 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 		// 1. Évolution mensuelle
 		rows, err := tx.Query(r.Context(), `
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0), count(*)
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0), count(*)
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
@@ -435,7 +435,7 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 
 		// 2. Résultats récents
 		rows2, err := tx.Query(r.Context(), `
-			SELECT e."titre", s."score" / NULLIF(e."noteTotal", 0) * 20 AS score_sur20, s."statut"::text, s."updatedAt"
+			SELECT e."titre", s."score" / e."noteTotal" * 20 AS score_sur20, s."statut"::text, s."updatedAt"
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE')
@@ -456,11 +456,11 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 		// 3. Distribution des notes
 		rows3, err := tx.Query(r.Context(), `
 			SELECT CASE
-				WHEN s.score / NULLIF(e."noteTotal", 0) * 20 < 8 THEN '< 8'
-				WHEN s.score / NULLIF(e."noteTotal", 0) * 20 < 10 THEN '8-10'
-				WHEN s.score / NULLIF(e."noteTotal", 0) * 20 < 12 THEN '10-12'
-				WHEN s.score / NULLIF(e."noteTotal", 0) * 20 < 14 THEN '12-14'
-				WHEN s.score / NULLIF(e."noteTotal", 0) * 20 < 16 THEN '14-16'
+				WHEN s.score / e."noteTotal" * 20 < 8 THEN '< 8'
+				WHEN s.score / e."noteTotal" * 20 < 10 THEN '8-10'
+				WHEN s.score / e."noteTotal" * 20 < 12 THEN '10-12'
+				WHEN s.score / e."noteTotal" * 20 < 14 THEN '12-14'
+				WHEN s.score / e."noteTotal" * 20 < 16 THEN '14-16'
 				ELSE '16-20'
 			END AS bucket, count(*) AS nb
 			FROM "SessionPassation" s
