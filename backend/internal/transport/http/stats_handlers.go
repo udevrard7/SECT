@@ -211,7 +211,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		rows3, err := tx.Query(ctx, `
 			SELECT e.titre,
 			       CASE WHEN e."noteTotal" > 0 AND COUNT(s.id) > 0
-				    THEN COALESCE(AVG(s.score), 0) / e."noteTotal" * 20
+				    THEN COALESCE(AVG(s.score / e."noteTotal" * 20), 0) / e."noteTotal" * 20
 				    ELSE 0 END AS moyenne,
 			       CASE WHEN COUNT(s.id) > 0
 				    THEN (COUNT(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / COUNT(s.id) * 100
@@ -722,7 +722,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		// 2. Moyenne générale + taux de réussite global
 		var moyenneGen, tauxReuss float64
 		_ = tx.QueryRow(ctx, fmt.Sprintf(`
-			SELECT COALESCE(AVG(s.score), 0),
+			SELECT COALESCE(AVG(s.score / e."noteTotal" * 20), 0),
 			       CASE WHEN count(s.id) > 0
 				    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
 				    ELSE 0 END
@@ -780,7 +780,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		rows2, err := tx.Query(ctx, fmt.Sprintf(`
 			SELECT e.titre,
 			       COALESCE(u.name, '—') AS enseignant_nom,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
 			       CASE WHEN count(s.id) > 0
 				    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
 				    ELSE 0 END AS taux_reussite,
@@ -831,7 +831,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		// 6. Évolution des moyennes (6 derniers mois)
 		rows4, err := tx.Query(ctx, fmt.Sprintf(`
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
 			       count(*) AS nb_evaluations
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e.id = s."epreuveId"
@@ -857,7 +857,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		rows5, err := tx.Query(ctx, fmt.Sprintf(`
 			SELECT u.name,
 			       count(DISTINCT e.id) AS nb_epreuves,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
 			       CASE WHEN count(s.id) > 0
 				    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
 				    ELSE 0 END AS taux_reussite
@@ -885,7 +885,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		// 8. Top étudiants (par moyenne)
 		rows6, err := tx.Query(ctx, fmt.Sprintf(`
 			SELECT u.id, u.name, u.email,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
 			       COALESCE(f.nom, '—') AS filiere_nom
 			FROM "User" u
 			JOIN "SessionPassation" s ON s."etudiantId" = u.id
@@ -911,7 +911,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		// 9. Étudiants en difficulté (moyenne < 8/20)
 		rows7, err := tx.Query(ctx, fmt.Sprintf(`
 			SELECT u.id, u.name, u.email,
-			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
 			       COALESCE(f.nom, '—') AS filiere_nom
 			FROM "User" u
 			JOIN "SessionPassation" s ON s."etudiantId" = u.id
