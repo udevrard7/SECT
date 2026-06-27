@@ -172,6 +172,11 @@ interface ModeleEpreuve {
  sourceDocuments: Array<{ id: string; nomFichier: string }>
  filiere?: { id: string; nom: string; code: string | null } | null
  uniteEnseignement?: { id: string; nom: string; code: string | null } | null
+ // BUGFIX (DUPLICATE-UE-1) : l'API renvoie uniteEnseignementId (champ plat,
+ // cf. domain.Epreuve.UniteEnseignementID) et NON un objet imbriqué
+ // uniteEnseignement (aucun JOIN dans List). Le handleDuplicate doit lire
+ // ce champ plat pour transmettre l'UE au backend (usecase exige non vide).
+ uniteEnseignementId?: string | null
  niveau?: string | null
  sessionExamen?: string | null
  anneeAcademiqueId?: string | null
@@ -538,8 +543,12 @@ function ModelesTab() {
  dateFin: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
  generationMode: duplicateTarget.generationMode,
  documentIds: duplicateTarget.sourceDocuments.map((d) => d.id),
- // Classification — récupérée depuis l'épreuve source
- uniteEnseignementId: duplicateTarget.uniteEnseignement?.id ?? null,
+ // Classification — récupérée depuis l'épreuve source.
+ // BUGFIX (DUPLICATE-UE-1) : l'API List renvoie uniteEnseignementId (champ
+ // plat) et NON un objet imbriqué uniteEnseignement (aucun JOIN dans le
+ // repository). On lit donc le champ plat en priorité, avec fallback sur
+ // l'objet imbriqué au cas où le backend l'ajouterait plus tard.
+ uniteEnseignementId: duplicateTarget.uniteEnseignementId ?? duplicateTarget.uniteEnseignement?.id ?? null,
  filiereId: duplicateTarget.filiere?.id ?? null,
  niveau: duplicateTarget.niveau ?? null,
  sessionExamen: duplicateTarget.sessionExamen ?? 'NORMALE',
