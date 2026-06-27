@@ -319,17 +319,23 @@ func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "streaming non supporte")
-		return
+	// SSE-STREAM-1 : le proxy Render (Nginx) peut ne pas implémenter
+	// http.Flusher. On vérifie sa présence, mais on continue même sans
+	// (le buffering se fera naturellement, les données seront envoyées
+	// par chunks quand le buffer se remplit).
+	flusher, _ := w.(http.Flusher)
+	// flushIfNeeded : flush si disponible, sinon no-op
+	flushIfNeeded := func() {
+		if flusher != nil {
+			flushIfNeeded()
+		}
 	}
 
 	// 2. Envoie un evenement initial immediat
 	stats := s.fetchSurveillanceStats(r, enseignantID)
 	if statsJSON, err := json.Marshal(stats); err == nil {
 		fmt.Fprintf(w, "data: %s\n\n", statsJSON)
-		flusher.Flush()
+		flushIfNeeded()
 	}
 
 	// 3. Boucle d'envoi periodique + heartbeat
@@ -346,11 +352,11 @@ func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 				stats := s.fetchSurveillanceStats(r, enseignantID)
 				if statsJSON, err := json.Marshal(stats); err == nil {
 					fmt.Fprintf(w, "data: %s\n\n", statsJSON)
-					flusher.Flush()
+					flushIfNeeded()
 				}
 			case <-heartbeat.C:
 				fmt.Fprintf(w, ": heartbeat\n\n")
-				flusher.Flush()
+				flushIfNeeded()
 		}
 	}
 }
