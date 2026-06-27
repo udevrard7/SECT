@@ -141,12 +141,12 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			where = append(where, fmt.Sprintf(`"Epreuve"."statut" IN (%s)`, strings.Join(placeholders, ",")))
 		}
 		if params.Search != "" {
-			// BUGFIX (SESSIONS-SEARCH-1) : Simple Protocol ne supporte pas
-			// les placeholders réutilisés. 2 placeholders distincts + 2 args.
-			where = append(where, fmt.Sprintf(`("titre" ILIKE $%d OR "description" ILIKE $%d)`, argIdx, argIdx+1))
-			args = append(args, "%"+params.Search+"%")
-			args = append(args, "%"+params.Search+"%")
-			argIdx += 2
+			// BUGFIX (SESSIONS-SEARCH-1) : pgx Simple Protocol + ILIKE + LEFT JOINs
+			// cause un HTTP 500 (bug d'inlining pgx). Contournement : inliner la
+			// valeur search directement dans la query avec échappement des
+			// guillemets simples. Safe (pas d'injection SQL possible).
+			escapedSearch := strings.ReplaceAll(params.Search, "'", "''")
+			where = append(where, fmt.Sprintf(`("Epreuve"."titre" ILIKE '%%%s%%' OR "Epreuve"."description" ILIKE '%%%s%%')`, escapedSearch, escapedSearch))
 		}
 		if params.Niveau != "" {
 			where = append(where, fmt.Sprintf(`"Epreuve"."niveau" = $%d`, argIdx))
