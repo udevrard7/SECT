@@ -235,7 +235,10 @@ export function FilieresPage() {
     refetchOnWindowFocus: false,
   })
 
-  const filieres = filieresQuery.data?.filieres ?? []
+  // BUGFIX (QUERY-403-1) : useMemo pour stabiliser filieres. Sans ça,
+  // `filieresQuery.data?.filieres ?? []` crée un nouveau tableau à chaque
+  // render → useEffect([filieres]) boucle infinie → React error #185.
+  const filieres = useMemo(() => filieresQuery.data?.filieres ?? [], [filieresQuery.data])
   const isLoading = filieresQuery.isLoading
 
   // Helper pour invalider le cache après mutation (create/update/delete/toggle/bulk)
