@@ -456,7 +456,26 @@ export function ResponsableDashboard() {
       clearTimeout(timeoutId)
 
       if (!res.ok) throw new Error('Erreur réseau')
-      const json: StatsData = await res.json()
+      const raw: Partial<StatsData> = await res.json()
+      // BUGFIX (RESP-AUDIT-1) : normalise la réponse pour garantir que tous
+      // les champs requis sont présents (safety net au cas où l'API ne
+      // retournerait pas tous les champs — évite .toFixed() sur undefined).
+      const json: StatsData = {
+        nbEtudiants: raw.nbEtudiants ?? 0,
+        nbEnseignants: raw.nbEnseignants ?? 0,
+        nbEvaluations: raw.nbEvaluations ?? 0,
+        tauxReussiteGlobal: raw.tauxReussiteGlobal ?? 0,
+        moyenneGenerale: raw.moyenneGenerale ?? 0,
+        repartitionNotes: raw.repartitionNotes ?? [],
+        resultatsParMatiere: raw.resultatsParMatiere ?? [],
+        etudiantsParFiliere: raw.etudiantsParFiliere ?? [],
+        evolutionMoyennes: raw.evolutionMoyennes ?? [],
+        topEnseignants: raw.topEnseignants ?? [],
+        alertes: raw.alertes ?? [],
+        topEtudiants: raw.topEtudiants ?? [],
+        etudiantsEnDifficulte: raw.etudiantsEnDifficulte ?? [],
+        badges: [],
+      }
 
       // Fetch badges separately
       try {
