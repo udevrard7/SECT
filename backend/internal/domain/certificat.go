@@ -105,7 +105,9 @@ type CertificatRepository interface {
 // CorrectionSession représente une session à corriger (vue enseignant).
 type CorrectionSession struct {
 	SessionID     string              `json:"sessionId"`
+	ID            string              `json:"id"`
 	EtudiantID    string              `json:"etudiantId"`
+	Etudiant      *CorrectionEtudiant `json:"etudiant,omitempty"`
 	EtudiantNom   string              `json:"etudiantNom"`
 	EtudiantEmail string              `json:"etudiantEmail"`
 	EpreuveID     string              `json:"epreuveId"`
@@ -114,6 +116,13 @@ type CorrectionSession struct {
 	DateFin       *time.Time          `json:"dateFin,omitempty"`
 	Score         *float64            `json:"score,omitempty"`
 	Reponses      []CorrectionReponse `json:"reponses,omitempty"`
+}
+
+// CorrectionEtudiant est l'objet imbriqué etudiant attendu par le frontend.
+type CorrectionEtudiant struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // CorrectionReponse représente une réponse à corriger.

@@ -318,6 +318,15 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
 			&cs.EpreuveID, &cs.EpreuveTitre, &cs.Statut, &cs.DateFin, &cs.Score); err != nil {
 			return nil, fmt.Errorf("scan correction session: %w", err)
 		}
+		// BUGFIX (CORRECTION-SELECT-1): peupler id = sessionId (le frontend
+		// utilise s.id pour selectedSession.find(s => s.id === selectedSessionId))
+		// et etudiant:{id, name, email} (objet imbriqué attendu par le frontend).
+		cs.ID = cs.SessionID
+		cs.Etudiant = &domain.CorrectionEtudiant{
+			ID:    cs.EtudiantID,
+			Name:  cs.EtudiantNom,
+			Email: cs.EtudiantEmail,
+		}
 		result = append(result, cs)
 	}
 	if result == nil {
