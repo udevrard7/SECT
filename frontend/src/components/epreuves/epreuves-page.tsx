@@ -17,7 +17,6 @@ import {
  BarChart3,
  Lock,
  Search,
- Filter,
  Check,
  X,
  Shuffle,
@@ -432,16 +431,10 @@ function ModelesTab() {
  const [isLoading, setIsLoading] = useState(true)
  const [search, setSearch] = useState('')
  const [debouncedSearch, setDebouncedSearch] = useState('')
- const [modeFilter, setModeFilter] = useState('TOUS')
 
- // Classification filters for ModelesTab
- const [modeleFiliereFilter, setModeleFiliereFilter] = useState<string>('')
- const [modeleNiveauFilter, setModeleNiveauFilter] = useState<string>('')
- const [modeleSessionFilter, setModeleSessionFilter] = useState<string>('')
-
- // Classification data for ModelesTab filters
- const [modeleFilieres, setModeleFilieres] = useState<EnseignantFiliereContext[]>([])
- const [modeleAnnees, setModeleAnnees] = useState<AnneeAcademiqueOption[]>([])
+ // View mode (flat list or grouped) — miroir SessionsTab
+ const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+ const [groupBy, setGroupBy] = useState<GroupByField>('filiere')
 
  // Dialogs
  const [previewEpreuve, setPreviewEpreuve] = useState<ModeleEpreuve | null>(null)
@@ -458,28 +451,6 @@ function ModelesTab() {
  return () => clearTimeout(timer)
  }, [search])
 
- // Fetch filiere/annee data for ModelesTab classification filters
- useEffect(() => {
- if (!user?.id) return
- const fetchFilterData = async () => {
- try {
- const filieresRes = await fetch(`/api/enseignant/context?enseignantId=${user.id}`)
- if (filieresRes.ok) {
- const data = await filieresRes.json()
- setModeleFilieres(data.filieres ?? [])
- }
- if (user.etablissementId) {
- const anneesRes = await fetch(`/api/annees-academiques?etablissementId=${user.etablissementId}`)
- if (anneesRes.ok) {
- const data = await anneesRes.json()
- setModeleAnnees(Array.isArray(data) ? data : [])
- }
- }
- } catch { /* ignore */ }
- }
- fetchFilterData()
- }, [user?.id, user?.etablissementId])
-
  // Fetch
  const fetchBanque = useCallback(async () => {
  if (!user?.id) return
@@ -487,7 +458,6 @@ function ModelesTab() {
  try {
  const params = new URLSearchParams({ enseignantId: user.id })
  if (debouncedSearch) params.set('search', debouncedSearch)
- if (modeFilter !=='TOUS') params.set('generationMode', modeFilter)
  const res = await fetch(`/api/epreuves?${params.toString()}`)
  if (res.ok) {
  const data = await res.json()
@@ -498,7 +468,7 @@ function ModelesTab() {
  } finally {
  setIsLoading(false)
  }
- }, [user?.id, debouncedSearch, modeFilter])
+ }, [user?.id, debouncedSearch])
 
  useEffect(() => { fetchBanque() }, [fetchBanque])
 
@@ -685,162 +655,8 @@ function ModelesTab() {
  const manuelleEpreuves = totalEpreuves - iaEpreuves
  const totalQuestions = epreuves.reduce((sum, e) => sum + e.questionCount, 0)
 
- return (
- <div className="space-y-6">
- {/* Stats */}
- {!isLoading && (
- <Card className="border-success/30 bg-gradient-to-r from-success/80 to-info/80">
- <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
- <div className="flex items-center gap-2">
- <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/15">
- <Library className="h-4 w-4 text-success-text" />
- </div>
- <div>
- <p className="text-xs text-muted-foreground">Modèles</p>
- <p className="text-lg font-bold">{totalEpreuves}</p>
- </div>
- </div>
- <Separator orientation="vertical" className="hidden h-8 sm:block" />
- <div className="flex items-center gap-2">
- <Sparkles className="h-4 w-4 text-info" />
- <span className="text-sm"><span className="font-semibold">{iaEpreuves}</span> <span className="text-muted-foreground">IA</span></span>
- <span className="text-muted-foreground">·</span>
- <Edit3 className="h-4 w-4 text-warning" />
- <span className="text-sm"><span className="font-semibold">{manuelleEpreuves}</span> <span className="text-muted-foreground">manuelles</span></span>
- </div>
- <Separator orientation="vertical" className="hidden h-8 sm:block" />
- <div className="flex items-center gap-2">
- <HelpCircle className="h-4 w-4 text-info" />
- <span className="text-sm"><span className="font-semibold">{totalQuestions}</span> <span className="text-muted-foreground">questions</span></span>
- </div>
- </CardContent>
- </Card>
- )}
-
- {/* Search & Filter */}
- <div className="flex flex-col gap-3">
- <div className="flex flex-col gap-3 sm:flex-row">
- <div className="relative flex-1">
- <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
- <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un modèle..." className="pl-9" />
- {search && (
- <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')}>
- <X className="h-3 w-3" />
- </Button>
- )}
- </div>
- <Select value={modeFilter} onValueChange={setModeFilter}>
- <SelectTrigger className="w-[170px]">
- <Filter className="mr-1 h-3 w-3" />
- <SelectValue placeholder="Mode" />
- </SelectTrigger>
- <SelectContent>
- <SelectItem value="TOUS">Tous les modes</SelectItem>
- <SelectItem value="IA_ASSISTEE">Générées par IA</SelectItem>
- <SelectItem value="MANUELLE">Manuelles</SelectItem>
- </SelectContent>
- </Select>
- </div>
- {/* Classification quick filters */}
- {modeleFilieres.length > 0 && (
- <div className="flex flex-wrap gap-2">
- <Select value={modeleFiliereFilter} onValueChange={(v) => { setModeleFiliereFilter(v ==='__all__' ?'' : v); setModeleNiveauFilter('') }}>
- <SelectTrigger className="h-8 w-[160px] text-xs">
- <BookOpen className="mr-1 h-3 w-3" />
- <SelectValue placeholder="Filière" />
- </SelectTrigger>
- <SelectContent>
- <SelectItem value="__all__">Toutes les filières</SelectItem>
- {modeleFilieres.map((f) => (
- <SelectItem key={f.id} value={f.id}>{f.nom}</SelectItem>
- ))}
- </SelectContent>
- </Select>
- <Select value={modeleNiveauFilter} onValueChange={(v) => setModeleNiveauFilter(v ==='__all__' ?'' : v)}>
- <SelectTrigger className="h-8 w-[140px] text-xs">
- <GraduationCap className="mr-1 h-3 w-3" />
- <SelectValue placeholder="Niveau" />
- </SelectTrigger>
- <SelectContent>
- <SelectItem value="__all__">Tous les niveaux</SelectItem>
- {(() => {
- const selectedFiliere = modeleFilieres.find((f) => f.id === modeleFiliereFilter)
- const availableNiveaux = selectedFiliere
- ? selectedFiliere.niveaux
- : [...new Set(modeleFilieres.flatMap((f) => f.niveaux))].sort()
- return availableNiveaux.map((n) => (
- <SelectItem key={n} value={n}>{NIVEAU_LABELS[n] || n}</SelectItem>
- ))
- })()}
- </SelectContent>
- </Select>
- <Select value={modeleSessionFilter} onValueChange={(v) => setModeleSessionFilter(v ==='__all__' ?'' : v)}>
- <SelectTrigger className="h-8 w-[140px] text-xs">
- <Layers className="mr-1 h-3 w-3" />
- <SelectValue placeholder="Session" />
- </SelectTrigger>
- <SelectContent>
- <SelectItem value="__all__">Toutes les sessions</SelectItem>
- <SelectItem value="NORMALE">Normale</SelectItem>
- <SelectItem value="RATTRAPAGE">Rattrapage</SelectItem>
- <SelectItem value="SPECIALE">Spéciale</SelectItem>
- <SelectItem value="EXCEPTIONNELLE">Exceptionnelle</SelectItem>
- <SelectItem value="DIFFERE">Différé</SelectItem>
- </SelectContent>
- </Select>
- {(modeleFiliereFilter || modeleNiveauFilter || modeleSessionFilter) && (
- <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => { setModeleFiliereFilter(''); setModeleNiveauFilter(''); setModeleSessionFilter('') }}>
- <RotateCcw className="h-3 w-3" /> Réinitialiser
- </Button>
- )}
- </div>
- )}
- </div>
-
- {/* Loading */}
- {isLoading && (
- <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
- {Array.from({ length: 4 }).map((_, i) => (
- <Card key={i} className="animate-pulse">
- <CardContent className="p-6 space-y-3">
- <div className="h-5 w-48 rounded bg-muted" />
- <div className="h-3 w-32 rounded bg-muted" />
- <div className="flex gap-3"><div className="h-6 w-16 rounded-full bg-muted" /><div className="h-6 w-16 rounded-full bg-muted" /><div className="h-6 w-20 rounded-full bg-muted" /></div>
- </CardContent>
- </Card>
- ))}
- </div>
- )}
-
- {/* Empty */}
- {!isLoading && epreuves.length === 0 && (
- <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
- <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
- <Library className="h-10 w-10 text-success-text" />
- </div>
- <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucun modèle d&apos;épreuve</h3>
- <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
- {search || modeFilter !=='TOUS'
- ?'Aucun modèle ne correspond à vos critères.'
- :'Commencez par générer une épreuve via l\'IA ou créez-en une manuellement.'}
- </p>
- <div className="mt-6 flex flex-wrap gap-3">
- <Button
- variant="outline"
- className="border-success/40 text-success-text hover:bg-success/10"
- onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
- >
- <Sparkles className="h-4 w-4" />
- Générer par IA
- </Button>
- </div>
- </div>
- )}
-
- {/* List */}
- {!isLoading && epreuves.length > 0 && (
- <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
- {epreuves.map((epreuve) => {
+ // Carte d'un modèle — extraite en fonction pour être réutilisée par le mode grouped
+ const renderModeleCard = (epreuve: ModeleEpreuve) => {
  const typeEntries = Object.entries(epreuve.typeDistribution ?? {})
  return (
  <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
@@ -973,8 +789,143 @@ function ModelesTab() {
  </CardContent>
  </Card>
  )
- })}
+ }
+
+ return (
+ <div className="space-y-6">
+ {/* Stats */}
+ {!isLoading && (
+ <Card className="border-success/30 bg-gradient-to-r from-success/80 to-info/80">
+ <CardContent className="flex flex-wrap items-center gap-4 p-4 md:gap-6 md:p-5">
+ <div className="flex items-center gap-2">
+ <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/15">
+ <Library className="h-4 w-4 text-success-text" />
  </div>
+ <div>
+ <p className="text-xs text-muted-foreground">Modèles</p>
+ <p className="text-lg font-bold">{totalEpreuves}</p>
+ </div>
+ </div>
+ <Separator orientation="vertical" className="hidden h-8 sm:block" />
+ <div className="flex items-center gap-2">
+ <Sparkles className="h-4 w-4 text-info" />
+ <span className="text-sm"><span className="font-semibold">{iaEpreuves}</span> <span className="text-muted-foreground">IA</span></span>
+ <span className="text-muted-foreground">·</span>
+ <Edit3 className="h-4 w-4 text-warning" />
+ <span className="text-sm"><span className="font-semibold">{manuelleEpreuves}</span> <span className="text-muted-foreground">manuelles</span></span>
+ </div>
+ <Separator orientation="vertical" className="hidden h-8 sm:block" />
+ <div className="flex items-center gap-2">
+ <HelpCircle className="h-4 w-4 text-info" />
+ <span className="text-sm"><span className="font-semibold">{totalQuestions}</span> <span className="text-muted-foreground">questions</span></span>
+ </div>
+ </CardContent>
+ </Card>
+ )}
+
+ {/* Search + View toggle */}
+ <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+ <div className="relative flex-1 max-w-md">
+ <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+ <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un modèle..." className="pl-9" />
+ {search && (
+ <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')}>
+ <X className="h-3 w-3" />
+ </Button>
+ )}
+ </div>
+ <div className="flex items-center gap-2">
+ {/* View mode toggle — miroir SessionsTab */}
+ <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+ <button
+ type="button"
+ className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+ viewMode ==='flat' ?'bg-background text-foreground shadow-sm' :'text-muted-foreground hover:text-foreground'
+ }`}
+ onClick={() => setViewMode('flat')}
+ >
+ <List className="h-3.5 w-3.5" /> Liste
+ </button>
+ <button
+ type="button"
+ className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+ viewMode ==='grouped' ?'bg-background text-foreground shadow-sm' :'text-muted-foreground hover:text-foreground'
+ }`}
+ onClick={() => setViewMode('grouped')}
+ >
+ <LayoutGrid className="h-3.5 w-3.5" /> Groupé
+ </button>
+ </div>
+ {/* Group by selector (visible en mode grouped) */}
+ {viewMode ==='grouped' && (
+ <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupByField)}>
+ <SelectTrigger className="h-8 w-[160px] text-xs">
+ <SelectValue placeholder="Grouper par" />
+ </SelectTrigger>
+ <SelectContent>
+ <SelectItem value="filiere">Par filière</SelectItem>
+ <SelectItem value="niveau">Par niveau</SelectItem>
+ <SelectItem value="ue">Par UE</SelectItem>
+ <SelectItem value="sessionExamen">Par session</SelectItem>
+ </SelectContent>
+ </Select>
+ )}
+ </div>
+ </div>
+
+ {/* Loading */}
+ {isLoading && (
+ <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+ {Array.from({ length: 4 }).map((_, i) => (
+ <Card key={i} className="animate-pulse">
+ <CardContent className="p-6 space-y-3">
+ <div className="h-5 w-48 rounded bg-muted" />
+ <div className="h-3 w-32 rounded bg-muted" />
+ <div className="flex gap-3"><div className="h-6 w-16 rounded-full bg-muted" /><div className="h-6 w-16 rounded-full bg-muted" /><div className="h-6 w-20 rounded-full bg-muted" /></div>
+ </CardContent>
+ </Card>
+ ))}
+ </div>
+ )}
+
+ {/* Empty */}
+ {!isLoading && epreuves.length === 0 && (
+ <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+ <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+ <Library className="h-10 w-10 text-success-text" />
+ </div>
+ <h3 className="mt-4 font-display tracking-tight text-lg font-semibold">Aucun modèle d&apos;épreuve</h3>
+ <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+ {search
+ ?'Aucun modèle ne correspond à vos critères.'
+ :'Commencez par générer une épreuve via l\'IA ou créez-en une manuellement.'}
+ </p>
+ <div className="mt-6 flex flex-wrap gap-3">
+ <Button
+ variant="outline"
+ className="border-success/40 text-success-text hover:bg-success/10"
+ onClick={() => router.push(PAGE_ROUTES['questions-ia'])}
+ >
+ <Sparkles className="h-4 w-4" />
+ Générer par IA
+ </Button>
+ </div>
+ </div>
+ )}
+
+ {/* List / Grouped */}
+ {!isLoading && epreuves.length > 0 && (
+ viewMode ==='grouped' ? (
+ <EpreuveGroupedView
+ epreuves={epreuves}
+ groupBy={groupBy}
+ renderCard={renderModeleCard}
+ />
+ ) : (
+ <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+ {epreuves.map((epreuve) => renderModeleCard(epreuve))}
+ </div>
+ )
  )}
 
  {/* Preview Dialog */}
