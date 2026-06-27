@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ClipboardList,
   Clock,
@@ -281,8 +282,7 @@ export function MesEpreuvesPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [epreuves, setEpreuves] = useState<StudentEpreuve[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('a-venir')
 
   // Detail dialog state
@@ -292,37 +292,42 @@ export function MesEpreuvesPage() {
     session: StudentEpreuve['sessions'][0]
   } | null>(null)
 
-  // ─── Fetch epreuves ───
-  const fetchEpreuves = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const res = await fetch(`/api/epreuves?etudiantId=${user.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        // BUGFIX (ETU-AUDIT-1) : garantit que sessions est toujours un array
-        // (l'API peut ne pas l'inclure pour les anciennes réponses ou selon
-        // le contexte). Safety net en plus du fix backend.
-        const eps = (data.epreuves ?? []).map((ep: StudentEpreuve) => ({
-          ...ep,
-          sessions: ep.sessions ?? [],
-        }))
-        setEpreuves(eps)
-      }
-    } catch {
+  // ─── Fetch epreuves (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée.
+  const epreuvesQuery = useQuery<{ epreuves: StudentEpreuve[] }>({
+    queryKey: ['mes-epreuves', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/epreuves?etudiantId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch epreuves')
+      const data = await res.json()
+      // BUGFIX (ETU-AUDIT-1) : garantit que sessions est toujours un array
+      // (l'API peut ne pas l'inclure pour les anciennes réponses ou selon
+      // le contexte). Safety net en plus du fix backend.
+      const eps = (data.epreuves ?? []).map((ep: StudentEpreuve) => ({
+        ...ep,
+        sessions: ep.sessions ?? [],
+      }))
+      return { epreuves: eps }
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Toast sur erreur (préserve le comportement du catch original)
+  useEffect(() => {
+    if (epreuvesQuery.error) {
       toast.error('Erreur de chargement', {
         description: 'Impossible de charger vos épreuves.',
       })
     }
-  }, [user])
+  }, [epreuvesQuery.error])
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      await fetchEpreuves()
-      setIsLoading(false)
-    }
-    load()
-  }, [fetchEpreuves])
+  const epreuves = epreuvesQuery.data?.epreuves ?? []
+  const isLoading = epreuvesQuery.isLoading
+  const refreshEpreuves = () => queryClient.invalidateQueries({ queryKey: ['mes-epreuves', user?.id] })
 
   // ─── Split epreuves into upcoming vs results ───
   const upcomingEpreuves = epreuves.filter((ep) => {

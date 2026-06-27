@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   GraduationCap,
   Users,
@@ -222,15 +223,8 @@ function downloadCSV(content: string, filename: string) {
 
 export function EtudiantsPage() {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
   const etablissementId = user?.etablissementId || user?.etablissement?.id || ''
-
-  // ─── Data state ───
-  const [etudiants, setEtudiants] = useState<EtudiantItem[]>([])
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [totalFromApi, setTotalFromApi] = useState(0)
-  const [invitations, setInvitations] = useState<InvitationItem[]>([])
-  const [isLoadingInvitations, setIsLoadingInvitations] = useState(false)
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
@@ -242,6 +236,91 @@ export function EtudiantsPage() {
   // ─── Pagination ───
   const [page, setPage] = useState(1)
   const pageSize = 20
+
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 3 ressources sont indépendantes → 3 useQuery séparés.
+  // Les filtres search/filiere/status + pagination sont dans le queryKey de
+  // etudiants pour refetch automatique. Le filtre niveau reste client-side
+  // (l'API ne le supporte pas) — appliqué via useMemo.
+  const etudiantsQuery = useQuery<{ users: EtudiantItem[]; total: number }>({
+    queryKey: ['etudiants', etablissementId, searchDebounced, filiereFilter, statusFilter, page],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('role', 'ETUDIANT')
+      params.set('page', String(page))
+      params.set('limit', String(pageSize))
+      // The backend auto-filters by etablissementId for RESPONSABLE role,
+      // but we also pass it explicitly for robustness
+      if (etablissementId) params.set('etablissementId', etablissementId)
+      if (searchDebounced) params.set('search', searchDebounced)
+      if (filiereFilter && filiereFilter !== 'all') params.set('filiereId', filiereFilter)
+      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+
+      const res = await fetch(`/api/users?${params.toString()}`, { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch etudiants')
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const filieresQuery = useQuery<{ filieres: FiliereOption[] }>({
+    queryKey: ['etudiants-filieres', etablissementId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etablissementId) params.set('etablissementId', etablissementId)
+      const res = await fetch(`/api/filieres?${params.toString()}`, { credentials: 'same-origin' })
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const invitationsQuery = useQuery<{ invitations: InvitationItem[] }>({
+    queryKey: ['etudiant-invitations', user?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('createdById', user!.id)
+      params.set('used', 'false')
+      params.set('limit', '50')
+      const res = await fetch(`/api/invitations?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch invitations')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Client-side niveau filter (l'API ne le supporte pas encore).
+  const etudiants = useMemo(() => {
+    const users = etudiantsQuery.data?.users ?? []
+    return niveauFilter !== 'all'
+      ? users.filter((u) => u.niveau === niveauFilter)
+      : users
+  }, [etudiantsQuery.data, niveauFilter])
+  const totalFromApi = etudiantsQuery.data?.total ?? 0
+  const filieres = useMemo(
+    () =>
+      (filieresQuery.data?.filieres ?? []).map((f) => ({
+        id: f.id,
+        nom: f.nom,
+        code: f.code ?? null,
+      })),
+    [filieresQuery.data],
+  )
+  const invitations = useMemo(
+    () => (invitationsQuery.data?.invitations ?? []).filter((inv) => inv.role === 'ETUDIANT'),
+    [invitationsQuery.data],
+  )
+  const isLoading = etudiantsQuery.isLoading
+  const isLoadingInvitations = invitationsQuery.isFetching
+
+  // Helpers pour invalider le cache après mutation (create/update/delete/invite).
+  const refreshEtudiants = () => queryClient.invalidateQueries({ queryKey: ['etudiants'] })
+  const refreshInvitations = () => queryClient.invalidateQueries({ queryKey: ['etudiant-invitations'] })
 
   // ─── View mode ───
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
@@ -312,108 +391,6 @@ export function EtudiantsPage() {
     }, 300)
   }
 
-  // ─── Fetch filieres for this responsable ───
-  const fetchFilieres = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (etablissementId) params.set('etablissementId', etablissementId)
-      const res = await fetch(`/api/filieres?${params.toString()}`, { credentials: 'same-origin' })
-      if (res.ok) {
-        const data = await res.json()
-        const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null }) => ({
-          id: f.id,
-          nom: f.nom,
-          code: f.code ?? null,
-        }))
-        setFilieres(filieresData)
-      }
-    } catch {
-      // Silent
-    }
-  }, [etablissementId])
-
-  // ─── Fetch students ───
-  // FIX: Now uses etablissementId to filter server-side instead of fragile client-side filiereIds filtering
-  const fetchEtudiants = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.set('role', 'ETUDIANT')
-      params.set('page', String(page))
-      params.set('limit', String(pageSize))
-
-      // The backend auto-filters by etablissementId for RESPONSABLE role,
-      // but we also pass it explicitly for robustness
-      if (etablissementId) params.set('etablissementId', etablissementId)
-
-      if (searchDebounced) params.set('search', searchDebounced)
-      if (filiereFilter && filiereFilter !== 'all') params.set('filiereId', filiereFilter)
-      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
-
-      const res = await fetch(`/api/users?${params.toString()}`, { credentials: 'same-origin' })
-      if (res.ok) {
-        const data = await res.json()
-        // API now returns only students from the RESPONSABLE's establishment
-        // No more fragile client-side filiereIds filtering needed
-        const users = (data.users ?? []) as EtudiantItem[]
-        const totalCount = data.total ?? 0
-
-        // Client-side niveau filter (niveau not supported as API param yet)
-        const filtered = niveauFilter !== 'all'
-          ? users.filter((u: EtudiantItem) => u.niveau === niveauFilter)
-          : users
-
-        setEtudiants(filtered)
-        setTotalFromApi(totalCount)
-      } else {
-        setEtudiants([])
-        setTotalFromApi(0)
-      }
-    } catch {
-      setEtudiants([])
-      setTotalFromApi(0)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [etablissementId, searchDebounced, filiereFilter, statusFilter, niveauFilter, page])
-
-  // ─── Fetch pending invitations ───
-  const fetchInvitations = useCallback(async () => {
-    if (!user?.id) return
-    setIsLoadingInvitations(true)
-    try {
-      const params = new URLSearchParams()
-      params.set('createdById', user.id)
-      params.set('used', 'false')
-      params.set('limit', '50')
-
-      const res = await fetch(`/api/invitations?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        const etuInvitations = (data.invitations ?? []).filter(
-          (inv: InvitationItem) => inv.role === 'ETUDIANT'
-        )
-        setInvitations(etuInvitations)
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoadingInvitations(false)
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    fetchFilieres()
-  }, [fetchFilieres])
-
-  useEffect(() => {
-    fetchEtudiants()
-  }, [fetchEtudiants])
-
-  useEffect(() => {
-    fetchInvitations()
-  }, [fetchInvitations])
-
   // Reset page when filters change
   useEffect(() => {
     setPage(1)
@@ -481,8 +458,8 @@ export function EtudiantsPage() {
       const data = await res.json()
       setInvitationTokenResult({ token: data.token, email: invEmail })
       toast.success('Invitation envoyée', { description: `Invitation envoyée à ${invEmail}` })
-      await fetchInvitations()
-      await fetchEtudiants()
+      await refreshInvitations()
+      await refreshEtudiants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -541,7 +518,7 @@ export function EtudiantsPage() {
       setAddDialogOpen(false)
       setDirectResultDialogOpen(true)
       toast.success('Étudiant créé', { description: `${directName} a été ajouté avec succès.` })
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch (err) {
       console.error('[EtudiantsPage] Erreur création directe:', err)
       toast.error('Erreur de création', {
@@ -567,7 +544,7 @@ export function EtudiantsPage() {
         throw new Error(err.error || 'Erreur lors du renvoi')
       }
       toast.success('Invitation renvoyée', { description: `Nouvelle invitation envoyée à ${invitation.email}` })
-      await fetchInvitations()
+      await refreshInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de renvoyer l\'invitation.' })
     }
@@ -591,7 +568,7 @@ export function EtudiantsPage() {
       toast.success('Invitation annulée', {
         description: `L'invitation pour ${target.email} a été annulée.`,
       })
-      await fetchInvitations()
+      await refreshInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible d\'annuler l\'invitation.' })
     }
@@ -676,7 +653,7 @@ export function EtudiantsPage() {
       setEditDialogOpen(false)
       setEditingEtudiant(null)
       setMatriculeChangeInfo(null)
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -700,7 +677,7 @@ export function EtudiantsPage() {
           ? `${etudiant.name} est maintenant archivé. Ses données sont préservées, il reste dans l'établissement mais est marqué comme inactif.`
           : `${etudiant.name} est de nouveau actif.`,
       })
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
     }
@@ -723,7 +700,7 @@ export function EtudiantsPage() {
       toast.success('Filière retirée', {
         description: `${target.name} a été retiré de sa filière.`,
       })
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch {
       toast.error('Erreur', { description: 'Impossible de retirer la filière.' })
     }
@@ -754,7 +731,7 @@ export function EtudiantsPage() {
         description: `${target.name} a été supprimé définitivement de la base de données avec tout son historique.${depsText}`,
       })
       setDeleteTarget(null)
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'étudiant.' })
     } finally {
@@ -791,7 +768,7 @@ export function EtudiantsPage() {
       })
       setSelectedIds(new Set())
       setBulkActionDialog(null)
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch {
       toast.error('Erreur', { description: 'Une erreur est survenue lors de l\'opération en masse.' })
     } finally {
@@ -875,7 +852,7 @@ export function EtudiantsPage() {
         })
       }
 
-      await fetchEtudiants()
+      await refreshEtudiants()
     } catch (err) {
       toast.error('Erreur d\'import', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -1468,7 +1445,7 @@ export function EtudiantsPage() {
                 variant="ghost"
                 size="sm"
                 className="text-info hover:text-info"
-                onClick={fetchInvitations}
+                onClick={() => { void refreshInvitations() }}
               >
                 <RefreshCw className={`h-4 w-4 ${isLoadingInvitations ? 'animate-spin' : ''}`} />
               </Button>

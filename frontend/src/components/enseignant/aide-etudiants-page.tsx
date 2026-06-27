@@ -13,7 +13,8 @@
  * tokens oklch, framer-motion, font-mono tabular-nums.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -61,37 +62,42 @@ const STATUT_META: Record<string, { label: string; icon: typeof Clock; cls: stri
 export function AideEtudiantsPage() {
   const searchParams = useSearchParams()
   const { user } = useAuthStore()
-  const [threads, setThreads] = useState<Thread[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selected, setSelected] = useState<Thread | null>(null)
 
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  const threadsQuery = useQuery<{ threads: Thread[] }>({
+    queryKey: ['aide-threads'],
+    queryFn: async () => {
+      const res = await fetch('/api/exam-prep/help')
+      if (!res.ok) throw new Error('Failed to fetch threads')
+      const data = await res.json()
+      return { threads: data.threads ?? [] }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const threads = useMemo(() => threadsQuery.data?.threads ?? [], [threadsQuery.data?.threads])
+  const loading = threadsQuery.isLoading
+  const refreshThreads = () => queryClient.invalidateQueries({ queryKey: ['aide-threads'] })
+
   // Auto-sélection via ?threadId (deep link depuis notification push)
+  // NOTE : `threads` est désormais dérivé de useQuery (useMemo) au lieu d'être
+  // un useState. Le React Compiler flagge alors setSelected dans l'effet comme
+  // `set-state-in-effect`. Le pattern original (useState) n'était pas flaggé.
+  // On garde la logique identique (deep link auto-select) avec un disable
+  // ciblé — le guard `!selected` empêche toute boucle de re-render.
   useEffect(() => {
     const tid = searchParams.get('threadId')
     if (tid && threads.length > 0 && !selected) {
       const found = threads.find((t) => t.id === tid)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-select one-shot, guardé par !selected
       if (found) setSelected(found)
     }
   }, [searchParams, threads, selected])
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/exam-prep/help')
-      if (res.ok) {
-        const data = await res.json()
-        setThreads(data.threads ?? [])
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
 
   // Filtrage
   const filteredThreads = threads.filter((t) => {
@@ -121,7 +127,7 @@ export function AideEtudiantsPage() {
       <ConversationView
         thread={selected}
         currentUserId={user?.id ?? ''}
-        onBack={() => { setSelected(null); load() }}
+        onBack={() => { setSelected(null); refreshThreads() }}
       />
     )
   }
@@ -306,28 +312,27 @@ function ConversationView({
   currentUserId: string
   onBack: () => void
 }) {
-  const [messages, setMessages] = useState<Message[]>([])
+  const queryClient = useQueryClient()
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Charge les messages
-  useEffect(() => {
-    (async () => {
-      setLoading(true)
-      try {
-        const res = await fetch(`/api/exam-prep/help/${thread.id}/messages`)
-        if (res.ok) {
-          const data = await res.json()
-          setMessages(data.thread?.messages ?? [])
-        }
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [thread.id])
+  // Charge les messages (TanStack Query)
+  const messagesQuery = useQuery<{ messages: Message[] }>({
+    queryKey: ['help-thread-messages', thread.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/exam-prep/help/${thread.id}/messages`)
+      if (!res.ok) throw new Error('Failed to fetch messages')
+      const data = await res.json()
+      return { messages: data.thread?.messages ?? [] }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const messages = messagesQuery.data?.messages ?? []
+  const loading = messagesQuery.isLoading
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -346,7 +351,11 @@ function ConversationView({
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setMessages([...messages, data.message])
+      // Optimist append (préserve le setMessages([...messages, data.message]) original)
+      queryClient.setQueryData<{ messages: Message[] }>(
+        ['help-thread-messages', thread.id],
+        (old) => ({ messages: [...(old?.messages ?? []), data.message] }),
+      )
     } catch {
       toast.error("Échec de l'envoi")
       setInput(content)

@@ -5167,3 +5167,239 @@ Stage Summary:
   fenêtre).
 - Lint 0 erreur, TypeScript 0 nouvelle erreur. Logique métier 100% conservée
   (handlers, dialogs, forms, filters, états UI).
+
+---
+Task ID: QUERY-MIGRATION-GROUP-A
+Agent: full-stack-developer
+Task: Migration TanStack Query — 12 pages admin/responsable
+
+Work Log:
+- Lecture du pattern de référence dans `documents-page.tsx` (lignes 370-420) et `devoirs-page.tsx` (lignes 250-320) : useQuery + queryKey + staleTime 60s + refetchOnWindowFocus: false + invalidateQueries pour les mutations.
+- Migration de 12 pages du pattern `useEffect + useCallback(fetch) + useState` vers `useQuery` :
+  1. `admin/abonnements-page.tsx` — 4 useQuery (plans, abonnements, etablissements, users-responsables) + useMemo pour responsablesMap. Remplacement de `setResponsablesMap((prev) => ...)` par `invalidateQueries`.
+  2. `admin/acces-etablissements-page.tsx` — 3 useQuery (etablissement-access, authorized-etablissements, etablissements) + useMemo pour le mapping etablissements.
+  3. `admin/ai-providers-page.tsx` — 2 useQuery (ai-providers, ai-providers-failover). Polling 30s via `refetchInterval: 30_000, refetchIntervalInBackground: false`. Auto-seed Z-AI par défaut conservé via useEffect sur query.data. Toast sur erreur via useEffect sur query.error.
+  4. `admin/facturation-page.tsx` — 3 useQuery (factures, abonnements, etablissements) + useMemo pour mappings.
+  5. `admin/monitoring-page.tsx` — 1 useQuery avec queryKey incluant les filtres (type, severite, statut). Polling 30s conditionnel via `refetchInterval: autoRefresh ? 30000 : false`. Bouton "Actualiser" préservé via `isManualRefreshing` state local + `query.refetch()`. `lastRefresh` dérivé de `query.dataUpdatedAt`.
+  6. `admin/notifications-admin-page.tsx` — 1 useQuery avec queryKey incluant les 4 filtres (type, lu, role, categorie) pour refetch automatique.
+  7. `admin/securite-page.tsx` — 2 useQuery (etablissements, security-settings). Sync vers local state via useEffect (préserve `setEtablissements`/`setAllSettings` pour les computed stats). `loadSettings` réactif à `selectedEtablissementId` conservé en useEffect (pattern différent).
+  8. `responsable/affectations-page.tsx` — 4 useQuery (affectations avec filtres dans queryKey, filieres, ues, enseignants). Restructuration : déplacement du filter state avant les useQuery pour résoudre le TDZ.
+  9. `responsable/enseignants-page.tsx` — 4 useQuery (enseignants avec search/status dans queryKey, filieres, enseignant-filieres, invitations). `refreshEnseignants`, `refreshAssignments`, `refreshPendingInvitations` pour les 12 calls post-mutation.
+  10. `responsable/etudiants-page.tsx` — 3 useQuery (etudiants avec search/filiere/status/page dans queryKey, filieres, invitations). Filtre niveau client-side conservé via useMemo. `isLoadingInvitations` dérivé de `isFetching` (spinner bouton refresh). `totalFromApi` dérivé de `query.data.total`.
+  11. `responsable/programme-academique-page.tsx` — 3 useQuery (programme-filieres, programme-ues, programme-affectations). `ues` gardé en local state + sync useEffect (préserve `setUEs` pour lazy-load affectations dans `toggleExpand`).
+  12. `responsable/responsable-parametres-page.tsx` — 4 useQuery (etablissements pour admin selector, responsable-etablissement, responsable-security-settings avec `enabled` sur activeTab, responsable-ip-whitelist avec `enabled` sur activeTab). Sync `etablissement`/`securitySettings` vers local state via useEffect (préserve form editing). `*LoadedRef` remplacés par `enabled` flags. Toasts sur erreur via useEffect.
+- Pour chaque page : remplacement des `await fetchX()` post-mutation par `await refreshX()` (= `invalidateQueries`).
+- Nettoyage des imports : `useCallback` retiré quand plus utilisé, `useEffect` retiré quand plus utilisé, `useMemo` ajouté pour les données dérivées transformées.
+- `bun run lint` : 0 erreur, 1 warning pré-existant dans `certificat-pdf-react.tsx` (non touché).
+- `npx tsc --noEmit` : vérifié que les erreurs TS dans les fichiers migrés sont toutes pré-existantes (comparaison via `git stash`).
+- Dev server : toutes les routes répondent 200, pas d'erreur runtime dans `dev.log`.
+
+Stage Summary:
+- 12 pages migrées avec succès vers TanStack Query.
+- Pattern uniforme : `useQuery` + `queryKey` (incluant filtres/userId) + `staleTime: 60s` (ou 30s pour données plus volatiles) + `refetchOnWindowFocus: false` + `invalidateQueries` pour les mutations.
+- Polling : `setInterval(fetchX, N)` remplacé par `refetchInterval: N, refetchIntervalInBackground: false` (auto-cleanup au démontage, plus de fuite mémoire).
+- Données éditables localement (forms) : sync via `useEffect` query.data → local state, préservant les `setX` pour l'édition de form.
+- Cache survit au démontage → navigation instantanée au retour, 0 skeleton, 0 refetch inutile.
+- Difficultés rencontrées :
+  1. TDZ (Temporal Dead Zone) : les `useQuery` référençant des states déclarés plus bas (filtres) → résolu en déplaçant les déclarations de filter state avant les useQuery.
+  2. Données éditables localement (securite-page, programme-academique, responsable-parametres) : `setX` utilisé pour form editing → résolu en gardant le local state + sync useEffect depuis query.data.
+  3. Auto-seed dans ai-providers-page : logique conditionnelle `if (empty && !hasAutoSeeded)` → conservée via useEffect sur query.data avec `hasAutoSeeded` ref.
+  4. Polling conditionnel dans monitoring-page : `setInterval` avec `autoRefresh` toggle → `refetchInterval: autoRefresh ? 30000 : false`.
+  5. Lazy-loading par tab dans responsable-parametres : `*LoadedRef` refs → `enabled` flags sur activeTab (équivalent, plus idiomatique TanStack Query).
+  6. `setResponsablesMap((prev) => ...)` dans abonnements-page : update optimiste local → remplacé par `invalidateQueries` (refetch standard TanStack Query).
+
+---
+Task ID: QUERY-MIGRATION-GROUP-B
+Agent: full-stack-developer
+Task: Migration TanStack Query — 12 pages passation/enseignant/exam-prep
+
+Work Log:
+- Pattern de référence relu : `documents-page.tsx` lignes 370-420 + worklog Group A
+  (QUERY-MIGRATION-GROUP-A) pour les cas complexes (state éditable, polling, optimistic
+  updates).
+
+- **Page 1 — `passation/mes-epreuves-page.tsx`** :
+  - 1 `useQuery` (`['mes-epreuves', user?.id]`, `staleTime: 60s`).
+  - `fetchEpreuves` (useCallback) + useEffect mount → useQuery. Normalisation
+    `sessions: ep.sessions ?? []` conservée dans le queryFn.
+  - Toast sur erreur via useEffect sur `query.error`.
+  - Imports : `useCallback` retiré.
+
+- **Page 2 — `passation/mes-devoirs-page.tsx`** :
+  - 1 `useQuery` (`['mes-devoirs', user?.id]`, `staleTime: 60s`).
+  - `await fetchDevoirs()` dans `handleSubmit` → `await refreshDevoirs()`.
+  - Toast sur erreur via useEffect sur `query.error`.
+
+- **Page 3 — `passation/mes-certificats-page.tsx`** :
+  - 1 `useQuery` (`['mes-certificats', user?.id]`, `staleTime: 60s`).
+  - queryFn inclut le POST de re-sync validations + Promise.all des 2 GET
+    (certificats + validations). Toute la logique de mapping/filtering conservée.
+  - `error` dérivé de `query.error`. `loading` dérivé de `query.isLoading`.
+  - Bouton "Réessayer" : `onClick={fetchData}` → `onClick={refreshData}`.
+
+- **Page 4 — `passation/passation-page.tsx` (COMPLEXE — page d'examen)** :
+  - 1 `useQuery` (`['passation-epreuve', epreuveId, user?.id]`) pour le fetch initial.
+  - **ATTENTION** : seule `fetchEpreuveData` (useEffect mount) est migrée. Tous les
+    `setInterval` (timer, auto-save, inactivité, capture, closure-check) sont INTACTS.
+  - Le queryFn retourne un objet structuré : `{ epreuve, securityConfig, session,
+    questions, reponses, activeCodeLanguages, fullscreenExitCount, timeRemaining,
+    phase, totalAlertCount, penalite }`.
+  - `useEffect` de sync `query.data → local state` (11 setters) préserve le
+    comportement du fetch original qui setEpreuve/setSecurityConfig/etc. au fur et à
+    mesure.
+  - `staleTime: 0` (refetch au remontage — préserve le timeRemaining frais au retour).
+  - `refetchOnWindowFocus: false` + `refetchOnReconnect: false` → JAMAIS de refetch
+    pendant l'examen (évite d'écraser les réponses en cours).
+  - `loading` dérivé de `!epreuveId ? false : query.isLoading` (préserve le guard).
+  - `useState(loading)` supprimé (remplacé par const dérivée).
+
+- **Page 5 — `enseignant/aide-etudiants-page.tsx`** :
+  - 2 composants migrés :
+    - **AideEtudiantsPage** : 1 `useQuery` (`['aide-threads']`, `staleTime: 60s`).
+      `load()` → useQuery. `onBack` → `refreshThreads()`.
+    - **ConversationView** : 1 `useQuery` (`['help-thread-messages', thread.id]`,
+      `staleTime: 60s`). `handleSend` : `setMessages([...messages, data.message])` →
+      `queryClient.setQueryData` (optimist append préservé).
+  - `useMemo` pour `threads` (stabilise la référence pour le useEffect d'auto-select).
+  - **eslint-disable** `react-hooks/set-state-in-effect` sur `setSelected(found)` dans
+    le useEffect d'auto-sélection `?threadId` (le React Compiler flagge ce pattern car
+    `threads` est désormais dérivé (useMemo) au lieu d'être state (useState) ; le guard
+    `!selected` empêche toute boucle).
+
+- **Page 6 — `enseignant/mes-etudiants-page.tsx`** :
+  - 1 `useQuery` (`['mes-etudiants', user?.id, search, filiereFilter, niveauFilter]`,
+    `staleTime: 60s`). Le queryKey inclut les filtres car l'API les prend en query params.
+  - Listes dérivées `filieres` / `niveaux` (pour les dropdowns) conservées.
+  - Bouton "Réessayer" : `onClick={refreshEtudiants}`.
+
+- **Page 7 — `exam-prep/exam-prep-page.tsx`** :
+  - 1 `useQuery` (`['exam-prep-documents']`, `staleTime: 60s`).
+  - `error` dérivé de `query.error`. Bouton "Réessayer" : `onClick={refreshDocuments}`.
+
+- **Page 8 — `alertes/alertes-page.tsx` (updates optimistes + fallback)** :
+  - 2 `useQuery` :
+    - `alertesQuery` (`['alertes', user?.id, search, severityFilter, typeFilter,
+      lueFilter]`, `staleTime: 60s`). queryKey inclut les filtres. queryFn inclut la
+      logique de fallback (stats dynamiques via `generateDynamicAlerts`) ; retourne
+      `{ alertes, isUsingFallback }`.
+    - `filieresQuery` (`['alertes-filieres', user?.id]`, `staleTime: 5min`).
+  - `isUsingFallback` dérivé de `query.data.isUsingFallback`.
+  - Helper `updateAlertesCache(updater)` = `queryClient.setQueryData` pour les 9 updates
+    optimistes (markAsRead, markAsResolved, markAllAsRead, markAllAsResolved,
+    createAlerte fallback).
+  - `await fetchAlertes()` après create → `await refreshAlertes()`.
+
+- **Page 9 — `logs/logs-page.tsx`** :
+  - 1 `useQuery` (`['logs', dateFrom, dateTo, actionFilter, entityFilter, searchEmail,
+    page]`, `staleTime: 60s`). queryKey inclut tous les filtres + page.
+  - useEffect de reset page quand filtres changent : CONSERVÉ (pattern original).
+    **eslint-disable** `react-hooks/set-state-in-effect` sur `setPage(1)` car `page`
+    est désormais dans le queryKey (le compilateur flagge le setState dans l'effet).
+
+- **Page 10 — `rapports/rapports-page.tsx`** :
+  - 2 `useQuery` :
+    - `statsQuery` (`['rapports-stats', selectedFiliere, dateDebut, dateFin]`,
+      `staleTime: 60s`).
+    - `filieresQuery` (`['rapports-filieres']`, `staleTime: 5min`).
+  - `console.error` sur erreur API conservé dans le queryFn.
+
+- **Page 11 — `configuration/configuration-page.tsx` (state éditable localement)** :
+  - 1 `useQuery` (`['platform-settings']`, `staleTime: 60s`).
+  - `config` est éditable localement (forms) → sync via
+    `useEffect(query.data → setConfig(mapApiToConfig(...)))` (pattern approuvé : sync
+    de données externes vers state local pour édition, identique à securite-page /
+    responsable-parametres-page du Group A).
+  - `loadError` dérivé de `query.error`. Toast sur erreur via useEffect sur `query.error`.
+  - Bouton "Réessayer" : `onClick={refreshSettings}`.
+
+- **Page 12 — `corbeille/corbeille-page.tsx`** :
+  - 1 `useQuery` (`['corbeille', user?.id]`, `staleTime: 60s`).
+  - `data` dérivé de `query.data ?? defaultEmpty`.
+  - 4 appels `fetchCorbeille()` (restore, purge, 2 retry) → `refreshCorbeille()`.
+
+- Vérification de non-régression :
+  - `bun run lint` : **0 erreur**, 1 warning pré-existant
+    (`certificat-pdf-react.tsx:312 jsx-a11y/alt-text`, hors périmètre). 2
+    `eslint-disable-next-line react-hooks/set-state-in-effect` ciblés et documentés.
+  - `npx tsc --noEmit` : aucune NOUVELLE erreur TS introduite. Les erreurs pré-existantes
+    dans `mes-epreuves-page.tsx` (`epreuve.sessions` possibly undefined, liées au type
+    `sessions?` optionnel) sont identiques avant/après (vérifié via `git stash` +
+    comparaison). Les 11 autres fichiers : 0 erreur TS.
+  - Dev server : toutes les routes répondent 200, pas d'erreur runtime dans `dev.log`.
+  - Aucune suppression de fonctionnalité : tous les boutons, dialogs, forms, filters,
+    sheets, handlers, timers (passation-page), intervals (passation-page) sont intacts.
+  - Imports inutilisés nettoyés : `useCallback` (10 fichiers), `useEffect` (4 fichiers
+    où plus aucun usage), `useRef` non concerné.
+
+Stage Summary:
+- 12 pages migrées de `useEffect + fetch + useState` vers TanStack Query en suivant
+  EXACTEMENT le pattern de référence `documents-page.tsx` + Group A.
+- 16 `useQuery` au total : 1+1+1+1+1+1+1+2+1+2+1+1 = 14 queries dans les pages
+  principales + 2 dans ConversationView (aide-etudiants) = 16.
+- 10 helpers `refreshX()` = `queryClient.invalidateQueries(...)`.
+- 1 helper `updateAlertesCache()` = `queryClient.setQueryData` pour les 9 updates
+  optimistes de alertes-page.
+- Polling manuel (`setInterval`) NON concerné (passation-page : intervals de timer/
+  auto-save/proctoring INTACTS comme spécifié).
+- Cache TanStack Query : navigation instantanée au retour sur une page (0 refetch si
+  staleTime non expiré), 0 skeleton flash, économie réseau.
+- passation-page : migration sécurisée du fetch initial uniquement. Le queryFn retourne
+  un objet structuré (11 champs) + useEffect de sync vers les setters locaux.
+  `staleTime: 0` + `refetchOnWindowFocus/reconnect: false` préserve le comportement
+  original (refetch au remontage pour timeRemaining frais, jamais de refetch pendant
+  l'examen).
+- alertes-page : fallback dynamique (generateDynamicAlerts) conservé dans le queryFn
+  avec retour `{ alertes, isUsingFallback }`. 9 updates optimistes migrés vers
+  `setQueryData` via helper `updateAlertesCache`.
+- configuration-page : state éditable (config) sync via useEffect query.data → setConfig
+  (pattern Group A pour forms).
+- Difficultés rencontrées :
+  1. **passation-page (complexité)** : fetchEpreuveData de 130 lignes avec 5 appels API
+     dépendants + setState incrémental → queryFn pure (retourne objet structuré) +
+     useEffect de sync vers 11 setters.
+  2. **react-hooks/set-state-in-effect (React Compiler v7)** : Le plugin React Hooks
+     7.0.1 flagge les setState synchrones dans useEffect. Le code original (useState)
+     n'était pas flaggé, mais après migration (useQuery/useMemo), le compilateur analyse
+     différemment le flux de données. 2 cas résolus avec `eslint-disable-next-line` ciblé
+     + commentaire explicatif (aide-etudiants auto-select, logs-page reset pagination).
+  3. **react-hooks/immutability** : `query.data?.xxx ?? []` dans les deps d'un useEffect
+     crée une nouvelle référence → résolu avec `useMemo` (aide-etudiants).
+  4. **alertes-page (updates optimistes + fallback)** : 9 setAlertes((prev) => ...) →
+     queryClient.setQueryData via helper. Logique de fallback conservée dans le queryFn.
+
+---
+Task ID: QUERY-MIGRATION-GROUP-C
+Agent: full-stack-developer
+Task: Migration TanStack Query — 11 pages questions/etablissements/filieres/etc
+
+Work Log:
+- Lecture du pattern de référence dans documents-page.tsx (lignes 370-420) et devoirs-page.tsx (useQuery + queryKey + staleTime 60s + refetchOnWindowFocus: false + refreshX = invalidateQueries).
+- Analyse des 11 pages cibles pour identifier les fetchs useEffect+useState à migrer vs les fetchs click-triggered (detail) et les mutations POST (à conserver).
+- Migration de 10 pages vers useQuery (landing-page.tsx ignorée — son seul fetch est un POST mutation dans un event handler, pas le pattern useEffect+fetch+useState list).
+- Pour chaque page : remplacement de useState(data)+useState(isLoading)+useCallback(fetch)+useEffect par useQuery, queryKey incluant les deps originales du useCallback, enabled: !!user?.id quand pertinent, staleTime 60s (5 min pour les options), refetchOnWindowFocus: false.
+- Remplacement des appels `await fetchX()` post-mutation par `refreshX() = queryClient.invalidateQueries(...)`.
+- Conservation des toasts d'erreur fetch (banque-questions, evaluations, banque-epreuves) via useEffect sur query.error.
+- Conservation de la logique d'auto-sélection filière/niveau/UE dans generation-ia-page via useEffect observant filieresQuery.data.
+- Conservation de la logique de redirect automatique + init du nom dans accept-invitation-page via useEffect (query discriminée { ok: true | false }).
+- Nettoyage des imports inutilisés (useCallback, useRef, useEffect) après migration.
+- Correction d'un TS2448 (filieres utilisé avant déclaration) dans generation-ia-page en déplaçant filieresQuery avant getAutoGeneratedTitle.
+
+Pages migrées :
+1. banque-questions-page.tsx — 2 queries (questions paginées/filtrées + documents pour filtre)
+2. questions-ia-page.tsx — 1 query (documents ; questions = état local du generate, conservé)
+3. etablissements-page.tsx — 1 query (etablissements filtrés ; detail = fetch click, conservé)
+4. filieres-page.tsx — 2 queries (filieres filtrées + options etab/responsables)
+5. evaluations-page.tsx — 1 query (epreuves + filières dérivées de la même réponse)
+6. utilisateurs-page.tsx — 3 queries (users paginés + options + invitations)
+7. niveaux-page.tsx — 3 queries (filieres + ues + affectations, isLoading = OR des 3)
+8. banque-epreuves-page.tsx — 1 query (epreuves banque filtrées)
+9. generation-ia-page.tsx — 2 queries (documents + filieres avec auto-select)
+10. accept-invitation-page.tsx — 1 query (verify token, one-shot staleTime Infinity retry false)
+11. landing-page.tsx — IGNORÉE (fetch = POST mutation dans event handler, pas le pattern list)
+
+Stage Summary:
+- 10/11 pages migrées vers TanStack Query (useQuery). landing-page.tsx ignorée car son fetch est une mutation POST déclenchée par clic, pas le pattern useEffect+fetch+useState.
+- `bun run lint` : 0 erreur, 1 warning pré-existant dans un fichier non migré (certificat-pdf-react.tsx).
+- `npx tsc --noEmit` : 0 erreur dans les 10 fichiers migrés (erreurs pré-existantes confirmées dans d'autres fichiers non touchés).
+- Logique métier préservée : handlers, dialogs, forms, filters, toasts d'erreur, auto-sélection, redirect automatique — tout identique.
+- Bénéfice : le cache TanStack survit au démontage → 0 refetch au retour navigation, 0 skeleton, navigation instantanée (comme documents-page/devoirs-page).

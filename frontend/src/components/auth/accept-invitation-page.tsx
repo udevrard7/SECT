@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap,
@@ -212,10 +213,6 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
 export function AcceptInvitationPage({ token, onComplete }: AcceptInvitationPageProps) {
   // State
   const [step, setStep] = useState<1 | 2>(1)
-  const [invitation, setInvitation] = useState<InvitationData | null>(null)
-  const [verifyError, setVerifyError] = useState<VerifyError>(null)
-  const [verifyErrorMessage, setVerifyErrorMessage] = useState('')
-  const [isVerifying, setIsVerifying] = useState(true)
 
   // Step 2 form
   const [name, setName] = useState('')
@@ -226,6 +223,55 @@ export function AcceptInvitationPage({ token, onComplete }: AcceptInvitationPage
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
 
+  // ─── Verify token (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. One-shot verify (staleTime Infinity,
+  // retry false). La queryFn retourne un objet discriminé { ok: true | false }
+  // pour préserver la logique d'erreur originale (codes INVALID_TOKEN, etc.).
+  const verifyQuery = useQuery<{
+    ok: boolean
+    invitation?: InvitationData
+    name?: string
+    code?: VerifyError
+    message?: string
+  }>({
+    queryKey: ['invitation-verify', token],
+    queryFn: async () => {
+      const res = await fetch(`/api/invitations/verify?token=${encodeURIComponent(token)}`)
+      const data = await res.json()
+      if (!res.ok) {
+        return { ok: false, code: (data.code || 'SERVER_ERROR') as VerifyError, message: data.error || 'Erreur lors de la vérification' }
+      }
+      return { ok: true, invitation: data.invitation as InvitationData, name: data.invitation.name || '' }
+    },
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+
+  const isVerifying = verifyQuery.isLoading || verifyQuery.isFetching
+  const invitation = verifyQuery.data?.ok ? verifyQuery.data.invitation ?? null : null
+  const verifyError: VerifyError = verifyQuery.isError
+    ? 'NETWORK_ERROR'
+    : (verifyQuery.data && !verifyQuery.data.ok ? (verifyQuery.data.code ?? null) : null)
+  const verifyErrorMessage = verifyQuery.isError
+    ? 'Erreur de connexion. Veuillez vérifier votre connexion internet.'
+    : (verifyQuery.data && !verifyQuery.data.ok ? (verifyQuery.data.message ?? '') : '')
+
+  // Init name depuis l'invitation (préserve setName(data.invitation.name || ''))
+  useEffect(() => {
+    if (invitation) {
+      setName(invitation.name || '')
+    }
+  }, [invitation])
+
+  // Auto-redirect après 3s si déjà utilisée / compte existant
+  useEffect(() => {
+    if (verifyError === 'ALREADY_USED' || verifyError === 'USER_EXISTS') {
+      const t = setTimeout(() => onComplete(), 3000)
+      return () => clearTimeout(t)
+    }
+  }, [verifyError, onComplete])
+
   // Countdown
   const countdown = useCountdown(invitation?.expiresAt || null)
 
@@ -233,43 +279,6 @@ export function AcceptInvitationPage({ token, onComplete }: AcceptInvitationPage
   const isNearExpiry = invitation
     ? new Date(invitation.expiresAt).getTime() - new Date().getTime() < 24 * 60 * 60 * 1000
     : false
-
-  // Verify token on mount
-  const verifyToken = useCallback(async () => {
-    setIsVerifying(true)
-    setVerifyError(null)
-    setVerifyErrorMessage('')
-
-    try {
-      const res = await fetch(`/api/invitations/verify?token=${encodeURIComponent(token)}`)
-      const data = await res.json()
-
-      if (!res.ok) {
-        setVerifyError(data.code || 'SERVER_ERROR')
-        setVerifyErrorMessage(data.error || 'Erreur lors de la vérification')
-
-        // If already used, auto-redirect after a delay
-        if (data.code === 'ALREADY_USED' || data.code === 'USER_EXISTS') {
-          setTimeout(() => {
-            onComplete()
-          }, 3000)
-        }
-        return
-      }
-
-      setInvitation(data.invitation)
-      setName(data.invitation.name || '')
-    } catch {
-      setVerifyError('NETWORK_ERROR')
-      setVerifyErrorMessage('Erreur de connexion. Veuillez vérifier votre connexion internet.')
-    } finally {
-      setIsVerifying(false)
-    }
-  }, [token, onComplete])
-
-  useEffect(() => {
-    verifyToken()
-  }, [verifyToken])
 
   // Handle accept invitation
   const handleAccept = async () => {
@@ -415,7 +424,7 @@ export function AcceptInvitationPage({ token, onComplete }: AcceptInvitationPage
           {errorContent.showRetry && (
             <Button
               variant="outline"
-              onClick={verifyToken}
+              onClick={() => verifyQuery.refetch()}
               className="border-emerald-200 dark:border-emerald-800"
             >
               <RefreshCw className="h-4 w-4 mr-2" />

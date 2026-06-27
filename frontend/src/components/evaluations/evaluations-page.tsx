@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ClipboardCheck,
   Clock,
@@ -274,14 +275,12 @@ function ScoreDistributionChart({ sessions }: { sessions: Session[] }) {
 
 export function EvaluationsPage() {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
 
   // ─── State ───
-  const [epreuves, setEpreuves] = useState<Epreuve[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('all')
   const [filiereFilter, setFiliereFilter] = useState('all')
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
   const [showFilters, setShowFilters] = useState(false)
 
   // Detail dialog
@@ -291,40 +290,44 @@ export function EvaluationsPage() {
   const [sessionsExpanded, setSessionsExpanded] = useState(false)
   const [dialogMode, setDialogMode] = useState<'details' | 'results'>('details')
 
-  // ─── Fetch epreuves using responsableId ───
-  const fetchEpreuves = useCallback(async () => {
-    if (!user?.id) return
-    setIsLoading(true)
-    try {
+  // ─── Fetch epreuves (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+  // 0 refetch au retour navigation. staleTime 60s. L'API retourne aussi les
+  // filières du responsable (pour le filtre) — dérivées directement de la
+  // query data (au lieu du setState conditionnel original).
+  const epreuvesQuery = useQuery<{ epreuves: Epreuve[]; filieres?: FiliereOption[] }>({
+    queryKey: ['evaluations-epreuves', user?.id, statutFilter, filiereFilter],
+    queryFn: async () => {
       const params = new URLSearchParams()
-      params.set('responsableId', user.id)
+      params.set('responsableId', user!.id)
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statutFilter !== 'all') params.set('statut', statutFilter)
 
       const res = await fetch(`/api/epreuves?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setEpreuves(data.epreuves ?? [])
-        // The API also returns the filieres for this responsable
-        if (data.filieres && data.filieres.length > 0 && filieres.length === 0) {
-          setFilieres(data.filieres.map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
-        }
-      } else {
-        const data = await res.json().catch(() => ({}))
-        console.error('Epreuves API error:', data.error)
-        setEpreuves([])
-      }
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de charger les évaluations.' })
-      setEpreuves([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user?.id, statutFilter, filiereFilter, filieres.length])
+      if (!res.ok) throw new Error('Failed to fetch epreuves')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
+  const epreuves = epreuvesQuery.data?.epreuves ?? []
+  const filieres: FiliereOption[] = (epreuvesQuery.data?.filieres ?? []).map((f) => ({
+    id: f.id,
+    nom: f.nom,
+  }))
+  const isLoading = epreuvesQuery.isLoading
+
+  // Toast d'erreur (préserve le comportement original : toast sur erreur fetch)
   useEffect(() => {
-    fetchEpreuves()
-  }, [fetchEpreuves])
+    if (epreuvesQuery.error) {
+      toast.error('Erreur', { description: 'Impossible de charger les évaluations.' })
+    }
+  }, [epreuvesQuery.error])
+
+  // Helper pour rafraîchir (bouton refresh + invalidation après mutation)
+  const refreshEpreuves = () => queryClient.invalidateQueries({ queryKey: ['evaluations-epreuves', user?.id] })
 
   // ─── Client-side search filter ───
   const filteredEpreuves = epreuves.filter((ep) => {
@@ -477,7 +480,7 @@ export function EvaluationsPage() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => fetchEpreuves()}
+              onClick={() => refreshEpreuves()}
               title="Rafraîchir"
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />

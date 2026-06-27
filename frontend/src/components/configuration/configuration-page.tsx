@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Settings,
   Save,
@@ -144,35 +145,45 @@ function mapConfigToApi(config: AppConfig): Record<string, unknown> {
 
 export function ConfigurationPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [savingTab, setSavingTab] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
 
-  // ─── Fetch settings on mount ───
-
-  const fetchSettings = useCallback(async () => {
-    setIsLoading(true)
-    setLoadError(null)
-    try {
+  // ─── Fetch settings (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // config est éditable localement (forms) → sync via useEffect query.data → setConfig
+  // (pattern approuvé : sync de données externes vers state local pour édition).
+  const settingsQuery = useQuery<{ settings: Record<string, unknown> }>({
+    queryKey: ['platform-settings'],
+    queryFn: async () => {
       const res = await fetch('/api/platform-settings')
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
-      const settings = data.settings ?? {}
-      setConfig(mapApiToConfig(settings))
-    } catch {
-      setLoadError('Impossible de charger la configuration. Vérifiez votre connexion.')
+      return { settings: data.settings ?? {} }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Sync query.data → config (pour édition de form)
+  useEffect(() => {
+    if (settingsQuery.data) {
+      setConfig(mapApiToConfig(settingsQuery.data.settings))
+    }
+  }, [settingsQuery.data])
+
+  // Toast sur erreur (préserve le comportement du catch original)
+  useEffect(() => {
+    if (settingsQuery.error) {
       toast.error('Erreur de chargement', {
         description: 'Impossible de récupérer les paramètres de la plateforme.',
       })
-    } finally {
-      setIsLoading(false)
     }
-  }, [])
+  }, [settingsQuery.error])
 
-  useEffect(() => {
-    fetchSettings()
-  }, [fetchSettings])
+  const isLoading = settingsQuery.isLoading
+  const loadError = settingsQuery.error ? 'Impossible de charger la configuration. Vérifiez votre connexion.' : null
+  const refreshSettings = () => queryClient.invalidateQueries({ queryKey: ['platform-settings'] })
 
   // ─── Save handler (generic) ───
 
@@ -245,7 +256,7 @@ export function ConfigurationPage() {
             <AlertCircle className="h-12 w-12 text-destructive mb-4" />
             <p className="text-lg font-display font-semibold text-destructive mb-2">Erreur de chargement</p>
             <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
-            <Button variant="outline" onClick={fetchSettings}>
+            <Button variant="outline" onClick={refreshSettings}>
               <Loader2 className="h-4 w-4 mr-2" />
               Réessayer
             </Button>

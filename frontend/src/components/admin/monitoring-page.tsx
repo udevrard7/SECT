@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   Globe,
@@ -536,20 +537,65 @@ function AlertCard({
 
 export function MonitoringPage() {
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
   // ─── Data state ───
-  const [events, setEvents] = useState<MonitoringEvent[]>([])
-  const [stats, setStats] = useState<MonitoringStats>({ activeCount: 0, criticalCount: 0, errorCount: 0 })
-  const [isLoading, setIsLoading] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [severiteFilter, setSeveriteFilter] = useState<string>('all')
   const [statutFilter, setStatutFilter] = useState<string>('all')
+
+  // BUGFIX QUERY-MIGRATION-GROUP-A : migration de useEffect+fetch+useState
+  // vers TanStack Query. Le cache survit au démontage → 0 refetch au retour,
+  // 0 skeleton, navigation instantanée. Le polling 30s est géré par
+  // refetchInterval (auto-cleanup au démontage, plus de fuite mémoire).
+  const monitoringQuery = useQuery<{ events: MonitoringEvent[]; stats: MonitoringStats }>({
+    queryKey: ['monitoring', typeFilter, severiteFilter, statutFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter)
+      if (severiteFilter && severiteFilter !== 'all') params.set('severite', severiteFilter)
+      if (statutFilter && statutFilter !== 'all') params.set('statut', statutFilter)
+
+      const res = await fetch(`/api/monitoring?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch monitoring data')
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    // Auto-refresh 30s conditionnel (autoRefresh toggle). Auto-cleanup au démontage.
+    refetchInterval: autoRefresh ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  })
+
+  const events = monitoringQuery.data?.events ?? []
+  const stats = monitoringQuery.data?.stats ?? { activeCount: 0, criticalCount: 0, errorCount: 0 }
+  const lastRefresh =
+    monitoringQuery.dataUpdatedAt > 0 ? new Date(monitoringQuery.dataUpdatedAt) : new Date()
+
+  // Local state pour le bouton "Actualiser" : préserve le comportement
+  // d'origine où le bouton force isLoading=true le temps du refetch manuel
+  // (sans déclencher les skeletons pendant le polling 30s en arrière-plan).
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false)
+  const isLoading = monitoringQuery.isLoading || isManualRefreshing
+
+  // Helper pour invalider le cache après mutation (resolve/ignore/escalade).
+  const refreshData = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['monitoring'] })
+  }
+
+  // Bouton "Actualiser" : force un refetch manuel et un état loading local.
+  const handleManualRefresh = async () => {
+    setIsManualRefreshing(true)
+    try {
+      await monitoringQuery.refetch()
+    } finally {
+      setIsManualRefreshing(false)
+    }
+  }
 
   // ─── Dialog state ───
   const [resolveTarget, setResolveTarget] = useState<MonitoringEvent | null>(null)
@@ -567,47 +613,6 @@ export function MonitoringPage() {
     { id: '5', name: 'Échecs paiement', metric: 'payment_failure_count', threshold: 3, current: 0, enabled: true, severite: 'CRITICAL' },
     { id: '6', name: 'CPU serveur', metric: 'system_cpu', threshold: 90, current: 34, enabled: true, severite: 'ERROR' },
   ])
-
-  // ─── Fetch monitoring data ───
-  const fetchData = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter)
-      if (severiteFilter && severiteFilter !== 'all') params.set('severite', severiteFilter)
-      if (statutFilter && statutFilter !== 'all') params.set('statut', statutFilter)
-
-      const res = await fetch(`/api/monitoring?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setEvents(data.events ?? [])
-        setStats(data.stats ?? { activeCount: 0, criticalCount: 0, errorCount: 0 })
-        setLastRefresh(new Date())
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [typeFilter, severiteFilter, statutFilter])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  // ─── Auto-refresh every 30 seconds ───
-  useEffect(() => {
-    if (autoRefresh) {
-      refreshIntervalRef.current = setInterval(() => {
-        fetchData()
-      }, 30000)
-    }
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current)
-      }
-    }
-  }, [autoRefresh, fetchData])
 
   // ─── Computed: filtered events ───
   const filteredEvents = events.filter((e) => {
@@ -716,7 +721,7 @@ export function MonitoringPage() {
       })
       setResolveTarget(null)
       setResolveNotes('')
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de résoudre l\'événement.',
@@ -739,7 +744,7 @@ export function MonitoringPage() {
         description: 'L\'événement a été marqué comme ignoré.',
       })
       setIgnoreTarget(null)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'ignorer l\'événement.',
@@ -768,7 +773,7 @@ export function MonitoringPage() {
       toast.success('Événement escaladé', {
         description: 'L\'événement a été escaladé au niveau CRITIQUE.',
       })
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'escalader l\'événement.',
@@ -831,7 +836,7 @@ export function MonitoringPage() {
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={() => { setIsLoading(true); fetchData() }}
+            onClick={() => { void handleManualRefresh() }}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualiser

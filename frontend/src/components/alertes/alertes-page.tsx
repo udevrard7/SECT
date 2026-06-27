@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   AlertTriangle,
@@ -254,11 +255,7 @@ function generateDynamicAlerts(stats: Record<string, unknown>): AlerteItem[] {
 
 export function AlertesPage() {
   const user = useAuthStore((s) => s.user)
-
-  // ─── Data state ───
-  const [alertes, setAlertes] = useState<AlerteItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isUsingFallback, setIsUsingFallback] = useState(false)
+  const queryClient = useQueryClient()
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
@@ -281,16 +278,21 @@ export function AlertesPage() {
   const [formType, setFormType] = useState('CUSTOM')
   const [formFiliereId, setFormFiliereId] = useState('')
 
-  // ─── Options state ───
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
-
   // ─── Bulk action loading ───
   const [bulkLoading, setBulkLoading] = useState(false)
 
-  // ─── Fetch alertes ───
-  const fetchAlertes = useCallback(async () => {
-    setIsLoading(true)
-    try {
+  // ─── Query keys (stables pour setQueryData optimiste) ───
+  const alertesQueryKey = ['alertes', user?.id, search, severityFilter, typeFilter, lueFilter] as const
+  const filieresQueryKey = ['alertes-filieres', user?.id] as const
+
+  // ─── Fetch alertes (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // Le queryKey inclut les filtres car l'API les prend en query params → refetch
+  // automatique. La logique de fallback (stats dynamiques) est conservée dans
+  // le queryFn ; isUsingFallback est dérivé du résultat.
+  const alertesQuery = useQuery<{ alertes: AlerteItem[]; isUsingFallback: boolean }>({
+    queryKey: alertesQueryKey,
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (severityFilter && severityFilter !== 'all') params.set('severity', severityFilter)
@@ -298,67 +300,69 @@ export function AlertesPage() {
       if (lueFilter === 'true') params.set('lue', 'true')
       else if (lueFilter === 'false') params.set('lue', 'false')
 
-      const res = await fetch(`/api/alertes?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        const items = data.alertes ?? []
-        if (items.length > 0 || data.total > 0) {
-          setAlertes(items)
-          setIsUsingFallback(false)
-        } else {
-          // Fallback: generate dynamic alerts from stats
-          await loadFallbackAlerts()
+      const loadFallback = async (): Promise<{ alertes: AlerteItem[]; isUsingFallback: boolean }> => {
+        try {
+          const filiereParam = user?.filiereId || ''
+          const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
+          if (res.ok) {
+            const stats = await res.json()
+            const dynamicAlerts = generateDynamicAlerts(stats)
+            return { alertes: dynamicAlerts, isUsingFallback: true }
+          }
+          return { alertes: [], isUsingFallback: true }
+        } catch {
+          return { alertes: [], isUsingFallback: true }
         }
-      } else {
-        await loadFallbackAlerts()
       }
-    } catch {
-      await loadFallbackAlerts()
-    } finally {
-      setIsLoading(false)
-    }
-  }, [search, severityFilter, typeFilter, lueFilter])
 
-  // ─── Load fallback alerts from stats API ───
-  const loadFallbackAlerts = async () => {
-    try {
-      const filiereParam = user?.filiereId || ''
-      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
-      if (res.ok) {
-        const stats = await res.json()
-        const dynamicAlerts = generateDynamicAlerts(stats)
-        setAlertes(dynamicAlerts)
-        setIsUsingFallback(true)
-      } else {
-        setAlertes([])
-        setIsUsingFallback(true)
+      try {
+        const res = await fetch(`/api/alertes?${params.toString()}`)
+        if (res.ok) {
+          const data = await res.json()
+          const items = data.alertes ?? []
+          if (items.length > 0 || data.total > 0) {
+            return { alertes: items, isUsingFallback: false }
+          }
+          return await loadFallback()
+        }
+        return await loadFallback()
+      } catch {
+        return await loadFallback()
       }
-    } catch {
-      setAlertes([])
-      setIsUsingFallback(true)
-    }
-  }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch filieres ───
-  const fetchFilieres = useCallback(async () => {
-    try {
+  // ─── Fetch filieres (TanStack Query) ───
+  const filieresQuery = useQuery<{ filieres: FiliereOption[] }>({
+    queryKey: filieresQueryKey,
+    queryFn: async () => {
       const res = await fetch('/api/filieres')
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
-      }
-    } catch {
-      // Silent
-    }
-  }, [])
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      const data = await res.json()
+      return { filieres: (data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })) }
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchAlertes()
-  }, [fetchAlertes])
+  const alertes = alertesQuery.data?.alertes ?? []
+  const isUsingFallback = alertesQuery.data?.isUsingFallback ?? false
+  const isLoading = alertesQuery.isLoading
+  const filieres = filieresQuery.data?.filieres ?? []
+  const refreshAlertes = () => queryClient.invalidateQueries({ queryKey: ['alertes', user?.id] })
 
-  useEffect(() => {
-    fetchFilieres()
-  }, [fetchFilieres])
+  // Helper pour update optimiste du cache alertes (préserve les setAlertes originaux)
+  const updateAlertesCache = (updater: (prev: AlerteItem[]) => AlerteItem[]) => {
+    queryClient.setQueryData<{ alertes: AlerteItem[]; isUsingFallback: boolean }>(
+      alertesQueryKey,
+      (old) => ({
+        alertes: updater(old?.alertes ?? []),
+        isUsingFallback: old?.isUsingFallback ?? false,
+      }),
+    )
+  }
 
   // ─── Computed stats ───
   const totalCount = alertes.length
@@ -381,7 +385,7 @@ export function AlertesPage() {
   // ─── Mark as read ───
   const handleMarkAsRead = async (alerte: AlerteItem) => {
     if (isUsingFallback) {
-      setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
+      updateAlertesCache((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
       toast.success('Alerte marquée comme lue')
       return
     }
@@ -392,7 +396,7 @@ export function AlertesPage() {
         body: JSON.stringify({ lue: true }),
       })
       if (!res.ok) throw new Error('Erreur')
-      setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
+      updateAlertesCache((prev) => prev.map((a) => a.id === alerte.id ? { ...a, lue: true } : a))
       toast.success('Alerte marquée comme lue')
     } catch {
       toast.error('Erreur', { description: 'Impossible de marquer l\'alerte comme lue.' })
@@ -402,7 +406,7 @@ export function AlertesPage() {
   // ─── Mark as resolved ───
   const handleMarkAsResolved = async (alerte: AlerteItem) => {
     if (isUsingFallback) {
-      setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, resolu: true, lue: true } : a))
+      updateAlertesCache((prev) => prev.map((a) => a.id === alerte.id ? { ...a, resolu: true, lue: true } : a))
       toast.success('Alerte résolue')
       return
     }
@@ -413,7 +417,7 @@ export function AlertesPage() {
         body: JSON.stringify({ resolu: true, lue: true }),
       })
       if (!res.ok) throw new Error('Erreur')
-      setAlertes((prev) => prev.map((a) => a.id === alerte.id ? { ...a, resolu: true, lue: true } : a))
+      updateAlertesCache((prev) => prev.map((a) => a.id === alerte.id ? { ...a, resolu: true, lue: true } : a))
       toast.success('Alerte résolue')
     } catch {
       toast.error('Erreur', { description: 'Impossible de résoudre l\'alerte.' })
@@ -425,7 +429,7 @@ export function AlertesPage() {
     setBulkLoading(true)
     try {
       if (isUsingFallback) {
-        setAlertes((prev) => prev.map((a) => ({ ...a, lue: true })))
+        updateAlertesCache((prev) => prev.map((a) => ({ ...a, lue: true })))
         toast.success('Toutes les alertes marquées comme lues')
         return
       }
@@ -439,7 +443,7 @@ export function AlertesPage() {
           })
         )
       )
-      setAlertes((prev) => prev.map((a) => ({ ...a, lue: true })))
+      updateAlertesCache((prev) => prev.map((a) => ({ ...a, lue: true })))
       toast.success('Toutes les alertes marquées comme lues')
     } catch {
       toast.error('Erreur', { description: 'Impossible de marquer toutes les alertes comme lues.' })
@@ -453,7 +457,7 @@ export function AlertesPage() {
     setBulkLoading(true)
     try {
       if (isUsingFallback) {
-        setAlertes((prev) => prev.map((a) => ({ ...a, resolu: true, lue: true })))
+        updateAlertesCache((prev) => prev.map((a) => ({ ...a, resolu: true, lue: true })))
         toast.success('Toutes les alertes résolues')
         return
       }
@@ -467,7 +471,7 @@ export function AlertesPage() {
           })
         )
       )
-      setAlertes((prev) => prev.map((a) => ({ ...a, resolu: true, lue: true })))
+      updateAlertesCache((prev) => prev.map((a) => ({ ...a, resolu: true, lue: true })))
       toast.success('Toutes les alertes résolues')
     } catch {
       toast.error('Erreur', { description: 'Impossible de résoudre toutes les alertes.' })
@@ -512,7 +516,7 @@ export function AlertesPage() {
           epreuve: null,
           user: null,
         }
-        setAlertes((prev) => [newAlerte, ...prev])
+        updateAlertesCache((prev) => [newAlerte, ...prev])
         toast.success('Alerte créée')
       } else {
         const res = await fetch('/api/alertes', {
@@ -528,7 +532,7 @@ export function AlertesPage() {
         })
         if (!res.ok) throw new Error('Erreur')
         toast.success('Alerte créée')
-        await fetchAlertes()
+        await refreshAlertes()
       }
       setCreateDialogOpen(false)
       resetForm()

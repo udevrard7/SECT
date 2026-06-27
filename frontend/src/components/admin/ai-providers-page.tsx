@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Sparkles,
   Plus,
@@ -256,8 +257,7 @@ const EMPTY_FORM: ProviderFormData = {
 
 // ─── Main Component ───
 export function AIProvidersPage() {
-  const [providers, setProviders] = useState<AIProviderInfo[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -276,24 +276,36 @@ export function AIProvidersPage() {
   const hasAutoSeeded = useRef(false)
 
   // Failover state
-  const [failoverStatus, setFailoverStatus] = useState<FailoverStatus | null>(null)
-  const [isFailoverLoading, setIsFailoverLoading] = useState(true)
   const [isUpdatingFailoverConfig, setIsUpdatingFailoverConfig] = useState(false)
   const [isResettingHealth, setIsResettingHealth] = useState(false)
   const [isReordering, setIsReordering] = useState<string | null>(null)
   const [isEventsExpanded, setIsEventsExpanded] = useState(true)
 
-  // Fetch providers
-  const fetchProviders = useCallback(async () => {
-    try {
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Le polling du failover status est géré par refetchInterval
+  // (auto-cleanup au démontage, plus de fuite mémoire).
+  const providersQuery = useQuery<{ providers: AIProviderInfo[] }>({
+    queryKey: ['ai-providers'],
+    queryFn: async () => {
       const res = await fetch('/api/ai-providers')
       if (!res.ok) throw new Error('Erreur réseau')
-      const data = await res.json()
-      const fetched = data.providers || []
-      setProviders(fetched)
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-      if (fetched.length === 0 && !hasAutoSeeded.current) {
-        hasAutoSeeded.current = true
+  const providers = providersQuery.data?.providers ?? []
+  const isLoading = providersQuery.isLoading
+
+  // Auto-seed default provider if list is empty (one-shot via ref).
+  // Garde la logique métier d'origine : si aucun fournisseur n'existe, on crée
+  // automatiquement le Z-AI par défaut.
+  useEffect(() => {
+    if (providersQuery.data && providers.length === 0 && !hasAutoSeeded.current) {
+      hasAutoSeeded.current = true
+      void (async () => {
         try {
           const seedRes = await fetch('/api/ai-providers', {
             method: 'POST',
@@ -310,43 +322,44 @@ export function AIProvidersPage() {
             toast.success('Fournisseur par défaut créé', {
               description: 'Z-AI (par défaut) a été ajouté automatiquement',
             })
-            const refetch = await fetch('/api/ai-providers')
-            if (refetch.ok) {
-              const reData = await refetch.json()
-              setProviders(reData.providers || [])
-            }
+            queryClient.invalidateQueries({ queryKey: ['ai-providers'] })
           }
         } catch {
           // Silently fail
         }
-      }
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de charger les fournisseurs IA' })
-    } finally {
-      setIsLoading(false)
+      })()
     }
-  }, [])
+  }, [providersQuery.data, providers.length, queryClient])
 
-  // Fetch failover status
-  const fetchFailoverStatus = useCallback(async () => {
-    try {
+  // Toast sur erreur de chargement (équivalent du catch du fetch original).
+  useEffect(() => {
+    if (providersQuery.error) {
+      toast.error('Erreur', { description: 'Impossible de charger les fournisseurs IA' })
+    }
+  }, [providersQuery.error])
+
+  const failoverQuery = useQuery<FailoverStatus>({
+    queryKey: ['ai-providers-failover'],
+    queryFn: async () => {
       const res = await fetch('/api/ai-providers/failover/status')
       if (!res.ok) throw new Error('Erreur réseau')
-      const data = await res.json()
-      setFailoverStatus(data)
-    } catch {
-      // Failover is optional
-    } finally {
-      setIsFailoverLoading(false)
-    }
-  }, [])
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    // Polling 30s du failover status (auto-cleanup au démontage, plus de
+    // setInterval à nettoyer manuellement).
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  })
 
-  useEffect(() => {
-    fetchProviders()
-    fetchFailoverStatus()
-    const interval = setInterval(fetchFailoverStatus, 30_000)
-    return () => clearInterval(interval)
-  }, [fetchProviders, fetchFailoverStatus])
+  const failoverStatus = failoverQuery.data ?? null
+  const isFailoverLoading = failoverQuery.isLoading
+
+  // Helpers pour invalider le cache après mutation.
+  const refreshProviders = () => queryClient.invalidateQueries({ queryKey: ['ai-providers'] })
+  const refreshFailoverStatus = () =>
+    queryClient.invalidateQueries({ queryKey: ['ai-providers-failover'] })
 
   // Fetch dynamic models from a provider's API
   const fetchDynamicModels = useCallback(async (providerId: string) => {
@@ -381,7 +394,7 @@ export function AIProvidersPage() {
       toast.success('Modèle changé', {
         description: `Maintenant utiliser : ${model}`,
       })
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
     } finally {
@@ -432,7 +445,7 @@ export function AIProvidersPage() {
       toast.success('Fournisseur créé', { description: `"${formData.name}" a été ajouté` })
       setShowCreateDialog(false)
       setFormData(EMPTY_FORM)
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
     } finally {
@@ -477,7 +490,7 @@ export function AIProvidersPage() {
       toast.success('Fournisseur mis à jour', { description: `"${formData.name}" a été modifié` })
       setShowEditDialog(false)
       setSelectedProvider(null)
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
     } finally {
@@ -497,7 +510,7 @@ export function AIProvidersPage() {
       toast.success('Fournisseur supprimé', { description: `"${selectedProvider.name}" a été retiré` })
       setShowDeleteDialog(false)
       setSelectedProvider(null)
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
     }
@@ -516,7 +529,7 @@ export function AIProvidersPage() {
 
       const data = await res.json()
       toast.success('Fournisseur activé', { description: data.message })
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
     } finally {
@@ -541,7 +554,7 @@ export function AIProvidersPage() {
 
       const data = await res.json()
       toast.success('Fournisseur changé', { description: `Maintenant utiliser : ${target.name}` })
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Erreur inconnue' })
     } finally {
@@ -563,7 +576,7 @@ export function AIProvidersPage() {
       } else {
         toast.error('Échec du test', { description: data.message })
       }
-      fetchProviders()
+      refreshProviders()
     } catch (err) {
       toast.error('Erreur', { description: 'Impossible de tester le fournisseur' })
     } finally {
@@ -593,7 +606,7 @@ export function AIProvidersPage() {
 
     setTestingId(null)
     setIsTestingAll(false)
-    fetchProviders()
+    refreshProviders()
 
     const succeeded = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length
@@ -676,7 +689,7 @@ export function AIProvidersPage() {
             : 'Le basculement automatique est désactivé',
         }
       )
-      fetchFailoverStatus()
+      refreshFailoverStatus()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier la configuration' })
     } finally {
@@ -695,7 +708,7 @@ export function AIProvidersPage() {
       if (!res.ok) throw new Error('Erreur')
 
       toast.success('Configuration mise à jour')
-      fetchFailoverStatus()
+      refreshFailoverStatus()
     } catch {
       toast.error('Erreur', { description: 'Impossible de mettre à jour la configuration' })
     } finally {
@@ -733,7 +746,7 @@ export function AIProvidersPage() {
           ? `${providerList[idx].name} monté en priorité ${(idx + 1)}`
           : `${providerList[idx].name} descendu en priorité ${(idx + 1)}`,
       })
-      fetchFailoverStatus()
+      refreshFailoverStatus()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier l\'ordre' })
     } finally {
@@ -754,7 +767,7 @@ export function AIProvidersPage() {
       toast.success('Santé réinitialisée', {
         description: 'Tous les compteurs de santé ont été remis à zéro',
       })
-      fetchFailoverStatus()
+      refreshFailoverStatus()
     } catch {
       toast.error('Erreur', { description: 'Impossible de réinitialiser' })
     } finally {

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CreditCard,
   Plus,
@@ -299,12 +300,97 @@ function getAbonnementDates(periode: 'mensuel' | 'annuel'): { debut: string; fin
 
 export function AbonnementsPage() {
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
-  // ─── Data state ───
-  const [plans, setPlans] = useState<PlanItem[]>([])
-  const [abonnements, setAbonnements] = useState<AbonnementItem[]>([])
-  const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 4 ressources sont indépendantes → 4 useQuery séparés.
+  const plansQuery = useQuery<{ plans: PlanItem[] }>({
+    queryKey: ['plans'],
+    queryFn: async () => {
+      const res = await fetch('/api/plans')
+      if (!res.ok) throw new Error('Failed to fetch plans')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const abonnementsQuery = useQuery<{ abonnements: AbonnementItem[] }>({
+    queryKey: ['abonnements'],
+    queryFn: async () => {
+      const res = await fetch('/api/abonnements')
+      if (!res.ok) throw new Error('Failed to fetch abonnements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const etablissementsQuery = useQuery<{
+    etablissements: Array<{ id: string; nom: string; ville: string | null; actif: boolean }>
+  }>({
+    queryKey: ['etablissements'],
+    queryFn: async () => {
+      const res = await fetch('/api/etablissements')
+      if (!res.ok) throw new Error('Failed to fetch etablissements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const responsablesQuery = useQuery<{
+    users: Array<{
+      id: string
+      name: string
+      email: string
+      actif: boolean
+      etablissementId: string | null
+    }>
+  }>({
+    queryKey: ['users-responsables'],
+    queryFn: async () => {
+      const res = await fetch('/api/users?role=RESPONSABLE&limit=100')
+      if (!res.ok) throw new Error('Failed to fetch responsables')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const plans = plansQuery.data?.plans ?? []
+  const abonnements = abonnementsQuery.data?.abonnements ?? []
+  const etablissements = (etablissementsQuery.data?.etablissements ?? []).map((e) => ({
+    id: e.id,
+    nom: e.nom,
+    ville: e.ville,
+    actif: e.actif,
+  }))
+  const responsablesMap = useMemo(() => {
+    const respMap: Record<string, ResponsableInfo> = {}
+    for (const u of responsablesQuery.data?.users ?? []) {
+      if (u.etablissementId) {
+        respMap[u.etablissementId] = { id: u.id, name: u.name, email: u.email, actif: u.actif }
+      }
+    }
+    return respMap
+  }, [responsablesQuery.data])
+  const isLoading =
+    plansQuery.isLoading ||
+    abonnementsQuery.isLoading ||
+    etablissementsQuery.isLoading ||
+    responsablesQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/update/delete).
+  const refreshData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['plans'] }),
+      queryClient.invalidateQueries({ queryKey: ['abonnements'] }),
+      queryClient.invalidateQueries({ queryKey: ['etablissements'] }),
+      queryClient.invalidateQueries({ queryKey: ['users-responsables'] }),
+    ])
+  }
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
@@ -350,7 +436,6 @@ export function AbonnementsPage() {
   const [formPlanDescription, setFormPlanDescription] = useState('')
 
   // ─── Responsable state (for existing abonnement dialog) ───
-  const [responsablesMap, setResponsablesMap] = useState<Record<string, ResponsableInfo>>({})
   const [selectedEtabResponsable, setSelectedEtabResponsable] = useState<ResponsableInfo | null>(null)
   const [checkingResponsable, setCheckingResponsable] = useState(false)
   const [responsableMode, setResponsableMode] = useState<'invitation' | 'direct'>('invitation')
@@ -391,57 +476,6 @@ export function AbonnementsPage() {
   const [wizRespEmail, setWizRespEmail] = useState('')
   const [wizRespTelephone, setWizRespTelephone] = useState('')
   const [wizRespMode, setWizRespMode] = useState<'direct' | 'invitation'>('direct')
-
-  // ─── Fetch data ───
-  const fetchData = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const [plansRes, aboRes, etabRes, respRes] = await Promise.all([
-        fetch('/api/plans'),
-        fetch('/api/abonnements'),
-        fetch('/api/etablissements'),
-        fetch('/api/users?role=RESPONSABLE&limit=100'),
-      ])
-
-      if (plansRes.ok) {
-        const data = await plansRes.json()
-        setPlans(data.plans ?? [])
-      }
-      if (aboRes.ok) {
-        const data = await aboRes.json()
-        setAbonnements(data.abonnements ?? [])
-      }
-      if (etabRes.ok) {
-        const data = await etabRes.json()
-        setEtablissements(
-          (data.etablissements ?? []).map((e: { id: string; nom: string; ville: string | null; actif: boolean }) => ({
-            id: e.id,
-            nom: e.nom,
-            ville: e.ville,
-            actif: e.actif,
-          }))
-        )
-      }
-      if (respRes.ok) {
-        const data = await respRes.json()
-        const respMap: Record<string, ResponsableInfo> = {}
-        for (const u of data.users ?? []) {
-          if (u.etablissementId) {
-            respMap[u.etablissementId] = { id: u.id, name: u.name, email: u.email, actif: u.actif }
-          }
-        }
-        setResponsablesMap(respMap)
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   // ─── Check responsable when selected etablissement changes ───
   useEffect(() => {
@@ -608,7 +642,7 @@ export function AbonnementsPage() {
       }
 
       setWizardStep(4)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -725,7 +759,7 @@ export function AbonnementsPage() {
       }
 
       setAboDialogOpen(false)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',
@@ -749,7 +783,7 @@ export function AbonnementsPage() {
         description: `L'abonnement de ${suspendTarget.etablissement?.nom ?? "—"} a été suspendu.`,
       })
       setSuspendTarget(null)
-      await fetchData()
+      await refreshData()
     } catch {
       toast.error('Erreur', { description: 'Impossible de suspendre l\'abonnement.' })
     }
@@ -765,7 +799,7 @@ export function AbonnementsPage() {
         description: `L'abonnement de ${cancelTarget.etablissement?.nom ?? "—"} a été résilié.`,
       })
       setCancelTarget(null)
-      await fetchData()
+      await refreshData()
     } catch {
       toast.error('Erreur', { description: 'Impossible de résilier l\'abonnement.' })
     }
@@ -868,7 +902,7 @@ export function AbonnementsPage() {
         { description: editingPlan ? `Le plan ${formPlanNom} a été mis à jour.` : `Le plan ${formPlanNom} a été ajouté.` }
       )
       setPlanDialogOpen(false)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',
@@ -951,10 +985,7 @@ export function AbonnementsPage() {
         email: data.user.email,
         actif: true,
       })
-      setResponsablesMap((prev) => ({
-        ...prev,
-        [formAboEtabId]: { id: data.user.id, name: data.user.name, email: data.user.email, actif: true },
-      }))
+      queryClient.invalidateQueries({ queryKey: ['users-responsables'] })
       toast.success('Responsable créé', {
         description: `${formRespName} a été ajouté comme responsable.`,
       })

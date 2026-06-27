@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt,
   Plus,
@@ -253,12 +254,80 @@ const PIE_COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6b7280']
 
 export function FacturationPage() {
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
-  // ─── Data state ───
-  const [factures, setFactures] = useState<FactureItem[]>([])
-  const [abonnements, setAbonnements] = useState<AbonnementOption[]>([])
-  const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 3 ressources sont indépendantes → 3 useQuery séparés.
+  const facturesQuery = useQuery<{ factures: FactureItem[] }>({
+    queryKey: ['factures'],
+    queryFn: async () => {
+      const res = await fetch('/api/factures?limit=200')
+      if (!res.ok) throw new Error('Failed to fetch factures')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const abonnementsQuery = useQuery<{ abonnements: AbonnementOption[] }>({
+    queryKey: ['abonnements'],
+    queryFn: async () => {
+      const res = await fetch('/api/abonnements')
+      if (!res.ok) throw new Error('Failed to fetch abonnements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const etablissementsQuery = useQuery<{
+    etablissements: Array<{ id: string; nom: string; ville: string | null; actif: boolean }>
+  }>({
+    queryKey: ['etablissements'],
+    queryFn: async () => {
+      const res = await fetch('/api/etablissements')
+      if (!res.ok) throw new Error('Failed to fetch etablissements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const factures = facturesQuery.data?.factures ?? []
+  const abonnements = useMemo(
+    () =>
+      (abonnementsQuery.data?.abonnements ?? []).map((a) => ({
+        id: a.id,
+        etablissementId: a.etablissementId,
+        statut: a.statut,
+        plan: a.plan,
+        etablissement: a.etablissement,
+        dateFin: a.dateFin,
+      })),
+    [abonnementsQuery.data],
+  )
+  const etablissements = useMemo(
+    () =>
+      (etablissementsQuery.data?.etablissements ?? []).map((e) => ({
+        id: e.id,
+        nom: e.nom,
+        ville: e.ville,
+        actif: e.actif,
+      })),
+    [etablissementsQuery.data],
+  )
+  const isLoading =
+    facturesQuery.isLoading || abonnementsQuery.isLoading || etablissementsQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/pay/cancel).
+  const refreshData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['factures'] }),
+      queryClient.invalidateQueries({ queryKey: ['abonnements'] }),
+      queryClient.invalidateQueries({ queryKey: ['etablissements'] }),
+    ])
+  }
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
@@ -285,62 +354,6 @@ export function FacturationPage() {
   // ─── Pay form state ───
   const [formModePaiement, setFormModePaiement] = useState('')
   const [formReferencePaiement, setFormReferencePaiement] = useState('')
-
-  // ─── Fetch data ───
-  const fetchData = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const [facturesRes, aboRes, etabRes] = await Promise.all([
-        fetch('/api/factures?limit=200'),
-        fetch('/api/abonnements'),
-        fetch('/api/etablissements'),
-      ])
-
-      if (facturesRes.ok) {
-        const data = await facturesRes.json()
-        setFactures(data.factures ?? [])
-      }
-      if (aboRes.ok) {
-        const data = await aboRes.json()
-        setAbonnements(
-          (data.abonnements ?? []).map((a: {
-            id: string
-            etablissementId: string
-            statut: string
-            plan: { id: string; nom: string; type: string; prixMensuel: number }
-            etablissement: { id: string; nom: string; ville: string | null }
-            dateFin: string | null
-          }) => ({
-            id: a.id,
-            etablissementId: a.etablissementId,
-            statut: a.statut,
-            plan: a.plan,
-            etablissement: a.etablissement,
-            dateFin: a.dateFin,
-          }))
-        )
-      }
-      if (etabRes.ok) {
-        const data = await etabRes.json()
-        setEtablissements(
-          (data.etablissements ?? []).map((e: { id: string; nom: string; ville: string | null; actif: boolean }) => ({
-            id: e.id,
-            nom: e.nom,
-            ville: e.ville,
-            actif: e.actif,
-          }))
-        )
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   // ─── KPI Stats ───
   const stats = useMemo(() => {
@@ -673,7 +686,7 @@ export function FacturationPage() {
         description: 'La nouvelle facture a été ajoutée avec succès.',
       })
       setCreateDialogOpen(false)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',
@@ -739,7 +752,7 @@ export function FacturationPage() {
       })
       setPayDialogOpen(false)
       setPayTarget(null)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de marquer la facture comme payée.',
@@ -763,7 +776,7 @@ export function FacturationPage() {
       })
       setCancelDialogOpen(false)
       setCancelTarget(null)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'annuler la facture.',

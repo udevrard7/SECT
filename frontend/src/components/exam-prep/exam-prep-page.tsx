@@ -21,7 +21,8 @@
  * mes-resultats.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -67,34 +68,31 @@ export function ExamPrepPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
-  const [documents, setDocuments] = useState<ExamPrepDocument[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get('documentId')
   )
   const [readerDocumentId, setReaderDocumentId] = useState<string | null>(null)
 
-  // ─── Fetch documents ───
-  const fetchDocuments = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
+  // ─── Fetch documents (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  const documentsQuery = useQuery<{ documents: ExamPrepDocument[] }>({
+    queryKey: ['exam-prep-documents'],
+    queryFn: async () => {
       const res = await fetch('/api/exam-prep/documents')
-      if (!res.ok) throw new Error()
+      if (!res.ok) throw new Error('Failed to fetch documents')
       const data = await res.json()
-      setDocuments(data.documents ?? [])
-    } catch {
-      setError('Impossible de charger vos supports de cours.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      return { documents: data.documents ?? [] }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchDocuments()
-  }, [fetchDocuments])
+  const documents = documentsQuery.data?.documents ?? []
+  const loading = documentsQuery.isLoading
+  const error = documentsQuery.error ? 'Impossible de charger vos supports de cours.' : null
+  const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['exam-prep-documents'] })
 
   // Synchronise ?documentId dans l'URL (pour partage/refresh).
   // Utilise router.replace (Next.js) plutôt que window.history.replaceState
@@ -146,7 +144,7 @@ export function ExamPrepPage() {
           </div>
           <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={fetchDocuments}>
+          <Button variant="outline" size="sm" className="mt-4" onClick={refreshDocuments}>
             Réessayer
           </Button>
         </CardContent>

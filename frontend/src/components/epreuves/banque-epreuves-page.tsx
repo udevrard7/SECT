@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Library,
   Search,
@@ -143,10 +144,10 @@ function formatDate(date: string | Date): string {
 export function BanqueEpreuvesPage() {
   const user = useAuthStore((s) => s.user)
   const router = useRouter()
+  const queryClient = useQueryClient()
 
   // Data state
-  const [epreuves, setEpreuves] = useState<BanqueEpreuve[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // (Migration useEffect+fetch → useQuery. Voir plus bas.)
 
   // Filter state
   const [search, setSearch] = useState('')
@@ -170,30 +171,37 @@ export function BanqueEpreuvesPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  // Fetch epreuves from banque
-  const fetchBanque = useCallback(async () => {
-    if (!user?.id) return
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams({ enseignantId: user.id })
+  // ─── Fetch epreuves from banque (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+  // 0 refetch au retour navigation. staleTime 60s.
+  const epreuvesQuery = useQuery<{ epreuves: BanqueEpreuve[] }>({
+    queryKey: ['banque-epreuves', user?.id, debouncedSearch, modeFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ enseignantId: user!.id })
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (modeFilter !== 'TOUS') params.set('generationMode', modeFilter)
 
       const res = await fetch(`/api/epreuves/banque?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setEpreuves(data.epreuves ?? [])
-      }
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de charger la banque d\'épreuves.' })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user?.id, debouncedSearch, modeFilter])
+      if (!res.ok) throw new Error('Failed to fetch banque epreuves')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
+  const epreuves = epreuvesQuery.data?.epreuves ?? []
+  const isLoading = epreuvesQuery.isLoading
+
+  // Toast d'erreur (préserve le comportement original : toast sur erreur fetch)
   useEffect(() => {
-    fetchBanque()
-  }, [fetchBanque])
+    if (epreuvesQuery.error) {
+      toast.error('Erreur', { description: 'Impossible de charger la banque d\'épreuves.' })
+    }
+  }, [epreuvesQuery.error])
+
+  // Helper pour invalider le cache après mutation (delete/duplicate)
+  const refreshBanque = () => queryClient.invalidateQueries({ queryKey: ['banque-epreuves', user?.id] })
 
   // Toggle expanded question
   const toggleExpand = (id: string) => {
@@ -225,7 +233,7 @@ export function BanqueEpreuvesPage() {
         description: `"${deleteTarget.titre}" a été supprimée de la banque.`,
       })
       setDeleteTarget(null)
-      await fetchBanque()
+      refreshBanque()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'épreuve.' })
     }
@@ -267,7 +275,7 @@ export function BanqueEpreuvesPage() {
         description: `"${duplicateTitre}" a été ajoutée à la banque.`,
       })
       setDuplicateTarget(null)
-      await fetchBanque()
+      refreshBanque()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de dupliquer l\'épreuve.' })
     } finally {

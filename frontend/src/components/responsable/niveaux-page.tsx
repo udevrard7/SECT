@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Layers,
   Plus,
@@ -261,12 +262,10 @@ function getCoverageBadge(rate: number) {
 
 export function NiveauxPage() {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
 
   // ─── Data state ───
-  const [filieres, setFilieres] = useState<FiliereItem[]>([])
-  const [ues, setUEs] = useState<UEItem[]>([])
-  const [affectations, setAffectations] = useState<AffectationItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // (Migration useEffect+fetch → useQuery. Voir plus bas.)
 
   // ─── Dialog state ───
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -288,70 +287,70 @@ export function NiveauxPage() {
   const [addUEVolumeTD, setAddUEVolumeTD] = useState('0')
   const [addUEVolumeTP, setAddUEVolumeTP] = useState('0')
 
-  // ─── Fetch filieres ───
-  const fetchFilieres = useCallback(async () => {
-    try {
+  // ─── Fetch filieres (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Les 3 requêtes (filieres, ues,
+  // affectations) remplaçaient fetchAllData (Promise.all). Le cache survit
+  // au démontage : 0 refetch au retour navigation. staleTime 60s.
+  const etabId = user?.etablissementId || user?.etablissement?.id
+
+  const filieresQuery = useQuery<{ filieres: FiliereItem[] }>({
+    queryKey: ['niveaux-filieres', etabId],
+    queryFn: async () => {
       const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
       if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/filieres?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres(
-          (data.filieres ?? []).map((f: FiliereItem) => ({
-            id: f.id,
-            nom: f.nom,
-            code: f.code ?? null,
-          }))
-        )
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      const data = await res.json()
+      const filieres: FiliereItem[] = (data.filieres ?? []).map((f: FiliereItem) => ({
+        id: f.id,
+        nom: f.nom,
+        code: f.code ?? null,
+      }))
+      return { filieres }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch UEs ───
-  const fetchUEs = useCallback(async () => {
-    try {
+  // ─── Fetch UEs (TanStack Query) ───
+  const uesQuery = useQuery<{ unitesEnseignement: UEItem[] }>({
+    queryKey: ['niveaux-ues', etabId],
+    queryFn: async () => {
       const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
       if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUEs(data.unitesEnseignement ?? [])
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
+      if (!res.ok) throw new Error('Failed to fetch UEs')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch affectations ───
-  const fetchAffectations = useCallback(async () => {
-    try {
+  // ─── Fetch affectations (TanStack Query) ───
+  const affectationsQuery = useQuery<{ affectations: AffectationItem[] }>({
+    queryKey: ['niveaux-affectations', etabId],
+    queryFn: async () => {
       const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
       if (etabId) params.set('etablissementId', etabId)
       const res = await fetch(`/api/affectations?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setAffectations(data.affectations ?? [])
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
+      if (!res.ok) throw new Error('Failed to fetch affectations')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch all data ───
-  const fetchAllData = useCallback(async () => {
-    setIsLoading(true)
-    await Promise.all([fetchFilieres(), fetchUEs(), fetchAffectations()])
-    setIsLoading(false)
-  }, [fetchFilieres, fetchUEs, fetchAffectations])
+  const filieres = filieresQuery.data?.filieres ?? []
+  const ues = uesQuery.data?.unitesEnseignement ?? []
+  const affectations = affectationsQuery.data?.affectations ?? []
+  const isLoading = filieresQuery.isLoading || uesQuery.isLoading || affectationsQuery.isLoading
 
-  useEffect(() => {
-    fetchAllData()
-  }, [fetchAllData])
+  // Helper pour invalider le cache après mutation (create UE, etc.)
+  const refreshAllData = () => {
+    queryClient.invalidateQueries({ queryKey: ['niveaux-filieres'] })
+    queryClient.invalidateQueries({ queryKey: ['niveaux-ues'] })
+    queryClient.invalidateQueries({ queryKey: ['niveaux-affectations'] })
+  }
 
   // ─── Compute niveau statistics ───
   const niveauStats = useMemo((): NiveauStats[] => {
@@ -499,7 +498,7 @@ export function NiveauxPage() {
         description: `${addUENom} a été ajoutée au niveau ${addNiveau}.`,
       })
       setAddDialogOpen(false)
-      await fetchAllData()
+      refreshAllData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',

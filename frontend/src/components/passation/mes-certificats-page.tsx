@@ -33,7 +33,8 @@
  * impression, batch ZIP, filtres, recherche) — seule la présentation change.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Award, Shield, FileText, CheckCircle2, XCircle, Clock,
@@ -276,10 +277,7 @@ function CertificatCard({
 
 export function MesCertificatsPage() {
   const { user } = useAuthStore()
-  const [certificats, setCertificats] = useState<Certificat[]>([])
-  const [validations, setValidations] = useState<ValidationUE[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape')
   const [activeTab, setActiveTab] = useState('certificats')
@@ -287,13 +285,11 @@ export function MesCertificatsPage() {
   const [typeFilter, setTypeFilter] = useState<CertificatType | 'all'>('all')
   const [isBatchDownloading, setIsBatchDownloading] = useState(false)
 
-  // ─── Fetch ───
-
-  const fetchData = useCallback(async () => {
-    if (!user?.id) return
-    setLoading(true)
-    setError(null)
-    try {
+  // ─── Fetch (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  const dataQuery = useQuery<{ certificats: Certificat[]; validations: ValidationUE[] }>({
+    queryKey: ['mes-certificats', user?.id],
+    queryFn: async () => {
       // Re-synchronise les validations (calcul côté serveur) avant lecture
       await fetch('/api/validations-ue', {
         method: 'POST',
@@ -352,16 +348,18 @@ export function MesCertificatsPage() {
         })
       }
 
-      setCertificats(certs)
-      setValidations(vals)
-    } catch {
-      setError('Impossible de charger vos certificats.')
-    } finally {
-      setLoading(false)
-    }
-  }, [user?.id])
+      return { certificats: certs, validations: vals }
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => { fetchData() }, [fetchData])
+  const certificats = dataQuery.data?.certificats ?? []
+  const validations = dataQuery.data?.validations ?? []
+  const loading = dataQuery.isLoading
+  const error = dataQuery.error ? 'Impossible de charger vos certificats.' : null
+  const refreshData = () => queryClient.invalidateQueries({ queryKey: ['mes-certificats', user?.id] })
 
   // ─── Stats ───
 
@@ -501,7 +499,7 @@ export function MesCertificatsPage() {
           </div>
           <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4 gap-2 ds-press" onClick={fetchData}>
+          <Button variant="outline" size="sm" className="mt-4 gap-2 ds-press" onClick={refreshData}>
             <RotateCw className="h-4 w-4" /> Réessayer
           </Button>
         </CardContent>

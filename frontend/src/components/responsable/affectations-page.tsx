@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   UserCheck,
   Plus,
@@ -195,13 +196,8 @@ const TYPE_STYLES: Record<string, { checked: string; unchecked: string }> = {
 
 export function AffectationsPage() {
   const user = useAuthStore((s) => s.user)
-
-  // ─── Data state ───
-  const [affectations, setAffectations] = useState<AffectationItem[]>([])
-  const [unitesEnseignement, setUnitesEnseignement] = useState<UEItem[]>([])
-  const [enseignants, setEnseignants] = useState<EnseignantOption[]>([])
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const etabId = user?.etablissementId || user?.etablissement?.id
 
   // ─── Filter state ───
   const [filiereFilter, setFiliereFilter] = useState('all')
@@ -213,6 +209,103 @@ export function AffectationsPage() {
   // ─── Matrix filter state ───
   const [matrixFiliereFilter, setMatrixFiliereFilter] = useState('all')
   const [matrixNiveauFilter, setMatrixNiveauFilter] = useState('all')
+
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 4 ressources sont indépendantes → 4 useQuery séparés.
+  // Les filtres d'affectations sont dans le queryKey pour refetch automatique.
+  const affectationsQuery = useQuery<{ affectations: AffectationItem[] }>({
+    queryKey: ['affectations', etabId, filiereFilter, niveauFilter, statutFilter, anneeFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('etablissementId', etabId!)
+      if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
+      if (niveauFilter !== 'all') params.set('niveau', niveauFilter)
+      if (statutFilter !== 'all') params.set('statut', statutFilter)
+      if (anneeFilter) params.set('anneeUniversitaire', anneeFilter)
+
+      const res = await fetch(`/api/affectations?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch affectations')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const filieresQuery = useQuery<{ filieres: FiliereOption[] }>({
+    queryKey: ['filieres', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etabId) params.set('etablissementId', etabId)
+      const res = await fetch(`/api/filieres?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const uesQuery = useQuery<{ unitesEnseignement: UEItem[] }>({
+    queryKey: ['affectations-ues', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('etablissementId', etabId!)
+      params.set('actif', 'true')
+      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch UEs')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const enseignantsQuery = useQuery<{
+    users: Array<{ id: string; name: string; email: string }>
+  }>({
+    queryKey: ['affectations-enseignants', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('role', 'ENSEIGNANT')
+      params.set('limit', '200')
+      params.set('actif', 'true')
+      params.set('etablissementId', etabId!)
+      const res = await fetch(`/api/users?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch enseignants')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const affectations = affectationsQuery.data?.affectations ?? []
+  const filieres = useMemo(
+    () =>
+      (filieresQuery.data?.filieres ?? []).map((f) => ({
+        id: f.id,
+        nom: f.nom,
+        code: f.code ?? null,
+      })),
+    [filieresQuery.data],
+  )
+  const unitesEnseignement = uesQuery.data?.unitesEnseignement ?? []
+  const enseignants = useMemo(
+    () =>
+      (enseignantsQuery.data?.users ?? []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+      })),
+    [enseignantsQuery.data],
+  )
+  const isLoading = affectationsQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/update/delete/validate).
+  const refreshAffectations = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['affectations'] })
+  }
 
   // ─── Dialog state ───
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -243,111 +336,6 @@ export function AffectationsPage() {
 
   // ─── Batch validate state ───
   const [isBatchValidating, setIsBatchValidating] = useState(false)
-
-  // ─── Fetch filieres ───
-  const fetchFilieres = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      const res = await fetch(`/api/filieres?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres((data.filieres ?? []).map((f: FiliereOption) => ({
-          id: f.id,
-          nom: f.nom,
-          code: f.code ?? null,
-        })))
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  // ─── Fetch affectations ───
-  const fetchAffectations = useCallback(async () => {
-    const etabId = user?.etablissementId || user?.etablissement?.id
-    if (!etabId) return
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.set('etablissementId', etabId)
-      if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
-      if (niveauFilter !== 'all') params.set('niveau', niveauFilter)
-      if (statutFilter !== 'all') params.set('statut', statutFilter)
-      if (anneeFilter) params.set('anneeUniversitaire', anneeFilter)
-
-      const res = await fetch(`/api/affectations?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setAffectations(data.affectations ?? [])
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user?.etablissementId, user?.etablissement?.id, filiereFilter, niveauFilter, statutFilter, anneeFilter])
-
-  // ─── Fetch UE list ───
-  const fetchUEs = useCallback(async () => {
-    const etabId = user?.etablissementId || user?.etablissement?.id
-    if (!etabId) return
-    try {
-      const params = new URLSearchParams()
-      params.set('etablissementId', etabId)
-      params.set('actif', 'true')
-
-      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUnitesEnseignement(data.unitesEnseignement ?? [])
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  // ─── Fetch enseignants ───
-  const fetchEnseignants = useCallback(async () => {
-    const etabId = user?.etablissementId || user?.etablissement?.id
-    if (!etabId) return
-    try {
-      const params = new URLSearchParams()
-      params.set('role', 'ENSEIGNANT')
-      params.set('limit', '200')
-      params.set('actif', 'true')
-      params.set('etablissementId', etabId)
-
-      const res = await fetch(`/api/users?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setEnseignants((data.users ?? []).map((u: { id: string; name: string; email: string }) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-        })))
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  useEffect(() => {
-    fetchFilieres()
-  }, [fetchFilieres])
-
-  useEffect(() => {
-    fetchAffectations()
-  }, [fetchAffectations])
-
-  useEffect(() => {
-    fetchUEs()
-  }, [fetchUEs])
-
-  useEffect(() => {
-    fetchEnseignants()
-  }, [fetchEnseignants])
 
   // ─── Filtered enseignants for select ───
   const filteredEnseignants = useMemo(() => {
@@ -592,7 +580,7 @@ export function AffectationsPage() {
           description: `${succeeded} affectation(s) ajoutée(s) avec succès.${failed > 0 ? ` ${failed} en échec.` : ''}`,
         })
         setAddDialogOpen(false)
-        await fetchAffectations()
+        await refreshAffectations()
       } else {
         toast.error('Erreur', { description: 'Aucune affectation n\'a pu être créée.' })
       }
@@ -643,7 +631,7 @@ export function AffectationsPage() {
       toast.success('Affectation modifiée', { description: 'Les modifications ont été enregistrées.' })
       setEditDialogOpen(false)
       setEditingAffectation(null)
-      await fetchAffectations()
+      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -668,7 +656,7 @@ export function AffectationsPage() {
         description: `${confirmAction.affectation.enseignant.name} → ${confirmAction.affectation.uniteEnseignement.nom}`,
       })
       setConfirmAction(null)
-      await fetchAffectations()
+      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
@@ -691,7 +679,7 @@ export function AffectationsPage() {
         description: `${confirmAction.affectation.enseignant.name} → ${confirmAction.affectation.uniteEnseignement.nom}`,
       })
       setConfirmAction(null)
-      await fetchAffectations()
+      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
@@ -712,7 +700,7 @@ export function AffectationsPage() {
         description: 'L\'affectation a été supprimée avec succès.',
       })
       setConfirmAction(null)
-      await fetchAffectations()
+      await refreshAffectations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
@@ -739,7 +727,7 @@ export function AffectationsPage() {
         toast.success('Validation en lot', {
           description: `${succeeded} affectation(s) validée(s).${failed > 0 ? ` ${failed} en échec.` : ''}`,
         })
-        await fetchAffectations()
+        await refreshAffectations()
       } else {
         toast.error('Erreur', { description: 'Aucune affectation n\'a pu être validée.' })
       }

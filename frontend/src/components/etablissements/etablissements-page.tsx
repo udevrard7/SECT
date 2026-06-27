@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Building2,
   Search,
@@ -158,10 +159,10 @@ function getRoleBadge(role: string) {
 
 export function EtablissementsPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
 
   // ─── Data state ───
-  const [etablissements, setEtablissements] = useState<EtablissementItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // (Migration useEffect+fetch → useQuery. Voir plus bas.)
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
@@ -192,29 +193,30 @@ export function EtablissementsPage() {
   const [formExempleMatricule, setFormExempleMatricule] = useState('')
   const [formRegexMatricule, setFormRegexMatricule] = useState('')
 
-  // ─── Fetch etablissements ───
-  const fetchEtablissements = useCallback(async () => {
-    setIsLoading(true)
-    try {
+  // ─── Fetch etablissements (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+  // 0 refetch au retour navigation. staleTime 60s. Le filtrage se fait côté
+  // serveur (queryKey inclut search + typeFilter).
+  const etablissementsQuery = useQuery<{ etablissements: EtablissementItem[] }>({
+    queryKey: ['etablissements', search, typeFilter],
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter)
 
       const res = await fetch(`/api/etablissements?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setEtablissements(data.etablissements ?? [])
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [search, typeFilter])
+      if (!res.ok) throw new Error('Failed to fetch etablissements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchEtablissements()
-  }, [fetchEtablissements])
+  const etablissements = etablissementsQuery.data?.etablissements ?? []
+  const isLoading = etablissementsQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/update/delete/toggle)
+  const refreshEtablissements = () => queryClient.invalidateQueries({ queryKey: ['etablissements'] })
 
   // ─── Stats ───
   const totalEtab = etablissements.length
@@ -273,7 +275,7 @@ export function EtablissementsPage() {
       }
       toast.success('Établissement modifié', { description: `${formNom} a été mis à jour.` })
       setEditDialogOpen(false)
-      await fetchEtablissements()
+      refreshEtablissements()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -291,7 +293,7 @@ export function EtablissementsPage() {
       })
       if (!res.ok) throw new Error('Erreur')
       toast.success(etab.actif ? 'Établissement désactivé' : 'Établissement activé')
-      await fetchEtablissements()
+      refreshEtablissements()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
     }
@@ -305,7 +307,7 @@ export function EtablissementsPage() {
       if (!res.ok) throw new Error('Erreur')
       toast.success('Établissement supprimé')
       setDeleteTarget(null)
-      await fetchEtablissements()
+      refreshEtablissements()
     } catch {
       toast.error('Erreur', { description: 'Impossible de supprimer l\'établissement.' })
     }

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BookOpen,
   Users,
@@ -248,18 +249,106 @@ function getNiveauBadgeColor(niveau: string): string {
 
 export function EnseignantsPage() {
   const user = useAuthStore((s) => s.user)
-
-  // ─── Data state ───
-  const [enseignants, setEnseignants] = useState<EnseignantItem[]>([])
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
-  const [assignments, setAssignments] = useState<EnseignantFiliereItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [pendingInvitations, setPendingInvitations] = useState<InvitationItem[]>([])
+  const queryClient = useQueryClient()
+  const etabId = user?.etablissementId || user?.etablissement?.id
 
   // ─── Filter state ───
   const [search, setSearch] = useState('')
   const [filiereFilter, setFiliereFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  // ─── Debounced search state ───
+  const [searchDebounced, setSearchDebounced] = useState('')
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 4 ressources sont indépendantes → 4 useQuery séparés.
+  // Les filtres search/status sont dans le queryKey de enseignants pour
+  // refetch automatique quand le debounced search change.
+  const enseignantsQuery = useQuery<{ users: EnseignantItem[] }>({
+    queryKey: ['enseignants', etabId, searchDebounced, statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('role', 'ENSEIGNANT')
+      params.set('limit', '200')
+      if (etabId) params.set('etablissementId', etabId)
+      if (searchDebounced) params.set('search', searchDebounced)
+      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+
+      const res = await fetch(`/api/users?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch enseignants')
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const filieresQuery = useQuery<{ filieres: FiliereOption[] }>({
+    queryKey: ['enseignants-filieres', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etabId) params.set('etablissementId', etabId)
+      const res = await fetch(`/api/filieres?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const assignmentsQuery = useQuery<{ assignments: EnseignantFiliereItem[] }>({
+    queryKey: ['enseignant-filieres', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etabId) params.set('etablissementId', etabId)
+      const res = await fetch(`/api/enseignant-filieres?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch assignments')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const invitationsQuery = useQuery<{ invitations: InvitationItem[] }>({
+    queryKey: ['enseignant-invitations', user?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('createdById', user!.id)
+      params.set('used', 'false')
+      params.set('limit', '50')
+      const res = await fetch(`/api/invitations?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch invitations')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const enseignants = enseignantsQuery.data?.users ?? []
+  const filieres = useMemo(
+    () =>
+      (filieresQuery.data?.filieres ?? []).map((f) => ({
+        id: f.id,
+        nom: f.nom,
+        code: f.code ?? null,
+      })),
+    [filieresQuery.data],
+  )
+  const assignments = assignmentsQuery.data?.assignments ?? []
+  const pendingInvitations = useMemo(
+    () => (invitationsQuery.data?.invitations ?? []).filter((inv) => inv.role === 'ENSEIGNANT'),
+    [invitationsQuery.data],
+  )
+  const isLoading = enseignantsQuery.isLoading
+
+  // Helpers pour invalider le cache après mutation (create/update/delete/invite).
+  const refreshEnseignants = () => queryClient.invalidateQueries({ queryKey: ['enseignants'] })
+  const refreshAssignments = () => queryClient.invalidateQueries({ queryKey: ['enseignant-filieres'] })
+  const refreshPendingInvitations = () =>
+    queryClient.invalidateQueries({ queryKey: ['enseignant-invitations'] })
 
   // ─── Dialog state ───
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -301,10 +390,6 @@ export function EnseignantsPage() {
   const [cancelInvitationTarget, setCancelInvitationTarget] = useState<InvitationItem | null>(null)
   const [isResending, setIsResending] = useState<string | null>(null)
 
-  // ─── Debounced search state ───
-  const [searchDebounced, setSearchDebounced] = useState('')
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   // ─── View mode state ───
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
 
@@ -326,107 +411,6 @@ export function EnseignantsPage() {
     acc[a.enseignantId].push(a)
     return acc
   }, {})
-
-  // ─── Fetch filieres for this responsable ───
-  const fetchFilieres = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      const res = await fetch(`/api/filieres?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        const filieresData = (data.filieres ?? []).map((f: FiliereOption & { code?: string | null }) => ({
-          id: f.id,
-          nom: f.nom,
-          code: f.code ?? null,
-        }))
-        setFilieres(filieresData)
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  // ─── Fetch teachers ───
-  const fetchEnseignants = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.set('role', 'ENSEIGNANT')
-      params.set('limit', '200')
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      if (searchDebounced) params.set('search', searchDebounced)
-      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
-
-      const res = await fetch(`/api/users?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        const users = (data.users ?? []) as EnseignantItem[]
-        setEnseignants(users)
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user?.etablissementId, user?.etablissement?.id, searchDebounced, statusFilter])
-
-  // ─── Fetch assignments ───
-  const fetchAssignments = useCallback(async () => {
-    if (!user?.etablissementId && !user?.etablissement?.id) return
-    try {
-      const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      const res = await fetch(`/api/enseignant-filieres?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setAssignments(data.assignments ?? [])
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  // ─── Fetch pending invitations ───
-  const fetchPendingInvitations = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const params = new URLSearchParams()
-      params.set('createdById', user.id)
-      params.set('used', 'false')
-      params.set('limit', '50')
-      const res = await fetch(`/api/invitations?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        // Filter to only ENSEIGNANT invitations
-        const enseignantInvitations = (data.invitations ?? []).filter(
-          (inv: InvitationItem) => inv.role === 'ENSEIGNANT'
-        )
-        setPendingInvitations(enseignantInvitations)
-      }
-    } catch {
-      // Silent
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    fetchFilieres()
-  }, [fetchFilieres])
-
-  useEffect(() => {
-    fetchEnseignants()
-  }, [fetchEnseignants])
-
-  useEffect(() => {
-    fetchAssignments()
-  }, [fetchAssignments])
-
-  useEffect(() => {
-    fetchPendingInvitations()
-  }, [fetchPendingInvitations])
 
   // ─── Filtered enseignants: show all teachers from the établissement ───
   const filteredEnseignants = enseignants.filter((e) => {
@@ -546,7 +530,7 @@ export function EnseignantsPage() {
 
       setInvitationTokenLink(`/api/invitations/verify?token=${token}`)
       toast.success('Invitation envoyée', { description: `Une invitation a été envoyée à ${addEmail}` })
-      await fetchPendingInvitations()
+      await refreshPendingInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -617,8 +601,8 @@ export function EnseignantsPage() {
       setDirectCreationResult({ email: addEmail, tempPassword: temporaryPassword })
       setDirectResultDialogOpen(true)
       setAddDialogOpen(false)
-      await fetchAssignments()
-      await fetchEnseignants()
+      await refreshAssignments()
+      await refreshEnseignants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -666,7 +650,7 @@ export function EnseignantsPage() {
       toast.success('Enseignant modifié', { description: `${editName} a été mis à jour.` })
       setEditDialogOpen(false)
       setEditingEnseignant(null)
-      await fetchEnseignants()
+      await refreshEnseignants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -690,7 +674,7 @@ export function EnseignantsPage() {
           ? `${enseignant.name} est maintenant archivé. Ses données sont préservées, il reste dans l'établissement mais est marqué comme inactif.`
           : `${enseignant.name} est de nouveau actif.`,
       })
-      await fetchEnseignants()
+      await refreshEnseignants()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
     }
@@ -747,7 +731,7 @@ export function EnseignantsPage() {
       })
       setNewAssignmentFiliereId('')
       setNewAssignmentNiveau('')
-      await fetchAssignments()
+      await refreshAssignments()
       // Refresh teacher assignments
       const updatedAssigns = await (async () => {
         const params = new URLSearchParams()
@@ -789,7 +773,7 @@ export function EnseignantsPage() {
         description: `${deleteAssignmentTarget.niveau}-${deleteAssignmentTarget.filiere?.nom ?? '—'} supprimée.`,
       })
       setDeleteAssignmentTarget(null)
-      await fetchAssignments()
+      await refreshAssignments()
       // Refresh teacher assignments
       const params = new URLSearchParams()
       params.set('enseignantId', assignmentEnseignant.id)
@@ -857,7 +841,7 @@ export function EnseignantsPage() {
         })
       }
 
-      await fetchEnseignants()
+      await refreshEnseignants()
     } catch (err) {
       toast.error('Erreur d\'import', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -931,7 +915,7 @@ export function EnseignantsPage() {
       const newToken = data.token as string
       setInvitationTokenLink(`/api/invitations/verify?token=${newToken}`)
 
-      await fetchPendingInvitations()
+      await refreshPendingInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de renvoyer l\'invitation.' })
     } finally {
@@ -959,7 +943,7 @@ export function EnseignantsPage() {
         description: `L'invitation pour ${cancelInvitationTarget.email} a été annulée.`,
       })
       setCancelInvitationTarget(null)
-      await fetchPendingInvitations()
+      await refreshPendingInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible d\'annuler l\'invitation.' })
     }
@@ -1004,7 +988,7 @@ export function EnseignantsPage() {
         next.delete(target.id)
         return next
       })
-      await fetchEnseignants()
+      await refreshEnseignants()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'enseignant.' })
     } finally {
@@ -1063,7 +1047,7 @@ export function EnseignantsPage() {
       }
       setBulkActionDialog(null)
       setSelectedIds(new Set())
-      await fetchEnseignants()
+      await refreshEnseignants()
     } catch {
       toast.error('Erreur', { description: 'Impossible d\'exécuter l\'action en masse.' })
     } finally {

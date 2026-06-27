@@ -18,7 +18,8 @@
  * tokens oklch, framer-motion, font-mono tabular-nums.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Users, Search, Download, Loader2, GraduationCap, Mail, Clock,
@@ -52,13 +53,36 @@ const NIVEAU_LABELS: Record<string, string> = {
 
 export function MesEtudiantsPage() {
   const { user } = useAuthStore()
-  const [etudiants, setEtudiants] = useState<Etudiant[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [filiereFilter, setFiliereFilter] = useState('')
   const [niveauFilter, setNiveauFilter] = useState('')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // Le queryKey inclut les filtres car l'API les prend en query params → refetch
+  // automatique quand un filtre change.
+  const etudiantsQuery = useQuery<{ etudiants: Etudiant[] }>({
+    queryKey: ['mes-etudiants', user?.id, search, filiereFilter, niveauFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      if (filiereFilter) params.set('filiereId', filiereFilter)
+      if (niveauFilter) params.set('niveau', niveauFilter)
+      const res = await fetch(`/api/enseignant/etudiants?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch etudiants')
+      const data = await res.json()
+      return { etudiants: data.etudiants ?? [] }
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const etudiants = etudiantsQuery.data?.etudiants ?? []
+  const loading = etudiantsQuery.isLoading
+  const error = etudiantsQuery.error ? 'Impossible de charger vos étudiants.' : null
+  const refreshEtudiants = () => queryClient.invalidateQueries({ queryKey: ['mes-etudiants', user?.id] })
 
   // Listes dérivées pour les filtres (filières et niveaux uniques)
   const filieres = Array.from(
@@ -70,29 +94,6 @@ export function MesEtudiantsPage() {
     ).values()
   )
   const niveaux = Array.from(new Set(etudiants.map((e) => e.niveau).filter((n): n is string => n !== null)))
-
-  const fetchEtudiants = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      if (filiereFilter) params.set('filiereId', filiereFilter)
-      if (niveauFilter) params.set('niveau', niveauFilter)
-      const res = await fetch(`/api/enseignant/etudiants?${params.toString()}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setEtudiants(data.etudiants ?? [])
-    } catch {
-      setError('Impossible de charger vos étudiants.')
-    } finally {
-      setLoading(false)
-    }
-  }, [search, filiereFilter, niveauFilter])
-
-  useEffect(() => {
-    fetchEtudiants()
-  }, [fetchEtudiants])
 
   const handleDownloadReleve = async (etudiantId: string) => {
     setDownloadingId(etudiantId)
@@ -138,7 +139,7 @@ export function MesEtudiantsPage() {
           </div>
           <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={fetchEtudiants}>
+          <Button variant="outline" size="sm" className="mt-4" onClick={refreshEtudiants}>
             Réessayer
           </Button>
         </CardContent>
