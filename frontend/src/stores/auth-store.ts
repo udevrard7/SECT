@@ -28,6 +28,12 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   mustChangePassword: boolean
+  // BUGFIX (REDIRECT-FIX-1) : flag indiquant que la session a été vérifiée
+  // au moins une fois depuis le montage. Avant ce flag, l'état initial
+  // (isLoading: false, isAuthenticated: false) déclenchait la redirection
+  // vers /login AVANT que refreshSession n'ait eu le temps de vérifier le
+  // cookie → flash /login puis retour dashboard.
+  hasCheckedSession: boolean
   login: (identifier: string, password: string) => Promise<boolean>
   loginStudent: (matricule: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
@@ -40,7 +46,11 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   isAuthenticated: false,
-  isLoading: false,
+  // BUGFIX (REDIRECT-FIX-1) : isLoading: true au démarrage pour empêcher la
+  // redirection prématurée vers /login pendant que refreshSession vérifie
+  // le cookie httpOnly.
+  isLoading: true,
+  hasCheckedSession: false,
   mustChangePassword: false,
 
   login: async (identifier: string, password: string) => {
@@ -76,14 +86,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           derniereConnexion: data.user.derniereConnexion ?? null,
         }
 
-        set({ user, isAuthenticated: true, isLoading: false, mustChangePassword: user.mustChangePwd || false })
+        set({ user, isAuthenticated: true, isLoading: false, hasCheckedSession: true, mustChangePassword: user.mustChangePwd || false })
         return true
       }
 
-      set({ isLoading: false })
+      set({ isLoading: false, hasCheckedSession: true })
       return false
     } catch (error: any) {
-      set({ isLoading: false })
+      set({ isLoading: false, hasCheckedSession: true })
       if (error.status) throw error
       throw { status: 0, message: 'Erreur de connexion' } as LoginError
     }
@@ -97,7 +107,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     try {
       await fetch('/api/go-auth/logout', { method: 'POST' })
     } catch {}
-    set({ user: null, isAuthenticated: false, mustChangePassword: false })
+    set({ user: null, isAuthenticated: false, isLoading: false, hasCheckedSession: true, mustChangePassword: false })
   },
 
   setUser: (user: AuthUser | null) => set({ user, isAuthenticated: !!user }),
@@ -128,6 +138,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   refreshSession: async () => {
+    // BUGFIX (REDIRECT-FIX-1) : set isLoading: true avant le fetch pour
+    // empêcher authenticated-layout de rediriger vers /login pendant la
+    // vérification. hasCheckedSession: true à la fin (succès OU échec).
+    set({ isLoading: true })
     try {
       const resp = await fetch('/api/go-auth/session')
       const session = await resp.json()
@@ -138,6 +152,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
     } catch {
       set({ user: null, isAuthenticated: false })
+    } finally {
+      set({ isLoading: false, hasCheckedSession: true })
     }
   },
 }))

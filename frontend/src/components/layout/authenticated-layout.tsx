@@ -20,24 +20,28 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   // store → ReferenceError silencieuse dans le callback onSuccess →
   // l'utilisateur restait bloqué sur l'écran "Mot de passe modifié !" jusqu'à
   // un rechargement manuel de la page.
-  const { user, isAuthenticated, isLoading, mustChangePassword, clearMustChangePassword, refreshSession, setUser } = useAuthStore()
+  const { user, isAuthenticated, isLoading, hasCheckedSession, mustChangePassword, clearMustChangePassword, refreshSession, setUser } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
   const sidebarMode = useSidebarModeStore((s) => s.mode)
 
   // Hydrater la session au montage si pas déjà authentifié
   useEffect(() => {
-    if (!isAuthenticated && !isLoading) {
+    if (!isAuthenticated && !hasCheckedSession) {
       refreshSession()
     }
-  }, [isAuthenticated, isLoading, refreshSession])
+  }, [isAuthenticated, hasCheckedSession, refreshSession])
 
-  // Redirect to login if not authenticated (after session check)
+  // BUGFIX (REDIRECT-FIX-1) : ne rediriger vers /login QUE si la session a
+  // été vérifiée au moins une fois (hasCheckedSession) ET que l'utilisateur
+  // n'est pas authentifié. Avant ce fix, la redirection se déclenchait avec
+  // l'état initial (isLoading: false, isAuthenticated: false) avant que
+  // refreshSession n'ait terminé → flash /login puis retour dashboard.
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (hasCheckedSession && !isLoading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [isLoading, isAuthenticated, router])
+  }, [hasCheckedSession, isLoading, isAuthenticated, router])
 
   // Show loading while session is being checked
   if (isLoading) {
