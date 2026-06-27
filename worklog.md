@@ -4942,3 +4942,112 @@ Stage Summary:
   pour pouvoir être passée à `EpreuveGroupedView` via la prop `renderCard`.
 - Code plus cohérent avec SessionsTab (même pattern de toggle et de groupement).
 - Lint OK (0 erreur), build/turbopack opérationnel.
+
+---
+Task ID: DEVOIRS-REDESIGN-1
+Agent: frontend-styling-expert
+Task: Refonte visuelle page /devoirs (identité Savane EdTech)
+
+Work Log:
+- Lecture du fichier `/frontend/src/components/devoirs/devoirs-page.tsx` (1982 lignes) :
+  identification de toutes les classes "neon grid" (`ng-card`, `ng-theme`, `ng-focus`,
+  `ng-text-gradient`, `ng-btn-primary`, `ng-glow-*`, `ng-live`, `ng-progress`, `ng-slide-up`,
+  `ng-border-anim`, `ng-scroll`, `ng-float`) et des couleurs cyan/slate/rose/amber/violet/pink
+  à remplacer.
+- Consultation des pages de référence (evaluations-page, resultats-page, filieres-page) pour
+  aligner le style sur l'identité Savane EdTech (palette lime/terre/or/bleu-nuit + motif kente).
+- Lecture de `globals.css` pour confirmer les tokens disponibles : `--primary` (#84CC16),
+  `--primary-text` (#3F6212), `--secondary` (#C2410C), `--info`, `--tech` (#06B6D4),
+  `--gold` (#D4A017), `--success`/`--success-text`, `--warning`, `--destructive`, ainsi que
+  les utilitaires `.ds-kente-strip`, `.ds-kente-pattern`, `.ds-kente-top`, `.ds-lift`.
+- Vérification du composant DS `StatCard` (`@/components/ds`) : déjà utilisé en KPI grid, conservé
+  tel quel (rendu Savane par défaut). Import de `Card, CardContent` depuis `@/components/ui/card`
+  ajouté pour les cartes devoirs et les cartes d'analyse.
+- Refonte visuelle appliquée par sections (uniquement les classes Tailwind / structure JSX
+  minimale ; aucune logique métier touchée) :
+
+  1. **Utilitaires de couleur** : `typeSeanceClasses`, `statutDevoirConfig`,
+     `statutSoumissionConfig` réécrits avec tokens Savane (CM→info, TD→primary, TP→secondary ;
+     BROUILLON→muted, PUBLIE→success, FERME→warning, ARCHIVE→secondary ; SOUMIS→info,
+     CORRIGE→success-text, RETOURNE→secondary). Règle de contraste respectée :
+     `text-primary-text` sur fond clair, `text-primary-foreground` sur `bg-primary`.
+
+  2. **Header (hero)** : remplacé par `<header>` avec bandeau `ds-kente-strip` (h-1.5) +
+     surface `ds-kente-pattern`, icône BookOpen dans badge `bg-primary/15 ring-1 ring-primary/30`,
+     titre `font-display text-foreground`, badges KPI colorés (success/warning/destructive),
+     bouton "Nouveau devoir" en `bg-primary text-primary-foreground` (défaut Button).
+
+  3. **Vue switch Grid/Analyse** : `TabButton` réécrit — actif `bg-primary text-primary-foreground
+     shadow-sm`, inactif `text-muted-foreground hover:bg-accent`. Compteur actif en
+     `bg-primary/15 text-primary-text`.
+
+  4. **AlertDialogs** (delete / duplicate) : retiré `ng-theme`, `bg-slate-950/95`,
+     `ng-btn-primary` ; conservé les couleurs sémantiques (destructive pour delete,
+     primary pour duplicate). AlertDialogCancel/Action utilisent leurs variantes par défaut
+     (outline / primary).
+
+  5. **GridView** : pills de filtre statut en `border-primary/30 bg-primary/15 text-primary-text`
+     pour l'actif ; toolbar `bg-card border border-border rounded-xl shadow-sm` ; champs Input
+     sans override (laisse `border-input bg-transparent` du DS) ; boutons de tri en
+     `bg-primary/15 text-primary-text` pour l'actif. États vide/erreur avec icônes
+     `text-muted-foreground` / `text-destructive`.
+
+  6. **DevoirCard** : migrée de `<div class="ng-card">` vers `<Card>` shadcn avec
+     `<CardContent>`. Bande colorée latérale conservée (sans glow boxShadow). Badges statut
+     et type en tokens Savane. Deadline : `text-destructive` / `text-warning` / `text-primary-text`.
+     Barre de progression `bg-primary` sur `bg-muted`. Boutons d'action en variantes ghost
+     sémantiques (Publier→success-text, Fermer→warning, Archiver→secondary, Supprimer→destructive).
+
+  7. **AnalysisView** : 3 `<Card className="p-5 ds-kente-top">` (bordure supérieure tricolore).
+     Barres `bg-primary` sur `bg-muted`. Recharts AreaChart migré du cyan `rgb(34 211 238)`
+     vers le vert lime `rgb(132 204 22)` (stroke + gradient), grille en
+     `rgba(132,204,22,0.1)`, axes en `rgba(100,116,139,0.8)` (muted), tooltip en
+     `rgba(255,255,255,0.98)` avec bordure lime et texte `#1f2937`.
+
+  8. **DevoirFormDialog** : `DialogContent` sans `ng-theme/bg-slate-950/border-cyan`. Tous les
+     `Input`/`Textarea`/`Select` laissent les styles par défaut du DS. Labels en
+     `text-foreground font-medium`, astérisques en `text-destructive`. Section "Paramètres
+     avancés" en `border-border bg-muted/30` avec en-tête `text-primary-text`. Critères en
+     `bg-muted/40`, bouton supprimer en `text-destructive`. Boutons : Annuler `variant="outline"`,
+     Enregistrer défaut (primary).
+
+  9. **SoumissionsSheet** : `SheetContent` sans override sombre. Stats rapides en cartes
+     `bg-card border-border` avec valeurs en `text-info`/`text-success-text`/`text-warning`.
+     Export CSV en `border-success/30 text-success-text`. Items de soumission en cards
+     `bg-card border-border`. Notes en `bg-gold/15 text-gold`, note IA en `bg-tech/15 text-tech`.
+     Détails repliés en `bg-muted/40 text-foreground/muted-foreground`. Boutons Noter/Détail
+     en variantes sémantiques (warning/primary-text).
+
+  10. **GradeDialog** : `DialogContent` sans override sombre. Titre `font-display text-foreground`
+      avec icône `text-primary-text`. Note IA existante en `border-tech/30 bg-tech/10 text-tech`.
+      Bouton "Évaluer par IA" en `border-tech/30 text-tech`. Bouton Enregistrer en défaut (primary).
+
+- Vérification de non-régression :
+  - `bun run lint` : **0 erreur**, 1 warning préexistant (`certificat-pdf-react.tsx:312
+    jsx-a11y/alt-text`, hors périmètre).
+  - `npx tsc --noEmit` : aucune erreur dans `devoirs-page.tsx` (erreurs pré-existantes dans
+    d'autres fichiers : programme-academique-page, badges-carousel, surveillance-page,
+    use-correction-state, ai-providers/failover-provider — non touchés par cette tâche).
+  - Structure du fichier préservée : 19 fonctions (DevoirsPage + 5 sous-composants +
+    helpers), 60 hooks React, 77 éléments de logique (fetch/toast/onClick) — aucun changement
+    de logique métier, handlers, states, useEffect, ou signatures de props.
+  - Indentation conservée (le fichier utilise des espaces, pas des tabs — vérifié par
+    `grep -c $'\t'` = 0 ; la consigne mentionnait des tabs mais le fichier existant utilise
+    des espaces comme toutes les autres pages de référence).
+  - Aucune classe `ng-*`, `bg-slate-*`, `bg-cyan-*`, `text-rose-*`, `text-violet-*`,
+    `text-amber-4*`, `text-emerald-*`, `text-pink-*` restante dans le fichier (vérifié par
+    `rg`).
+
+Stage Summary:
+- Page `/devoirs` entièrement relookée selon l'identité "Savane EdTech" : palette vert lime /
+  terre cuite / or / bleu nuit / cyan tech, motif kente subtil en bandeau de header et en
+  bordure supérieure des cartes d'analyse, contrastes WCAG AA respectés (text-primary-text
+  sur fond clair, jamais text-primary).
+- Composants DS utilisés : `StatCard` (KPI grid, déjà présent), `Card`/`CardContent` shadcn
+  (DevoirCard + 3 cartes AnalysisView), `PulseSkeleton` (loaders).
+- Toutes les fonctionnalités préservées : filtres (statut/UE/type/recherche/tri), vue
+  Grid/Analyse, dialogs (création/édition, suppression, duplication), sheet soumissions
+  (tri, expand, quick grade, export CSV), dialog notation (note, commentaire, IA grade).
+- Aucune modification de states, handlers, fetch, useEffect, signatures de composants ou
+  props. Seules les classes Tailwind et la balise outer des cartes (div→Card) ont changé.
+- Lint OK (0 erreur), TypeScript OK pour devoirs-page.tsx.

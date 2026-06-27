@@ -13,6 +13,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -98,47 +99,47 @@ function getTypeSeanceShort(type: string): string {
   return ({ CM: 'CM', TD: 'TD', TP: 'TP' } as Record<string, string>)[type] ?? type
 }
 
-/** Classes néon par type de séance */
+/** Classes Savane par type de séance */
 function typeSeanceClasses(type: string): { badge: string; dot: string; glow: string } {
   switch (type) {
     case 'CM':
-      return { badge: 'border-cyan-400/50 bg-cyan-400/10 text-cyan-200', dot: 'bg-cyan-400', glow: 'ng-glow-cyan' }
+      return { badge: 'border-info/40 bg-info/10 text-info', dot: 'bg-info', glow: '' }
     case 'TD':
-      return { badge: 'border-emerald-400/50 bg-emerald-400/10 text-emerald-200', dot: 'bg-emerald-400', glow: 'ng-glow-emerald' }
+      return { badge: 'border-primary/40 bg-primary/10 text-primary-text', dot: 'bg-primary', glow: '' }
     case 'TP':
-      return { badge: 'border-amber-400/50 bg-amber-400/10 text-amber-200', dot: 'bg-amber-400', glow: 'ng-glow-amber' }
+      return { badge: 'border-secondary/40 bg-secondary/10 text-secondary', dot: 'bg-secondary', glow: '' }
     default:
-      return { badge: 'border-slate-400/50 bg-slate-400/10 text-slate-200', dot: 'bg-slate-400', glow: '' }
+      return { badge: 'border-border bg-muted text-muted-foreground', dot: 'bg-muted-foreground', glow: '' }
   }
 }
 
 function statutDevoirConfig(statut: StatutDevoir) {
   switch (statut) {
     case 'BROUILLON':
-      return { icon: Edit3, label: 'Brouillon', badge: 'border-slate-400/40 bg-slate-400/10 text-slate-200' }
+      return { icon: Edit3, label: 'Brouillon', badge: 'border-border bg-muted text-muted-foreground' }
     case 'PUBLIE':
-      return { icon: Send, label: 'Publié', badge: 'border-cyan-400/50 bg-cyan-400/10 text-cyan-200 ng-glow-cyan' }
+      return { icon: Send, label: 'Publié', badge: 'border-success/30 bg-success/15 text-success-text' }
     case 'FERME':
-      return { icon: Lock, label: 'Fermé', badge: 'border-amber-400/50 bg-amber-400/10 text-amber-200' }
+      return { icon: Lock, label: 'Fermé', badge: 'border-warning/30 bg-warning/15 text-warning' }
     case 'ARCHIVE':
-      return { icon: Archive, label: 'Archivé', badge: 'border-violet-400/40 bg-violet-400/10 text-violet-200' }
+      return { icon: Archive, label: 'Archivé', badge: 'border-secondary/30 bg-secondary/15 text-secondary' }
     default:
-      return { icon: Edit3, label: statut, badge: 'border-slate-400/40 bg-slate-400/10 text-slate-200' }
+      return { icon: Edit3, label: statut, badge: 'border-border bg-muted text-muted-foreground' }
   }
 }
 
 function statutSoumissionConfig(statut: string) {
   switch (statut) {
     case 'BROUILLON':
-      return { label: 'Brouillon', badge: 'border-slate-400/40 bg-slate-400/10 text-slate-200' }
+      return { label: 'Brouillon', badge: 'border-border bg-muted text-muted-foreground' }
     case 'SOUMIS':
-      return { label: 'En attente', badge: 'border-cyan-400/50 bg-cyan-400/10 text-cyan-200' }
+      return { label: 'En attente', badge: 'border-info/30 bg-info/15 text-info' }
     case 'CORRIGE':
-      return { label: 'Corrigé', badge: 'border-emerald-400/50 bg-emerald-400/10 text-emerald-200 ng-glow-emerald' }
+      return { label: 'Corrigé', badge: 'border-success/30 bg-success/15 text-success-text' }
     case 'RETOURNE':
-      return { label: 'Rendu', badge: 'border-violet-400/50 bg-violet-400/10 text-violet-200' }
+      return { label: 'Rendu', badge: 'border-secondary/30 bg-secondary/15 text-secondary' }
     default:
-      return { label: statut, badge: 'border-slate-400/40 bg-slate-400/10 text-slate-200' }
+      return { label: statut, badge: 'border-border bg-muted text-muted-foreground' }
   }
 }
 
@@ -725,67 +726,69 @@ export function DevoirsPage() {
   // ═══════════════════════════════════════
 
   return (
-    <div className="ng-theme space-y-6">
+    <div className="space-y-6">
       {/* ─── Header ─── */}
-      <header className="ng-card ng-border-anim ds-kente-pattern relative overflow-hidden p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="relative">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-pink-500 ng-glow-cyan">
-                <BookOpen className="h-7 w-7 text-white" />
-              </div>
-              <span className="absolute -right-1 -top-1 flex h-4 w-4">
-                <span className="ng-live absolute inline-flex h-full w-full rounded-full bg-cyan-300 opacity-75" />
-                <span className="relative inline-flex h-4 w-4 rounded-full bg-cyan-400" />
-              </span>
-            </div>
-            <div>
-              <h1 className="ng-text-gradient font-display text-2xl font-bold tracking-tight sm:text-3xl">
-                Mes Devoirs
-              </h1>
-              <p className="mt-1 text-sm text-slate-300/70">
-                Créez, gérez et corrigez vos devoirs TP/TD
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-400/15 px-2.5 py-1 text-cyan-200">
-                  <Radio className="h-3 w-3 ng-live" />
-                  {kpis.publies} actifs
+      <header className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="ds-kente-strip" aria-hidden />
+        <div className="ds-kente-pattern px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="relative">
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/30">
+                  <BookOpen className="h-7 w-7 text-primary-text" />
+                </div>
+                <span className="absolute -right-1 -top-1 flex h-4 w-4">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-primary/50 opacity-75" />
+                  <span className="relative inline-flex h-4 w-4 rounded-full bg-primary" />
                 </span>
-                {kpis.soumissionsEnAttente > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-2.5 py-1 text-amber-200 ng-glow-amber">
-                    <Clock className="h-3 w-3" />
-                    {kpis.soumissionsEnAttente} à corriger
+              </div>
+              <div>
+                <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                  Mes Devoirs
+                </h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Créez, gérez et corrigez vos devoirs TP/TD
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-success-text">
+                    <Radio className="h-3 w-3" />
+                    {kpis.publies} actifs
                   </span>
-                )}
-                {kpis.enRetard > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-400/15 px-2.5 py-1 text-rose-200 ng-glow-rose">
-                    <FileWarning className="h-3 w-3" />
-                    {kpis.enRetard} en retard
-                  </span>
-                )}
+                  {kpis.soumissionsEnAttente > 0 && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-warning">
+                      <Clock className="h-3 w-3" />
+                      {kpis.soumissionsEnAttente} à corriger
+                    </span>
+                  )}
+                  {kpis.enRetard > 0 && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-destructive">
+                      <FileWarning className="h-3 w-3" />
+                      {kpis.enRetard} en retard
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline" size="sm"
-              onClick={() => { fetchDevoirs(); fetchStats() }}
-              className="ng-focus border-cyan-400/40 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/20"
-              aria-label="Rafraîchir"
-            >
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Actualiser
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleOpenCreate}
-              className="ng-btn-primary ng-focus font-semibold"
-              aria-label="Nouveau devoir"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Nouveau devoir
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline" size="sm"
+                onClick={() => { fetchDevoirs(); fetchStats() }}
+                aria-label="Rafraîchir"
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                Actualiser
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleOpenCreate}
+                className="font-semibold"
+                aria-label="Nouveau devoir"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Nouveau devoir
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -832,7 +835,7 @@ export function DevoirsPage() {
 
       {/* ─── Vue switch : Grid / Analyse ─── */}
       <nav
-        className="flex flex-wrap gap-1 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-1"
+        className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted/30 p-1"
         role="tablist" aria-label="Vue des devoirs"
       >
         <TabButton active={activeView === 'grid'} onClick={() => setActiveView('grid')}
@@ -892,20 +895,20 @@ export function DevoirsPage() {
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
-        <AlertDialogContent className="ng-theme !min-h-0 border-rose-400/40 bg-slate-950/95">
+        <AlertDialogContent className="!min-h-0 border-destructive/40">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-rose-200">Supprimer le devoir ?</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-300/70">
+            <AlertDialogTitle className="text-destructive">Supprimer le devoir ?</AlertDialogTitle>
+            <AlertDialogDescription>
               Le devoir «&nbsp;{deleteTarget?.titre}&nbsp;» sera déplacé vers la corbeille. Vous pourrez le restaurer pendant 30 jours.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="ng-focus border-slate-500/40 bg-slate-700/40 text-slate-200 hover:bg-slate-700/60">
+            <AlertDialogCancel>
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="ng-focus border border-rose-400/50 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30"
+              className="bg-destructive text-white hover:bg-destructive/90"
             >
               Supprimer
             </AlertDialogAction>
@@ -914,20 +917,19 @@ export function DevoirsPage() {
       </AlertDialog>
 
       <AlertDialog open={!!duplicateTarget} onOpenChange={(v) => !v && setDuplicateTarget(null)}>
-        <AlertDialogContent className="ng-theme !min-h-0 border-cyan-400/40 bg-slate-950/95">
+        <AlertDialogContent className="!min-h-0 border-primary/40">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-cyan-200">Dupliquer le devoir ?</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-300/70">
+            <AlertDialogTitle className="text-primary-text">Dupliquer le devoir ?</AlertDialogTitle>
+            <AlertDialogDescription>
               Une copie de «&nbsp;{duplicateTarget?.titre}&nbsp;» sera créée en brouillon avec une échéance à J+7.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="ng-focus border-slate-500/40 bg-slate-700/40 text-slate-200 hover:bg-slate-700/60">
+            <AlertDialogCancel>
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDuplicate}
-              className="ng-btn-primary ng-focus"
             >
               Dupliquer
             </AlertDialogAction>
@@ -987,10 +989,10 @@ function TabButton({
   return (
     <button
       role="tab" aria-selected={active} onClick={onClick}
-      className={`ng-focus inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:px-4 ${
+      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:px-4 ${
         active
-          ? 'bg-gradient-to-r from-cyan-400 to-pink-500 text-white shadow-lg ng-glow-cyan'
-          : 'text-slate-300/70 hover:bg-cyan-400/10 hover:text-cyan-100'
+          ? 'bg-primary text-primary-foreground shadow-sm'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
       }`}
     >
       {icon}
@@ -998,7 +1000,7 @@ function TabButton({
       <span className="sm:hidden">{label}</span>
       {count !== undefined && count > 0 && (
         <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-          active ? 'bg-white/25 text-white' : 'bg-cyan-400/20 text-cyan-200'
+          active ? 'bg-white/25 text-primary-foreground' : 'bg-primary/15 text-primary-text'
         }`}>{count}</span>
       )}
     </button>
@@ -1039,10 +1041,10 @@ function GridView({
             <button
               key={key}
               onClick={() => filters.setActiveTab(key)}
-              className={`ng-focus rounded-full px-3.5 py-1.5 text-xs font-medium transition-all sm:text-sm ${
+              className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all sm:text-sm ${
                 isActive
-                  ? 'bg-gradient-to-r from-cyan-400/80 to-pink-500/80 text-white ng-glow-cyan'
-                  : 'border border-cyan-400/20 bg-cyan-400/5 text-slate-300/70 hover:bg-cyan-400/10 hover:text-cyan-100'
+                  ? 'border border-primary/30 bg-primary/15 text-primary-text'
+                  : 'border border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               }`}
             >
               {tab.label}
@@ -1052,22 +1054,22 @@ function GridView({
       </div>
 
       {/* ─── Toolbar (search + filtres + tri) ─── */}
-      <div className="ng-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+      <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300/50" />
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={filters.searchInput}
             onChange={(e) => filters.setSearchInput(e.target.value)}
             placeholder="Rechercher par titre, UE..."
-            className="ng-focus border-cyan-400/25 bg-slate-900/50 pl-8 text-slate-100 placeholder:text-slate-400/50"
+            className="pl-8"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={filters.ueFilter} onValueChange={filters.setUeFilter}>
-            <SelectTrigger className="ng-focus w-[180px] border-cyan-400/25 bg-slate-900/50 text-slate-200">
+            <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Toutes les UE" />
             </SelectTrigger>
-            <SelectContent className="dark border-cyan-400/40">
+            <SelectContent>
               <SelectItem value="all">Toutes les UE</SelectItem>
               {unitesEnseignement.map((ue) => (
                 <SelectItem key={ue.id} value={ue.id}>{ue.code} — {ue.nom}</SelectItem>
@@ -1075,23 +1077,23 @@ function GridView({
             </SelectContent>
           </Select>
           <Select value={filters.typeSeanceFilter} onValueChange={filters.setTypeSeanceFilter}>
-            <SelectTrigger className="ng-focus w-[140px] border-cyan-400/25 bg-slate-900/50 text-slate-200">
+            <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Tous types" />
             </SelectTrigger>
-            <SelectContent className="dark border-cyan-400/40">
+            <SelectContent>
               <SelectItem value="all">Tous types</SelectItem>
               <SelectItem value="CM">Cours magistral</SelectItem>
               <SelectItem value="TD">Travail dirigé</SelectItem>
               <SelectItem value="TP">Travaux pratiques</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex items-center rounded-md border border-cyan-400/25 bg-slate-900/50">
+          <div className="flex items-center rounded-md border border-input bg-background">
             {(['dateLimite', 'titre', 'createdAt', 'noteMax'] as SortField[]).map((f) => (
               <button
                 key={f}
                 onClick={() => filters.handleCycleSort(f)}
-                className={`ng-focus px-2.5 py-1.5 text-xs transition-colors ${
-                  filters.sortField === f ? 'bg-cyan-400/20 text-cyan-200' : 'text-slate-400 hover:text-slate-200'
+                className={`px-2.5 py-1.5 text-xs transition-colors ${
+                  filters.sortField === f ? 'bg-primary/15 text-primary-text' : 'text-muted-foreground hover:text-foreground'
                 }`}
                 aria-label={`Trier par ${f}`}
               >
@@ -1106,7 +1108,7 @@ function GridView({
             <Button
               variant="ghost" size="sm"
               onClick={filters.resetFilters}
-              className="ng-focus text-slate-400 hover:bg-slate-700/40 hover:text-slate-200"
+              className="text-muted-foreground hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
             </Button>
@@ -1116,7 +1118,7 @@ function GridView({
 
       {/* ─── Erreur ─── */}
       {loadError && (
-        <div className="ng-card flex items-center gap-3 border-rose-400/40 bg-rose-400/10 p-4 text-sm text-rose-200">
+        <div className="bg-card border border-destructive/40 rounded-xl shadow-sm flex items-center gap-3 p-4 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {loadError}
         </div>
@@ -1126,20 +1128,20 @@ function GridView({
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="ng-card h-56 p-4">
+            <div key={i} className="bg-card border border-border rounded-xl shadow-sm h-56 p-4">
               <PulseSkeleton variant="card" className="h-full w-full" />
             </div>
           ))}
         </div>
       ) : devoirs.length === 0 ? (
-        <div className="ng-card flex flex-col items-center justify-center p-12 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-cyan-400/15 text-cyan-200">
-            <BookOpen className="h-8 w-8 ng-float" />
+        <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col items-center justify-center p-12 text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary-text">
+            <BookOpen className="h-8 w-8" />
           </div>
-          <h3 className="text-lg font-display tracking-tight font-semibold text-slate-100">
+          <h3 className="text-lg font-display tracking-tight font-semibold text-foreground">
             {filters.hasActiveFilters ? 'Aucun devoir ne correspond' : 'Aucun devoir créé'}
           </h3>
-          <p className="mt-1 max-w-sm text-sm text-slate-300/60">
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
             {filters.hasActiveFilters
               ? 'Modifiez vos filtres pour afficher d\'autres devoirs.'
               : 'Cliquez sur « Nouveau devoir » pour créer votre premier devoir.'}
@@ -1185,18 +1187,16 @@ function DevoirCard({
   const progress = soumCount > 0 ? Math.round((corrigeCount / soumCount) * 100) : 0
 
   return (
-    <div
-      className="ng-card ng-slide-up relative overflow-hidden p-4"
+    <Card
+      className="relative overflow-hidden py-0 transition-shadow hover:shadow-md ds-lift"
       style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
     >
       {/* Bande colorée gauche selon type */}
       <div
         className={`absolute left-0 top-0 h-full w-1 ${typeCfg.dot}`}
-        style={{ boxShadow: '0 0 10px currentColor' }}
         aria-hidden
       />
-
-      <div className="pl-2">
+      <CardContent className="p-4 pl-5">
         {/* En-tête */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -1210,8 +1210,8 @@ function DevoirCard({
                 {getTypeSeanceShort(devoir.typeSeance)}
               </Badge>
             </div>
-            <h3 className="mt-2 truncate font-display tracking-tight font-semibold text-slate-50">{devoir.titre}</h3>
-            <p className="mt-0.5 truncate text-xs text-slate-300/60">
+            <h3 className="mt-2 truncate font-display tracking-tight font-semibold text-foreground">{devoir.titre}</h3>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {devoir.UniteEnseignement?.code} — {devoir.UniteEnseignement?.nom}
             </p>
           </div>
@@ -1219,14 +1219,14 @@ function DevoirCard({
 
         {/* Description repliable */}
         {devoir.description && (
-          <p className={`mt-2 text-xs text-slate-300/70 ${expanded ? '' : 'line-clamp-2'}`}>
+          <p className={`mt-2 text-xs text-muted-foreground ${expanded ? '' : 'line-clamp-2'}`}>
             {devoir.description}
           </p>
         )}
         {devoir.description && devoir.description.length > 80 && (
           <button
             onClick={() => setExpanded(v => !v)}
-            className="ng-focus mt-1 text-xs text-cyan-300/70 hover:text-cyan-200"
+            className="mt-1 text-xs text-primary-text hover:underline"
           >
             {expanded ? 'Réduire' : 'Lire plus'}
           </button>
@@ -1234,37 +1234,37 @@ function DevoirCard({
 
         {/* Deadline */}
         <div className="mt-3 flex items-center gap-2 text-xs">
-          <Clock className={`h-3.5 w-3.5 ${overdue ? 'text-rose-300' : time.urgent ? 'text-amber-300' : 'text-cyan-300'}`} />
-          <span className="text-slate-300/60">{formatDateOnly(devoir.dateLimite)}</span>
+          <Clock className={`h-3.5 w-3.5 ${overdue ? 'text-destructive' : time.urgent ? 'text-warning' : 'text-primary-text'}`} />
+          <span className="text-muted-foreground">{formatDateOnly(devoir.dateLimite)}</span>
           <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
             overdue
-              ? 'bg-rose-400/15 text-rose-200 ng-glow-rose'
+              ? 'bg-destructive/15 text-destructive'
               : time.urgent
-              ? 'bg-amber-400/15 text-amber-200'
-              : 'bg-cyan-400/15 text-cyan-200'
+              ? 'bg-warning/15 text-warning'
+              : 'bg-primary/15 text-primary-text'
           }`}>
             {time.text}
           </span>
         </div>
 
         {/* Badges infos */}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-300/60">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <Star className="h-3 w-3 text-amber-300" />/{devoir.noteMax}
+            <Star className="h-3 w-3 text-gold" />/{devoir.noteMax}
           </span>
           {!!devoir.renduFichiers && (
             <span className="inline-flex items-center gap-1">
-              <Paperclip className="h-3 w-3 text-cyan-300" />Fichiers
+              <Paperclip className="h-3 w-3 text-info" />Fichiers
             </span>
           )}
           {devoir.soumissionGroupe && (
             <span className="inline-flex items-center gap-1">
-              <UsersRound className="h-3 w-3 text-pink-300" />Groupe
+              <UsersRound className="h-3 w-3 text-secondary" />Groupe
             </span>
           )}
           {devoir.GrilleEvaluation && (
             <span className="inline-flex items-center gap-1">
-              <FileSpreadsheet className="h-3 w-3 text-violet-300" />Grille
+              <FileSpreadsheet className="h-3 w-3 text-success-text" />Grille
             </span>
           )}
         </div>
@@ -1273,15 +1273,15 @@ function DevoirCard({
         {soumCount > 0 && (
           <div className="mt-3">
             <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="inline-flex items-center gap-1 text-slate-300/70">
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <Users className="h-3 w-3" />
                 {soumCount} soumission{soumCount > 1 ? 's' : ''}
               </span>
-              <span className="text-cyan-200">{corrigeCount}/{soumCount} corrigée{soumCount > 1 ? 's' : ''}</span>
+              <span className="text-primary-text">{corrigeCount}/{soumCount} corrigée{soumCount > 1 ? 's' : ''}</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-700/50">
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div
-                className="ng-progress h-full rounded-full transition-all duration-500"
+                className="bg-primary h-full rounded-full transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -1289,10 +1289,10 @@ function DevoirCard({
         )}
 
         {/* Actions */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-cyan-400/10 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
           <Button size="sm" variant="ghost"
             onClick={onViewSoumissions}
-            className="ng-focus h-8 px-2.5 text-xs text-cyan-200 hover:bg-cyan-400/15"
+            className="h-8 px-2.5 text-xs text-primary-text hover:bg-primary/10"
           >
             <Eye className="mr-1 h-3.5 w-3.5" />
             {soumCount > 0 ? `${soumCount} soumission${soumCount > 1 ? 's' : ''}` : 'Soumissions'}
@@ -1302,13 +1302,13 @@ function DevoirCard({
             <>
               <Button size="sm" variant="ghost"
                 onClick={() => onStatusAction(devoir.id, 'publier', 'Devoir publié')}
-                className="ng-focus h-8 px-2.5 text-xs text-emerald-200 hover:bg-emerald-400/15"
+                className="h-8 px-2.5 text-xs text-success-text hover:bg-success/10"
                 aria-label="Publier"
               >
                 <Send className="mr-1 h-3.5 w-3.5" />Publier
               </Button>
               <Button size="sm" variant="ghost" onClick={onEdit}
-                className="ng-focus h-8 px-2.5 text-xs text-slate-200 hover:bg-slate-700/40"
+                className="h-8 px-2.5 text-xs text-foreground hover:bg-accent"
                 aria-label="Modifier"
               >
                 <Edit3 className="h-3.5 w-3.5" />
@@ -1318,7 +1318,7 @@ function DevoirCard({
           {devoir.statut === 'PUBLIE' && (
             <Button size="sm" variant="ghost"
               onClick={() => onStatusAction(devoir.id, 'fermer', 'Devoir fermé')}
-              className="ng-focus h-8 px-2.5 text-xs text-amber-200 hover:bg-amber-400/15"
+              className="h-8 px-2.5 text-xs text-warning hover:bg-warning/10"
               aria-label="Fermer"
             >
               <Lock className="mr-1 h-3.5 w-3.5" />Fermer
@@ -1327,7 +1327,7 @@ function DevoirCard({
           {devoir.statut === 'FERME' && (
             <Button size="sm" variant="ghost"
               onClick={() => onStatusAction(devoir.id, 'archiver', 'Devoir archivé')}
-              className="ng-focus h-8 px-2.5 text-xs text-violet-200 hover:bg-violet-400/15"
+              className="h-8 px-2.5 text-xs text-secondary hover:bg-secondary/10"
               aria-label="Archiver"
             >
               <Archive className="mr-1 h-3.5 w-3.5" />Archiver
@@ -1336,14 +1336,14 @@ function DevoirCard({
 
           <div className="ml-auto flex items-center gap-1">
             <Button size="sm" variant="ghost" onClick={onDuplicate}
-              className="ng-focus h-8 w-8 p-0 text-slate-300 hover:bg-cyan-400/15 hover:text-cyan-200"
+              className="h-8 w-8 p-0 text-muted-foreground hover:bg-primary/10 hover:text-primary-text"
               aria-label="Dupliquer"
             >
               <Copy className="h-3.5 w-3.5" />
             </Button>
             {devoir.statut !== 'PUBLIE' && (
               <Button size="sm" variant="ghost" onClick={onDelete}
-                className="ng-focus h-8 w-8 p-0 text-rose-300 hover:bg-rose-400/15"
+                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
                 aria-label="Supprimer"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1351,8 +1351,8 @@ function DevoirCard({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1362,7 +1362,7 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
     return (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="ng-card h-64 p-4">
+          <div key={i} className="bg-card border border-border rounded-xl shadow-sm h-64 p-4">
             <PulseSkeleton variant="card" className="h-full w-full" />
           </div>
         ))}
@@ -1371,9 +1371,9 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
   }
   if (!stats || stats.kpis.total === 0) {
     return (
-      <div className="ng-card flex flex-col items-center justify-center p-12 text-center">
-        <BarChart3 className="mb-3 h-12 w-12 text-cyan-300/50" />
-        <p className="text-slate-300/70">Pas encore assez de données pour l'analyse.</p>
+      <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col items-center justify-center p-12 text-center">
+        <BarChart3 className="mb-3 h-12 w-12 text-muted-foreground" />
+        <p className="text-muted-foreground">Pas encore assez de données pour l'analyse.</p>
       </div>
     )
   }
@@ -1383,24 +1383,24 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* Répartition par type */}
-      <div className="ng-card p-5">
+      <Card className="p-5 ds-kente-top">
         <div className="mb-4 flex items-center gap-2">
-          <Layers className="h-5 w-5 text-cyan-300" />
-          <h3 className="font-display tracking-tight font-semibold text-slate-50">Répartition par type</h3>
+          <Layers className="h-5 w-5 text-primary-text" />
+          <h3 className="font-display tracking-tight font-semibold text-foreground">Répartition par type</h3>
         </div>
         {stats.byType.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-300/50">Aucun devoir.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">Aucun devoir.</p>
         ) : (
           <div className="space-y-3">
             {stats.byType.map((t, i) => (
               <div key={t.type}>
                 <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="text-slate-200">{t.label}</span>
-                  <span className="font-bold text-cyan-200 font-mono tabular-nums">{t.count}</span>
+                  <span className="text-foreground">{t.label}</span>
+                  <span className="font-bold text-primary-text font-mono tabular-nums">{t.count}</span>
                 </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-slate-700/50">
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="ng-progress h-full rounded-full"
+                    className="bg-primary h-full rounded-full transition-all"
                     style={{ width: `${(t.count / maxType) * 100}%`, animationDelay: `${i * 60}ms` }}
                   />
                 </div>
@@ -1408,16 +1408,16 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Soumissions par statut */}
-      <div className="ng-card p-5">
+      <Card className="p-5 ds-kente-top">
         <div className="mb-4 flex items-center gap-2">
-          <Users className="h-5 w-5 text-pink-300" />
-          <h3 className="font-display tracking-tight font-semibold text-slate-50">Soumissions par statut</h3>
+          <Users className="h-5 w-5 text-secondary" />
+          <h3 className="font-display tracking-tight font-semibold text-foreground">Soumissions par statut</h3>
         </div>
         {stats.soumissionsByStatut.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-300/50">Aucune soumission.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">Aucune soumission.</p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {stats.soumissionsByStatut.map((s) => {
@@ -1431,43 +1431,43 @@ function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoadi
             })}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Timeline 7 jours */}
-      <div className="ng-card p-5 lg:col-span-2">
+      <Card className="p-5 lg:col-span-2 ds-kente-top">
         <div className="mb-4 flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-violet-300" />
-          <h3 className="font-display tracking-tight font-semibold text-slate-50">Soumissions reçues (7 jours)</h3>
+          <TrendingUp className="h-5 w-5 text-success-text" />
+          <h3 className="font-display tracking-tight font-semibold text-foreground">Soumissions reçues (7 jours)</h3>
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={stats.timeline} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="sousGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="rgb(34 211 238)" stopOpacity={0.6} />
-                <stop offset="95%" stopColor="rgb(34 211 238)" stopOpacity={0} />
+                <stop offset="5%" stopColor="rgb(132 204 22)" stopOpacity={0.6} />
+                <stop offset="95%" stopColor="rgb(132 204 22)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(34,211,238,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(132,204,22,0.1)" />
             <XAxis
               dataKey="date"
-              tick={{ fill: 'rgba(186,230,253,0.6)', fontSize: 11 }}
+              tick={{ fill: 'rgba(100,116,139,0.8)', fontSize: 11 }}
               tickFormatter={(v) => {
                 const d = new Date(v)
                 return `${d.getDate()}/${d.getMonth() + 1}`
               }}
             />
-            <YAxis tick={{ fill: 'rgba(186,230,253,0.6)', fontSize: 11 }} allowDecimals={false} />
+            <YAxis tick={{ fill: 'rgba(100,116,139,0.8)', fontSize: 11 }} allowDecimals={false} />
             <RechartsTooltip
               contentStyle={{
-                background: 'rgba(8,12,24,0.95)', border: '1px solid rgba(34,211,238,0.4)',
-                borderRadius: '8px', color: '#e0f2fe',
+                background: 'rgba(255,255,255,0.98)', border: '1px solid rgba(132,204,22,0.3)',
+                borderRadius: '8px', color: '#1f2937',
               }}
               labelFormatter={(v) => new Date(v).toLocaleDateString('fr-FR')}
             />
-            <Area type="monotone" dataKey="soumissions" name="Soumissions" stroke="rgb(34 211 238)" strokeWidth={2} fill="url(#sousGrad)" />
+            <Area type="monotone" dataKey="soumissions" name="Soumissions" stroke="rgb(132 204 22)" strokeWidth={2} fill="url(#sousGrad)" />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
     </div>
   )
 }
@@ -1500,12 +1500,12 @@ function DevoirFormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="ng-theme !min-h-0 ng-scroll max-h-[92vh] w-full overflow-y-auto border-cyan-400/30 bg-slate-950/95 sm:max-w-2xl">
+      <DialogContent className="!min-h-0 max-h-[92vh] w-full overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="ng-text-gradient text-xl">
+          <DialogTitle className="font-display text-xl text-foreground">
             {editingDevoir ? 'Modifier le devoir' : 'Nouveau devoir'}
           </DialogTitle>
-          <DialogDescription className="text-slate-300/60">
+          <DialogDescription>
             {editingDevoir ? `Modification de « ${editingDevoir.titre} »` : 'Créez un nouveau devoir pour vos étudiants.'}
           </DialogDescription>
         </DialogHeader>
@@ -1513,21 +1513,20 @@ function DevoirFormDialog({
         <div className="space-y-4">
           {/* Titre */}
           <div className="space-y-1.5">
-            <Label className="text-slate-200">Titre <span className="text-pink-300">*</span></Label>
+            <Label className="text-foreground font-medium">Titre <span className="text-destructive">*</span></Label>
             <Input value={form.formTitre} onChange={(e) => form.setFormTitre(e.target.value)}
-              placeholder="Ex : TP Algorithmique - Tri rapide"
-              className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100 placeholder:text-slate-400/50" />
+              placeholder="Ex : TP Algorithmique - Tri rapide" />
           </div>
 
           {/* UE + Type */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-slate-200">Unité d'enseignement <span className="text-pink-300">*</span></Label>
+              <Label className="text-foreground font-medium">Unité d'enseignement <span className="text-destructive">*</span></Label>
               <Select value={form.formUniteEnseignementId} onValueChange={form.setFormUniteEnseignementId}>
-                <SelectTrigger className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-200">
+                <SelectTrigger>
                   <SelectValue placeholder="Choisir une UE" />
                 </SelectTrigger>
-                <SelectContent className="dark border-cyan-400/40">
+                <SelectContent>
                   {unitesEnseignement.map((ue) => (
                     <SelectItem key={ue.id} value={ue.id}>{ue.code} — {ue.nom}</SelectItem>
                   ))}
@@ -1535,12 +1534,12 @@ function DevoirFormDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-slate-200">Type de séance</Label>
+              <Label className="text-foreground font-medium">Type de séance</Label>
               <Select value={form.formTypeSeance} onValueChange={form.setFormTypeSeance}>
-                <SelectTrigger className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-200">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="dark border-cyan-400/40">
+                <SelectContent>
                   <SelectItem value="CM">Cours magistral</SelectItem>
                   <SelectItem value="TD">Travail dirigé</SelectItem>
                   <SelectItem value="TP">Travaux pratiques</SelectItem>
@@ -1552,47 +1551,42 @@ function DevoirFormDialog({
           {/* Dates */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-slate-200">Date limite <span className="text-pink-300">*</span></Label>
-              <Input type="datetime-local" value={form.formDateLimite} onChange={(e) => form.setFormDateLimite(e.target.value)}
-                className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100" />
+              <Label className="text-foreground font-medium">Date limite <span className="text-destructive">*</span></Label>
+              <Input type="datetime-local" value={form.formDateLimite} onChange={(e) => form.setFormDateLimite(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-slate-200">Publication (optionnel)</Label>
-              <Input type="datetime-local" value={form.formDatePublication} onChange={(e) => form.setFormDatePublication(e.target.value)}
-                className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100" />
+              <Label className="text-foreground font-medium">Publication (optionnel)</Label>
+              <Input type="datetime-local" value={form.formDatePublication} onChange={(e) => form.setFormDatePublication(e.target.value)} />
             </div>
           </div>
 
           {/* Note max + Description */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label className="text-slate-200">Note maximale</Label>
+              <Label className="text-foreground font-medium">Note maximale</Label>
               <Input type="number" min={1} max={100} value={form.formNoteMax}
-                onChange={(e) => form.setFormNoteMax(Number(e.target.value))}
-                className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100" />
+                onChange={(e) => form.setFormNoteMax(Number(e.target.value))} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-slate-200">Description courte</Label>
+              <Label className="text-foreground font-medium">Description courte</Label>
               <Input value={form.formDescription} onChange={(e) => form.setFormDescription(e.target.value)}
-                placeholder="Résumé du devoir..."
-                className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100 placeholder:text-slate-400/50" />
+                placeholder="Résumé du devoir..." />
             </div>
           </div>
 
           {/* Consignes */}
           <div className="space-y-1.5">
-            <Label className="text-slate-200">Consignes détaillées</Label>
+            <Label className="text-foreground font-medium">Consignes détaillées</Label>
             <Textarea value={form.formConsignes} onChange={(e) => form.setFormConsignes(e.target.value)}
               placeholder="Instructions, attendus, format de rendu..."
-              rows={4}
-              className="ng-focus ng-scroll border-cyan-400/25 bg-slate-900/50 text-slate-100 placeholder:text-slate-400/50" />
+              rows={4} />
           </div>
 
           {/* Paramètres avancés */}
-          <div className="rounded-lg border border-cyan-400/20 bg-slate-900/30">
+          <div className="rounded-lg border border-border bg-muted/30">
             <button
               onClick={() => form.setAdvancedSettingsOpen(!form.advancedSettingsOpen)}
-              className="ng-focus flex w-full items-center justify-between p-3 text-sm font-medium text-cyan-200"
+              className="flex w-full items-center justify-between p-3 text-sm font-medium text-primary-text"
               aria-expanded={form.advancedSettingsOpen}
             >
               <span className="inline-flex items-center gap-2">
@@ -1601,64 +1595,62 @@ function DevoirFormDialog({
               {form.advancedSettingsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
             {form.advancedSettingsOpen && (
-              <div className="space-y-3 border-t border-cyan-400/20 p-3">
+              <div className="space-y-3 border-t border-border p-3">
                 {/* Fichiers */}
                 <div className="flex items-center justify-between">
-                  <Label className="inline-flex items-center gap-2 text-slate-200">
-                    <Paperclip className="h-4 w-4 text-cyan-300" /> Rendu de fichiers
+                  <Label className="inline-flex items-center gap-2 text-foreground font-medium">
+                    <Paperclip className="h-4 w-4 text-info" /> Rendu de fichiers
                   </Label>
                   <Switch checked={form.formRenduFichiers} onCheckedChange={form.setFormRenduFichiers} />
                 </div>
                 {form.formRenduFichiers && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs text-slate-300">Nb max fichiers</Label>
+                      <Label className="text-xs text-muted-foreground">Nb max fichiers</Label>
                       <Input type="number" min={1} value={form.formNbMaxFichiers}
-                        onChange={(e) => form.setFormNbMaxFichiers(Number(e.target.value))}
-                        className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100" />
+                        onChange={(e) => form.setFormNbMaxFichiers(Number(e.target.value))} />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs text-slate-300">Taille max (Mo)</Label>
+                      <Label className="text-xs text-muted-foreground">Taille max (Mo)</Label>
                       <Input type="number" min={1} value={form.formTailleMaxFichier}
-                        onChange={(e) => form.setFormTailleMaxFichier(Number(e.target.value))}
-                        className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100" />
+                        onChange={(e) => form.setFormTailleMaxFichier(Number(e.target.value))} />
                     </div>
                   </div>
                 )}
                 {/* Groupe */}
                 <div className="flex items-center justify-between">
-                  <Label className="inline-flex items-center gap-2 text-slate-200">
-                    <UsersRound className="h-4 w-4 text-pink-300" /> Soumission en groupe
+                  <Label className="inline-flex items-center gap-2 text-foreground font-medium">
+                    <UsersRound className="h-4 w-4 text-secondary" /> Soumission en groupe
                   </Label>
                   <Switch checked={form.formSoumissionGroupe} onCheckedChange={form.setFormSoumissionGroupe} />
                 </div>
                 {/* Grille d'évaluation */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="inline-flex items-center gap-2 text-slate-200">
-                      <FileSpreadsheet className="h-4 w-4 text-violet-300" /> Grille d'évaluation
+                    <Label className="inline-flex items-center gap-2 text-foreground font-medium">
+                      <FileSpreadsheet className="h-4 w-4 text-success-text" /> Grille d'évaluation
                     </Label>
                     <Button size="sm" variant="ghost" onClick={form.addCritere}
-                      className="ng-focus h-7 px-2 text-xs text-cyan-200 hover:bg-cyan-400/15">
+                      className="h-7 px-2 text-xs text-primary-text hover:bg-primary/10">
                       <PlusCircle className="mr-1 h-3.5 w-3.5" /> Critère
                     </Button>
                   </div>
                   <div className="space-y-2">
                     {form.formGrilleCriteres.map((c, i) => (
-                      <div key={i} className="grid grid-cols-12 gap-1.5 rounded-md bg-slate-900/50 p-2">
+                      <div key={i} className="grid grid-cols-12 gap-1.5 rounded-md bg-muted/40 p-2">
                         <Input value={c.nom} placeholder="Nom du critère"
                           onChange={(e) => form.updateCritere(i, 'nom', e.target.value)}
-                          className="ng-focus col-span-5 h-8 border-cyan-400/20 bg-slate-950/50 text-xs text-slate-100" />
+                          className="col-span-5 h-8 text-xs" />
                         <Input value={c.description} placeholder="Description"
                           onChange={(e) => form.updateCritere(i, 'description', e.target.value)}
-                          className="ng-focus col-span-5 h-8 border-cyan-400/20 bg-slate-950/50 text-xs text-slate-100" />
+                          className="col-span-5 h-8 text-xs" />
                         <Input type="number" min={0} value={c.poids} placeholder="Poids"
                           onChange={(e) => form.updateCritere(i, 'poids', Number(e.target.value))}
-                          className="ng-focus col-span-1 h-8 border-cyan-400/20 bg-slate-950/50 text-xs text-slate-100" />
+                          className="col-span-1 h-8 text-xs" />
                         <Button size="sm" variant="ghost"
                           onClick={() => form.removeCritere(i)}
                           disabled={form.formGrilleCriteres.length <= 1}
-                          className="ng-focus col-span-1 h-8 w-full p-0 text-rose-300 hover:bg-rose-400/15"
+                          className="col-span-1 h-8 w-full p-0 text-destructive hover:bg-destructive/10"
                           aria-label="Supprimer critère">
                           <MinusCircle className="h-3.5 w-3.5" />
                         </Button>
@@ -1672,12 +1664,10 @@ function DevoirFormDialog({
         </div>
 
         <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}
-            className="ng-focus border-slate-500/40 bg-slate-700/40 text-slate-200 hover:bg-slate-700/60">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button onClick={onSubmit} disabled={isSubmitting}
-            className="ng-btn-primary ng-focus">
+          <Button onClick={onSubmit} disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {editingDevoir ? 'Enregistrer' : 'Créer le devoir'}
           </Button>
@@ -1720,12 +1710,12 @@ function SoumissionsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="border-cyan-400/30 bg-slate-950/95 text-slate-100 ng-scroll w-full overflow-y-auto sm:max-w-3xl">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
         {devoir && (
           <>
             <SheetHeader>
-              <SheetTitle className="ng-text-gradient text-xl">{devoir.titre}</SheetTitle>
-              <SheetDescription className="text-slate-300/60">
+              <SheetTitle className="font-display text-xl text-foreground">{devoir.titre}</SheetTitle>
+              <SheetDescription>
                 {devoir.UniteEnseignement?.code} — {getTypeSeanceLabel(devoir.typeSeance)} — /{devoir.noteMax}
               </SheetDescription>
             </SheetHeader>
@@ -1733,21 +1723,21 @@ function SoumissionsSheet({
             <div className="mt-5 space-y-4">
               {/* Stats rapides */}
               <div className="grid grid-cols-4 gap-2">
-                <div className="ng-card p-2.5 text-center">
-                  <p className="text-xs text-slate-300/60">Total</p>
-                  <p className="text-xl font-bold text-slate-50 font-mono tabular-nums">{soumStats.total}</p>
+                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
+                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="text-xl font-bold text-foreground font-mono tabular-nums">{soumStats.total}</p>
                 </div>
-                <div className="ng-card p-2.5 text-center">
-                  <p className="text-xs text-slate-300/60">En attente</p>
-                  <p className="text-xl font-bold text-cyan-200 font-mono tabular-nums">{soumStats.enAttente}</p>
+                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
+                  <p className="text-xs text-muted-foreground">En attente</p>
+                  <p className="text-xl font-bold text-info font-mono tabular-nums">{soumStats.enAttente}</p>
                 </div>
-                <div className="ng-card p-2.5 text-center">
-                  <p className="text-xs text-slate-300/60">Corrigées</p>
-                  <p className="text-xl font-bold text-emerald-200 font-mono tabular-nums">{soumStats.corrigees}</p>
+                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
+                  <p className="text-xs text-muted-foreground">Corrigées</p>
+                  <p className="text-xl font-bold text-success-text font-mono tabular-nums">{soumStats.corrigees}</p>
                 </div>
-                <div className="ng-card p-2.5 text-center">
-                  <p className="text-xs text-slate-300/60">Moyenne</p>
-                  <p className="text-xl font-bold text-amber-200 font-mono tabular-nums">
+                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
+                  <p className="text-xs text-muted-foreground">Moyenne</p>
+                  <p className="text-xl font-bold text-warning font-mono tabular-nums">
                     {soumStats.avgNote !== null ? soumStats.avgNote.toFixed(1) : '—'}
                   </p>
                 </div>
@@ -1757,7 +1747,7 @@ function SoumissionsSheet({
               <div className="flex justify-end">
                 <Button size="sm" variant="outline" onClick={onExportCSV}
                   disabled={soumissions.length === 0}
-                  className="ng-focus border-emerald-400/40 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20">
+                  className="border-success/30 text-success-text hover:bg-success/10">
                   <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
                 </Button>
               </div>
@@ -1766,15 +1756,15 @@ function SoumissionsSheet({
               {isLoading ? (
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="ng-card h-16 p-3">
+                    <div key={i} className="bg-card border border-border rounded-lg shadow-sm h-16 p-3">
                       <PulseSkeleton variant="card" className="h-full w-full" />
                     </div>
                   ))}
                 </div>
               ) : soumissions.length === 0 ? (
-                <div className="ng-card flex flex-col items-center justify-center p-8 text-center">
-                  <Users className="mb-2 h-10 w-10 text-cyan-300/50" />
-                  <p className="text-slate-300/70">Aucune soumission pour le moment.</p>
+                <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col items-center justify-center p-8 text-center">
+                  <Users className="mb-2 h-10 w-10 text-muted-foreground" />
+                  <p className="text-muted-foreground">Aucune soumission pour le moment.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1783,35 +1773,35 @@ function SoumissionsSheet({
                     const isExpanded = expandedId === s.id
                     const isQuickGrading = quickGrade.id === s.id
                     return (
-                      <div key={s.id} className="ng-card overflow-hidden">
+                      <div key={s.id} className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                         <div className="flex items-center gap-3 p-3">
                           <button
                             onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                            className="ng-focus text-slate-400 hover:text-cyan-200"
+                            className="text-muted-foreground hover:text-primary-text"
                             aria-label={isExpanded ? 'Réduire' : 'Développer'}
                             aria-expanded={isExpanded}
                           >
                             {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           </button>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-100">
+                            <p className="truncate text-sm font-medium text-foreground">
                               {s.User?.name}
                               {s.User?.matricule && (
-                                <span className="ml-1.5 text-xs text-slate-400/60">({s.User.matricule})</span>
+                                <span className="ml-1.5 text-xs text-muted-foreground">({s.User.matricule})</span>
                               )}
                             </p>
-                            <p className="truncate text-xs text-slate-300/50">
+                            <p className="truncate text-xs text-muted-foreground">
                               {s.renduAt ? formatDateTime(s.renduAt) : 'Non rendu'}
                             </p>
                           </div>
                           <Badge variant="outline" className={`border text-xs ${cfg.badge}`}>{cfg.label}</Badge>
                           {s.note !== null && (
-                            <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-bold text-amber-200">
+                            <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-bold text-gold">
                               {s.note}/{noteMax}
                             </span>
                           )}
                           {s.noteIA !== null && s.noteIA !== undefined && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-violet-400/15 px-2 py-0.5 text-xs text-violet-200" title="Note suggérée par IA">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-tech/15 px-2 py-0.5 text-xs text-tech" title="Note suggérée par IA">
                               <Sparkles className="h-3 w-3" />{s.noteIA}
                             </span>
                           )}
@@ -1819,33 +1809,33 @@ function SoumissionsSheet({
 
                         {/* Détail replié */}
                         {isExpanded && (
-                          <div className="space-y-2 border-t border-cyan-400/15 p-3 text-xs">
+                          <div className="space-y-2 border-t border-border p-3 text-xs">
                             {s.contenuTexte && (
                               <div>
-                                <p className="mb-1 font-medium text-cyan-200">Contenu rendu</p>
-                                <div className="ng-scroll max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-slate-900/50 p-2 text-slate-200">
+                                <p className="mb-1 font-medium text-info">Contenu rendu</p>
+                                <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-foreground">
                                   {s.contenuTexte}
                                 </div>
                               </div>
                             )}
                             {s.commentaireEtudiant && (
                               <div>
-                                <p className="mb-1 font-medium text-pink-200">Commentaire étudiant</p>
-                                <p className="rounded bg-slate-900/50 p-2 text-slate-300/80">{s.commentaireEtudiant}</p>
+                                <p className="mb-1 font-medium text-secondary">Commentaire étudiant</p>
+                                <p className="rounded bg-muted/40 p-2 text-muted-foreground">{s.commentaireEtudiant}</p>
                               </div>
                             )}
                             {s.commentaireEnseignant && (
                               <div>
-                                <p className="mb-1 font-medium text-emerald-200">Votre commentaire</p>
-                                <p className="rounded bg-slate-900/50 p-2 text-slate-300/80">{s.commentaireEnseignant}</p>
+                                <p className="mb-1 font-medium text-success-text">Votre commentaire</p>
+                                <p className="rounded bg-muted/40 p-2 text-muted-foreground">{s.commentaireEnseignant}</p>
                               </div>
                             )}
                             {s.justificationIA && (
                               <div>
-                                <p className="mb-1 inline-flex items-center gap-1 font-medium text-violet-200">
+                                <p className="mb-1 inline-flex items-center gap-1 font-medium text-tech">
                                   <Sparkles className="h-3 w-3" />Justification IA
                                 </p>
-                                <p className="rounded bg-slate-900/50 p-2 text-slate-300/80">{s.justificationIA}</p>
+                                <p className="rounded bg-muted/40 p-2 text-muted-foreground">{s.justificationIA}</p>
                               </div>
                             )}
                           </div>
@@ -1853,26 +1843,26 @@ function SoumissionsSheet({
 
                         {/* Quick grade inline */}
                         {(s.statut === 'SOUMIS' || s.statut === 'CORRIGE' || s.statut === 'RETOURNE') && (
-                          <div className="flex flex-wrap items-center gap-2 border-t border-cyan-400/15 p-2">
+                          <div className="flex flex-wrap items-center gap-2 border-t border-border p-2">
                             {isQuickGrading ? (
                               <>
                                 <div className="flex flex-1 items-center gap-2 px-1">
-                                  <span className="text-xs text-slate-300/60">0</span>
+                                  <span className="text-xs text-muted-foreground">0</span>
                                   <Slider
                                     value={[quickGrade.value]} min={0} max={noteMax} step={0.5}
                                     onValueChange={(v) => quickGrade.setValue(v[0])}
                                     className="flex-1"
                                   />
-                                  <span className="w-10 text-right text-xs font-bold text-amber-200 font-mono tabular-nums">{quickGrade.value}/{noteMax}</span>
+                                  <span className="w-10 text-right text-xs font-bold text-warning font-mono tabular-nums">{quickGrade.value}/{noteMax}</span>
                                 </div>
                                 <Button size="sm" onClick={quickGrade.submit} disabled={quickGrade.isGrading}
-                                  className="ng-btn-primary ng-focus h-7 px-2 text-xs">
+                                  className="h-7 px-2 text-xs">
                                   {quickGrade.isGrading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />}
                                   OK
                                 </Button>
                                 <Button size="sm" variant="ghost"
                                   onClick={() => quickGrade.setId(null)}
-                                  className="ng-focus h-7 px-2 text-xs text-slate-300 hover:bg-slate-700/40">
+                                  className="h-7 px-2 text-xs text-muted-foreground hover:bg-accent">
                                   <X className="h-3.5 w-3.5" />
                                 </Button>
                               </>
@@ -1880,12 +1870,12 @@ function SoumissionsSheet({
                               <>
                                 <Button size="sm" variant="ghost"
                                   onClick={() => { quickGrade.setId(s.id); quickGrade.setValue(s.note ?? Math.round(noteMax / 2)) }}
-                                  className="ng-focus h-7 px-2 text-xs text-amber-200 hover:bg-amber-400/15">
+                                  className="h-7 px-2 text-xs text-warning hover:bg-warning/10">
                                   <Star className="mr-1 h-3.5 w-3.5" /> Noter
                                 </Button>
                                 <Button size="sm" variant="ghost"
                                   onClick={() => onOpenGrade(s)}
-                                  className="ng-focus h-7 px-2 text-xs text-cyan-200 hover:bg-cyan-400/15">
+                                  className="h-7 px-2 text-xs text-primary-text hover:bg-primary/10">
                                   <MessageSquare className="mr-1 h-3.5 w-3.5" /> Détail
                                 </Button>
                               </>
@@ -1920,13 +1910,13 @@ function GradeDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="ng-theme !min-h-0 border-cyan-400/30 bg-slate-950/95 sm:max-w-lg">
+      <DialogContent className="!min-h-0 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="ng-text-gradient text-xl flex items-center gap-2">
-            <GraduationCap className="h-5 w-5 text-cyan-300" />
+          <DialogTitle className="font-display text-xl flex items-center gap-2 text-foreground">
+            <GraduationCap className="h-5 w-5 text-primary-text" />
             Noter la soumission
           </DialogTitle>
-          <DialogDescription className="text-slate-300/60">
+          <DialogDescription>
             {soumission?.User?.name} — /{noteMax}
           </DialogDescription>
         </DialogHeader>
@@ -1934,7 +1924,7 @@ function GradeDialog({
         <div className="space-y-4">
           {/* Note IA existante */}
           {soumission?.noteIA !== null && soumission?.noteIA !== undefined && (
-            <div className="flex items-center gap-2 rounded-lg border border-violet-400/40 bg-violet-400/10 p-3 text-sm text-violet-200">
+            <div className="flex items-center gap-2 rounded-lg border border-tech/30 bg-tech/10 p-3 text-sm text-tech">
               <Sparkles className="h-4 w-4" />
               <span>Note suggérée par IA : <strong>{soumission.noteIA}/{noteMax}</strong></span>
             </div>
@@ -1942,35 +1932,31 @@ function GradeDialog({
 
           {/* Note */}
           <div className="space-y-1.5">
-            <Label className="text-slate-200">Note (sur {noteMax})</Label>
+            <Label className="text-foreground font-medium">Note (sur {noteMax})</Label>
             <Input type="number" min={0} max={noteMax} step={0.5} value={gradeNote}
-              onChange={(e) => setGradeNote(e.target.value)}
-              className="ng-focus border-cyan-400/25 bg-slate-900/50 text-slate-100" />
+              onChange={(e) => setGradeNote(e.target.value)} />
           </div>
 
           {/* Commentaire */}
           <div className="space-y-1.5">
-            <Label className="text-slate-200">Commentaire (optionnel)</Label>
+            <Label className="text-foreground font-medium">Commentaire (optionnel)</Label>
             <Textarea value={gradeCommentaire} onChange={(e) => setGradeCommentaire(e.target.value)}
               placeholder="Feedback pour l'étudiant..."
-              rows={4}
-              className="ng-focus ng-scroll border-cyan-400/25 bg-slate-900/50 text-slate-100 placeholder:text-slate-400/50" />
+              rows={4} />
           </div>
         </div>
 
         <DialogFooter className="mt-4 gap-2">
           <Button variant="outline" onClick={onAiGrade} disabled={isAiGrading}
-            className="ng-focus border-violet-400/40 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20">
+            className="border-tech/30 text-tech hover:bg-tech/10">
             {isAiGrading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
             Évaluer par IA
           </Button>
           <div className="flex-1" />
-          <Button variant="outline" onClick={() => onOpenChange(false)}
-            className="ng-focus border-slate-500/40 bg-slate-700/40 text-slate-200 hover:bg-slate-700/60">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button onClick={onSubmit} disabled={isSubmitting}
-            className="ng-btn-primary ng-focus">
+          <Button onClick={onSubmit} disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
             Enregistrer
           </Button>
