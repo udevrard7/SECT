@@ -147,7 +147,7 @@ export function ParCopieView({
           </div>
           <h3 className="mt-3 text-base font-semibold font-display">Copie rendue</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            La copie de {selectedSession.etudiant.name} a été corrigée et rendue.
+            La copie de {(selectedSession.etudiant?.name ?? selectedSession.etudiantNom ?? '—')} a été corrigée et rendue.
           </p>
           <div className="mt-3 rounded-lg border border-border bg-muted/50 p-3">
             <p className="text-sm">
@@ -202,8 +202,8 @@ export function ParCopieView({
             <User className="h-3.5 w-3.5 text-success-text" />
           </div>
           <div>
-            <p className="text-sm font-semibold leading-tight">{selectedSession.etudiant.name}</p>
-            <p className="text-[10px] text-muted-foreground">{selectedSession.etudiant.email}</p>
+            <p className="text-sm font-semibold leading-tight">{(selectedSession.etudiant?.name ?? selectedSession.etudiantNom ?? '—')}</p>
+            <p className="text-[10px] text-muted-foreground">{(selectedSession.etudiant?.email ?? selectedSession.etudiantEmail ?? '')}</p>
           </div>
         </div>
         <Separator orientation="vertical" className="h-6 hidden sm:block" />
