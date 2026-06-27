@@ -7,6 +7,13 @@ import (
 )
 
 // Etablissement représente un établissement scolaire.
+//
+// BUGFIX (ADMIN-AUDIT-2) : le champ `_count` est maintenant un objet imbriqué
+// `*EtablissementCount` (style Prisma) pour matcher ce que le frontend attend
+// (`etab._count.filieres`, `etab._count.users`). Avant ce fix, c'était un
+// simple `*int` sérialisé en `_count: N` (nombre plat) → le frontend accédait
+// à `etab._count.filieres` sur un nombre → TypeError: Cannot read properties
+// of undefined (reading 'filieres') → crash de /etablissements.
 type Etablissement struct {
 	ID                   string    `json:"id"`
 	Nom                  string    `json:"nom"`
@@ -30,9 +37,18 @@ type Etablissement struct {
 	CreatedAt            time.Time `json:"createdAt"`
 	UpdatedAt            time.Time `json:"updatedAt"`
 	// Champs optionnels enrichis (selon endpoint)
-	CountFilieres  *int  `json:"_count,omitempty"` // _count.filieres
-	CountUsers     *int  `json:"countUsers,omitempty"`
-	AdminHasAccess *bool `json:"adminHasAccess,omitempty"`
+	Count          *EtablissementCount `json:"_count,omitempty"`
+	AdminHasAccess *bool               `json:"adminHasAccess,omitempty"`
+	// Filieres inclus uniquement sur l'endpoint detail (FindByIDWithRelations).
+	Filieres []*FiliereRef `json:"filieres,omitempty"`
+}
+
+// EtablissementCount est l'objet imbriqué `_count` (style Prisma) attendu par
+// le frontend pour afficher le nombre de filières et d'utilisateurs d'un
+// établissement dans la liste.
+type EtablissementCount struct {
+	Filieres int `json:"filieres"`
+	Users    int `json:"users"`
 }
 
 // EtablissementListParams contient les paramètres de filtrage.

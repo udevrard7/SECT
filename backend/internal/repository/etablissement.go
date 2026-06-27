@@ -30,6 +30,11 @@ const columnsEtab = `"id", "nom", "type", "ville", "pays", "adresse", "telephone
 	"certWatermarkPattern", "createdAt", "updatedAt"`
 
 // FindByID récupère un établissement par ID (RLS actif).
+//
+// BUGFIX (ADMIN-AUDIT-2) : inclut désormais la liste des filières (`filieres`)
+// et l'objet `_count` pour permettre au frontend detail d'afficher
+// `detailEtab.filieres.map(...)` sans crash. Avant, `filieres` était toujours
+// absent → `detailEtab.filieres` undefined → crash si le frontend itère dessus.
 func (r *EtablissementRepository) FindByID(ctx context.Context, id string) (*domain.Etablissement, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok {
@@ -47,6 +52,29 @@ func (r *EtablissementRepository) FindByID(ctx context.Context, id string) (*dom
 			return fmt.Errorf("query etablissement: %w", err)
 		}
 		etab = e
+
+		// 2e requête : filières de l'établissement (pour le détail).
+		rows, err := tx.Query(ctx, `SELECT "id", "nom", "code" FROM "Filiere" WHERE "etablissementId" = $1 ORDER BY "nom"`, id)
+		if err != nil {
+			return fmt.Errorf("query filieres: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			f := &domain.FiliereRef{}
+			var code *string
+			if err := rows.Scan(&f.ID, &f.Nom, &code); err != nil {
+				return fmt.Errorf("scan filiere: %w", err)
+			}
+			if code != nil {
+				f.Code = *code
+			}
+			etab.Filieres = append(etab.Filieres, f)
+		}
+		// _count filieres/users pour cohérence avec List
+		var cf, cu int
+		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "Filiere" WHERE "etablissementId" = $1`, id).Scan(&cf)
+		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE "etablissementId" = $1`, id).Scan(&cu)
+		etab.Count = &domain.EtablissementCount{Filieres: cf, Users: cu}
 		return nil
 	})
 	if err != nil {
@@ -56,6 +84,11 @@ func (r *EtablissementRepository) FindByID(ctx context.Context, id string) (*dom
 }
 
 // List liste les établissements (RLS filtre — ADMIN voit ceux avec accès, RESPONSABLE voit le sien).
+//
+// BUGFIX (ADMIN-AUDIT-2) : ajoute 2 subqueries pour peupler `_count.filieres`
+// et `_count.users` (style Prisma) attendus par le frontend. Avant ce fix, le
+// frontend accédait à `etab._count.filieres` sur un nombre plat (ou undefined)
+// → crash TypeError de la page /etablissements.
 func (r *EtablissementRepository) List(ctx context.Context, params domain.EtablissementListParams) ([]*domain.Etablissement, error) {
 	claims, ok := db.ClaimsFromContext(ctx)
 	if !ok {
@@ -69,17 +102,17 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 		argIdx := 1
 
 		if params.Search != "" {
-			where = append(where, fmt.Sprintf(`("nom" ILIKE $%d OR "ville" ILIKE $%d OR "email" ILIKE $%d)`, argIdx, argIdx, argIdx))
+			where = append(where, fmt.Sprintf(`("Etablissement"."nom" ILIKE $%d OR "Etablissement"."ville" ILIKE $%d OR "Etablissement"."email" ILIKE $%d)`, argIdx, argIdx, argIdx))
 			args = append(args, "%"+params.Search+"%")
 			argIdx++
 		}
 		if params.Type != "" {
-			where = append(where, fmt.Sprintf(`"type" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Etablissement"."type" = $%d`, argIdx))
 			args = append(args, params.Type)
 			argIdx++
 		}
 		if params.Actif != nil {
-			where = append(where, fmt.Sprintf(`"actif" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Etablissement"."actif" = $%d`, argIdx))
 			args = append(args, *params.Actif)
 			argIdx++
 		}
@@ -89,7 +122,14 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 			whereClause = "WHERE " + strings.Join(where, " AND ")
 		}
 
-		query := fmt.Sprintf(`SELECT %s FROM "Etablissement" %s ORDER BY "nom"`, columnsEtab, whereClause)
+		// Subqueries scalaires pour _count (évite N+1 ; une seule passe par ligne).
+		query := fmt.Sprintf(`
+			SELECT %s,
+				(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = "Etablissement"."id") AS count_filieres,
+				(SELECT count(*) FROM "User" u WHERE u."etablissementId" = "Etablissement"."id") AS count_users
+			FROM "Etablissement"
+			%s
+			ORDER BY "Etablissement"."nom"`, columnsEtab, whereClause)
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query etablissements: %w", err)
@@ -97,9 +137,23 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 		defer rows.Close()
 
 		for rows.Next() {
-			e, err := scanEtablissement(rows)
+			e := &domain.Etablissement{}
+			var countFilieres, countUsers int
+			err := rows.Scan(
+				&e.ID, &e.Nom, &e.Type, &e.Ville, &e.Pays, &e.Adresse, &e.Telephone,
+				&e.Email, &e.SiteWeb, &e.Logo, &e.Actif,
+				&e.ExempleMatricule, &e.FormatMatricule, &e.RegexMatricule,
+				&e.CertWatermarkText, &e.CertWatermarkEnabled, &e.CertWatermarkOpacity,
+				&e.CertWatermarkColor, &e.CertWatermarkPattern,
+				&e.CreatedAt, &e.UpdatedAt,
+				&countFilieres, &countUsers,
+			)
 			if err != nil {
 				return fmt.Errorf("scan etablissement: %w", err)
+			}
+			e.Count = &domain.EtablissementCount{
+				Filieres: countFilieres,
+				Users:    countUsers,
 			}
 			result = append(result, e)
 		}

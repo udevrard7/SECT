@@ -581,6 +581,16 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
+	// BUGFIX (ADMIN-AUDIT-5) : restriction au rôle ADMIN. Avant ce fix, tout
+	// utilisateur authentifié (ENSEIGNANT, ETUDIANT, RESPONSABLE) pouvait
+	// appeler cet endpoint et récupérer les compteurs globaux de la plateforme
+	// (nb établissements, utilisateurs, épreuves, sessions, abonnements) :
+	// fuite d'information. Même classe de bug que stats/responsable (fixé
+	// dans ENS-AUDIT-1).
+	if claims.Role != string(domain.RoleAdmin) {
+		writeJSONError(w, http.StatusForbidden, "réservé au rôle ADMIN")
+		return
+	}
 
 	ctx := r.Context()
 
