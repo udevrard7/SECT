@@ -418,6 +418,12 @@ func (s *Server) ipWhitelistListReal(w http.ResponseWriter, r *http.Request) {
 // 7. GET /api/corbeille — soft-deleted items (Epreuve + Document + Question)
 // ──────────────────────────────────────────────────────────────────────────
 
+// BUGFIX (CORBEILLE-1) : la fonction retournait {items, total} (flat) mais le
+// frontend attend {documents, questions, epreuves, devoirs, totalCount}
+// (regroupé par type). De plus, la query Question utilisait "intitule"
+// (inexistant) au lieu de "enonce" → erreur SQL silencieuse (if err == nil).
+// Les Devoirs n'etaient jamais listés. Corrigé : bon contrat, bonnes
+// colonnes, devoirs ajoutés, erreurs SQL ne sont plus ignorées.
 func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -425,69 +431,304 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type trashItem struct {
+	type deletedDocument struct {
+		ID            string  `json:"id"`
+		NomFichier    string  `json:"nomFichier"`
+		TailleFichier *int64  `json:"tailleFichier"`
+		TypeMime      *string `json:"typeMime"`
+		DateUpload    string  `json:"dateUpload"`
+		DeletedAt     string  `json:"deletedAt"`
+	}
+	type deletedQuestion struct {
+		ID          string `json:"id"`
+		Type        string `json:"type"`
+		Enonce      string `json:"enonce"`
+		Difficulte  string `json:"difficulte"`
+		Validee     bool   `json:"validee"`
+		DeletedAt   string `json:"deletedAt"`
+		DocumentID  *string `json:"documentId,omitempty"`
+		DocumentNom *string `json:"documentNom,omitempty"`
+	}
+	type deletedEpreuve struct {
 		ID        string `json:"id"`
-		Type      string `json:"type"`
-		Nom       string `json:"nom"`
+		Titre     string `json:"titre"`
+		Duree     int    `json:"duree"`
+		Statut    string `json:"statut"`
+		DateDebut string `json:"dateDebut"`
+		DateFin   string `json:"dateFin"`
 		DeletedAt string `json:"deletedAt"`
 	}
+	type deletedDevoir struct {
+		ID         string  `json:"id"`
+		Titre      string  `json:"titre"`
+		DateLimite *string `json:"dateLimite"`
+		Statut     string  `json:"statut"`
+		NoteMax    float64 `json:"noteMax"`
+		DeletedAt  string  `json:"deletedAt"`
+	}
 
-	result := []trashItem{}
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	var documents []deletedDocument
+	var questions []deletedQuestion
+	var epreuves []deletedEpreuve
+	var devoirs []deletedDevoir
+
+	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		// Epreuves supprimées
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "titre", "deletedAt" FROM "Epreuve" WHERE "deletedAt" IS NOT NULL
+			SELECT "id", "titre", "duree", "statut", "dateDebut", "dateFin", "deletedAt"
+			FROM "Epreuve" WHERE "deletedAt" IS NOT NULL
+			ORDER BY "deletedAt" DESC
 		`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				item := trashItem{Type: "Epreuve"}
-				var deletedAt time.Time
-				if err := rows.Scan(&item.ID, &item.Nom, &deletedAt); err == nil {
-					item.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
-					result = append(result, item)
-				}
+		if err != nil {
+			return fmt.Errorf("query epreuves corbeille: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var e deletedEpreuve
+			var deletedAt time.Time
+			if err := rows.Scan(&e.ID, &e.Titre, &e.Duree, &e.Statut, &e.DateDebut, &e.DateFin, &deletedAt); err != nil {
+				return fmt.Errorf("scan epreuve corbeille: %w", err)
 			}
+			e.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			epreuves = append(epreuves, e)
 		}
 
 		// Documents supprimés
 		rows2, err := tx.Query(r.Context(), `
-			SELECT "id", "nomFichier", "deletedAt" FROM "Document" WHERE "deletedAt" IS NOT NULL
+			SELECT "id", "nomFichier", "tailleFichier", "typeMime", "dateUpload", "deletedAt"
+			FROM "Document" WHERE "deletedAt" IS NOT NULL
+			ORDER BY "deletedAt" DESC
 		`)
-		if err == nil {
-			defer rows2.Close()
-			for rows2.Next() {
-				item := trashItem{Type: "Document"}
-				var deletedAt time.Time
-				if err := rows2.Scan(&item.ID, &item.Nom, &deletedAt); err == nil {
-					item.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
-					result = append(result, item)
-				}
+		if err != nil {
+			return fmt.Errorf("query documents corbeille: %w", err)
+		}
+		defer rows2.Close()
+		for rows2.Next() {
+			var d deletedDocument
+			var deletedAt time.Time
+			if err := rows2.Scan(&d.ID, &d.NomFichier, &d.TailleFichier, &d.TypeMime, &d.DateUpload, &deletedAt); err != nil {
+				return fmt.Errorf("scan document corbeille: %w", err)
 			}
+			d.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			documents = append(documents, d)
 		}
 
-		// Questions supprimées
+		// Questions supprimées — BUGFIX: "enonce" (pas "intitule") + LEFT JOIN Document
 		rows3, err := tx.Query(r.Context(), `
-			SELECT "id", "intitule", "deletedAt" FROM "Question" WHERE "deletedAt" IS NOT NULL
+			SELECT q."id", q."type", q."enonce", q."difficulte", q."validee", q."deletedAt",
+			q."documentId", doc."nomFichier"
+			FROM "Question" q
+			LEFT JOIN "Document" doc ON doc."id" = q."documentId"
+			WHERE q."deletedAt" IS NOT NULL
+			ORDER BY q."deletedAt" DESC
 		`)
-		if err == nil {
-			defer rows3.Close()
-			for rows3.Next() {
-				item := trashItem{Type: "Question"}
-				var deletedAt time.Time
-				if err := rows3.Scan(&item.ID, &item.Nom, &deletedAt); err == nil {
-					item.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
-					result = append(result, item)
-				}
+		if err != nil {
+			return fmt.Errorf("query questions corbeille: %w", err)
+		}
+		defer rows3.Close()
+		for rows3.Next() {
+			var q deletedQuestion
+			var deletedAt time.Time
+			if err := rows3.Scan(&q.ID, &q.Type, &q.Enonce, &q.Difficulte, &q.Validee, &deletedAt, &q.DocumentID, &q.DocumentNom); err != nil {
+				return fmt.Errorf("scan question corbeille: %w", err)
+			}
+			q.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			questions = append(questions, q)
+		}
+
+		// Devoirs supprimés — BUGFIX: table Devoir non listée auparavant
+		rows4, err := tx.Query(r.Context(), `
+			SELECT "id", "titre", "dateLimite", "statut", "noteMax", "deletedAt"
+			FROM "Devoir" WHERE "deletedAt" IS NOT NULL
+			ORDER BY "deletedAt" DESC
+		`)
+		if err != nil {
+			return fmt.Errorf("query devoirs corbeille: %w", err)
+		}
+		defer rows4.Close()
+		for rows4.Next() {
+			var dv deletedDevoir
+			var deletedAt time.Time
+			if err := rows4.Scan(&dv.ID, &dv.Titre, &dv.DateLimite, &dv.Statut, &dv.NoteMax, &deletedAt); err != nil {
+				return fmt.Errorf("scan devoir corbeille: %w", err)
+			}
+			dv.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			devoirs = append(devoirs, dv)
+		}
+		return nil
+	})
+	if txErr != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
+
+	// Si nil, retourner un tableau vide (pas null) pour le frontend
+	if documents == nil {
+		documents = []deletedDocument{}
+	}
+	if questions == nil {
+		questions = []deletedQuestion{}
+	}
+	if epreuves == nil {
+		epreuves = []deletedEpreuve{}
+	}
+	if devoirs == nil {
+		devoirs = []deletedDevoir{}
+	}
+	totalCount := len(documents) + len(questions) + len(epreuves) + len(devoirs)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"documents":  documents,
+		"questions":  questions,
+		"epreuves":   epreuves,
+		"devoirs":    devoirs,
+		"totalCount": totalCount,
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 7b. POST /api/corbeille/restore — Restaurer des éléments supprimés
+// ──────────────────────────────────────────────────────────────────────────
+
+// BUGFIX (CORBEILLE-1) : endpoint manquant — le frontend appelait
+// POST /api/corbeille/restore qui n'existait pas → 404 → restauration impossible.
+func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var body struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Type string `json:"type"` // document | question | epreuve | devoir
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+	if len(body.Items) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "items requis")
+		return
+	}
+
+	restored := 0
+	var errors []string
+	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		for _, item := range body.Items {
+			var tableName string
+			switch item.Type {
+				case "epreuve":
+					tableName = "Epreuve"
+				case "document":
+					tableName = "Document"
+				case "question":
+					tableName = "Question"
+				case "devoir":
+					tableName = "Devoir"
+				default:
+					errors = append(errors, "type inconnu: "+item.Type)
+					continue
+			}
+			// Restore: set deletedAt = NULL. Utiliser fmt.Sprintf pour le nom de table
+			// (safe car c'est un switch contrôlé, pas une input utilisateur).
+			query := fmt.Sprintf(`UPDATE "%s" SET "deletedAt" = NULL, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, tableName)
+			tag, err := tx.Exec(r.Context(), query, item.ID)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("restore %s %s: %v", item.Type, item.ID, err))
+				continue
+			}
+			if tag.RowsAffected() > 0 {
+				restored++
 			}
 		}
 		return nil
 	})
+	if txErr != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"items": result,
-		"total": len(result),
+		"message":  fmt.Sprintf("%d élément(s) restauré(s)", restored),
+		"restored": restored,
+		"errors":   errors,
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 7c. DELETE /api/corbeille/purge — Suppression définitive
+// ──────────────────────────────────────────────────────────────────────────
+
+// BUGFIX (CORBEILLE-1) : endpoint manquant — le frontend appelait
+// DELETE /api/corbeille/purge qui n'existait pas → 404 → purge impossible.
+func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var body struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Type string `json:"type"` // document | question | epreuve | devoir
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+	if len(body.Items) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "items requis")
+		return
+	}
+
+	purged := 0
+	var errors []string
+	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		for _, item := range body.Items {
+			var tableName string
+			switch item.Type {
+				case "epreuve":
+					tableName = "Epreuve"
+				case "document":
+					tableName = "Document"
+				case "question":
+					tableName = "Question"
+				case "devoir":
+					tableName = "Devoir"
+				default:
+					errors = append(errors, "type inconnu: "+item.Type)
+					continue
+			}
+			// Hard delete: DELETE définitif. Safe (switch contrôlé).
+			query := fmt.Sprintf(`DELETE FROM "%s" WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, tableName)
+			tag, err := tx.Exec(r.Context(), query, item.ID)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("purge %s %s: %v", item.Type, item.ID, err))
+				continue
+			}
+			if tag.RowsAffected() > 0 {
+				purged++
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": fmt.Sprintf("%d élément(s) supprimé(s) définitivement", purged),
+		"purged": purged,
+		"errors": errors,
 	})
 }
 

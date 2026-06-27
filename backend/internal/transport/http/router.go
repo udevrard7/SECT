@@ -254,6 +254,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/", s.listDocuments)
 			r.Post("/", s.uploadDocument)
 			r.Get("/{id}", s.getDocument)
+			r.Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
 			r.Delete("/{id}", s.deleteDocument)
 			r.Get("/{id}/download", s.downloadDocument)
 		})
@@ -335,6 +336,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/corbeille", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.corbeilleListReal)
+			// BUGFIX (CORBEILLE-1) : endpoints restore + purge manquants
+			r.Post("/restore", s.corbeilleRestore)
+			r.Delete("/purge", s.corbeillePurge)
 		})
 
 		r.Route("/api/notifications", func(r chi.Router) {

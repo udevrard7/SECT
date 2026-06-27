@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -112,6 +113,44 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Document déplacé vers la corbeille"})
+}
+
+// batchDeleteDocuments — DELETE /api/documents (batch soft delete)
+// BUGFIX (CORBEILLE-1) : endpoint manquant — le frontend appelait
+// DELETE /api/documents avec { ids: [...] } qui n'existait pas → 404.
+func (s *Server) batchDeleteDocuments(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "ids requis")
+		return
+	}
+
+	deleted := 0
+	for _, id := range body.IDs {
+		if err := s.documentUC.SoftDelete(r.Context(), claims, id); err != nil {
+			// Continue sur les autres documents en cas d'erreur individuelle
+			continue
+		}
+		deleted++
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": fmt.Sprintf("%d document(s) déplacé(s) vers la corbeille", deleted),
+		"deleted":  deleted,
+	})
 }
 
 // downloadDocument — GET /api/documents/{id}/download (presigned URL)
