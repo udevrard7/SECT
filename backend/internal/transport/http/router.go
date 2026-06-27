@@ -317,8 +317,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/devoirs", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.devoirsList)
-			r.Get("/stats", s.devoirsStats)
+			r.Get("/", s.devoirsListReal)
+			r.Get("/stats", s.devoirsStatsReal)
 		})
 
 		r.Route("/api/alertes", func(r chi.Router) {
@@ -328,12 +328,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/surveillance", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/stats", s.surveillanceStats)
+			r.Get("/stats", s.surveillanceStatsReal)
 		})
 
 		r.Route("/api/corbeille", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.corbeilleList)
+			r.Get("/", s.corbeilleListReal)
 		})
 
 		r.Route("/api/notifications", func(r chi.Router) {
@@ -349,7 +349,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/factures", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.facturesList)
+			r.Get("/", s.facturesListReal)
 		})
 
 		r.Route("/api/plans", func(r chi.Router) {
@@ -369,7 +369,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/monitoring", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.monitoringEvents)
+			r.Get("/", s.monitoringEventsReal)
 		})
 
 		r.Route("/api/logs", func(r chi.Router) {
@@ -379,12 +379,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/ip-whitelist", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.ipWhitelistList)
+			r.Get("/", s.ipWhitelistListReal)
 		})
 
 		r.Route("/api/security-settings", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.securitySettingsGet)
+			r.Get("/", s.securitySettingsGetReal)
 		})
 
 		r.Route("/api/enseignant", func(r chi.Router) {
@@ -395,7 +395,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/etudiants", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.etudiantsList)
+			r.Get("/", s.etudiantsListReal)
 		})
 
 		r.Route("/api/validations-ue", func(r chi.Router) {
