@@ -3681,3 +3681,42 @@ Stage Summary:
 - 15 affectations maintenant visibles (avant : 0)
 - 6 fichiers modifiés (2 frontend, 4 backend) + 2 nouveaux fichiers (affectation.go, affectation_handlers.go)
 - Pattern : LEFT JOIN + Ref structs + optional chaining (cohérent avec audits précédents)
+
+---
+Task ID: REDIRECT-FIX-1-VERIFY
+Agent: Z.ai Code (tutor mode)
+Task: Vérification live post-déploiement du fix race condition redirection
+
+Work Log:
+- Commit 8cd4af0 poussé sur main → auto-deploy Vercel (~50s)
+- Re-login enseignant (prof01@uniabidjan.com)
+
+Vérifications live (toutes confirmées ✅) :
+
+1. Reload sur /documents
+   - Avant : redirect vers /dashboard (flash /login possible)
+   - Après : reste sur /documents ✅
+
+2. Reload sur /epreuves
+   - Après : reste sur /epreuves ✅
+
+3. Reload sur /questions-ia
+   - Après : reste sur /questions-ia ✅
+
+4. Reload sur /aide-etudiants
+   - Après : reste sur /aide-etudiants ✅
+
+5. Pas de flash /login pendant le chargement
+   - 0 erreur console ✅
+   - URL stable pendant tout le reload ✅
+
+6. Sécurité préservée : accès page protégée SANS cookie
+   - /documents sans cookie → redirect /login?error=SessionExpired ✅
+   - (géré par proxy.ts middleware côté serveur, instantané)
+
+Stage Summary:
+- Race condition éliminée : l'utilisateur reste sur la page demandée lors d'un reload
+- Le flag hasCheckedSession distingue "session pas encore vérifiée" de "session vérifiée et invalide"
+- La redirection vers /login ne se déclenche qu'après vérification réelle de la session
+- Aucune régression : la sécurité (redirect sans cookie) reste gérée par le middleware proxy.ts
+- 5/5 pages testées avec reload, toutes stables
