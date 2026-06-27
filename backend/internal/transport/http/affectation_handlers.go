@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
@@ -260,11 +261,7 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	id := r.PathValue("id")
-	if id == "" {
-		// fallback pour chi (qui utilise chi.URLParam)
-		id = r.URL.Path[len("/api/affectations/"):]
-	}
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSONError(w, http.StatusBadRequest, "id requis")
 		return
@@ -345,10 +342,7 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	id := r.PathValue("id")
-	if id == "" {
-		id = r.URL.Path[len("/api/affectations/"):]
-	}
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeJSONError(w, http.StatusBadRequest, "id requis")
 		return
@@ -369,4 +363,12 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
 		"deleted": deleted,
 		"id":      id,
 	})
+}
+
+// derefStr retourne la valeur pointée ou "" si nil (helper local au package).
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
