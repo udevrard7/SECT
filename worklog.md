@@ -4242,3 +4242,44 @@ Vérification live ✅ :
 - KPI 'Total étudiants évalués': **34** (avant: 0) ✅
 - KPI 'Étudiants en difficulté': 0 (correct, aucun < 8/20) ✅
 - KPI 'Étudiants en réussite': **34** (avant: 0) ✅
+
+---
+Task ID: CORRECTION-FIX-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger crash /correction lors de la sélection d'une épreuve
+
+Work Log:
+- 2 crashes identifiés via agent-browser :
+
+Bug #1: Crash epreuve.questions undefined
+  - Cause: use-correction-state.ts accédait à selectedSession.epreuve.questions
+    mais l'API /api/correction ne retourne pas l'objet epreuve imbriqué
+  - Fix: optional chaining (?.epreuve?.questions) + fallback []
+
+Bug #2: Crash session.etudiant.name undefined
+  - Cause: 4 composants de correction accédaient à session.etudiant.name
+    mais l'API retourne etudiantNom/etudiantEmail (champs plats)
+  - Fix: optional chaining + fallback sur champs plats dans:
+    - student-sidebar.tsx (2 endroits)
+    - correction-sidebar.tsx (1 endroit)
+    - par-copie-view.tsx (1 endroit)
+    - par-question-view.tsx (sécurisé aussi)
+
+Vérifications live (toutes confirmées ✅) :
+- Page /correction: sélection d'épreuve → pas de crash ✅
+- Liste des copies affichée: "ASSIELOU Tanoh Yann-Harrel Mardochée 55.0",
+  "ASSANI Emile Junior 49.5" ✅
+- Sélection d'une copie: "Copie rendue" affichée ✅
+- Onglets "Par copie" et "Par question" visibles ✅
+- 0 erreur console ✅
+
+Note: l'API /api/correction ne retourne pas encore l'objet epreuve complet
+avec questions[] — le frontend affiche un état vide gracieux pour les
+questions. L'enrichissement de l'API (LEFT JOIN EpreuveQuestion + Question)
+pourra être fait dans une future itération pour afficher les questions
+individuelles dans la correction.
+
+Stage Summary:
+- 2 crashes éliminés sur /correction
+- 5 fichiers modifiés (1 hook + 4 composants)
+- Pattern: optional chaining + fallback sur champs plats (cohérent)
