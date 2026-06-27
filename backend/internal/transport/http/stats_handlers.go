@@ -220,7 +220,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 			  AND s.score IS NOT NULL
 			WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
 			  AND e.statut IN ('TERMINEE', 'CLOTUREE')
-			GROUP BY e.id, e.titre, e."noteTotal"
+			GROUP BY e.id, e.titre, e."noteTotal", NULLIF(e."noteTotal", 0)
 			ORDER BY moyenne DESC
 			LIMIT 10
 		`, enseignantID)
@@ -307,7 +307,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"failed to load teacher stats","detail":"%s"}`, err.Error()), http.StatusInternalServerError)
+		http.Error(w, `{"error":"failed to load teacher stats"}`, http.StatusInternalServerError)
 		return
 	}
 
