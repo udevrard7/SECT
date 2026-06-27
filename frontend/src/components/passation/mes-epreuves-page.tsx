@@ -443,7 +443,7 @@ export function MesEpreuvesPage() {
                     key={ep.id}
                     index={idx}
                     title={ep.titre}
-                    subtitle={ep.enseignant.name}
+                    subtitle={ep.enseignant?.name ?? '—'}
                     thumbnailIcon={ClipboardList}
                     badge={{ label: statusInfo.label, variant: badgeVariant }}
                     meta={`${ep.duree} min · ${ep.questionCount} question${ep.questionCount > 1 ? 's' : ''} · ${ep.totalPoints} pts`}
@@ -580,7 +580,7 @@ export function MesEpreuvesPage() {
                     key={ep.id}
                     index={idx}
                     title={ep.titre}
-                    subtitle={ep.enseignant.name}
+                    subtitle={ep.enseignant?.name ?? '—'}
                     thumbnailIcon={thumbnailIcon}
                     progress={isAbsent || isNonSoumis ? undefined : percentage}
                     badge={{ label: badgeLabel, variant: badgeVariant }}
