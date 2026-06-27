@@ -349,7 +349,7 @@ export function EpreuvesPage() {
  const router = useRouter()
 
  // Tab state
- const [activeTab, setActiveTab] = useState<TabId>('modeles')
+ const [activeTab, setActiveTab] = useState<TabId>('sessions')
 
  return (
  <div className="space-y-6">
@@ -1169,6 +1169,16 @@ function SessionsTab() {
  const [filterUEId, setFilterUEId] = useState<string>('')
  const [filterSessionExamen, setFilterSessionExamen] = useState<string>('')
 
+ // ─── Search (mode liste) ───
+ const [sessionsSearch, setSessionsSearch] = useState('')
+ const [debouncedSessionsSearch, setDebouncedSessionsSearch] = useState('')
+
+ // Debounce search (300ms)
+ useEffect(() => {
+ const timer = setTimeout(() => setDebouncedSessionsSearch(sessionsSearch), 300)
+ return () => clearTimeout(timer)
+ }, [sessionsSearch])
+
  // ─── Advanced filter data ───
  const [anneesAcademiques, setAnneesAcademiques] = useState<AnneeAcademiqueOption[]>([])
  const [filterFilieres, setFilterFilieres] = useState<EnseignantFiliereContext[]>([])
@@ -1338,6 +1348,8 @@ function SessionsTab() {
  try {
  const params = new URLSearchParams({ enseignantId: user.id })
  if (statutFilter !=='TOUS') params.set('statut', statutFilter)
+ // Search (mode liste)
+ if (debouncedSessionsSearch) params.set('search', debouncedSessionsSearch)
  // Advanced classification filters
  if (filterAnneeAcademiqueId) params.set('anneeAcademiqueId', filterAnneeAcademiqueId)
  if (filterFiliereId) params.set('filiereId', filterFiliereId)
@@ -1354,7 +1366,7 @@ function SessionsTab() {
  } finally {
  setIsLoading(false)
  }
- }, [user?.id, statutFilter, filterAnneeAcademiqueId, filterFiliereId, filterNiveau, filterUEId, filterSessionExamen])
+ }, [user?.id, statutFilter, debouncedSessionsSearch, filterAnneeAcademiqueId, filterFiliereId, filterNiveau, filterUEId, filterSessionExamen])
 
  useEffect(() => { fetchSessions() }, [fetchSessions])
 
@@ -1967,6 +1979,19 @@ function SessionsTab() {
  </Button>
  </div>
  </div>
+
+ {/* Search bar (visible en mode liste uniquement) */}
+ {viewMode ==='flat' && (
+ <div className="relative max-w-md">
+ <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+ <Input value={sessionsSearch} onChange={(e) => setSessionsSearch(e.target.value)} placeholder="Rechercher une session..." className="pl-9" />
+ {sessionsSearch && (
+ <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSessionsSearch('')}>
+ <X className="h-3 w-3" />
+ </Button>
+ )}
+ </div>
+ )}
 
  {/* Status quick filters */}
  {!isLoading && (
@@ -2848,7 +2873,7 @@ function QuestionSelector({
  {typeQuestions.map((q) => (
  <div
  key={q.id}
- className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
+ className={`flex items-start gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${
  selectedQuestions.has(q.id)
  ?'bg-warning/60'
  :'hover:bg-muted/30'
@@ -2858,21 +2883,23 @@ function QuestionSelector({
  <Checkbox
  checked={selectedQuestions.has(q.id)}
  onCheckedChange={() => onToggleQuestion(q.id)}
- className="mt-0.5"
+ className="mt-0.5 shrink-0"
  />
- <div className="flex-1 min-w-0">
- <div className="flex items-center gap-1.5">
+ <div className="flex-1 min-w-0 space-y-1">
+ {/* Header line: index + difficulté (gauche) + bareme (droite) */}
+ <div className="flex items-center gap-1.5 flex-wrap">
  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted/60 text-[9px] font-bold text-muted-foreground">
  {q._originalIdx + 1}
  </span>
  {q.difficulte && (
- <Badge variant="outline" className={`text-[8px] py-0 px-1 ${DIFFICULTE_COLORS[q.difficulte] ||''}`}>
+ <Badge variant="outline" className={`text-[8px] py-0 px-1 shrink-0 ${DIFFICULTE_COLORS[q.difficulte] ||''}`}>
  {DIFFICULTE_LABELS[q.difficulte] || q.difficulte}
  </Badge>
  )}
- <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">{q.bareme} pts</span>
+ <span className="text-[10px] text-muted-foreground shrink-0 ml-auto whitespace-nowrap">{q.bareme} pts</span>
  </div>
- <p className="text-xs mt-0.5 leading-relaxed line-clamp-2">{q.enonce}</p>
+ {/* Enoncé: pleine largeur, lisible, avec clamp plus généreux */}
+ <p className="text-xs leading-relaxed line-clamp-3 break-words">{q.enonce}</p>
  </div>
  </div>
  ))}
