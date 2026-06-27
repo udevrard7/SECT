@@ -126,14 +126,14 @@ interface AbonnementItem {
   renouvellementAuto: boolean
   notes: string | null
   createdAt: string
-  plan: {
+  plan?: {
     id: string
     nom: string
     type: string
     prixMensuel: number
     prixAnnuel: number | null
   }
-  etablissement: {
+  etablissement?: {
     id: string
     nom: string
     ville: string | null
@@ -489,10 +489,12 @@ export function AbonnementsPage() {
   // ─── Filtered abonnements ───
   const filteredAbonnements = abonnements.filter((a) => {
     const matchStatut = statutFilter === 'all' || a.statut === statutFilter
+    // BUGFIX (STUBS-FIX-1) : optional chaining sur etablissement/plan
+    // (l'API peut ne pas inclure ces relations si le JOIN échoue)
     const matchSearch =
       !search ||
-      a.etablissement.nom.toLowerCase().includes(search.toLowerCase()) ||
-      a.plan.nom.toLowerCase().includes(search.toLowerCase())
+      (a.etablissement?.nom ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (a.plan?.nom ?? '').toLowerCase().includes(search.toLowerCase())
     return matchStatut && matchSearch
   })
 
@@ -696,7 +698,7 @@ export function AbonnementsPage() {
           throw new Error(err.error || 'Erreur lors de la modification')
         }
         toast.success('Abonnement modifié', {
-          description: `L'abonnement de ${editingAbo.etablissement.nom} a été mis à jour.`,
+          description: `L'abonnement de ${editingAbo.etablissement?.nom ?? "—"} a été mis à jour.`,
         })
       } else {
         const res = await fetch('/api/abonnements', {
@@ -744,7 +746,7 @@ export function AbonnementsPage() {
       })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Abonnement suspendu', {
-        description: `L'abonnement de ${suspendTarget.etablissement.nom} a été suspendu.`,
+        description: `L'abonnement de ${suspendTarget.etablissement?.nom ?? "—"} a été suspendu.`,
       })
       setSuspendTarget(null)
       await fetchData()
@@ -760,7 +762,7 @@ export function AbonnementsPage() {
       const res = await fetch(`/api/abonnements/${cancelTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Abonnement résilié', {
-        description: `L'abonnement de ${cancelTarget.etablissement.nom} a été résilié.`,
+        description: `L'abonnement de ${cancelTarget.etablissement?.nom ?? "—"} a été résilié.`,
       })
       setCancelTarget(null)
       await fetchData()
@@ -1272,19 +1274,19 @@ export function AbonnementsPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
-                              {abo.etablissement.nom.charAt(0).toUpperCase()}
+                              {abo.etablissement?.nom?.charAt(0).toUpperCase() ?? "?"}
                             </div>
                             <div>
-                              <p className="font-medium text-sm">{abo.etablissement.nom}</p>
-                              {abo.etablissement.ville && (
-                                <p className="text-xs text-muted-foreground">{abo.etablissement.ville}</p>
+                              <p className="font-medium text-sm">{abo.etablissement?.nom ?? "—"}</p>
+                              {abo.etablissement?.ville && (
+                                <p className="text-xs text-muted-foreground">{abo.etablissement?.ville}</p>
                               )}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={getPlanColor(abo.plan.type).badge}>
-                            {abo.plan.nom}
+                          <Badge className={getPlanColor(abo.plan?.type ?? "—").badge}>
+                            {abo.plan?.nom ?? "—"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -2435,11 +2437,11 @@ export function AbonnementsPage() {
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Établissement</h4>
                   <div className="flex items-center gap-3 rounded-lg border p-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-sm font-bold text-success-text">
-                      {detailAbo.etablissement.nom.charAt(0).toUpperCase()}
+                      {detailAbo.etablissement?.nom?.charAt(0).toUpperCase() ?? "?"}
                     </div>
                     <div>
-                      <p className="font-medium">{detailAbo.etablissement.nom}</p>
-                      {detailAbo.etablissement.ville && <p className="text-xs text-muted-foreground">{detailAbo.etablissement.ville}</p>}
+                      <p className="font-medium">{detailAbo.etablissement?.nom ?? "—"}</p>
+                      {detailAbo.etablissement?.ville && <p className="text-xs text-muted-foreground">{detailAbo.etablissement?.ville}</p>}
                     </div>
                   </div>
                 </div>
@@ -2448,9 +2450,9 @@ export function AbonnementsPage() {
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Plan</h4>
                   <div className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex items-center gap-2">
-                      <Badge className={getPlanColor(detailAbo.plan.type).badge}>{detailAbo.plan.nom}</Badge>
+                      <Badge className={getPlanColor(detailAbo.plan?.type ?? "—").badge}>{detailAbo.plan?.nom ?? "—"}</Badge>
                       <span className="text-sm text-muted-foreground">
-                        {detailAbo.plan.prixMensuel === 0 ? 'Gratuit' : `${formatCurrency(detailAbo.plan.prixMensuel)}/mois`}
+                        {detailAbo.plan?.prixMensuel ?? 0 === 0 ? 'Gratuit' : `${formatCurrency(detailAbo.plan?.prixMensuel ?? 0)}/mois`}
                       </span>
                     </div>
                     {getStatutBadge(detailAbo.statut)}
