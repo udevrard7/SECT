@@ -95,7 +95,9 @@ interface AuthorizedEtablissement {
   email: string | null
   telephone: string | null
   actif: boolean
-  access: {
+  // BUGFIX (ADMIN-AUDIT-4b) : access optionnel (l'API peut ne pas l'inclure).
+  // Optional chaining partout pour éviter le crash etab.access.dateFin.
+  access?: {
     id: string
     motif: string
     dateDebut: string | null
@@ -775,7 +777,7 @@ export function AccesEtablissementsPage() {
                       </div>
 
                       {/* Access expiration */}
-                      {etab.access.dateFin && (
+                      {etab.access?.dateFin && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Calendar className="h-3.5 w-3.5" />
                           <span>

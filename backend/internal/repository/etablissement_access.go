@@ -275,6 +275,12 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
 }
 
 // ListAuthorizedEtablissements retourne les établissements autorisés pour un admin.
+//
+// BUGFIX (ADMIN-AUDIT-4b) : sélectionne aussi les colonnes d'accès (a.id,
+// a.motif, a.dateDebut, a.dateFin, a.commentaire, a.createdAt) et peupler
+// `etab.Access` pour que le frontend puisse afficher `etab.access.dateFin`
+// sans crash. Avant, l'API ne renvoyait que l'établissement → le frontend
+// accédait à `etab.access.dateFin` sur undefined → TypeError.
 func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context.Context, adminID string) ([]*domain.Etablissement, error) {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -294,7 +300,8 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
 		e."certWatermarkPattern", e."createdAt", e."updatedAt"`
 
 	rows, err := tx.Query(ctx, fmt.Sprintf(`
-		SELECT %s
+		SELECT %s,
+		       a."id", a."motif", a."dateDebut", a."dateFin", a."commentaire", a."createdAt"
 		FROM "EtablissementAccess" a
 		JOIN "Etablissement" e ON e."id" = a."etablissementId"
 		WHERE a."adminId" = $1 AND a."statut" = 'APPROUVE'
@@ -309,10 +316,23 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
 
 	var result []*domain.Etablissement
 	for rows.Next() {
-		e, err := scanEtablissement(rows)
+		// Scan inline (scanEtablissement ne permet pas d'ajouter des colonnes
+		// supplémentaires — il consomme tout le row via son Scan interne).
+		e := &domain.Etablissement{}
+		acc := &domain.AccessSummary{}
+		err := rows.Scan(
+			&e.ID, &e.Nom, &e.Type, &e.Ville, &e.Pays, &e.Adresse, &e.Telephone,
+			&e.Email, &e.SiteWeb, &e.Logo, &e.Actif,
+			&e.ExempleMatricule, &e.FormatMatricule, &e.RegexMatricule,
+			&e.CertWatermarkText, &e.CertWatermarkEnabled, &e.CertWatermarkOpacity,
+			&e.CertWatermarkColor, &e.CertWatermarkPattern,
+			&e.CreatedAt, &e.UpdatedAt,
+			&acc.ID, &acc.Motif, &acc.DateDebut, &acc.DateFin, &acc.Commentaire, &acc.CreatedAt,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("scan etablissement: %w", err)
+			return nil, fmt.Errorf("scan etablissement+access: %w", err)
 		}
+		e.Access = acc
 		result = append(result, e)
 	}
 	// Retourner un slice vide plutôt que nil pour la sérialisation JSON

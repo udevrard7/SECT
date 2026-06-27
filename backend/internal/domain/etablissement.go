@@ -41,6 +41,9 @@ type Etablissement struct {
 	AdminHasAccess *bool               `json:"adminHasAccess,omitempty"`
 	// Filieres inclus uniquement sur l'endpoint detail (FindByIDWithRelations).
 	Filieres []*FiliereRef `json:"filieres,omitempty"`
+	// Access inclus uniquement par ListAuthorizedEtablissements (info d'accès
+	// admin pour un établissement autorisé). BUGFIX (ADMIN-AUDIT-4b).
+	Access *AccessSummary `json:"access,omitempty"`
 }
 
 // EtablissementCount est l'objet imbriqué `_count` (style Prisma) attendu par
@@ -49,6 +52,19 @@ type Etablissement struct {
 type EtablissementCount struct {
 	Filieres int `json:"filieres"`
 	Users    int `json:"users"`
+}
+
+// AccessSummary est un résumé de la demande d'accès EtablissementAccess,
+// retourné par ListAuthorizedEtablissements pour permettre au frontend admin
+// d'afficher la date d'expiration d'accès (etab.access.dateFin) sans crash.
+// BUGFIX (ADMIN-AUDIT-4b).
+type AccessSummary struct {
+	ID          string     `json:"id"`
+	Motif       string     `json:"motif"`
+	DateDebut   *time.Time `json:"dateDebut,omitempty"`
+	DateFin     *time.Time `json:"dateFin,omitempty"`
+	Commentaire *string    `json:"commentaire,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
 }
 
 // EtablissementListParams contient les paramètres de filtrage.
