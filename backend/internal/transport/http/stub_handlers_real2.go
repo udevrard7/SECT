@@ -811,6 +811,11 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 // 9. GET /api/devoirs/stats — Devoir stats
 // ──────────────────────────────────────────────────────────────────────────
 
+// BUGFIX (DEVOIRS-ANALYSE-1) : l'ancien endpoint retournait {total, enCours,
+// corriges} (flat) mais le frontend AnalysisView attend {kpis:{...}, byType:[],
+// soumissionsByStatut:[], timeline:[], moyenneNotes} → stats.kpis.total →
+// TypeError → crash de l'onglet Analyses.
+// Maintenant : retourne le contrat structuré attendu par DevoirStats (TS).
 func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -818,20 +823,113 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats := map[string]any{
-		"total":    0,
-		"enCours":  0,
-		"corriges": 0,
+	type kpisT struct {
+		Total                int `json:"total"`
+		Brouillons           int `json:"brouillons"`
+		Publies              int `json:"publies"`
+		Fermes               int `json:"fermes"`
+		Archives             int `json:"archives"`
+		TotalSoumissions     int `json:"totalSoumissions"`
+		SoumissionsEnAttente int `json:"soumissionsEnAttente"`
+		SoumissionsCorrigees int `json:"soumissionsCorrigees"`
+		EnRetard             int `json:"enRetard"`
+	}
+	type byTypeT struct {
+		Type  string `json:"type"`
+		Count int    `json:"count"`
+		Label string `json:"label"`
+	}
+	type soumByStatutT struct {
+		Statut string `json:"statut"`
+		Count  int    `json:"count"`
+		Label  string `json:"label"`
+	}
+	type timelineT struct {
+		Date         string `json:"date"`
+		Soumissions  int    `json:"soumissions"`
+	}
+
+	stats := struct {
+		Kpis                kpisT          `json:"kpis"`
+		ByType              []byTypeT      `json:"byType"`
+		SoumissionsByStatut []soumByStatutT `json:"soumissionsByStatut"`
+		Timeline            []timelineT    `json:"timeline"`
+		MoyenneNotes        *float64       `json:"moyenneNotes"`
+	}{
+		ByType:              []byTypeT{},
+		SoumissionsByStatut: []soumByStatutT{},
+		Timeline:            []timelineT{},
+		MoyenneNotes:        nil,
 	}
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		var total, enCours, corriges int
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL`).Scan(&total)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'EN_COURS'`).Scan(&enCours)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'CORRIGE'`).Scan(&corriges)
-		stats["total"] = total
-		stats["enCours"] = enCours
-		stats["corriges"] = corriges
+		// KPIs : compteurs par statut
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL`).Scan(&stats.Kpis.Total)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'BROUILLON'`).Scan(&stats.Kpis.Brouillons)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'PUBLIE'`).Scan(&stats.Kpis.Publies)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'FERME'`).Scan(&stats.Kpis.Fermes)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'ARCHIVE'`).Scan(&stats.Kpis.Archives)
+
+		// Soumissions
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL`).Scan(&stats.Kpis.TotalSoumissions)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL AND "statut"::text = 'SOUMIS'`).Scan(&stats.Kpis.SoumissionsEnAttente)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL AND "statut"::text IN ('CORRIGE','RETOURNE')`).Scan(&stats.Kpis.SoumissionsCorrigees)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE s."deletedAt" IS NULL AND s."renduAt" IS NULL AND d."dateLimite" < CURRENT_TIMESTAMP`).Scan(&stats.Kpis.EnRetard)
+
+		// byType : répartition par type de séance
+		rows, err := tx.Query(r.Context(), `SELECT "typeSeance"::text, count(*) FROM "Devoir" WHERE "deletedAt" IS NULL GROUP BY "typeSeance" ORDER BY count(*) DESC`)
+		if err == nil {
+			defer rows.Close()
+			typeLabels := map[string]string{"CM": "Cours magistral", "TD": "Travail dirigé", "TP": "Travaux pratiques"}
+			for rows.Next() {
+				var t string
+				var c int
+				if err := rows.Scan(&t, &c); err == nil {
+					stats.ByType = append(stats.ByType, byTypeT{Type: t, Count: c, Label: typeLabels[t]})
+				}
+			}
+		}
+
+		// soumissionsByStatut
+		rows2, err := tx.Query(r.Context(), `SELECT "statut"::text, count(*) FROM "Soumission" WHERE "deletedAt" IS NULL GROUP BY "statut" ORDER BY count(*) DESC`)
+		if err == nil {
+			defer rows2.Close()
+		statutLabels := map[string]string{"BROUILLON": "Brouillon", "SOUMIS": "Soumis", "CORRIGE": "Corrigé", "RETOURNE": "Rendu"}
+			for rows2.Next() {
+				var st string
+				var c int
+				if err := rows2.Scan(&st, &c); err == nil {
+					stats.SoumissionsByStatut = append(stats.SoumissionsByStatut, soumByStatutT{Statut: st, Count: c, Label: statutLabels[st]})
+				}
+			}
+		}
+
+		// timeline : 7 derniers jours
+		rows3, err := tx.Query(r.Context(), `
+			SELECT to_char(d::date, 'YYYY-MM-DD') as date,
+			(SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL AND date_trunc('day', "createdAt") = d) as soumissions
+			FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') AS d
+			ORDER BY d ASC
+		`)
+		if err == nil {
+			defer rows3.Close()
+			for rows3.Next() {
+				var dt string
+				var sc int
+				if err := rows3.Scan(&dt, &sc); err == nil {
+					stats.Timeline = append(stats.Timeline, timelineT{Date: dt, Soumissions: sc})
+				}
+			}
+		}
+
+		// moyenneNotes
+		var moy *float64
+		var moyVal float64
+		err = tx.QueryRow(r.Context(), `SELECT AVG("note") FROM "Soumission" WHERE "deletedAt" IS NULL AND "note" IS NOT NULL`).Scan(&moyVal)
+		if err == nil {
+			moy = &moyVal
+			stats.MoyenneNotes = moy
+		}
 		return nil
 	})
 
