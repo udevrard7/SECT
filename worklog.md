@@ -3441,3 +3441,52 @@ Stage Summary:
 - 1 crash de page éliminé (/mes-epreuves) — 2 root causes corrigées (sessions + enseignant)
 - 7/7 pages étudiant fonctionnelles : dashboard, mes-epreuves, mes-devoirs, mes-resultats, mes-certificats, exam-prep, profil
 - Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
+
+---
+Task ID: RESP-AUDIT-1
+Agent: Z.ai Code (tutor mode)
+Task: Audit profond des 10 pages responsable via agent-browser + corrections
+
+Work Log:
+- Login responsable (registrar@uniabidjan.com / Mme Keita Safiya) via agent-browser
+- Note: l'utilisateur a demandé "Etudiant" mais le compte est RESPONSABLE — dernier rôle non audité
+- Audit des 10 pages responsable : dashboard, filieres, programme-academique, affectations, etudiants, enseignants, evaluations, rapports, parametres, profil
+- 3 bugs critiques identifiés et corrigés :
+
+BUG #1 (CRITIQUE) — Crash /dashboard responsable (TypeError: Cannot read 'toFixed' of undefined)
+  - Cause : /api/stats/responsable ne retournait que 4 compteurs basiques (totalEnseignants, totalEtudiants, ...) au lieu des 14 champs riches attendus par le frontend (moyenneGenerale, tauxReussiteGlobal, repartitionNotes[], resultatsParMatiere[], topEnseignants[], topEtudiants[], etc.)
+  - Fix backend : rewrite complète de statsResponsable suivant le template statsEnseignant (commit 9d4c24b) :
+    * 9 requêtes SQL agrégées (COUNT, AVG, GROUP BY, FILTER, date_trunc)
+    * Tous les slices initialisés à [] (jamais nil → jamais null dans le JSON)
+    * Support du filtre filiereId (utilisé par rapports-page.tsx)
+    * Erreurs tolérantes (chaque requête peut échouer sans crasher le handler)
+  - Fix frontend : normalisateur dans fetchStats (raw: Partial<StatsData> → json: StatsData avec defaults pour chaque champ)
+  - Fichiers : backend transport/http/stats_handlers.go ; frontend dashboard/responsable-dashboard.tsx
+
+BUG #2 (CRITIQUE) — Crash /affectations (TypeError: Cannot read 'map' of undefined)
+  - Cause : frontend accédait à ue.filieresSuppl.map() et ue.filiere.nom sans optional chaining, mais l'API /api/unites-enseignement ne retourne pas filieresSuppl
+  - Fix frontend : optional chaining + fallback sur 8 points de crash (getUELabel, grouping, select dropdown, edit dialog, render tableau)
+  - Fichier : frontend responsable/affectations-page.tsx
+
+BUG #3 (CRITIQUE) — Crash /enseignants (TypeError: Cannot read 'nom' of undefined)
+  - Cause : frontend accédait à assignment.filiere.nom mais /api/enseignant-filieres ne retournait que filiereId
+  - Fix backend : LEFT JOIN Filiere dans EnseignantFiliereRepository.List + scan inline + peuplement FiliereRef
+  - Fix frontend : optional chaining filiere?.nom ?? '—' sur 6 points de crash
+  - Fichiers : backend repository/academique.go ; frontend responsable/enseignants-page.tsx
+
+Pages OK sans bug :
+  - /filieres ✅ (2 filières affichées)
+  - /programme-academique ✅ (distribution par niveau)
+  - /etudiants ✅ (liste d'étudiants affichée)
+  - /evaluations ✅ (épreuves affichées)
+  - /rapports ✅ (utilise /api/stats/responsable maintenant complet)
+  - /parametres ✅ (paramètres établissement)
+  - /profil ✅ (Mme Keita Safiya + badges)
+
+Stage Summary:
+- 3 crashes de page éliminés (/dashboard, /affectations, /enseignants)
+- 1 backend endpoint majeur réécrit (statsResponsable : 4 scalars → 14 champs riches avec 9 requêtes SQL)
+- 1 backend repository enrichi (EnseignantFiliereRepository.List : LEFT JOIN Filiere)
+- 10/10 pages responsable fonctionnelles
+- Pattern de fix cohérent avec les audits précédents (ENS-AUDIT-1, ADMIN-AUDIT-1, ETU-AUDIT-1)
+- 4 commits poussés : ec9cc98, 84f9609, b974518, 1ec8120
