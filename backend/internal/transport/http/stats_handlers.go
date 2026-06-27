@@ -995,14 +995,14 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		// son rôle (ou sans rôle cible).
 		rows, err := tx.Query(ctx, `
 			SELECT bd."id", bd."cle", bd."titre", bd."description", bd."icone",
-			       bd."categorie"::text, bd."roleCible"::text, bd."niveaux",
+			       bd."categorie"::text, trim(bd."roleCible"::text) AS "roleCible", bd."niveaux",
 			       bp."niveauActuel"::text, bp."valeurActuelle", bp."valeurPalier",
 			       bp."valeurProchain", bp."debloque", bp."dateObtention"
 			FROM "BadgeDefinition" bd
 			LEFT JOIN "BadgeProgression" bp ON bp."badgeDefinitionId" = bd."id"
 			  AND bp."userId" = $1
 			WHERE bd."actif" = true
-			  AND (bd."roleCible" IS NULL OR bd."roleCible"::text = $2 OR bd."roleCible"::text = '')
+			  AND (bd."roleCible" IS NULL OR trim(bd."roleCible"::text) = $2 OR trim(bd."roleCible"::text) = '')
 			ORDER BY bd."ordre" ASC
 		`, claims.UserID, claims.Role)
 		if err != nil {
