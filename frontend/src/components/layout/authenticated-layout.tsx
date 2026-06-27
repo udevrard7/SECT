@@ -12,6 +12,7 @@ import { AIAssistant } from '@/components/ds'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
 import { getPageIdFromSlug, PAGE_LABELS } from '@/lib/routes'
+import { useSessionKeepAlive } from '@/hooks/use-session-keepalive'
 import { Loader2 } from 'lucide-react'
 
 export function AuthenticatedLayout({ slug }: { slug: string[] }) {
@@ -24,6 +25,12 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   const router = useRouter()
   const pathname = usePathname()
   const sidebarMode = useSidebarModeStore((s) => s.mode)
+
+  // BUGFIX (KEEPALIVE-1) : refresh proactif de la session toutes les 10 min
+  // + au refocus de l'onglet. Empêche la déconnexion involontaire pendant
+  // l'inactivité (access token 15 min expiré sans refresh) et rend la session
+  // résiliente aux erreurs réseau transitoires (cold start Render).
+  useSessionKeepAlive()
 
   // Hydrater la session au montage si pas déjà authentifié
   useEffect(() => {
