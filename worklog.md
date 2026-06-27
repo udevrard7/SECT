@@ -3818,3 +3818,39 @@ Stage Summary:
 - Pattern : queries directes via appdb.WithTx (même approche que statsEnseignant)
 - Les anciens stubs sont conservés mais non référencés (Go permet les fonctions non utilisées)
 - 9 stubs restants (factures, monitoring, ip-whitelist, corbeille, surveillance/stats, devoirs, devoirs/stats, etudiants, security-settings) — tables vides ou faible priorité
+
+---
+Task ID: STUBS-FIX-2
+Agent: Z.ai Code (tutor mode)
+Task: Implémenter les 9 stubs restants
+
+Work Log:
+- 9 derniers endpoints stubs implémentés (nouveau fichier stub_handlers_real2.go) :
+
+1. GET /api/security-settings (1 row) — 20 champs de sécurité (proctoring, detection, blocage)
+2. GET /api/surveillance/stats (34 sessions) — 23 alertes, sessions suspectes avec noms
+3. GET /api/etudiants (15 rows) — LEFT JOIN Filiere, filtres search + filiereId
+4. GET /api/factures (0 row) — endpoint réel, retourne [] si table vide
+5. GET /api/monitoring (0 row) — endpoint réel
+6. GET /api/ip-whitelist (0 row) — endpoint réel
+7. GET /api/corbeille (10 items) — Epreuve + Document + Question soft-deleted
+8. GET /api/devoirs (0 row) — endpoint réel avec filtres
+9. GET /api/devoirs/stats — count total/enCours/corriges
+
+Vérifications live (toutes confirmées ✅) :
+- /api/security-settings → settings complets (proctoringActif, detectionCopie, etc.) ✅
+- /api/surveillance/stats → 23 alertes, suspicious avec LIATCHE Christ-Johan ✅
+- /api/etudiants → 15 étudiants avec filière + matricule ✅
+- /api/factures → [] (table vide légitime) ✅
+- /api/monitoring → [] (table vide) ✅
+- /api/ip-whitelist → [] (table vide) ✅
+- /api/corbeille → items supprimés (Epreuve "Test Epreuve Go", etc.) ✅
+- /api/devoirs → [] (table vide) ✅
+- /api/devoirs/stats → {total: 0, enCours: 0, corriges: 0} ✅
+- Build Render : live (41c1548)
+
+Stage Summary:
+- 0 stub restant. Les 115 endpoints retournent maintenant tous de vraies données DB
+- Bilan cumulé STUBS-FIX-1 + STUBS-FIX-2 : 17 stubs remplacés par de vraies requêtes
+- Données maintenant visibles : 601 logs + 5 AI providers + 2 alertes + 20 validations + 1 abonnement + 4 plans + 1 notification + 1 platform settings + 1 security settings + 23 alertes surveillance + 15 étudiants + 10 items corbeille = 684 rows
+- Les tables vides (Facture, MonitoringEvent, IpWhitelist, Devoir) retournent [] légitimement
