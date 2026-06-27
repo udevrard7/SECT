@@ -278,3 +278,125 @@ func (s *Server) surveillanceStatsV2(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
+
+// ──────────────────────────────────────────────────────────────────────────
+// SSE-STREAM-1 : GET /api/surveillance/stream — Server-Sent Events
+// ──────────────────────────────────────────────────────────────────────────
+//
+// Envoie periodiquement (toutes les 10s) les stats de surveillance mises
+// a jour via SSE (text/event-stream). Le frontend ecoute avec EventSource
+// natif (pas de librairie, pas de WebSocket).
+//
+// Avantages SSE sur Render Free + Vercel :
+// - Passe nativement a travers les CDN et rewrites Vercel (HTTP standard)
+// - Pas de timeout WebSocket (Render Free ne supporte pas WS)
+// - Reconnexion automatique par EventSource (natif navigateur)
+// - Heartbeat toutes les 15s pour garder la connexion sur Render Free
+//
+// Format SSE :
+//   data: {"kpis":{...},"sessions":[...]}
+
+
+//   : heartbeat
+
+  (commentaire SSE pour keep-alive)
+func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	enseignantID := r.URL.Query().Get("enseignantId")
+	if enseignantID == "" && claims.Role == "ENSEIGNANT" {
+		enseignantID = claims.UserID
+	}
+
+	// 1. Configurer les headers SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSONError(w, http.StatusInternalServerError, "streaming non supporte")
+		return
+	}
+
+	// 2. Envoie un evenement initial immediat
+	stats := s.fetchSurveillanceStats(r, enseignantID)
+	if statsJSON, err := json.Marshal(stats); err == nil {
+		fmt.Fprintf(w, "data: %s\n\n", statsJSON)
+		flusher.Flush()
+	}
+
+	// 3. Boucle d'envoi periodique + heartbeat
+	ticker := time.NewTicker(10 * time.Second)
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	defer heartbeat.Stop()
+
+	for {
+		select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				stats := s.fetchSurveillanceStats(r, enseignantID)
+				if statsJSON, err := json.Marshal(stats); err == nil {
+					fmt.Fprintf(w, "data: %s\n\n", statsJSON)
+					flusher.Flush()
+				}
+			case <-heartbeat.C:
+				fmt.Fprintf(w, ": heartbeat\n\n")
+				flusher.Flush()
+		}
+	}
+}
+
+
+// fetchSurveillanceStats — recupere les stats de surveillance pour le SSE.
+// Version simplifiee des KPIs essentiels (suffisant pour le streaming temps reel).
+func (s *Server) fetchSurveillanceStats(r *http.Request, enseignantID string) map[string]any {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		return map[string]any{"error": "no claims"}
+	}
+
+	result := map[string]any{
+		"totalSessions":   0,
+		"activeSessions":  0,
+		"withAlerts":      0,
+		"flagged":         0,
+		"timestamp":       time.Now().UTC().Format(time.RFC3339),
+	}
+
+	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		var args []any
+		whereE := ""
+		if enseignantID != "" {
+			whereE = `AND e."enseignantId" = $1`
+			args = append(args, enseignantID)
+		}
+
+		var total, active, alerts, flagged int
+		query := fmt.Sprintf(`
+			SELECT count(*),
+			count(*) FILTER (WHERE s."statut" = 'EN_COURS'),
+			count(*) FILTER (WHERE s."alertes" > 0),
+			count(*) FILTER (WHERE s."alertes" >= 3)
+			FROM "SessionPassation" s
+			JOIN "Epreuve" e ON e."id" = s."epreuveId"
+			WHERE 1=1 %s`, whereE)
+		_ = tx.QueryRow(r.Context(), query, args...).Scan(&total, &active, &alerts, &flagged)
+
+		result["totalSessions"] = total
+		result["activeSessions"] = active
+		result["withAlerts"] = alerts
+		result["flagged"] = flagged
+		return nil
+	})
+
+	return result
+}

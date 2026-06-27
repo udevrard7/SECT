@@ -331,6 +331,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.surveillanceListSessions)
 			r.Get("/stats", s.surveillanceStatsV2)
+			// SSE-STREAM-1 : Server-Sent Events pour surveillance temps réel
+			r.Get("/stream", s.surveillanceStream) // SSE endpoint
 		})
 
 		r.Route("/api/corbeille", func(r chi.Router) {
