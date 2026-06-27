@@ -3402,3 +3402,42 @@ Stage Summary:
 - 3 fichiers modifiés (1 frontend, 2 backend), ~72 insertions logiques
 - 6/7 pages étudiant fonctionnelles sans bug
 - En attente : validation build Render (Go) + vérif live agent-browser post-déploiement
+
+---
+Task ID: ETU-AUDIT-1-VERIFY
+Agent: Z.ai Code (tutor mode)
+Task: Vérification live post-déploiement des fixes étudiant (agent-browser sur prod)
+
+Work Log:
+- Commits ae1a39c + 85a447c poussés sur main → auto-deploy Vercel + Render
+- Build Render Go : SUCCÈS (health 200, version 0.2.0)
+- Session étudiant toujours active (cookies persistés)
+
+Vérifications live (toutes confirmées ✅) :
+
+1. Crash /mes-epreuves — sessions (Fix #1)
+   - Avant : "Application error: Cannot read 'some' of undefined" (ep.sessions)
+   - Après : page s'affiche, onglets "À venir" + "Résultats (4)" fonctionnels
+   - API : /api/epreuves?etudiantId=X renvoie sessions: [{id, statut, dateDebut, dateFin, score}] ✅
+   - Exemple session : {statut: "RETOURNEE", score: 49.46}
+
+2. Crash /mes-epreuves — enseignant (Fix #1b)
+   - Avant : "Application error: Cannot read 'name' of undefined" (ep.enseignant)
+   - Après : page s'affiche avec le nom de l'enseignant
+   - API : /api/epreuves renvoie enseignant: {id, name: "Ulrich DOUH", email} ✅
+
+3. Onglet "Résultats" affiche 4 épreuves complétées :
+   - Composition - Python et de Java
+   - Composition - Programmation Système
+   - Composition - Bureautique II
+   - Composition - Génie Logiciel
+   Chacune avec bouton "Voir le détail"
+
+4. Sécurité : /api/stats/responsable → 403 pour l'étudiant (fix ENS-AUDIT-1 actif) ✅
+5. Performance : /api/badges = 3 requêtes au montage (pas de boucle, fix ENS-AUDIT-1 actif) ✅
+
+Stage Summary:
+- 2/2 fixes vérifiés en production via agent-browser
+- 1 crash de page éliminé (/mes-epreuves) — 2 root causes corrigées (sessions + enseignant)
+- 7/7 pages étudiant fonctionnelles : dashboard, mes-epreuves, mes-devoirs, mes-resultats, mes-certificats, exam-prep, profil
+- Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
