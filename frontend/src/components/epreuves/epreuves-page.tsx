@@ -168,10 +168,10 @@ interface ModeleEpreuve {
  questionCount: number
  baremeTotal: number
  noteTotal: number
- typeDistribution: Record<string, number>
+ typeDistribution?: Record<string, number>
  sourceDocuments: Array<{ id: string; nomFichier: string }>
- filiere: { id: string; nom: string; code: string | null } | null
- uniteEnseignement: { id: string; nom: string; code: string | null } | null
+ filiere?: { id: string; nom: string; code: string | null } | null
+ uniteEnseignement?: { id: string; nom: string; code: string | null } | null
  niveau?: string | null
  sessionExamen?: string | null
  anneeAcademiqueId?: string | null
@@ -778,7 +778,7 @@ function ModelesTab() {
  {!isLoading && epreuves.length > 0 && (
  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
  {epreuves.map((epreuve) => {
- const typeEntries = Object.entries(epreuve.typeDistribution)
+ const typeEntries = Object.entries(epreuve.typeDistribution ?? {})
  return (
  <Card key={epreuve.id} className="group transition-shadow hover:shadow-md">
  <CardContent className="flex flex-col gap-3 p-6">
