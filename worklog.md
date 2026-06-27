@@ -3909,3 +3909,55 @@ Stage Summary:
 - 0 stub restant confirmé par double vérification
 - Les pages /epreuves, /questions-ia, /mes-etudiants, /resultats ont maintenant
   leurs données de contexte (filières, niveaux, étudiants, agrégations)
+
+---
+Task ID: EPREUVES-FIX-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger les crashes /epreuves, /resultats, /questions-ia
+
+Work Log:
+- 3 pages crashaient ou n'affichaient pas les données de la DB
+
+Bug #1: /epreuves — crash + données non affichées
+  - Cause 1: frontend appelait /api/epreuves/banque et /api/epreuves/classification
+    (routes inexistantes → 404 intercepté par /api/epreuves/{id})
+    Fix: remplacer par /api/epreuves?... (3 occurrences)
+  - Cause 2: Object.entries(epreuve.typeDistribution) avec typeDistribution undefined
+    Fix: typeDistribution rendu optionnel + Object.entries(?? {})
+  - Cause 3: .length sur description (null), sourceDocuments (undefined), questions (undefined)
+    Fix: optional chaining + fallback pour tous les .length
+
+Bug #2: /resultats — crash (Cannot read 'toFixed' of undefined)
+  - Cause: overview-tab.tsx et students-at-risk.tsx appelaient .toFixed()
+    sur des champs numériques qui peuvent être undefined (moyenne, mediane, globalMoyenne)
+  - Fix: optional chaining + fallback 0 sur tous les .toFixed()
+  - Bonus: resultats-page.tsx sécurisé avec optional chaining sur overview
+  - Bonus: overview-tab.tsx sécurisé avec safe defaults avant hooks
+
+Bug #3: /questions-ia — crash (enseignant/context format inadéquat)
+  - Cause: enseignantContextReal retournait niveau (string) au lieu de niveaux (string[])
+    + pas d'unitesEnseignement[]. Le frontend attendait filieresData[0].niveaux.length
+  - Fix backend: rewrite enseignantContextReal pour matcher EnseignantFiliereContext:
+    - filieres[].niveaux: string[] (array de niveaux distincts)
+    - filieres[].unitesEnseignement: array (avec code, nom, niveau, niveaux, typeSeances)
+    - etudiants: array (id, name, email, matricule, niveau)
+
+Build fixes:
+  - 45c1f63: resultatsOverviewReal avait des champs renommés → build failed
+  - cbc728c: clotureeAt référencé mais supprimé du struct → build failed
+  - 0071af2: revert backend à 1c5d300 (qui compilait), garder fixes frontend
+  - 1c9a96d: sécuriser .length dans epreuves-page.tsx
+  - c56b587: sécuriser .toFixed() dans resultats components
+
+Vérifications live (toutes confirmées ✅) :
+- /epreuves → 5 épreuves affichées (Python, Programmation Système, Bureautique II,
+  Génie Logiciel, Composition) ✅
+- /resultats → onglets "Vue d'ensemble", "Par épreuve", "Étudiants" + épreuves ✅
+- /questions-ia → documents affichés (Python, polycop, POLYCOPIÉ) + 0 erreur ✅
+- Build Render : live (0071af2)
+
+Stage Summary:
+- 3 crashes de page éliminés (/epreuves, /resultats, /questions-ia)
+- 6 commits nécessaires (3 fixes + 2 build fixes + 1 revert)
+- Pattern: optional chaining + fallback sur tous les .length et .toFixed()
+- Les données DB sont maintenant affichées sur toutes les pages
