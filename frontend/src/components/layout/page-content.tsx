@@ -1,6 +1,5 @@
 'use client'
 
-import { Suspense } from 'react'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { QueryErrorBoundary } from '@/components/layout/query-error-boundary'
 
@@ -130,6 +129,14 @@ function PlaceholderPage({ pageId }: { pageId: PageId }) {
 }
 
 // ─── Main content router ───
+//
+// BUGFIX (FLICKER-FIX-1) : Suppression du <Suspense fallback={<spinner />}>
+// punitif. Quand TanStack Query refetch au focus ou au remontage, le Suspense
+// démontait le HTML existant pour afficher un spinner global → flash/clignotement.
+// Les pages gèrent déjà leur propre loading via useQuery (isLoading local),
+// donc le Suspense global était non seulement inutile mais nuisible.
+// Maintenant : la page garde son état visuel (cache TanStack) pendant le
+// refetch en arrière-plan. 0 flash, 0 démontage.
 export function PageContent({ pageId }: { pageId: PageId }) {
   const { user } = useAuthStore()
 
@@ -160,9 +167,7 @@ export function PageContent({ pageId }: { pageId: PageId }) {
   if (PageComponent) {
     return (
       <QueryErrorBoundary>
-        <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
-          <PageComponent />
-        </Suspense>
+        <PageComponent />
       </QueryErrorBoundary>
     )
   }

@@ -7,21 +7,19 @@ import { useAuthStore } from '@/stores/auth-store'
  * useSessionKeepAlive — maintient la session active en rafraîchissant
  * proactivement le token d'accès AVANT qu'il n'expire.
  *
- * BUGFIX (KEEPALIVE-1) : avant ce hook, le refresh n'était déclenché que
- * réactivement (au montage du layout). En cas d'inactivité, l'access token
- * (15 min) expirait sans être renouvelé, et la prochaine navigation
- * déclenchait un refresh qui pouvait échouer (cold start Render) → logout.
+ * BUGFIX (FLICKER-FIX-1) : le refresh au visibilitychange déclenchait
+ * refreshSession() qui set isLoading: true → re-render de
+ * AuthenticatedLayout → remontage de PageContent → flash/clignotement.
  *
- * Stratégie :
- *  1. Refresh périodique toutes les 10 minutes (avant l'expiration à 15 min)
- *     → renouvelle l'access token tant que le refresh token (7j) est valide.
- *  2. Refresh au refocus de l'onglet (visibilitychange → visible) → couvre
- *     le cas où l'utilisateur revient après une absence (le token a pu
- *     expirer pendant ce temps).
- *  3. L'interval est suspendu quand l'onglet est caché (économie + évite
- *     de réveiller inutilement le backend).
- *  4. Le refresh est "silencieux" : grâce au fix de la route session +
- *     auth-store, une erreur transitoire ne déconnecte PAS l'utilisateur.
+ * Fix : le refresh au refocus est maintenant SILENCIEUX — il ne modifie
+ * PAS isLoading. On appelle directement l'API /api/go-auth/session sans
+ * passer par refreshSession (qui set isLoading). Si la session est
+ * invalide, on déclenche alors refreshSession (qui gère le logout).
+ *
+ * Le cleanup (return () => removeEventListener) est CRITIQUE : comme
+ * AuthenticatedLayout se remonte à chaque navigation (catch-all route),
+ * sans cleanup les listeners s'accumuleraient → dizaines de refresh
+ * simultanés au retour sur l'onglet.
  *
  * Monté dans AuthenticatedLayout (toutes les pages authentifiées).
  */
@@ -34,34 +32,32 @@ export function useSessionKeepAlive() {
     if (!isAuthenticated) return
 
     // --- 1. Refresh périodique (toutes les 10 min) ---
-    // L'access token expire à 15 min. On refresh à 10 min pour avoir une
-    // marge de sécurité. Si le refresh échoue (transitoire), le token
-    // courant est encore valide 5 min → on réessaiera au prochain cycle.
     const REFRESH_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 
-    const doRefresh = () => {
-      // Ne refresh que si l'onglet est visible (évite de réveiller le
-      // backend inutilement quand l'utilisateur est sur un autre onglet).
-      // Le refresh au refocus (ci-dessous) couvre le retour d'onglet.
+    const doRefresh = async () => {
+      // Ne refresh que si l'onglet est visible
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshSession()
+        await silentSessionCheck()
       }
     }
 
     intervalRef.current = setInterval(doRefresh, REFRESH_INTERVAL_MS)
 
-    // --- 2. Refresh au refocus de l'onglet ---
-    // Quand l'utilisateur revient sur l'onglet après une absence, le token
-    // a pu expirer. On refresh immédiatement pour éviter qu'une navigation
-    // ne déclenche un refresh qui pourrait échouer.
-    const handleVisibilityChange = () => {
+    // --- 2. Refresh SILENCIEUX au refocus de l'onglet ---
+    // BUGFIX (FLICKER-FIX-1) : ne PAS appeler refreshSession() directement
+    // car il set isLoading: true → re-render → flash. À la place, on fait
+    // un check silencieux : si la session est encore valide, on ne touche
+    // à rien. Si invalide, on appelle refreshSession (qui gère le logout).
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
-        refreshSession()
+        await silentSessionCheck()
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
-    // --- 3. Cleanup ---
+    // --- 3. Cleanup CRITIQUE ---
+    // Sans ce cleanup, les listeners s'accumuleraient à chaque navigation
+    // (AuthenticatedLayout se remonte) → fuite mémoire + refreshs multiples.
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
@@ -70,4 +66,24 @@ export function useSessionKeepAlive() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [isAuthenticated, refreshSession])
+
+  /**
+   * Check silencieux de la session SANS modifier isLoading.
+   * Appelle /api/go-auth/session en arrière-plan. Si l'utilisateur est
+   * toujours valide, ne fait rien (0 re-render). Si invalide, déclenche
+   * refreshSession (qui gère le logout proprement).
+   */
+  async function silentSessionCheck() {
+    try {
+      const res = await fetch('/api/go-auth/session')
+      const data = await res.json()
+      if (!data.user && !data.transient) {
+        // Session vraiment invalide (pas transitoire) → logout propre
+        refreshSession()
+      }
+      // Si data.user ou data.transient → ne rien faire (silencieux)
+    } catch {
+      // Erreur réseau → ne rien faire (silencieux, ne pas déconnecter)
+    }
+  }
 }
