@@ -3529,3 +3529,55 @@ Stage Summary:
 - Sécurité préservée : cookie httpOnly forwardé nativement par le CDN Vercel, headers de sécurité intacts
 - Aucune régression attendue : auth pages protégées toujours gérée par middleware (sur pages seulement), API routing inchangé du point de vue client
 - En attente : validation build Vercel + vérif live (headers, cookie forwarding, auth)
+
+---
+Task ID: QUOTA-FIX-1-VERIFY
+Agent: Z.ai Code (tutor mode)
+Task: Vérification live post-déploiement des optimisations quota Vercel
+
+Work Log:
+- Commit 656980b poussé sur main → auto-deploy Vercel (frontend, ~60s)
+- Pas de rebuild backend nécessaire (aucun changement Go)
+
+Vérifications live (toutes confirmées ✅) :
+
+1. API routing via vercel.json rewrite
+   - GET /api/health → 200, x-render-origin-server: Render ✅
+   - GET /api/me → 200, userName: "Ulrich DOUH" (cookie httpOnly forwardé) ✅
+   - GET /api/documents → 200 ✅
+   - GET /api/unites-enseignement → 200 ✅
+   - GET /api/stats/responsable → 403 (fix sécurité actif pour enseignant) ✅
+
+2. Headers de sécurité présents (MERGE vercel.json)
+   - Strict-Transport-Security: max-age=63072000; includeSubDomains; preload ✅
+   - X-Frame-Options: DENY ✅
+   - X-Content-Type-Options: nosniff ✅
+   - Cross-Origin-Opener-Policy: same-origin ✅
+   - Cross-Origin-Resource-Policy: same-origin ✅
+   - Permissions-Policy: camera=(self), microphone=(self), ... ✅
+   - Referrer-Policy: strict-origin-when-cross-origin ✅
+
+3. Middleware (pages protégées seulement)
+   - /dashboard sans cookie → redirect /login?error=SessionExpired ✅
+   - /api/* exclue du matcher → 0 Function Invocation middleware ✅
+
+4. Polling notification-bell optimisé
+   - 70s sur dashboard : 2 requêtes réseau total (1 /api/alertes au montage) ✅
+   - Avant : aurait été ~2-3 requêtes + middleware sur chaque /api/*
+   - Pas de spam, pas de boucle
+
+5. Boucle badges (ENS-AUDIT-1) toujours corrigée
+   - 0 requête /api/badges en boucle ✅
+
+6. Console errors : 0 ✅
+
+Stage Summary:
+- Architecture cible atteinte : 0 CPU Edge pour /api/* (routage CDN pur via vercel.json)
+- Sécurité préservée : cookie httpOnly forwardé nativement, headers intacts, middleware sur pages
+- Impact estimé sur quota Vercel (à confirmer sur 30 jours) :
+  * Function Invocations : 476K → ~50K/mois (-90%)
+  * Edge Requests : 533K → ~60K/mois (-89%)
+  * Fluid Active CPU : 1h23m → <10m/mois (-80%)
+- Les 4 routes /api/go-auth/* restent des Serverless Functions (1 appel/session, impact négligeable)
+- Aucune régression : toutes les pages enseignant/admin/étudiant/responsable testées fonctionnelles
+- Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
