@@ -238,11 +238,17 @@ type Epreuve struct {
 // BUGFIX (ETU-AUDIT-1) : permet au frontend d'afficher le statut de passation
 // sans crash (ep.sessions.some(s => s.statut === 'SOUMISE')).
 type SessionRef struct {
-	ID        string        `json:"id"`
-	Statut    StatutSession `json:"statut"`
-	DateDebut *time.Time    `json:"dateDebut,omitempty"`
-	DateFin   *time.Time    `json:"dateFin,omitempty"`
-	Score     *float64      `json:"score,omitempty"`
+	ID         string        `json:"id"`
+	EtudiantID string        `json:"etudiantId"`
+	Statut     StatutSession `json:"statut"`
+	DateDebut  *time.Time    `json:"dateDebut,omitempty"`
+	DateFin    *time.Time    `json:"dateFin,omitempty"`
+	Score      *float64      `json:"score,omitempty"`
+	// BUGFIX (SESS-SPECIALE-1) : Etudiant peuplé par LEFT JOIN User dans
+	// l'hydratation des sessions (List). Sans cela, le formulaire Session
+	// spéciale étape 2 ne peut ni afficher le nom de l'étudiant ni le
+	// sélectionner (session.etudiantId etait absent de la réponse API).
+	Etudiant *UserRef `json:"etudiant,omitempty"`
 }
 
 // EpreuveQuestion est la liaison épreuve ↔ question (format relationnel legacy).

@@ -283,18 +283,25 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			var sessRows pgx.Rows
 			var err2 error
 			if params.EtudiantID != "" {
+				// BUGFIX (SESS-SPECIALE-1) : LEFT JOIN User pour peupler etudiant
+				// (nom + email) + sélectionner etudiantId. Sans cela, le formulaire
+				// Session spéciale étape 2 ne pouvait ni afficher le nom ni sélectionner.
 				sessRows, err2 = tx.Query(ctx, `
-					SELECT "id", "epreuveId", "statut", "dateDebut", "dateFin", "score"
-					FROM "SessionPassation"
-					WHERE "etudiantId" = $1 AND "epreuveId" = ANY($2)
-					ORDER BY "createdAt" DESC`,
+					SELECT sp."id", sp."epreuveId", sp."etudiantId", sp."statut", sp."dateDebut", sp."dateFin", sp."score",
+					u."id", u."name", u."email"
+					FROM "SessionPassation" sp
+					LEFT JOIN "User" u ON u."id" = sp."etudiantId"
+					WHERE sp."etudiantId" = $1 AND sp."epreuveId" = ANY($2)
+					ORDER BY sp."createdAt" DESC`,
 					params.EtudiantID, epreuveIDs)
 			} else {
 				sessRows, err2 = tx.Query(ctx, `
-					SELECT "id", "epreuveId", "statut", "dateDebut", "dateFin", "score"
-					FROM "SessionPassation"
-					WHERE "epreuveId" = ANY($1)
-					ORDER BY "createdAt" DESC`,
+					SELECT sp."id", sp."epreuveId", sp."etudiantId", sp."statut", sp."dateDebut", sp."dateFin", sp."score",
+					u."id", u."name", u."email"
+					FROM "SessionPassation" sp
+					LEFT JOIN "User" u ON u."id" = sp."etudiantId"
+					WHERE sp."epreuveId" = ANY($1)
+					ORDER BY sp."createdAt" DESC`,
 					epreuveIDs)
 			}
 			if err2 != nil {
@@ -306,8 +313,12 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			for sessRows.Next() {
 				sr := domain.SessionRef{}
 				var epreuveID string
-				if err := sessRows.Scan(&sr.ID, &epreuveID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score); err != nil {
+				var etuID, etuName, etuEmail *string
+				if err := sessRows.Scan(&sr.ID, &epreuveID, &sr.EtudiantID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score, &etuID, &etuName, &etuEmail); err != nil {
 					return fmt.Errorf("scan session ref: %w", err)
+				}
+				if etuID != nil && etuName != nil {
+					sr.Etudiant = &domain.UserRef{ID: *etuID, Name: *etuName, Email: derefStr(etuEmail)}
 				}
 				sessionsByEpreuve[epreuveID] = append(sessionsByEpreuve[epreuveID], sr)
 			}
