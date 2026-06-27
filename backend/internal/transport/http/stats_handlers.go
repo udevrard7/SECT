@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -631,35 +632,308 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	// BUGFIX (ENS-AUDIT-4) : restriction au rôle RESPONSABLE (et ADMIN qui
-	// hérite de toutes les permissions). Avant ce fix, tout utilisateur
-	// authentifié — y compris ENSEIGNANT et ETUDIANT — pouvait appeler cet
-	// endpoint et récupérer les compteurs globaux (nb enseignants, étudiants,
-	// épreuves, sessions) de l'établissement : fuite d'information.
+	// BUGFIX (ENS-AUDIT-4) : restriction au rôle RESPONSABLE (et ADMIN).
 	if claims.Role != string(domain.RoleResponsable) && claims.Role != string(domain.RoleAdmin) {
 		writeJSONError(w, http.StatusForbidden, "réservé au rôle RESPONSABLE")
 		return
 	}
 
 	ctx := r.Context()
+	// BUGFIX (RESP-AUDIT-1) : support du filtre filiereId (rapports-page.tsx).
+	filiereID := r.URL.Query().Get("filiereId")
+	_ = r.URL.Query().Get("dateDebut")
+	_ = r.URL.Query().Get("dateFin")
+
+	// Types de réponse (toujours initialisés avec slices vides — JAMAIS nil)
+	type repartitionNote struct {
+		Label string `json:"label"`
+		Count int    `json:"count"`
+	}
+	type resultatParMatiere struct {
+		Titre          string  `json:"titre"`
+		Enseignant     string  `json:"enseignant"`
+		Moyenne        float64 `json:"moyenne"`
+		TauxReussite   float64 `json:"tauxReussite"`
+		NbParticipants int     `json:"nbParticipants"`
+	}
+	type etudiantParFiliere struct {
+		Filiere string `json:"filiere"`
+		Count   int    `json:"count"`
+	}
+	type evolutionMoyenne struct {
+		Mois          string  `json:"mois"`
+		Moyenne       float64 `json:"moyenne"`
+		NbEvaluations int     `json:"nbEvaluations"`
+	}
+	type topEnseignant struct {
+		Nom          string  `json:"nom"`
+		NbEpreuves   int     `json:"nbEpreuves"`
+		Moyenne      float64 `json:"moyenne"`
+		TauxReussite float64 `json:"tauxReussite"`
+	}
+	type alerteStat struct {
+		Type        string `json:"type"`
+		Titre       string `json:"titre"`
+		Description string `json:"description"`
+		Severity    string `json:"severity"`
+	}
+	type topEtudiant struct {
+		ID      string  `json:"id"`
+		Nom     string  `json:"nom"`
+		Email   string  `json:"email"`
+		Moyenne float64 `json:"moyenne"`
+		Filiere string  `json:"filiere"`
+	}
 
 	stats := map[string]any{
-		"totalEnseignants": 0,
-		"totalEtudiants":   0,
-		"totalEpreuves":    0,
-		"totalSessions":    0,
+		"nbEtudiants":           0,
+		"nbEnseignants":         0,
+		"nbEvaluations":         0,
+		"tauxReussiteGlobal":    0,
+		"moyenneGenerale":       0,
+		"repartitionNotes":      []repartitionNote{},
+		"resultatsParMatiere":   []resultatParMatiere{},
+		"etudiantsParFiliere":   []etudiantParFiliere{},
+		"evolutionMoyennes":     []evolutionMoyenne{},
+		"topEnseignants":        []topEnseignant{},
+		"alertes":               []alerteStat{},
+		"topEtudiants":          []topEtudiant{},
+		"etudiantsEnDifficulte": []topEtudiant{},
+		"badges":                []any{},
+	}
+
+	// Clause de filtre filiere optionnelle
+	filiereFilter := ""
+	if filiereID != "" {
+		filiereFilter = fmt.Sprintf(`AND e."filiereId" = '%s'`, filiereID)
 	}
 
 	_ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
-		var nbEns, nbEtu, nbEpreuves, nbSessions int
+		// 1. Compteurs globaux (RLS filtre par établissement)
+		var nbEns, nbEtu, nbEpreuves int
 		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE role = 'ENSEIGNANT' AND actif = true`).Scan(&nbEns)
 		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE role = 'ETUDIANT' AND actif = true`).Scan(&nbEtu)
-		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "Epreuve" WHERE "deletedAt" IS NULL`).Scan(&nbEpreuves)
-		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation"`).Scan(&nbSessions)
-		stats["totalEnseignants"] = nbEns
-		stats["totalEtudiants"] = nbEtu
-		stats["totalEpreuves"] = nbEpreuves
-		stats["totalSessions"] = nbSessions
+		_ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "Epreuve" WHERE "deletedAt" IS NULL %s`, filiereFilter)).Scan(&nbEpreuves)
+		stats["nbEnseignants"] = nbEns
+		stats["nbEtudiants"] = nbEtu
+		stats["nbEvaluations"] = nbEpreuves
+
+		// 2. Moyenne générale + taux de réussite global
+		var moyenneGen, tauxReuss float64
+		_ = tx.QueryRow(ctx, fmt.Sprintf(`
+			SELECT COALESCE(AVG(s.score), 0),
+			       CASE WHEN count(s.id) > 0
+				    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+				    ELSE 0 END
+			FROM "SessionPassation" s
+			JOIN "Epreuve" e ON e.id = s."epreuveId"
+			WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			  %s
+		`, filiereFilter)).Scan(&moyenneGen, &tauxReuss)
+		stats["moyenneGenerale"] = moyenneGen
+		stats["tauxReussiteGlobal"] = tauxReuss
+
+		// 3. Répartition des notes (6 buckets sur /20)
+		rows, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT CASE
+				WHEN s.score / e."noteTotal" * 20 < 8 THEN '< 8'
+				WHEN s.score / e."noteTotal" * 20 < 10 THEN '8-10'
+				WHEN s.score / e."noteTotal" * 20 < 12 THEN '10-12'
+				WHEN s.score / e."noteTotal" * 20 < 14 THEN '12-14'
+				WHEN s.score / e."noteTotal" * 20 < 16 THEN '14-16'
+				ELSE '16-20'
+			END AS bucket,
+			count(*) AS nb
+			FROM "SessionPassation" s
+			JOIN "Epreuve" e ON e.id = s."epreuveId"
+			WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			  %s
+			GROUP BY bucket
+			ORDER BY bucket
+		`, filiereFilter))
+		if err == nil {
+			defer rows.Close()
+			rep := []repartitionNote{
+				{Label: "< 8", Count: 0},
+				{Label: "8-10", Count: 0},
+				{Label: "10-12", Count: 0},
+				{Label: "12-14", Count: 0},
+				{Label: "14-16", Count: 0},
+				{Label: "16-20", Count: 0},
+			}
+			for rows.Next() {
+				var b string
+				var n int
+				if err := rows.Scan(&b, &n); err == nil {
+					for i := range rep {
+						if rep[i].Label == b {
+							rep[i].Count = n
+						}
+					}
+				}
+			}
+			stats["repartitionNotes"] = rep
+		}
+
+		// 4. Résultats par matière (top 10 épreuves par moyenne)
+		rows2, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT e.titre,
+			       COALESCE(u.name, '—') AS enseignant_nom,
+			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       CASE WHEN count(s.id) > 0
+				    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+				    ELSE 0 END AS taux_reussite,
+			       count(s.id) AS nb_participants
+			FROM "Epreuve" e
+			LEFT JOIN "User" u ON u.id = e."enseignantId"
+			LEFT JOIN "SessionPassation" s ON s."epreuveId" = e.id
+			  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			WHERE e."deletedAt" IS NULL %s
+			GROUP BY e.id, e.titre, u.name, e."noteTotal"
+			ORDER BY moyenne DESC
+			LIMIT 10
+		`, filiereFilter))
+		if err == nil {
+			defer rows2.Close()
+			mat := []resultatParMatiere{}
+			for rows2.Next() {
+				var m resultatParMatiere
+				if err := rows2.Scan(&m.Titre, &m.Enseignant, &m.Moyenne, &m.TauxReussite, &m.NbParticipants); err == nil {
+					mat = append(mat, m)
+				}
+			}
+			stats["resultatsParMatiere"] = mat
+		}
+
+		// 5. Étudiants par filière
+		rows3, err := tx.Query(ctx, `
+			SELECT COALESCE(f.nom, 'Sans filière') AS filiere_nom,
+			       count(u.id) AS nb
+			FROM "User" u
+			LEFT JOIN "Filiere" f ON f.id = u."filiereId"
+			WHERE u.role = 'ETUDIANT' AND u.actif = true
+			GROUP BY f.nom
+			ORDER BY nb DESC
+		`)
+		if err == nil {
+			defer rows3.Close()
+			etf := []etudiantParFiliere{}
+			for rows3.Next() {
+				var e etudiantParFiliere
+				if err := rows3.Scan(&e.Filiere, &e.Count); err == nil {
+					etf = append(etf, e)
+				}
+			}
+			stats["etudiantsParFiliere"] = etf
+		}
+
+		// 6. Évolution des moyennes (6 derniers mois)
+		rows4, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
+			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       count(*) AS nb_evaluations
+			FROM "SessionPassation" s
+			JOIN "Epreuve" e ON e.id = s."epreuveId"
+			WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			  AND s."updatedAt" > now() - interval '6 months'
+			  %s
+			GROUP BY mois
+			ORDER BY mois ASC
+		`, filiereFilter))
+		if err == nil {
+			defer rows4.Close()
+			evol := []evolutionMoyenne{}
+			for rows4.Next() {
+				var e evolutionMoyenne
+				if err := rows4.Scan(&e.Mois, &e.Moyenne, &e.NbEvaluations); err == nil {
+					evol = append(evol, e)
+				}
+			}
+			stats["evolutionMoyennes"] = evol
+		}
+
+		// 7. Top enseignants (par moyenne)
+		rows5, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT u.name,
+			       count(DISTINCT e.id) AS nb_epreuves,
+			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       CASE WHEN count(s.id) > 0
+				    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+				    ELSE 0 END AS taux_reussite
+			FROM "User" u
+			JOIN "Epreuve" e ON e."enseignantId" = u.id AND e."deletedAt" IS NULL
+			LEFT JOIN "SessionPassation" s ON s."epreuveId" = e.id
+			  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			WHERE u.role = 'ENSEIGNANT' AND u.actif = true %s
+			GROUP BY u.id, u.name
+			ORDER BY moyenne DESC
+			LIMIT 5
+		`, filiereFilter))
+		if err == nil {
+			defer rows5.Close()
+			top := []topEnseignant{}
+			for rows5.Next() {
+				var t topEnseignant
+				if err := rows5.Scan(&t.Nom, &t.NbEpreuves, &t.Moyenne, &t.TauxReussite); err == nil {
+					top = append(top, t)
+				}
+			}
+			stats["topEnseignants"] = top
+		}
+
+		// 8. Top étudiants (par moyenne)
+		rows6, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT u.id, u.name, u.email,
+			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(f.nom, '—') AS filiere_nom
+			FROM "User" u
+			JOIN "SessionPassation" s ON s."etudiantId" = u.id
+			  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			LEFT JOIN "Filiere" f ON f.id = u."filiereId"
+			WHERE u.role = 'ETUDIANT' %s
+			GROUP BY u.id, u.name, u.email, f.nom
+			ORDER BY moyenne DESC
+			LIMIT 5
+		`, filiereFilter))
+		if err == nil {
+			defer rows6.Close()
+			topE := []topEtudiant{}
+			for rows6.Next() {
+				var t topEtudiant
+				if err := rows6.Scan(&t.ID, &t.Nom, &t.Email, &t.Moyenne, &t.Filiere); err == nil {
+					topE = append(topE, t)
+				}
+			}
+			stats["topEtudiants"] = topE
+		}
+
+		// 9. Étudiants en difficulté (moyenne < 8/20)
+		rows7, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT u.id, u.name, u.email,
+			       COALESCE(AVG(s.score), 0) AS moyenne,
+			       COALESCE(f.nom, '—') AS filiere_nom
+			FROM "User" u
+			JOIN "SessionPassation" s ON s."etudiantId" = u.id
+			  AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+			LEFT JOIN "Filiere" f ON f.id = u."filiereId"
+			WHERE u.role = 'ETUDIANT' %s
+			GROUP BY u.id, u.name, u.email, f.nom
+			HAVING AVG(s.score) < 8
+			ORDER BY moyenne ASC
+			LIMIT 5
+		`, filiereFilter))
+		if err == nil {
+			defer rows7.Close()
+			diff := []topEtudiant{}
+			for rows7.Next() {
+				var t topEtudiant
+				if err := rows7.Scan(&t.ID, &t.Nom, &t.Email, &t.Moyenne, &t.Filiere); err == nil {
+					diff = append(diff, t)
+				}
+			}
+			stats["etudiantsEnDifficulte"] = diff
+		}
+
 		return nil
 	})
 
