@@ -44,8 +44,9 @@ func New(databaseURL string) (*pgxpool.Pool, error) {
 	// BUGFIX (SCORES-NORM-1): désactiver les prepared statements car le
 	// pooler Neon (PgBouncer) ne les supporte pas correctement → erreur
 	// "prepared statement name is already in use (SQLSTATE 08P01)".
-	// En mode simple protocol, pgx envoie chaque query sans préparation.
-	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	// QueryExecModeSimpleProtocol: envoie chaque query via Simple Query
+	// Protocol (pas de prepared statements, pas de binding de paramètres).
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
