@@ -4417,3 +4417,44 @@ Stage Summary:
 - Les 2 onglets (Modèles + Sessions) affichent maintenant les vraies données
 - Les sessions sont hydratées pour l'enseignant (pas seulement l'étudiant)
 - Les questionCount et totalPoints sont extraits du contenu JSON
+
+---
+Task ID: EPREUVES-PDF-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger boutons PDF/Télécharger sur /epreuves onglet Modèles
+
+Work Log:
+- Analyse capture écran bto.jpg: boutons Aperçu, PDF, Dupliquer, Supprimer visibles
+- Audit via agent-browser:
+
+Boutons vérifiés:
+- Aperçu ✅ (dialog avec questions, consignes, propositions)
+- Supprimer ✅ (dialog de confirmation)
+- Dupliquer ✅ (dialog avec titre de copie)
+
+Bug: PDF export (Sujet/Corrigé/Feuille de réponses) → 404
+  - Cause: frontend appelait /api/epreuves/{id}/export-pdf?type=sujet
+    mais cette route n'existe PAS dans le backend (router.go n'a que
+    Get, Post, Patch, Delete, Get/{id}/questions)
+  - Fix: générer le PDF côté client avec jsPDF (déjà installé) en
+    utilisant la librairie existante frontend/src/lib/pdf/epreuve-pdf.ts:
+    * generateSujetPDF(data) → sujet pour l'étudiant
+    * generateCorrigePDF(data) → corrigé type pour l'enseignant
+    * generateFeuilleReponsesPDF(data) → feuille de réponses QCM/QCU
+    * getPDFFilename(titre, type) → nom de fichier
+  - Les données PDF sont construites à partir de l'épreuve déjà chargée
+    (contenu JSON avec questions, consignes, baremeTotal)
+  - Corrigé dans 2 endroits: onglet Modèles + onglet Sessions
+
+Bug bonus: "pts" au lieu de "60 pts" dans l'aperçu
+  - Le nombre de points est maintenant correctement peuplé grâce au
+    fix EPREUVES-SESSIONS-1 (QuestionCount + TotalPoints depuis contenu JSON)
+
+Vérifications live (toutes confirmées ✅) :
+- Clic PDF → dropdown avec 3 options (Sujet, Corrigé, Feuille de réponses) ✅
+- Clic "Sujet Pour l'étudiant" → 0 erreur, pas de 404, PDF généré côté client ✅
+- Aucune requête /api/epreuves/{id}/export-pdf (plus de 404) ✅
+- Aperçu: dialog avec "15 question(s)" et questions affichées ✅
+- Supprimer: dialog de confirmation ✅
+- Dupliquer: dialog avec titre ✅
+- 0 erreur console ✅
