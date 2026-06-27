@@ -987,6 +987,9 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 	// côté backend via les triggers métier ; ici on se contente de retourner
 	// l'état actuel). TODO: implémenter le recalcul si besoin.
 	_ = ctx
+	// DEBUG (BADGES-FIX-1): déclaré hors du closure pour être accessible
+	// après WithTx (sinon build failed — scope Go).
+	rowsIterated := 0
 
 	errBadges := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
 		// BUGFIX (BADGES-FIX-1) : LEFT JOIN BadgeProgression pour récupérer
@@ -1012,7 +1015,6 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 
 		badges := []badgeWithProgress{}
 		unlocked := 0
-		rowsIterated := 0
 		for rows.Next() {
 			rowsIterated++
 			b := badgeWithProgress{
