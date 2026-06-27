@@ -323,7 +323,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/alertes", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.alertesList)
+			r.Get("/", s.alertesListReal)
 		})
 
 		r.Route("/api/surveillance", func(r chi.Router) {
@@ -339,12 +339,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/notifications", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.notificationsList)
-			r.Get("/admin", s.notificationsAdmin)
+			r.Get("/admin", s.notificationsAdminReal)
 		})
 
 		r.Route("/api/abonnements", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.abonnementsList)
+			r.Get("/", s.abonnementsListReal)
 		})
 
 		r.Route("/api/factures", func(r chi.Router) {
@@ -354,17 +354,17 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/plans", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.plansList)
+			r.Get("/", s.plansListReal)
 		})
 
 		r.Route("/api/platform-settings", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.platformSettings)
+			r.Get("/", s.platformSettingsReal)
 		})
 
 		r.Route("/api/ai-providers", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.aiProvidersList)
+			r.Get("/", s.aiProvidersListReal)
 		})
 
 		r.Route("/api/monitoring", func(r chi.Router) {
@@ -374,7 +374,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/logs", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.logsList)
+			r.Get("/", s.logsListReal)
 		})
 
 		r.Route("/api/ip-whitelist", func(r chi.Router) {
@@ -400,7 +400,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/validations-ue", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.validationsUE)
+			r.Get("/", s.validationsUEListReal)
 		})
 
 		// Catch-all pour les routes API non implémentées (évite 404 brut)
