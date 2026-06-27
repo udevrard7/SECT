@@ -4136,3 +4136,47 @@ Stage Summary:
 - topQuestions implémenté (query JSONB, peut retourner vide selon le format)
 - 4 bugs sur 4 corrigés, 0 reste (le "Aucune donnée disponible" restant est pour
   topQuestions qui dépend du format JSONB des résultats)
+
+---
+Task ID: SURVEILLANCE-FIX-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger crash + données manquantes sur /surveillance
+
+Work Log:
+- 3 bugs identifiés via agent-browser :
+
+Bug #1: GET /api/surveillance retournait 404 (route inexistante)
+  - Le frontend appelait /api/surveillance?enseignantId=X pour lister les sessions
+  - Seul /api/surveillance/stats existait dans le router
+  - Fix: nouveau handler surveillanceListSessions + route GET /
+  - Retourne 34 sessions avec etudiantNom, epreuveTitre, statut, score, alertes
+
+Bug #2: GET /api/surveillance/stats format inadéquat → crash onglet "Analyse fraude"
+  - L'API retournait {sessionsActives, alertes, suspicious[]} au lieu de
+    {kpis:{totalSessions,...}, fraudByType[], timeline[], topStudents[]}
+  - Crash: stats.kpis.totalSessions → Cannot read 'totalSessions' of undefined
+  - Fix: surveillanceStatsV2 avec format complet matching SurveillanceStats:
+    * kpis: 7 champs (totalSessions=34, activeSessions=0, sessionsWithAlerts=10, etc.)
+    * fraudByType: 7 types extraits de logEvents JSON (Changement d'onglet, Sortie plein écran, etc.)
+    * timeline: 7 derniers jours
+    * topStudents: top 5 par alertes (ASSANI, LATH, LIATCHE, AHOU)
+
+Bug #3: Crash session.etudiant.name (objet imbriqué manquant)
+  - L'API retourne etudiantNom/epreuveTitre (champs plats)
+  - Le frontend attend etudiant:{name} / epreuve:{titre} (objets imbriqués)
+  - Crash: session.etudiant.name → Cannot read 'name' of undefined
+  - Fix: optional chaining + fallback sur champs plats
+
+Vérifications live (toutes confirmées ✅) :
+- Page /surveillance s'affiche sans crash ✅
+- Onglet "Sessions surveillées": 34 sessions, "ASSANI Emile Junior" visible ✅
+- Onglet "Analyse fraude": "Répartition des fraudes" + "Changement d'onglet" +
+  "Sortie plein écran" + "Top étudiants" (ASSANI, LATH, LIATCHE, AHOU) ✅
+- KPIs: 34 total, 0 actives, 23 alertes, 10 sessions concernées, 5 signalées ✅
+- Build Render: live (903dc7c + fd1a9f4)
+
+Stage Summary:
+- 2 nouveaux endpoints backend (surveillanceListSessions + surveillanceStatsV2)
+- 1 fix frontend (optional chaining sur etudiant/epreuve)
+- Les sessions passées ET futures sont maintenant affichées
+- L'onglet "Analyse fraude" affiche les vraies données de surveillance
