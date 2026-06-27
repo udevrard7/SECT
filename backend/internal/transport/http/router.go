@@ -328,7 +328,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/surveillance", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/stats", s.surveillanceStatsReal)
+			r.Get("/", s.surveillanceListSessions)
+			r.Get("/stats", s.surveillanceStatsV2)
 		})
 
 		r.Route("/api/corbeille", func(r chi.Router) {
