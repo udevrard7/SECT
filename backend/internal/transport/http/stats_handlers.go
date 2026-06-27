@@ -176,7 +176,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		rows2, err := tx.Query(ctx, `
 			SELECT e.id, e.titre, e.statut, e."dateDebut",
 			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e.id) AS nb_participants,
-			       (SELECT AVG(s2.score) FROM "SessionPassation" s2
+			       (SELECT AVG(s2.score) / e."noteTotal" * 20 FROM "SessionPassation" s2
 				WHERE s2."epreuveId" = e.id AND s2.statut IN ('CORRIGEE', 'RETOURNEE') AND s2.score IS NOT NULL) AS moyenne
 			FROM "Epreuve" e
 			WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
