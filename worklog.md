@@ -4706,3 +4706,79 @@ Stage Summary:
 - Bug critique applicatif découvert: Sonner Toaster jamais monté (57 fichiers impactés)
 - La duplication est maintenant pleinement fonctionnelle et testée en E2E
 - Debug commits (79d6e2c, ecfcc0a) laissés dans l'historique (logs retirés dans 8f2e20d)
+
+---
+Task ID: KEEPALIVE-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger la déconnexion involontaire après inactivité (~5-15 min)
+
+Work Log:
+- L'utilisateur a rapporté une déconnexion automatique après ~5 min d'inactivité.
+  Critique pour une app d'examen (étudiant en passation ne doit jamais être
+  déconnecté).
+
+Analyse du mécanisme de session :
+- Access token JWT : 15 min (jwt.go AccessTokenTTL = 15 * time.Minute)
+- Refresh token : 7 jours (RefreshTokenTTL = 7 * 24 * time.Hour), stocké en DB
+- Cookie access_token : maxAge 15 min (login route + session route)
+- Cookie refresh_token : maxAge 7 jours
+- Proxy (proxy.ts) : laisse passer si access OU refresh présent (fix SESSION-EXPIRE-1)
+- refreshSession() : appelé au montage du AuthenticatedLayout + dans Providers
+- AUCUN refresh proactif périodique
+- AUCUN logout par inactivité côté code frontend
+
+Causes racines identifiées :
+1. Aucun refresh proactif : le token d'accès (15 min) n'était rafraîchi que
+   réactivement (au montage du layout). En cas d'inactivité, il expirait
+   sans être renouvelé. Au retour de l'utilisateur, la navigation déclenchait
+   un refresh qui pouvait échouer (cold start Render).
+2. Route /api/go-auth/session fragile : le catch global retournait
+   { user: null } sur TOUTE erreur (timeout, cold start Render 5xx, réseau)
+   → l'auth-store déconnectait immédiatement.
+3. Aucune distinction entre 'session invalide' (refresh token refusé par le
+   backend = logout légitime) et 'erreur transitoire' (backend indisponible =
+   ne pas déconnecter).
+4. Backend Render plan free : spin-down après 15 min d'inactivité → cold
+   start 30-50s → timeout → erreur transitoire → déconnexion.
+
+Fix en 3 couches (commit 543f69d — déploiement Vercel) :
+
+1. Route /api/go-auth/session (route.ts) :
+   - Distingue 3 cas : session valide / session invalide (logout) /
+     erreur transitoire (garde les cookies, { transient: true })
+   - fetchWithTimeout (12s) via AbortController
+   - Logout légitime seulement si le backend refuse explicitement le
+     refresh token (401/403 sur /api/auth/refresh)
+   - Pose les nouveaux cookies même si /api/me échoue après refresh OK
+   - Ne supprime JAMAIS les cookies sur erreur réseau
+
+2. auth-store.refreshSession (auth-store.ts) :
+   - Ne déconnecte PLUS sur { transient: true } (erreur transitoire)
+   - Ne déconnecte PLUS sur erreur réseau côté route Next.js
+   - Logout seulement si session.user est null ET pas de transient
+
+3. Hook useSessionKeepAlive (nouveau, monté dans AuthenticatedLayout) :
+   - Refresh proactif toutes les 10 min (avant expiration 15 min)
+   - Refresh au refocus de l'onglet (visibilitychange → visible)
+   - Interval suspendu quand l'onglet est caché (économie)
+   - Refresh silencieux : erreur transitoire ne déconnecte pas
+
+Vérification navigateur (agent-browser) après déploiement Vercel :
+- Login prof01 → dashboard ✅
+- /api/go-auth/session → { hasUser: true, userName: "Ulrich DOUH" } ✅
+- Après 20s d'inactivité → session toujours valide ✅
+- Navigation /epreuves → session persiste, 0 erreur console ✅
+- Simulation backend down (mock fetch erreur réseau) → utilisateur
+  reste connecté, pas de redirect /login ✅
+- Simulation refocus d'onglet (visibilitychange) → refresh déclenché
+  (HTTP 200), utilisateur reste connecté ✅
+- Après 30s d'inactivité → session toujours valide ✅
+- Restauration : hash mot de passe restauré ✅
+
+Stage Summary:
+- 3 bugs corrigés en 3 couches (route session + auth-store + hook keep-alive)
+- L'utilisateur reste connecté pendant l'inactivité (refresh proactif 10 min)
+- Une indisponibilité backend transitoire (cold start Render) ne déconnecte
+  PLUS l'utilisateur (réponse transient + cookies préservés)
+- Le logout n'arrive que si le refresh token (7j) est réellement refusé
+- Critique pour la passation d'examens (étudiant protégé)
