@@ -243,7 +243,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 		rows, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT e."id", e."titre",
 			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id") AS nb_part,
-			       (SELECT AVG(s2.score) FROM "SessionPassation" s2
+			       (SELECT AVG(s2.score) / e."noteTotal" * 20 FROM "SessionPassation" s2
 				WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL) AS moy,
 			       CASE WHEN count(s3.id) > 0
 				    THEN (count(s3.id) FILTER (WHERE s3.score >= e."noteTotal" * 0.5))::float / count(s3.id) * 100
@@ -304,7 +304,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 
 		// 3. Étudiants en difficulté (moyenne < 8/20)
 		rows3, err := tx.Query(r.Context(), fmt.Sprintf(`
-			SELECT u."id", u."name", u."email", COALESCE(AVG(s.score), 0) AS moy,
+			SELECT u."id", u."name", u."email", COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moy,
 			       COALESCE(f."nom", '—') AS filiere
 			FROM "User" u
 			JOIN "SessionPassation" s ON s."etudiantId" = u."id"
@@ -435,7 +435,7 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 
 		// 2. Résultats récents
 		rows2, err := tx.Query(r.Context(), `
-			SELECT e."titre", s."score", s."statut"::text, s."updatedAt"
+			SELECT e."titre", s."score" / e."noteTotal" * 20 AS score_sur20, s."statut"::text, s."updatedAt"
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE s."etudiantId" = $1 AND s.statut IN ('CORRIGEE','RETOURNEE')
