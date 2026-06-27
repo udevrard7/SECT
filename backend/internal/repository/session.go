@@ -513,8 +513,20 @@ func (r *ResultatRepository) ListByEpreuve(ctx context.Context, epreuveID string
 		return nil, 0, fmt.Errorf("count sessions: %w", err)
 	}
 
-	// Fetch page (or all if no pagination)
-	query := fmt.Sprintf(`SELECT %s FROM "SessionPassation" WHERE "epreuveId" = $1 ORDER BY "score" DESC NULLS LAST`, columnsSession)
+	// BUGFIX (RESULTATS-TABS-1) : LEFT JOIN User + Filiere pour peupler
+	// etudiant:{id, name, email, filiere} attendu par le frontend.
+	query := fmt.Sprintf(`
+		SELECT s."id", s."etudiantId", s."epreuveId", s."statut"::text,
+		       s."dateDebut", s."dateFin", s."score", s."logEvents",
+		       s."alertes", s."createdAt", s."updatedAt",
+		       s."propositionMappings", s."penalite",
+		       u."id", u."name", u."email", f."nom"
+		FROM "SessionPassation" s
+		LEFT JOIN "User" u ON u."id" = s."etudiantId"
+		LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
+		WHERE s."epreuveId" = $1
+		ORDER BY s."score" DESC NULLS LAST
+	`)
 	var args []any = []any{epreuveID}
 	if page > 0 && limit > 0 {
 		offset := (page - 1) * limit
@@ -530,9 +542,32 @@ func (r *ResultatRepository) ListByEpreuve(ctx context.Context, epreuveID string
 
 	var result []*domain.SessionPassation
 	for rows.Next() {
-		s, err := scanSession(rows)
-		if err != nil {
+		s := &domain.SessionPassation{}
+		var statut string
+		var etuID, etuName, etuEmail *string
+		var filiereNom *string
+		if err := rows.Scan(
+			&s.ID, &s.EtudiantID, &s.EpreuveID, &statut,
+			&s.DateDebut, &s.DateFin, &s.Score, &s.LogEvents,
+			&s.Alertes, &s.CreatedAt, &s.UpdatedAt,
+			&s.PropositionMappings, &s.Penalite,
+			&etuID, &etuName, &etuEmail, &filiereNom,
+		); err != nil {
 			return nil, 0, fmt.Errorf("scan session: %w", err)
+		}
+		s.Statut = domain.StatutSession(statut)
+		if etuID != nil && etuName != nil {
+			s.Etudiant = &struct {
+				ID      string  `json:"id"`
+				Name    string  `json:"name"`
+				Email   string  `json:"email"`
+				Filiere *string `json:"filiere,omitempty"`
+			}{
+				ID:      *etuID,
+				Name:    *etuName,
+				Email:   derefStr(etuEmail),
+				Filiere: filiereNom,
+			}
 		}
 		result = append(result, s)
 	}
