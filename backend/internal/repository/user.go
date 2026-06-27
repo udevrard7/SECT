@@ -155,15 +155,20 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
 		// BUGFIX (ADMIN-AUDIT-3) : LEFT JOIN Etablissement pour peupler la
 		// relation `etablissement` (EtablissementRef{ID, Nom}) attendue par le
 		// frontend (ex: page /utilisateurs affiche user.etablissement.nom).
-		// Avant, l'API ne renvoyait que `etablissementId` → affichage "—".
+		// BUGFIX (FILIERE-FIX-1) : LEFT JOIN Filiere pour peupler la relation
+		// `filiere` (FiliereRef{ID, Nom, Code}) attendue par le frontend
+		// (page /etudiants affiche etudiant.filiere.nom). Avant, l'API ne
+		// renvoyait que `filiereId` → la filière n'était jamais affichée.
 		offset := (params.Page - 1) * params.Limit
 		listSQL := fmt.Sprintf(`
 			SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
 			       u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
 			       u."derniereConnexion", u."createdAt", u."updatedAt",
-			       e."id", e."nom"
+			       e."id", e."nom",
+			       f."id", f."nom", f."code"
 			FROM "User" u
 			LEFT JOIN "Etablissement" e ON e."id" = u."etablissementId"
+			LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
 			%s
 			ORDER BY u."name"
 			LIMIT $%d OFFSET $%d
@@ -179,12 +184,14 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
 		for rows.Next() {
 			user := &domain.User{}
 			var etabID, etabNom *string
+			var filID, filNom, filCode *string
 			err := rows.Scan(
 				&user.ID, &user.Email, &user.Name, &user.Role,
 				&user.EtablissementID, &user.FiliereID, &user.Image,
 				&user.Actif, &user.MustChangePwd, &user.Matricule, &user.Niveau,
 				&user.DerniereConnexion, &user.CreatedAt, &user.UpdatedAt,
 				&etabID, &etabNom,
+				&filID, &filNom, &filCode,
 			)
 			if err != nil {
 				return fmt.Errorf("scan user: %w", err)
@@ -193,6 +200,13 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
 				user.Etablissement = &domain.EtablissementRef{
 					ID:  *etabID,
 					Nom: *etabNom,
+				}
+			}
+			if filID != nil && filNom != nil {
+				user.Filiere = &domain.FiliereRef{
+					ID:   *filID,
+					Nom:  *filNom,
+					Code: derefStr(filCode),
 				}
 			}
 			result.Users = append(result.Users, user)
