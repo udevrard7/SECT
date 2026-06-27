@@ -3755,3 +3755,66 @@ Stage Summary:
 - 2 relations manquantes ajoutées (LEFT JOIN Filiere dans UserRepository + EpreuveRepository)
 - Pattern cohérent avec les audits précédents (ENS-AUDIT, ADMIN-AUDIT, ETU-AUDIT)
 - Les données étaient toujours en DB — c'est l'API qui ne les retournait pas
+
+---
+Task ID: STUBS-FIX-1
+Agent: Z.ai Code (tutor mode)
+Task: Implémenter les stubs prioritaires avec vraies données DB
+
+Work Log:
+- Audit complet : 17 endpoints stubs identifiés, 11 avec données réelles en DB
+- 8 endpoints implémentés en une passe (nouveau fichier stub_handlers_real.go) :
+
+1. GET /api/logs (AuditLog - 601 rows)
+   - Filtre search + limit (default 100, max 500)
+   - Retourne {logs: [...], total: N}
+
+2. GET /api/ai-providers (AIProviderConfig - 5 rows)
+   - LEFT JOIN none (table autonome)
+   - Retourne {providers: [...]} avec Mistral AI, etc.
+
+3. GET /api/alertes (Alerte - 2 rows)
+   - Filtre ?lue=false/true + limit
+   - Retourne {alertes: [...], total: N}
+
+4. GET /api/validations-ue (ValidationUE - 20 rows)
+   - Filtre ?etudiantId=X (auto-scoped pour ETUDIANT)
+   - Retourne {validations: [...]}
+
+5. GET /api/abonnements (Abonnement - 1 row)
+   - LEFT JOIN Etablissement + Plan
+   - Retourne {abonnements: [...]} avec relations
+
+6. GET /api/plans (Plan - 4 rows)
+   - Retourne {plans: [...]} avec Gratuit, Standard, etc.
+
+7. GET /api/notifications/admin (NotificationAdmin - 1 row)
+   - Filtre ?lu=false/true + limit
+   - Retourne {notifications: [...], total: N}
+
+8. GET /api/platform-settings (PlatformSettings - 1 row)
+   - settings stockés en JSON, décodés et retournés
+   - Retourne {settings: {allowedFileTypes, devise, ...}}
+
+Fixs frontend additionnels (crash /abonnements) :
+- Optional chaining sur 14 accès etablissement.nom / plan.nom
+- Types plan/etablissement rendus optionnels dans AbonnementItem
+- plan._count.abonnements rendu optionnel + fallback 0
+
+Vérifications live (toutes confirmées ✅) :
+- API /api/logs → 200, logs avec LOGIN, userEmail, action ✅
+- API /api/ai-providers → 200, Mistral AI + config ✅
+- API /api/alertes → 200, 2 alertes avec severity/type ✅
+- API /api/validations-ue → 200, 20 validations avec statut/moyenne ✅
+- API /api/abonnements → 200, 1 abonnement avec etablissement + plan ✅
+- API /api/plans → 200, 4 plans (Gratuit, Standard, etc.) ✅
+- API /api/notifications/admin → 200, 1 notification ✅
+- API /api/platform-settings → 200, settings JSON décodés ✅
+- Page /abonnements → "The University of Abidjan" + "Gratuit" + "Actif" ✅
+- Build Render : live (9be495a)
+
+Stage Summary:
+- 8 stubs remplacés par de vraies requêtes DB (601 + 5 + 2 + 20 + 1 + 4 + 1 + 1 = 635 rows maintenant visibles)
+- Pattern : queries directes via appdb.WithTx (même approche que statsEnseignant)
+- Les anciens stubs sont conservés mais non référencés (Go permet les fonctions non utilisées)
+- 9 stubs restants (factures, monitoring, ip-whitelist, corbeille, surveillance/stats, devoirs, devoirs/stats, etudiants, security-settings) — tables vides ou faible priorité
