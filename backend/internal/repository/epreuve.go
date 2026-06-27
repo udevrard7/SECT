@@ -197,7 +197,11 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			// relation enseignant (UserRef{ID, Name, Email}).
 			// BUGFIX (FILIERE-FIX-1b) : LEFT JOIN Filiere pour peupler la
 			// relation filiere (FiliereRef{ID, Nom, Code}).
-			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" %s ORDER BY "Epreuve"."dateDebut" DESC`, columnsEpreuveQualified, whereClause)
+			// BUGFIX (DUPLICATE-UE-1) : LEFT JOIN UniteEnseignement pour peupler
+			// uniteEnseignement (UERef{ID,Code,Nom,Niveau}). Mirroir du pattern
+			// Filiere. Corrige l'affichage du nom/code UE dans les cartes /epreuves
+			// et rend la duplication robuste.
+			query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" %s ORDER BY "Epreuve"."dateDebut" DESC`, columnsEpreuveQualified, whereClause)
 			rows, err := tx.Query(ctx, query, args...)
 			if err != nil {
 				return fmt.Errorf("query epreuves: %w", err)
@@ -207,6 +211,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				e := &domain.Epreuve{}
 				var ensID, ensName, ensEmail *string
 				var filID, filNom, filCode *string
+				var ueID, ueNom, ueCode, ueNiveau *string
 				err := rows.Scan(
 					&e.ID, &e.EnseignantID, &e.Titre, &e.Description, &e.Duree, &e.DateDebut, &e.DateFin,
 					&e.MelangeQuestions, &e.MelangePropositions, &e.BlocageRetour, &e.Statut,
@@ -219,6 +224,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 					&e.DelaiGrace, &e.EtudiantsAutorises, &e.EpreuveOrigineID,
 					&ensID, &ensName, &ensEmail,
 					&filID, &filNom, &filCode,
+					&ueID, &ueNom, &ueCode, &ueNiveau,
 				)
 				if err != nil {
 					return fmt.Errorf("scan epreuve: %w", err)
@@ -239,6 +245,14 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 						ID:   *filID,
 						Nom:  *filNom,
 						Code: derefStr(filCode),
+					}
+				}
+				if ueID != nil && ueNom != nil {
+					e.UniteEnseignement = &domain.UERef{
+						ID:     *ueID,
+						Nom:    *ueNom,
+						Code:   derefStr(ueCode),
+						Niveau: derefStr(ueNiveau),
 					}
 				}
 				// BUGFIX (ETU-AUDIT-1) : init Sessions à [] par défaut.

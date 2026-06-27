@@ -226,6 +226,12 @@ type Epreuve struct {
 	// BUGFIX (FILIERE-FIX-1b) : Filiere peuplé par LEFT JOIN Filiere dans List.
 	// Le frontend affiche ep.filiere.nom + ep.niveau dans /mes-epreuves.
 	Filiere *FiliereRef `json:"filiere,omitempty"`
+	// BUGFIX (DUPLICATE-UE-1) : UniteEnseignement peuplé par LEFT JOIN dans
+	// List (mirroir du pattern Filiere). L'API expose ainsi l'objet imbriqué
+	// uniteEnseignement{id,code,nom,niveau} en plus du champ plat
+	// uniteEnseignementId. Corrige l'affichage du nom/code de l'UE dans les
+	// cartes /epreuves (silencieusement cassé) et rend la duplication robuste.
+	UniteEnseignement *UERef `json:"uniteEnseignement,omitempty"`
 }
 
 // SessionRef est une référence légère à une SessionPassation (pour /mes-epreuves).
