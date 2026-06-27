@@ -399,11 +399,17 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
 	}
 
 	var contenu, groupesCibles any
+	// BUGFIX (DUPLICATE-UE-1) : utiliser string (pas []byte) pour les valeurs
+	// JSON envoyées aux colonnes jsonb/text. En Simple Query Protocol (pooler
+	// Neon PgBouncer — cf. db.go DefaultQueryExecModeSimpleProtocol), pgx ne
+	// connaît pas le type de colonne cible et encode []byte avec le codec bytea
+	// (hex: \x7b22...) → invalide pour jsonb → HTTP 500. string utilise le codec
+	// text qui envoie le JSON brut que Postgres accepte pour jsonb.
 	if len(input.Contenu) > 0 && string(input.Contenu) != "null" {
-		contenu = []byte(input.Contenu)
+		contenu = string(input.Contenu)
 	}
 	if len(input.GroupesCibles) > 0 && string(input.GroupesCibles) != "null" {
-		groupesCibles = []byte(input.GroupesCibles)
+		groupesCibles = string(input.GroupesCibles)
 	}
 
 	row := tx.QueryRow(ctx, `
