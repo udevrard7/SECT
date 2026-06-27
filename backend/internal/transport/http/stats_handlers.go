@@ -244,7 +244,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		// 5. Évolution des moyennes (6 derniers mois)
 		rows4, err := tx.Query(ctx, `
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score) / e."noteTotal" * 20, 0) AS moyenne,
+			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
 			       count(*) AS nb_evaluations
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e.id = s."epreuveId"
