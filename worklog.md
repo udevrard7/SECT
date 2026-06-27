@@ -4892,3 +4892,53 @@ Stage Summary:
 - Batch delete documents aussi corrigé
 - Aucune modification frontend nécessaire (le frontend appelait déjà les bons
   endpoints, c'est le backend qui les implémentait mal/manquait)
+
+---
+Task ID: MODELES-FILTER-1
+Agent: full-stack-developer
+Task: Sur /epreuves onglet "Modèles", supprimer les filtres non fonctionnels (Mode/Filière/Niveau/Session) et garder uniquement la recherche textuelle. Ajouter deux sous-onglets d'organisation "Liste" et "Groupé" (miroir de SessionsTab) pour permettre d'afficher les modèles groupés par filière/niveau/UE/session.
+
+Work Log:
+- Audit du fichier `frontend/src/components/epreuves/epreuves-page.tsx` (ModelesTab, ~ligne 427) :
+  confirmation que `modeleFiliereFilter`/`modeleNiveauFilter`/`modeleSessionFilter`/`modeFilter` étaient
+  bien déclarés mais jamais appliqués au filtrage de la liste (`epreuves.map(...)` direct).
+- Supprimé 6 states inutilisés dans ModelesTab : `modeFilter`, `modeleFiliereFilter`,
+  `modeleNiveauFilter`, `modeleSessionFilter`, `modeleFilieres`, `modeleAnnees`.
+- Supprimé le `useEffect` `fetchFilterData` qui chargeait `/api/enseignant/context` et
+  `/api/annees-academiques` pour alimenter ces filtres fantômes.
+- Modifié `fetchBanque` : retiré `params.set('generationMode', modeFilter)` et `modeFilter` du
+  tableau de dépendances du `useCallback`. La recherche textuelle (`debouncedSearch`) reste
+  transmise à l'API.
+- Ajouté deux nouveaux states miroir SessionsTab : `viewMode ('flat' | 'grouped')` et
+  `groupBy (GroupByField)` (default `'filiere'`).
+- Remplacé tout le bloc "Search & Filter" (Search + Select Mode + 3 Selects classification +
+  bouton Réinitialiser) par : Search + toggle "Liste/Groupé" (icônes `List`/`LayoutGrid`) +
+  Select "Grouper par" (visible uniquement en mode grouped).
+- Extrait la carte Modèle inline en fonction `renderModeleCard(epreuve: ModeleEpreuve)`
+  placée avant le `return` du ModelesTab. Contenu de la carte EXACTEMENT préservé (titre,
+  description, badge Mode IA/Manuelle, badges questions/pts/durée, typeDistribution,
+  sourceDocuments, badges classification filière/UE/niveau/session, date création, boutons
+  Aperçu/PDF/Dupliquer/Supprimer).
+- Remplacé le rendu `{epreuves.map(...)}` par un rendu conditionnel :
+  - `viewMode === 'grouped'` → `<EpreuveGroupedView epreuves={epreuves} groupBy={groupBy} renderCard={renderModeleCard} />`
+  - sinon → grid `lg:grid-cols-2` avec `epreuves.map(renderModeleCard)`.
+- Corrigé la condition du message "empty" : `{search || modeFilter !== 'TOUS' ? ...}` →
+  `{search ? ...}`.
+- Imports nettoyés : supprimé `Filter` du bloc lucide-react (n'était plus utilisé nulle part).
+  Vérifié que `BookOpen`, `GraduationCap`, `Layers`, `RotateCcw`, `EnseignantFiliereContext`,
+  `AnneeAcademiqueOption` sont TOUJOURS utilisés dans SessionsTab → conservés.
+- `EpreuveGroupedView`, `GroupByField`, `LayoutGrid`, `List` déjà importés en haut du fichier →
+  aucune action nécessaire.
+- `bun run lint` : 0 errors, 1 warning préexistant (`jsx-a11y/alt-text` sur
+  `certificat-pdf-react.tsx`, hors périmètre de cette tâche).
+- SessionsTab et tous les dialogs (Preview, Delete, Duplicate) préservés sans modification.
+
+Stage Summary:
+- Onglet "Modèles" désormais allégé : un seul filtre (recherche textuelle) qui fonctionne
+  réellement, plus deux sous-onglets "Liste" (grille plate, comportement historique) et
+  "Groupé" (réutilisation du composant `EpreuveGroupedView` déjà utilisé par SessionsTab,
+  avec groupement par filière/niveau/UE/session).
+- Aucune régression côté UX : la carte modèle est identique, simplement extraite en fonction
+  pour pouvoir être passée à `EpreuveGroupedView` via la prop `renderCard`.
+- Code plus cohérent avec SessionsTab (même pattern de toggle et de groupement).
+- Lint OK (0 erreur), build/turbopack opérationnel.
