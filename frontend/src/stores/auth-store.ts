@@ -141,17 +141,29 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     // BUGFIX (REDIRECT-FIX-1) : set isLoading: true avant le fetch pour
     // empêcher authenticated-layout de rediriger vers /login pendant la
     // vérification. hasCheckedSession: true à la fin (succès OU échec).
+    //
+    // BUGFIX (KEEPALIVE-1) : ne JAMAIS déconnecter sur une erreur réseau
+    // transitoire (cold start Render, timeout, 502). Pour une app d'examen,
+    // déconnecter un étudiant en pleine passation est critique.
+    // La route /api/go-auth/session retourne { transient: true } quand
+    // l'erreur est transitoire : on garde l'utilisateur connecté.
     set({ isLoading: true })
     try {
       const resp = await fetch('/api/go-auth/session')
       const session = await resp.json()
       if (session?.user) {
         get().syncFromSession(session)
+      } else if (session?.transient) {
+        // Erreur transitoire (backend indisponible) : on NE déconnecte pas.
+        // On garde l'état actuel (user reste connecté) et on marquera
+        // hasCheckedSession pour ne pas bloquer l'UI.
+        // Ne pas set user: null !
       } else {
+        // Session réellement invalide (refresh token refusé) → logout
         set({ user: null, isAuthenticated: false })
       }
     } catch {
-      set({ user: null, isAuthenticated: false })
+      // Erreur réseau côté route Next.js → transitoire, ne pas déconnecter
     } finally {
       set({ isLoading: false, hasCheckedSession: true })
     }
