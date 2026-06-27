@@ -786,7 +786,7 @@ export function EnseignantsPage() {
       }
 
       toast.success('Affectation retirée', {
-        description: `${deleteAssignmentTarget.niveau}-${deleteAssignmentTarget.filiere.nom} supprimée.`,
+        description: `${deleteAssignmentTarget.niveau}-${deleteAssignmentTarget.filiere?.nom ?? '—'} supprimée.`,
       })
       setDeleteAssignmentTarget(null)
       await fetchAssignments()
@@ -1018,7 +1018,7 @@ export function EnseignantsPage() {
     const rows = filteredEnseignants.map((e) => {
       const teacherAssigns = (assignmentMap[e.id] || []).filter((a) => filiereIds.includes(a.filiereId))
       const filieresStr = teacherAssigns.length > 0
-        ? teacherAssigns.map((a) => `${a.niveau}-${a.filiere.nom}`).join(' | ')
+        ? teacherAssigns.map((a) => `${a.niveau}-${a.filiere?.nom ?? '—'}`).join(' | ')
         : 'Sans affectation'
       const status = e.actif ? 'Actif' : 'Archivé'
       const date = formatDateFR(e.createdAt)
@@ -1388,7 +1388,7 @@ export function EnseignantsPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {teacherAssigns.map((assignment) => (
                         <Badge key={assignment.id} className={`${getNiveauBadgeColor(assignment.niveau)} text-xs`}>
-                          {assignment.niveau}-{assignment.filiere.nom}
+                          {assignment.niveau}-{assignment.filiere?.nom ?? '—'}
                         </Badge>
                       ))}
                     </div>
@@ -1452,7 +1452,7 @@ export function EnseignantsPage() {
                             <div className="flex flex-wrap gap-1">
                               {teacherAssigns.map((a) => (
                                 <Badge key={a.id} className={`${getNiveauBadgeColor(a.niveau)} text-xs`}>
-                                  {a.niveau}-{a.filiere.nom}
+                                  {a.niveau}-{a.filiere?.nom ?? '—'}
                                 </Badge>
                               ))}
                             </div>
@@ -2105,7 +2105,7 @@ export function EnseignantsPage() {
                   {teacherAssignments.map((ta) => (
                     <div key={ta.id} className="flex items-center gap-1">
                       <Badge className={`${getNiveauBadgeColor(ta.niveau)} text-xs`}>
-                        {ta.niveau}-{ta.filiere.nom}
+                        {ta.niveau}-{ta.filiere?.nom ?? '—'}
                       </Badge>
                       <Button
                         variant="ghost"
@@ -2345,7 +2345,7 @@ export function EnseignantsPage() {
             <AlertDialogTitle>Retirer l&apos;affectation</AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir retirer l&apos;affectation{' '}
-              <strong>{deleteAssignmentTarget?.niveau}-{deleteAssignmentTarget?.filiere.nom}</strong>{' '}
+              <strong>{deleteAssignmentTarget?.niveau}-{deleteAssignmentTarget?.filiere?.nom ?? '—'}</strong>{' '}
               pour cet enseignant ? Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
