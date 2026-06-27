@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   KeyRound,
   ShieldCheck,
@@ -181,12 +182,71 @@ function getMotifLabel(motif: string) {
 
 export function AccesEtablissementsPage() {
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
-  // ─── Data state ───
-  const [accessRecords, setAccessRecords] = useState<AccessRecord[]>([])
-  const [authorizedEtablissements, setAuthorizedEtablissements] = useState<AuthorizedEtablissement[]>([])
-  const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 3 ressources sont indépendantes → 3 useQuery séparés.
+  const accessQuery = useQuery<{ accessRecords: AccessRecord[] }>({
+    queryKey: ['etablissement-access', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissement-access?adminId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch access records')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const authorizedQuery = useQuery<{ etablissements: AuthorizedEtablissement[] }>({
+    queryKey: ['authorized-etablissements', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissement-access/authorized-etablissements?adminId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch authorized etablissements')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const etablissementsQuery = useQuery<{ etablissements: EtablissementOption[] }>({
+    queryKey: ['etablissements'],
+    queryFn: async () => {
+      const res = await fetch('/api/etablissements')
+      if (!res.ok) throw new Error('Failed to fetch etablissements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const accessRecords = accessQuery.data?.accessRecords ?? []
+  const authorizedEtablissements = authorizedQuery.data?.etablissements ?? []
+  const etablissements = useMemo(
+    () =>
+      (etablissementsQuery.data?.etablissements ?? []).map((e: EtablissementOption) => ({
+        id: e.id,
+        nom: e.nom,
+        ville: e.ville,
+        type: e.type,
+        actif: e.actif,
+        _count: e._count ?? { filieres: 0, users: 0 },
+      })),
+    [etablissementsQuery.data],
+  )
+  const isLoading =
+    accessQuery.isLoading || authorizedQuery.isLoading || etablissementsQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/delete).
+  const refreshData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['etablissement-access', user?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['authorized-etablissements', user?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['etablissements'] }),
+    ])
+  }
 
   // ─── Dialog state ───
   const [cancelTarget, setCancelTarget] = useState<AccessRecord | null>(null)
@@ -199,49 +259,6 @@ export function AccesEtablissementsPage() {
   const [formDateDebut, setFormDateDebut] = useState('')
   const [formDateFin, setFormDateFin] = useState('')
   const [formCommentaire, setFormCommentaire] = useState('')
-
-  // ─── Fetch data ───
-  const fetchData = useCallback(async () => {
-    if (!user?.id) return
-    setIsLoading(true)
-    try {
-      const [accessRes, authorizedRes, etabRes] = await Promise.all([
-        fetch(`/api/etablissement-access?adminId=${user.id}`),
-        fetch(`/api/etablissement-access/authorized-etablissements?adminId=${user.id}`),
-        fetch('/api/etablissements'),
-      ])
-
-      if (accessRes.ok) {
-        const data = await accessRes.json()
-        setAccessRecords(data.accessRecords ?? [])
-      }
-      if (authorizedRes.ok) {
-        const data = await authorizedRes.json()
-        setAuthorizedEtablissements(data.etablissements ?? [])
-      }
-      if (etabRes.ok) {
-        const data = await etabRes.json()
-        setEtablissements(
-          (data.etablissements ?? []).map((e: EtablissementOption) => ({
-            id: e.id,
-            nom: e.nom,
-            ville: e.ville,
-            type: e.type,
-            actif: e.actif,
-            _count: e._count ?? { filieres: 0, users: 0 },
-          }))
-        )
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   // ─── Stats ───
   const approuveCount = accessRecords.filter((r) => r.statut === 'APPROUVE').length
@@ -275,7 +292,7 @@ export function AccesEtablissementsPage() {
         description: `La demande d'accès à ${cancelTarget.etablissement?.nom ?? 'cet établissement'} a été annulée.`,
       })
       setCancelTarget(null)
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'annuler la demande.',
@@ -320,7 +337,7 @@ export function AccesEtablissementsPage() {
       setFormDateFin('')
       setFormCommentaire('')
       setActiveTab('mes-autorisations')
-      await fetchData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',

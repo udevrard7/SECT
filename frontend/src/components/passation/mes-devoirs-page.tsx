@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BookOpen,
   Clock,
@@ -171,8 +172,7 @@ function getSoumissionStatutBadge(statut: string): { label: string; classes: str
 export function MesDevoirsPage() {
   const user = useAuthStore((s) => s.user)
 
-  const [devoirs, setDevoirs] = useState<DevoirEtudiant[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('a-faire')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -187,30 +187,33 @@ export function MesDevoirsPage() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [detailDevoir, setDetailDevoir] = useState<DevoirEtudiant | null>(null)
 
-  // ─── Fetch devoirs ───
-  const fetchDevoirs = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const res = await fetch(`/api/devoirs?etudiantId=${user.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setDevoirs(data.devoirs ?? [])
-      }
-    } catch {
+  // ─── Fetch devoirs (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  const devoirsQuery = useQuery<{ devoirs: DevoirEtudiant[] }>({
+    queryKey: ['mes-devoirs', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/devoirs?etudiantId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch devoirs')
+      const data = await res.json()
+      return { devoirs: data.devoirs ?? [] }
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Toast sur erreur (préserve le comportement du catch original)
+  useEffect(() => {
+    if (devoirsQuery.error) {
       toast.error('Erreur de chargement', {
         description: 'Impossible de charger vos devoirs.',
       })
     }
-  }, [user])
+  }, [devoirsQuery.error])
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      await fetchDevoirs()
-      setIsLoading(false)
-    }
-    load()
-  }, [fetchDevoirs])
+  const devoirs = devoirsQuery.data?.devoirs ?? []
+  const isLoading = devoirsQuery.isLoading
+  const refreshDevoirs = () => queryClient.invalidateQueries({ queryKey: ['mes-devoirs', user?.id] })
 
   // ─── Split devoirs ───
   const devoirsAFaire = devoirs.filter((d) => {
@@ -279,7 +282,7 @@ export function MesDevoirsPage() {
         setSubmitDialogOpen(false)
         setContenuTexte('')
         setCommentaireEtudiant('')
-        await fetchDevoirs()
+        await refreshDevoirs()
       } else {
         const data = await res.json()
         toast.error('Erreur', {

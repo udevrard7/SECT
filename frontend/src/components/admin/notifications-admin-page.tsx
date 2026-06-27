@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   Send,
@@ -354,18 +355,48 @@ function truncateText(text: string, maxLength: number) {
 
 export function NotificationsAdminPage() {
   const { user } = useAuthStore()
-
-  // ─── Data state ───
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [totalCount, setTotalCount] = useState(0)
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
 
   // ─── Filter state ───
   const [filterType, setFilterType] = useState('all')
   const [filterLu, setFilterLu] = useState('all')
   const [filterRole, setFilterRole] = useState('all')
   const [filterCategorie, setFilterCategorie] = useState('all')
+
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les filtres sont dans le queryKey pour refetch automatique
+  // quand l'utilisateur change un filtre.
+  const notificationsQuery = useQuery<{
+    notifications: NotificationItem[]
+    total: number
+    unreadCount: number
+  }>({
+    queryKey: ['notifications-admin', filterType, filterLu, filterRole, filterCategorie],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (filterType !== 'all') params.set('type', filterType)
+      if (filterLu !== 'all') params.set('lu', filterLu === 'lues' ? 'true' : 'false')
+      if (filterRole !== 'all') params.set('destinataireRole', filterRole)
+      if (filterCategorie !== 'all') params.set('categorie', filterCategorie)
+
+      const res = await fetch(`/api/notifications/admin?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch notifications')
+      return res.json()
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const notifications = notificationsQuery.data?.notifications ?? []
+  const totalCount = notificationsQuery.data?.total ?? 0
+  const unreadCount = notificationsQuery.data?.unreadCount ?? 0
+  const isLoading = notificationsQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/mark/delete).
+  const refreshNotifications = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['notifications-admin'] })
+  }
 
   // ─── View state ───
   const [viewMode, setViewMode] = useState<'list' | 'card'>('card')
@@ -416,34 +447,6 @@ export function NotificationsAdminPage() {
   const readCount = notifications.filter((n) => n.lu).length
   const readRate = totalCount > 0 ? Math.round((readCount / totalCount) * 100) : 0
 
-  // ─── Fetch notifications ───
-  const fetchNotifications = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (filterType !== 'all') params.set('type', filterType)
-      if (filterLu !== 'all') params.set('lu', filterLu === 'lues' ? 'true' : 'false')
-      if (filterRole !== 'all') params.set('destinataireRole', filterRole)
-      if (filterCategorie !== 'all') params.set('categorie', filterCategorie)
-
-      const res = await fetch(`/api/notifications/admin?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setNotifications(data.notifications ?? [])
-        setTotalCount(data.total ?? 0)
-        setUnreadCount(data.unreadCount ?? 0)
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [filterType, filterLu, filterRole, filterCategorie])
-
-  useEffect(() => {
-    fetchNotifications()
-  }, [fetchNotifications])
-
   // ─── Toggle message expand ───
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -470,7 +473,7 @@ export function NotificationsAdminPage() {
       toast.success(notification.lu ? 'Marquée comme non lue' : 'Marquée comme lue', {
         description: notification.titre,
       })
-      await fetchNotifications()
+      await refreshNotifications()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
     }
@@ -489,7 +492,7 @@ export function NotificationsAdminPage() {
       toast.success('Toutes marquées comme lues', {
         description: `${unreadCount} notification${unreadCount > 1 ? 's' : ''} mise${unreadCount > 1 ? 's' : ''} à jour.`,
       })
-      await fetchNotifications()
+      await refreshNotifications()
     } catch {
       toast.error('Erreur', { description: 'Impossible de tout marquer comme lu.' })
     }
@@ -507,7 +510,7 @@ export function NotificationsAdminPage() {
         description: deleteTarget.titre,
       })
       setDeleteTarget(null)
-      await fetchNotifications()
+      await refreshNotifications()
     } catch {
       toast.error('Erreur', { description: 'Impossible de supprimer la notification.' })
     }
@@ -526,7 +529,7 @@ export function NotificationsAdminPage() {
         description: `${readNotifications.length} notification${readNotifications.length > 1 ? 's' : ''} supprimée${readNotifications.length > 1 ? 's' : ''}.`,
       })
       setDeleteAllReadOpen(false)
-      await fetchNotifications()
+      await refreshNotifications()
     } catch {
       toast.error('Erreur', { description: 'Impossible de supprimer les notifications.' })
     }
@@ -592,7 +595,7 @@ export function NotificationsAdminPage() {
       setFormActionLabel('')
       setFormIcone('')
 
-      await fetchNotifications()
+      await refreshNotifications()
       setActiveTab('notifications')
     } catch (err) {
       toast.error('Erreur', {

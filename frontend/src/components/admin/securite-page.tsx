@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Shield,
   Save,
@@ -232,6 +233,7 @@ function SliderRow({
 
 export function SecuritePage() {
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
   // Data state
   const [etablissements, setEtablissements] = useState<Etablissement[]>([])
@@ -240,45 +242,63 @@ export function SecuritePage() {
   const [allSettings, setAllSettings] = useState<SecuritySettings[]>([])
 
   // Loading states
-  const [loadingEtablissements, setLoadingEtablissements] = useState(true)
   const [loadingSettings, setLoadingSettings] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // ─── Fetch etablissements ───
+  // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Les 2 ressources de mount-time fetching sont migrées vers
+  // useQuery. Le loadSettings réactif à selectedEtablissementId reste en
+  // useEffect (pattern différent : pas un mount-time fetch).
+  const etablissementsQuery = useQuery<{ etablissements: Etablissement[] }>({
+    queryKey: ['etablissements'],
+    queryFn: async () => {
+      const res = await fetch('/api/etablissements')
+      if (!res.ok) throw new Error('Failed to fetch etablissements')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
+  const loadingEtablissements = etablissementsQuery.isLoading
+
+  // Sync query data to local state (préserve l'API interne basée sur
+  // setEtablissements utilisée ailleurs dans le composant).
   useEffect(() => {
-    async function fetchEtablissements() {
-      try {
-        setLoadingEtablissements(true)
-        const res = await fetch('/api/etablissements')
-        if (!res.ok) throw new Error('Failed to fetch')
-        const data = await res.json()
-        setEtablissements(data.etablissements || [])
-      } catch {
-        toast.error('Erreur', { description: 'Impossible de charger les établissements' })
-      } finally {
-        setLoadingEtablissements(false)
-      }
+    if (etablissementsQuery.data) {
+      setEtablissements(etablissementsQuery.data.etablissements || [])
     }
-    fetchEtablissements()
-  }, [])
+  }, [etablissementsQuery.data])
 
-  // ─── Fetch all security settings for overview table ───
+  // Toast sur erreur de chargement (équivalent du catch du fetch original).
+  useEffect(() => {
+    if (etablissementsQuery.error) {
+      toast.error('Erreur', { description: 'Impossible de charger les établissements' })
+    }
+  }, [etablissementsQuery.error])
 
-  const fetchAllSettings = useCallback(async () => {
-    try {
+  const allSettingsQuery = useQuery<{ securitySettings: SecuritySettings[] }>({
+    queryKey: ['security-settings'],
+    queryFn: async () => {
       const res = await fetch('/api/security-settings')
-      if (!res.ok) return
-      const data = await res.json()
-      setAllSettings(data.securitySettings || [])
-    } catch {
-      // Silent fail for overview
-    }
-  }, [])
+      if (!res.ok) throw new Error('Failed to fetch security settings')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
+  // Sync query data to local state.
   useEffect(() => {
-    fetchAllSettings()
-  }, [fetchAllSettings])
+    if (allSettingsQuery.data) {
+      setAllSettings(allSettingsQuery.data.securitySettings || [])
+    }
+  }, [allSettingsQuery.data])
+
+  // Helper pour invalider le cache après mutation (save).
+  const refreshAllSettings = () =>
+    queryClient.invalidateQueries({ queryKey: ['security-settings'] })
 
   // ─── Compute stats ───
 
@@ -362,7 +382,7 @@ export function SecuritePage() {
       })
 
       // Refresh overview
-      fetchAllSettings()
+      refreshAllSettings()
     } catch (err) {
       toast.error('Erreur de sauvegarde', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue',

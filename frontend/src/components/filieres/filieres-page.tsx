@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   GraduationCap,
   Plus,
@@ -157,10 +158,10 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function FilieresPage() {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
 
   // ─── Data state ───
-  const [filieres, setFilieres] = useState<FiliereItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // (Migration useEffect+fetch → useQuery. Voir plus bas.)
 
   // ─── View mode ───
   const [viewMode, setViewMode] = useState<ViewMode>('card')
@@ -194,8 +195,7 @@ export function FilieresPage() {
   const [formActif, setFormActif] = useState(true)
 
   // ─── Options state ───
-  const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
-  const [responsables, setResponsables] = useState<ResponsableOption[]>([])
+  // (Migration useEffect+fetch → useQuery. Voir plus bas.)
 
   // ─── Bulk selection state ───
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -205,6 +205,35 @@ export function FilieresPage() {
   // ─── Determine if user is Responsable ───
   const isResponsable = user?.role === 'RESPONSABLE'
   const isAdmin = user?.role === 'ADMIN'
+
+  // ─── Fetch filieres (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+  // 0 refetch au retour navigation. staleTime 60s. Le filtrage se fait côté
+  // serveur (queryKey inclut debouncedSearch + filtres + isResponsable).
+  const filieresQuery = useQuery<{ filieres: FiliereItem[] }>({
+    queryKey: ['filieres', debouncedSearch, etablissementFilter, statusFilter, isResponsable, user?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (etablissementFilter && etablissementFilter !== 'all') params.set('etablissementId', etablissementFilter)
+      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+      if (isResponsable && user?.id) {
+        params.set('responsableId', user.id)
+      }
+
+      const res = await fetch(`/api/filieres?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const filieres = filieresQuery.data?.filieres ?? []
+  const isLoading = filieresQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/update/delete/toggle/bulk)
+  const refreshFilieres = () => queryClient.invalidateQueries({ queryKey: ['filieres'] })
 
   // ─── Auto-generate filière code suggestion ───
   const suggestedFiliereCode = useMemo(() => {
@@ -225,57 +254,37 @@ export function FilieresPage() {
     return ''
   }, [formNom, formCode, editingFiliere, filieres])
 
-  // ─── Fetch filieres ───
-  const fetchFilieres = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (debouncedSearch) params.set('search', debouncedSearch)
-      if (etablissementFilter && etablissementFilter !== 'all') params.set('etablissementId', etablissementFilter)
-      if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
-      if (isResponsable && user?.id) {
-        params.set('responsableId', user.id)
-      }
-
-      const res = await fetch(`/api/filieres?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres(data.filieres ?? [])
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [debouncedSearch, etablissementFilter, statusFilter, isResponsable, user?.id])
-
-  // ─── Fetch etablissements & responsables ───
-  const fetchOptions = useCallback(async () => {
-    try {
+  // ─── Fetch etablissements & responsables (TanStack Query) ───
+  // Options pour les dropdowns du formulaire. One-shot (deps []), staleTime
+  // 5 min car ces données changent rarement.
+  const optionsQuery = useQuery<{
+    etablissements: EtablissementOption[]
+    responsables: ResponsableOption[]
+  }>({
+    queryKey: ['filieres-options'],
+    queryFn: async () => {
       const [etabRes, respRes] = await Promise.all([
         fetch('/api/etablissements'),
         fetch('/api/users?role=RESPONSABLE&limit=100'),
       ])
+      const etablissements: EtablissementOption[] = []
+      const responsables: ResponsableOption[] = []
       if (etabRes.ok) {
         const data = await etabRes.json()
-        setEtablissements((data.etablissements ?? []).map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom })))
+        etablissements.push(...(data.etablissements ?? []).map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom })))
       }
       if (respRes.ok) {
         const data = await respRes.json()
-        setResponsables((data.users ?? []).map((u: { id: string; name: string; email: string }) => ({ id: u.id, name: u.name, email: u.email })))
+        responsables.push(...(data.users ?? []).map((u: { id: string; name: string; email: string }) => ({ id: u.id, name: u.name, email: u.email })))
       }
-    } catch {
-      // Silent
-    }
-  }, [])
+      return { etablissements, responsables }
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchFilieres()
-  }, [fetchFilieres])
-
-  useEffect(() => {
-    fetchOptions()
-  }, [fetchOptions])
+  const etablissements = optionsQuery.data?.etablissements ?? []
+  const responsables = optionsQuery.data?.responsables ?? []
 
   // ─── Clear selection when filieres change ───
   useEffect(() => {
@@ -388,7 +397,7 @@ export function FilieresPage() {
       }
 
       setCreateDialogOpen(false)
-      await fetchFilieres()
+      refreshFilieres()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -411,7 +420,7 @@ export function FilieresPage() {
       toast.success(filiere.actif ? 'Filière désactivée' : 'Filière activée', {
         description: `${filiere.nom} est maintenant ${filiere.actif ? 'inactive' : 'active'}.`,
       })
-      await fetchFilieres()
+      refreshFilieres()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de modifier le statut.' })
     }
@@ -436,7 +445,7 @@ export function FilieresPage() {
       })
       setDeleteTarget(null)
       setDeleteDependencies(null)
-      await fetchFilieres()
+      refreshFilieres()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer la filière.' })
     } finally {
@@ -510,7 +519,7 @@ export function FilieresPage() {
       })
       setSelectedIds(new Set())
       setBulkActionDialog(null)
-      await fetchFilieres()
+      refreshFilieres()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {

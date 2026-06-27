@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Users,
   Plus,
@@ -257,11 +258,9 @@ function getInvitationStatusBadge(status: 'pending' | 'used' | 'expired') {
 
 export function UtilisateursPage() {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
 
   // ─── Data state ───
-  const [users, setUsers] = useState<UserItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
   const [page, setPage] = useState(1)
   const limit = 20
 
@@ -305,12 +304,9 @@ export function UtilisateursPage() {
   const [copiedToken, setCopiedToken] = useState(false)
 
   // ─── Options state ───
-  const [etablissements, setEtablissements] = useState<EtablissementOption[]>([])
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
+  // (Migration useEffect+fetch → useQuery. Voir plus bas.)
 
   // ─── Invitation state ───
-  const [invitations, setInvitations] = useState<InvitationItem[]>([])
-  const [invitationsLoading, setInvitationsLoading] = useState(false)
   const [cancelInviteTarget, setCancelInviteTarget] = useState<InvitationItem | null>(null)
   const [renvoyerTarget, setRenvoyerTarget] = useState<InvitationItem | null>(null)
   const [isRenvoying, setIsRenvoying] = useState(false)
@@ -326,10 +322,13 @@ export function UtilisateursPage() {
     users: ImportResultUser[]
   } | null>(null)
 
-  // ─── Fetch users ───
-  const fetchUsers = useCallback(async () => {
-    setIsLoading(true)
-    try {
+  // ─── Fetch users (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+  // 0 refetch au retour navigation. staleTime 60s. Le filtrage et la
+  // pagination se font côté serveur (queryKey inclut search + filtres + page).
+  const usersQuery = useQuery<{ users: UserItem[]; total: number }>({
+    queryKey: ['utilisateurs', search, roleFilter, statusFilter, page],
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (roleFilter && roleFilter !== 'all') params.set('role', roleFilter)
@@ -338,62 +337,69 @@ export function UtilisateursPage() {
       params.set('limit', limit.toString())
 
       const res = await fetch(`/api/users?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUsers(data.users ?? [])
-        setTotal(data.total ?? 0)
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [search, roleFilter, statusFilter, page])
+      if (!res.ok) throw new Error('Failed to fetch users')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch etablissements & filieres ───
-  const fetchOptions = useCallback(async () => {
-    try {
+  const users = usersQuery.data?.users ?? []
+  const total = usersQuery.data?.total ?? 0
+  const isLoading = usersQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/update/delete/import)
+  const refreshUsers = () => queryClient.invalidateQueries({ queryKey: ['utilisateurs'] })
+
+  // ─── Fetch etablissements & filieres (TanStack Query) ───
+  // Options pour les dropdowns du formulaire. One-shot (deps []), staleTime
+  // 5 min car ces données changent rarement.
+  const optionsQuery = useQuery<{
+    etablissements: EtablissementOption[]
+    filieres: FiliereOption[]
+  }>({
+    queryKey: ['utilisateurs-options'],
+    queryFn: async () => {
       const [etabRes, filRes] = await Promise.all([
         fetch('/api/etablissements'),
         fetch('/api/filieres'),
       ])
+      const etablissements: EtablissementOption[] = []
+      const filieres: FiliereOption[] = []
       if (etabRes.ok) {
         const data = await etabRes.json()
-        setEtablissements((data.etablissements ?? []).map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom })))
+        etablissements.push(...(data.etablissements ?? []).map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom })))
       }
       if (filRes.ok) {
         const data = await filRes.json()
-        setFilieres((data.filieres ?? []).map((f: { id: string; nom: string; etablissementId: string }) => ({ id: f.id, nom: f.nom, etablissementId: f.etablissementId })))
+        filieres.push(...(data.filieres ?? []).map((f: { id: string; nom: string; etablissementId: string }) => ({ id: f.id, nom: f.nom, etablissementId: f.etablissementId })))
       }
-    } catch {
-      // Silent
-    }
-  }, [])
+      return { etablissements, filieres }
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch invitations ───
-  const fetchInvitations = useCallback(async () => {
-    setInvitationsLoading(true)
-    try {
+  const etablissements = optionsQuery.data?.etablissements ?? []
+  const filieres = optionsQuery.data?.filieres ?? []
+
+  // ─── Fetch invitations (TanStack Query) ───
+  const invitationsQuery = useQuery<{ invitations: InvitationItem[] }>({
+    queryKey: ['utilisateurs-invitations'],
+    queryFn: async () => {
       const res = await fetch('/api/invitations?limit=50')
-      if (res.ok) {
-        const data = await res.json()
-        setInvitations(data.invitations ?? [])
-      }
-    } catch {
-      // Silent
-    } finally {
-      setInvitationsLoading(false)
-    }
-  }, [])
+      if (!res.ok) throw new Error('Failed to fetch invitations')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchUsers()
-  }, [fetchUsers])
+  const invitations = invitationsQuery.data?.invitations ?? []
+  const invitationsLoading = invitationsQuery.isLoading
 
-  useEffect(() => {
-    fetchOptions()
-    fetchInvitations()
-  }, [fetchOptions, fetchInvitations])
+  // Helper pour invalider le cache des invitations après mutation (create/cancel/renvoyer)
+  const refreshInvitations = () => queryClient.invalidateQueries({ queryKey: ['utilisateurs-invitations'] })
 
   // ─── Filtered filieres based on selected etablissement ───
   const filteredFilieres = formEtablissementId
@@ -491,7 +497,7 @@ export function UtilisateursPage() {
         }
         toast.success('Utilisateur modifié', { description: `${formName} a été mis à jour.` })
         setCreateDialogOpen(false)
-        await fetchUsers()
+        refreshUsers()
       } catch (err) {
         toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
       } finally {
@@ -550,7 +556,7 @@ export function UtilisateursPage() {
         setInvitationResult({ email: formEmail, token: data.token })
         setCopiedToken(false)
 
-        await fetchInvitations()
+        refreshInvitations()
       } catch (err) {
         toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
       } finally {
@@ -601,7 +607,7 @@ export function UtilisateursPage() {
         setDirectResultDialogOpen(true)
         setCopiedCredentials(false)
 
-        await fetchUsers()
+        refreshUsers()
       } catch (err) {
         toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
       } finally {
@@ -622,7 +628,7 @@ export function UtilisateursPage() {
       toast.success(target.actif ? 'Utilisateur désactivé' : 'Utilisateur activé', {
         description: `${target.name} est maintenant ${target.actif ? 'inactif' : 'actif'}.`,
       })
-      await fetchUsers()
+      refreshUsers()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
     }
@@ -639,7 +645,7 @@ export function UtilisateursPage() {
       if (!res.ok) throw new Error('Erreur')
       toast.success('Utilisateur supprimé', { description: `${deleteTarget.name} a été supprimé.` })
       setDeleteTarget(null)
-      await fetchUsers()
+      refreshUsers()
     } catch {
       toast.error('Erreur', { description: 'Impossible de supprimer l\'utilisateur.' })
     }
@@ -661,7 +667,7 @@ export function UtilisateursPage() {
         description: `L'invitation pour ${cancelInviteTarget.email} a été annulée.`,
       })
       setCancelInviteTarget(null)
-      await fetchInvitations()
+      refreshInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible d\'annuler l\'invitation.' })
     }
@@ -684,7 +690,7 @@ export function UtilisateursPage() {
         description: `Une nouvelle invitation a été envoyée à ${renvoyerTarget.email}. Valable 48h.`,
       })
       setRenvoyerTarget(null)
-      await fetchInvitations()
+      refreshInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de renvoyer l\'invitation.' })
     } finally {
@@ -743,8 +749,8 @@ export function UtilisateursPage() {
       toast.success('Import terminé', {
         description: `${data.imported} utilisateur(s) importé(s) sur ${usersToImport.length}.`,
       })
-      await fetchUsers()
-      await fetchInvitations()
+      refreshUsers()
+      refreshInvitations()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue lors de l\'import.' })
     } finally {

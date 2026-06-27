@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -201,7 +202,6 @@ export function PassationPage() {
   const [epreuve, setEpreuve] = useState<EpreuveInfo | null>(null)
   const [questions, setQuestions] = useState<ExamQuestion[]>([])
   const [session, setSession] = useState<ExamSession | null>(null)
-  const [loading, setLoading] = useState(true)
 
   // ─── Exam state ────────────────────────────────────────────────────────
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -276,149 +276,208 @@ export function PassationPage() {
   useEffect(() => { fullscreenExitCountRef.current = fullscreenExitCount }, [fullscreenExitCount])
   useEffect(() => { penaliteRef.current = penalite }, [penalite])
 
-  // ─── Fetch epreuve data ────────────────────────────────────────────────
-  useEffect(() => {
-    if (!epreuveId) {
-      setLoading(false)
-      return
-    }
+  // ─── Fetch epreuve data (TanStack Query) ──────────────────────────────
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // ATTENTION : cette page gère un examen en cours avec timers, auto-save et
+  // anti-fraude. Seul le fetch initial est migré. Les setInterval (timer,
+  // auto-save, inactivité, capture, closure-check) sont INTACTS.
+  // staleTime: 0 → refetch au remontage (préserve le comportement original :
+  // l'étudiant qui revient sur la page récupère un timeRemaining frais).
+  // refetchOnWindowFocus/reconnect: false → JAMAIS de refetch pendant l'examen
+  // (évite d'écraser les réponses en cours avec les données serveur).
+  const epreuveQuery = useQuery<{
+    epreuve: EpreuveInfo
+    securityConfig: SecurityConfig
+    session: ExamSession | null
+    questions: ExamQuestion[]
+    reponses: Record<string, string>
+    activeCodeLanguages: Record<string, CodingLanguage>
+    fullscreenExitCount: number
+    timeRemaining: number
+    phase: ExamPhase
+    totalAlertCount: number
+    penalite: number
+  }>({
+    queryKey: ['passation-epreuve', epreuveId, user?.id],
+    queryFn: async () => {
+      // Fetch epreuve info (studentView=true strips correct answers for security)
+      const epreuveRes = await fetch(`/api/epreuves/${epreuveId}?studentView=true`)
+      if (!epreuveRes.ok) throw new Error('Épreuve introuvable')
+      const epreuveData = await epreuveRes.json()
+      const epreuveInfo: EpreuveInfo = epreuveData.epreuve || epreuveData
 
-    async function fetchEpreuveData() {
-      try {
-        // Fetch epreuve info (studentView=true strips correct answers for security)
-        const epreuveRes = await fetch(`/api/epreuves/${epreuveId}?studentView=true`)
-        if (!epreuveRes.ok) throw new Error('Épreuve introuvable')
-        const epreuveData = await epreuveRes.json()
-        const epreuveInfo = epreuveData.epreuve || epreuveData
-        setEpreuve(epreuveInfo)
-
-        // Fetch security settings based on user's etablissementId
-        const etabId = user?.etablissementId || user?.etablissement?.id
-        if (etabId) {
-          try {
-            const secRes = await fetch(`/api/security-settings/etablissement/${etabId}`)
-            if (secRes.ok) {
-              const secData = await secRes.json()
-              if (secData.securitySettings) {
-                setSecurityConfig({
-                  proctoringActif: secData.securitySettings.proctoringActif ?? DEFAULT_SECURITY.proctoringActif,
-                  detectionCopie: secData.securitySettings.detectionCopie ?? DEFAULT_SECURITY.detectionCopie,
-                  detectionOnglet: secData.securitySettings.detectionOnglet ?? DEFAULT_SECURITY.detectionOnglet,
-                  detectionFullscreen: secData.securitySettings.detectionFullscreen ?? DEFAULT_SECURITY.detectionFullscreen,
-                  blocageCopie: secData.securitySettings.blocageCopie ?? DEFAULT_SECURITY.blocageCopie,
-                  blocageClicDroit: secData.securitySettings.blocageClicDroit ?? DEFAULT_SECURITY.blocageClicDroit,
-                  blocageImpression: secData.securitySettings.blocageImpression ?? DEFAULT_SECURITY.blocageImpression,
-                  verificationIdentite: secData.securitySettings.verificationIdentite ?? DEFAULT_SECURITY.verificationIdentite,
-                  tempsInactiviteMax: secData.securitySettings.tempsInactiviteMax ?? DEFAULT_SECURITY.tempsInactiviteMax,
-                  nbOngletsMax: secData.securitySettings.nbOngletsMax ?? DEFAULT_SECURITY.nbOngletsMax,
-                  nbAlertesMax: secData.securitySettings.nbAlertesMax ?? DEFAULT_SECURITY.nbAlertesMax,
-                  autoSubmitOnViolation: secData.securitySettings.autoSubmitOnViolation ?? DEFAULT_SECURITY.autoSubmitOnViolation,
-                  captureEcran: secData.securitySettings.captureEcran ?? DEFAULT_SECURITY.captureEcran,
-                  rapportFraude: secData.securitySettings.rapportFraude ?? DEFAULT_SECURITY.rapportFraude,
-                  seuilSimilarite: secData.securitySettings.seuilSimilarite ?? DEFAULT_SECURITY.seuilSimilarite,
-                  penaliteFullscreenExit: secData.securitySettings.penaliteFullscreenExit ?? DEFAULT_SECURITY.penaliteFullscreenExit,
-                  fullscreenObligatoire: secData.securitySettings.fullscreenObligatoire ?? DEFAULT_SECURITY.fullscreenObligatoire,
-                  intervalleCaptureEcran: secData.securitySettings.intervalleCaptureEcran ?? DEFAULT_SECURITY.intervalleCaptureEcran,
-                })
+      // Fetch security settings based on user's etablissementId
+      let securityConfig = DEFAULT_SECURITY
+      const etabId = user?.etablissementId || user?.etablissement?.id
+      if (etabId) {
+        try {
+          const secRes = await fetch(`/api/security-settings/etablissement/${etabId}`)
+          if (secRes.ok) {
+            const secData = await secRes.json()
+            if (secData.securitySettings) {
+              securityConfig = {
+                proctoringActif: secData.securitySettings.proctoringActif ?? DEFAULT_SECURITY.proctoringActif,
+                detectionCopie: secData.securitySettings.detectionCopie ?? DEFAULT_SECURITY.detectionCopie,
+                detectionOnglet: secData.securitySettings.detectionOnglet ?? DEFAULT_SECURITY.detectionOnglet,
+                detectionFullscreen: secData.securitySettings.detectionFullscreen ?? DEFAULT_SECURITY.detectionFullscreen,
+                blocageCopie: secData.securitySettings.blocageCopie ?? DEFAULT_SECURITY.blocageCopie,
+                blocageClicDroit: secData.securitySettings.blocageClicDroit ?? DEFAULT_SECURITY.blocageClicDroit,
+                blocageImpression: secData.securitySettings.blocageImpression ?? DEFAULT_SECURITY.blocageImpression,
+                verificationIdentite: secData.securitySettings.verificationIdentite ?? DEFAULT_SECURITY.verificationIdentite,
+                tempsInactiviteMax: secData.securitySettings.tempsInactiviteMax ?? DEFAULT_SECURITY.tempsInactiviteMax,
+                nbOngletsMax: secData.securitySettings.nbOngletsMax ?? DEFAULT_SECURITY.nbOngletsMax,
+                nbAlertesMax: secData.securitySettings.nbAlertesMax ?? DEFAULT_SECURITY.nbAlertesMax,
+                autoSubmitOnViolation: secData.securitySettings.autoSubmitOnViolation ?? DEFAULT_SECURITY.autoSubmitOnViolation,
+                captureEcran: secData.securitySettings.captureEcran ?? DEFAULT_SECURITY.captureEcran,
+                rapportFraude: secData.securitySettings.rapportFraude ?? DEFAULT_SECURITY.rapportFraude,
+                seuilSimilarite: secData.securitySettings.seuilSimilarite ?? DEFAULT_SECURITY.seuilSimilarite,
+                penaliteFullscreenExit: secData.securitySettings.penaliteFullscreenExit ?? DEFAULT_SECURITY.penaliteFullscreenExit,
+                fullscreenObligatoire: secData.securitySettings.fullscreenObligatoire ?? DEFAULT_SECURITY.fullscreenObligatoire,
+                intervalleCaptureEcran: secData.securitySettings.intervalleCaptureEcran ?? DEFAULT_SECURITY.intervalleCaptureEcran,
               }
-            }
-          } catch {
-            // Use defaults if security settings fetch fails
-          }
-        }
-
-        // Check for existing session first (to get sessionId for consistent proposition ordering)
-        let activeSessionId: string | null = null
-        let activeSession: ExamSession | null = null
-        if (user?.id) {
-          const sessionRes = await fetch(`/api/sessions?etudiantId=${user.id}&epreuveId=${epreuveId}`)
-          if (sessionRes.ok) {
-            const sessionsData = await sessionRes.json()
-            activeSession = sessionsData.find(
-              (s: ExamSession) => s.statut === 'EN_COURS' || s.statut === 'NON_COMMENCEE'
-            ) ?? null
-            if (activeSession) {
-              activeSessionId = activeSession.id
-              setSession(activeSession)
-              // Initialize alert count and penalty from server
-              setTotalAlertCount(activeSession.alertes || 0)
-              setPenalite(activeSession.penalite || 0)
             }
           }
+        } catch {
+          // Use defaults if security settings fetch fails
         }
-
-        // Fetch questions — if there's an active session, pass sessionId to get consistent proposition ordering
-        const questionsUrl = activeSessionId
-          ? `/api/epreuves/${epreuveId}/questions?sessionId=${activeSessionId}`
-          : `/api/epreuves/${epreuveId}/questions`
-        const questionsRes = await fetch(questionsUrl)
-        if (!questionsRes.ok) throw new Error('Questions introuvables')
-        const questionsData = await questionsRes.json()
-        // Sort by ordre
-        questionsData.sort((a: ExamQuestion, b: ExamQuestion) => a.ordre - b.ordre)
-        setQuestions(questionsData)
-
-        // Resume exam if there's an active session
-        if (activeSessionId && activeSession) {
-          if (activeSession.statut === 'EN_COURS' && activeSession.dateDebut) {
-            // Resume: calculate remaining time
-            const start = new Date(activeSession.dateDebut).getTime()
-            const end = start + epreuveInfo.duree * 60 * 1000
-            const remaining = Math.max(0, Math.floor((end - Date.now()) / 1000))
-            setTimeRemaining(remaining)
-
-            // Load existing answers
-            const answersRes = await fetch(`/api/sessions/${activeSessionId}`)
-            if (answersRes.ok) {
-              const answersData = await answersRes.json()
-              const sessionData = answersData.session || answersData
-              const loadedReponses: Record<string, string> = {}
-              if (sessionData.reponses && Array.isArray(sessionData.reponses)) {
-                sessionData.reponses.forEach((r: { questionId: string; contenu: string | null }) => {
-                  if (r.contenu) loadedReponses[r.questionId] = r.contenu
-                })
-              }
-              setReponses(loadedReponses)
-
-              // Restore active languages from saved coding answers
-              const loadedLanguages: Record<string, CodingLanguage> = {}
-              Object.entries(loadedReponses).forEach(([qId, contenu]) => {
-                const answer = parseCodingAnswer(contenu)
-                if (answer?.language) {
-                  loadedLanguages[qId] = answer.language
-                }
-              })
-              if (Object.keys(loadedLanguages).length > 0) {
-                setActiveCodeLanguages(loadedLanguages)
-              }
-            }
-
-            // Count fullscreen exits from logEvents to restore penalty count
-            if (activeSession.logEvents) {
-              try {
-                const logs = JSON.parse(activeSession.logEvents as string)
-                const fsExits = logs.filter((l: { type: string }) => l.type === 'FULLSCREEN_EXIT').length
-                setFullscreenExitCount(fsExits)
-              } catch {
-                // Ignore parse errors
-              }
-            }
-
-            // Resume exam directly
-            setPhase('in-exam')
-          }
-        }
-      } catch (err) {
-        toast.error('Erreur', {
-          description: err instanceof Error ? err.message : 'Impossible de charger l\'épreuve',
-        })
-      } finally {
-        setLoading(false)
       }
-    }
 
-    fetchEpreuveData()
-  }, [epreuveId, user?.id, user?.etablissementId, user?.etablissement?.id])
+      // Check for existing session first (to get sessionId for consistent proposition ordering)
+      let activeSessionId: string | null = null
+      let activeSession: ExamSession | null = null
+      if (user?.id) {
+        const sessionRes = await fetch(`/api/sessions?etudiantId=${user.id}&epreuveId=${epreuveId}`)
+        if (sessionRes.ok) {
+          const sessionsData = await sessionRes.json()
+          activeSession = sessionsData.find(
+            (s: ExamSession) => s.statut === 'EN_COURS' || s.statut === 'NON_COMMENCEE'
+          ) ?? null
+          if (activeSession) {
+            activeSessionId = activeSession.id
+          }
+        }
+      }
+
+      // Fetch questions — if there's an active session, pass sessionId to get consistent proposition ordering
+      const questionsUrl = activeSessionId
+        ? `/api/epreuves/${epreuveId}/questions?sessionId=${activeSessionId}`
+        : `/api/epreuves/${epreuveId}/questions`
+      const questionsRes = await fetch(questionsUrl)
+      if (!questionsRes.ok) throw new Error('Questions introuvables')
+      const questionsData: ExamQuestion[] = await questionsRes.json()
+      // Sort by ordre
+      questionsData.sort((a: ExamQuestion, b: ExamQuestion) => a.ordre - b.ordre)
+
+      // Defaults for resume state
+      let reponses: Record<string, string> = {}
+      let activeCodeLanguages: Record<string, CodingLanguage> = {}
+      let fullscreenExitCount = 0
+      let timeRemaining = 0
+      let phase: ExamPhase = 'pre-exam'
+      let totalAlertCount = activeSession?.alertes || 0
+      let penalite = activeSession?.penalite || 0
+
+      // Resume exam if there's an active session
+      if (activeSessionId && activeSession) {
+        if (activeSession.statut === 'EN_COURS' && activeSession.dateDebut) {
+          // Resume: calculate remaining time
+          const start = new Date(activeSession.dateDebut).getTime()
+          const end = start + epreuveInfo.duree * 60 * 1000
+          timeRemaining = Math.max(0, Math.floor((end - Date.now()) / 1000))
+
+          // Load existing answers
+          const answersRes = await fetch(`/api/sessions/${activeSessionId}`)
+          if (answersRes.ok) {
+            const answersData = await answersRes.json()
+            const sessionData = answersData.session || answersData
+            const loadedReponses: Record<string, string> = {}
+            if (sessionData.reponses && Array.isArray(sessionData.reponses)) {
+              sessionData.reponses.forEach((r: { questionId: string; contenu: string | null }) => {
+                if (r.contenu) loadedReponses[r.questionId] = r.contenu
+              })
+            }
+            reponses = loadedReponses
+
+            // Restore active languages from saved coding answers
+            const loadedLanguages: Record<string, CodingLanguage> = {}
+            Object.entries(loadedReponses).forEach(([qId, contenu]) => {
+              const answer = parseCodingAnswer(contenu)
+              if (answer?.language) {
+                loadedLanguages[qId] = answer.language
+              }
+            })
+            if (Object.keys(loadedLanguages).length > 0) {
+              activeCodeLanguages = loadedLanguages
+            }
+          }
+
+          // Count fullscreen exits from logEvents to restore penalty count
+          if (activeSession.logEvents) {
+            try {
+              const logs = JSON.parse(activeSession.logEvents as string)
+              fullscreenExitCount = logs.filter((l: { type: string }) => l.type === 'FULLSCREEN_EXIT').length
+            } catch {
+              // Ignore parse errors
+            }
+          }
+
+          // Resume exam directly
+          phase = 'in-exam'
+        }
+      }
+
+      return {
+        epreuve: epreuveInfo,
+        securityConfig,
+        session: activeSession,
+        questions: questionsData,
+        reponses,
+        activeCodeLanguages,
+        fullscreenExitCount,
+        timeRemaining,
+        phase,
+        totalAlertCount,
+        penalite,
+      }
+    },
+    enabled: !!epreuveId,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+
+  // Sync query.data → local state (préserve le comportement du fetch original
+  // qui setEpreuve/setSecurityConfig/etc. au fur et à mesure). Le useEffect ne
+  // se déclenche qu'au montage initial et au remontage (retour sur la page).
+  useEffect(() => {
+    const d = epreuveQuery.data
+    if (!d) return
+    setEpreuve(d.epreuve)
+    setSecurityConfig(d.securityConfig)
+    setSession(d.session)
+    setQuestions(d.questions)
+    setReponses(d.reponses)
+    setActiveCodeLanguages(d.activeCodeLanguages)
+    setFullscreenExitCount(d.fullscreenExitCount)
+    setTimeRemaining(d.timeRemaining)
+    setPhase(d.phase)
+    setTotalAlertCount(d.totalAlertCount)
+    setPenalite(d.penalite)
+  }, [epreuveQuery.data])
+
+  // Toast sur erreur (préserve le comportement du catch original)
+  useEffect(() => {
+    if (epreuveQuery.error) {
+      const err = epreuveQuery.error
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de charger l\'épreuve',
+      })
+    }
+  }, [epreuveQuery.error])
+
+  // loading dérivé : false si pas d'epreuveId (préserve le setLoading(false)
+  // du guard original), sinon isLoading de la query.
+  const loading = !epreuveId ? false : epreuveQuery.isLoading
 
   // ─── Start exam ────────────────────────────────────────────────────────
   const startExam = useCallback(async () => {

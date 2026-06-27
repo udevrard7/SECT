@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from'react'
+import { useState, useEffect, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
  Search,
  Plus,
@@ -157,13 +158,7 @@ function formatDate(date: string | Date): string {
 export function BanqueQuestionsPage() {
  const user = useAuthStore((s) => s.user)
  const router = useRouter()
-
- // ─── Data state ───
- const [questions, setQuestions] = useState<Question[]>([])
- const [totalQuestions, setTotalQuestions] = useState(0)
- const [totalPages, setTotalPages] = useState(1)
- const [isLoading, setIsLoading] = useState(true)
- const [documents, setDocuments] = useState<DocumentOption[]>([])
+ const queryClient = useQueryClient()
 
  // ─── Filter state ───
  const [search, setSearch] = useState('')
@@ -220,34 +215,14 @@ export function BanqueQuestionsPage() {
  }
  }, [search])
 
- // ─── Fetch documents for filter ───
- useEffect(() => {
- if (!user?.id) return
- const fetchDocs = async () => {
- try {
- const res = await fetch(`/api/documents?userId=${user.id}`)
- if (res.ok) {
- const data = await res.json()
- const docs = (data.documents ?? []).map((d: { id: string; nomFichier: string }) => ({
- id: d.id,
- nomFichier: d.nomFichier,
- }))
- setDocuments(docs)
- }
- } catch {
- // Silent fail
- }
- }
- fetchDocs()
- }, [user?.id])
-
- // ─── Fetch questions ───
- const fetchQuestions = useCallback(async () => {
- if (!user?.id) return
- setIsLoading(true)
- try {
+ // ─── Fetch questions (TanStack Query) ───
+ // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+ // 0 refetch au retour navigation, 0 skeleton. staleTime 60s.
+ const questionsQuery = useQuery<QuestionsResponse>({
+ queryKey: ['banque-questions', user?.id, page, debouncedSearch, typeFilter, difficulteFilter, valideeFilter, documentFilter],
+ queryFn: async () => {
  const params = new URLSearchParams({
- userId: user.id,
+ userId: user!.id,
  page: String(page),
  limit: String(limit),
  })
@@ -258,22 +233,46 @@ export function BanqueQuestionsPage() {
  if (documentFilter !=='TOUS') params.set('documentId', documentFilter)
 
  const res = await fetch(`/api/questions?${params.toString()}`)
- if (res.ok) {
- const data: QuestionsResponse = await res.json()
- setQuestions(data.questions ?? [])
- setTotalQuestions(data.total)
- setTotalPages(data.totalPages)
- }
- } catch {
- toast.error('Erreur', { description:'Impossible de charger les questions.' })
- } finally {
- setIsLoading(false)
- }
- }, [user?.id, page, debouncedSearch, typeFilter, difficulteFilter, valideeFilter, documentFilter])
+ if (!res.ok) throw new Error('Failed to fetch questions')
+ return res.json()
+ },
+ enabled: !!user?.id,
+ staleTime: 60 * 1000,
+ refetchOnWindowFocus: false,
+ })
 
+ const questions = questionsQuery.data?.questions ?? []
+ const totalQuestions = questionsQuery.data?.total ?? 0
+ const totalPages = questionsQuery.data?.totalPages ?? 1
+ const isLoading = questionsQuery.isLoading
+
+ // Toast d'erreur (préserve le comportement original : toast sur erreur fetch)
  useEffect(() => {
- fetchQuestions()
- }, [fetchQuestions])
+ if (questionsQuery.error) {
+ toast.error('Erreur', { description:'Impossible de charger les questions.' })
+ }
+ }, [questionsQuery.error])
+
+ // ─── Fetch documents for filter (TanStack Query) ───
+ const documentsQuery = useQuery<{ documents: { id: string; nomFichier: string }[] }>({
+ queryKey: ['banque-questions-documents', user?.id],
+ queryFn: async () => {
+ const res = await fetch(`/api/documents?userId=${user!.id}`)
+ if (!res.ok) throw new Error('Failed to fetch documents')
+ return res.json()
+ },
+ enabled: !!user?.id,
+ staleTime: 60 * 1000,
+ refetchOnWindowFocus: false,
+ })
+
+ const documents: DocumentOption[] = (documentsQuery.data?.documents ?? []).map((d) => ({
+ id: d.id,
+ nomFichier: d.nomFichier,
+ }))
+
+ // Helper pour invalider le cache après mutation (create/update/delete/batch)
+ const refreshQuestions = () => queryClient.invalidateQueries({ queryKey: ['banque-questions', user?.id] })
 
  // ─── Reset page and selection on filter change ───
  useEffect(() => {
@@ -355,7 +354,7 @@ export function BanqueQuestionsPage() {
  toast.success('Question déplacée vers la corbeille', {
  description:'La question a été déplacée vers la corbeille. Vous pouvez la restaurer dans les 30 jours.',
  })
- await fetchQuestions()
+ refreshQuestions()
  } catch {
  toast.error('Erreur', { description:'Impossible de supprimer la question.' })
  } finally {
@@ -404,7 +403,7 @@ export function BanqueQuestionsPage() {
  description:`${data.deletedCount} question(s) déplacée(s) vers la corbeille. Vous pouvez les restaurer dans les 30 jours.`,
  })
  setSelectedIds(new Set())
- await fetchQuestions()
+ refreshQuestions()
  } catch {
  toast.error('Erreur', { description:'Impossible de supprimer les questions sélectionnées.' })
  } finally {
@@ -503,7 +502,7 @@ export function BanqueQuestionsPage() {
 
  resetForm()
  setCreateDialogOpen(false)
- await fetchQuestions()
+ refreshQuestions()
  } catch (err) {
  toast.error('Erreur', {
  description: err instanceof Error ? err.message :'Impossible de créer la question.',
@@ -562,7 +561,7 @@ export function BanqueQuestionsPage() {
 
  setEditDialogOpen(false)
  setEditingQuestion(null)
- await fetchQuestions()
+ refreshQuestions()
  } catch {
  toast.error('Erreur', { description:'Impossible de mettre à jour la question.' })
  } finally {

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   FileText,
   Search,
@@ -159,11 +160,7 @@ function parseJsonSafe(str: string | null): unknown {
 // ─── Main Component ───
 
 export function LogsPage() {
-  // ─── Data state ───
-  const [logs, setLogs] = useState<AuditLogItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [page, setPage] = useState(1)
+  // ─── Data state (dérivé de useQuery) ───
   const limit = 20
 
   // ─── Filter state ───
@@ -172,14 +169,17 @@ export function LogsPage() {
   const [actionFilter, setActionFilter] = useState('all')
   const [entityFilter, setEntityFilter] = useState('all')
   const [searchEmail, setSearchEmail] = useState('')
+  const [page, setPage] = useState(1)
 
   // ─── Expanded log state ───
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
 
-  // ─── Fetch logs ───
-  const fetchLogs = useCallback(async () => {
-    setIsLoading(true)
-    try {
+  // ─── Fetch logs (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // Le queryKey inclut les filtres + page car l'API les prend en query params.
+  const logsQuery = useQuery<{ logs: AuditLogItem[]; total: number }>({
+    queryKey: ['logs', dateFrom, dateTo, actionFilter, entityFilter, searchEmail, page],
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (dateFrom) params.set('dateFrom', dateFrom)
       if (dateTo) params.set('dateTo', dateTo)
@@ -190,24 +190,25 @@ export function LogsPage() {
       params.set('limit', limit.toString())
 
       const res = await fetch(`/api/logs?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setLogs(data.logs ?? [])
-        setTotal(data.total ?? 0)
-      }
-    } catch {
-      // Silent
-    } finally {
-      setIsLoading(false)
-    }
-  }, [dateFrom, dateTo, actionFilter, entityFilter, searchEmail, page])
+      if (!res.ok) throw new Error('Failed to fetch logs')
+      const data = await res.json()
+      return { logs: data.logs ?? [], total: data.total ?? 0 }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchLogs()
-  }, [fetchLogs])
+  const logs = logsQuery.data?.logs ?? []
+  const total = logsQuery.data?.total ?? 0
+  const isLoading = logsQuery.isLoading
 
   // ─── Reset page when filters change ───
+  // NOTE : ce useEffect existait dans le code original (avant migration TanStack
+  // Query). Le React Compiler le flagge désormais comme `set-state-in-effect`
+  // car `page` est dans le queryKey de useQuery. La logique est correcte (reset
+  // de pagination quand les filtres changent) — disable ciblé.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset pagination on filter change, pattern original
     setPage(1)
   }, [dateFrom, dateTo, actionFilter, entityFilter, searchEmail])
 

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Settings,
   Save,
@@ -448,25 +449,18 @@ export function ResponsableParametresPage() {
 
   // Accent colors
   const accent = getAccent(isAdmin)
+  const queryClient = useQueryClient()
 
   // Active etablissement ID (for ADMIN selector)
   const [activeEtabId, setActiveEtabId] = useState<string | null>(
     user?.etablissementId || null
   )
 
-  // Admin establishment list
-  const [etabOptions, setEtabOptions] = useState<EtablissementOption[]>([])
-  const [loadingEtabOptions, setLoadingEtabOptions] = useState(false)
-
-  // Data state
+  // Data state (local for editable data — synced from queries via useEffect)
   const [etablissement, setEtablissement] = useState<EtablissementInfo | null>(null)
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings | null>(null)
-  const [ipEntries, setIpEntries] = useState<IpWhitelistEntry[]>([])
 
-  // Loading states
-  const [loadingEtab, setLoadingEtab] = useState(true)
-  const [loadingSecurity, setLoadingSecurity] = useState(false)
-  const [loadingIp, setLoadingIp] = useState(false)
+  // Saving states (local form state)
   const [savingEtab, setSavingEtab] = useState(false)
   const [savingSecurity, setSavingSecurity] = useState(false)
 
@@ -475,106 +469,127 @@ export function ResponsableParametresPage() {
   const [newIpDesc, setNewIpDesc] = useState('')
   const [addingIp, setAddingIp] = useState(false)
 
-  // Tab tracking for auto-loading
+  // Tab tracking
   const [activeTab, setActiveTab] = useState('etablissement')
-  const securityLoadedRef = useRef(false)
-  const ipLoadedRef = useRef(false)
 
-  // ─── Fetch establishment list (ADMIN) ───
+  // BUGFIX QUERY-MIGRATION-GROUP-A : migration de useEffect+fetch+useState
+  // vers TanStack Query. Le cache survit au démontage → 0 refetch au retour,
+  // 0 skeleton, navigation instantanée. Les queries security/ip sont
+  // lazy-loadées via `enabled` sur activeTab (équivalent des *LoadedRef).
+  const etabOptionsQuery = useQuery<{ etablissements: EtablissementInfo[] }>({
+    queryKey: ['etablissements'],
+    queryFn: async () => {
+      const res = await fetch('/api/etablissements')
+      if (!res.ok) throw new Error('Failed to fetch etablissements')
+      return res.json()
+    },
+    enabled: isAdmin,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
+  const etabOptions = useMemo(
+    () =>
+      (etabOptionsQuery.data?.etablissements ?? []).map((e) => ({
+        id: e.id,
+        nom: e.nom,
+      })),
+    [etabOptionsQuery.data],
+  )
+  const loadingEtabOptions = etabOptionsQuery.isLoading
+
+  // Toast sur erreur de chargement (admin selector).
   useEffect(() => {
-    if (!isAdmin) return
-    setLoadingEtabOptions(true)
-    fetch('/api/etablissements')
-      .then((res) => res.json())
-      .then((data) => {
-        const list = data.etablissements || data || []
-        setEtabOptions(Array.isArray(list) ? list.map((e: EtablissementInfo) => ({ id: e.id, nom: e.nom })) : [])
-      })
-      .catch(() => {
-        toast.error('Erreur', { description: 'Impossible de charger la liste des établissements' })
-      })
-      .finally(() => setLoadingEtabOptions(false))
-  }, [isAdmin])
-
-  // ─── Fetch etablissement info ───
-
-  const fetchEtablissement = useCallback(async () => {
-    if (!activeEtabId) {
-      setLoadingEtab(false)
-      return
+    if (etabOptionsQuery.error) {
+      toast.error('Erreur', { description: 'Impossible de charger la liste des établissements' })
     }
-    setLoadingEtab(true)
-    try {
+  }, [etabOptionsQuery.error])
+
+  const etablissementQuery = useQuery<{ etablissement: EtablissementInfo }>({
+    queryKey: ['responsable-etablissement', activeEtabId],
+    queryFn: async () => {
       const res = await fetch(`/api/etablissements/${activeEtabId}`)
       if (!res.ok) throw new Error('Erreur réseau')
-      const data = await res.json()
-      setEtablissement(data.etablissement)
-    } catch {
+      return res.json()
+    },
+    enabled: !!activeEtabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Sync query data → local state (préserve setEtablissement pour form editing).
+  // Ne clear pas quand data est undefined (préserve stale data pendant loading,
+  // comme le fetchEtablissement original qui ne clear pas sur activeEtabId null).
+  useEffect(() => {
+    if (etablissementQuery.data) {
+      setEtablissement(etablissementQuery.data.etablissement)
+    }
+  }, [etablissementQuery.data])
+
+  useEffect(() => {
+    if (etablissementQuery.error) {
       toast.error('Erreur', { description: 'Impossible de charger les informations de l\'établissement' })
-    } finally {
-      setLoadingEtab(false)
     }
-  }, [activeEtabId])
+  }, [etablissementQuery.error])
 
-  // ─── Fetch security settings ───
+  const loadingEtab = etablissementQuery.isLoading
 
-  const fetchSecuritySettings = useCallback(async (etabId?: string) => {
-    const targetId = etabId || activeEtabId
-    if (!targetId) return
-    setLoadingSecurity(true)
-    try {
-      const res = await fetch(`/api/security-settings/etablissement/${targetId}`)
+  const securityQuery = useQuery<{ securitySettings: SecuritySettings }>({
+    queryKey: ['responsable-security-settings', activeEtabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/security-settings/etablissement/${activeEtabId}`)
       if (!res.ok) throw new Error('Erreur réseau')
-      const data = await res.json()
-      setSecuritySettings(data.securitySettings)
-      securityLoadedRef.current = true
-    } catch {
+      return res.json()
+    },
+    enabled: !!activeEtabId && activeTab === 'securite',
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  // Sync query data → local state. Clear quand data est undefined
+  // (évite d'afficher les settings d'un autre établissement).
+  useEffect(() => {
+    if (securityQuery.data) {
+      setSecuritySettings(securityQuery.data.securitySettings)
+    } else {
+      setSecuritySettings(null)
+    }
+  }, [securityQuery.data])
+
+  useEffect(() => {
+    if (securityQuery.error) {
       toast.error('Erreur', { description: 'Impossible de charger les paramètres de sécurité' })
-    } finally {
-      setLoadingSecurity(false)
     }
-  }, [activeEtabId])
+  }, [securityQuery.error])
 
-  // ─── Fetch IP whitelist ───
+  const loadingSecurity = securityQuery.isFetching
 
-  const fetchIpWhitelist = useCallback(async (etabId?: string) => {
-    const targetId = etabId || activeEtabId
-    if (!targetId) return
-    setLoadingIp(true)
-    try {
-      const res = await fetch(`/api/ip-whitelist?etablissementId=${targetId}`)
+  const ipQuery = useQuery<{ entries: IpWhitelistEntry[] }>({
+    queryKey: ['responsable-ip-whitelist', activeEtabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/ip-whitelist?etablissementId=${activeEtabId}`)
       if (!res.ok) throw new Error('Erreur réseau')
-      const data = await res.json()
-      setIpEntries(data.entries || [])
-      ipLoadedRef.current = true
-    } catch {
+      return res.json()
+    },
+    enabled: !!activeEtabId && activeTab === 'ip-whitelist',
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const ipEntries = ipQuery.data?.entries ?? []
+  const loadingIp = ipQuery.isFetching
+
+  useEffect(() => {
+    if (ipQuery.error) {
       toast.error('Erreur', { description: 'Impossible de charger la liste blanche IP' })
-    } finally {
-      setLoadingIp(false)
     }
-  }, [activeEtabId])
+  }, [ipQuery.error])
 
-  // Fetch establishment on ID change
-  useEffect(() => {
-    fetchEtablissement()
-    // Reset loaded refs when establishment changes
-    securityLoadedRef.current = false
-    ipLoadedRef.current = false
-    setSecuritySettings(null)
-    setIpEntries([])
-  }, [fetchEtablissement])
-
-  // Auto-load data on tab switch
-  useEffect(() => {
-    if (!activeEtabId) return
-    if (activeTab === 'securite' && !securityLoadedRef.current) {
-      fetchSecuritySettings()
-    }
-    if (activeTab === 'ip-whitelist' && !ipLoadedRef.current) {
-      fetchIpWhitelist()
-    }
-  }, [activeTab, activeEtabId, fetchSecuritySettings, fetchIpWhitelist])
+  // Helpers pour invalider le cache après mutation.
+  const refreshSecuritySettings = () =>
+    queryClient.invalidateQueries({ queryKey: ['responsable-security-settings', activeEtabId] })
+  const refreshIpWhitelist = () =>
+    queryClient.invalidateQueries({ queryKey: ['responsable-ip-whitelist', activeEtabId] })
 
   // ─── Save etablissement info ───
 
@@ -725,7 +740,7 @@ export function ResponsableParametresPage() {
       })
       setNewIp('')
       setNewIpDesc('')
-      fetchIpWhitelist()
+      refreshIpWhitelist()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Une erreur est survenue.',
@@ -746,7 +761,7 @@ export function ResponsableParametresPage() {
       })
       if (!res.ok) throw new Error('Erreur')
       toast.success(currentActif ? 'Adresse IP désactivée' : 'Adresse IP activée')
-      fetchIpWhitelist()
+      refreshIpWhitelist()
     } catch {
       toast.error('Erreur', { description: 'Impossible de modifier l\'entrée' })
     }
@@ -761,7 +776,7 @@ export function ResponsableParametresPage() {
       })
       if (!res.ok) throw new Error('Erreur')
       toast.success('Adresse IP retirée', { description: `${ip} a été supprimé de la liste blanche.` })
-      fetchIpWhitelist()
+      refreshIpWhitelist()
     } catch {
       toast.error('Erreur', { description: 'Impossible de supprimer l\'entrée' })
     }
@@ -1207,7 +1222,7 @@ export function ResponsableParametresPage() {
                   className="flex justify-center py-4"
                 >
                   <Button
-                    onClick={() => fetchSecuritySettings()}
+                    onClick={() => { void refreshSecuritySettings() }}
                     className={accent.btn}
                   >
                     Charger les paramètres de sécurité

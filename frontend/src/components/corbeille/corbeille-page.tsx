@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Trash2,
   RotateCcw,
@@ -435,16 +436,9 @@ function ActionButton({ variant, onClick, disabled, loading, icon: Icon, title }
 
 export function CorbeillePage() {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
 
-  // ─── Data state ───
-  const [data, setData] = useState<CorbeilleData>({
-    documents: [],
-    questions: [],
-    epreuves: [],
-    devoirs: [],
-    totalCount: 0,
-  })
-  const [isLoading, setIsLoading] = useState(true)
+  // ─── Data state (dérivé de useQuery) ───
   const [activeTab, setActiveTab] = useState<CorbeilleTab>('documents')
 
   // ─── Search & Sort state ───
@@ -460,34 +454,36 @@ export function CorbeillePage() {
   const [purgeDialogOpen, setPurgeDialogOpen] = useState(false)
   const [purgeTarget, setPurgeTarget] = useState<SelectedItem[] | null>(null)
 
-  // ─── Fetch deleted items ───
-  const fetchCorbeille = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const res = await fetch(`/api/corbeille?userId=${user.id}&type=all`)
-      if (res.ok) {
-        const json = await res.json()
-        setData({
-          documents: json.documents ?? [],
-          questions: json.questions ?? [],
-          epreuves: json.epreuves ?? [],
-          devoirs: json.devoirs ?? [],
-          totalCount: json.totalCount ?? 0,
-        })
+  // ─── Fetch deleted items (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  const corbeilleQuery = useQuery<CorbeilleData>({
+    queryKey: ['corbeille', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/corbeille?userId=${user!.id}&type=all`)
+      if (!res.ok) throw new Error('Failed to fetch corbeille')
+      const json = await res.json()
+      return {
+        documents: json.documents ?? [],
+        questions: json.questions ?? [],
+        epreuves: json.epreuves ?? [],
+        devoirs: json.devoirs ?? [],
+        totalCount: json.totalCount ?? 0,
       }
-    } catch {
-      // Silent fail
-    }
-  }, [user])
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      await fetchCorbeille()
-      setIsLoading(false)
-    }
-    load()
-  }, [fetchCorbeille])
+  const data = corbeilleQuery.data ?? {
+    documents: [],
+    questions: [],
+    epreuves: [],
+    devoirs: [],
+    totalCount: 0,
+  }
+  const isLoading = corbeilleQuery.isLoading
+  const refreshCorbeille = () => queryClient.invalidateQueries({ queryKey: ['corbeille', user?.id] })
 
   // ─── Handle tab change with state reset ───
   const handleTabChange = (value: string) => {
@@ -622,7 +618,7 @@ export function CorbeillePage() {
       })
 
       setSelectedItems([])
-      await fetchCorbeille()
+      await refreshCorbeille()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de restaurer les éléments.',
@@ -664,7 +660,7 @@ export function CorbeillePage() {
       setSelectedItems([])
       setPurgeTarget(null)
       setPurgeDialogOpen(false)
-      await fetchCorbeille()
+      await refreshCorbeille()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de supprimer les éléments.',
@@ -766,7 +762,7 @@ export function CorbeillePage() {
           variant="outline"
           size="icon"
           className="h-9 w-9"
-          onClick={() => fetchCorbeille()}
+          onClick={() => refreshCorbeille()}
           title="Actualiser"
         >
           <RefreshCw className="h-4 w-4" />
@@ -1095,7 +1091,7 @@ export function CorbeillePage() {
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => fetchCorbeille()}
+            onClick={() => refreshCorbeille()}
           >
             <RefreshCw className="h-4 w-4" />
             Actualiser

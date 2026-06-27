@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Sparkles,
   Loader2,
@@ -162,9 +163,7 @@ export function QuestionsIAPage() {
   const searchParams = useSearchParams()
 
   // ─── State ───
-  const [documents, setDocuments] = useState<DocumentInfo[]>([])
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>('')
-  const [isLoadingDocs, setIsLoadingDocs] = useState(true)
 
   const [qcuCount, setQcuCount] = useState(5)
   const [qcmCount, setQcmCount] = useState(3)
@@ -189,26 +188,14 @@ export function QuestionsIAPage() {
 
   const questionsTopRef = useRef<HTMLDivElement>(null)
 
-  // ─── Derived ───
-  const selectedDoc = documents.find((d) => d.id === selectedDocumentId)
-  const availableThemes: string[] = selectedDoc?.themesDetectes ?? []
-  const analyzedDocuments = documents.filter((d) => d.statutAnalyse === 'ANALYSE')
-
-  // ─── Fetch documents ───
-  const fetchDocuments = useCallback(async () => {
-    if (!user?.id) {
-      console.log('[QuestionsIA] No user ID, skipping document fetch')
-      setIsLoadingDocs(false)
-      return
-    }
-    setIsLoadingDocs(true)
-    try {
-      console.log('[QuestionsIA] Fetching documents for user:', user.id)
-      const res = await fetch(`/api/documents?userId=${user.id}`)
-      if (!res.ok) {
-        console.error('[QuestionsIA] Failed to fetch documents, status:', res.status)
-        return
-      }
+  // ─── Fetch documents (TanStack Query) ───
+  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
+  // 0 refetch au retour navigation. staleTime 60s.
+  const documentsQuery = useQuery<{ documents: DocumentInfo[] }>({
+    queryKey: ['questions-ia-documents', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/documents?userId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch documents')
       const data = await res.json()
       const docs: DocumentInfo[] = (data.documents ?? []).map((doc: Record<string, unknown>) => ({
         id: doc.id as string,
@@ -219,18 +206,20 @@ export function QuestionsIAPage() {
         themesDetectes: parseJsonSafe<string[]>(doc.themesDetectes as string | null, []),
         dateUpload: doc.dateUpload as string,
       }))
-      console.log('[QuestionsIA] Fetched', docs.length, 'documents,', docs.filter(d => d.statutAnalyse === 'ANALYSE').length, 'analyzed')
-      setDocuments(docs)
-    } catch (err) {
-      console.error('[QuestionsIA] Error fetching documents:', err)
-    } finally {
-      setIsLoadingDocs(false)
-    }
-  }, [user?.id])
+      return { documents: docs }
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchDocuments()
-  }, [fetchDocuments])
+  const documents = documentsQuery.data?.documents ?? []
+  const isLoadingDocs = documentsQuery.isLoading
+
+  // ─── Derived ───
+  const selectedDoc = documents.find((d) => d.id === selectedDocumentId)
+  const availableThemes: string[] = selectedDoc?.themesDetectes ?? []
+  const analyzedDocuments = documents.filter((d) => d.statutAnalyse === 'ANALYSE')
 
   // Auto-select document from navigation params
   useEffect(() => {

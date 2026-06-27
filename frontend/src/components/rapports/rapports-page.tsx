@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
   TrendingUp,
@@ -220,20 +221,17 @@ function EmptyChart({ message }: { message: string }) {
 export function RapportsPage() {
   const user = useAuthStore((s) => s.user)
 
-  // ─── Data state ───
-  const [stats, setStats] = useState<StatsData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // ─── Filter state ───
   const [selectedFiliere, setSelectedFiliere] = useState('all')
-
-  // ─── Options state ───
-  const [filieres, setFilieres] = useState<FiliereOption[]>([])
   const [dateDebut, setDateDebut] = useState<string>('')
   const [dateFin, setDateFin] = useState<string>('')
 
-  // ─── Fetch stats ───
-  const fetchStats = useCallback(async () => {
-    setIsLoading(true)
-    try {
+  // ─── Fetch stats (TanStack Query) ───
+  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // Le queryKey inclut les filtres car l'API les prend en query params.
+  const statsQuery = useQuery<StatsData>({
+    queryKey: ['rapports-stats', selectedFiliere, dateDebut, dateFin],
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (selectedFiliere && selectedFiliere !== 'all') {
         params.set('filiereId', selectedFiliere)
@@ -242,42 +240,34 @@ export function RapportsPage() {
       if (dateFin) params.set('dateFin', dateFin)
       const qs = params.toString()
       const res = await fetch(`/api/stats/responsable${qs ? `?${qs}` : ''}`)
-      if (res.ok) {
-        const data = await res.json()
-        setStats(data)
-      } else {
+      if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         console.error('Stats API error:', errorData)
-        setStats(null)
+        throw new Error('Failed to fetch stats')
       }
-    } catch (err) {
-      console.error('Fetch stats error:', err)
-      setStats(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [selectedFiliere, dateDebut, dateFin])
+      const data = await res.json()
+      return data
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  // ─── Fetch filieres ───
-  const fetchFilieres = useCallback(async () => {
-    try {
+  // ─── Fetch filieres (TanStack Query) ───
+  const filieresQuery = useQuery<{ filieres: FiliereOption[] }>({
+    queryKey: ['rapports-filieres'],
+    queryFn: async () => {
       const res = await fetch('/api/filieres')
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres((data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })))
-      }
-    } catch {
-      // Silent
-    }
-  }, [])
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      const data = await res.json()
+      return { filieres: (data.filieres ?? []).map((f: { id: string; nom: string }) => ({ id: f.id, nom: f.nom })) }
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
-
-  useEffect(() => {
-    fetchFilieres()
-  }, [fetchFilieres])
+  const stats = statsQuery.data ?? null
+  const isLoading = statsQuery.isLoading
+  const filieres = filieresQuery.data?.filieres ?? []
 
   // ─── Derived data ───
   const hasData = stats && (

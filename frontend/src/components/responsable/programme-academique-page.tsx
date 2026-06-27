@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   GraduationCap,
   Plus,
@@ -235,16 +236,89 @@ function getCoverageBadge(rate: number) {
 
 export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}) {
   const user = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
+  const etabId = user?.etablissementId || user?.etablissement?.id
 
   // ─── View state ───
   const [activeView, setActiveView] = useState<'overview' | 'detail'>(defaultView)
   const [tabNiveau, setTabNiveau] = useState('all')
 
   // ─── Data state ───
-  const [filieres, setFilieres] = useState<FiliereItem[]>([])
+  // `ues` reste un state local car il est muté localement par toggleExpand
+  // (lazy-load des affectations). Sync depuis la query via useEffect.
   const [ues, setUEs] = useState<UEItem[]>([])
-  const [affectations, setAffectations] = useState<AffectationItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+
+  // BUGFIX QUERY-MIGRATION-GROUP-A : migration de useEffect+fetch+useState
+  // vers TanStack Query. Le cache survit au démontage → 0 refetch au retour,
+  // 0 skeleton, navigation instantanée. Les 3 ressources sont indépendantes.
+  const filieresQuery = useQuery<{ filieres: FiliereItem[] }>({
+    queryKey: ['programme-filieres', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etabId) params.set('etablissementId', etabId)
+      params.set('actif', 'true')
+      const res = await fetch(`/api/filieres?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch filieres')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const uesQuery = useQuery<{ unitesEnseignement: UEItem[] }>({
+    queryKey: ['programme-ues', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etabId) params.set('etablissementId', etabId)
+      params.set('actif', 'true')
+      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch UEs')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const affectationsQuery = useQuery<{ affectations: AffectationItem[] }>({
+    queryKey: ['programme-affectations', etabId],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (etabId) params.set('etablissementId', etabId)
+      const res = await fetch(`/api/affectations?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch affectations')
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const filieres = useMemo(
+    () =>
+      (filieresQuery.data?.filieres ?? []).map((f) => ({
+        id: f.id,
+        nom: f.nom,
+        code: f.code ?? null,
+      })),
+    [filieresQuery.data],
+  )
+  // Sync query data → local state (préserve setUEs utilisé par toggleExpand).
+  useEffect(() => {
+    if (uesQuery.data) {
+      setUEs(uesQuery.data.unitesEnseignement ?? [])
+    }
+  }, [uesQuery.data])
+  const affectations = affectationsQuery.data?.affectations ?? []
+  const isLoading =
+    filieresQuery.isLoading || uesQuery.isLoading || affectationsQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (create/update/delete).
+  const refreshData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['programme-filieres'] }),
+      queryClient.invalidateQueries({ queryKey: ['programme-ues'] }),
+      queryClient.invalidateQueries({ queryKey: ['programme-affectations'] }),
+    ])
+  }
 
   // ─── Filter state (detail view) ───
   const [search, setSearch] = useState('')
@@ -292,57 +366,6 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   // ─── Multi-filière sharing state ───
   const [addFiliereIdsSuppl, setAddFiliereIdsSuppl] = useState<Set<string>>(new Set())
   const [editFiliereIdsSuppl, setEditFiliereIdsSuppl] = useState<Set<string>>(new Set())
-
-  // ─── Data Fetching ───
-
-  const fetchFilieres = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      params.set('actif', 'true')
-      const res = await fetch(`/api/filieres?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setFilieres((data.filieres ?? []).map((f: FiliereItem) => ({ id: f.id, nom: f.nom, code: f.code ?? null })))
-      }
-    } catch { /* silent */ }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  const fetchUEs = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      params.set('actif', 'true')
-      const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUEs(data.unitesEnseignement ?? [])
-      }
-    } catch { /* silent */ }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  const fetchAffectations = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      const etabId = user?.etablissementId || user?.etablissement?.id
-      if (etabId) params.set('etablissementId', etabId)
-      const res = await fetch(`/api/affectations?${params.toString()}`)
-      if (res.ok) {
-        const data = await res.json()
-        setAffectations(data.affectations ?? [])
-      }
-    } catch { /* silent */ }
-  }, [user?.etablissementId, user?.etablissement?.id])
-
-  const fetchAllData = useCallback(async () => {
-    setIsLoading(true)
-    await Promise.all([fetchFilieres(), fetchUEs(), fetchAffectations()])
-    setIsLoading(false)
-  }, [fetchFilieres, fetchUEs, fetchAffectations])
-
-  useEffect(() => { fetchAllData() }, [fetchAllData])
 
   // ─── Computed: Niveau stats ───
 
@@ -493,7 +516,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la création') }
       toast.success('UE créée', { description: `${addNom} a été ajoutée au niveau ${NIVEAU_LABELS[addNiveau] ?? addNiveau}.` })
       setAddDialogOpen(false)
-      await fetchAllData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally { setIsSubmitting(false) }
@@ -543,7 +566,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       toast.success('UE modifiée', { description: `${editNom} a été mise à jour.` })
       setEditDialogOpen(false)
       setEditingUE(null)
-      await fetchAllData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally { setIsSubmitting(false) }
@@ -560,7 +583,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       const res = await fetch(`/api/unites-enseignement/${target.id}`, { method: 'DELETE' })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la suppression') }
       toast.success('UE désactivée', { description: `${target.nom} a été désactivée avec succès.` })
-      await fetchAllData()
+      await refreshData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
