@@ -256,19 +256,35 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 		// chaque épreuve. Le frontend utilise ep.sessions.some(s => s.statut === ...)
 		// pour filtrer upcoming vs completed — sans cet include, ep.sessions est
 		// undefined → TypeError: Cannot read properties of undefined (reading 'some').
-		if params.EtudiantID != "" && len(result) > 0 {
+		// BUGFIX (EPREUVES-SESSIONS-1): hydrater les sessions aussi pour
+		// l'enseignant (vue /epreuves onglet Sessions) et pas seulement
+		// pour l'étudiant (vue /mes-epreuves).
+		if (params.EtudiantID != "" || params.EnseignantID != "") && len(result) > 0 {
 			epreuveIDs := make([]string, len(result))
 			for i, e := range result {
 				epreuveIDs[i] = e.ID
 			}
-			sessRows, err := tx.Query(ctx, `
-				SELECT "id", "epreuveId", "statut", "dateDebut", "dateFin", "score"
-				FROM "SessionPassation"
-				WHERE "etudiantId" = $1 AND "epreuveId" = ANY($2)
-				ORDER BY "createdAt" DESC`,
-				params.EtudiantID, epreuveIDs)
-			if err != nil {
-				return fmt.Errorf("query epreuve sessions: %w", err)
+			// BUGFIX (EPREUVES-SESSIONS-1): pour l'enseignant, récupérer
+			// TOUTES les sessions de ses épreuves (pas filtré par étudiant).
+			var sessRows pgx.Rows
+			var err2 error
+			if params.EtudiantID != "" {
+				sessRows, err2 = tx.Query(ctx, `
+					SELECT "id", "epreuveId", "statut", "dateDebut", "dateFin", "score"
+					FROM "SessionPassation"
+					WHERE "etudiantId" = $1 AND "epreuveId" = ANY($2)
+					ORDER BY "createdAt" DESC`,
+					params.EtudiantID, epreuveIDs)
+			} else {
+				sessRows, err2 = tx.Query(ctx, `
+					SELECT "id", "epreuveId", "statut", "dateDebut", "dateFin", "score"
+					FROM "SessionPassation"
+					WHERE "epreuveId" = ANY($1)
+					ORDER BY "createdAt" DESC`,
+					epreuveIDs)
+			}
+			if err2 != nil {
+				return fmt.Errorf("query epreuve sessions: %w", err2)
 			}
 			defer sessRows.Close()
 
@@ -284,6 +300,31 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			for _, e := range result {
 				if sessions, ok := sessionsByEpreuve[e.ID]; ok {
 					e.Sessions = sessions
+				}
+			}
+		}
+
+		// BUGFIX (EPREUVES-SESSIONS-2): peupler QuestionCount et TotalPoints
+		// à partir du contenu JSON pour que le frontend affiche le vrai
+		// nombre de questions et le barème total (au lieu de "Q" et "pts").
+		for _, e := range result {
+			if e.Contenu != nil {
+				var contenu struct {
+					Questions   []struct {
+						Bareme float64 `json:"bareme"`
+					} `json:"questions"`
+					BaremeTotal float64 `json:"baremeTotal"`
+				}
+				if err := json.Unmarshal(e.Contenu, &contenu); err == nil {
+					qc := len(contenu.Questions)
+					e.QuestionCount = &qc
+					tp := contenu.BaremeTotal
+					if tp == 0 && len(contenu.Questions) > 0 {
+						for _, q := range contenu.Questions {
+							tp += q.Bareme
+						}
+					}
+					e.TotalPoints = &tp
 				}
 			}
 		}
