@@ -1002,12 +1002,12 @@ export function AffectationsPage() {
                           <TableCell className="text-sm">
                             <div className="flex flex-wrap gap-1">
                               <Badge className="bg-success/10 text-success-text border-success/30 text-xs">
-                                {affectation.uniteEnseignement.filiere.nom}
+                                {affectation.uniteEnseignement?.filiere?.nom ?? '—'}
                               </Badge>
                               {affectation.uniteEnseignement.filieresSuppl?.map((s) => (
                                 <Badge key={s.id} className="bg-success/10 text-success-text border-success/30 text-xs">
                                   <Share2 className="h-3 w-3 mr-1" />
-                                  {s.filiere.nom}
+                                  {s.filiere?.nom ?? '—'}
                                 </Badge>
                               ))}
                             </div>
@@ -1349,7 +1349,7 @@ export function AffectationsPage() {
                       <SelectItem key={ue.id} value={ue.id}>
                         <div className="flex flex-col">
                           <span>{ue.code} — {ue.nom}</span>
-                          <span className="text-xs text-muted-foreground">{[ue.filiere.nom, ...ue.filieresSuppl.map(s => s.filiere.nom)].join(', ')} • {ue.niveaux ? (() => { try { return (JSON.parse(ue.niveaux) as string[]).join('/') } catch { return ue.niveau } })() : ue.niveau}</span>
+                          <span className="text-xs text-muted-foreground">{[ue.filiere?.nom ?? '—', ...(ue.filieresSuppl ?? []).map(s => s.filiere?.nom ?? '—')].join(', ')} • {ue.niveaux ? (() => { try { return (JSON.parse(ue.niveaux) as string[]).join('/') } catch { return ue.niveau } })() : ue.niveau}</span>
                         </div>
                       </SelectItem>
                     ))
@@ -1484,7 +1484,7 @@ export function AffectationsPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Filière</span>
-                <span className="font-medium">{editingAffectation ? [editingAffectation.uniteEnseignement.filiere.nom, ...editingAffectation.uniteEnseignement.filieresSuppl.map(s => s.filiere.nom)].join(', ') : ''}</span>
+                <span className="font-medium">{editingAffectation ? [editingAffectation.uniteEnseignement?.filiere?.nom ?? '—', ...(editingAffectation.uniteEnseignement?.filieresSuppl ?? []).map(s => s.filiere?.nom ?? '—')].join(', ') : ''}</span>
               </div>
             </div>
 
