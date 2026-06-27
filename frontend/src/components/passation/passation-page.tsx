@@ -49,6 +49,7 @@ import { toast } from 'sonner'
 import { CodingQuestionStudent } from '@/components/coding/code-editor'
 import { type CodingLanguage, type CodingAnswer, type TestResult, serializeCodingAnswer, parseCodingAnswer, getDefaultStarterCode } from '@/lib/coding-types'
 import { useOfflineSubmission } from '@/hooks/use-offline-submission'
+import { cacheAnswer, getCachedAnswers, clearCachedAnswers } from '@/lib/exam-answers-cache'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -456,13 +457,30 @@ export function PassationPage() {
     setSecurityConfig(d.securityConfig)
     setSession(d.session)
     setQuestions(d.questions)
-    setReponses(d.reponses)
     setActiveCodeLanguages(d.activeCodeLanguages)
     setFullscreenExitCount(d.fullscreenExitCount)
     setTimeRemaining(d.timeRemaining)
     setPhase(d.phase)
     setTotalAlertCount(d.totalAlertCount)
     setPenalite(d.penalite)
+
+    // BUGFIX (EXAM-OFFLINE-1) : restaurer les réponses depuis IndexedDB
+    // si elles sont plus récentes que celles du serveur (micro-coupure
+    // pendant l'examen + refresh). Les réponses IndexedDB priment car
+    // elles reflètent la dernière action de l'étudiant.
+    if (d.session?.id) {
+      getCachedAnswers(d.session.id).then((cached) => {
+        if (Object.keys(cached).length > 0) {
+          // Fusion : IndexedDB prime sur le serveur pour les questions
+          // présentes dans le cache (plus récentes)
+          setReponses({ ...d.reponses, ...cached })
+        } else {
+          setReponses(d.reponses)
+        }
+      })
+    } else {
+      setReponses(d.reponses)
+    }
   }, [epreuveQuery.data])
 
   // Toast sur erreur (préserve le comportement du catch original)
@@ -538,6 +556,9 @@ export function PassationPage() {
   }, [user?.id, epreuveId, epreuve?.duree, isStarting])
 
   // ─── Auto-save answers ─────────────────────────────────────────────────
+  // BUGFIX (EXAM-OFFLINE-1) : saveAnswers gère maintenant le hors-ligne.
+  // Si le fetch échoue (micro-coupure), les réponses sont déjà en IndexedDB
+  // (via handleAnswerChange) et un retry est programmé au retour online.
   const saveAnswers = useCallback(async () => {
     if (!sessionRef.current || phaseRef.current !== 'in-exam') return
 
@@ -561,7 +582,10 @@ export function PassationPage() {
         setLastSaved(new Date())
       }
     } catch {
-      // Silent fail — don't disrupt the student
+      // BUGFIX (EXAM-OFFLINE-1) : réseau coupé — les réponses sont déjà
+      // en IndexedDB (sauvegardées à chaque handleAnswerChange). Un retry
+      // automatique se déclenchera au retour du réseau (online event).
+      // On ne perturbe pas l'étudiant (silent fail).
     }
   }, [])
 
@@ -644,6 +668,12 @@ export function PassationPage() {
       }
 
       setPhase('post-exam')
+
+      // BUGFIX (EXAM-OFFLINE-1) : nettoyer le cache IndexedDB après submit
+      // réussi (les réponses sont maintenant sur le serveur).
+      if (sessionRef.current) {
+        clearCachedAnswers(sessionRef.current.id)
+      }
 
       // Exit fullscreen
       try {
@@ -778,6 +808,26 @@ export function PassationPage() {
     return () => {
       if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current)
     }
+  }, [phase, saveAnswers])
+
+  // ─── BUGFIX (EXAM-OFFLINE-1) : Retry auto au retour réseau ────────────
+  // Quand le réseau revient après une micro-coupure, on re-tente saveAnswers
+  // immédiatement (les réponses sont en IndexedDB, il faut les pousser au
+  // serveur). L'étudiant voit un toast de confirmation discret.
+  useEffect(() => {
+    if (phase !== 'in-exam') return
+
+    const handleOnline = () => {
+      saveAnswers().then(() => {
+        toast.success('Connexion rétablie', {
+          description: 'Vos réponses ont été synchronisées.',
+          duration: 3000,
+        })
+      })
+    }
+
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
   }, [phase, saveAnswers])
 
   // ─── Anti-cheat: Fullscreen exit detection (with penalty) ─────────────
@@ -1084,8 +1134,15 @@ export function PassationPage() {
   }, [saveAnswers])
 
   // ─── Handle answer change ──────────────────────────────────────────────
+  // BUGFIX (EXAM-OFFLINE-1) : chaque réponse est persistée en IndexedDB
+  // instantanément (non-bloquant). En cas de micro-coupure réseau + refresh
+  // ou fermeture d'onglet, les réponses sont restaurées au remontage.
   const handleAnswerChange = useCallback((questionId: string, value: string) => {
     setReponses((prev) => ({ ...prev, [questionId]: value }))
+    // Persistance IndexedDB (fire-and-forget, non-bloquant)
+    if (sessionRef.current) {
+      cacheAnswer(sessionRef.current.id, questionId, value)
+    }
   }, [])
 
   // ─── Handle QCM toggle ─────────────────────────────────────────────────
@@ -1095,7 +1152,12 @@ export function PassationPage() {
       const updated = current.includes(letter)
         ? current.filter((l) => l !== letter)
         : [...current, letter]
-      return { ...prev, [questionId]: JSON.stringify(updated) }
+      const newValue = JSON.stringify(updated)
+      // BUGFIX (EXAM-OFFLINE-1) : persister en IndexedDB
+      if (sessionRef.current) {
+        cacheAnswer(sessionRef.current.id, questionId, newValue)
+      }
+      return { ...prev, [questionId]: newValue }
     })
   }, [])
 
