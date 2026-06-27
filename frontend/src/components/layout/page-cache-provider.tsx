@@ -6,14 +6,18 @@
  *
  * BUGFIX (KEEPALIVE-PAGES-1) : Next.js App Router avec catch-all route
  * [...slug] remonte AuthenticatedLayout → PageContent à chaque navigation.
- * Le cache useRef dans PageContent était perdu à chaque remontage.
  *
- * Solution : le cache vit dans Providers (qui ne se remonte jamais) via
- * un Context. PageContent consomme le cache et y enregistre ses pages.
- * Les pages restent montées en display:none, retrouvant leur state au retour.
+ * Solution : le cache (Map de pages) vit dans le Context au niveau Providers
+ * (qui ne se remonte jamais). PageContent lit le cache depuis le Context
+ * et rend TOUTES les pages (l'active en display:block, les autres en
+ * display:none). Comme le cache est dans le Context (pas dans un useRef
+ * local à PageContent), il survit au remontage de PageContent.
+ *
+ * registerPage ajoute une page au cache (crée l'élément React une seule fois).
+ * Les pages restent montées → state préservé + polling actif.
  */
 
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 
 interface CachedPage {
   el: ReactNode
@@ -22,9 +26,10 @@ interface CachedPage {
 
 interface PageCacheContextValue {
   cache: Map<string, CachedPage>
-  /** Ajoute/met à jour une page dans le cache. Si createEl est fourni et que
-   *  la page n'est pas encore cachée, l'élément React est créé et stocké. */
-  touch: (pageId: string, createEl?: () => ReactNode) => void
+  /** Ajoute une page au cache (si pas déjà présente). Ne fait rien sinon. */
+  registerPage: (pageId: string, el: ReactNode) => void
+  /** Marque une page comme utilisée (LRU). */
+  touchPage: (pageId: string) => void
 }
 
 const PageCacheContext = createContext<PageCacheContextValue | null>(null)
@@ -34,20 +39,11 @@ const MAX_CACHED_PAGES = 8
 export function PageCacheProvider({ children }: { children: ReactNode }) {
   const [cache, setCache] = useState<Map<string, CachedPage>>(new Map())
 
-  const touch = (pageId: string, createEl?: () => ReactNode) => {
+  const registerPage = useCallback((pageId: string, el: ReactNode) => {
     setCache((prev) => {
+      if (prev.has(pageId)) return prev // déjà cachée, préserver
       const next = new Map(prev)
-      if (next.has(pageId)) {
-        // Page déjà cachée : juste update lastUsed (el déjà présent)
-        next.get(pageId)!.lastUsed = Date.now()
-      } else if (createEl) {
-        // Nouvelle page : créer l'élément React une seule fois
-        next.set(pageId, {
-          el: createEl(),
-          lastUsed: Date.now(),
-        })
-      }
-      // Évicter la plus ancienne si dépassement
+      next.set(pageId, { el, lastUsed: Date.now() })
       if (next.size > MAX_CACHED_PAGES) {
         let oldestKey: string | null = null
         let oldestTime = Infinity
@@ -61,10 +57,19 @@ export function PageCacheProvider({ children }: { children: ReactNode }) {
       }
       return next
     })
-  }
+  }, [])
+
+  const touchPage = useCallback((pageId: string) => {
+    setCache((prev) => {
+      if (!prev.has(pageId)) return prev
+      const next = new Map(prev)
+      next.get(pageId)!.lastUsed = Date.now()
+      return next
+    })
+  }, [])
 
   return (
-    <PageCacheContext.Provider value={{ cache, touch }}>
+    <PageCacheContext.Provider value={{ cache, registerPage, touchPage }}>
       {children}
     </PageCacheContext.Provider>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { usePageCache } from '@/components/layout/page-cache-provider'
 
@@ -131,17 +131,40 @@ function PlaceholderPage({ pageId }: { pageId: PageId }) {
 
 // ─── Main content router ───
 //
-// BUGFIX (KEEPALIVE-PAGES-1) : cache keep-alive des pages via PageCacheProvider
-// (au niveau Providers, qui ne se remonte jamais). Les pages déjà visitées
-// restent montées en display:none et retrouvent leur state intact au retour
-// → 0 refetch, 0 flash de skeleton, navigation instantanée.
+// BUGFIX (KEEPALIVE-PAGES-1) : PageContent enregistre sa page dans le cache
+// (PageCacheProvider au niveau Providers) et définit la page courante.
+// Le RENDU des pages cachées est géré par PageCacheProvider lui-même
+// (qui ne se remonte jamais). PageContent ne rend que le fallback de chargement
+// (le temps que la page soit enregistrée) ou le dashboard/placeholder.
 export function PageContent({ pageId }: { pageId: PageId }) {
   const { user } = useAuthStore()
-  const { cache, touch } = usePageCache()
+  const { cache, registerPage, touchPage } = usePageCache()
+
+  // Enregistrer la page courante dans le cache si pas déjà présente.
+  // + la marquer comme utilisée (LRU).
+  useEffect(() => {
+    if (!user) return
+    if (pageId === 'dashboard') return
+    const legacy = LEGACY_REDIRECTS[pageId]
+    if (legacy) return
+    const PageComponent = PAGE_COMPONENTS[pageId]
+    if (!PageComponent) return
+
+    if (!cache.has(pageId)) {
+      registerPage(pageId, (
+        <Suspense fallback={<PageLoadingFallback />}>
+          <PageComponent />
+        </Suspense>
+      ))
+    } else {
+      touchPage(pageId)
+    }
+  }, [pageId, user, cache, registerPage, touchPage])
+
+  if (!user) return null
 
   // Dashboard : pas de cache (dépend du rôle)
   if (pageId === 'dashboard') {
-    if (!user) return null
     const DashboardComponent = DASHBOARD_COMPONENTS[user.role]
     return (
       <Suspense fallback={<PageLoadingFallback />}>
@@ -160,31 +183,23 @@ export function PageContent({ pageId }: { pageId: PageId }) {
     )
   }
 
-  // Page enregistrée : cache keep-alive
+  // Page enregistrée : rendre toutes les pages cachées (l'active visible,
+  // les autres en display:none). Le cache vient du Context (persistant).
   const PageComponent = PAGE_COMPONENTS[pageId]
-  if (PageComponent && user) {
-    // Si pas en cache, l'ajouter (crée l'élément React une seule fois).
-    // touch déclenche un re-render, mais on rend aussi el directement pour
-    // ce cycle (pas de flash).
+  if (PageComponent) {
+    // Si la page courante n'est pas encore en cache (1er render avant useEffect),
+    // la rendre directement avec un fallback.
     if (!cache.has(pageId)) {
-      touch(pageId, () => (
+      return (
         <Suspense fallback={<PageLoadingFallback />}>
           <PageComponent />
         </Suspense>
-      ))
-    } else {
-      // Page déjà en cache : juste update lastUsed (LRU)
-      touch(pageId)
+      )
     }
 
-    // Élément à rendre pour ce cycle : soit depuis le cache, soit fraîchement créé
-    const el = cache.get(pageId)?.el ?? (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <PageComponent />
-      </Suspense>
-    )
-
-    // Render toutes les pages cachées, masquer les non-courantes (display:none)
+    // Rendre toutes les pages cachées. L'active en display:block, les autres
+    // en display:none. Comme le cache est dans le Context (Providers), il
+    // survit au remontage de PageContent → les pages restent montées.
     return (
       <>
         {Array.from(cache.entries()).map(([k, v]) => (
@@ -196,14 +211,9 @@ export function PageContent({ pageId }: { pageId: PageId }) {
             {v.el}
           </div>
         ))}
-        {/* Si la page courante n'est pas encore dans le cache (1er render
-            avant que touch soit appliqué), la rendre directement */}
-        {!cache.has(pageId) && el}
       </>
     )
   }
-
-  if (!user) return null
 
   // Placeholder
   return <PlaceholderPage pageId={pageId} />
