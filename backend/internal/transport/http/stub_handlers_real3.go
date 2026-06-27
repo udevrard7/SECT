@@ -329,12 +329,44 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	// BUGFIX (RESULTATS-KPI-1) : calculer les KPIs scalaires attendus
+	// par le frontend (OverviewResponse dans types/resultats.ts).
+	// Avant ce fix, l'API ne retournait que les arrays (epreuves, evolution,
+	// studentsAtRisk, topQuestions) mais pas les 5 scalaires → les KPIs
+	// affichaient "undefined corrigées" et "0.0/20".
+	totalEpreuves := len(epreuves)
+	totalSessions := 0
+	totalCorrigees := 0
+	var globalMoy float64
+	var globalTaux float64
+	moyCount := 0
+	for _, ep := range epreuves {
+		totalSessions += ep.NbParticipants
+		if ep.Moyenne != nil {
+			globalMoy += *ep.Moyenne
+			moyCount++
+		}
+		globalTaux += ep.TauxReussite
+	}
+	if moyCount > 0 {
+		globalMoy /= float64(moyCount)
+	}
+	if totalEpreuves > 0 {
+		globalTaux /= float64(totalEpreuves)
+	}
+	totalCorrigees = moyCount
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"epreuves":       epreuves,
-		"evolution":      evolution,
-		"studentsAtRisk": studentsAtRisk,
-		"topQuestions":   topQuestions,
+		"totalEpreuves":      totalEpreuves,
+		"totalSessions":      totalSessions,
+		"totalCorrigees":     totalCorrigees,
+		"globalMoyenne":      globalMoy,
+		"globalTauxReussite": globalTaux,
+		"epreuves":           epreuves,
+		"evolution":          evolution,
+		"studentsAtRisk":     studentsAtRisk,
+		"topQuestions":       topQuestions,
 	})
 }
 
