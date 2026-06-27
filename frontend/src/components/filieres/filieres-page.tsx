@@ -222,9 +222,15 @@ export function FilieresPage() {
       }
 
       const res = await fetch(`/api/filieres?${params.toString()}`)
-      if (!res.ok) throw new Error('Failed to fetch filieres')
+      if (!res.ok) {
+        // 403 = rôle non autorisé (ex: enseignant qui n'a pas accès aux filières)
+        // Retourner un tableau vide au lieu de crasher
+        if (res.status === 403) return { filieres: [] }
+        throw new Error('Failed to fetch filieres')
+      }
       return res.json()
     },
+    enabled: !!user?.id,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   })
@@ -269,6 +275,7 @@ export function FilieresPage() {
       ])
       const etablissements: EtablissementOption[] = []
       const responsables: ResponsableOption[] = []
+      // 403 = rôle non autorisé → tableau vide (pas de crash)
       if (etabRes.ok) {
         const data = await etabRes.json()
         etablissements.push(...(data.etablissements ?? []).map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom })))

@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
+import { QueryErrorBoundary } from '@/components/layout/query-error-boundary'
 
 // ─── Dashboard imports ───
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard'
@@ -137,22 +138,32 @@ export function PageContent({ pageId }: { pageId: PageId }) {
   // Dashboard: render role-specific component
   if (pageId === 'dashboard') {
     const DashboardComponent = DASHBOARD_COMPONENTS[user.role]
-    return <DashboardComponent />
+    return (
+      <QueryErrorBoundary>
+        <DashboardComponent />
+      </QueryErrorBoundary>
+    )
   }
 
   // Check legacy redirects first
   const legacy = LEGACY_REDIRECTS[pageId]
   if (legacy) {
-    return <legacy.component {...legacy.props} />
+    return (
+      <QueryErrorBoundary>
+        <legacy.component {...legacy.props} />
+      </QueryErrorBoundary>
+    )
   }
 
   // Check main page component registry
   const PageComponent = PAGE_COMPONENTS[pageId]
   if (PageComponent) {
     return (
-      <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
-        <PageComponent />
-      </Suspense>
+      <QueryErrorBoundary>
+        <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
+          <PageComponent />
+        </Suspense>
+      </QueryErrorBoundary>
     )
   }
 
