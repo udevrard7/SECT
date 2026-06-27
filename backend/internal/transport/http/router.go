@@ -244,8 +244,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/resultats", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listResultats)
-			r.Get("/overview", s.resultatsOverview)
-			r.Get("/etudiant-overview", s.resultatsEtudiantOverview)
+			r.Get("/overview", s.resultatsOverviewReal)
+			r.Get("/etudiant-overview", s.resultatsEtudiantOverviewReal)
 		})
 
 		// /api/documents
@@ -338,7 +338,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/notifications", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.notificationsList)
+			r.Get("/", s.notificationsListReal)
 			r.Get("/admin", s.notificationsAdminReal)
 		})
 
@@ -389,8 +389,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/enseignant", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/context", s.enseignantContext)
-			r.Get("/etudiants", s.enseignantEtudiants)
+			r.Get("/context", s.enseignantContextReal)
+			r.Get("/etudiants", s.enseignantEtudiantsReal)
 		})
 
 		r.Route("/api/etudiants", func(r chi.Router) {
