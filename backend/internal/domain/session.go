@@ -192,6 +192,8 @@ type ResultatRepository interface {
 	ListByEpreuve(ctx context.Context, epreuveID string, page, limit int) ([]*SessionPassation, int, error)
 	GetOverview(ctx context.Context, enseignantID string) (overview *OverviewResult, err error)
 	GetEtudiantOverview(ctx context.Context, etudiantID string) (*EtudiantOverviewResult, error)
+	// BUGFIX (SCORES-NORM-2): récupère le noteTotal d'une épreuve
+	GetEpreuveNoteTotal(ctx context.Context, epreuveID string) (float64, error)
 }
 
 // OverviewResult pour GET /api/resultats/overview.

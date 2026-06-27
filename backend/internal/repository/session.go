@@ -600,3 +600,16 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
 		RecentResults:      []domain.RecentResult{},
 	}, nil
 }
+
+// GetEpreuveNoteTotal récupère le noteTotal d'une épreuve (SCORES-NORM-2).
+func (r *ResultatRepository) GetEpreuveNoteTotal(ctx context.Context, epreuveID string) (float64, error) {
+	var noteTotal float64
+	err := r.pool.QueryRow(ctx, `SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1`, epreuveID).Scan(&noteTotal)
+	if err != nil {
+		return 20.0, nil // fallback à 20 si non trouvé
+	}
+	if noteTotal <= 0 {
+		return 20.0, nil
+	}
+	return noteTotal, nil
+}
