@@ -4050,3 +4050,42 @@ Stage Summary:
 - Dashboard enseignant restauré après 7 commits de debug
 - Leçon: SimpleProtocol (pgx v5 + Neon pooler) est plus strict sur le GROUP BY
 - Pattern correct: AVG(score / noteTotal * 20) pas AVG(score) / noteTotal * 20
+
+---
+Task ID: DASHBOARDS-VERIFY-1
+Agent: Z.ai Code (tutor mode)
+Task: Vérifier les dashboards des 4 rôles après normalisation des scores
+
+Work Log:
+- Test des 4 dashboards via agent-browser après la normalisation des moyennes sur /20
+- Fix supplémentaire: 6 moyennes non normalisées dans statsResponsable (commit b938266)
+
+Vérifications live (toutes confirmées ✅) :
+
+1. Dashboard ENSEIGNANT (prof01@uniabidjan.com)
+   - API /api/stats/enseignant → 200 ✅
+   - evolutionMoyennes: moyenne 16.88/20 ✅
+   - Page: "Bonjour, Ulrich DOUH" ✅
+
+2. Dashboard ÉTUDIANT (INF/LJ/25/008)
+   - API /api/stats/etudiant → 200 ✅
+   - moyenne: 16.0/20 ✅
+   - meilleureNote: 18.17/20 ✅
+   - Page: "Bonjour, ASSANI Emile Junior" ✅
+
+3. Dashboard RESPONSABLE (registrar@uniabidjan.com)
+   - API /api/stats/responsable → 200 ✅
+   - moyenneGenerale: 16.88/20 ✅ (avant: 50.63 sur /60)
+   - tauxReussite: 100% ✅
+   - resultatsParMatiere: 18.88/20 ✅
+   - Page: "Bonjour, Mme Keita Safiya" ✅
+
+4. Dashboard ADMIN (ulrichdouh@gmail.com)
+   - API /api/stats/admin → 200 ✅
+   - totalEtablissements: 1, totalUsers: 17, totalEpreuves: 5, totalSessions: 34 ✅
+   - Page: "Bonjour, Administrateur SECT" ✅
+
+Stage Summary:
+- Les 4 dashboards fonctionnent sans crash
+- Toutes les moyennes sont correctement normalisées sur /20
+- 0 AVG(s.score) non normalisé restant dans le backend (vérification finale)
