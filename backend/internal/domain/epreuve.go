@@ -215,6 +215,22 @@ type Epreuve struct {
 	// Champs calculés
 	QuestionCount *int     `json:"questionCount,omitempty"`
 	TotalPoints   *float64 `json:"totalPoints,omitempty"`
+	// BUGFIX (ETU-AUDIT-1) : Sessions peuplées uniquement quand EtudiantID
+	// est fourni (vue étudiant /mes-epreuves). PAS de omitempty : un slice
+	// nil sérialise en `null` qui fait crasher le frontend
+	// (ep.sessions.some → TypeError). Le repo init toujours à []SessionRef{}.
+	Sessions []SessionRef `json:"sessions"`
+}
+
+// SessionRef est une référence légère à une SessionPassation (pour /mes-epreuves).
+// BUGFIX (ETU-AUDIT-1) : permet au frontend d'afficher le statut de passation
+// sans crash (ep.sessions.some(s => s.statut === 'SOUMISE')).
+type SessionRef struct {
+	ID        string        `json:"id"`
+	Statut    StatutSession `json:"statut"`
+	DateDebut *time.Time    `json:"dateDebut,omitempty"`
+	DateFin   *time.Time    `json:"dateFin,omitempty"`
+	Score     *float64      `json:"score,omitempty"`
 }
 
 // EpreuveQuestion est la liaison épreuve ↔ question (format relationnel legacy).

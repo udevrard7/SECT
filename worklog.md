@@ -3357,3 +3357,48 @@ Stage Summary:
 - 1 faille sécurité comblée (stats/admin)
 - Pages restantes OK sans bug : dashboard, abonnements, facturation, monitoring, logs, ai-providers, configuration, notifications, profil (vides car stubs backend, mais pas de crash)
 - Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
+
+---
+Task ID: ETU-AUDIT-1
+Agent: Z.ai Code (tutor mode)
+Task: Audit profond des 7 pages étudiant via agent-browser + corrections
+
+Work Log:
+- Login étudiant (INF/LJ/25/008 / ASSANI Emile Junior) via agent-browser — onglet Étudiant (matricule supporté)
+- Audit des 7 pages étudiant : dashboard, mes-epreuves, mes-devoirs, mes-resultats, mes-certificats, exam-prep, profil
+- 1 bug critique identifié et corrigé :
+
+BUG #1 (CRITIQUE) — Crash /mes-epreuves (TypeError: Cannot read properties of undefined (reading 'some'))
+  - Symptôme : "Application error" dès la navigation vers /mes-epreuves
+  - Cause : le frontend appelle GET /api/epreuves?etudiantId=X et s'attend à ce que chaque épreuve ait un tableau `sessions` (ep.sessions.some(s => s.statut === 'SOUMISE')). Mais l'API ne retournait pas ce champ → ep.sessions était undefined → .some() crash.
+  - Le backend utilisait etudiantId uniquement comme filtre EXISTS (pour limiter les épreuves à celles de l'étudiant) mais n'incluait pas les sessions dans la réponse.
+  - Fix backend :
+    * Nouveau type SessionRef {id, statut, dateDebut, dateFin, score} dans domain/epreuve.go
+    * Nouveau champ Sessions []SessionRef sur Epreuve (json:"sessions" SANS omitempty — nil sérialise en null qui crasherait)
+    * Dans EpreuveRepository.List : init Sessions=[] pour chaque épreuve + batch hydration quand EtudiantID != "" (requête SELECT ... WHERE etudiantId=$1 AND epreuveId=ANY($2) + groupage par epreuveId)
+    * Aucun changement handler/usecase/router (EtudiantID déjà câblé)
+  - Fix frontend (safety net) :
+    * Type sessions rendu optionnel + resultat rendu optionnel
+    * Normalisateur dans fetchEpreuves : sessions: ep.sessions ?? [] (garantit [] au runtime même si l'API ne renvoie pas le champ)
+  - Fichiers : backend domain/epreuve.go, repository/epreuve.go ; frontend passation/mes-epreuves-page.tsx
+
+Pages OK sans bug :
+  - /dashboard ✅ (salutation + 4 résultats affichés, 3 requêtes badges pas de boucle)
+  - /mes-devoirs ✅ (vide)
+  - /mes-resultats ✅ (vide)
+  - /mes-certificats ✅ (affiche 3 certificats : Génie Logiciel, Python, Programmation Système)
+  - /exam-prep ✅ (vide)
+  - /profil ✅
+
+Note sécurité : /api/stats/responsable → 403 pour l'étudiant (fix ENS-AUDIT-1 actif) ✅
+Note performance : /api/badges = 3 requêtes au montage (pas de boucle, fix ENS-AUDIT-1 actif) ✅
+
+- Lint frontend : 0 erreurs
+- Tabs Go restaurés (gofmt-compatible)
+
+Stage Summary:
+- 1 crash de page éliminé (/mes-epreuves)
+- Pattern de fix cohérent avec ENS-AUDIT-1 et ADMIN-AUDIT-1 : batch hydration + Ref struct côté backend, normalisateur + optional côté frontend
+- 3 fichiers modifiés (1 frontend, 2 backend), ~72 insertions logiques
+- 6/7 pages étudiant fonctionnelles sans bug
+- En attente : validation build Render (Go) + vérif live agent-browser post-déploiement
