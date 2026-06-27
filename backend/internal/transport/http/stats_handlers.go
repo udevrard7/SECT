@@ -210,7 +210,9 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 		// 4. Performance par épreuve (épreuves terminées/corrigées avec moyenne)
 		rows3, err := tx.Query(ctx, `
 			SELECT e.titre,
-			       COALESCE(AVG(s.score) / NULLIF(e."noteTotal", 0) * 20, 0) AS moyenne,
+			       CASE WHEN e."noteTotal" > 0 AND COUNT(s.id) > 0
+				    THEN COALESCE(AVG(s.score), 0) / e."noteTotal" * 20
+				    ELSE 0 END AS moyenne,
 			       CASE WHEN COUNT(s.id) > 0
 				    THEN (COUNT(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / COUNT(s.id) * 100
 				    ELSE 0 END AS taux_reussite
@@ -220,7 +222,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 			  AND s.score IS NOT NULL
 			WHERE e."enseignantId" = $1 AND e."deletedAt" IS NULL
 			  AND e.statut IN ('TERMINEE', 'CLOTUREE')
-			GROUP BY e.id, e.titre, e."noteTotal", NULLIF(e."noteTotal", 0)
+			GROUP BY e.id, e.titre, e."noteTotal"
 			ORDER BY moyenne DESC
 			LIMIT 10
 		`, enseignantID)
