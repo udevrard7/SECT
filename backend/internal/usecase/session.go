@@ -519,8 +519,16 @@ func (uc *ResultatUseCase) computeStats(sessions []*domain.SessionPassation) map
 		}
 	}
 
-	// Taux de réussite (score >= 10/20)
+	// BUGFIX (SCORES-NORM-2): récupérer le vrai noteTotal depuis l'épreuve
+	// au lieu d'utiliser 20.0 en dur. Les scores en DB sont bruts (ex: /60).
+	// note = score obtenu / noteTotal de l'épreuve.
 	noteTotal := 20.0
+	if len(sessions) > 0 && sessions[0].EpreuveID != "" {
+		nt, err := uc.resultatRepo.GetEpreuveNoteTotal(ctx, sessions[0].EpreuveID)
+		if err == nil && nt > 0 {
+			noteTotal = nt
+		}
+	}
 	reussis := 0
 	for _, sc := range scores {
 		if sc >= noteTotal/2 {
