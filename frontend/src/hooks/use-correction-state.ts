@@ -104,7 +104,9 @@ export function useCorrectionState(user: CurrentUser | null) {
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null
 
   // ─── Questions list (sorted by ordre) ───
-  const questions = selectedSession?.epreuve.questions
+  // BUGFIX (CORRECTION-FIX-1): epreuve.questions peut être undefined car
+  // l'API /api/correction ne retourne pas l'objet epreuve imbriqué.
+  const questions = selectedSession?.epreuve?.questions
     ? [...selectedSession.epreuve.questions].sort((a, b) => a.ordre - b.ordre)
     : []
 
@@ -112,7 +114,7 @@ export function useCorrectionState(user: CurrentUser | null) {
   const horizontalQuestions = useMemo(() => {
     if (sessions.length === 0) return []
     const first = sessions[0]
-    if (!first?.epreuve.questions) return []
+    if (!first?.epreuve?.questions) return []
     return [...first.epreuve.questions].sort((a, b) => a.ordre - b.ordre)
   }, [sessions])
 
@@ -208,7 +210,7 @@ export function useCorrectionState(user: CurrentUser | null) {
     if (sessions.length === 0) return 0
     const totalToCorrect = sessions.reduce((acc, s) => acc + s.needsCorrectionCount + (s.allCorrected ? 0 : 0), 0)
     const totalQuestionsAll = sessions.reduce((acc, s) => {
-      const qCount = s.epreuve.questions?.length ?? 0
+      const qCount = s.epreuve?.questions?.length ?? 0
       return acc + qCount
     }, 0)
     const corrected = totalQuestionsAll - totalToCorrect
