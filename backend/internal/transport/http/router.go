@@ -244,7 +244,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		r.Route("/api/resultats", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listResultats)
-			r.Get("/overview", s.resultatsOverviewReal)
+			r.Get("/overview", s.resultatsOverviewRealV2)
 			r.Get("/etudiant-overview", s.resultatsEtudiantOverviewReal)
 		})
 
