@@ -3629,3 +3629,55 @@ Stage Summary:
 - Pattern de scan pgx : éviter le scan direct d'arrays d'enum custom → utiliser array_to_string + strings.Split
 - 25 définitions de badges en DB (6 ENSEIGNANT, 11 ETUDIANT, 4 RESPONSABLE, 4 ADMIN)
 - Les badges s'affichent maintenant pour tous les rôles
+
+---
+Task ID: PROG-ACAD-1
+Agent: Z.ai Code (tutor mode)
+Task: Audit /programme-academique + sync données /affectations
+
+Work Log:
+- Audit via agent-browser (login responsable registrar@uniabidjan.com)
+- 4 bugs identifiés et corrigés :
+
+BUG #1 (CRITIQUE) — Crash gestion UEs (TypeError: Cannot read 'affectations' of undefined)
+  - Cause : UERepository.FindByID retournait un UE bare (pas de filiere, _count, affectations)
+  - Fix backend : LEFT JOIN Filiere + subquery _count + 2e requête affectations
+  - Domain : nouveaux types UECount, AffectationRef, champs Count + Affectations sur UE
+  - Frontend : types optionnels + optional chaining (8 points de crash)
+  - Fichiers : domain/academique.go, repository/academique.go, frontend programme-academique-page.tsx
+
+BUG #2 (CRITIQUE) — /api/affectations retourne 404 (endpoint non implémenté)
+  - Cause : la table Affectation (15 rows en DB) n'avait AUCUN endpoint backend
+  - Fix : nouveaux handlers listAffectations, createAffectation, updateAffectation, deleteAffectation
+  - Route /api/affectations enregistrée dans router.go (GET, POST, PATCH/{id}, DELETE/{id})
+  - LEFT JOIN User + UniteEnseignement pour peupler les relations
+  - Filtres : enseignantId, uniteEnseignementId, etablissementId, filiereId, niveau, statut, anneeUniversitaire
+  - Fichiers : transport/http/affectation_handlers.go (nouveau), router.go
+
+BUG #3 (HIGH) — /api/enseignant-filieres retourne 0 rows malgré 2 rows en DB
+  - Cause : params.EtablissementID parsé par le handler mais ignoré par le repo
+  - Fix : ajout filtre EXISTS (Filiere WHERE etablissementId = $N) + qualification ef.
+  - Fichier : repository/academique.go
+
+BUG #4 — Domain types pour Affectation
+  - Nouveaux types : Affectation, AffectationRef, UERef, UECount
+  - CreateAffectationInput, UpdateAffectationInput
+  - Fichier : domain/academique.go
+
+Build fix (commit dd1617f) :
+  - r.PathValue (inexistant en chi v5) → chi.URLParam(r, "id") + import chi
+  - derefStr (défini dans repository) inaccessible depuis transport/http → helper local
+
+Vérifications live (toutes confirmées ✅) :
+- API /api/affectations → 200, 15 affectations retournées (Ulrich DOUH → Bureautique II, etc.)
+- Page /affectations → affiche les affectations avec enseignant + UE
+- Page /programme-academique → gestion des UEs fonctionne (UE-SEG-L201, UE-INFO-L204, UE-INFO-L203)
+- Aucun crash, 0 erreur console
+- Build Render : live (dd1617f)
+
+Stage Summary:
+- 2 crashes de page éliminés (/programme-academique gestion UEs, /affectations 404)
+- 1 endpoint backend complet implémenté (/api/affectations CRUD)
+- 15 affectations maintenant visibles (avant : 0)
+- 6 fichiers modifiés (2 frontend, 4 backend) + 2 nouveaux fichiers (affectation.go, affectation_handlers.go)
+- Pattern : LEFT JOIN + Ref structs + optional chaining (cohérent avec audits précédents)
