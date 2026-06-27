@@ -3720,3 +3720,38 @@ Stage Summary:
 - La redirection vers /login ne se déclenche qu'après vérification réelle de la session
 - Aucune régression : la sécurité (redirect sans cookie) reste gérée par le middleware proxy.ts
 - 5/5 pages testées avec reload, toutes stables
+
+---
+Task ID: FILIERE-FIX-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger l'affichage des filières pour étudiants + UE sur épreuves
+
+Work Log:
+- Diagnostic DB : 14/15 étudiants ont un filiereId, toutes les UE ont filiereId + niveau
+- Le problème n'était PAS en DB mais dans l'API qui ne retournait pas les relations
+
+2 bugs corrigés :
+
+BUG #1 — Étudiants sans filière affichée sur /etudiants
+  - Cause : /api/users retournait filiereId (string) mais pas l'objet filiere (avec nom)
+  - Fix backend : LEFT JOIN Filiere dans UserRepository.List + peuplement FiliereRef
+  - Le struct domain.User avait déjà le champ Filiere *FiliereRef déclaré
+  - Impact : /etudiants affiche maintenant "INFORMATIQUE" + "L2" sur chaque carte
+
+BUG #2 — Épreuves sans filière/niveau affichés sur /mes-epreuves
+  - Cause : /api/epreuves retournait filiereId (string) + niveau (string) mais pas l'objet filiere
+  - Fix backend : LEFT JOIN Filiere dans EpreuveRepository.List + champ Filiere *FiliereRef
+  - Fix frontend : subtitle de EntityCard affiche "Ulrich DOUH · INFORMATIQUE · L2"
+  - Type StudentEpreuve étendu avec filiere + niveau optionnels
+
+Vérifications live (toutes confirmées ✅) :
+- API /api/users?role=ETUDIANT → filiere: {id, nom: "SCIENCES ECONOMIQUES GESTION.", code: "SEG"} ✅
+- API /api/epreuves?etudiantId=X → filiere: {nom: "INFORMATIQUE"}, niveau: "L2" ✅
+- Page /etudiants → "INFORMATIQUE" + "L2" visibles sur les cartes ✅
+- Page /mes-epreuves → "Ulrich DOUH · INFORMATIQUE · L2" sur chaque épreuve ✅
+- Build Render : live (709fb55)
+
+Stage Summary:
+- 2 relations manquantes ajoutées (LEFT JOIN Filiere dans UserRepository + EpreuveRepository)
+- Pattern cohérent avec les audits précédents (ENS-AUDIT, ADMIN-AUDIT, ETU-AUDIT)
+- Les données étaient toujours en DB — c'est l'API qui ne les retournait pas
