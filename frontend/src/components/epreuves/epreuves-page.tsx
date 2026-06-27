@@ -565,27 +565,57 @@ function ModelesTab() {
  const handleExportPDF = async (epreuveId: string, type:'sujet' |'corrige' |'feuille-reponses') => {
  setExportingPdfId(epreuveId)
  try {
- const res = await fetch(`/api/epreuves/${epreuveId}/export-pdf?type=${type}`)
- if (!res.ok) {
- const errData = await res.json().catch(() => ({}))
- throw new Error(errData.error ||'Erreur lors de la génération du PDF')
+ // BUGFIX (EPREUVES-PDF-1): générer le PDF côté client (jsPDF) au lieu
+ // d'appeler /api/epreuves/{id}/export-pdf qui n'existe pas (404).
+ // La librairie epreuve-pdf.ts (generateSujetPDF/Corrige/FeuilleReponses)
+ // est déjà disponible côté frontend.
+ const epreuve = epreuves.find((e) => e.id === epreuveId)
+ if (!epreuve) throw new Error('Épreuve introuvable')
+
+ // Construire les données PDF à partir de l'épreuve
+ const contenu = epreuve.contenu as { questions?: any[]; consignes?: string; baremeTotal?: number } | null
+ const questions = (contenu?.questions ?? []).map((q: any) => ({
+   id: q.id ?? '',
+   type: q.type ?? 'QRC',
+   enonce: q.enonce ?? '',
+   propositions: q.propositions ?? null,
+   reponseCorrecte: q.reponseCorrecte ?? null,
+   explication: q.explication ?? null,
+   difficulte: q.difficulte ?? 'Moyen',
+   bareme: q.bareme ?? 1,
+   langage: q.langage,
+   codeInitial: q.codeInitial,
+   fonctionSignature: q.fonctionSignature,
+   testsPublics: q.testsPublics,
+   testsPrives: q.testsPrives,
+ }))
+
+ const pdfData = {
+   id: epreuve.id,
+   titre: epreuve.titre,
+   description: epreuve.description,
+   duree: epreuve.duree,
+   dateDebut: epreuve.dateDebut,
+   dateFin: epreuve.dateFin,
+   noteTotal: epreuve.noteTotal ?? 20,
+   etablissement: { nom: 'SECT', logo: null, ville: null, pays: null },
+   filiere: epreuve.filiere ? { nom: epreuve.filiere.nom, code: epreuve.filiere.code ?? null } : null,
+   uniteEnseignement: null,
+   questions,
+   consignes: contenu?.consignes ?? null,
+   baremeTotal: contenu?.baremeTotal ?? epreuve.noteTotal ?? 20,
  }
- const blob = await res.blob()
- const url = window.URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- // Extract filename from Content-Disposition header
- const disposition = res.headers.get('Content-Disposition')
- let filename =`SECT_${type}.pdf`
- if (disposition) {
- const match = disposition.match(/filename="?(.+?)"?$/)
- if (match) filename = match[1]
- }
- a.download = filename
- document.body.appendChild(a)
- a.click()
- window.URL.revokeObjectURL(url)
- document.body.removeChild(a)
+
+ // Import dynamique pour éviter de charger jsPDF si pas nécessaire
+ const { generateSujetPDF, generateCorrigePDF, generateFeuilleReponsesPDF, getPDFFilename } = await import('@/lib/pdf/epreuve-pdf')
+
+ let doc
+ if (type === 'sujet') doc = generateSujetPDF(pdfData)
+ else if (type === 'corrige') doc = generateCorrigePDF(pdfData)
+ else doc = generateFeuilleReponsesPDF(pdfData)
+
+ const filename = getPDFFilename(epreuve.titre, type)
+ doc.save(filename)
  toast.success('PDF téléchargé', { description:`Le document a été généré avec succès.` })
  } catch (err) {
  toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de générer le PDF.' })
@@ -1631,26 +1661,29 @@ function SessionsTab() {
  const handleExportPDF = async (epreuveId: string, type:'sujet' |'corrige' |'feuille-reponses') => {
  setExportingPdfId(epreuveId)
  try {
- const res = await fetch(`/api/epreuves/${epreuveId}/export-pdf?type=${type}`)
- if (!res.ok) {
- const errData = await res.json().catch(() => ({}))
- throw new Error(errData.error ||'Erreur lors de la génération du PDF')
+ // BUGFIX (EPREUVES-PDF-1): PDF généré côté client (même logique que Modèles tab)
+ const epreuve = epreuves.find((e) => e.id === epreuveId)
+ if (!epreuve) throw new Error('Épreuve introuvable')
+ const contenu = epreuve.contenu as { questions?: any[]; consignes?: string; baremeTotal?: number } | null
+ const questions = (contenu?.questions ?? []).map((q: any) => ({
+   id: q.id ?? '', type: q.type ?? 'QRC', enonce: q.enonce ?? '',
+   propositions: q.propositions ?? null, reponseCorrecte: q.reponseCorrecte ?? null,
+   explication: q.explication ?? null, difficulte: q.difficulte ?? 'Moyen', bareme: q.bareme ?? 1,
+ }))
+ const pdfData = {
+   id: epreuve.id, titre: epreuve.titre, description: epreuve.description,
+   duree: epreuve.duree, dateDebut: epreuve.dateDebut, dateFin: epreuve.dateFin,
+   noteTotal: epreuve.noteTotal ?? 20,
+   etablissement: { nom: 'SECT', logo: null, ville: null, pays: null },
+   filiere: null, uniteEnseignement: null, questions,
+   consignes: contenu?.consignes ?? null, baremeTotal: contenu?.baremeTotal ?? 20,
  }
- const blob = await res.blob()
- const url = window.URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- const disposition = res.headers.get('Content-Disposition')
- let filename =`SECT_${type}.pdf`
- if (disposition) {
- const match = disposition.match(/filename="?(.+?)"?$/)
- if (match) filename = match[1]
- }
- a.download = filename
- document.body.appendChild(a)
- a.click()
- window.URL.revokeObjectURL(url)
- document.body.removeChild(a)
+ const { generateSujetPDF, generateCorrigePDF, generateFeuilleReponsesPDF, getPDFFilename } = await import('@/lib/pdf/epreuve-pdf')
+ let doc
+ if (type === 'sujet') doc = generateSujetPDF(pdfData)
+ else if (type === 'corrige') doc = generateCorrigePDF(pdfData)
+ else doc = generateFeuilleReponsesPDF(pdfData)
+ doc.save(getPDFFilename(epreuve.titre, type))
  toast.success('PDF téléchargé', { description:'Le document a été généré avec succès.' })
  } catch (err) {
  toast.error('Erreur', { description: err instanceof Error ? err.message :'Impossible de générer le PDF.' })
