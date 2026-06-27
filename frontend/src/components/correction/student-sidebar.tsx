@@ -52,7 +52,7 @@ export function StudentSidebar({
                   <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${status.color}`} title={status.label} />
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
-                      {session.etudiant.name}
+                      {(session.etudiant?.name ?? session.etudiantNom ?? '—')}
                     </p>
                   </div>
                   {session.alertes > 0 && (
@@ -95,7 +95,7 @@ export function StudentSidebar({
                   <span className="h-2.5 w-2.5 rounded-full bg-tech shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
-                      {session.etudiant.name}
+                      {(session.etudiant?.name ?? session.etudiantNom ?? '—')}
                     </p>
                   </div>
                   {session.score !== null && (

@@ -115,7 +115,7 @@ export function CorrectionSidebar({
                           <span className={`h-2.5 w-2.5 rounded-full ${status.color}`} />
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="right">{session.etudiant.name}</TooltipContent>
+                      <TooltipContent side="right">{(session.etudiant?.name ?? session.etudiantNom ?? '—')}</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 )

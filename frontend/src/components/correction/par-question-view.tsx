@@ -249,7 +249,7 @@ export function ParQuestionView({
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 shrink-0">
                           <User className="h-3.5 w-3.5 text-success-text" />
                         </div>
-                        <p className="text-sm font-semibold truncate">{session.etudiant.name}</p>
+                        <p className="text-sm font-semibold truncate">{(session.etudiant?.name ?? session.etudiantNom ?? '—')}</p>
                       </div>
                       <ScoreCircle
                         score={rep?.score ?? null}
