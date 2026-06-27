@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -978,27 +979,21 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := map[string]any{
-		"badges":         []badgeWithProgress{},
-		"stats":          map[string]any{"total": 0, "unlocked": 0, "locked": 0, "progress": 0},
-		"newlyUnlocked":  []badgeWithProgress{},
+		"badges":        []badgeWithProgress{},
+		"stats":         map[string]any{"total": 0, "unlocked": 0, "locked": 0, "progress": 0},
+		"newlyUnlocked": []badgeWithProgress{},
 	}
 
-	// POST = recalculer les badges (no-op pour l'instant — le calcul se fait
-	// côté backend via les triggers métier ; ici on se contente de retourner
-	// l'état actuel). TODO: implémenter le recalcul si besoin.
+	// POST = recalculer (no-op pour l'instant).
 	_ = ctx
-	// DEBUG (BADGES-FIX-1): déclaré hors du closure pour être accessible
-	// après WithTx (sinon build failed — scope Go).
-	rowsIterated := 0
 
 	errBadges := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
-		// BUGFIX (BADGES-FIX-1) : LEFT JOIN BadgeProgression pour récupérer
-		// les définitions de badges + la progression de l'utilisateur.
-		// Filtrage par roleCible : l'utilisateur ne voit que les badges de
-		// son rôle (ou sans rôle cible).
+		// BUGFIX (BADGES-FIX-1) : LEFT JOIN BadgeProgression + array_to_string
+		// pour éviter le scan direct de NiveauBadge[] (incompatible pgx).
 		rows, err := tx.Query(ctx, `
 			SELECT bd."id", bd."cle", bd."titre", bd."description", bd."icone",
-			       bd."categorie"::text, trim(bd."roleCible"::text) AS "roleCible", bd."niveaux"::text[],
+			       bd."categorie"::text, trim(bd."roleCible"::text) AS "roleCible",
+			       array_to_string(bd."niveaux", ',') AS niveaux_str,
 			       bp."niveauActuel"::text, bp."valeurActuelle", bp."valeurPalier",
 			       bp."valeurProchain", bp."debloque", bp."dateObtention"
 			FROM "BadgeDefinition" bd
@@ -1016,22 +1011,16 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		badges := []badgeWithProgress{}
 		unlocked := 0
 		for rows.Next() {
-			rowsIterated++
-			b := badgeWithProgress{
-				Niveaux: []niveauSeuil{},
-			}
-			var niveauxArr []string
+			b := badgeWithProgress{Niveaux: []niveauSeuil{}}
+			var niveauxStr *string
 			var niveauActuel *string
 			var valeurProchain *int
 			var dateObtention *time.Time
-			// BUGFIX (BADGES-FIX-1d) : les colonnes du LEFT JOIN
-			// (BadgeProgression) sont NULLables. On scan dans des
-			// pointeurs puis on déférence avec fallback.
 			var valeurActuelle, valeurPalier *int
 			var debloque *bool
 			err := rows.Scan(
 				&b.ID, &b.Cle, &b.Titre, &b.Description, &b.Icone,
-				&b.Categorie, &b.RoleCible, &niveauxArr,
+				&b.Categorie, &b.RoleCible, &niveauxStr,
 				&niveauActuel, &valeurActuelle, &valeurPalier,
 				&valeurProchain, &debloque, &dateObtention,
 			)
@@ -1050,23 +1039,25 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 				b.Debloque = *debloque
 			}
 			if dateObtention != nil {
-				s := dateObtention.UTC().Format(time.RFC3339)
-				b.DateObtention = &s
+				ts := dateObtention.UTC().Format(time.RFC3339)
+				b.DateObtention = &ts
 			}
 
-			// Construire les niveaux/paliers à partir du tableau de l'enum.
-			// Les seuils sont calculés de manière incrémentale (1, 5, 10, 25 par défaut)
-			// car BadgeDefinition.niveaux est juste un array d'enum (sans seuils).
 			defaultSeuils := map[string]int{"BRONZE": 1, "ARGENT": 5, "OR": 10, "DIAMANT": 25}
-			for _, n := range niveauxArr {
-				seuil := defaultSeuils[n]
-				if seuil == 0 {
-					seuil = 1
+			if niveauxStr != nil && *niveauxStr != "" {
+				for _, n := range strings.Split(*niveauxStr, ",") {
+					n = strings.TrimSpace(n)
+					if n == "" {
+						continue
+					}
+					seuil := defaultSeuils[n]
+					if seuil == 0 {
+						seuil = 1
+					}
+					b.Niveaux = append(b.Niveaux, niveauSeuil{Niveau: n, Seuil: seuil})
 				}
-				b.Niveaux = append(b.Niveaux, niveauSeuil{Niveau: n, Seuil: seuil})
 			}
 
-			// Calcul de la progression (0-100) basé sur valeurActuelle / valeurPalier
 			if b.ValeurPalier > 0 {
 				b.Progression = (float64(b.ValeurActuelle) / float64(b.ValeurPalier)) * 100
 				if b.Progression > 100 {
@@ -1097,17 +1088,14 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
-	// DEBUG (BADGES-FIX-1): capturer l'erreur pour diagnostic
 	if errBadges != nil {
 		stats["error"] = errBadges.Error()
 	}
-	stats["debug_rowsIterated"] = rowsIterated
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
 }
-// ──────────────────────────────────────────────────────────────────────────
-// Stubs conservés (à implémenter ultérieurement)
+
 // ──────────────────────────────────────────────────────────────────────────
 
 // devoirsList — GET /api/devoirs
