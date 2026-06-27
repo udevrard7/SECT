@@ -83,9 +83,9 @@ export function ResultsTable({
       if (filters.search) {
         const q = filters.search.toLowerCase()
         const match =
-          s.etudiant.name.toLowerCase().includes(q) ||
-          s.etudiant.email.toLowerCase().includes(q) ||
-          (s.etudiant.filiere?.toLowerCase().includes(q) ?? false)
+          (s.etudiant?.name ?? '—').toLowerCase().includes(q) ||
+          (s.etudiant?.email ?? '').toLowerCase().includes(q) ||
+          (s.etudiant?.filiere?.toLowerCase().includes(q) ?? false)
         if (!match) return false
       }
       // Filtre statut
@@ -232,10 +232,10 @@ export function ResultsTable({
                           </TableCell>
                           <TableCell>
                             <div>
-                              <p className="font-medium">{session.etudiant.name}</p>
+                              <p className="font-medium">{(session.etudiant?.name ?? '—')}</p>
                               <p className="text-xs text-muted-foreground">
-                                {session.etudiant.email}
-                                {session.etudiant.filiere && ` · ${session.etudiant.filiere}`}
+                                {(session.etudiant?.email ?? '')}
+                                {session.etudiant?.filiere && ` · ${session.etudiant?.filiere}`}
                               </p>
                             </div>
                           </TableCell>
@@ -292,7 +292,7 @@ export function ResultsTable({
                                 onViewDetail(session)
                               }}
                               className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                              aria-label={`Voir le détail de ${session.etudiant.name}`}
+                              aria-label={`Voir le détail de ${(session.etudiant?.name ?? '—')}`}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -326,7 +326,7 @@ export function ResultsTable({
                         {rank}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{session.etudiant.name}</p>
+                        <p className="truncate text-sm font-medium">{(session.etudiant?.name ?? '—')}</p>
                         <div className="mt-1 flex items-center gap-2">
                           <Badge variant="outline" className={`text-xs ${getScoreBg(scoreOn20)}`}>
                             {score.toFixed(1)}/{noteTotal}

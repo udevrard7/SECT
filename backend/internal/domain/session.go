@@ -57,6 +57,13 @@ type SessionPassation struct {
 	// Relations (optionnelles selon endpoint)
 	Reponses []Reponse `json:"reponses,omitempty"`
 	Resultat *Resultat `json:"resultat,omitempty"`
+	// BUGFIX (RESULTATS-TABS-1) : Etudiant peuplé par LEFT JOIN User
+	Etudiant *struct {
+		ID      string  `json:"id"`
+		Name    string  `json:"name"`
+		Email   string  `json:"email"`
+		Filiere *string `json:"filiere,omitempty"`
+	} `json:"etudiant,omitempty"`
 }
 
 // Reponse représente la réponse d'un étudiant à une question.
