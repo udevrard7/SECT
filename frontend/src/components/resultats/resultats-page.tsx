@@ -138,7 +138,7 @@ export function ResultatsPage() {
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Total étudiants évalués</p>
                     <p className="font-mono text-2xl font-bold tabular-nums">
-                      {new Set((overview?.studentsAtRisk ?? []).map((s) => s.etudiantId)).size + atRiskCount}
+                      {new Set((overview?.studentsAtRisk ?? []).map((s) => s?.etudiantId ?? s?.id ?? '')).size + atRiskCount}
                     </p>
                   </CardContent>
                 </Card>
