@@ -4507,3 +4507,73 @@ Stage Summary:
 - Le refresh token (7 jours) est maintenant pris en compte par le proxy
 - L'utilisateur reste connecté tant que le refresh_token est valide
 - Le mécanisme de refresh automatique côté client fonctionne comme prévu
+
+---
+Task ID: DUPLICATE-UE-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger le bouton "Dupliquer" sur /epreuves onglet Modèles (ne fonctionnait pas)
+
+Work Log:
+- Analyse du code frontend (epreuves-page.tsx handleDuplicate) :
+  * Le bouton Dupliquer ouvre un dialog demandant le titre de la copie
+  * handleDuplicate envoie POST /api/epreuves avec la classification de
+    l'épreuve source + contenu
+- Analyse du backend (usecase Epreuve.Create) :
+  * Validation: input.UniteEnseignementID == nil || *input.UniteEnseignementID == ""
+    → return ValidationError{Field:"uniteEnseignementId", Message:"requis"}
+  * HTTP 400 {"error":"requis"} via MapDomainError
+
+Cause racine identifiée:
+- L'API GET /api/epreuves (repository EpreuveRepository.List) renvoie
+  uniteEnseignementId (champ plat *string, json "uniteEnseignementId,omitempty")
+  via domain.Epreuve.UniteEnseignementID
+- MAIS la query List ne faisait un LEFT JOIN que sur User (enseignant) et
+  Filiere — PAS sur UniteEnseignement
+- domain.Epreuve n'avait AUCUN champ imbriqué UniteEnseignement *UERef
+  (contrairement à Filiere *FiliereRef et Enseignant *UserRef)
+- Le frontend lisait duplicateTarget.uniteEnseignement?.id → toujours
+  undefined (l'API ne renvoie jamais cet objet imbriqué) → null
+- Le backend recevait uniteEnseignementId: null → rejet ValidationError
+- Le commit précédent 64a8e35 avait tenté de corriger mais lisait le
+  mauvais champ (l'objet imbriqué au lieu du champ plat)
+
+Vérification en base Neon:
+- 5 épreuves (non supprimées), TOUTES ont un uniteEnseignementId non null
+- Donc le problème n'était pas un manque de données, mais bien la
+  désynchronisation entre le contrat API (champ plat) et la lecture
+  frontend (objet imbriqué)
+
+Fix frontend (commit 56151ef — déploiement Vercel):
+- Ajout du champ plat uniteEnseignementId?: string | null à l'interface
+  ModeleEpreuve (reflète le contrat réel de l'API)
+- handleDuplicate lit maintenant:
+  duplicateTarget.uniteEnseignementId ?? duplicateTarget.uniteEnseignement?.id ?? null
+  (champ plat en priorité, fallback sur l'objet imbriqué pour le cas où
+  le backend l'ajouterait plus tard — future-proof)
+
+Fix backend (commit 73c4b66 — déploiement Render):
+- domain.Epreuve: ajout du champ UniteEnseignement *UERef
+  (json "uniteEnseignement,omitempty") — UERef{ID,Code,Nom,Niveau} déjà
+  défini dans academique.go (utilisé par Affectation)
+- repository.EpreuveRepository.List: ajout LEFT JOIN UniteEnseignement +
+  select ue."id",ue."nom",ue."code",ue."niveau" + scan dans *string +
+  populate e.UniteEnseignement quand ueID && ueNom non nil
+- Mirroir exact du pattern Filiere (mêmes helpers derefStr, même style)
+- Vérification: 43 colonnes SELECT = 43 variables scan (comptage vérifié)
+- Vérification: ue."niveau" est de type enum "NiveauEtude" — scanné en
+  *string comme Epreuve."niveau" (même type enum, déjà scanné en prod)
+
+Bénéfices:
+- La duplication fonctionne (le frontend peut lire uniteEnseignementId plat)
+- L'affichage du nom/code de l'UE dans les cartes /epreuves (onglet Modèles
+  ET Sessions) est désormais fonctionnel (était silencieusement cassé :
+  epreuve.uniteEnseignement?.nom/code toujours undefined)
+- L'API expose désormais uniteEnseignementId (plat) ET uniteEnseignement
+  (objet imbriqué) — cohérent avec Filiere et Enseignant
+
+Stage Summary:
+- Bug duplication /epreuves onglet Modèles corrigé (cause: frontend lisait
+  un objet imbriqué que l'API ne peuplait pas)
+- 2 commits: fix frontend (Vercel) + fix backend (Render)
+- Le fix backend corrige aussi un bug d'affichage silencieux (nom/code UE)
+- Architecture respectée: pattern LEFT JOIN + Ref identique à Filiere
