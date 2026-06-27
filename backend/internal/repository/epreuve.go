@@ -116,15 +116,18 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 		var args []any
 		argIdx := 1
 
-		where = append(where, `"deletedAt" IS NULL`)
+		// BUGFIX (SESSIONS-SEARCH-1) : qualifier avec "Epreuve". car les LEFT JOINs
+		// (Filiere, UniteEnseignement) ont des colonnes homonymes (description, niveau,
+		// filiereId) → ambiguous column reference → HTTP 500.
+		where = append(where, `"Epreuve"."deletedAt" IS NULL`)
 
 		if params.EnseignantID != "" {
-			where = append(where, fmt.Sprintf(`"enseignantId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Epreuve"."enseignantId" = $%d`, argIdx))
 			args = append(args, params.EnseignantID)
 			argIdx++
 		}
 		if params.FiliereID != "" {
-			where = append(where, fmt.Sprintf(`"filiereId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Epreuve"."filiereId" = $%d`, argIdx))
 			args = append(args, params.FiliereID)
 			argIdx++
 		}
@@ -135,7 +138,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				args = append(args, st)
 				argIdx++
 			}
-			where = append(where, fmt.Sprintf(`"statut" IN (%s)`, strings.Join(placeholders, ",")))
+			where = append(where, fmt.Sprintf(`"Epreuve"."statut" IN (%s)`, strings.Join(placeholders, ",")))
 		}
 		if params.Search != "" {
 			// BUGFIX (SESSIONS-SEARCH-1) : Simple Protocol ne supporte pas
@@ -146,22 +149,22 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 			argIdx += 2
 		}
 		if params.Niveau != "" {
-			where = append(where, fmt.Sprintf(`"niveau" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Epreuve"."niveau" = $%d`, argIdx))
 			args = append(args, params.Niveau)
 			argIdx++
 		}
 		if params.SessionExamen != "" {
-			where = append(where, fmt.Sprintf(`"sessionExamen" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Epreuve"."sessionExamen" = $%d`, argIdx))
 			args = append(args, params.SessionExamen)
 			argIdx++
 		}
 		if params.AnneeAcademiqueID != "" {
-			where = append(where, fmt.Sprintf(`"anneeAcademiqueId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Epreuve"."anneeAcademiqueId" = $%d`, argIdx))
 			args = append(args, params.AnneeAcademiqueID)
 			argIdx++
 		}
 		if params.UniteEnseignementID != "" {
-			where = append(where, fmt.Sprintf(`"uniteEnseignementId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`"Epreuve"."uniteEnseignementId" = $%d`, argIdx))
 			args = append(args, params.UniteEnseignementID)
 			argIdx++
 		}
