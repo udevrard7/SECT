@@ -3261,3 +3261,54 @@ Stage Summary:
 - Performance : dashboard passe de 25k+ requêtes réseau à 2 requêtes
 - Aucune régression : les 8 autres pages enseignant restent fonctionnelles
 - Workflow respecté : edit → commit (udevrard7) → push main → auto-deploy → vérif live → worklog
+
+---
+Task ID: ADMIN-AUDIT-1
+Agent: Z.ai Code (tutor mode)
+Task: Audit profond des 12 pages admin via agent-browser + corrections
+
+Work Log:
+- Login admin (ulrichdouh@gmail.com) via agent-browser — flux mustChangePwd déclenché
+- Audit des 12 pages admin : dashboard, etablissements, utilisateurs, abonnements, facturation, acces-etablissements, monitoring, logs, ai-providers, configuration, notifications, profil
+- 5 bugs identifiés et corrigés :
+
+BUG #1 (UX) — Utilisateur bloqué sur écran "Mot de passe modifié !"
+  - Cause : authenticated-layout.tsx utilisait `setUser` dans le onSuccess de ForceChangePasswordPage mais ne le déstructurait JAMAIS du store → ReferenceError silencieuse → l'utilisateur restait bloqué jusqu'à reload manuel
+  - Fix : ajout de `setUser` dans la déstructurement de useAuthStore()
+  - Fichier : frontend/src/components/layout/authenticated-layout.tsx
+
+BUG #2 (CRITIQUE) — Crash /etablissements (TypeError: Cannot read 'filieres' of undefined)
+  - Cause : frontend accédait à `etab._count.filieres` mais l'API retournait `_count` soit absent, soit un nombre plat (pas un objet imbriqué style Prisma)
+  - Fix frontend : type `_count` rendu optionnel + optional chaining + fallback 0 (etab._count?.filieres ?? 0)
+  - Fix backend : nouveau struct EtablissementCount {_count: {filieres, users}} + subqueries SQL dans EtablissementRepository.List + FindByID inclut maintenant filieres[] + _count
+  - Fichiers : frontend etablissements-page.tsx ; backend domain/etablissement.go, repository/etablissement.go
+
+BUG #3 (AFFICHAGE) — /utilisateurs affiche "—" pour l'établissement
+  - Cause : /api/users retournait etablissementId (string) mais pas l'objet etablissement imbriqué
+  - Fix backend : LEFT JOIN Etablissement dans UserRepository.List + peuplement EtablissementRef{ID, Nom}
+  - Fichier : backend repository/user.go
+
+BUG #4 (CRITIQUE) — Crash /acces-etablissements (TypeError: Cannot read 'nom' of undefined)
+  - Cause : frontend accédait à `record.etablissement.nom` mais l'API /api/etablissement-access ne retournait que etablissementId
+  - Fix frontend : type etablissement rendu optionnel + optional chaining + fallback "Établissement inconnu" (6 points de crash)
+  - Fix backend : LEFT JOIN Etablissement dans EtablissementAccessRepository.List + peuplement EtablissementRef
+  - Fichiers : frontend acces-etablissements-page.tsx ; backend repository/etablissement_access.go
+
+BUG #5 (SÉCURITÉ) — /api/stats/admin accessible à tous les rôles
+  - Cause : pas de contrôle de rôle — ENSEIGNANT/ETUDIANT/RESPONSABLE pouvaient récupérer les compteurs globaux de la plateforme
+  - Fix : contrôle de rôle 403 si non ADMIN (même pattern que stats/responsable fixé dans ENS-AUDIT-1)
+  - Fichier : backend transport/http/stats_handlers.go
+
+- Pages OK sans bug : dashboard, abonnements, facturation, monitoring, logs, ai-providers, configuration, notifications, profil (vides car stubs backend, mais pas de crash)
+- Lint frontend : 0 erreurs (1 warning préexistant sans rapport)
+- Tabs Go restaurés via unexpand (gofmt-compatible)
+- Build Go : revue manuelle des types (Go non installable localement)
+
+Stage Summary:
+- 2 crashes de page éliminés (/etablissements, /acces-etablissements)
+- 1 bug UX corrigé (blocage post-changement mot de passe)
+- 1 bug d'affichage corrigé (/utilisateurs)
+- 1 faille sécurité comblée (stats/admin)
+- 8 fichiers modifiés (4 frontend, 5 backend), ~165 insertions logiques
+- Pattern de fix cohérent avec ENS-AUDIT-1 : LEFT JOIN + Ref structs côté backend, optional chaining + fallback côté frontend
+- En attente : validation build Render (Go) + vérif live agent-browser post-déploiement

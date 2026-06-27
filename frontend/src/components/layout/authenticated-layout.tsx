@@ -15,7 +15,12 @@ import { getPageIdFromSlug, PAGE_LABELS } from '@/lib/routes'
 import { Loader2 } from 'lucide-react'
 
 export function AuthenticatedLayout({ slug }: { slug: string[] }) {
-  const { user, isAuthenticated, isLoading, mustChangePassword, clearMustChangePassword, refreshSession } = useAuthStore()
+  // BUGFIX (ADMIN-AUDIT-1) : `setUser` était utilisé dans le onSuccess de
+  // ForceChangePasswordPage (ligne ~62) mais n'était JAMAIS déstructuré du
+  // store → ReferenceError silencieuse dans le callback onSuccess →
+  // l'utilisateur restait bloqué sur l'écran "Mot de passe modifié !" jusqu'à
+  // un rechargement manuel de la page.
+  const { user, isAuthenticated, isLoading, mustChangePassword, clearMustChangePassword, refreshSession, setUser } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
   const sidebarMode = useSidebarModeStore((s) => s.mode)

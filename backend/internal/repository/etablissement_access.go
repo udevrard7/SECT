@@ -25,7 +25,7 @@ func NewEtablissementAccessRepository(pool *pgxpool.Pool) *EtablissementAccessRe
 }
 
 const columnsAccess = `"id", "adminId", "etablissementId", "motif", "statut",
-        "dateDebut", "dateFin", "approuvePar", "commentaire", "createdAt", "updatedAt"`
+	"dateDebut", "dateFin", "approuvePar", "commentaire", "createdAt", "updatedAt"`
 
 func scanAccess(s scanner) (*domain.EtablissementAccess, error) {
 	a := &domain.EtablissementAccess{}
@@ -80,17 +80,17 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
 		argIdx := 1
 
 		if params.AdminID != "" {
-			where = append(where, fmt.Sprintf(`"adminId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`ea."adminId" = $%d`, argIdx))
 			args = append(args, params.AdminID)
 			argIdx++
 		}
 		if params.Statut != "" {
-			where = append(where, fmt.Sprintf(`"statut" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`ea."statut" = $%d`, argIdx))
 			args = append(args, params.Statut)
 			argIdx++
 		}
 		if params.EtablissementID != "" {
-			where = append(where, fmt.Sprintf(`"etablissementId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`ea."etablissementId" = $%d`, argIdx))
 			args = append(args, params.EtablissementID)
 			argIdx++
 		}
@@ -100,7 +100,19 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
 			whereClause = "WHERE " + strings.Join(where, " AND ")
 		}
 
-		query := fmt.Sprintf(`SELECT %s FROM "EtablissementAccess" %s ORDER BY "createdAt" DESC`, columnsAccess, whereClause)
+		// BUGFIX (ADMIN-AUDIT-4) : LEFT JOIN Etablissement pour peupler la
+		// relation `etablissement` (EtablissementRef{ID, Nom}) attendue par le
+		// frontend page /acces-etablissements (record.etablissement.nom).
+		// Avant, l'API ne renvoyait que `etablissementId` → crash TypeError.
+		query := fmt.Sprintf(`
+			SELECT ea."id", ea."adminId", ea."etablissementId", ea."motif", ea."statut",
+			       ea."dateDebut", ea."dateFin", ea."approuvePar", ea."commentaire",
+			       ea."createdAt", ea."updatedAt",
+			       e."id", e."nom"
+			FROM "EtablissementAccess" ea
+			LEFT JOIN "Etablissement" e ON e."id" = ea."etablissementId"
+			%s
+			ORDER BY ea."createdAt" DESC`, whereClause)
 		rows, err := tx.Query(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query access list: %w", err)
@@ -108,9 +120,22 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
 		defer rows.Close()
 
 		for rows.Next() {
-			a, err := scanAccess(rows)
+			a := &domain.EtablissementAccess{}
+			var etabID, etabNom *string
+			err := rows.Scan(
+				&a.ID, &a.AdminID, &a.EtablissementID, &a.Motif, &a.Statut,
+				&a.DateDebut, &a.DateFin, &a.ApprouvePar, &a.Commentaire,
+				&a.CreatedAt, &a.UpdatedAt,
+				&etabID, &etabNom,
+			)
 			if err != nil {
 				return fmt.Errorf("scan access: %w", err)
+			}
+			if etabID != nil && etabNom != nil {
+				a.Etablissement = &domain.EtablissementRef{
+					ID:  *etabID,
+					Nom: *etabNom,
+				}
 			}
 			result = append(result, a)
 		}
@@ -136,10 +161,10 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
 
 	id := uuid.NewString()
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "motif", "statut",
-                        "dateDebut", "dateFin", "approuvePar", "commentaire", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, 'EN_ATTENTE', $5, $6, NULL, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING `+columnsAccess,
+		INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "motif", "statut",
+			"dateDebut", "dateFin", "approuvePar", "commentaire", "createdAt", "updatedAt")
+		VALUES ($1, $2, $3, $4, 'EN_ATTENTE', $5, $6, NULL, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING `+columnsAccess,
 		id, input.AdminID, input.EtablissementID, input.Motif,
 		nullableTimePtr(input.DateDebut), nullableTimePtr(input.DateFin),
 		nullableStrPtr(input.Commentaire))
@@ -228,12 +253,12 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
 	}
 
 	row := tx.QueryRow(ctx, `
-                SELECT `+columnsAccess+` FROM "EtablissementAccess"
-                WHERE "adminId" = $1 AND "etablissementId" = $2 AND "statut" = 'APPROUVE'
-                  AND ("dateDebut" IS NULL OR "dateDebut" <= CURRENT_TIMESTAMP)
-                  AND ("dateFin" IS NULL OR "dateFin" >= CURRENT_TIMESTAMP)
-                ORDER BY "createdAt" DESC LIMIT 1
-        `, adminID, etablissementID)
+		SELECT `+columnsAccess+` FROM "EtablissementAccess"
+		WHERE "adminId" = $1 AND "etablissementId" = $2 AND "statut" = 'APPROUVE'
+		  AND ("dateDebut" IS NULL OR "dateDebut" <= CURRENT_TIMESTAMP)
+		  AND ("dateFin" IS NULL OR "dateFin" >= CURRENT_TIMESTAMP)
+		ORDER BY "createdAt" DESC LIMIT 1
+	`, adminID, etablissementID)
 
 	access, err := scanAccess(row)
 	if err != nil {
@@ -264,19 +289,19 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
 	// Join EtablissementAccess (APPROUVE, dates valides) + Etablissement
 	// Colonnes préfixées avec e. pour éviter l'ambiguïté
 	const colsE = `e."id", e."nom", e."type", e."ville", e."pays", e."adresse", e."telephone", e."email",
-                e."siteWeb", e."logo", e."actif", e."exempleMatricule", e."formatMatricule", e."regexMatricule",
-                e."certWatermarkText", e."certWatermarkEnabled", e."certWatermarkOpacity", e."certWatermarkColor",
-                e."certWatermarkPattern", e."createdAt", e."updatedAt"`
+		e."siteWeb", e."logo", e."actif", e."exempleMatricule", e."formatMatricule", e."regexMatricule",
+		e."certWatermarkText", e."certWatermarkEnabled", e."certWatermarkOpacity", e."certWatermarkColor",
+		e."certWatermarkPattern", e."createdAt", e."updatedAt"`
 
 	rows, err := tx.Query(ctx, fmt.Sprintf(`
-                SELECT %s
-                FROM "EtablissementAccess" a
-                JOIN "Etablissement" e ON e."id" = a."etablissementId"
-                WHERE a."adminId" = $1 AND a."statut" = 'APPROUVE'
-                  AND (a."dateDebut" IS NULL OR a."dateDebut" <= CURRENT_TIMESTAMP)
-                  AND (a."dateFin" IS NULL OR a."dateFin" >= CURRENT_TIMESTAMP)
-                ORDER BY e."nom"
-        `, colsE), adminID)
+		SELECT %s
+		FROM "EtablissementAccess" a
+		JOIN "Etablissement" e ON e."id" = a."etablissementId"
+		WHERE a."adminId" = $1 AND a."statut" = 'APPROUVE'
+		  AND (a."dateDebut" IS NULL OR a."dateDebut" <= CURRENT_TIMESTAMP)
+		  AND (a."dateFin" IS NULL OR a."dateFin" >= CURRENT_TIMESTAMP)
+		ORDER BY e."nom"
+	`, colsE), adminID)
 	if err != nil {
 		return nil, fmt.Errorf("query authorized etablissements: %w", err)
 	}

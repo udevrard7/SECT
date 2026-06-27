@@ -34,12 +34,12 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 	var user *domain.User
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(ctx, `
-                        SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
-                               u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
-                               u."derniereConnexion", u."createdAt", u."updatedAt"
-                        FROM "User" u
-                        WHERE u."id" = $1
-                `, id)
+			SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
+			       u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
+			       u."derniereConnexion", u."createdAt", u."updatedAt"
+			FROM "User" u
+			WHERE u."id" = $1
+		`, id)
 
 		u, err := scanUser(row)
 		if err != nil {
@@ -71,12 +71,12 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain
 	}
 
 	row := tx.QueryRow(ctx, `
-                SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
-                       "image", "actif", "mustChangePwd", "matricule", "niveau",
-                       "derniereConnexion", "createdAt", "updatedAt"
-                FROM "User"
-                WHERE "email" = $1 AND "actif" = true
-        `, email)
+		SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
+		       "image", "actif", "mustChangePwd", "matricule", "niveau",
+		       "derniereConnexion", "createdAt", "updatedAt"
+		FROM "User"
+		WHERE "email" = $1 AND "actif" = true
+	`, email)
 
 	user, err := scanUser(row)
 	if err != nil {
@@ -152,16 +152,22 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
 		}
 
 		// Fetch page
+		// BUGFIX (ADMIN-AUDIT-3) : LEFT JOIN Etablissement pour peupler la
+		// relation `etablissement` (EtablissementRef{ID, Nom}) attendue par le
+		// frontend (ex: page /utilisateurs affiche user.etablissement.nom).
+		// Avant, l'API ne renvoyait que `etablissementId` → affichage "—".
 		offset := (params.Page - 1) * params.Limit
 		listSQL := fmt.Sprintf(`
-                        SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
-                               u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
-                               u."derniereConnexion", u."createdAt", u."updatedAt"
-                        FROM "User" u
-                        %s
-                        ORDER BY u."name"
-                        LIMIT $%d OFFSET $%d
-                `, whereClause, argIdx, argIdx+1)
+			SELECT u."id", u."email", u."name", u."role", u."etablissementId", u."filiereId",
+			       u."image", u."actif", u."mustChangePwd", u."matricule", u."niveau",
+			       u."derniereConnexion", u."createdAt", u."updatedAt",
+			       e."id", e."nom"
+			FROM "User" u
+			LEFT JOIN "Etablissement" e ON e."id" = u."etablissementId"
+			%s
+			ORDER BY u."name"
+			LIMIT $%d OFFSET $%d
+		`, whereClause, argIdx, argIdx+1)
 		args = append(args, params.Limit, offset)
 
 		rows, err := tx.Query(ctx, listSQL, args...)
@@ -171,9 +177,23 @@ func (r *UserRepository) List(ctx context.Context, params domain.UserListParams)
 		defer rows.Close()
 
 		for rows.Next() {
-			user, err := scanUser(rows)
+			user := &domain.User{}
+			var etabID, etabNom *string
+			err := rows.Scan(
+				&user.ID, &user.Email, &user.Name, &user.Role,
+				&user.EtablissementID, &user.FiliereID, &user.Image,
+				&user.Actif, &user.MustChangePwd, &user.Matricule, &user.Niveau,
+				&user.DerniereConnexion, &user.CreatedAt, &user.UpdatedAt,
+				&etabID, &etabNom,
+			)
 			if err != nil {
 				return fmt.Errorf("scan user: %w", err)
+			}
+			if etabID != nil && etabNom != nil {
+				user.Etablissement = &domain.EtablissementRef{
+					ID:  *etabID,
+					Nom: *etabNom,
+				}
 			}
 			result.Users = append(result.Users, user)
 		}
@@ -211,14 +231,14 @@ func (r *UserRepository) Create(ctx context.Context, input domain.CreateUserInpu
 	}
 
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                                    "image", "actif", "mustChangePwd", "matricule", "niveau",
-                                    "loginAttempts", "lockedUntil", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, false, $9, $10, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
-                          "image", "actif", "mustChangePwd", "matricule", "niveau",
-                          "derniereConnexion", "createdAt", "updatedAt"
-        `, userID, input.Email, input.Name, passwordHash, input.Role,
+		INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId", "filiereId",
+				    "image", "actif", "mustChangePwd", "matricule", "niveau",
+				    "loginAttempts", "lockedUntil", "createdAt", "updatedAt")
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, false, $9, $10, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
+			  "image", "actif", "mustChangePwd", "matricule", "niveau",
+			  "derniereConnexion", "createdAt", "updatedAt"
+	`, userID, input.Email, input.Name, passwordHash, input.Role,
 		nullableStrPtr(input.EtablissementID), nullableStrPtr(input.FiliereID),
 		actif, nullableStrPtr(input.Matricule), niveau)
 
@@ -290,11 +310,11 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
 	if len(setClauses) == 0 {
 		// Rien à updater — retourner l'utilisateur courant
 		row := tx.QueryRow(ctx, `
-                        SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
-                               "image", "actif", "mustChangePwd", "matricule", "niveau",
-                               "derniereConnexion", "createdAt", "updatedAt"
-                        FROM "User" WHERE "id" = $1
-                `, id)
+			SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
+			       "image", "actif", "mustChangePwd", "matricule", "niveau",
+			       "derniereConnexion", "createdAt", "updatedAt"
+			FROM "User" WHERE "id" = $1
+		`, id)
 		user, err := scanUser(row)
 		if err != nil {
 			if err == pgx.ErrNoRows {
@@ -312,11 +332,11 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
 
 	args = append(args, id)
 	updateSQL := fmt.Sprintf(`
-                UPDATE "User" SET %s WHERE "id" = $%d
-                RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
-                          "image", "actif", "mustChangePwd", "matricule", "niveau",
-                          "derniereConnexion", "createdAt", "updatedAt"
-        `, strings.Join(setClauses, ", "), argIdx)
+		UPDATE "User" SET %s WHERE "id" = $%d
+		RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
+			  "image", "actif", "mustChangePwd", "matricule", "niveau",
+			  "derniereConnexion", "createdAt", "updatedAt"
+	`, strings.Join(setClauses, ", "), argIdx)
 
 	row := tx.QueryRow(ctx, updateSQL, args...)
 	user, err := scanUser(row)

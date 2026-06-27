@@ -80,8 +80,10 @@ interface AccessRecord {
   commentaire: string | null
   approuvePar: string | null
   createdAt: string
-  admin: { id: string; name: string; email: string }
-  etablissement: { id: string; nom: string; ville: string | null; actif: boolean }
+  // BUGFIX (ADMIN-AUDIT-4) : admin + etablissement optionnels (l'API peut
+  // ne pas inclure les relations). Optional chaining + fallback partout.
+  admin?: { id: string; name: string; email: string }
+  etablissement?: { id: string; nom: string; ville: string | null; actif: boolean }
 }
 
 interface AuthorizedEtablissement {
@@ -268,7 +270,7 @@ export function AccesEtablissementsPage() {
         throw new Error(err.error || 'Erreur lors de l\'annulation')
       }
       toast.success('Demande annulée', {
-        description: `La demande d'accès à ${cancelTarget.etablissement.nom} a été annulée.`,
+        description: `La demande d'accès à ${cancelTarget.etablissement?.nom ?? 'cet établissement'} a été annulée.`,
       })
       setCancelTarget(null)
       await fetchData()
@@ -336,7 +338,7 @@ export function AccesEtablissementsPage() {
     setFormCommentaire('')
     setActiveTab('demander-acces')
     toast.info('Renouvellement', {
-      description: `Formulaire pré-rempli pour ${record.etablissement.nom}.`,
+      description: `Formulaire pré-rempli pour ${record.etablissement?.nom ?? 'cet établissement'}.`,
     })
   }
 
@@ -478,13 +480,13 @@ export function AccesEtablissementsPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-xs font-bold text-success-text">
-                              {record.etablissement.nom.charAt(0).toUpperCase()}
+                              {record.etablissement?.nom?.charAt(0).toUpperCase() ?? '?'}
                             </div>
                             <div>
-                              <p className="font-medium text-sm">{record.etablissement.nom}</p>
-                              {record.etablissement.ville && (
+                              <p className="font-medium text-sm">{record.etablissement?.nom ?? 'Établissement inconnu'}</p>
+                              {record.etablissement?.ville && (
                                 <p className="text-xs text-muted-foreground">
-                                  {record.etablissement.ville}
+                                  {record.etablissement?.ville}
                                 </p>
                               )}
                             </div>
@@ -515,7 +517,7 @@ export function AccesEtablissementsPage() {
                               className="h-8 text-success-text hover:text-success-text hover:bg-success/10"
                               onClick={() =>
                                 toast.info('Navigation', {
-                                  description: `Accès aux données de ${record.etablissement.nom} (à venir).`,
+                                  description: `Accès aux données de ${record.etablissement?.nom ?? 'cet établissement'} (à venir).`,
                                 })
                               }
                             >

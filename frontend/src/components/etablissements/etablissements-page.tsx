@@ -81,7 +81,9 @@ interface EtablissementItem {
   formatMatricule?: string | null
   exempleMatricule?: string | null
   regexMatricule?: string | null
-  _count: { filieres: number; users: number }
+  // BUGFIX (ADMIN-AUDIT-2) : _count optionnel (l'API peut ne pas l'inclure).
+  // Optional chaining + fallback 0 partout pour éviter le crash.
+  _count?: { filieres: number; users: number }
   adminHasAccess?: boolean
   responsable?: {
     id: string
@@ -99,7 +101,9 @@ interface EtablissementItem {
 }
 
 interface EtablissementDetail extends EtablissementItem {
-  filieres: Array<{
+  // BUGFIX (ADMIN-AUDIT-2) : filieres + users optionnels (l'API detail peut
+  // ne pas les inclure selon le contexte). Optional chaining partout.
+  filieres?: Array<{
     id: string
     nom: string
     code: string | null
@@ -109,7 +113,7 @@ interface EtablissementDetail extends EtablissementItem {
     responsable: { id: string; name: string; email: string } | null
     _count: { etudiants: number }
   }>
-  users: Array<{
+  users?: Array<{
     id: string
     name: string
     email: string
@@ -535,11 +539,11 @@ export function EtablissementsPage() {
                 <div className="flex gap-3">
                   <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text">
                     <GraduationCap className="h-3 w-3" />
-                    <span className="font-mono tabular-nums">{etab._count.filieres}</span> filière{etab._count.filieres > 1 ? 's' : ''}
+                    <span className="font-mono tabular-nums">{etab._count?.filieres ?? 0}</span> filière{(etab._count?.filieres ?? 0) > 1 ? 's' : ''}
                   </Badge>
                   <Badge variant="secondary" className="gap-1 bg-info/10 text-info">
                     <Users className="h-3 w-3" />
-                    <span className="font-mono tabular-nums">{etab._count.users}</span> utilisateur{etab._count.users > 1 ? 's' : ''}
+                    <span className="font-mono tabular-nums">{etab._count?.users ?? 0}</span> utilisateur{(etab._count?.users ?? 0) > 1 ? 's' : ''}
                   </Badge>
                 </div>
 
