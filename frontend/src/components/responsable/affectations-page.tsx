@@ -444,12 +444,12 @@ export function AffectationsPage() {
     // Group UEs by filiere (including shared filières)
     const grouped = ues.reduce<Record<string, UEItem[]>>((acc, ue) => {
       // Add to owner filière group
-      const ownerKey = ue.filiere.nom
+      const ownerKey = ue.filiere?.nom ?? 'Sans filière'
       if (!acc[ownerKey]) acc[ownerKey] = []
       acc[ownerKey].push(ue)
       // Also add to shared filière groups
       for (const suppl of ue.filieresSuppl ?? []) {
-        const sharedKey = suppl.filiere.nom
+        const sharedKey = suppl.filiere?.nom ?? 'Autre'
         if (!acc[sharedKey]) acc[sharedKey] = []
         acc[sharedKey].push(ue)
       }
@@ -459,9 +459,9 @@ export function AffectationsPage() {
     // Build matrix rows
     const rows = ues.map((ue) => {
       const ueAffectations = affs.filter((a) => a.uniteEnseignementId === ue.id)
-      const cm = ueAffectations.filter((a) => a.typeSeance === 'CM').map((a) => a.enseignant.name)
-      const td = ueAffectations.filter((a) => a.typeSeance === 'TD').map((a) => a.enseignant.name)
-      const tp = ueAffectations.filter((a) => a.typeSeance === 'TP').map((a) => a.enseignant.name)
+      const cm = ueAffectations.filter((a) => a.typeSeance === 'CM').map((a) => a.enseignant?.name ?? '—')
+      const td = ueAffectations.filter((a) => a.typeSeance === 'TD').map((a) => a.enseignant?.name ?? '—')
+      const tp = ueAffectations.filter((a) => a.typeSeance === 'TP').map((a) => a.enseignant?.name ?? '—')
 
       return {
         ue,
@@ -753,7 +753,7 @@ export function AffectationsPage() {
   // ─── UE label for select ───
   const getUELabel = (ue: UEItem) => {
     const niveauxDisplay = ue.niveaux ? (() => { try { return JSON.parse(ue.niveaux) as string[] } catch { return [ue.niveau] } })() : [ue.niveau]
-    const allFilieres = [ue.filiere.nom, ...ue.filieresSuppl.map(s => s.filiere.nom)]
+    const allFilieres = [ue.filiere?.nom ?? '—', ...(ue.filieresSuppl ?? []).map(s => s.filiere?.nom ?? '—')]
     return `${ue.code} — ${ue.nom} (${allFilieres.join(', ')}, ${niveauxDisplay.join('/')})`
   }
 
