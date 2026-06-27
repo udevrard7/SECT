@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, BookOpen, Calendar, Edit3, Send, Trash2, Eye, Lock,
   Search, X, Loader2, FileText, Users, Star, Archive,
@@ -186,12 +187,7 @@ function useDebounce<T>(value: T, delay = 350): T {
 
 export function DevoirsPage() {
   const user = useAuthStore((s) => s.user)
-
-  // ─── Core state ───
-  const [devoirs, setDevoirs] = useState<Devoir[]>([])
-  const [stats, setStats] = useState<DevoirStats | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
   // ─── UI filters ───
   const [activeTab, setActiveTab] = useState<TabKey>('all')
@@ -223,7 +219,7 @@ export function DevoirsPage() {
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false)
 
   // ─── UE data ───
-  const [unitesEnseignement, setUnitesEnseignement] = useState<UniteEnseignement[]>([])
+  // (chargé via useQuery ci-dessous, plus bas)
 
   // ─── Confirmation dialogs ───
   const [deleteTarget, setDeleteTarget] = useState<Devoir | null>(null)
@@ -251,62 +247,74 @@ export function DevoirsPage() {
   const [isSubmittingGrade, setIsSubmittingGrade] = useState(false)
   const [isAiGrading, setIsAiGrading] = useState(false)
 
-  // ─── AbortController pour fetch devoirs (corrige race condition) ───
-  const abortRef = useRef<AbortController | null>(null)
-
   // ═══════════════════════════════════════
-  //  DATA FETCHING
+  //  DATA FETCHING (BUGFIX QUERY-MIGRATION-1 : TanStack Query)
   // ═══════════════════════════════════════
 
-  const fetchDevoirs = useCallback(async (silent = false) => {
-    if (!user?.id) return
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    if (!silent) { setIsLoading(true); setLoadError(null) }
-    try {
-      const res = await fetch(`/api/devoirs?enseignantId=${user.id}`, { signal: controller.signal })
+  // NOTE : l'API /api/devoirs ne prend pas les filtres en paramètres —
+  // le filtrage/tri se fait côté client (filteredDevoirs useMemo plus bas).
+  // Le queryKey n'inclut donc QUE user.id (comme les deps du useCallback
+  // original). staleTime 60s -> pas de refetch au retour navigation.
+  const devoirsQuery = useQuery<{ devoirs: Devoir[] }>({
+    queryKey: ['devoirs', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/devoirs?enseignantId=${user!.id}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur serveur')
       }
-      const data = await res.json()
-      setDevoirs(data.devoirs ?? [])
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return
-      setLoadError(err instanceof Error ? err.message : 'Impossible de charger les devoirs')
-      if (!silent) toast.error('Erreur de chargement', { description: 'Impossible de récupérer vos devoirs.' })
-    } finally {
-      if (!silent) setIsLoading(false)
-    }
-  }, [user?.id])
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  const fetchStats = useCallback(async () => {
-    if (!user?.id) return
-    try {
+  const devoirs = devoirsQuery.data?.devoirs ?? []
+  const isLoading = devoirsQuery.isLoading
+  const loadError = devoirsQuery.error
+    ? (devoirsQuery.error instanceof Error
+        ? devoirsQuery.error.message
+        : 'Impossible de charger les devoirs')
+    : null
+
+  const statsQuery = useQuery<DevoirStats>({
+    queryKey: ['devoirs-stats', user?.id],
+    queryFn: async () => {
       const res = await fetch('/api/devoirs/stats')
-      if (res.ok) setStats(await res.json())
-    } catch { /* non-bloquant */ }
-  }, [user?.id])
+      if (!res.ok) throw new Error('Failed to fetch stats')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  useEffect(() => {
-    fetchDevoirs()
-    fetchStats()
-    return () => abortRef.current?.abort()
-  }, [fetchDevoirs, fetchStats])
+  const stats = statsQuery.data ?? null
 
-  useEffect(() => {
-    const fetchUE = async () => {
-      try {
-        const res = await fetch('/api/unites-enseignement?actif=true')
-        if (res.ok) {
-          const data = await res.json()
-          setUnitesEnseignement(data.unitesEnseignement ?? [])
-        }
-      } catch { /* non-bloquant */ }
-    }
-    fetchUE()
-  }, [])
+  const uesQuery = useQuery<{ unitesEnseignement: UniteEnseignement[] }>({
+    queryKey: ['devoirs-ues', user?.id],
+    queryFn: async () => {
+      const res = await fetch('/api/unites-enseignement?actif=true')
+      if (!res.ok) throw new Error('Failed to fetch UEs')
+      return res.json()
+    },
+    // Pas de enabled: !!user?.id ici — l'original appelait /api/unites-enseignement
+    // dans un useEffect avec deps [] (pas conditionnel à user). On garde ce
+    // comportement : la query est active immédiatement.
+    staleTime: 5 * 60 * 1000, // 5 min : les UEs changent rarement
+    refetchOnWindowFocus: false,
+  })
+
+  const unitesEnseignement = uesQuery.data?.unitesEnseignement ?? []
+
+  // Helpers pour invalider le cache après mutation (create/update/delete/status).
+  const refreshDevoirs = () => {
+    queryClient.invalidateQueries({ queryKey: ['devoirs', user?.id] })
+    queryClient.invalidateQueries({ queryKey: ['devoirs-stats', user?.id] })
+  }
+  const refreshStats = () =>
+    queryClient.invalidateQueries({ queryKey: ['devoirs-stats', user?.id] })
 
   // ═══════════════════════════════════════
   //  FILTERING & SORTING
@@ -461,8 +469,7 @@ export function DevoirsPage() {
       })
       setFormDialogOpen(false)
       resetForm()
-      await fetchDevoirs()
-      await fetchStats()
+      await refreshDevoirs()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     } finally {
@@ -481,8 +488,7 @@ export function DevoirsPage() {
         throw new Error(errData.error || "Erreur lors de l'action")
       }
       toast.success(successMsg)
-      await fetchDevoirs()
-      await fetchStats()
+      await refreshDevoirs()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
     }
@@ -500,8 +506,7 @@ export function DevoirsPage() {
         description: `"${deleteTarget.titre}" déplacé. Restaurable depuis la Corbeille (30 jours).`,
       })
       setDeleteTarget(null)
-      await fetchDevoirs()
-      await fetchStats()
+      await refreshDevoirs()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Suppression impossible.' })
     }
@@ -552,8 +557,7 @@ export function DevoirsPage() {
         description: `"${duplicateTarget.titre} (copie)" créé en brouillon (échéance J+7).`,
       })
       setDuplicateTarget(null)
-      await fetchDevoirs()
-      await fetchStats()
+      await refreshDevoirs()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Duplication impossible.' })
     }
@@ -773,7 +777,7 @@ export function DevoirsPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline" size="sm"
-                onClick={() => { fetchDevoirs(); fetchStats() }}
+                onClick={() => { refreshDevoirs() }}
                 aria-label="Rafraîchir"
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
