@@ -155,7 +155,7 @@ export function ResultatsPage() {
                   <CardContent className="p-4">
                     <p className="text-xs font-medium text-muted-foreground">Étudiants en réussite</p>
                     <p className="font-mono text-2xl font-bold tabular-nums text-success-text">
-                      {Math.max(0, overview.totalSessions > 0 ? overview.totalSessions - atRiskCount : 0)}
+                      {Math.max(0, (overview?.totalSessions ?? 0) > 0 ? (overview?.totalSessions ?? 0) - atRiskCount : 0)}
                     </p>
                     <p className="text-xs text-muted-foreground">moyenne ≥ 10/20</p>
                   </CardContent>
