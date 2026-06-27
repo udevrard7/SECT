@@ -4368,3 +4368,52 @@ Stage Summary:
 - La sélection d'étudiant fonctionne maintenant correctement
 - Pattern: id = sessionId + etudiant objet imbriqué peuplé à partir des
   champs plats (même pattern que toutes les corrections de relation)
+
+---
+Task ID: EPREUVES-SESSIONS-1
+Agent: Z.ai Code (tutor mode)
+Task: Audit profond /epreuves onglets Modèles + Sessions
+
+Work Log:
+- Audit des 2 onglets via agent-browser (login enseignant prof01)
+- 3 bugs identifiés et corrigés :
+
+Bug #1: Sessions tab affichait sessionsLen=0 pour toutes les épreuves
+  - Symptôme: "5 sessions au total" mais 0 participants par épreuve
+  - Cause: la hydration des sessions dans EpreuveRepository.List n'était
+    faite que quand EtudiantID != "" (vue /mes-epreuves étudiant).
+    Pour l'enseignant (vue /epreuves onglet Sessions), EnseignantID != ""
+    mais la condition ne le couvrait pas → sessionsLen=0
+  - Fix: étendre la condition à (EtudiantID != "" || EnseignantID != "")
+    + query sans filtre etudiantId pour l'enseignant (récupère TOUTES
+    les sessions de l'épreuve)
+  - Résultat: sessionsLen=7 pour Python (avant: 0)
+
+Bug #2: Cartes affichaient 'Q' et 'pts' au lieu du nombre réel
+  - Symptôme: "Q questions" et "pts" au lieu de "15 questions" et "60 pts"
+  - Cause: QuestionCount et TotalPoints (champs *int et *float64) n'étaient
+    jamais peuplés par le repository → le frontend affichait la valeur
+    par défaut (undefined → "Q")
+  - Fix: parser contenu JSON (json.Unmarshal) pour extraire:
+    * QuestionCount = len(contenu.questions) = 15
+    * TotalPoints = contenu.baremeTotal = 60
+  - Résultat: "15 questions" et "60 pts"
+
+Bug #3: nbParticipants absent des cartes Sessions
+  - Maintenant visible: "0/7 soumises (0%)" grâce à sessionsLen peuplé
+
+Vérifications live (toutes confirmées ✅) :
+- API /api/epreuves: questionCount=15, totalPoints=60, sessionsLen=7 ✅
+- Onglet Modèles: "15 questions", "60 pts" (avant: "Q", "pts") ✅
+- Onglet Sessions: "0/7 soumises (0%)" (avant: 0/0) ✅
+- "5 sessions au total" (5 épreuves avec sessions) ✅
+- "Clôturée", "120 min", "08/06/2026 13:18" ✅
+- "L2 — Licence 2", "INFORMATIQUE" ✅
+- 0 erreur console ✅
+- Build Render: live (8b3b7e0)
+
+Stage Summary:
+- 3 bugs corrigés sur le cœur métier (/epreuves)
+- Les 2 onglets (Modèles + Sessions) affichent maintenant les vraies données
+- Les sessions sont hydratées pour l'enseignant (pas seulement l'étudiant)
+- Les questionCount et totalPoints sont extraits du contenu JSON
