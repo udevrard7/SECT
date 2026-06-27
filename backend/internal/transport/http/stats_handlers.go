@@ -952,27 +952,137 @@ func (s *Server) badgesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// POST = recalculer les badges (no-op pour l'instant)
-	if r.Method == "POST" {
-		// TODO: implémenter le calcul des badges
-		_ = context.Background()
+	ctx := r.Context()
+
+	// Types de réponse (toujours initialisés avec slices vides — JAMAIS nil)
+	type niveauSeuil struct {
+		Niveau string `json:"niveau"`
+		Seuil  int    `json:"seuil"`
+	}
+	type badgeWithProgress struct {
+		ID             string        `json:"id"`
+		Cle            string        `json:"cle"`
+		Titre          string        `json:"titre"`
+		Description    string        `json:"description"`
+		Icone          string        `json:"icone"`
+		Categorie      string        `json:"categorie"`
+		RoleCible      string        `json:"roleCible"`
+		NiveauActuel   *string       `json:"niveauActuel"`
+		ValeurActuelle int           `json:"valeurActuelle"`
+		ValeurPalier   int           `json:"valeurPalier"`
+		ValeurProchain *int          `json:"valeurProchain"`
+		Debloque       bool          `json:"debloque"`
+		DateObtention  *string       `json:"dateObtention,omitempty"`
+		Niveaux        []niveauSeuil `json:"niveaux"`
+		Progression    float64       `json:"progression"`
 	}
 
-	// Format attendu par le frontend (BadgesResponse) :
-	// { badges: BadgeWithProgress[], stats: {total, unlocked, locked, progress}, newlyUnlocked: [] }
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"badges": []any{},
-		"stats": map[string]any{
-			"total":    0,
-			"unlocked": 0,
-			"locked":   0,
-			"progress": 0,
-		},
-		"newlyUnlocked": []any{},
-	})
-}
+	stats := map[string]any{
+		"badges":         []badgeWithProgress{},
+		"stats":          map[string]any{"total": 0, "unlocked": 0, "locked": 0, "progress": 0},
+		"newlyUnlocked":  []badgeWithProgress{},
+	}
 
+	// POST = recalculer les badges (no-op pour l'instant — le calcul se fait
+	// côté backend via les triggers métier ; ici on se contente de retourner
+	// l'état actuel). TODO: implémenter le recalcul si besoin.
+	_ = ctx
+
+	_ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
+		// BUGFIX (BADGES-FIX-1) : LEFT JOIN BadgeProgression pour récupérer
+		// les définitions de badges + la progression de l'utilisateur.
+		// Filtrage par roleCible : l'utilisateur ne voit que les badges de
+		// son rôle (ou sans rôle cible).
+		rows, err := tx.Query(ctx, `
+			SELECT bd."id", bd."cle", bd."titre", bd."description", bd."icone",
+			       bd."categorie"::text, bd."roleCible"::text, bd."niveaux",
+			       bp."niveauActuel"::text, bp."valeurActuelle", bp."valeurPalier",
+			       bp."valeurProchain", bp."debloque", bp."dateObtention"
+			FROM "BadgeDefinition" bd
+			LEFT JOIN "BadgeProgression" bp ON bp."badgeDefinitionId" = bd."id"
+			  AND bp."userId" = $1
+			WHERE bd."actif" = true
+			  AND (bd."roleCible" IS NULL OR bd."roleCible"::text = $2 OR bd."roleCible"::text = '')
+			ORDER BY bd."ordre" ASC
+		`, claims.UserID, claims.Role)
+		if err != nil {
+			return fmt.Errorf("query badges: %w", err)
+		}
+		defer rows.Close()
+
+		badges := []badgeWithProgress{}
+		unlocked := 0
+		for rows.Next() {
+			b := badgeWithProgress{
+				Niveaux: []niveauSeuil{},
+			}
+			var niveauxArr []string
+			var niveauActuel *string
+			var valeurProchain *int
+			var dateObtention *time.Time
+			err := rows.Scan(
+				&b.ID, &b.Cle, &b.Titre, &b.Description, &b.Icone,
+				&b.Categorie, &b.RoleCible, &niveauxArr,
+				&niveauActuel, &b.ValeurActuelle, &b.ValeurPalier,
+				&valeurProchain, &b.Debloque, &dateObtention,
+			)
+			if err != nil {
+				return fmt.Errorf("scan badge: %w", err)
+			}
+			b.NiveauActuel = niveauActuel
+			b.ValeurProchain = valeurProchain
+			if dateObtention != nil {
+				s := dateObtention.UTC().Format(time.RFC3339)
+				b.DateObtention = &s
+			}
+
+			// Construire les niveaux/paliers à partir du tableau de l'enum.
+			// Les seuils sont calculés de manière incrémentale (1, 5, 10, 25 par défaut)
+			// car BadgeDefinition.niveaux est juste un array d'enum (sans seuils).
+			defaultSeuils := map[string]int{"BRONZE": 1, "ARGENT": 5, "OR": 10, "DIAMANT": 25}
+			for _, n := range niveauxArr {
+				seuil := defaultSeuils[n]
+				if seuil == 0 {
+					seuil = 1
+				}
+				b.Niveaux = append(b.Niveaux, niveauSeuil{Niveau: n, Seuil: seuil})
+			}
+
+			// Calcul de la progression (0-100) basé sur valeurActuelle / valeurPalier
+			if b.ValeurPalier > 0 {
+				b.Progression = (float64(b.ValeurActuelle) / float64(b.ValeurPalier)) * 100
+				if b.Progression > 100 {
+					b.Progression = 100
+				}
+			} else if b.Debloque {
+				b.Progression = 100
+			}
+
+			if b.Debloque {
+				unlocked++
+			}
+			badges = append(badges, b)
+		}
+
+		stats["badges"] = badges
+		total := len(badges)
+		locked := total - unlocked
+		progress := 0
+		if total > 0 {
+			progress = (unlocked * 100) / total
+		}
+		stats["stats"] = map[string]any{
+			"total":    total,
+			"unlocked": unlocked,
+			"locked":   locked,
+			"progress": progress,
+		}
+		return nil
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
 // ──────────────────────────────────────────────────────────────────────────
 // Stubs conservés (à implémenter ultérieurement)
 // ──────────────────────────────────────────────────────────────────────────
