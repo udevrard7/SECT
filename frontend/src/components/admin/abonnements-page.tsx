@@ -109,7 +109,7 @@ interface PlanItem {
   description: string | null
   actif: boolean
   createdAt: string
-  _count: { abonnements: number }
+  _count?: { abonnements: number }
 }
 
 interface AbonnementItem {
@@ -1173,7 +1173,7 @@ export function AbonnementsPage() {
                       <div className="mt-2 flex items-center gap-1.5">
                         <Users className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">
-                          {plan._count.abonnements} abonné{plan._count.abonnements > 1 ? 's' : ''}
+                          {plan._count?.abonnements ?? 0} abonné{(plan._count?.abonnements ?? 0) > 1 ? 's' : ''}
                         </span>
                       </div>
                     </CardContent>
