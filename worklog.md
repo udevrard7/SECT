@@ -4324,3 +4324,47 @@ Stage Summary:
   * Onglet 'Par épreuve': note brute / noteTotal (ex: /60)
   * Dashboard et 'Vue d'ensemble': moyenne normalisée /20
 - Pattern: GetEpreuveNoteTotal via l'interface ResultatRepository
+
+---
+Task ID: CORRECTION-SELECT-1
+Agent: Z.ai Code (tutor mode)
+Task: Corriger sélection étudiant impossible dans /correction
+
+Work Log:
+- Bug: impossible de cliquer sur un autre étudiant dans /correction
+  après en avoir sélectionné un. Le clic ne changeait pas la sélection.
+
+Root cause: l'API /api/correction retournait sessionId (pas id) et
+etudiantNom/etudiantEmail (champs plats, pas objet etudiant).
+Le frontend utilise:
+  - sessions.find(s => s.id === selectedSessionId) → s.id était undefined
+  - s.etudiant.name dans filteredSessions → s.etudiant était undefined
+
+→ La sélection ne marchait jamais car s.id n'existait pas dans la réponse.
+
+Fix backend (2 fichiers):
+1. domain/certificat.go:
+   - Ajout champ ID string json:"id" sur CorrectionSession
+   - Nouveau type CorrectionEtudiant {ID, Name, Email}
+   - Champ Etudiant *CorrectionEtudiant json:"etudiant,omitempty"
+2. repository/certificat.go:
+   - Après scan: cs.ID = cs.SessionID (pour que le frontend trouve s.id)
+   - cs.Etudiant = &CorrectionEtudiant{ID, Name, Email} à partir des
+     champs plats déjà scannés (etudiantId, etudiantNom, etudiantEmail)
+
+Fix frontend (1 fichier):
+3. use-correction-state.ts: filteredSessions utilise optional chaining
+   (s.etudiant?.name ?? s.etudiantNom) pour la recherche
+
+Vérifications live (toutes confirmées ✅) :
+- CLIC sur ASSIELOU → sélectionné (ring-success) ✅
+- CLIC sur ASSANI → ASSANI sélectionné, ASSIELOU désélectionné ✅
+- CLIC sur LATH → LATH sélectionné, ASSANI désélectionné ✅
+- Un seul étudiant sélectionné à la fois ✅
+- 0 erreur console ✅
+- Build Render: live (ed69cf5)
+
+Stage Summary:
+- La sélection d'étudiant fonctionne maintenant correctement
+- Pattern: id = sessionId + etudiant objet imbriqué peuplé à partir des
+  champs plats (même pattern que toutes les corrections de relation)
