@@ -327,7 +327,7 @@ func (s *Server) surveillanceStream(w http.ResponseWriter, r *http.Request) {
 	// flushIfNeeded : flush si disponible, sinon no-op
 	flushIfNeeded := func() {
 		if flusher != nil {
-			flushIfNeeded()
+			flusher.Flush()
 		}
 	}
 
