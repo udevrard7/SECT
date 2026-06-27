@@ -427,7 +427,7 @@ func (uc *ResultatUseCase) List(ctx context.Context, claims db.SessionClaims, pa
 		}
 
 		// Calculer les stats
-		stats := uc.computeStats(sessions)
+		stats := uc.computeStats(ctx, sessions)
 
 		return map[string]any{
 			"sessions": sessions,
@@ -466,7 +466,7 @@ func (uc *ResultatUseCase) GetEtudiantOverview(ctx context.Context, claims db.Se
 }
 
 // computeStats calcule les statistiques à partir des sessions.
-func (uc *ResultatUseCase) computeStats(sessions []*domain.SessionPassation) map[string]any {
+func (uc *ResultatUseCase) computeStats(ctx context.Context, sessions []*domain.SessionPassation) map[string]any {
 	total := len(sessions)
 	if total == 0 {
 		return map[string]any{
