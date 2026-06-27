@@ -249,12 +249,11 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 			       CASE WHEN count(s3.id) > 0
 				    THEN (count(s3.id) FILTER (WHERE s3.score >= e."noteTotal" * 0.5))::float / count(s3.id) * 100
 				    ELSE 0 END AS taux,
-			       e."clotureeAt"
 			FROM "Epreuve" e
 			LEFT JOIN "SessionPassation" s3 ON s3."epreuveId" = e."id"
 			  AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL
 			%s
-			GROUP BY e."id", e."titre", e."noteTotal", e."clotureeAt"
+			GROUP BY e."id", e."titre", e."noteTotal"
 			ORDER BY e."createdAt" DESC
 			LIMIT 20
 		`, whereE), args...)
@@ -263,13 +262,8 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 			for rows.Next() {
 				ep := overviewEpreuve{}
 				var moy *float64
-				var clotureeAt *time.Time
-				if err := rows.Scan(&ep.ID, &ep.Titre, &ep.NbParticipants, &moy, &ep.TauxReussite, &clotureeAt); err == nil {
+				if err := rows.Scan(&ep.ID, &ep.Titre, &ep.NbParticipants, &moy, &ep.TauxReussite); err == nil {
 					ep.Moyenne = moy
-					if clotureeAt != nil {
-						ts := clotureeAt.UTC().Format(time.RFC3339)
-						ep.DateCloture = &ts
-					}
 					epreuves = append(epreuves, ep)
 				}
 			}
