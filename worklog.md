@@ -4577,3 +4577,61 @@ Stage Summary:
 - 2 commits: fix frontend (Vercel) + fix backend (Render)
 - Le fix backend corrige aussi un bug d'affichage silencieux (nom/code UE)
 - Architecture respectée: pattern LEFT JOIN + Ref identique à Filiere
+
+---
+Task ID: DUPLICATE-UE-2 (suite du fix)
+Agent: Z.ai Code (tutor mode)
+Task: Second bug découvert en test E2E : duplication HTTP 500 (contenu jsonb)
+
+Work Log:
+- Après le fix DUPLICATE-UE-1 (uniteEnseignementId + LEFT JOIN), test E2E
+  via API (login prof01 → GET /api/epreuves → POST duplication) :
+  * GET /api/epreuves → 5/5 épreuves ont uniteEnseignement imbriqué ✅
+  * POST /api/epreuves AVEC contenu → HTTP 500 "erreur interne" ❌
+  * POST /api/epreuves SANS contenu → HTTP 201 ✅
+- Isolation : le bug vient du champ contenu (jsonb)
+
+Cause racine du 500:
+- Epreuve.contenu est la SEULE colonne jsonb du codebase (toutes les
+  autres colonnes JSON — Question.propositions, SessionPassation.logEvents,
+  propositionMappings — sont de type text)
+- db.go ligne 49 : DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+  (prepared statements désactivés car pooler Neon PgBouncer ne les supporte
+  pas — cf. fix SCORES-NORM-1)
+- En Simple Protocol, pgx ne connaît pas le type de colonne cible → encode
+  []byte avec le codec bytea → hex-encodage (\x7b22636f6e...) → invalide
+  pour jsonb → ERROR: invalid input syntax for type json → HTTP 500
+- string utilise le codec text → envoie le JSON brut → Postgres l'accepte
+- Ce bug était LATENT depuis toujours : la duplication échouait avant au
+  stade validation (uniteEnseignementId requis → 400) avant d'atteindre
+  l'INSERT du contenu. Le fix DUPLICATE-UE-1 a débloqué la validation,
+  révélant ce second bug latent.
+
+Fix (commit 8431b42 — déploiement Render):
+- repository.EpreuveRepository.Create: contenu = string(input.Contenu)
+  au lieu de []byte(input.Contenu)
+- Aussi appliqué à groupesCibles (text) pour cohérence/correction
+
+Vérification E2E live (après build Render 8431b42 = live):
+- Login prof01@uniabidjan.com → accessToken OK ✅
+- GET /api/epreuves → 5/5 épreuves, 5/5 avec uniteEnseignement imbriqué ✅
+- POST /api/epreuves (duplication "Composition - Python et de Java" avec
+  contenu 15 questions) → HTTP 201 "Épreuve créée avec succès" ✅
+- Restauration : hash mot de passe original restauré, épreuve test supprimée ✅
+
+Méthode de test (contrôlée et réversible) :
+- Sauvegarde du hash bcrypt original de prof01
+- Définition d'un mot de passe temporaire (bcrypt cost 10)
+- Login + test API (Bearer token)
+- Restauration immédiate du hash original + cleanup épreuve test
+- Aucune donnée de production modifiée de façon permanente
+
+Stage Summary:
+- 2 bugs corrigés en 3 commits (1 frontend + 2 backend)
+- Bug 1 (DUPLICATE-UE-1) : frontend lisait un objet imbriqué inexistant +
+  backend ne peuplait pas l'objet imbriqué uniteEnseignement
+- Bug 2 (DUPLICATE-UE-2) : encodage []byte→bytea invalide pour colonne
+  jsonb en Simple Protocol (bug latent révélé par le fix 1)
+- La duplication de modèles sur /epreuves est maintenant pleinement
+  fonctionnelle (vérifié en E2E sur la production)
+- Bonus : l'affichage du nom/code UE dans les cartes est aussi corrigé
