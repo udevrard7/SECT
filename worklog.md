@@ -4005,3 +4005,48 @@ Stage Summary:
 - 0 AVG(score) non normalisé restant (vérification finale grep)
 - Les KPIs de /resultats affichent maintenant les vraies valeurs sur /20
 - La logique métier est respectée : note sur /N, moyenne sur /20
+
+---
+Task ID: SCORES-NORM-1-FINAL
+Agent: Z.ai Code (tutor mode)
+Task: Fix crash /dashboard enseignant (HTTP 500 stats/enseignant)
+
+Work Log:
+- Après la normalisation des moyennes sur /20, le dashboard enseignant crashait (500)
+- Investigation par debug successifs (6 commits) :
+
+1. Cause initiale suspectée: division par zéro (noteTotal=0)
+   → Fix: NULLIF(noteTotal, 0) → toujours 500
+
+2. Debug: retourner l'erreur exacte
+   → "prepared statement name is already in use (SQLSTATE 08P01)"
+
+3. Fix: QueryExecModeExec (désactiver prepared statements)
+   → "commit unexpectedly resulted in rollback"
+
+4. Fix: QueryExecModeSimpleProtocol
+   → "column e.noteTotal must appear in GROUP BY clause (SQLSTATE 42803)"
+
+5. Fix: retirer tous les NULLIF + ajouter au GROUP BY
+   → toujours 42803 (autre query avec même problème)
+
+6. Fix définitif: AVG(s.score / e."noteTotal" * 20) au lieu de
+   AVG(s.score) / e."noteTotal" * 20
+   → En normalisant chaque score individuellement AVANT l'AVG,
+   e."noteTotal" est dans une fonction d'agrégat → pas besoin d'être
+   dans le GROUP BY → SQL valide.
+
+Root cause: la normalisation des moyennes utilisait AVG(score) / noteTotal
+qui nécessite noteTotal dans le GROUP BY (car il n'est pas dans une fonction
+d'agrégat). En déplaçant la division DANS l'AVG, noteTotal devient un
+argument de la fonction d'agrégat et n'a plus besoin d'être dans le GROUP BY.
+
+Vérification live ✅ :
+- API /api/stats/enseignant → 200, evolutionMoyennes avec moyenne 16.88/20
+- Dashboard enseignant → "Bonjour, Ulrich DOUH" + données affichées
+- Build Render : live (d8c85bb)
+
+Stage Summary:
+- Dashboard enseignant restauré après 7 commits de debug
+- Leçon: SimpleProtocol (pgx v5 + Neon pooler) est plus strict sur le GROUP BY
+- Pattern correct: AVG(score / noteTotal * 20) pas AVG(score) / noteTotal * 20
