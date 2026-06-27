@@ -4283,3 +4283,44 @@ Stage Summary:
 - 2 crashes éliminés sur /correction
 - 5 fichiers modifiés (1 hook + 4 composants)
 - Pattern: optional chaining + fallback sur champs plats (cohérent)
+
+---
+Task ID: SCORES-NORM-2
+Agent: Z.ai Code (tutor mode)
+Task: Afficher note = score obtenu / noteTotal (pas /20) sur /resultats Par épreuve
+
+Work Log:
+- Bug: l'onglet 'Par épreuve' affichait les scores comme /20 (ex: 55.0/20)
+  alors que la logique métier définit: note = score obtenu / point total
+  de l'épreuve (ex: 55.0/60 car noteTotal=60)
+
+Root cause: computeStats dans usecase/session.go utilisait noteTotal=20.0
+en dur au lieu de récupérer le vrai noteTotal depuis l'épreuve en DB.
+
+Fix backend (3 fichiers):
+1. domain/session.go: ajout méthode GetEpreuveNoteTotal(ctx, epreuveID)
+   à l'interface ResultatRepository
+2. repository/session.go: implémentation GetEpreuveNoteTotal (query DB
+   SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1, fallback 20.0)
+3. usecase/session.go: computeStats utilise uc.resultatRepo.GetEpreuveNoteTotal
+   au lieu de noteTotal=20.0 en dur. Signature modifiée pour accepter ctx.
+
+Build fix: computeStats n'avait pas ctx en paramètre → build failed.
+Ajouté ctx à la signature + appel site.
+
+Vérifications live (toutes confirmées ✅) :
+- API stats.noteTotal: **60** (avant: 20) ✅
+- API stats.moyenne: **52.56/60** (avant: 52.56/20) ✅
+- Scores affichés: "55.0/60", "54.0/60", "53.8/60" (avant: /20) ✅
+- KPI Moyenne: "52.6/60" ✅
+- KPI Médiane: "53.3/60" ✅
+- Taux de réussite: 100% (inchangé, basé sur le ratio) ✅
+- Build Render: live (eaed67f)
+
+Stage Summary:
+- L'onglet 'Par épreuve' affiche maintenant les notes correctes:
+  score obtenu / noteTotal de l'épreuve (ex: 55.0/60)
+- La distinction est claire:
+  * Onglet 'Par épreuve': note brute / noteTotal (ex: /60)
+  * Dashboard et 'Vue d'ensemble': moyenne normalisée /20
+- Pattern: GetEpreuveNoteTotal via l'interface ResultatRepository
