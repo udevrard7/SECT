@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["fra1"],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://sect-s1pb.onrender.com/api/:path*"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",

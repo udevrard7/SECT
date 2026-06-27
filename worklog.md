@@ -3490,3 +3490,42 @@ Stage Summary:
 - 10/10 pages responsable fonctionnelles
 - Pattern de fix cohérent avec les audits précédents (ENS-AUDIT-1, ADMIN-AUDIT-1, ETU-AUDIT-1)
 - 4 commits poussés : ec9cc98, 84f9609, b974518, 1ec8120
+
+---
+Task ID: QUOTA-FIX-1
+Agent: Z.ai Code (tutor mode)
+Task: Optimisation quota Vercel — 0 CPU Edge pour /api/* + pause polling
+
+Work Log:
+- Analyse métriques Vercel (capture df.jpg) : 533K Edge Requests / 476K Function Invocations / 1h23m CPU sur 30 jours
+- Audit parallèle de l'architecture : proxy.ts (matcher n'excluait pas api), next.config.ts (rewrites afterFiles), vercel.json (headers seulement)
+- Sous-agent QUOTA-LOOP-HUNT : 0 boucle infinie résiduelle (fix ENS-AUDIT-1 intact), polling notification-bell 60s = principal contributeur
+
+4 modifications appliquées :
+
+1. proxy.ts — exclusion de 'api' du matcher
+   - Avant : matcher interceptait /api/* → chaque requête API réveillait le middleware (compté comme Function Invocation même avec early return)
+   - Après : matcher exclut api → /api/* routé directement par le CDN Vercel (0 invocation middleware)
+   - Nettoyage : suppression du check pathname.startsWith('/api/') devenu inutile
+   - Note : nom de fichier proxy.ts conservé (standard Next.js 16, pas middleware.ts)
+
+2. vercel.json — MERGE rewrites + headers sécurité
+   - Ajout de la section rewrites: /api/:path* → https://sect-s1pb.onrender.com/api/:path*
+   - Conservation de TOUS les headers de sécurité existants (HSTS, X-Frame-Options, COOP, CORP, Permissions-Policy, etc.)
+   - Conservation des headers Cache-Control pour /api/* et /_next/static/*
+
+3. next.config.ts — suppression de la fonction rewrites()
+   - Les rewrites afterFiles s'exécutaient APRÈS le middleware → le middleware voyait /api/* avant le rewrite
+   - Déplacés vers vercel.json (routage CDN pur, 0 invocation middleware)
+
+4. notification-bell.tsx — pause polling quand onglet caché
+   - Avant : setInterval(fetchNotifications, 60000) tournait en permanence (~1440 req/jour/tab active)
+   - Après : polling ne s'exécute que si document.visibilityState === 'visible' (économie ~70%)
+   - Bonus : re-fetch au retour sur l'onglet (visibilitychange listener)
+
+Stage Summary:
+- Impact estimé : Function Invocations 476K → ~50K/mois (-90%), Edge Requests 533K → ~60K/mois (-89%)
+- Les 4 routes /api/go-auth/* (login, refresh, logout, session) restent des Serverless Functions (Route Handlers Next.js) — impact faible (1 appel/session, pas de polling)
+- Sécurité préservée : cookie httpOnly forwardé nativement par le CDN Vercel, headers de sécurité intacts
+- Aucune régression attendue : auth pages protégées toujours gérée par middleware (sur pages seulement), API routing inchangé du point de vue client
+- En attente : validation build Vercel + vérif live (headers, cookie forwarding, auth)

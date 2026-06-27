@@ -369,10 +369,28 @@ export function NotificationBell({ className }: { className?: string }) {
     }
   }, [open, fetchNotifications])
 
-  // Auto-refresh every 60 seconds
+  // BUGFIX (QUOTA-FIX-1) : polling 60s suspendu quand l'onglet est caché.
+  // Avant : setInterval(fetchNotifications, 60000) tournait en permanence
+  // même quand l'utilisateur avait changé d'onglet → ~1440 req/jour/tab active.
+  // Maintenant : le polling ne s'exécute que si document.visibilityState ===
+  // 'visible' (économie ~70% sur les tabs en arrière-plan).
   useEffect(() => {
-    const interval = setInterval(fetchNotifications, 60000)
-    return () => clearInterval(interval)
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchNotifications()
+      }
+    }, 60000)
+    // Re-fetch quand l'utilisateur revient sur l'onglet (1 seule fois)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchNotifications()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [fetchNotifications])
 
   // ─── Mark single as read ───

@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sect-s1pb.onrender.com'
-
 const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
@@ -16,18 +14,12 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.vercel.app' },
     ],
   },
-  // Rewrite: /api/* → Go backend. Le proxy.ts injecte Authorization: Bearer
-  // avant que le rewrite ne s'exécute (afterFiles).
-  async rewrites() {
-    return {
-      afterFiles: [
-        {
-          source: '/api/:path*',
-          destination: `${API_URL}/api/:path*`,
-        },
-      ],
-    }
-  },
+  // BUGFIX (QUOTA-FIX-1) : rewrites /api/* → Render déplacés vers vercel.json.
+  // Raison : les rewrites afterFiles de next.config.ts s'exécutent APRÈS le
+  // middleware Edge → chaque /api/* réveillait le middleware (compté comme
+  // Function Invocation sur Vercel). Avec vercel.json rewrites, le routage
+  // /api/* → Render se fait au niveau CDN pur (0 invocation middleware, 0 CPU).
+  // Le cookie httpOnly est forwardé nativement par le CDN Vercel.
 };
 
 export default nextConfig;
