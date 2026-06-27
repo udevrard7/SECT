@@ -3961,3 +3961,47 @@ Stage Summary:
 - 6 commits nécessaires (3 fixes + 2 build fixes + 1 revert)
 - Pattern: optional chaining + fallback sur tous les .length et .toFixed()
 - Les données DB sont maintenant affichées sur toutes les pages
+
+---
+Task ID: SCORES-NORM-1
+Agent: Z.ai Code (tutor mode)
+Task: Normaliser toutes les moyennes sur /20 (logique métier)
+
+Work Log:
+- Problème : les moyennes affichées étaient brutes (sur /60 car noteTotal=60)
+  au lieu d'être normalisées sur /20 comme défini par la logique métier
+- Règle métier : une note peut être sur /N (ex: /60), mais la moyenne doit
+  toujours être ramenée sur /20. Formule : score / noteTotal * 20
+
+18 calculs de moyenne corrigés dans 2 fichiers (3 commits) :
+
+stats_handlers.go (12 endroits) :
+- statsEnseignant : recentEpreuves, performanceParEpreuve, evolutionMoyennes
+- statsEtudiant : moyenne + meilleure note (JOIN Epreuve ajouté)
+- statsResponsable : moyenneGenerale, resultatsParMatiere, evolutionMoyennes,
+  topEnseignants, topEtudiants, etudiantsEnDifficulte (HAVING < 8/20)
+
+stub_handlers_real3.go (6 endroits) :
+- resultatsOverviewReal : epreuves moyenne, evolution, studentsAtRisk
+- resultatsEtudiantOverviewReal : evolution mensuelle, recentResults (score brut → /20)
+
+Le seuil de réussite (score >= noteTotal * 0.5) était déjà correct
+(utilisait le ratio). Seules les moyennes affichées étaient affectées.
+
+Vérifications live (toutes confirmées ✅) :
+- API /api/resultats/overview → globalMoyenne: 16.86/20 (avant: 50.58 sur /60)
+- API sample epreuve → moyenne: 17.52/20 (avant: 52.57 sur /60)
+- Page /resultats KPIs :
+  * "5 épreuves terminées" ✅
+  * "34 total copies" ✅
+  * "5 corrigées" ✅ (avant: "undefined corrigées")
+  * "16.9/20 moyenne globale" ✅ (avant: "0.0/20" puis "50.58/60")
+  * "100% taux de réussite" ✅
+  * Graphique comparaison avec échelle 0-20 ✅
+- Build Render : live (a9e16e6)
+
+Stage Summary:
+- 18 calculs de moyenne normalisés sur /20 dans tout le backend
+- 0 AVG(score) non normalisé restant (vérification finale grep)
+- Les KPIs de /resultats affichent maintenant les vraies valeurs sur /20
+- La logique métier est respectée : note sur /N, moyenne sur /20
