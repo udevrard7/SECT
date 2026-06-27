@@ -528,6 +528,8 @@ function ModelesTab() {
  }
 
  const handleDuplicate = async () => {
+ // DEBUG-DUP: temporary diagnostic log
+ console.log('[DEBUG-DUP] handleDuplicate called', { hasTarget: !!duplicateTarget, hasUser: !!user, userId: user?.id, titre: duplicateTitre })
  if (!duplicateTarget || !user?.id) return
  setIsDuplicating(true)
  try {
