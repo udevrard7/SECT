@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FileUp,
   FileText,
@@ -370,10 +371,52 @@ function truncateFileName(name: string, maxLen: number = 32): string {
 export function DocumentsPage() {
   const user = useAuthStore((s) => s.user)
   const router = useRouter()
+  const queryClient = useQueryClient()
 
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [ues, setUes] = useState<UE[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // BUGFIX (QUERY-CACHE-1) : migration de useEffect+fetch vers TanStack Query.
+  // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
+  // instantanée. Le polling est géré par refetchInterval (auto-cleanup).
+  const documentsQuery = useQuery<{ documents: Document[] }>({
+    queryKey: ['documents', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/documents?userId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch documents')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000, // 60s : la donnée est fraîche, pas de refetch au retour
+    refetchOnWindowFocus: false,
+    // Polling conditionnel : 10s si des documents sont en cours d'analyse,
+    // sinon pas de polling. auto-cleanup au démontage (pas de fuite).
+    refetchInterval: (query) => {
+      const docs = query.state.data?.documents ?? []
+      const hasAnalysing = docs.some(
+        (d) => d.statutAnalyse === 'EN_COURS' || d.statutAnalyse === 'EN_ATTENTE',
+      )
+      return hasAnalysing ? 10000 : false
+    },
+    refetchIntervalInBackground: false, // arrête si onglet caché
+  })
+
+  const uesQuery = useQuery<{ unitesEnseignement: UE[] }>({
+    queryKey: ['ues', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/unites-enseignement?enseignantId=${user!.id}`)
+      if (!res.ok) throw new Error('Failed to fetch UEs')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000, // 5 min : les UEs changent rarement
+    refetchOnWindowFocus: false,
+  })
+
+  const documents = documentsQuery.data?.documents ?? []
+  const ues = uesQuery.data?.unitesEnseignement ?? []
+  const isLoading = documentsQuery.isLoading || uesQuery.isLoading
+
+  // Helper pour invalider le cache après mutation (upload, delete, etc.)
+  const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['documents', user?.id] })
+
   const [selectedDocument, setSelectedDocument] = useState<DocumentDetail | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DocumentDetail | null>(null)
@@ -400,7 +443,6 @@ export function DocumentsPage() {
   const [isDragging, setIsDragging] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ─── Debounced search ───
@@ -452,65 +494,6 @@ export function DocumentsPage() {
   }, [documents, debouncedSearch, filterUE, filterFileType, filterStatus])
 
   const hasActiveFilters = debouncedSearch.trim() !== '' || filterUE !== '__all__' || filterFileType !== '__all__' || filterStatus !== '__all__'
-
-  // ─── Fetch documents ───
-  const fetchDocuments = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const res = await fetch(`/api/documents?userId=${user.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setDocuments(data.documents ?? [])
-      }
-    } catch {
-      // Silent fail for polling
-    }
-  }, [user?.id])
-
-  // ─── Fetch teacher's UEs ───
-  const fetchUEs = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const res = await fetch(`/api/unites-enseignement?enseignantId=${user.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUes(data.unitesEnseignement ?? [])
-      }
-    } catch {
-      // Silent fail
-    }
-  }, [user?.id])
-
-  // Initial fetch
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      await Promise.all([fetchDocuments(), fetchUEs()])
-      setIsLoading(false)
-    }
-    load()
-  }, [fetchDocuments, fetchUEs])
-
-  // Polling for EN_COURS or EN_ATTENTE documents
-  useEffect(() => {
-    const hasAnalysing = documents.some((d) => d.statutAnalyse === 'EN_COURS' || d.statutAnalyse === 'EN_ATTENTE')
-    if (hasAnalysing) {
-      if (!pollingRef.current) {
-        pollingRef.current = setInterval(fetchDocuments, 5000)
-      }
-    } else {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
-    }
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
-    }
-  }, [documents, fetchDocuments])
 
   // ─── Upload handlers ───
   const validateAndAddFiles = (files: FileList | File[]) => {
@@ -636,7 +619,7 @@ export function DocumentsPage() {
       }
     }
 
-    await fetchDocuments()
+    await refreshDocuments()
 
     // Check if all are done
     setTimeout(() => {
@@ -729,7 +712,7 @@ export function DocumentsPage() {
         next.delete(deleteTarget.id)
         return next
       })
-      await fetchDocuments()
+      await refreshDocuments()
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de supprimer le document.',
@@ -759,7 +742,7 @@ export function DocumentsPage() {
       })
       setSelectedIds(new Set())
       setBulkDeleteOpen(false)
-      await fetchDocuments()
+      await refreshDocuments()
     } catch (err) {
       toast.error('Erreur de suppression', {
         description: err instanceof Error ? err.message : 'Impossible de supprimer les documents.',
@@ -784,7 +767,7 @@ export function DocumentsPage() {
       toast.success('Analyse terminée', {
         description: data.analysis?.resumeCourt || 'Le document a été analysé avec succès.',
       })
-      await fetchDocuments()
+      await refreshDocuments()
       const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
       if (detailRes.ok) {
         const detailData = await detailRes.json()
@@ -794,7 +777,7 @@ export function DocumentsPage() {
       toast.error('Erreur d\'analyse', {
         description: err instanceof Error ? err.message : 'Impossible d\'analyser le document.',
       })
-      await fetchDocuments()
+      await refreshDocuments()
       const detailRes = await fetch(`/api/documents/${selectedDocument.id}`)
       if (detailRes.ok) {
         const detailData = await detailRes.json()
