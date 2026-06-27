@@ -99,6 +99,75 @@ type UniteEnseignement struct {
 	// Relations
 	Filiere       *FiliereRef                `json:"filiere,omitempty"`
 	FilieresSuppl []UniteEnseignementFiliere `json:"filieresSuppl,omitempty"`
+	// BUGFIX (PROG-ACAD-1) : _count et Affectations peuplés par FindByID
+	// pour la page /programme-academique (gestion des UEs).
+	Count         *UECount          `json:"_count,omitempty"`
+	Affectations  []AffectationRef  `json:"affectations,omitempty"`
+}
+
+// UECount est l'objet imbriqué _count (style Prisma) pour les UEs.
+type UECount struct {
+	Affectations int `json:"affectations"`
+}
+
+// AffectationRef est une référence légère à une Affectation (enseignant↔UE).
+type AffectationRef struct {
+	ID               string  `json:"id"`
+	EnseignantID     string  `json:"enseignantId"`
+	TypeSeance       string  `json:"typeSeance"`
+	Groupe           *string `json:"groupe,omitempty"`
+	VolumeHeures     float64 `json:"volumeHeures"`
+	AnneeUniversitaire string `json:"anneeUniversitaire"`
+	Statut           string  `json:"statut"`
+	Commentaire      *string `json:"commentaire,omitempty"`
+	Enseignant       *UserRef `json:"enseignant,omitempty"`
+}
+
+// Affectation représente une affectation enseignant↔UE (table Affectation).
+type Affectation struct {
+	ID                 string    `json:"id"`
+	EnseignantID       string    `json:"enseignantId"`
+	UniteEnseignementID string   `json:"uniteEnseignementId"`
+	TypeSeance         string    `json:"typeSeance"`
+	Groupe             *string   `json:"groupe,omitempty"`
+	VolumeHeures       float64   `json:"volumeHeures"`
+	AnneeUniversitaire string    `json:"anneeUniversitaire"`
+	Statut             string    `json:"statut"`
+	Commentaire        *string   `json:"commentaire,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+	// Relations
+	Enseignant         *UserRef     `json:"enseignant,omitempty"`
+	UniteEnseignement  *UERef       `json:"uniteEnseignement,omitempty"`
+}
+
+// UERef est une référence légère à une UE (pour les affectations).
+type UERef struct {
+	ID    string `json:"id"`
+	Code  string `json:"code"`
+	Nom   string `json:"nom"`
+	Niveau string `json:"niveau"`
+}
+
+// CreateAffectationInput pour créer une affectation enseignant↔UE.
+type CreateAffectationInput struct {
+	EnseignantID        string  `json:"enseignantId"`
+	UniteEnseignementID string  `json:"uniteEnseignementId"`
+	TypeSeance          string  `json:"typeSeance"`
+	Groupe              *string `json:"groupe,omitempty"`
+	VolumeHeures        float64 `json:"volumeHeures"`
+	AnneeUniversitaire  string  `json:"anneeUniversitaire"`
+	Statut              string  `json:"statut"`
+	Commentaire         *string `json:"commentaire,omitempty"`
+}
+
+// UpdateAffectationInput pour mettre à jour une affectation (partial update).
+type UpdateAffectationInput struct {
+	TypeSeance         *string  `json:"typeSeance,omitempty"`
+	Groupe             *string  `json:"groupe,omitempty"`
+	VolumeHeures       *float64 `json:"volumeHeures,omitempty"`
+	Statut             *string  `json:"statut,omitempty"`
+	Commentaire        *string  `json:"commentaire,omitempty"`
 }
 
 // UniteEnseignementFiliere est la table de liaison (UE partagée avec d'autres filières).

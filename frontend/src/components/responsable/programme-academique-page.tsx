@@ -95,8 +95,8 @@ interface UEItem {
   obligatoire: boolean
   actif: boolean
   createdAt: string
-  filiere: { id: string; nom: string; code: string | null }
-  _count: { affectations: number }
+  filiere?: { id: string; nom: string; code: string | null }
+  _count?: { affectations: number }
   affectations?: AffectationItem[]
   filieresSuppl?: { id: string; filiereId: string; filiere: { id: string; nom: string; code: string | null } }[]
 }
@@ -1145,9 +1145,9 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {viewingUE.affectations.map((aff) => (
+                    {(viewingUE.affectations ?? []).map((aff) => (
                       <TableRow key={aff.id}>
-                        <TableCell className="font-medium">{aff.enseignant.name}</TableCell>
+                        <TableCell className="font-medium">{aff.enseignant?.name ?? "—"}</TableCell>
                         <TableCell>{TYPE_SEANCE_LABELS[aff.typeSeance] || aff.typeSeance}</TableCell>
                         <TableCell>{aff.volumeHeures}h</TableCell>
                         <TableCell>
@@ -1428,8 +1428,8 @@ function UETableRow({
           )}
         </TableCell>
         <TableCell className="text-center hidden sm:table-cell">
-          <Badge variant="secondary" className={`text-xs ${ue._count.affectations > 0 ? 'bg-success/10 text-success-text' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
-            {ue._count.affectations}
+          <Badge variant="secondary" className={`text-xs ${ue._count?.affectations && ue._count.affectations > 0 ? 'bg-success/10 text-success-text' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+            {ue._count?.affectations ?? 0}
           </Badge>
         </TableCell>
         <TableCell className="text-right font-mono tabular-nums">
@@ -1452,7 +1452,7 @@ function UETableRow({
           <TableCell colSpan={10}>
             <div className="py-2 pl-8">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-medium text-muted-foreground">Affectations ({ue._count.affectations})</span>
+                <span className="text-xs font-medium text-muted-foreground">Affectations ({ue._count?.affectations ?? 0})</span>
                 <Badge className={`text-xs ${NIVEAU_COLORS[ue.niveau] || ''}`}>{ue.niveau}</Badge>
                 <div className="flex items-center gap-1">
                   {allFilieres.map((f) => (
@@ -1484,7 +1484,7 @@ function UETableRow({
                     <TableBody>
                       {ue.affectations.map((aff) => (
                         <TableRow key={aff.id}>
-                          <TableCell className="text-sm">{aff.enseignant.name}</TableCell>
+                          <TableCell className="text-sm">{aff.enseignant?.name ?? "—"}</TableCell>
                           <TableCell className="text-sm">{TYPE_SEANCE_LABELS[aff.typeSeance] || aff.typeSeance}</TableCell>
                           <TableCell className="text-sm">{aff.volumeHeures}h</TableCell>
                           <TableCell>

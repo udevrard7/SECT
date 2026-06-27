@@ -69,13 +69,72 @@ func (r *UERepository) FindByID(ctx context.Context, id string) (*domain.UniteEn
 
 	var ue *domain.UniteEnseignement
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "UniteEnseignement" WHERE "id" = $1`, columnsUE), id)
-		u, err := scanUE(row)
+		// BUGFIX (PROG-ACAD-1) : LEFT JOIN Filiere + subquery _count +
+		// affectations pour la page /programme-academique (gestion des UEs).
+		// Avant, FindByID retournait un UE bare (Filiere=nil, pas de _count,
+		// pas d'affectations) → crash frontend sur ue.filiere.nom,
+		// ue._count.affectations, ue.affectations.
+		row := tx.QueryRow(ctx, fmt.Sprintf(`
+			SELECT %s, f."id", f."nom", f."code",
+			       (SELECT count(*) FROM "Affectation" a WHERE a."uniteEnseignementId" = "UniteEnseignement"."id")
+			FROM "UniteEnseignement"
+			LEFT JOIN "Filiere" f ON f."id" = "UniteEnseignement"."filiereId"
+			WHERE "UniteEnseignement"."id" = $1
+		`, columnsUEQualified), id)
+		u := &domain.UniteEnseignement{}
+		var filID, filNom *string
+		var filCode *string
+		var affCount int
+		err := row.Scan(
+			&u.ID, &u.Code, &u.Nom, &u.Description, &u.FiliereID, &u.Niveau, &u.Niveaux,
+			&u.Semestre, &u.CreditsECTS, &u.VolumeHeuresCM, &u.VolumeHeuresTD, &u.VolumeHeuresTP,
+			&u.Obligatoire, &u.Actif, &u.CreatedAt, &u.UpdatedAt,
+			&filID, &filNom, &filCode, &affCount,
+		)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
 			}
 			return fmt.Errorf("query ue: %w", err)
+		}
+		if filID != nil && filNom != nil {
+			u.Filiere = &domain.FiliereRef{
+				ID:   *filID,
+				Nom:  *filNom,
+				Code: derefStr(filCode),
+			}
+		}
+		u.Count = &domain.UECount{Affectations: affCount}
+		u.Affectations = []domain.AffectationRef{}
+
+		// Charger les affectations de cette UE (enseignant↔UE)
+		affRows, err := tx.Query(ctx, `
+			SELECT a."id", a."enseignantId", a."typeSeance", a."groupe",
+			       a."volumeHeures", a."anneeUniversitaire", a."statut", a."commentaire",
+			       u."id", u."name", u."email"
+			FROM "Affectation" a
+			LEFT JOIN "User" u ON u."id" = a."enseignantId"
+			WHERE a."uniteEnseignementId" = $1
+			ORDER BY a."createdAt" DESC
+		`, id)
+		if err == nil {
+			defer affRows.Close()
+			for affRows.Next() {
+				aff := domain.AffectationRef{}
+				var ensID, ensName, ensEmail *string
+				if err := affRows.Scan(&aff.ID, &aff.EnseignantID, &aff.TypeSeance, &aff.Groupe,
+					&aff.VolumeHeures, &aff.AnneeUniversitaire, &aff.Statut, &aff.Commentaire,
+					&ensID, &ensName, &ensEmail); err == nil {
+					if ensID != nil && ensName != nil {
+						aff.Enseignant = &domain.UserRef{
+							ID:    *ensID,
+							Name:  *ensName,
+							Email: derefStr(ensEmail),
+						}
+					}
+					u.Affectations = append(u.Affectations, aff)
+				}
+			}
 		}
 		ue = u
 		return nil
@@ -437,13 +496,23 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
 		argIdx := 1
 
 		if params.EnseignantID != "" {
-			where = append(where, fmt.Sprintf(`"enseignantId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`ef."enseignantId" = $%d`, argIdx))
 			args = append(args, params.EnseignantID)
 			argIdx++
 		}
 		if params.FiliereID != "" {
-			where = append(where, fmt.Sprintf(`"filiereId" = $%d`, argIdx))
+			where = append(where, fmt.Sprintf(`ef."filiereId" = $%d`, argIdx))
 			args = append(args, params.FiliereID)
+			argIdx++
+		}
+		// BUGFIX (PROG-ACAD-3) : filtre etablissementId ignoré jusqu'ici.
+		// Le handler le parse et le usecase le transmet, mais le repo le
+		// silencait → RLS était le seul filtre → 0 rows si claim mismatch.
+		if params.EtablissementID != "" {
+			where = append(where, fmt.Sprintf(`EXISTS (
+				SELECT 1 FROM "Filiere" f2
+				WHERE f2."id" = ef."filiereId" AND f2."etablissementId" = $%d)`, argIdx))
+			args = append(args, params.EtablissementID)
 			argIdx++
 		}
 
