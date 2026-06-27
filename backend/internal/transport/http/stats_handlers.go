@@ -307,7 +307,7 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		http.Error(w, `{"error":"failed to load teacher stats"}`, http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error":"failed to load teacher stats","detail":"%s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 
