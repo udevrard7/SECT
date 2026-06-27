@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 
 /**
@@ -27,6 +27,22 @@ export function useSessionKeepAlive() {
   const refreshSession = useAuthStore((s) => s.refreshSession)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Check silencieux : ne modifie PAS isLoading (0 flash).
+  // Déclaré via useCallback pour être stable (évite re-renders).
+  const silentSessionCheck = useCallback(async () => {
+    try {
+      const res = await fetch('/api/go-auth/session')
+      const data = await res.json()
+      if (!data.user && !data.transient) {
+        // Session vraiment invalide (pas transitoire) → logout propre
+        refreshSession()
+      }
+      // Si data.user ou data.transient → ne rien faire (silencieux)
+    } catch {
+      // Erreur réseau → ne rien faire (silencieux, ne pas déconnecter)
+    }
+  }, [refreshSession])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -65,25 +81,5 @@ export function useSessionKeepAlive() {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [isAuthenticated, refreshSession])
-
-  /**
-   * Check silencieux de la session SANS modifier isLoading.
-   * Appelle /api/go-auth/session en arrière-plan. Si l'utilisateur est
-   * toujours valide, ne fait rien (0 re-render). Si invalide, déclenche
-   * refreshSession (qui gère le logout proprement).
-   */
-  async function silentSessionCheck() {
-    try {
-      const res = await fetch('/api/go-auth/session')
-      const data = await res.json()
-      if (!data.user && !data.transient) {
-        // Session vraiment invalide (pas transitoire) → logout propre
-        refreshSession()
-      }
-      // Si data.user ou data.transient → ne rien faire (silencieux)
-    } catch {
-      // Erreur réseau → ne rien faire (silencieux, ne pas déconnecter)
-    }
-  }
+  }, [isAuthenticated, silentSessionCheck])
 }
