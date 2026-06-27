@@ -4225,3 +4225,20 @@ Stage Summary:
 - Les scores sont normalisés sur /20
 - Pattern: LEFT JOIN User + Filiere dans ListByEpreuve (même pattern que
   toutes les autres corrections de relation manquante)
+
+---
+Task ID: RESULTATS-TABS-1-VERIFY
+Agent: Z.ai Code (tutor mode)
+Task: Vérification KPI 'Total étudiants évalués' sur /resultats onglet Étudiants
+
+Work Log:
+- Bug: KPI 'Total étudiants évalués' affichait 0
+- Cause: le KPI était calculé comme studentsAtRisk.size + atRiskCount
+  (= 0 + 0 = 0) au lieu d'utiliser le nombre réel de sessions évaluées
+- Fix: utiliser overview.totalSessions (34) qui représente le nombre
+  total de sessions passées = nombre d'étudiants évalués
+
+Vérification live ✅ :
+- KPI 'Total étudiants évalués': **34** (avant: 0) ✅
+- KPI 'Étudiants en difficulté': 0 (correct, aucun < 8/20) ✅
+- KPI 'Étudiants en réussite': **34** (avant: 0) ✅
