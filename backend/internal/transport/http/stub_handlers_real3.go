@@ -196,24 +196,25 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type overviewEpreuve struct {
-		ID            string   `json:"id"`
-		Titre         string   `json:"titre"`
-		NbParticipants int     `json:"nbParticipants"`
-		Moyenne       *float64 `json:"moyenne,omitempty"`
-		TauxReussite  float64  `json:"tauxReussite"`
-		DateCloture   *string  `json:"dateCloture,omitempty"`
+		ID             string   `json:"id"`
+		Titre          string   `json:"titre"`
+		NbParticipants int      `json:"nbParticipants"`
+		Moyenne        *float64 `json:"moyenne,omitempty"`
+		TauxReussite   float64  `json:"tauxReussite"`
+		Mediane        float64  `json:"mediane"`
 	}
 	type overviewEvolution struct {
-		Mois          string  `json:"mois"`
-		Moyenne       float64 `json:"moyenne"`
-		NbEvaluations int     `json:"nbEvaluations"`
+		Mois    string  `json:"mois"`
+		Moyenne float64 `json:"moyenne"`
+		Count   int     `json:"count"`
 	}
 	type studentAtRisk struct {
-		ID       string  `json:"id"`
-		Name     string  `json:"name"`
-		Email    string  `json:"email"`
-		Moyenne  float64 `json:"moyenne"`
-		Filiere  string  `json:"filiere"`
+		EtudiantID     string  `json:"etudiantId"`
+		EtudiantName   string  `json:"etudiantName"`
+		EtudiantEmail  string  `json:"etudiantEmail"`
+		NbExamens      int     `json:"nbExamens"`
+		Moyenne        float64 `json:"moyenne"`
+		DerniereNote   float64 `json:"derniereNote"`
 	}
 	type topQuestion struct {
 		ID            string  `json:"id"`
@@ -296,7 +297,7 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 			defer rows2.Close()
 			for rows2.Next() {
 				ev := overviewEvolution{}
-				if err := rows2.Scan(&ev.Mois, &ev.Moyenne, &ev.NbEvaluations); err == nil {
+				if err := rows2.Scan(&ev.Mois, &ev.Moyenne, &ev.Count); err == nil {
 					evolution = append(evolution, ev)
 				}
 			}
@@ -320,7 +321,10 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 			defer rows3.Close()
 			for rows3.Next() {
 				sr := studentAtRisk{}
-				if err := rows3.Scan(&sr.ID, &sr.Name, &sr.Email, &sr.Moyenne, &sr.Filiere); err == nil {
+				var nbExam int
+				if err := rows3.Scan(&sr.EtudiantID, &sr.EtudiantName, &sr.EtudiantEmail, &nbExam, &sr.Moyenne); err == nil {
+					sr.NbExamens = nbExam
+					sr.DerniereNote = sr.Moyenne
 					studentsAtRisk = append(studentsAtRisk, sr)
 				}
 			}
@@ -329,12 +333,36 @@ func (s *Server) resultatsOverviewReal(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	// Compute scalar stats
+	totalEpreuves := len(epreuves)
+	totalSessions := 0
+	totalCorrigees := 0
+	var globalMoy float64
+	var globalTaux float64
+	for _, ep := range epreuves {
+		totalSessions += ep.NbParticipants
+		if ep.Moyenne != nil {
+			globalMoy += *ep.Moyenne
+			totalCorrigees++
+		}
+		globalTaux += ep.TauxReussite
+	}
+	if totalEpreuves > 0 {
+		globalMoy /= float64(totalEpreuves)
+		globalTaux /= float64(totalEpreuves)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"epreuves":       epreuves,
-		"evolution":      evolution,
-		"studentsAtRisk": studentsAtRisk,
-		"topQuestions":   topQuestions,
+		"totalEpreuves":      totalEpreuves,
+		"totalSessions":      totalSessions,
+		"totalCorrigees":     totalCorrigees,
+		"globalMoyenne":      globalMoy,
+		"globalTauxReussite": globalTaux,
+		"epreuves":           epreuves,
+		"evolution":          evolution,
+		"studentsAtRisk":     studentsAtRisk,
+		"topQuestions":       topQuestions,
 	})
 }
 
@@ -394,7 +422,7 @@ func (s *Server) resultatsEtudiantOverviewReal(w http.ResponseWriter, r *http.Re
 			defer rows.Close()
 			for rows.Next() {
 				ev := evolPoint{}
-				if err := rows.Scan(&ev.Mois, &ev.Moyenne, &ev.NbEvaluations); err == nil {
+				if err := rows.Scan(&ev.Mois, &ev.Moyenne, &ev.Count); err == nil {
 					evolution = append(evolution, ev)
 				}
 			}

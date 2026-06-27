@@ -38,6 +38,10 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ data }: OverviewTabProps) {
+  const epreuves = data?.epreuves ?? []
+  const evolution = data?.evolution ?? []
+  const studentsAtRisk = data?.studentsAtRisk ?? []
+
   const comparisonData = useMemo(
     () =>
       data.epreuves
@@ -116,7 +120,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
       {/* Étudiants en difficulté + Questions à risque */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <StudentsAtRiskList students={data.studentsAtRisk} />
+        <StudentsAtRiskList students={studentsAtRisk} />
 
         {/* Top questions les plus ratées */}
         <Card className="border-l-4 border-l-red-500">
