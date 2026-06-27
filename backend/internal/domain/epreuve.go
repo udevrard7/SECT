@@ -223,6 +223,9 @@ type Epreuve struct {
 	// BUGFIX (ETU-AUDIT-1b) : Enseignant peuplé par LEFT JOIN User dans List.
 	// Le frontend affiche ep.enseignant.name dans /mes-epreuves.
 	Enseignant *UserRef `json:"enseignant,omitempty"`
+	// BUGFIX (FILIERE-FIX-1b) : Filiere peuplé par LEFT JOIN Filiere dans List.
+	// Le frontend affiche ep.filiere.nom + ep.niveau dans /mes-epreuves.
+	Filiere *FiliereRef `json:"filiere,omitempty"`
 }
 
 // SessionRef est une référence légère à une SessionPassation (pour /mes-epreuves).
