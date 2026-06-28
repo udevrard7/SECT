@@ -1,15 +1,42 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Plus, BookOpen, Calendar, Edit3, Send, Trash2, Eye, Lock,
-  Search, X, Loader2, FileText, Users, Star, Archive,
-  Sparkles, Copy, Clock, Upload, BarChart3, TrendingUp, AlertCircle,
-  ChevronDown, ChevronUp, PlusCircle, MinusCircle,
-  Timer, Paperclip, UsersRound, Download,
-  CheckCircle2, FileSpreadsheet, MessageSquare, GraduationCap,
-  Info, Zap, Layers, Radio, RefreshCw, FileWarning, Settings2,
+  BookOpen,
+  Calendar,
+  Edit3,
+  Send,
+  Trash2,
+  Lock,
+  Search,
+  Loader2,
+  FileText,
+  Users,
+  Star,
+  Archive,
+  Sparkles,
+  Copy,
+  Clock,
+  BarChart3,
+  TrendingUp,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  PlusCircle,
+  MinusCircle,
+  Paperclip,
+  Download,
+  CheckCircle2,
+  Info,
+  RefreshCw,
+  Settings2,
+  Radio,
+  FileWarning,
+  X,
+  Eye,
+  ListChecks,
+  Inbox,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -21,31 +48,50 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import {
-  Dialog, DialogContent, DialogDescription,
-  DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  Select, SelectContent, SelectItem,
-  SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select'
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
 } from '@/components/ui/sheet'
 import { Slider } from '@/components/ui/slider'
-import { PulseSkeleton, StatCard } from '@/components/ds'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  Tooltip as RechartsTooltip, CartesianGrid,
-} from 'recharts'
+  EntityCard,
+  GlassModal,
+  PulseSkeleton,
+  StatCard,
+  StatCardSkeletonGrid,
+  ProgressRing,
+  RewardToast,
+} from '@/components/ds'
 import { toast } from 'sonner'
 import type {
-  Devoir, Soumission, CritereGrille, UniteEnseignement,
-  StatutDevoir, DevoirStats,
+  Devoir,
+  Soumission,
+  CritereGrille,
+  UniteEnseignement,
+  StatutDevoir,
+  DevoirStats,
+  StatutIA,
 } from '@/lib/devoirs-types'
 
 // ═══════════════════════════════════════════
@@ -63,11 +109,16 @@ const TAB_FILTERS = {
 type TabKey = keyof typeof TAB_FILTERS
 type SortField = 'dateLimite' | 'titre' | 'createdAt' | 'noteMax'
 
-function formatDateTime(date: string | Date): string {
+function formatDateTime(date: string | Date | null | undefined): string {
+  if (!date) return '—'
   const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('fr-FR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -80,68 +131,17 @@ function isOverdue(dateLimite: string): boolean {
   return new Date(dateLimite) < new Date()
 }
 
-function getTimeRemaining(dateLimite: string): { text: string; urgent: boolean } {
+function getTimeRemaining(dateLimite: string): { text: string; urgent: boolean; overdue: boolean } {
   const now = new Date()
   const deadline = new Date(dateLimite)
   const diff = deadline.getTime() - now.getTime()
-  if (diff <= 0) return { text: 'Échu', urgent: true }
+  if (diff <= 0) return { text: 'Échu', urgent: true, overdue: true }
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  if (days > 7) return { text: `${days}j restants`, urgent: false }
-  if (days > 0) return { text: `${days}j ${hours}h`, urgent: days <= 2 }
-  if (hours > 0) return { text: `${hours}h`, urgent: true }
-  return { text: '< 1h', urgent: true }
-}
-
-function getTypeSeanceLabel(type: string): string {
-  return ({ CM: 'Cours Magistral', TD: 'Travail Dirigé', TP: 'Travail Pratique' } as Record<string, string>)[type] ?? type
-}
-function getTypeSeanceShort(type: string): string {
-  return ({ CM: 'CM', TD: 'TD', TP: 'TP' } as Record<string, string>)[type] ?? type
-}
-
-/** Classes Savane par type de séance */
-function typeSeanceClasses(type: string): { badge: string; dot: string; glow: string } {
-  switch (type) {
-    case 'CM':
-      return { badge: 'border-info/40 bg-info/10 text-info', dot: 'bg-info', glow: '' }
-    case 'TD':
-      return { badge: 'border-primary/40 bg-primary/10 text-primary-text', dot: 'bg-primary', glow: '' }
-    case 'TP':
-      return { badge: 'border-secondary/40 bg-secondary/10 text-secondary', dot: 'bg-secondary', glow: '' }
-    default:
-      return { badge: 'border-border bg-muted text-muted-foreground', dot: 'bg-muted-foreground', glow: '' }
-  }
-}
-
-function statutDevoirConfig(statut: StatutDevoir) {
-  switch (statut) {
-    case 'BROUILLON':
-      return { icon: Edit3, label: 'Brouillon', badge: 'border-border bg-muted text-muted-foreground' }
-    case 'PUBLIE':
-      return { icon: Send, label: 'Publié', badge: 'border-success/30 bg-success/15 text-success-text' }
-    case 'FERME':
-      return { icon: Lock, label: 'Fermé', badge: 'border-warning/30 bg-warning/15 text-warning' }
-    case 'ARCHIVE':
-      return { icon: Archive, label: 'Archivé', badge: 'border-secondary/30 bg-secondary/15 text-secondary' }
-    default:
-      return { icon: Edit3, label: statut, badge: 'border-border bg-muted text-muted-foreground' }
-  }
-}
-
-function statutSoumissionConfig(statut: string) {
-  switch (statut) {
-    case 'BROUILLON':
-      return { label: 'Brouillon', badge: 'border-border bg-muted text-muted-foreground' }
-    case 'SOUMIS':
-      return { label: 'En attente', badge: 'border-info/30 bg-info/15 text-info' }
-    case 'CORRIGE':
-      return { label: 'Corrigé', badge: 'border-success/30 bg-success/15 text-success-text' }
-    case 'RETOURNE':
-      return { label: 'Rendu', badge: 'border-secondary/30 bg-secondary/15 text-secondary' }
-    default:
-      return { label: statut, badge: 'border-border bg-muted text-muted-foreground' }
-  }
+  if (days > 7) return { text: `${days}j restants`, urgent: false, overdue: false }
+  if (days > 0) return { text: `${days}j ${hours}h`, urgent: days <= 2, overdue: false }
+  if (hours > 0) return { text: `${hours}h`, urgent: true, overdue: false }
+  return { text: '< 1h', urgent: true, overdue: false }
 }
 
 function toLocalDatetimeString(dateStr: string | null | undefined): string {
@@ -151,24 +151,117 @@ function toLocalDatetimeString(dateStr: string | null | undefined): string {
     if (isNaN(d.getTime())) return ''
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  } catch { return '' }
+  } catch {
+    return ''
+  }
 }
 
-/** Échappe proprement une cellule CSV (gère retours-ligne et guillemets) */
+function bytesToMo(bytes: number): number {
+  if (!bytes || bytes <= 0) return 0
+  return Math.round((bytes / (1024 * 1024)) * 10) / 10
+}
+
 function csvCell(v: unknown): string {
   const s = String(v ?? '')
   return `"${s.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`
 }
 
 function generateCSV(devoir: Devoir, soumissions: Soumission[]): string {
-  const header = ['Étudiant', 'Matricule', 'Email', 'Statut', 'Date de rendu', `Note (/${devoir.noteMax})`, 'Commentaire']
-  const rows = soumissions.map(s => [
-    s.User?.name ?? '', s.User?.matricule ?? '', s.User?.email ?? '',
-    s.statut, s.renduAt ? formatDateTime(s.renduAt) : '',
-    s.note !== null ? String(s.note) : '', s.commentaireEnseignant ?? '',
+  const header = [
+    'Étudiant',
+    'Matricule',
+    'Email',
+    'Statut',
+    'Date de rendu',
+    `Note (/${devoir.noteMax})`,
+    'Note IA',
+    'Commentaire enseignant',
+  ]
+  const rows = soumissions.map((s) => [
+    s.User?.name ?? '',
+    s.User?.matricule ?? '',
+    s.User?.email ?? '',
+    s.statut,
+    s.renduAt ? formatDateTime(s.renduAt) : '',
+    s.note !== null ? String(s.note) : '',
+    s.noteIA !== null ? String(s.noteIA) : '',
+    s.commentaireEnseignant ?? '',
   ])
-  const csvContent = [header, ...rows].map(row => row.map(csvCell).join(',')).join('\n')
+  const csvContent = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\n')
   return '\uFEFF' + csvContent
+}
+
+// ─── Couleurs Savane par statut / type ───
+
+function statutDevoirConfig(statut: StatutDevoir) {
+  switch (statut) {
+    case 'BROUILLON':
+      return { icon: Edit3, label: 'Brouillon', badge: 'border-border bg-muted text-muted-foreground' as const }
+    case 'PUBLIE':
+      return { icon: Send, label: 'Publié', badge: 'border-success/30 bg-success/15 text-success-text' as const }
+    case 'FERME':
+      return { icon: Lock, label: 'Fermé', badge: 'border-warning/30 bg-warning/15 text-warning' as const }
+    case 'ARCHIVE':
+      return { icon: Archive, label: 'Archivé', badge: 'border-secondary/30 bg-secondary/15 text-secondary' as const }
+    default:
+      return { icon: Edit3, label: statut, badge: 'border-border bg-muted text-muted-foreground' as const }
+  }
+}
+
+function statutSoumissionBadge(statut: string) {
+  switch (statut) {
+    case 'BROUILLON':
+      return 'border-border bg-muted text-muted-foreground'
+    case 'SOUMIS':
+      return 'border-info/30 bg-info/15 text-info'
+    case 'CORRIGE':
+      return 'border-success/30 bg-success/15 text-success-text'
+    case 'RETOURNE':
+      return 'border-secondary/30 bg-secondary/15 text-secondary'
+    default:
+      return 'border-border bg-muted text-muted-foreground'
+  }
+}
+
+function statutIaConfig(statutIA: StatutIA | undefined) {
+  switch (statutIA) {
+    case 'EN_ATTENTE':
+      return { label: 'IA en attente', badge: 'border-muted bg-muted text-muted-foreground', spinner: false }
+    case 'EN_COURS':
+      return { label: 'IA en cours…', badge: 'border-info/30 bg-info/15 text-info', spinner: true }
+    case 'TERMINE':
+      return { label: 'IA terminée', badge: 'border-success/30 bg-success/15 text-success-text', spinner: false }
+    case 'ERREUR':
+      return { label: 'IA en erreur', badge: 'border-destructive/30 bg-destructive/15 text-destructive', spinner: false }
+    default:
+      return { label: 'IA non demandée', badge: 'border-border bg-muted text-muted-foreground', spinner: false }
+  }
+}
+
+function typeSeanceBadge(type: string) {
+  switch (type) {
+    case 'CM':
+      return 'border-info/40 bg-info/10 text-info'
+    case 'TD':
+      return 'border-primary/40 bg-primary/10 text-primary-text'
+    case 'TP':
+      return 'border-secondary/40 bg-secondary/10 text-secondary'
+    default:
+      return 'border-border bg-muted text-muted-foreground'
+  }
+}
+
+function typeSeanceIcon(type: string) {
+  switch (type) {
+    case 'CM':
+      return BookOpen
+    case 'TD':
+      return ListChecks
+    case 'TP':
+      return Settings2
+    default:
+      return BookOpen
+  }
 }
 
 // ─── Debounce hook ───
@@ -182,7 +275,7 @@ function useDebounce<T>(value: T, delay = 350): T {
 }
 
 // ═══════════════════════════════════════════
-//  MAIN COMPONENT
+//  MAIN COMPONENT — Page enseignant "Mes Devoirs"
 // ═══════════════════════════════════════════
 
 export function DevoirsPage() {
@@ -197,7 +290,6 @@ export function DevoirsPage() {
   const debouncedSearch = useDebounce(searchInput)
   const [sortField, setSortField] = useState<SortField>('dateLimite')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [activeView, setActiveView] = useState<'grid' | 'analysis'>('grid')
 
   // ─── Create/Edit dialog ───
   const [formDialogOpen, setFormDialogOpen] = useState(false)
@@ -206,7 +298,7 @@ export function DevoirsPage() {
   const [formTitre, setFormTitre] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formUniteEnseignementId, setFormUniteEnseignementId] = useState('')
-  const [formTypeSeance, setFormTypeSeance] = useState('TD')
+  const [formTypeSeance, setFormTypeSeance] = useState<'CM' | 'TD' | 'TP'>('TD')
   const [formDateLimite, setFormDateLimite] = useState('')
   const [formDatePublication, setFormDatePublication] = useState('')
   const [formNoteMax, setFormNoteMax] = useState(20)
@@ -214,12 +306,11 @@ export function DevoirsPage() {
   const [formRenduFichiers, setFormRenduFichiers] = useState(false)
   const [formSoumissionGroupe, setFormSoumissionGroupe] = useState(false)
   const [formNbMaxFichiers, setFormNbMaxFichiers] = useState(5)
-  const [formTailleMaxFichier, setFormTailleMaxFichier] = useState(10)
-  const [formGrilleCriteres, setFormGrilleCriteres] = useState<CritereGrille[]>([{ nom: '', description: '', poids: 1 }])
+  const [formTailleMaxFichier, setFormTailleMaxFichier] = useState(10) // en Mo (UI)
+  const [formGrilleCriteres, setFormGrilleCriteres] = useState<CritereGrille[]>([
+    { nom: '', description: '', poids: 1 },
+  ])
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false)
-
-  // ─── UE data ───
-  // (chargé via useQuery ci-dessous, plus bas)
 
   // ─── Confirmation dialogs ───
   const [deleteTarget, setDeleteTarget] = useState<Devoir | null>(null)
@@ -228,8 +319,6 @@ export function DevoirsPage() {
   // ─── Soumissions sheet ───
   const [soumissionsSheetOpen, setSoumissionsSheetOpen] = useState(false)
   const [selectedDevoirForSoumissions, setSelectedDevoirForSoumissions] = useState<Devoir | null>(null)
-  const [soumissions, setSoumissions] = useState<Soumission[]>([])
-  const [isLoadingSoumissions, setIsLoadingSoumissions] = useState(false)
   const [soumissionSortField, setSoumissionSortField] = useState<string>('renduAt')
   const [soumissionSortDir, setSoumissionSortDir] = useState<'asc' | 'desc'>('desc')
   const [expandedSoumissionId, setExpandedSoumissionId] = useState<string | null>(null)
@@ -241,21 +330,20 @@ export function DevoirsPage() {
 
   // ─── Grade dialog ───
   const [gradeDialogOpen, setGradeDialogOpen] = useState(false)
-  const [gradingSoumission, setGradingSoumission] = useState<Soumission | null>(null)
+  const [gradingSoumissionId, setGradingSoumissionId] = useState<string | null>(null)
   const [gradeNote, setGradeNote] = useState('')
   const [gradeCommentaire, setGradeCommentaire] = useState('')
   const [isSubmittingGrade, setIsSubmittingGrade] = useState(false)
   const [isAiGrading, setIsAiGrading] = useState(false)
 
+  // ─── Reward toast (création/duplication) ───
+  const [rewardToast, setRewardToast] = useState<{ title: string; description?: string } | null>(null)
+
   // ═══════════════════════════════════════
-  //  DATA FETCHING (BUGFIX QUERY-MIGRATION-1 : TanStack Query)
+  //  DATA FETCHING (TanStack Query)
   // ═══════════════════════════════════════
 
-  // NOTE : l'API /api/devoirs ne prend pas les filtres en paramètres —
-  // le filtrage/tri se fait côté client (filteredDevoirs useMemo plus bas).
-  // Le queryKey n'inclut donc QUE user.id (comme les deps du useCallback
-  // original). staleTime 60s -> pas de refetch au retour navigation.
-  const devoirsQuery = useQuery<{ devoirs: Devoir[] }>({
+  const devoirsQuery = useQuery<{ devoirs: Devoir[]; total: number }>({
     queryKey: ['devoirs', user?.id],
     queryFn: async () => {
       const res = await fetch(`/api/devoirs?enseignantId=${user!.id}`)
@@ -273,9 +361,9 @@ export function DevoirsPage() {
   const devoirs = devoirsQuery.data?.devoirs ?? []
   const isLoading = devoirsQuery.isLoading
   const loadError = devoirsQuery.error
-    ? (devoirsQuery.error instanceof Error
-        ? devoirsQuery.error.message
-        : 'Impossible de charger les devoirs')
+    ? devoirsQuery.error instanceof Error
+      ? devoirsQuery.error.message
+      : 'Impossible de charger les devoirs'
     : null
 
   const statsQuery = useQuery<DevoirStats>({
@@ -299,22 +387,16 @@ export function DevoirsPage() {
       if (!res.ok) throw new Error('Failed to fetch UEs')
       return res.json()
     },
-    // Pas de enabled: !!user?.id ici — l'original appelait /api/unites-enseignement
-    // dans un useEffect avec deps [] (pas conditionnel à user). On garde ce
-    // comportement : la query est active immédiatement.
-    staleTime: 5 * 60 * 1000, // 5 min : les UEs changent rarement
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 
   const unitesEnseignement = uesQuery.data?.unitesEnseignement ?? []
 
-  // Helpers pour invalider le cache après mutation (create/update/delete/status).
-  const refreshDevoirs = () => {
+  const refreshDevoirs = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['devoirs', user?.id] })
     queryClient.invalidateQueries({ queryKey: ['devoirs-stats', user?.id] })
-  }
-  const refreshStats = () =>
-    queryClient.invalidateQueries({ queryKey: ['devoirs-stats', user?.id] })
+  }, [queryClient, user?.id])
 
   // ═══════════════════════════════════════
   //  FILTERING & SORTING
@@ -324,47 +406,72 @@ export function DevoirsPage() {
 
   const filteredDevoirs = useMemo(() => {
     let result = [...devoirs]
-    if (tabStatut) result = result.filter(d => d.statut === tabStatut)
-    if (ueFilter !== 'all') result = result.filter(d => d.uniteEnseignementId === ueFilter)
-    if (typeSeanceFilter !== 'all') result = result.filter(d => d.typeSeance === typeSeanceFilter)
+    if (tabStatut) result = result.filter((d) => d.statut === tabStatut)
+    if (ueFilter !== 'all') result = result.filter((d) => d.uniteEnseignementId === ueFilter)
+    if (typeSeanceFilter !== 'all') result = result.filter((d) => d.typeSeance === typeSeanceFilter)
     if (debouncedSearch.trim()) {
       const q = debouncedSearch.toLowerCase()
-      result = result.filter(d =>
-        d.titre.toLowerCase().includes(q) ||
-        (d.description?.toLowerCase().includes(q)) ||
-        d.UniteEnseignement?.nom?.toLowerCase().includes(q) ||
-        d.UniteEnseignement?.code?.toLowerCase().includes(q)
+      result = result.filter(
+        (d) =>
+          d.titre.toLowerCase().includes(q) ||
+          (d.description?.toLowerCase().includes(q)) ||
+          d.UniteEnseignement?.nom?.toLowerCase().includes(q) ||
+          d.UniteEnseignement?.code?.toLowerCase().includes(q),
       )
     }
     result.sort((a, b) => {
       let aVal: string | number, bVal: string | number
       switch (sortField) {
-        case 'titre': aVal = a.titre.toLowerCase(); bVal = b.titre.toLowerCase(); break
-        case 'createdAt': aVal = new Date(a.createdAt).getTime(); bVal = new Date(b.createdAt).getTime(); break
-        case 'noteMax': aVal = a.noteMax; bVal = b.noteMax; break
-        case 'dateLimite': default: aVal = new Date(a.dateLimite).getTime(); bVal = new Date(b.dateLimite).getTime(); break
+        case 'titre':
+          aVal = a.titre.toLowerCase()
+          bVal = b.titre.toLowerCase()
+          break
+        case 'createdAt':
+          aVal = new Date(a.createdAt).getTime()
+          bVal = new Date(b.createdAt).getTime()
+          break
+        case 'noteMax':
+          aVal = a.noteMax
+          bVal = b.noteMax
+          break
+        case 'dateLimite':
+        default:
+          aVal = new Date(a.dateLimite).getTime()
+          bVal = new Date(b.dateLimite).getTime()
+          break
       }
-      return sortDir === 'asc'
-        ? (aVal < bVal ? -1 : aVal > bVal ? 1 : 0)
-        : (bVal < aVal ? -1 : bVal > aVal ? 1 : 0)
+      return sortDir === 'asc' ? (aVal < bVal ? -1 : aVal > bVal ? 1 : 0) : bVal < aVal ? -1 : bVal > aVal ? 1 : 0
     })
     return result
   }, [devoirs, tabStatut, ueFilter, typeSeanceFilter, debouncedSearch, sortField, sortDir])
 
   const localStats = useMemo(() => {
-    const brouillons = devoirs.filter(d => d.statut === 'BROUILLON').length
-    const publies = devoirs.filter(d => d.statut === 'PUBLIE').length
-    const fermes = devoirs.filter(d => d.statut === 'FERME').length
-    const archives = devoirs.filter(d => d.statut === 'ARCHIVE').length
+    const brouillons = devoirs.filter((d) => d.statut === 'BROUILLON').length
+    const publies = devoirs.filter((d) => d.statut === 'PUBLIE').length
+    const fermes = devoirs.filter((d) => d.statut === 'FERME').length
+    const archives = devoirs.filter((d) => d.statut === 'ARCHIVE').length
     const totalSoumissions = devoirs.reduce((sum, d) => sum + (d.soumissionCount ?? d.Soumission?.length ?? 0), 0)
-    const enRetard = devoirs.filter(d => d.statut !== 'ARCHIVE' && isOverdue(d.dateLimite)).length
-    return { brouillons, publies, fermes, archives, total: devoirs.length, totalSoumissions, enRetard }
+    const enRetard = devoirs.filter((d) => d.statut !== 'ARCHIVE' && isOverdue(d.dateLimite)).length
+    return {
+      brouillons,
+      publies,
+      fermes,
+      archives,
+      total: devoirs.length,
+      totalSoumissions,
+      enRetard,
+    }
   }, [devoirs])
 
   const kpis = stats?.kpis ?? {
-    total: localStats.total, brouillons: localStats.brouillons, publies: localStats.publies,
-    fermes: localStats.fermes, archives: localStats.archives,
-    totalSoumissions: localStats.totalSoumissions, soumissionsEnAttente: 0, soumissionsCorrigees: 0,
+    total: localStats.total,
+    brouillons: localStats.brouillons,
+    publies: localStats.publies,
+    fermes: localStats.fermes,
+    archives: localStats.archives,
+    totalSoumissions: localStats.totalSoumissions,
+    soumissionsEnAttente: 0,
+    soumissionsCorrigees: 0,
     enRetard: localStats.enRetard,
   }
 
@@ -373,16 +480,27 @@ export function DevoirsPage() {
   // ═══════════════════════════════════════
 
   const resetForm = () => {
-    setFormTitre(''); setFormDescription(''); setFormUniteEnseignementId('')
-    setFormTypeSeance('TD'); setFormDateLimite(''); setFormDatePublication('')
-    setFormNoteMax(20); setFormConsignes('')
-    setFormRenduFichiers(false); setFormSoumissionGroupe(false)
-    setFormNbMaxFichiers(5); setFormTailleMaxFichier(10)
+    setFormTitre('')
+    setFormDescription('')
+    setFormUniteEnseignementId('')
+    setFormTypeSeance('TD')
+    setFormDateLimite('')
+    setFormDatePublication('')
+    setFormNoteMax(20)
+    setFormConsignes('')
+    setFormRenduFichiers(false)
+    setFormSoumissionGroupe(false)
+    setFormNbMaxFichiers(5)
+    setFormTailleMaxFichier(10)
     setFormGrilleCriteres([{ nom: '', description: '', poids: 1 }])
     setAdvancedSettingsOpen(false)
   }
 
-  const handleOpenCreate = () => { setEditingDevoir(null); resetForm(); setFormDialogOpen(true) }
+  const handleOpenCreate = () => {
+    setEditingDevoir(null)
+    resetForm()
+    setFormDialogOpen(true)
+  }
 
   const handleOpenEdit = (devoir: Devoir) => {
     setEditingDevoir(devoir)
@@ -400,11 +518,13 @@ export function DevoirsPage() {
     setFormTailleMaxFichier(devoir.tailleMaxFichier ? Math.round(devoir.tailleMaxFichier / 1048576) : 10)
     if (devoir.GrilleEvaluation?.criteres) {
       try {
-        const parsed = typeof devoir.GrilleEvaluation.criteres === 'string'
-          ? JSON.parse(devoir.GrilleEvaluation.criteres as string)
-          : devoir.GrilleEvaluation.criteres
-        setFormGrilleCriteres(Array.isArray(parsed) && parsed.length > 0 ? parsed : [{ nom: '', description: '', poids: 1 }])
-      } catch { setFormGrilleCriteres([{ nom: '', description: '', poids: 1 }]) }
+        const parsed = JSON.parse(devoir.GrilleEvaluation.criteres)
+        setFormGrilleCriteres(
+          Array.isArray(parsed) && parsed.length > 0 ? parsed : [{ nom: '', description: '', poids: 1 }],
+        )
+      } catch {
+        setFormGrilleCriteres([{ nom: '', description: '', poids: 1 }])
+      }
     } else {
       setFormGrilleCriteres([{ nom: '', description: '', poids: 1 }])
     }
@@ -412,17 +532,18 @@ export function DevoirsPage() {
     setFormDialogOpen(true)
   }
 
-  const addCritere = () => setFormGrilleCriteres([...formGrilleCriteres, { nom: '', description: '', poids: 1 }])
+  const addCritere = () =>
+    setFormGrilleCriteres([...formGrilleCriteres, { nom: '', description: '', poids: 1 }])
   const removeCritere = (index: number) => {
     if (formGrilleCriteres.length <= 1) return
     setFormGrilleCriteres(formGrilleCriteres.filter((_, i) => i !== index))
   }
   const updateCritere = (index: number, field: keyof CritereGrille, value: string | number) => {
-    setFormGrilleCriteres(prev => prev.map((c, i) => i === index ? { ...c, [field]: value } : c))
+    setFormGrilleCriteres((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)))
   }
 
   // ═══════════════════════════════════════
-  //  ACTIONS
+  //  ACTIONS (CRUD + status)
   // ═══════════════════════════════════════
 
   const handleSubmit = async () => {
@@ -434,39 +555,63 @@ export function DevoirsPage() {
     setIsSubmitting(true)
     try {
       const body = {
-        titre: formTitre, description: formDescription || null, consignes: formConsignes || null,
-        uniteEnseignementId: formUniteEnseignementId, enseignantId: user.id,
-        typeSeance: formTypeSeance, datePublication: formDatePublication || null,
-        dateLimite: formDateLimite, noteMax: formNoteMax,
-        renduFichiers: formRenduFichiers || null, soumissionGroupe: formSoumissionGroupe,
-        nbMaxFichiers: formNbMaxFichiers, tailleMaxFichier: formTailleMaxFichier * 1048576,
+        titre: formTitre,
+        description: formDescription || null,
+        consignes: formConsignes || null,
+        uniteEnseignementId: formUniteEnseignementId,
+        enseignantId: user.id,
+        typeSeance: formTypeSeance,
+        datePublication: formDatePublication || null,
+        dateLimite: formDateLimite,
+        noteMax: formNoteMax,
+        renduFichiers: formRenduFichiers ? 'application/pdf' : null,
+        soumissionGroupe: formSoumissionGroupe,
+        nbMaxFichiers: formNbMaxFichiers,
+        tailleMaxFichier: formTailleMaxFichier * 1048576,
       }
       const url = editingDevoir ? `/api/devoirs/${editingDevoir.id}` : '/api/devoirs'
       const method = editingDevoir ? 'PATCH' : 'POST'
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || "Erreur lors de l'enregistrement")
       }
       const result = await res.json()
       const devoirId = editingDevoir?.id || result.devoir?.id
-      const validCriteres = formGrilleCriteres.filter(c => c.nom.trim())
+      const validCriteres = formGrilleCriteres.filter((c) => c.nom.trim())
       if (validCriteres.length > 0 && devoirId) {
         try {
           const grilleRes = await fetch(`/api/grilles-evaluation?devoirId=${devoirId}`)
           const grilleData = await grilleRes.json()
           const existingGrille = grilleData.grilles?.[0]
-          const grilleUrl = existingGrille ? `/api/grilles-evaluation/${existingGrille.id}` : '/api/grilles-evaluation'
+          const grilleUrl = existingGrille
+            ? `/api/grilles-evaluation/${existingGrille.id}`
+            : '/api/grilles-evaluation'
           const grilleMethod = existingGrille ? 'PATCH' : 'POST'
           await fetch(grilleUrl, {
-            method: grilleMethod, headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(existingGrille ? { criteres: validCriteres } : { devoirId, criteres: validCriteres }),
+            method: grilleMethod,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(
+              existingGrille ? { criteres: validCriteres } : { devoirId, criteres: validCriteres },
+            ),
           })
-        } catch { /* grille save non-bloquante */ }
+        } catch {
+          /* grille save non-bloquante */
+        }
       }
       toast.success(editingDevoir ? 'Devoir mis à jour' : 'Devoir créé', {
         description: `"${formTitre}" ${editingDevoir ? 'modifié' : 'créé'} avec succès.`,
       })
+      if (!editingDevoir) {
+        setRewardToast({
+          title: 'Devoir créé !',
+          description: `"${formTitre}" est prêt à être publié.`,
+        })
+      }
       setFormDialogOpen(false)
       resetForm()
       await refreshDevoirs()
@@ -480,7 +625,8 @@ export function DevoirsPage() {
   const handleStatusAction = async (devoirId: string, action: string, successMsg: string) => {
     try {
       const res = await fetch(`/api/devoirs/${devoirId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
       if (!res.ok) {
@@ -512,11 +658,9 @@ export function DevoirsPage() {
     }
   }
 
-  // ─── Dupliquer : CORRIGÉ (dateLimite à J+7, conserve consignes + anneeUniversitaire) ───
   const handleDuplicate = async () => {
     if (!duplicateTarget || !user?.id) return
     try {
-      // Calcule une date limite par défaut : J+7 à 23h59
       const defaultDate = new Date()
       defaultDate.setDate(defaultDate.getDate() + 7)
       defaultDate.setHours(23, 59, 0, 0)
@@ -527,16 +671,17 @@ export function DevoirsPage() {
         uniteEnseignementId: duplicateTarget.uniteEnseignementId,
         enseignantId: user.id,
         typeSeance: duplicateTarget.typeSeance,
-        dateLimite: toLocalDatetimeString(defaultDate.toISOString()), // CORRIGÉ : date valide
+        dateLimite: toLocalDatetimeString(defaultDate.toISOString()),
         noteMax: duplicateTarget.noteMax,
         renduFichiers: duplicateTarget.renduFichiers,
         soumissionGroupe: duplicateTarget.soumissionGroupe,
         nbMaxFichiers: duplicateTarget.nbMaxFichiers,
         tailleMaxFichier: duplicateTarget.tailleMaxFichier,
-        anneeUniversitaire: duplicateTarget.anneeUniversitaire, // CORRIGÉ : conservé
+        anneeUniversitaire: duplicateTarget.anneeUniversitaire,
       }
       const res = await fetch('/api/devoirs', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -544,17 +689,25 @@ export function DevoirsPage() {
         throw new Error(errData.error || 'Erreur lors de la duplication')
       }
       const result = await res.json()
-      // Duplique aussi la grille d'évaluation
+      // Duplique aussi la grille d'évaluation si présente
       if (duplicateTarget.GrilleEvaluation?.criteres && result.devoir?.id) {
         try {
+          const criteresParsed = JSON.parse(duplicateTarget.GrilleEvaluation.criteres)
           await fetch('/api/grilles-evaluation', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ devoirId: result.devoir.id, criteres: duplicateTarget.GrilleEvaluation.criteres }),
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devoirId: result.devoir.id, criteres: criteresParsed }),
           })
-        } catch { /* non-bloquant */ }
+        } catch {
+          /* non-bloquant */
+        }
       }
       toast.success('Devoir dupliqué', {
         description: `"${duplicateTarget.titre} (copie)" créé en brouillon (échéance J+7).`,
+      })
+      setRewardToast({
+        title: 'Devoir dupliqué !',
+        description: `Une copie a été créée en brouillon.`,
       })
       setDuplicateTarget(null)
       await refreshDevoirs()
@@ -564,26 +717,56 @@ export function DevoirsPage() {
   }
 
   // ═══════════════════════════════════════
-  //  SOUMISSIONS
+  //  SOUMISSIONS — Sheet + Grading
   // ═══════════════════════════════════════
 
-  const handleViewSoumissions = async (devoir: Devoir) => {
+  // Détail du devoir sélectionné — inclut Soumission[] complète.
+  // BUGFIX R1-FRONTEND-DEVOIRS : on utilise TanStack Query (pas un useState local)
+  // pour bénéficier du polling refetchInterval (nécessaire pour statutIA EN_COURS).
+  const selectedDevoirId = selectedDevoirForSoumissions?.id
+  const devoirDetailQuery = useQuery<{ devoir: Devoir }>({
+    queryKey: ['devoir-detail', selectedDevoirId],
+    queryFn: async () => {
+      const res = await fetch(`/api/devoirs/${selectedDevoirId}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur de chargement')
+      }
+      return res.json()
+    },
+    enabled: !!selectedDevoirId && soumissionsSheetOpen,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    // Polling IA : si au moins une soumission a statutIA EN_COURS ou EN_ATTENTE
+    // (juste après ai-grade), on refetch toutes les 3s.
+    refetchInterval: (query) => {
+      const subs = query.state.data?.devoir?.Soumission ?? []
+      const hasPending = subs.some((s) => s.statutIA === 'EN_COURS' || s.statutIA === 'EN_ATTENTE')
+      return hasPending ? 3000 : false
+    },
+  })
+
+  const soumissions: Soumission[] = devoirDetailQuery.data?.devoir?.Soumission ?? []
+  const isLoadingSoumissions = devoirDetailQuery.isLoading && !devoirDetailQuery.data
+
+  // Une soumission "active" pour le grade dialog (récupère les updates via polling)
+  const gradingSoumission = useMemo(
+    () => soumissions.find((s) => s.id === gradingSoumissionId) ?? null,
+    [soumissions, gradingSoumissionId],
+  )
+
+  const handleViewSoumissions = (devoir: Devoir) => {
     setSelectedDevoirForSoumissions(devoir)
     setSoumissionsSheetOpen(true)
-    setIsLoadingSoumissions(true)
     setExpandedSoumissionId(null)
     setQuickGradeSoumissionId(null)
-    try {
-      const res = await fetch(`/api/devoirs/${devoir.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setSoumissions(data.devoir?.Soumission ?? [])
-      }
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de charger les soumissions.' })
-    } finally {
-      setIsLoadingSoumissions(false)
-    }
+  }
+
+  const handleCloseSoumissionsSheet = () => {
+    setSoumissionsSheetOpen(false)
+    setSelectedDevoirForSoumissions(null)
+    setQuickGradeSoumissionId(null)
+    setExpandedSoumissionId(null)
   }
 
   const handleQuickGrade = async () => {
@@ -591,7 +774,8 @@ export function DevoirsPage() {
     setIsQuickGrading(true)
     try {
       const res = await fetch(`/api/soumissions/${quickGradeSoumissionId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: quickGradeValue }),
       })
       if (!res.ok) {
@@ -600,7 +784,8 @@ export function DevoirsPage() {
       }
       toast.success(`Note enregistrée : ${quickGradeValue}/${selectedDevoirForSoumissions.noteMax}`)
       setQuickGradeSoumissionId(null)
-      if (selectedDevoirForSoumissions) await handleViewSoumissions(selectedDevoirForSoumissions)
+      await devoirDetailQuery.refetch()
+      await refreshDevoirs()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Notation impossible.' })
     } finally {
@@ -609,24 +794,37 @@ export function DevoirsPage() {
   }
 
   const handleOpenGrade = (soumission: Soumission) => {
-    setGradingSoumission(soumission)
-    setGradeNote(soumission.note !== null ? String(soumission.note) : String(quickGradeValue || ''))
+    setGradingSoumissionId(soumission.id)
+    setGradeNote(soumission.note !== null ? String(soumission.note) : '')
     setGradeCommentaire(soumission.commentaireEnseignant ?? '')
     setGradeDialogOpen(true)
   }
 
   const handleSubmitGrade = async () => {
     if (!gradingSoumission) return
-    if (!gradeNote) { toast.error('Note requise'); return }
+    if (!gradeNote) {
+      toast.error('Note requise')
+      return
+    }
     const noteValue = parseFloat(gradeNote)
-    if (isNaN(noteValue) || noteValue < 0) { toast.error('Note invalide'); return }
+    if (isNaN(noteValue) || noteValue < 0) {
+      toast.error('Note invalide')
+      return
+    }
     const maxNote = selectedDevoirForSoumissions?.noteMax ?? 20
-    if (noteValue > maxNote) { toast.error('Note invalide', { description: `Maximum : ${maxNote}` }); return }
+    if (noteValue > maxNote) {
+      toast.error('Note invalide', { description: `Maximum : ${maxNote}` })
+      return
+    }
     setIsSubmittingGrade(true)
     try {
       const res = await fetch(`/api/soumissions/${gradingSoumission.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: noteValue, commentaireEnseignant: gradeCommentaire || null }),
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          note: noteValue,
+          commentaireEnseignant: gradeCommentaire || null,
+        }),
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
@@ -634,7 +832,9 @@ export function DevoirsPage() {
       }
       toast.success('Soumission notée', { description: `${noteValue}/${maxNote} enregistrée.` })
       setGradeDialogOpen(false)
-      if (selectedDevoirForSoumissions) await handleViewSoumissions(selectedDevoirForSoumissions)
+      setGradingSoumissionId(null)
+      await devoirDetailQuery.refetch()
+      await refreshDevoirs()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Notation impossible.' })
     } finally {
@@ -642,33 +842,67 @@ export function DevoirsPage() {
     }
   }
 
+  /**
+   * Évaluation IA — POST /api/soumissions/{id}/ai-grade
+   * Réponse 202 Accepted (async). Le worker async met à jour statutIA côté backend.
+   * On se contente d'invalider le cache pour que le polling démarre.
+   */
   const handleAiGradeSoumission = async () => {
     if (!gradingSoumission) return
     setIsAiGrading(true)
     try {
-      const res = await fetch(`/api/soumissions/${gradingSoumission.id}/ai-grade`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      const res = await fetch(`/api/soumissions/${gradingSoumission.id}/ai-grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || "Erreur d'évaluation IA")
       }
       const data = await res.json()
-      if (data.aiGrade) {
-        setGradeNote(String(data.aiGrade.note))
-        setGradeCommentaire(data.aiGrade.justification || '')
-      }
-      toast.success('Évaluation IA terminée', { description: `Note proposée : ${data.aiGrade?.note}/${data.aiGrade?.noteMax}.` })
-      if (selectedDevoirForSoumissions) await handleViewSoumissions(selectedDevoirForSoumissions)
-      const updated = soumissions.find(s => s.id === gradingSoumission.id)
-      if (updated) {
-        setGradingSoumission({ ...updated, noteIA: data.aiGrade?.note ?? updated.noteIA, justificationIA: data.aiGrade?.justification ?? updated.justificationIA })
-      }
+      toast.info('Évaluation IA en cours…', {
+        description: data.message || 'La note sera disponible dans quelques secondes.',
+        icon: <Loader2 className="h-4 w-4 animate-spin" />,
+      })
+      // Forcer le refetch pour démarrer le polling
+      await devoirDetailQuery.refetch()
     } catch (err) {
-      toast.error('Erreur IA', { description: err instanceof Error ? err.message : 'Évaluation IA impossible.' })
-    } finally { setIsAiGrading(false) }
+      toast.error('Erreur IA', {
+        description: err instanceof Error ? err.message : 'Évaluation IA impossible.',
+      })
+    } finally {
+      setIsAiGrading(false)
+    }
+  }
+
+  // ─── Quick IA grade depuis le sheet (sans ouvrir le dialog) ───
+  const handleQuickAiGrade = async (soumissionId: string) => {
+    try {
+      const res = await fetch(`/api/soumissions/${soumissionId}/ai-grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || "Erreur d'évaluation IA")
+      }
+      toast.info('Évaluation IA en cours…', {
+        description: 'La note sera disponible dans quelques secondes.',
+        icon: <Loader2 className="h-4 w-4 animate-spin" />,
+      })
+      await devoirDetailQuery.refetch()
+    } catch (err) {
+      toast.error('Erreur IA', {
+        description: err instanceof Error ? err.message : 'Évaluation IA impossible.',
+      })
+    }
   }
 
   const handleExportCSV = () => {
-    if (!selectedDevoirForSoumissions || soumissions.length === 0) return
+    if (!selectedDevoirForSoumissions || soumissions.length === 0) {
+      toast.error('Export impossible', { description: 'Aucune soumission à exporter.' })
+      return
+    }
     const csv = generateCSV(selectedDevoirForSoumissions, soumissions)
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -680,10 +914,10 @@ export function DevoirsPage() {
     toast.success('Export CSV', { description: 'Fichier téléchargé.' })
   }
 
-  // ─── Tri soumissions (CORRIGÉ : logique propre) ───
+  // ─── Tri soumissions ───
   const toggleSoumissionSort = (field: string) => {
     if (soumissionSortField === field) {
-      setSoumissionSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+      setSoumissionSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
     } else {
       setSoumissionSortField(field)
       setSoumissionSortDir('asc')
@@ -691,39 +925,71 @@ export function DevoirsPage() {
   }
 
   const getSortIcon = (field: string) =>
-    soumissionSortField === field
-      ? (soumissionSortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)
-      : null
+    soumissionSortField === field ? (
+      soumissionSortDir === 'asc' ? (
+        <ChevronUp className="h-3 w-3" />
+      ) : (
+        <ChevronDown className="h-3 w-3" />
+      )
+    ) : null
 
   const sortedSoumissions = useMemo(() => {
     return [...soumissions].sort((a, b) => {
-      let aVal: string | number = '', bVal: string | number = ''
+      let aVal: string | number = '',
+        bVal: string | number = ''
       switch (soumissionSortField) {
-        case 'name': aVal = a.User?.name?.toLowerCase() ?? ''; bVal = b.User?.name?.toLowerCase() ?? ''; break
-        case 'statut': aVal = a.statut; bVal = b.statut; break
-        case 'note': aVal = a.note ?? -1; bVal = b.note ?? -1; break
-        case 'renduAt': default: aVal = a.renduAt ?? ''; bVal = b.renduAt ?? ''; break
+        case 'name':
+          aVal = a.User?.name?.toLowerCase() ?? ''
+          bVal = b.User?.name?.toLowerCase() ?? ''
+          break
+        case 'statut':
+          aVal = a.statut
+          bVal = b.statut
+          break
+        case 'note':
+          aVal = a.note ?? -1
+          bVal = b.note ?? -1
+          break
+        case 'renduAt':
+        default:
+          aVal = a.renduAt ?? ''
+          bVal = b.renduAt ?? ''
+          break
       }
       return soumissionSortDir === 'asc'
-        ? (aVal < bVal ? -1 : aVal > bVal ? 1 : 0)
-        : (bVal < aVal ? -1 : bVal > aVal ? 1 : 0)
+        ? aVal < bVal
+          ? -1
+          : aVal > bVal
+            ? 1
+            : 0
+        : bVal < aVal
+          ? -1
+          : bVal > aVal
+            ? 1
+            : 0
     })
   }, [soumissions, soumissionSortField, soumissionSortDir])
 
   const handleCycleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
     } else {
-      setSortField(field); setSortDir('asc')
+      setSortField(field)
+      setSortDir('asc')
     }
   }
 
   const resetFilters = () => {
-    setActiveTab('all'); setUeFilter('all'); setTypeSeanceFilter('all')
-    setSearchInput(''); setSortField('dateLimite'); setSortDir('desc')
+    setActiveTab('all')
+    setUeFilter('all')
+    setTypeSeanceFilter('all')
+    setSearchInput('')
+    setSortField('dateLimite')
+    setSortDir('desc')
   }
 
-  const hasActiveFilters = activeTab !== 'all' || ueFilter !== 'all' || typeSeanceFilter !== 'all' || debouncedSearch.trim() !== ''
+  const hasActiveFilters =
+    activeTab !== 'all' || ueFilter !== 'all' || typeSeanceFilter !== 'all' || debouncedSearch.trim() !== ''
 
   // ═══════════════════════════════════════
   //  RENDER
@@ -731,7 +997,7 @@ export function DevoirsPage() {
 
   return (
     <div className="space-y-6">
-      {/* ─── Header ─── */}
+      {/* ─── Header hero avec kente ─── */}
       <header className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         <div className="ds-kente-strip" aria-hidden />
         <div className="ds-kente-pattern px-5 py-5 sm:px-6">
@@ -751,45 +1017,36 @@ export function DevoirsPage() {
                   Mes Devoirs
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Créez, gérez et corrigez vos devoirs TP/TD
+                  Créez, publiez et corrigez vos devoirs TD/TP — notation manuelle ou IA.
                 </p>
-                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-success-text">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="outline" className="gap-1.5 border-success/30 bg-success/15 px-2.5 py-1 text-success-text">
                     <Radio className="h-3 w-3" />
                     {kpis.publies} actifs
-                  </span>
+                  </Badge>
                   {kpis.soumissionsEnAttente > 0 && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-warning">
+                    <Badge variant="outline" className="gap-1.5 border-warning/30 bg-warning/15 px-2.5 py-1 text-warning">
                       <Clock className="h-3 w-3" />
                       {kpis.soumissionsEnAttente} à corriger
-                    </span>
+                    </Badge>
                   )}
                   {kpis.enRetard > 0 && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-destructive">
+                    <Badge variant="outline" className="gap-1.5 border-destructive/30 bg-destructive/15 px-2.5 py-1 text-destructive">
                       <FileWarning className="h-3 w-3" />
                       {kpis.enRetard} en retard
-                    </span>
+                    </Badge>
                   )}
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline" size="sm"
-                onClick={() => { refreshDevoirs() }}
-                aria-label="Rafraîchir"
-              >
+              <Button variant="outline" size="sm" onClick={() => refreshDevoirs()} aria-label="Rafraîchir">
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                 Actualiser
               </Button>
-              <Button
-                size="sm"
-                onClick={handleOpenCreate}
-                className="font-semibold"
-                aria-label="Nouveau devoir"
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
+              <Button size="sm" onClick={handleOpenCreate} className="font-semibold" aria-label="Nouveau devoir">
+                <PlusCircle className="mr-1.5 h-4 w-4" />
                 Nouveau devoir
               </Button>
             </div>
@@ -797,119 +1054,259 @@ export function DevoirsPage() {
         </div>
       </header>
 
-      {/* ─── KPI Grid ─── */}
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          icon={FileText}
-          label="Total devoirs"
-          value={kpis.total}
-          hint={`${kpis.brouillons} brouillons`}
-          accent="info"
-          loading={isLoading && !stats}
-          index={0}
-        />
-        <StatCard
-          icon={Send}
-          label="Publiés"
-          value={kpis.publies}
-          hint={`${kpis.fermes} fermés`}
-          accent="success"
-          loading={isLoading && !stats}
-          index={1}
-        />
-        <StatCard
-          icon={Users}
-          label="Soumissions"
-          value={kpis.totalSoumissions}
-          hint={`${kpis.soumissionsCorrigees} corrigées`}
-          accent="secondary"
-          loading={isLoading && !stats}
-          index={2}
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="Note moyenne"
-          value={stats?.moyenneNotes ?? '—'}
-          hint={stats?.moyenneNotes !== null && stats?.moyenneNotes !== undefined ? '/ 20' : 'aucune note'}
-          accent="warning"
-          loading={isLoading && !stats}
-          index={3}
-        />
-      </section>
-
-      {/* ─── Vue switch : Grid / Analyse ─── */}
-      <nav
-        className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted/30 p-1"
-        role="tablist" aria-label="Vue des devoirs"
-      >
-        <TabButton active={activeView === 'grid'} onClick={() => setActiveView('grid')}
-          icon={<Layers className="h-4 w-4" />} label="Devoirs" count={filteredDevoirs.length} />
-        <TabButton active={activeView === 'analysis'} onClick={() => setActiveView('analysis')}
-          icon={<BarChart3 className="h-4 w-4" />} label="Analyses" />
-      </nav>
-
-      {/* ─── Contenu ─── */}
-      {activeView === 'grid' ? (
-        <GridView
-          devoirs={filteredDevoirs}
-          isLoading={isLoading}
-          loadError={loadError}
-          unitesEnseignement={unitesEnseignement}
-          filters={{
-            activeTab, setActiveTab,
-            ueFilter, setUeFilter,
-            typeSeanceFilter, setTypeSeanceFilter,
-            searchInput, setSearchInput,
-            sortField, sortDir, handleCycleSort,
-            hasActiveFilters, resetFilters,
-          }}
-          onEdit={handleOpenEdit}
-          onDelete={setDeleteTarget}
-          onDuplicate={setDuplicateTarget}
-          onStatusAction={handleStatusAction}
-          onViewSoumissions={handleViewSoumissions}
-        />
+      {/* ─── KPI StatCards ─── */}
+      {isLoading && !stats ? (
+        <StatCardSkeletonGrid count={6} />
       ) : (
-        <AnalysisView stats={stats} isLoading={isLoading} />
+        <section className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          <StatCard icon={FileText} label="Total" value={kpis.total} hint={`${kpis.brouillons} brouillons`} accent="info" index={0} />
+          <StatCard icon={Send} label="Publiés" value={kpis.publies} hint={`${kpis.fermes} fermés`} accent="success" index={1} />
+          <StatCard
+            icon={Clock}
+            label="À corriger"
+            value={kpis.soumissionsEnAttente}
+            hint="soumissions en attente"
+            accent="warning"
+            index={2}
+          />
+          <StatCard
+            icon={CheckCircle2}
+            label="Corrigées"
+            value={kpis.soumissionsCorrigees}
+            hint="soumissions corrigées"
+            accent="primary"
+            index={3}
+          />
+          <StatCard
+            icon={Users}
+            label="Soumissions"
+            value={kpis.totalSoumissions}
+            hint="total reçu"
+            accent="secondary"
+            index={4}
+          />
+          <StatCard
+            icon={TrendingUp}
+            label="Note moyenne"
+            value={stats?.moyenneNotes ?? '—'}
+            suffix={stats?.moyenneNotes !== null && stats?.moyenneNotes !== undefined ? '/20' : undefined}
+            hint={stats?.moyenneNotes !== null && stats?.moyenneNotes !== undefined ? 'moyenne classe' : 'aucune note'}
+            accent="primary"
+            scoreOn20={stats?.moyenneNotes ?? undefined}
+            index={5}
+          />
+        </section>
       )}
 
-      {/* ─── Dialogs ─── */}
+      {/* ─── Filtres + tri ─── */}
+      <Card className="border-border bg-card">
+        <CardContent className="p-4 space-y-4">
+          {/* Tabs statut */}
+          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filtrer par statut">
+            {(Object.keys(TAB_FILTERS) as TabKey[]).map((key) => {
+              const count =
+                key === 'all'
+                  ? devoirs.length
+                  : devoirs.filter((d) => d.statut === TAB_FILTERS[key].statut).length
+              return (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={activeTab === key}
+                  onClick={() => setActiveTab(key)}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                    activeTab === key
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  {TAB_FILTERS[key].label}
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                      activeTab === key ? 'bg-primary-foreground/20' : 'bg-muted-foreground/15'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Search + UE + type + tri */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Rechercher par titre, UE…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-8"
+                aria-label="Rechercher un devoir"
+              />
+            </div>
+            <Select value={ueFilter} onValueChange={setUeFilter}>
+              <SelectTrigger aria-label="Filtrer par UE">
+                <SelectValue placeholder="Toutes les UE" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les UE</SelectItem>
+                {unitesEnseignement.map((ue) => (
+                  <SelectItem key={ue.id} value={ue.id}>
+                    {ue.code} — {ue.nom}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={typeSeanceFilter} onValueChange={setTypeSeanceFilter}>
+              <SelectTrigger aria-label="Filtrer par type">
+                <SelectValue placeholder="Tous les types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les types</SelectItem>
+                <SelectItem value="CM">Cours magistral</SelectItem>
+                <SelectItem value="TD">Travail dirigé</SelectItem>
+                <SelectItem value="TP">Travaux pratiques</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={`${sortField}:${sortDir}`}
+              onValueChange={(v) => {
+                const [f, d] = v.split(':')
+                setSortField(f as SortField)
+                setSortDir(d as 'asc' | 'desc')
+              }}
+            >
+              <SelectTrigger aria-label="Trier">
+                <SelectValue placeholder="Trier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dateLimite:asc">Échéance ↑</SelectItem>
+                <SelectItem value="dateLimite:desc">Échéance ↓</SelectItem>
+                <SelectItem value="titre:asc">Titre A→Z</SelectItem>
+                <SelectItem value="titre:desc">Titre Z→A</SelectItem>
+                <SelectItem value="createdAt:desc">Plus récents</SelectItem>
+                <SelectItem value="createdAt:asc">Plus anciens</SelectItem>
+                <SelectItem value="noteMax:desc">Note max ↑</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {hasActiveFilters && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {filteredDevoirs.length} devoir{filteredDevoirs.length > 1 ? 's' : ''} affiché
+                {filteredDevoirs.length > 1 ? 's' : ''}
+              </p>
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="h-7 text-xs">
+                <X className="mr-1 h-3 w-3" />
+                Réinitialiser
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Grille de EntityCards ─── */}
+      {loadError ? (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
+            <p className="mt-2 text-sm font-medium text-destructive">Erreur de chargement</p>
+            <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => refreshDevoirs()} className="mt-3">
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Réessayer
+            </Button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <PulseSkeleton key={i} className="h-64 w-full" variant="card" />
+          ))}
+        </div>
+      ) : filteredDevoirs.length === 0 ? (
+        <EmptyState
+          onCreate={handleOpenCreate}
+          hasFilters={hasActiveFilters}
+          onReset={resetFilters}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredDevoirs.map((devoir, idx) => (
+            <DevoirCard
+              key={devoir.id}
+              devoir={devoir}
+              index={idx}
+              onEdit={() => handleOpenEdit(devoir)}
+              onDelete={() => setDeleteTarget(devoir)}
+              onDuplicate={() => setDuplicateTarget(devoir)}
+              onPublish={() => handleStatusAction(devoir.id, 'publish', 'Devoir publié')}
+              onClose={() => handleStatusAction(devoir.id, 'close', 'Devoir fermé')}
+              onArchive={() => handleStatusAction(devoir.id, 'archive', 'Devoir archivé')}
+              onReopen={() => handleStatusAction(devoir.id, 'reopen', 'Devoir rouvert en brouillon')}
+              onViewSoumissions={() => handleViewSoumissions(devoir)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ─── Dialog création/édition ─── */}
       <DevoirFormDialog
         open={formDialogOpen}
-        onOpenChange={setFormDialogOpen}
+        onClose={() => setFormDialogOpen(false)}
         editingDevoir={editingDevoir}
         isSubmitting={isSubmitting}
         unitesEnseignement={unitesEnseignement}
         form={{
-          formTitre, setFormTitre, formDescription, setFormDescription,
-          formUniteEnseignementId, setFormUniteEnseignementId,
-          formTypeSeance, setFormTypeSeance,
-          formDateLimite, setFormDateLimite,
-          formDatePublication, setFormDatePublication,
-          formNoteMax, setFormNoteMax,
-          formConsignes, setFormConsignes,
-          formRenduFichiers, setFormRenduFichiers,
-          formSoumissionGroupe, setFormSoumissionGroupe,
-          formNbMaxFichiers, setFormNbMaxFichiers,
-          formTailleMaxFichier, setFormTailleMaxFichier,
-          formGrilleCriteres, addCritere, removeCritere, updateCritere,
-          advancedSettingsOpen, setAdvancedSettingsOpen,
+          formTitre,
+          setFormTitre,
+          formDescription,
+          setFormDescription,
+          formUniteEnseignementId,
+          setFormUniteEnseignementId,
+          formTypeSeance,
+          setFormTypeSeance,
+          formDateLimite,
+          setFormDateLimite,
+          formDatePublication,
+          setFormDatePublication,
+          formNoteMax,
+          setFormNoteMax,
+          formConsignes,
+          setFormConsignes,
+          formRenduFichiers,
+          setFormRenduFichiers,
+          formSoumissionGroupe,
+          setFormSoumissionGroupe,
+          formNbMaxFichiers,
+          setFormNbMaxFichiers,
+          formTailleMaxFichier,
+          setFormTailleMaxFichier,
+          formGrilleCriteres,
+          addCritere,
+          removeCritere,
+          updateCritere,
+          advancedSettingsOpen,
+          setAdvancedSettingsOpen,
         }}
         onSubmit={handleSubmit}
       />
 
+      {/* ─── AlertDialog suppression ─── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
-        <AlertDialogContent className="!min-h-0 border-destructive/40">
+        <AlertDialogContent className="border-destructive/40">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-destructive">Supprimer le devoir ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Le devoir «&nbsp;{deleteTarget?.titre}&nbsp;» sera déplacé vers la corbeille. Vous pourrez le restaurer pendant 30 jours.
+              Le devoir «&nbsp;{deleteTarget?.titre}&nbsp;» sera déplacé vers la corbeille. Vous pourrez le
+              restaurer pendant 30 jours.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>
-              Annuler
-            </AlertDialogCancel>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-white hover:bg-destructive/90"
@@ -920,23 +1317,19 @@ export function DevoirsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* ─── AlertDialog duplication ─── */}
       <AlertDialog open={!!duplicateTarget} onOpenChange={(v) => !v && setDuplicateTarget(null)}>
-        <AlertDialogContent className="!min-h-0 border-primary/40">
+        <AlertDialogContent className="border-primary/40">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-primary-text">Dupliquer le devoir ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Une copie de «&nbsp;{duplicateTarget?.titre}&nbsp;» sera créée en brouillon avec une échéance à J+7.
+              Une copie de «&nbsp;{duplicateTarget?.titre}&nbsp;» sera créée en brouillon avec une échéance à
+              J+7.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>
-              Annuler
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDuplicate}
-            >
-              Dupliquer
-            </AlertDialogAction>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDuplicate}>Dupliquer</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -944,7 +1337,7 @@ export function DevoirsPage() {
       {/* ─── Sheet Soumissions ─── */}
       <SoumissionsSheet
         open={soumissionsSheetOpen}
-        onOpenChange={setSoumissionsSheetOpen}
+        onClose={handleCloseSoumissionsSheet}
         devoir={selectedDevoirForSoumissions}
         soumissions={sortedSoumissions}
         isLoading={isLoadingSoumissions}
@@ -955,25 +1348,45 @@ export function DevoirsPage() {
         setExpandedId={setExpandedSoumissionId}
         onExportCSV={handleExportCSV}
         onOpenGrade={handleOpenGrade}
+        onQuickAiGrade={handleQuickAiGrade}
         quickGrade={{
-          id: quickGradeSoumissionId, setId: setQuickGradeSoumissionId,
-          value: quickGradeValue, setValue: setQuickGradeValue,
-          submit: handleQuickGrade, isGrading: isQuickGrading,
+          id: quickGradeSoumissionId,
+          setId: setQuickGradeSoumissionId,
+          value: quickGradeValue,
+          setValue: setQuickGradeValue,
+          submit: handleQuickGrade,
+          isGrading: isQuickGrading,
+          noteMax: selectedDevoirForSoumissions?.noteMax ?? 20,
         }}
       />
 
-      {/* ─── Grade Dialog ─── */}
+      {/* ─── Grade Dialog avec polling IA ─── */}
       <GradeDialog
         open={gradeDialogOpen}
-        onOpenChange={setGradeDialogOpen}
+        onClose={() => {
+          setGradeDialogOpen(false)
+          setGradingSoumissionId(null)
+        }}
         soumission={gradingSoumission}
         noteMax={selectedDevoirForSoumissions?.noteMax ?? 20}
-        gradeNote={gradeNote} setGradeNote={setGradeNote}
-        gradeCommentaire={gradeCommentaire} setGradeCommentaire={setGradeCommentaire}
+        gradeNote={gradeNote}
+        setGradeNote={setGradeNote}
+        gradeCommentaire={gradeCommentaire}
+        setGradeCommentaire={setGradeCommentaire}
         isSubmitting={isSubmittingGrade}
         isAiGrading={isAiGrading}
         onSubmit={handleSubmitGrade}
         onAiGrade={handleAiGradeSoumission}
+      />
+
+      {/* ─── RewardToast (création/duplication réussie) ─── */}
+      <RewardToast
+        open={!!rewardToast}
+        onClose={() => setRewardToast(null)}
+        title={rewardToast?.title ?? ''}
+        description={rewardToast?.description}
+        tier="gold"
+        duration={3500}
       />
     </div>
   )
@@ -983,990 +1396,1125 @@ export function DevoirsPage() {
 //  SOUS-COMPOSANTS
 // ═══════════════════════════════════════════
 
-// ─── Tab Button ───
-function TabButton({
-  active, onClick, icon, label, count,
+// ─── Empty state ───
+function EmptyState({
+  onCreate,
+  hasFilters,
+  onReset,
 }: {
-  active: boolean; onClick: () => void
-  icon: React.ReactNode; label: string; count?: number
+  onCreate: () => void
+  hasFilters: boolean
+  onReset: () => void
 }) {
   return (
-    <button
-      role="tab" aria-selected={active} onClick={onClick}
-      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:px-4 ${
-        active
-          ? 'bg-primary text-primary-foreground shadow-sm'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-      }`}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-      <span className="sm:hidden">{label}</span>
-      {count !== undefined && count > 0 && (
-        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-          active ? 'bg-white/25 text-primary-foreground' : 'bg-primary/15 text-primary-text'
-        }`}>{count}</span>
-      )}
-    </button>
-  )
-}
-
-// ─── Grid View (liste + filtres + cards) ───
-function GridView({
-  devoirs, isLoading, loadError, unitesEnseignement, filters,
-  onEdit, onDelete, onDuplicate, onStatusAction, onViewSoumissions,
-}: {
-  devoirs: Devoir[]
-  isLoading: boolean
-  loadError: string | null
-  unitesEnseignement: UniteEnseignement[]
-  filters: {
-    activeTab: TabKey; setActiveTab: (v: TabKey) => void
-    ueFilter: string; setUeFilter: (v: string) => void
-    typeSeanceFilter: string; setTypeSeanceFilter: (v: string) => void
-    searchInput: string; setSearchInput: (v: string) => void
-    sortField: SortField; sortDir: 'asc' | 'desc'; handleCycleSort: (f: SortField) => void
-    hasActiveFilters: boolean; resetFilters: () => void
-  }
-  onEdit: (d: Devoir) => void
-  onDelete: (d: Devoir) => void
-  onDuplicate: (d: Devoir) => void
-  onStatusAction: (id: string, action: string, msg: string) => void
-  onViewSoumissions: (d: Devoir) => void
-}) {
-  return (
-    <div className="space-y-4">
-      {/* ─── Tabs statut ─── */}
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(TAB_FILTERS) as TabKey[]).map((key) => {
-          const tab = TAB_FILTERS[key]
-          const isActive = filters.activeTab === key
-          return (
-            <button
-              key={key}
-              onClick={() => filters.setActiveTab(key)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all sm:text-sm ${
-                isActive
-                  ? 'border border-primary/30 bg-primary/15 text-primary-text'
-                  : 'border border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }`}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* ─── Toolbar (search + filtres + tri) ─── */}
-      <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={filters.searchInput}
-            onChange={(e) => filters.setSearchInput(e.target.value)}
-            placeholder="Rechercher par titre, UE..."
-            className="pl-8"
-          />
+    <Card className="border-dashed border-border bg-card">
+      <CardContent className="ds-kente-pattern flex flex-col items-center justify-center p-12 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/30">
+          {hasFilters ? (
+            <Search className="h-7 w-7 text-primary-text" />
+          ) : (
+            <BookOpen className="h-7 w-7 text-primary-text" />
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={filters.ueFilter} onValueChange={filters.setUeFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Toutes les UE" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les UE</SelectItem>
-              {unitesEnseignement.map((ue) => (
-                <SelectItem key={ue.id} value={ue.id}>{ue.code} — {ue.nom}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filters.typeSeanceFilter} onValueChange={filters.setTypeSeanceFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Tous types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous types</SelectItem>
-              <SelectItem value="CM">Cours magistral</SelectItem>
-              <SelectItem value="TD">Travail dirigé</SelectItem>
-              <SelectItem value="TP">Travaux pratiques</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex items-center rounded-md border border-input bg-background">
-            {(['dateLimite', 'titre', 'createdAt', 'noteMax'] as SortField[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => filters.handleCycleSort(f)}
-                className={`px-2.5 py-1.5 text-xs transition-colors ${
-                  filters.sortField === f ? 'bg-primary/15 text-primary-text' : 'text-muted-foreground hover:text-foreground'
-                }`}
-                aria-label={`Trier par ${f}`}
-              >
-                {f === 'dateLimite' ? 'Date' : f === 'titre' ? 'Titre' : f === 'createdAt' ? 'Créa.' : 'Note'}
-                {filters.sortField === f && (
-                  filters.sortDir === 'asc' ? <ChevronUp className="ml-0.5 inline h-3 w-3" /> : <ChevronDown className="ml-0.5 inline h-3 w-3" />
-                )}
-              </button>
-            ))}
-          </div>
-          {filters.hasActiveFilters && (
-            <Button
-              variant="ghost" size="sm"
-              onClick={filters.resetFilters}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
+        <h3 className="mt-4 font-display text-lg font-bold">
+          {hasFilters ? 'Aucun devoir trouvé' : 'Aucun devoir pour le moment'}
+        </h3>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          {hasFilters
+            ? 'Essayez de modifier vos filtres ou votre recherche pour trouver ce que vous cherchez.'
+            : 'Créez votre premier devoir TD/TP, publiez-le, et laissez les étudiants soumettre leurs travaux.'}
+        </p>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          {hasFilters ? (
+            <Button variant="outline" size="sm" onClick={onReset}>
+              <X className="mr-1.5 h-3.5 w-3.5" />
+              Réinitialiser les filtres
+            </Button>
+          ) : (
+            <Button size="sm" onClick={onCreate}>
+              <PlusCircle className="mr-1.5 h-4 w-4" />
+              Créer mon premier devoir
             </Button>
           )}
-        </div>
-      </div>
-
-      {/* ─── Erreur ─── */}
-      {loadError && (
-        <div className="bg-card border border-destructive/40 rounded-xl shadow-sm flex items-center gap-3 p-4 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {loadError}
-        </div>
-      )}
-
-      {/* ─── Liste ─── */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="bg-card border border-border rounded-xl shadow-sm h-56 p-4">
-              <PulseSkeleton variant="card" className="h-full w-full" />
-            </div>
-          ))}
-        </div>
-      ) : devoirs.length === 0 ? (
-        <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col items-center justify-center p-12 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary-text">
-            <BookOpen className="h-8 w-8" />
-          </div>
-          <h3 className="text-lg font-display tracking-tight font-semibold text-foreground">
-            {filters.hasActiveFilters ? 'Aucun devoir ne correspond' : 'Aucun devoir créé'}
-          </h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            {filters.hasActiveFilters
-              ? 'Modifiez vos filtres pour afficher d\'autres devoirs.'
-              : 'Cliquez sur « Nouveau devoir » pour créer votre premier devoir.'}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {devoirs.map((devoir, idx) => (
-            <DevoirCard
-              key={devoir.id}
-              devoir={devoir}
-              index={idx}
-              onEdit={() => onEdit(devoir)}
-              onDelete={() => onDelete(devoir)}
-              onDuplicate={() => onDuplicate(devoir)}
-              onStatusAction={onStatusAction}
-              onViewSoumissions={() => onViewSoumissions(devoir)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Devoir Card ───
-function DevoirCard({
-  devoir, index, onEdit, onDelete, onDuplicate, onStatusAction, onViewSoumissions,
-}: {
-  devoir: Devoir; index: number
-  onEdit: () => void; onDelete: () => void; onDuplicate: () => void
-  onStatusAction: (id: string, action: string, msg: string) => void
-  onViewSoumissions: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const statutCfg = statutDevoirConfig(devoir.statut)
-  const StatutIcon = statutCfg.icon
-  const typeCfg = typeSeanceClasses(devoir.typeSeance)
-  const time = getTimeRemaining(devoir.dateLimite)
-  const overdue = isOverdue(devoir.dateLimite) && devoir.statut !== 'ARCHIVE'
-  const soumCount = devoir.soumissionCount ?? devoir.Soumission?.length ?? 0
-  const corrigeCount = devoir.Soumission?.filter(s => s.statut === 'CORRIGE' || s.statut === 'RETOURNE').length ?? 0
-  const progress = soumCount > 0 ? Math.round((corrigeCount / soumCount) * 100) : 0
-
-  return (
-    <Card
-      className="relative overflow-hidden py-0 transition-shadow hover:shadow-md ds-lift"
-      style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
-    >
-      {/* Bande colorée gauche selon type */}
-      <div
-        className={`absolute left-0 top-0 h-full w-1 ${typeCfg.dot}`}
-        aria-hidden
-      />
-      <CardContent className="p-4 pl-5">
-        {/* En-tête */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge variant="outline" className={`gap-1 border text-xs ${statutCfg.badge}`}>
-                <StatutIcon className="h-3 w-3" />
-                {statutCfg.label}
-              </Badge>
-              <Badge variant="outline" className={`gap-1 border text-xs ${typeCfg.badge}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${typeCfg.dot}`} />
-                {getTypeSeanceShort(devoir.typeSeance)}
-              </Badge>
-            </div>
-            <h3 className="mt-2 truncate font-display tracking-tight font-semibold text-foreground">{devoir.titre}</h3>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {devoir.UniteEnseignement?.code} — {devoir.UniteEnseignement?.nom}
-            </p>
-          </div>
-        </div>
-
-        {/* Description repliable */}
-        {devoir.description && (
-          <p className={`mt-2 text-xs text-muted-foreground ${expanded ? '' : 'line-clamp-2'}`}>
-            {devoir.description}
-          </p>
-        )}
-        {devoir.description && devoir.description.length > 80 && (
-          <button
-            onClick={() => setExpanded(v => !v)}
-            className="mt-1 text-xs text-primary-text hover:underline"
-          >
-            {expanded ? 'Réduire' : 'Lire plus'}
-          </button>
-        )}
-
-        {/* Deadline */}
-        <div className="mt-3 flex items-center gap-2 text-xs">
-          <Clock className={`h-3.5 w-3.5 ${overdue ? 'text-destructive' : time.urgent ? 'text-warning' : 'text-primary-text'}`} />
-          <span className="text-muted-foreground">{formatDateOnly(devoir.dateLimite)}</span>
-          <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
-            overdue
-              ? 'bg-destructive/15 text-destructive'
-              : time.urgent
-              ? 'bg-warning/15 text-warning'
-              : 'bg-primary/15 text-primary-text'
-          }`}>
-            {time.text}
-          </span>
-        </div>
-
-        {/* Badges infos */}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Star className="h-3 w-3 text-gold" />/{devoir.noteMax}
-          </span>
-          {!!devoir.renduFichiers && (
-            <span className="inline-flex items-center gap-1">
-              <Paperclip className="h-3 w-3 text-info" />Fichiers
-            </span>
-          )}
-          {devoir.soumissionGroupe && (
-            <span className="inline-flex items-center gap-1">
-              <UsersRound className="h-3 w-3 text-secondary" />Groupe
-            </span>
-          )}
-          {devoir.GrilleEvaluation && (
-            <span className="inline-flex items-center gap-1">
-              <FileSpreadsheet className="h-3 w-3 text-success-text" />Grille
-            </span>
-          )}
-        </div>
-
-        {/* Progression correction */}
-        {soumCount > 0 && (
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Users className="h-3 w-3" />
-                {soumCount} soumission{soumCount > 1 ? 's' : ''}
-              </span>
-              <span className="text-primary-text">{corrigeCount}/{soumCount} corrigée{soumCount > 1 ? 's' : ''}</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="bg-primary h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
-          <Button size="sm" variant="ghost"
-            onClick={onViewSoumissions}
-            className="h-8 px-2.5 text-xs text-primary-text hover:bg-primary/10"
-          >
-            <Eye className="mr-1 h-3.5 w-3.5" />
-            {soumCount > 0 ? `${soumCount} soumission${soumCount > 1 ? 's' : ''}` : 'Soumissions'}
-          </Button>
-
-          {devoir.statut === 'BROUILLON' && (
-            <>
-              <Button size="sm" variant="ghost"
-                onClick={() => onStatusAction(devoir.id, 'publier', 'Devoir publié')}
-                className="h-8 px-2.5 text-xs text-success-text hover:bg-success/10"
-                aria-label="Publier"
-              >
-                <Send className="mr-1 h-3.5 w-3.5" />Publier
-              </Button>
-              <Button size="sm" variant="ghost" onClick={onEdit}
-                className="h-8 px-2.5 text-xs text-foreground hover:bg-accent"
-                aria-label="Modifier"
-              >
-                <Edit3 className="h-3.5 w-3.5" />
-              </Button>
-            </>
-          )}
-          {devoir.statut === 'PUBLIE' && (
-            <Button size="sm" variant="ghost"
-              onClick={() => onStatusAction(devoir.id, 'fermer', 'Devoir fermé')}
-              className="h-8 px-2.5 text-xs text-warning hover:bg-warning/10"
-              aria-label="Fermer"
-            >
-              <Lock className="mr-1 h-3.5 w-3.5" />Fermer
-            </Button>
-          )}
-          {devoir.statut === 'FERME' && (
-            <Button size="sm" variant="ghost"
-              onClick={() => onStatusAction(devoir.id, 'archiver', 'Devoir archivé')}
-              className="h-8 px-2.5 text-xs text-secondary hover:bg-secondary/10"
-              aria-label="Archiver"
-            >
-              <Archive className="mr-1 h-3.5 w-3.5" />Archiver
-            </Button>
-          )}
-
-          <div className="ml-auto flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={onDuplicate}
-              className="h-8 w-8 p-0 text-muted-foreground hover:bg-primary/10 hover:text-primary-text"
-              aria-label="Dupliquer"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
-            {devoir.statut !== 'PUBLIE' && (
-              <Button size="sm" variant="ghost" onClick={onDelete}
-                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
-                aria-label="Supprimer"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
         </div>
       </CardContent>
     </Card>
   )
 }
 
-// ─── Analysis View ───
-function AnalysisView({ stats, isLoading }: { stats: DevoirStats | null; isLoading: boolean }) {
-  if (isLoading && !stats) {
-    return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="bg-card border border-border rounded-xl shadow-sm h-64 p-4">
-            <PulseSkeleton variant="card" className="h-full w-full" />
-          </div>
-        ))}
-      </div>
-    )
-  }
-  if (!stats || stats.kpis.total === 0) {
-    return (
-      <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col items-center justify-center p-12 text-center">
-        <BarChart3 className="mb-3 h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Pas encore assez de données pour l'analyse.</p>
-      </div>
-    )
-  }
-
-  const maxType = Math.max(...stats.byType.map((t) => t.count), 1)
+// ─── Carte Devoir ───
+function DevoirCard({
+  devoir,
+  index,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onPublish,
+  onClose,
+  onArchive,
+  onReopen,
+  onViewSoumissions,
+}: {
+  devoir: Devoir
+  index: number
+  onEdit: () => void
+  onDelete: () => void
+  onDuplicate: () => void
+  onPublish: () => void
+  onClose: () => void
+  onArchive: () => void
+  onReopen: () => void
+  onViewSoumissions: () => void
+}) {
+  const cfg = statutDevoirConfig(devoir.statut)
+  const TypeIcon = typeSeanceIcon(devoir.typeSeance)
+  const time = getTimeRemaining(devoir.dateLimite)
+  const overdue = isOverdue(devoir.dateLimite) && devoir.statut !== 'ARCHIVE'
+  const soumissionCount = devoir.soumissionCount ?? devoir.Soumission?.length ?? 0
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {/* Répartition par type */}
-      <Card className="p-5 ds-kente-top">
-        <div className="mb-4 flex items-center gap-2">
-          <Layers className="h-5 w-5 text-primary-text" />
-          <h3 className="font-display tracking-tight font-semibold text-foreground">Répartition par type</h3>
-        </div>
-        {stats.byType.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Aucun devoir.</p>
-        ) : (
-          <div className="space-y-3">
-            {stats.byType.map((t, i) => (
-              <div key={t.type}>
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="text-foreground">{t.label}</span>
-                  <span className="font-bold text-primary-text font-mono tabular-nums">{t.count}</span>
-                </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="bg-primary h-full rounded-full transition-all"
-                    style={{ width: `${(t.count / maxType) * 100}%`, animationDelay: `${i * 60}ms` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+    <EntityCard
+      title={devoir.titre}
+      subtitle={`${devoir.UniteEnseignement?.code ?? '—'} — ${devoir.UniteEnseignement?.nom ?? ''}`}
+      thumbnailIcon={TypeIcon}
+      badge={{
+        label: cfg.label,
+        variant:
+          devoir.statut === 'PUBLIE'
+            ? 'success'
+            : devoir.statut === 'FERME'
+              ? 'warning'
+              : devoir.statut === 'ARCHIVE'
+                ? 'danger'
+                : 'secondary',
+      }}
+      meta={`Échéance ${formatDateOnly(devoir.dateLimite)} · ${devoir.noteMax} pts`}
+      index={index}
+    >
+      {/* Tags type + urgence */}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${typeSeanceBadge(devoir.typeSeance)}`}>
+          {devoir.typeSeance}
+        </Badge>
+        <Badge variant="outline" className={`text-[10px] gap-0.5 py-0 ${cfg.badge}`}>
+          <cfg.icon className="h-2.5 w-2.5" />
+          {cfg.label}
+        </Badge>
+        {devoir.renduFichiers && (
+          <Badge variant="outline" className="text-[10px] gap-0.5 py-0 border-info/30 bg-info/10 text-info">
+            <Paperclip className="h-2.5 w-2.5" />
+            Fichiers
+          </Badge>
         )}
-      </Card>
-
-      {/* Soumissions par statut */}
-      <Card className="p-5 ds-kente-top">
-        <div className="mb-4 flex items-center gap-2">
-          <Users className="h-5 w-5 text-secondary" />
-          <h3 className="font-display tracking-tight font-semibold text-foreground">Soumissions par statut</h3>
-        </div>
-        {stats.soumissionsByStatut.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Aucune soumission.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {stats.soumissionsByStatut.map((s) => {
-              const cfg = statutSoumissionConfig(s.statut)
-              return (
-                <div key={s.statut} className={`rounded-lg border p-3 text-center ${cfg.badge}`}>
-                  <p className="text-2xl font-bold font-mono tabular-nums">{s.count}</p>
-                  <p className="text-xs">{s.label}</p>
-                </div>
-              )
-            })}
-          </div>
+        {devoir.soumissionGroupe && (
+          <Badge variant="outline" className="text-[10px] gap-0.5 py-0 border-secondary/30 bg-secondary/10 text-secondary">
+            <Users className="h-2.5 w-2.5" />
+            Groupe
+          </Badge>
         )}
-      </Card>
+      </div>
 
-      {/* Timeline 7 jours */}
-      <Card className="p-5 lg:col-span-2 ds-kente-top">
-        <div className="mb-4 flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-success-text" />
-          <h3 className="font-display tracking-tight font-semibold text-foreground">Soumissions reçues (7 jours)</h3>
-        </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={stats.timeline} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <defs>
-              <linearGradient id="sousGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="rgb(132 204 22)" stopOpacity={0.6} />
-                <stop offset="95%" stopColor="rgb(132 204 22)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(132,204,22,0.1)" />
-            <XAxis
-              dataKey="date"
-              tick={{ fill: 'rgba(100,116,139,0.8)', fontSize: 11 }}
-              tickFormatter={(v) => {
-                const d = new Date(v)
-                return `${d.getDate()}/${d.getMonth() + 1}`
-              }}
-            />
-            <YAxis tick={{ fill: 'rgba(100,116,139,0.8)', fontSize: 11 }} allowDecimals={false} />
-            <RechartsTooltip
-              contentStyle={{
-                background: 'rgba(255,255,255,0.98)', border: '1px solid rgba(132,204,22,0.3)',
-                borderRadius: '8px', color: '#1f2937',
-              }}
-              labelFormatter={(v) => new Date(v).toLocaleDateString('fr-FR')}
-            />
-            <Area type="monotone" dataKey="soumissions" name="Soumissions" stroke="rgb(132 204 22)" strokeWidth={2} fill="url(#sousGrad)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </Card>
-    </div>
+      {/* Compte à rebours */}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] font-medium ${
+            overdue ? 'text-destructive' : time.urgent ? 'text-warning' : 'text-muted-foreground'
+          }`}
+        >
+          <Clock className="h-3 w-3" />
+          {time.text}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Users className="h-3 w-3" />
+          {soumissionCount} soumission{soumissionCount > 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Actions */}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onViewSoumissions}>
+          <Eye className="mr-1 h-3 w-3" />
+          Soumissions
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEdit} aria-label="Éditer">
+          <Edit3 className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onDuplicate} aria-label="Dupliquer">
+          <Copy className="h-3.5 w-3.5" />
+        </Button>
+        {devoir.statut === 'BROUILLON' && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-success-text hover:bg-success/10"
+            onClick={onPublish}
+          >
+            <Send className="mr-1 h-3 w-3" />
+            Publier
+          </Button>
+        )}
+        {devoir.statut === 'PUBLIE' && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-warning hover:bg-warning/10"
+            onClick={onClose}
+          >
+            <Lock className="mr-1 h-3 w-3" />
+            Fermer
+          </Button>
+        )}
+        {(devoir.statut === 'FERME' || devoir.statut === 'PUBLIE') && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-secondary hover:bg-secondary/10"
+            onClick={onArchive}
+          >
+            <Archive className="mr-1 h-3 w-3" />
+            Archiver
+          </Button>
+        )}
+        {devoir.statut !== 'BROUILLON' && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onReopen}>
+            <Edit3 className="mr-1 h-3 w-3" />
+            Rouvrir
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 ml-auto text-destructive hover:bg-destructive/10"
+          onClick={onDelete}
+          aria-label="Supprimer"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </EntityCard>
   )
 }
 
-// ─── Devoir Form Dialog ───
+// ─── Dialog création/édition ───
 function DevoirFormDialog({
-  open, onOpenChange, editingDevoir, isSubmitting, unitesEnseignement, form, onSubmit,
+  open,
+  onClose,
+  editingDevoir,
+  isSubmitting,
+  unitesEnseignement,
+  form,
+  onSubmit,
 }: {
-  open: boolean; onOpenChange: (v: boolean) => void
-  editingDevoir: Devoir | null; isSubmitting: boolean
+  open: boolean
+  onClose: () => void
+  editingDevoir: Devoir | null
+  isSubmitting: boolean
   unitesEnseignement: UniteEnseignement[]
   form: {
-    formTitre: string; setFormTitre: (v: string) => void
-    formDescription: string; setFormDescription: (v: string) => void
-    formUniteEnseignementId: string; setFormUniteEnseignementId: (v: string) => void
-    formTypeSeance: string; setFormTypeSeance: (v: string) => void
-    formDateLimite: string; setFormDateLimite: (v: string) => void
-    formDatePublication: string; setFormDatePublication: (v: string) => void
-    formNoteMax: number; setFormNoteMax: (v: number) => void
-    formConsignes: string; setFormConsignes: (v: string) => void
-    formRenduFichiers: boolean; setFormRenduFichiers: (v: boolean) => void
-    formSoumissionGroupe: boolean; setFormSoumissionGroupe: (v: boolean) => void
-    formNbMaxFichiers: number; setFormNbMaxFichiers: (v: number) => void
-    formTailleMaxFichier: number; setFormTailleMaxFichier: (v: number) => void
+    formTitre: string
+    setFormTitre: (v: string) => void
+    formDescription: string
+    setFormDescription: (v: string) => void
+    formUniteEnseignementId: string
+    setFormUniteEnseignementId: (v: string) => void
+    formTypeSeance: 'CM' | 'TD' | 'TP'
+    setFormTypeSeance: (v: 'CM' | 'TD' | 'TP') => void
+    formDateLimite: string
+    setFormDateLimite: (v: string) => void
+    formDatePublication: string
+    setFormDatePublication: (v: string) => void
+    formNoteMax: number
+    setFormNoteMax: (v: number) => void
+    formConsignes: string
+    setFormConsignes: (v: string) => void
+    formRenduFichiers: boolean
+    setFormRenduFichiers: (v: boolean) => void
+    formSoumissionGroupe: boolean
+    setFormSoumissionGroupe: (v: boolean) => void
+    formNbMaxFichiers: number
+    setFormNbMaxFichiers: (v: number) => void
+    formTailleMaxFichier: number
+    setFormTailleMaxFichier: (v: number) => void
     formGrilleCriteres: CritereGrille[]
-    addCritere: () => void; removeCritere: (i: number) => void; updateCritere: (i: number, f: keyof CritereGrille, v: string | number) => void
-    advancedSettingsOpen: boolean; setAdvancedSettingsOpen: (v: boolean) => void
+    addCritere: () => void
+    removeCritere: (i: number) => void
+    updateCritere: (i: number, field: keyof CritereGrille, value: string | number) => void
+    advancedSettingsOpen: boolean
+    setAdvancedSettingsOpen: (v: boolean) => void
   }
   onSubmit: () => void
 }) {
+  const f = form
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!min-h-0 max-h-[92vh] w-full overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="font-display text-xl text-foreground">
-            {editingDevoir ? 'Modifier le devoir' : 'Nouveau devoir'}
-          </DialogTitle>
-          <DialogDescription>
-            {editingDevoir ? `Modification de « ${editingDevoir.titre} »` : 'Créez un nouveau devoir pour vos étudiants.'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Titre */}
-          <div className="space-y-1.5">
-            <Label className="text-foreground font-medium">Titre <span className="text-destructive">*</span></Label>
-            <Input value={form.formTitre} onChange={(e) => form.setFormTitre(e.target.value)}
-              placeholder="Ex : TP Algorithmique - Tri rapide" />
-          </div>
-
-          {/* UE + Type */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-foreground font-medium">Unité d'enseignement <span className="text-destructive">*</span></Label>
-              <Select value={form.formUniteEnseignementId} onValueChange={form.setFormUniteEnseignementId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir une UE" />
-                </SelectTrigger>
-                <SelectContent>
-                  {unitesEnseignement.map((ue) => (
-                    <SelectItem key={ue.id} value={ue.id}>{ue.code} — {ue.nom}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-foreground font-medium">Type de séance</Label>
-              <Select value={form.formTypeSeance} onValueChange={form.setFormTypeSeance}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CM">Cours magistral</SelectItem>
-                  <SelectItem value="TD">Travail dirigé</SelectItem>
-                  <SelectItem value="TP">Travaux pratiques</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-foreground font-medium">Date limite <span className="text-destructive">*</span></Label>
-              <Input type="datetime-local" value={form.formDateLimite} onChange={(e) => form.setFormDateLimite(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-foreground font-medium">Publication (optionnel)</Label>
-              <Input type="datetime-local" value={form.formDatePublication} onChange={(e) => form.setFormDatePublication(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Note max + Description */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label className="text-foreground font-medium">Note maximale</Label>
-              <Input type="number" min={1} max={100} value={form.formNoteMax}
-                onChange={(e) => form.setFormNoteMax(Number(e.target.value))} />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-foreground font-medium">Description courte</Label>
-              <Input value={form.formDescription} onChange={(e) => form.setFormDescription(e.target.value)}
-                placeholder="Résumé du devoir..." />
-            </div>
-          </div>
-
-          {/* Consignes */}
-          <div className="space-y-1.5">
-            <Label className="text-foreground font-medium">Consignes détaillées</Label>
-            <Textarea value={form.formConsignes} onChange={(e) => form.setFormConsignes(e.target.value)}
-              placeholder="Instructions, attendus, format de rendu..."
-              rows={4} />
-          </div>
-
-          {/* Paramètres avancés */}
-          <div className="rounded-lg border border-border bg-muted/30">
-            <button
-              onClick={() => form.setAdvancedSettingsOpen(!form.advancedSettingsOpen)}
-              className="flex w-full items-center justify-between p-3 text-sm font-medium text-primary-text"
-              aria-expanded={form.advancedSettingsOpen}
-            >
-              <span className="inline-flex items-center gap-2">
-                <Settings2 className="h-4 w-4" /> Paramètres avancés
-              </span>
-              {form.advancedSettingsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-            {form.advancedSettingsOpen && (
-              <div className="space-y-3 border-t border-border p-3">
-                {/* Fichiers */}
-                <div className="flex items-center justify-between">
-                  <Label className="inline-flex items-center gap-2 text-foreground font-medium">
-                    <Paperclip className="h-4 w-4 text-info" /> Rendu de fichiers
-                  </Label>
-                  <Switch checked={form.formRenduFichiers} onCheckedChange={form.setFormRenduFichiers} />
-                </div>
-                {form.formRenduFichiers && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Nb max fichiers</Label>
-                      <Input type="number" min={1} value={form.formNbMaxFichiers}
-                        onChange={(e) => form.setFormNbMaxFichiers(Number(e.target.value))} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Taille max (Mo)</Label>
-                      <Input type="number" min={1} value={form.formTailleMaxFichier}
-                        onChange={(e) => form.setFormTailleMaxFichier(Number(e.target.value))} />
-                    </div>
-                  </div>
-                )}
-                {/* Groupe */}
-                <div className="flex items-center justify-between">
-                  <Label className="inline-flex items-center gap-2 text-foreground font-medium">
-                    <UsersRound className="h-4 w-4 text-secondary" /> Soumission en groupe
-                  </Label>
-                  <Switch checked={form.formSoumissionGroupe} onCheckedChange={form.setFormSoumissionGroupe} />
-                </div>
-                {/* Grille d'évaluation */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="inline-flex items-center gap-2 text-foreground font-medium">
-                      <FileSpreadsheet className="h-4 w-4 text-success-text" /> Grille d'évaluation
-                    </Label>
-                    <Button size="sm" variant="ghost" onClick={form.addCritere}
-                      className="h-7 px-2 text-xs text-primary-text hover:bg-primary/10">
-                      <PlusCircle className="mr-1 h-3.5 w-3.5" /> Critère
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {form.formGrilleCriteres.map((c, i) => (
-                      <div key={i} className="grid grid-cols-12 gap-1.5 rounded-md bg-muted/40 p-2">
-                        <Input value={c.nom} placeholder="Nom du critère"
-                          onChange={(e) => form.updateCritere(i, 'nom', e.target.value)}
-                          className="col-span-5 h-8 text-xs" />
-                        <Input value={c.description} placeholder="Description"
-                          onChange={(e) => form.updateCritere(i, 'description', e.target.value)}
-                          className="col-span-5 h-8 text-xs" />
-                        <Input type="number" min={0} value={c.poids} placeholder="Poids"
-                          onChange={(e) => form.updateCritere(i, 'poids', Number(e.target.value))}
-                          className="col-span-1 h-8 text-xs" />
-                        <Button size="sm" variant="ghost"
-                          onClick={() => form.removeCritere(i)}
-                          disabled={form.formGrilleCriteres.length <= 1}
-                          className="col-span-1 h-8 w-full p-0 text-destructive hover:bg-destructive/10"
-                          aria-label="Supprimer critère">
-                          <MinusCircle className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+    <GlassModal
+      open={open}
+      onClose={onClose}
+      title={editingDevoir ? 'Modifier le devoir' : 'Nouveau devoir'}
+      description={
+        editingDevoir
+          ? 'Mettez à jour les informations de ce devoir.'
+          : 'Créez un devoir pour vos étudiants. Il sera en brouillon jusqu’à publication.'
+      }
+      size="xl"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Annuler
           </Button>
           <Button onClick={onSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {editingDevoir ? 'Enregistrer' : 'Créer le devoir'}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                Enregistrement…
+              </>
+            ) : editingDevoir ? (
+              'Enregistrer'
+            ) : (
+              'Créer le devoir'
+            )}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {/* Titre */}
+        <div className="space-y-1.5">
+          <Label htmlFor="form-titre">
+            Titre <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="form-titre"
+            value={f.formTitre}
+            onChange={(e) => f.setFormTitre(e.target.value)}
+            placeholder="Ex: TP3 — Algorithmes de tri"
+            maxLength={120}
+          />
+        </div>
+
+        {/* UE + Type */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>
+              Unité d’enseignement <span className="text-destructive">*</span>
+            </Label>
+            <Select value={f.formUniteEnseignementId} onValueChange={f.setFormUniteEnseignementId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner une UE" />
+              </SelectTrigger>
+              <SelectContent>
+                {unitesEnseignement.length === 0 ? (
+                  <SelectItem value="_none" disabled>
+                    Aucune UE disponible
+                  </SelectItem>
+                ) : (
+                  unitesEnseignement.map((ue) => (
+                    <SelectItem key={ue.id} value={ue.id}>
+                      {ue.code} — {ue.nom}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Type de séance</Label>
+            <Select value={f.formTypeSeance} onValueChange={(v) => f.setFormTypeSeance(v as 'CM' | 'TD' | 'TP')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CM">Cours magistral (CM)</SelectItem>
+                <SelectItem value="TD">Travail dirigé (TD)</SelectItem>
+                <SelectItem value="TP">Travaux pratiques (TP)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Dates */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="form-date-limite">
+              Date limite <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="form-date-limite"
+              type="datetime-local"
+              value={f.formDateLimite}
+              onChange={(e) => f.setFormDateLimite(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="form-date-pub">Date de publication (optionnel)</Label>
+            <Input
+              id="form-date-pub"
+              type="datetime-local"
+              value={f.formDatePublication}
+              onChange={(e) => f.setFormDatePublication(e.target.value)}
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Si vide, le devoir sera publié immédiatement lors de l’action « Publier ».
+            </p>
+          </div>
+        </div>
+
+        {/* Note max */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Note maximale</Label>
+            <Badge variant="outline" className="font-mono tabular-nums bg-primary/10 text-primary-text">
+              {f.formNoteMax} / 20
+            </Badge>
+          </div>
+          <Slider
+            value={[f.formNoteMax]}
+            onValueChange={(v) => f.setFormNoteMax(v[0])}
+            min={1}
+            max={20}
+            step={0.5}
+          />
+        </div>
+
+        {/* Description + consignes */}
+        <div className="space-y-1.5">
+          <Label htmlFor="form-desc">Description</Label>
+          <Textarea
+            id="form-desc"
+            value={f.formDescription}
+            onChange={(e) => f.setFormDescription(e.target.value)}
+            placeholder="Contexte, objectifs, attendus…"
+            rows={2}
+            maxLength={500}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="form-consignes">Consignes détaillées</Label>
+          <Textarea
+            id="form-consignes"
+            value={f.formConsignes}
+            onChange={(e) => f.setFormConsignes(e.target.value)}
+            placeholder="Consignes de rendu, format attendu, contraintes…"
+            rows={3}
+          />
+        </div>
+
+        {/* Paramètres avancés */}
+        <Collapsible open={f.advancedSettingsOpen} onOpenChange={f.setAdvancedSettingsOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between">
+              <span className="inline-flex items-center gap-1.5">
+                <Settings2 className="h-4 w-4" />
+                Paramètres avancés
+              </span>
+              {f.advancedSettingsOpen ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 pt-3">
+            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="switch-fichiers" className="cursor-pointer">
+                    Rendu de fichiers
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Autorise les étudiants à uploader des fichiers (PDF, images…)
+                  </p>
+                </div>
+                <Switch
+                  id="switch-fichiers"
+                  checked={f.formRenduFichiers}
+                  onCheckedChange={f.setFormRenduFichiers}
+                />
+              </div>
+
+              {f.formRenduFichiers && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="form-nb-files">Nombre max de fichiers</Label>
+                    <Input
+                      id="form-nb-files"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={f.formNbMaxFichiers}
+                      onChange={(e) => f.setFormNbMaxFichiers(Number(e.target.value) || 1)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="form-taille">Taille max par fichier (Mo)</Label>
+                    <Input
+                      id="form-taille"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={f.formTailleMaxFichier}
+                      onChange={(e) => f.setFormTailleMaxFichier(Number(e.target.value) || 1)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="switch-groupe" className="cursor-pointer">
+                    Soumission en groupe
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Une seule soumission par groupe d’étudiants
+                  </p>
+                </div>
+                <Switch
+                  id="switch-groupe"
+                  checked={f.formSoumissionGroupe}
+                  onCheckedChange={f.setFormSoumissionGroupe}
+                />
+              </div>
+            </div>
+
+            {/* Grille d'évaluation dynamique */}
+            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Grille d’évaluation</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Critères utilisés par l’IA pour évaluer les soumissions.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={f.addCritere} className="h-7 text-xs">
+                  <PlusCircle className="mr-1 h-3 w-3" />
+                  Ajouter
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {f.formGrilleCriteres.map((c, i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-12 gap-2 rounded-md border border-border bg-card p-2"
+                  >
+                    <Input
+                      className="col-span-12 sm:col-span-4"
+                      placeholder="Nom du critère"
+                      value={c.nom}
+                      onChange={(e) => f.updateCritere(i, 'nom', e.target.value)}
+                    />
+                    <Input
+                      className="col-span-12 sm:col-span-6"
+                      placeholder="Description"
+                      value={c.description}
+                      onChange={(e) => f.updateCritere(i, 'description', e.target.value)}
+                    />
+                    <div className="col-span-10 sm:col-span-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        placeholder="Poids"
+                        value={c.poids}
+                        onChange={(e) => f.updateCritere(i, 'poids', Number(e.target.value) || 0)}
+                      />
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="col-span-2 sm:col-span-1 h-9 w-full p-0 text-destructive hover:bg-destructive/10"
+                      onClick={() => f.removeCritere(i)}
+                      disabled={f.formGrilleCriteres.length <= 1}
+                      aria-label="Supprimer ce critère"
+                    >
+                      <MinusCircle className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+    </GlassModal>
   )
 }
 
-// ─── Soumissions Sheet ───
+// ─── Sheet Soumissions ───
 function SoumissionsSheet({
-  open, onOpenChange, devoir, soumissions, isLoading,
-  sortField, getSortIcon, toggleSort, expandedId, setExpandedId,
-  onExportCSV, onOpenGrade, quickGrade,
+  open,
+  onClose,
+  devoir,
+  soumissions,
+  isLoading,
+  sortField,
+  getSortIcon,
+  toggleSort,
+  expandedId,
+  setExpandedId,
+  onExportCSV,
+  onOpenGrade,
+  onQuickAiGrade,
+  quickGrade,
 }: {
-  open: boolean; onOpenChange: (v: boolean) => void
-  devoir: Devoir | null; soumissions: Soumission[]; isLoading: boolean
+  open: boolean
+  onClose: () => void
+  devoir: Devoir | null
+  soumissions: Soumission[]
+  isLoading: boolean
   sortField: string
   getSortIcon: (f: string) => React.ReactNode
   toggleSort: (f: string) => void
-  expandedId: string | null; setExpandedId: (v: string | null) => void
-  onExportCSV: () => void; onOpenGrade: (s: Soumission) => void
+  expandedId: string | null
+  setExpandedId: (id: string | null) => void
+  onExportCSV: () => void
+  onOpenGrade: (s: Soumission) => void
+  onQuickAiGrade: (id: string) => void
   quickGrade: {
-    id: string | null; setId: (v: string | null) => void
-    value: number; setValue: (v: number) => void
-    submit: () => void; isGrading: boolean
+    id: string | null
+    setId: (id: string | null) => void
+    value: number
+    setValue: (v: number) => void
+    submit: () => void
+    isGrading: boolean
+    noteMax: number
   }
 }) {
-  const noteMax = devoir?.noteMax ?? 20
-  const soumStats = useMemo(() => {
-    const corrigees = soumissions.filter(s => s.statut === 'CORRIGE' || s.statut === 'RETOURNE')
-    const notes = corrigees.filter(s => s.note !== null).map(s => s.note!)
-    return {
-      total: soumissions.length,
-      enAttente: soumissions.filter(s => s.statut === 'SOUMIS').length,
-      corrigees: corrigees.length,
-      avgNote: notes.length > 0 ? notes.reduce((a, b) => a + b, 0) / notes.length : null,
-    }
+  const stats = useMemo(() => {
+    const soumis = soumissions.filter((s) => s.statut === 'SOUMIS').length
+    const corrige = soumissions.filter((s) => s.statut === 'CORRIGE' || s.statut === 'RETOURNE').length
+    const brouillon = soumissions.filter((s) => s.statut === 'BROUILLON').length
+    const notes = soumissions.filter((s) => s.note !== null).map((s) => s.note as number)
+    const moyenne = notes.length > 0 ? notes.reduce((a, b) => a + b, 0) / notes.length : null
+    return { soumis, corrige, brouillon, moyenne, total: soumissions.length }
   }, [soumissions])
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
-        {devoir && (
-          <>
-            <SheetHeader>
-              <SheetTitle className="font-display text-xl text-foreground">{devoir.titre}</SheetTitle>
-              <SheetDescription>
-                {devoir.UniteEnseignement?.code} — {getTypeSeanceLabel(devoir.typeSeance)} — /{devoir.noteMax}
-              </SheetDescription>
-            </SheetHeader>
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-2xl lg:max-w-3xl flex flex-col p-0 gap-0"
+      >
+        {/* Header avec bande kente */}
+        <div className="ds-kente-strip" aria-hidden />
+        <SheetHeader className="ds-kente-pattern p-5 pb-4 border-b border-border">
+          <SheetTitle className="font-display text-lg">
+            {devoir?.titre ?? 'Soumissions'}
+          </SheetTitle>
+          <SheetDescription>
+            {devoir?.UniteEnseignement?.code} — {devoir?.UniteEnseignement?.nom} ·{' '}
+            {devoir?.noteMax} pts · échéance {devoir && formatDateOnly(devoir.dateLimite)}
+          </SheetDescription>
+          {/* Mini KPIs */}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge variant="outline" className="text-[10px] gap-1 border-info/30 bg-info/15 text-info">
+              {stats.soumis} à corriger
+            </Badge>
+            <Badge variant="outline" className="text-[10px] gap-1 border-success/30 bg-success/15 text-success-text">
+              {stats.corrige} corrigées
+            </Badge>
+            {stats.brouillon > 0 && (
+              <Badge variant="outline" className="text-[10px] gap-1 border-border bg-muted text-muted-foreground">
+                {stats.brouillon} brouillons
+              </Badge>
+            )}
+            {stats.moyenne !== null && (
+              <Badge variant="outline" className="text-[10px] gap-1 border-primary/30 bg-primary/15 text-primary-text">
+                Moy. {stats.moyenne.toFixed(2)}/{devoir?.noteMax ?? 20}
+              </Badge>
+            )}
+          </div>
+        </SheetHeader>
 
-            <div className="mt-5 space-y-4">
-              {/* Stats rapides */}
-              <div className="grid grid-cols-4 gap-2">
-                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="text-xl font-bold text-foreground font-mono tabular-nums">{soumStats.total}</p>
-                </div>
-                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
-                  <p className="text-xs text-muted-foreground">En attente</p>
-                  <p className="text-xl font-bold text-info font-mono tabular-nums">{soumStats.enAttente}</p>
-                </div>
-                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
-                  <p className="text-xs text-muted-foreground">Corrigées</p>
-                  <p className="text-xl font-bold text-success-text font-mono tabular-nums">{soumStats.corrigees}</p>
-                </div>
-                <div className="bg-card border border-border rounded-lg p-2.5 text-center">
-                  <p className="text-xs text-muted-foreground">Moyenne</p>
-                  <p className="text-xl font-bold text-warning font-mono tabular-nums">
-                    {soumStats.avgNote !== null ? soumStats.avgNote.toFixed(1) : '—'}
-                  </p>
-                </div>
+        {/* Toolbar export */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-2">
+          <p className="text-xs text-muted-foreground">
+            {soumissions.length} soumission{soumissions.length > 1 ? 's' : ''}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onExportCSV}
+            disabled={soumissions.length === 0}
+            className="h-7 text-xs"
+          >
+            <Download className="mr-1 h-3 w-3" />
+            Export CSV
+          </Button>
+        </div>
+
+        {/* Liste scrollable */}
+        <ScrollArea className="flex-1">
+          {isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <PulseSkeleton key={i} className="h-20 w-full" variant="card" />
+              ))}
+            </div>
+          ) : soumissions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <Inbox className="h-10 w-10 text-muted-foreground/50" />
+              <p className="mt-2 text-sm font-medium">Aucune soumission</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Les soumissions des étudiants apparaîtront ici dès qu’elles seront rendues.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {/* En-tête triable */}
+              <div className="grid grid-cols-12 gap-2 bg-muted/40 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <button
+                  className="col-span-4 flex items-center gap-1 text-left hover:text-foreground"
+                  onClick={() => toggleSort('name')}
+                >
+                  Étudiant {getSortIcon('name')}
+                </button>
+                <button
+                  className="col-span-2 flex items-center gap-1 hover:text-foreground"
+                  onClick={() => toggleSort('statut')}
+                >
+                  Statut {getSortIcon('statut')}
+                </button>
+                <button
+                  className="col-span-3 flex items-center gap-1 hover:text-foreground"
+                  onClick={() => toggleSort('renduAt')}
+                >
+                  Rendu {getSortIcon('renduAt')}
+                </button>
+                <button
+                  className="col-span-2 flex items-center gap-1 hover:text-foreground"
+                  onClick={() => toggleSort('note')}
+                >
+                  Note {getSortIcon('note')}
+                </button>
+                <div className="col-span-1 text-right">Actions</div>
               </div>
 
-              {/* Export */}
-              <div className="flex justify-end">
-                <Button size="sm" variant="outline" onClick={onExportCSV}
-                  disabled={soumissions.length === 0}
-                  className="border-success/30 text-success-text hover:bg-success/10">
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
-                </Button>
-              </div>
-
-              {/* Liste */}
-              {isLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="bg-card border border-border rounded-lg shadow-sm h-16 p-3">
-                      <PulseSkeleton variant="card" className="h-full w-full" />
+              {soumissions.map((s) => {
+                const isExpanded = expandedId === s.id
+                const iaCfg = statutIaConfig(s.statutIA)
+                return (
+                  <div key={s.id} className="px-4 py-2.5 hover:bg-muted/30">
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      {/* Étudiant */}
+                      <button
+                        className="col-span-4 text-left min-w-0"
+                        onClick={() => setExpandedId(isExpanded ? null : s.id)}
+                      >
+                        <p className="text-sm font-medium truncate">{s.User?.name ?? '—'}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {s.User?.matricule ?? s.User?.email ?? ''}
+                        </p>
+                      </button>
+                      {/* Statut */}
+                      <div className="col-span-2">
+                        <Badge variant="outline" className={`text-[10px] ${statutSoumissionBadge(s.statut)}`}>
+                          {s.statut}
+                        </Badge>
+                      </div>
+                      {/* Rendu */}
+                      <div className="col-span-3 text-[11px] text-muted-foreground">
+                        {s.renduAt ? formatDateTime(s.renduAt) : '—'}
+                      </div>
+                      {/* Note */}
+                      <div className="col-span-2">
+                        {s.note !== null ? (
+                          <span className="font-mono text-sm font-semibold tabular-nums">
+                            {s.note}
+                            <span className="text-muted-foreground">/{quickGrade.noteMax}</span>
+                          </span>
+                        ) : s.noteIA !== null && s.statutIA === 'TERMINE' ? (
+                          <span className="font-mono text-sm font-medium text-info" title="Note IA proposée">
+                            {s.noteIA}
+                            <span className="text-muted-foreground">/</span>
+                            <Sparkles className="inline h-3 w-3 ml-0.5" />
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </div>
+                      {/* Actions */}
+                      <div className="col-span-1 flex justify-end gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => onOpenGrade(s)}
+                          aria-label="Noter"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              ) : soumissions.length === 0 ? (
-                <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col items-center justify-center p-8 text-center">
-                  <Users className="mb-2 h-10 w-10 text-muted-foreground" />
-                  <p className="text-muted-foreground">Aucune soumission pour le moment.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {soumissions.map((s) => {
-                    const cfg = statutSoumissionConfig(s.statut)
-                    const isExpanded = expandedId === s.id
-                    const isQuickGrading = quickGrade.id === s.id
-                    return (
-                      <div key={s.id} className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                        <div className="flex items-center gap-3 p-3">
-                          <button
-                            onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                            className="text-muted-foreground hover:text-primary-text"
-                            aria-label={isExpanded ? 'Réduire' : 'Développer'}
-                            aria-expanded={isExpanded}
-                          >
-                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">
-                              {s.User?.name}
-                              {s.User?.matricule && (
-                                <span className="ml-1.5 text-xs text-muted-foreground">({s.User.matricule})</span>
-                              )}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {s.renduAt ? formatDateTime(s.renduAt) : 'Non rendu'}
-                            </p>
-                          </div>
-                          <Badge variant="outline" className={`border text-xs ${cfg.badge}`}>{cfg.label}</Badge>
-                          {s.note !== null && (
-                            <span className="rounded-full bg-gold/15 px-2 py-0.5 text-xs font-bold text-gold">
-                              {s.note}/{noteMax}
-                            </span>
-                          )}
-                          {s.noteIA !== null && s.noteIA !== undefined && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-tech/15 px-2 py-0.5 text-xs text-tech" title="Note suggérée par IA">
-                              <Sparkles className="h-3 w-3" />{s.noteIA}
-                            </span>
-                          )}
-                        </div>
 
-                        {/* Détail replié */}
+                    {/* Ligne IA / quick grade / expand */}
+                    {(s.statutIA === 'EN_COURS' || s.statutIA === 'TERMINE' || s.statutIA === 'ERREUR' || quickGrade.id === s.id || isExpanded) && (
+                      <div className="mt-2 ml-0 sm:ml-0 grid grid-cols-1 gap-2 rounded-md border border-border bg-muted/30 p-2">
+                        {/* IA status */}
+                        {s.statutIA !== 'EN_ATTENTE' && (
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <Badge variant="outline" className={`gap-1 ${iaCfg.badge}`}>
+                              {iaCfg.spinner && <Loader2 className="h-3 w-3 animate-spin" />}
+                              <Sparkles className="h-3 w-3" />
+                              {iaCfg.label}
+                            </Badge>
+                            {s.statutIA === 'TERMINE' && s.noteIA !== null && (
+                              <span className="text-info font-medium">
+                                Note IA : {s.noteIA}/{quickGrade.noteMax}
+                              </span>
+                            )}
+                            {s.statutIA === 'ERREUR' && s.erreurIA && (
+                              <span className="text-destructive text-[11px]">{s.erreurIA}</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Quick IA button */}
+                        {s.statutIA === 'EN_ATTENTE' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-fit text-xs border-info/30 bg-info/10 text-info hover:bg-info/20"
+                            onClick={() => onQuickAiGrade(s.id)}
+                          >
+                            <Sparkles className="mr-1 h-3 w-3" />
+                            Évaluer par IA
+                          </Button>
+                        )}
+
+                        {/* Quick grade inline */}
+                        {quickGrade.id === s.id && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={quickGrade.noteMax}
+                              step={0.5}
+                              value={quickGrade.value}
+                              onChange={(e) => quickGrade.setValue(Number(e.target.value) || 0)}
+                              className="h-7 w-20 text-sm"
+                              aria-label={`Note sur ${quickGrade.noteMax}`}
+                            />
+                            <span className="text-xs text-muted-foreground">/ {quickGrade.noteMax}</span>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={quickGrade.submit}
+                              disabled={quickGrade.isGrading}
+                            >
+                              {quickGrade.isGrading ? (
+                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="mr-1 h-3 w-3" />
+                              )}
+                              OK
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => quickGrade.setId(null)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Expanded details */}
                         {isExpanded && (
-                          <div className="space-y-2 border-t border-border p-3 text-xs">
+                          <div className="space-y-1.5 text-xs">
                             {s.contenuTexte && (
                               <div>
-                                <p className="mb-1 font-medium text-info">Contenu rendu</p>
-                                <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-foreground">
+                                <p className="font-semibold text-muted-foreground">Contenu texte :</p>
+                                <p className="mt-0.5 whitespace-pre-wrap rounded bg-card p-2 border border-border">
                                   {s.contenuTexte}
-                                </div>
+                                </p>
+                              </div>
+                            )}
+                            {s.fichiersSoumis && (
+                              <div>
+                                <p className="font-semibold text-muted-foreground">Fichiers :</p>
+                                <p className="mt-0.5 font-mono text-[11px]">{s.fichiersSoumis}</p>
                               </div>
                             )}
                             {s.commentaireEtudiant && (
                               <div>
-                                <p className="mb-1 font-medium text-secondary">Commentaire étudiant</p>
-                                <p className="rounded bg-muted/40 p-2 text-muted-foreground">{s.commentaireEtudiant}</p>
-                              </div>
-                            )}
-                            {s.commentaireEnseignant && (
-                              <div>
-                                <p className="mb-1 font-medium text-success-text">Votre commentaire</p>
-                                <p className="rounded bg-muted/40 p-2 text-muted-foreground">{s.commentaireEnseignant}</p>
+                                <p className="font-semibold text-muted-foreground">Commentaire étudiant :</p>
+                                <p className="mt-0.5 italic">{s.commentaireEtudiant}</p>
                               </div>
                             )}
                             {s.justificationIA && (
                               <div>
-                                <p className="mb-1 inline-flex items-center gap-1 font-medium text-tech">
-                                  <Sparkles className="h-3 w-3" />Justification IA
-                                </p>
-                                <p className="rounded bg-muted/40 p-2 text-muted-foreground">{s.justificationIA}</p>
+                                <p className="font-semibold text-info">Justification IA :</p>
+                                <p className="mt-0.5 italic text-info/80">{s.justificationIA}</p>
+                              </div>
+                            )}
+                            {s.commentaireEnseignant && (
+                              <div>
+                                <p className="font-semibold text-muted-foreground">Commentaire enseignant :</p>
+                                <p className="mt-0.5">{s.commentaireEnseignant}</p>
                               </div>
                             )}
                           </div>
                         )}
-
-                        {/* Quick grade inline */}
-                        {(s.statut === 'SOUMIS' || s.statut === 'CORRIGE' || s.statut === 'RETOURNE') && (
-                          <div className="flex flex-wrap items-center gap-2 border-t border-border p-2">
-                            {isQuickGrading ? (
-                              <>
-                                <div className="flex flex-1 items-center gap-2 px-1">
-                                  <span className="text-xs text-muted-foreground">0</span>
-                                  <Slider
-                                    value={[quickGrade.value]} min={0} max={noteMax} step={0.5}
-                                    onValueChange={(v) => quickGrade.setValue(v[0])}
-                                    className="flex-1"
-                                  />
-                                  <span className="w-10 text-right text-xs font-bold text-warning font-mono tabular-nums">{quickGrade.value}/{noteMax}</span>
-                                </div>
-                                <Button size="sm" onClick={quickGrade.submit} disabled={quickGrade.isGrading}
-                                  className="h-7 px-2 text-xs">
-                                  {quickGrade.isGrading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />}
-                                  OK
-                                </Button>
-                                <Button size="sm" variant="ghost"
-                                  onClick={() => quickGrade.setId(null)}
-                                  className="h-7 px-2 text-xs text-muted-foreground hover:bg-accent">
-                                  <X className="h-3.5 w-3.5" />
-                                </Button>
-                              </>
-                            ) : (
-                              <>
-                                <Button size="sm" variant="ghost"
-                                  onClick={() => { quickGrade.setId(s.id); quickGrade.setValue(s.note ?? Math.round(noteMax / 2)) }}
-                                  className="h-7 px-2 text-xs text-warning hover:bg-warning/10">
-                                  <Star className="mr-1 h-3.5 w-3.5" /> Noter
-                                </Button>
-                                <Button size="sm" variant="ghost"
-                                  onClick={() => onOpenGrade(s)}
-                                  className="h-7 px-2 text-xs text-primary-text hover:bg-primary/10">
-                                  <MessageSquare className="mr-1 h-3.5 w-3.5" /> Détail
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        )}
                       </div>
-                    )
-                  })}
-                </div>
-              )}
+                    )}
+
+                    {/* Quick action row (toujours visible) */}
+                    {quickGrade.id !== s.id && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {s.statut === 'SOUMIS' || s.statut === 'CORRIGE' ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px] text-primary-text hover:bg-primary/10"
+                              onClick={() => {
+                                quickGrade.setId(s.id)
+                                quickGrade.setValue(s.note ?? 0)
+                              }}
+                            >
+                              <Edit3 className="mr-1 h-3 w-3" />
+                              Note rapide
+                            </Button>
+                            {s.statutIA === 'EN_ATTENTE' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[11px] text-info hover:bg-info/10"
+                                onClick={() => onQuickAiGrade(s.id)}
+                              >
+                                <Sparkles className="mr-1 h-3 w-3" />
+                                Évaluer IA
+                              </Button>
+                            )}
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-          </>
-        )}
+          )}
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   )
 }
 
-// ─── Grade Dialog ───
+// ─── Grade Dialog avec IA polling ───
 function GradeDialog({
-  open, onOpenChange, soumission, noteMax,
-  gradeNote, setGradeNote, gradeCommentaire, setGradeCommentaire,
-  isSubmitting, isAiGrading, onSubmit, onAiGrade,
+  open,
+  onClose,
+  soumission,
+  noteMax,
+  gradeNote,
+  setGradeNote,
+  gradeCommentaire,
+  setGradeCommentaire,
+  isSubmitting,
+  isAiGrading,
+  onSubmit,
+  onAiGrade,
 }: {
-  open: boolean; onOpenChange: (v: boolean) => void
-  soumission: Soumission | null; noteMax: number
-  gradeNote: string; setGradeNote: (v: string) => void
-  gradeCommentaire: string; setGradeCommentaire: (v: string) => void
-  isSubmitting: boolean; isAiGrading: boolean
-  onSubmit: () => void; onAiGrade: () => void
+  open: boolean
+  onClose: () => void
+  soumission: Soumission | null
+  noteMax: number
+  gradeNote: string
+  setGradeNote: (v: string) => void
+  gradeCommentaire: string
+  setGradeCommentaire: (v: string) => void
+  isSubmitting: boolean
+  isAiGrading: boolean
+  onSubmit: () => void
+  onAiGrade: () => void
 }) {
+  const iaCfg = statutIaConfig(soumission?.statutIA)
+  const noteValue = parseFloat(gradeNote) || 0
+  const percent = Math.min(100, (noteValue / noteMax) * 100)
+  const accent = percent >= 80 ? 'success' : percent >= 50 ? 'warning' : 'danger'
+
+  // Auto-fill note + commentaire depuis IA quand elle termine
+  useEffect(() => {
+    if (soumission?.statutIA === 'TERMINE' && soumission.noteIA !== null && !gradeNote) {
+      setGradeNote(String(soumission.noteIA))
+    }
+    if (soumission?.statutIA === 'TERMINE' && soumission.justificationIA && !gradeCommentaire) {
+      setGradeCommentaire(soumission.justificationIA)
+    }
+  }, [soumission?.statutIA, soumission?.noteIA, soumission?.justificationIA, gradeNote, gradeCommentaire, setGradeNote, setGradeCommentaire])
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!min-h-0 sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="font-display text-xl flex items-center gap-2 text-foreground">
-            <GraduationCap className="h-5 w-5 text-primary-text" />
-            Noter la soumission
-          </DialogTitle>
-          <DialogDescription>
-            {soumission?.User?.name} — /{noteMax}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Note IA existante */}
-          {soumission?.noteIA !== null && soumission?.noteIA !== undefined && (
-            <div className="flex items-center gap-2 rounded-lg border border-tech/30 bg-tech/10 p-3 text-sm text-tech">
-              <Sparkles className="h-4 w-4" />
-              <span>Note suggérée par IA : <strong>{soumission.noteIA}/{noteMax}</strong></span>
-            </div>
-          )}
-
-          {/* Note */}
-          <div className="space-y-1.5">
-            <Label className="text-foreground font-medium">Note (sur {noteMax})</Label>
-            <Input type="number" min={0} max={noteMax} step={0.5} value={gradeNote}
-              onChange={(e) => setGradeNote(e.target.value)} />
-          </div>
-
-          {/* Commentaire */}
-          <div className="space-y-1.5">
-            <Label className="text-foreground font-medium">Commentaire (optionnel)</Label>
-            <Textarea value={gradeCommentaire} onChange={(e) => setGradeCommentaire(e.target.value)}
-              placeholder="Feedback pour l'étudiant..."
-              rows={4} />
-          </div>
-        </div>
-
-        <DialogFooter className="mt-4 gap-2">
-          <Button variant="outline" onClick={onAiGrade} disabled={isAiGrading}
-            className="border-tech/30 text-tech hover:bg-tech/10">
-            {isAiGrading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            Évaluer par IA
-          </Button>
-          <div className="flex-1" />
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+    <GlassModal
+      open={open}
+      onClose={onClose}
+      title="Noter la soumission"
+      description={soumission?.User?.name ?? ''}
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Annuler
           </Button>
           <Button onClick={onSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-            Enregistrer
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                Enregistrement…
+              </>
+            ) : (
+              'Enregistrer la note'
+            )}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {/* IA status block */}
+        {soumission?.statutIA && soumission.statutIA !== 'EN_ATTENTE' && (
+          <div
+            className={`rounded-md border p-3 ${
+              soumission.statutIA === 'ERREUR'
+                ? 'border-destructive/30 bg-destructive/5'
+                : soumission.statutIA === 'TERMINE'
+                  ? 'border-info/30 bg-info/5'
+                  : 'border-info/30 bg-info/5'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className={`gap-1 ${iaCfg.badge}`}>
+                  {iaCfg.spinner && <Loader2 className="h-3 w-3 animate-spin" />}
+                  <Sparkles className="h-3 w-3" />
+                  {iaCfg.label}
+                </Badge>
+                {soumission.statutIA === 'TERMINE' && soumission.noteIA !== null && (
+                  <span className="text-sm font-semibold text-info">
+                    Note IA : {soumission.noteIA}/{noteMax}
+                  </span>
+                )}
+              </div>
+              {soumission.statutIA !== 'EN_COURS' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs border-info/30 text-info hover:bg-info/10"
+                  onClick={onAiGrade}
+                  disabled={isAiGrading}
+                >
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  {isAiGrading ? 'Demande envoyée…' : 'Relancer l’IA'}
+                </Button>
+              )}
+            </div>
+            {soumission.statutIA === 'EN_COURS' && (
+              <p className="mt-2 text-xs text-info flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Évaluation IA en cours, veuillez patienter quelques secondes…
+              </p>
+            )}
+            {soumission.statutIA === 'TERMINE' && soumission.justificationIA && (
+              <div className="mt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-info">Justification IA</p>
+                <p className="mt-0.5 text-xs italic text-info/80">{soumission.justificationIA}</p>
+              </div>
+            )}
+            {soumission.statutIA === 'ERREUR' && soumission.erreurIA && (
+              <p className="mt-2 text-xs text-destructive">{soumission.erreurIA}</p>
+            )}
+          </div>
+        )}
+
+        {/* Bouton évaluer IA (première fois) */}
+        {soumission?.statutIA === 'EN_ATTENTE' && (
+          <div className="rounded-md border border-info/30 bg-info/5 p-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-info flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4" />
+                Évaluation IA
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Laissez l’IA proposer une note basée sur la grille d’évaluation.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-info/40 text-info hover:bg-info/10"
+              onClick={onAiGrade}
+              disabled={isAiGrading}
+            >
+              {isAiGrading ? (
+                <>
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  Envoi…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  Évaluer par IA
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {/* Contenu soumis (aperçu) */}
+        {soumission?.contenuTexte && (
+          <div className="space-y-1.5">
+            <Label>Contenu rendu</Label>
+            <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-muted/30 p-3 text-sm whitespace-pre-wrap">
+              {soumission.contenuTexte}
+            </div>
+          </div>
+        )}
+
+        {/* Note + ProgressRing */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
+          <div className="space-y-1.5">
+            <Label htmlFor="grade-note">
+              Note <span className="text-destructive">*</span> <span className="text-xs text-muted-foreground">(sur {noteMax})</span>
+            </Label>
+            <Input
+              id="grade-note"
+              type="number"
+              min={0}
+              max={noteMax}
+              step={0.5}
+              value={gradeNote}
+              onChange={(e) => setGradeNote(e.target.value)}
+              placeholder="0"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Saisissez une note entre 0 et {noteMax}. Les demi-points sont acceptés.
+            </p>
+          </div>
+          <div className="flex items-center justify-center">
+            <ProgressRing
+              value={percent}
+              size={88}
+              accent={accent}
+              label={`${noteValue.toFixed(1)}`}
+              sublabel={`/${noteMax}`}
+              showPercent={false}
+            />
+          </div>
+        </div>
+
+        {/* Commentaire */}
+        <div className="space-y-1.5">
+          <Label htmlFor="grade-comm">Commentaire enseignant</Label>
+          <Textarea
+            id="grade-comm"
+            value={gradeCommentaire}
+            onChange={(e) => setGradeCommentaire(e.target.value)}
+            placeholder="Feedback pour l’étudiant…"
+            rows={4}
+          />
+        </div>
+      </div>
+    </GlassModal>
   )
 }
-
