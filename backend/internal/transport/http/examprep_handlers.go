@@ -396,12 +396,43 @@ func (s *Server) examPrepGeneratePractice(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Construire le PracticeJob et le pousser dans la queue.
+	// QUESTION-BANK-1 — Cache check : si la banque contient déjà assez de
+	// questions validées pour ce document (et cette difficulté), on les
+	// retourne immédiatement (200 PRET) sans générer de nouvelles questions
+	// via l'IA. Le premier étudiant paie le coût IA, les suivants obtiennent
+	// les questions instantanément.
 	diff := domain.Difficulte(strings.ToUpper(body.Config.Difficulte))
 	if diff == "" {
 		diff = domain.DifficulteMoyen
 	}
 
+	var chapterPtr *string
+	if body.Config.ChapterID != "" {
+		chapterPtr = &body.Config.ChapterID
+	}
+	var diffPtr *string
+	if diff != "" {
+		s := string(diff)
+		diffPtr = &s
+	}
+
+	cached, hasEnough, err := s.examPrepUC.GetCachedQuestions(r.Context(), claims, body.DocumentID, chapterPtr, diffPtr, body.Config.NombreQuestions)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	if hasEnough && len(cached) > 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"status":     "PRET",
+			"documentId": body.DocumentID,
+			"questions":  toExamPrepCachedQuestionDTOs(cached),
+		})
+		return
+	}
+
+	// Cache miss → on pousse un job IA asynchrone (202 Accepted).
 	job := worker.PracticeJob{
 		UserID:     claims.UserID,
 		DocumentID: body.DocumentID,
@@ -956,3 +987,212 @@ func parseFlashcardAIResponse(raw string) (recto string, verso string, err error
 
 // Suppress unused warning
 var _ = strconv.Atoi
+
+
+// ============================================================
+// QUESTION BANK — votes collaboratifs + liste (QUESTION-BANK-1)
+// ============================================================
+
+// examPrepCachedQuestionDTO est la forme JSON d'une question de la banque
+// quand elle est retournée par /practice/generate (cache hit, 200 PRET).
+// Le frontend la mappe vers PracticeQuestion : propositions et themes sont
+// renvoyés comme json.RawMessage (et non *string) pour matcher l'interface
+// TS (Array<{texte}> | null et string[]).
+type examPrepCachedQuestionDTO struct {
+	ID           string          `json:"id"`
+	Type         string          `json:"type"`
+	Enonce       string          `json:"enonce"`
+	Propositions json.RawMessage `json:"propositions"`
+	Difficulte   string          `json:"difficulte"`
+	Themes       json.RawMessage `json:"themes"`
+}
+
+// toExamPrepCachedQuestionDTO convertit un QuestionBankItem (*string pour
+// propositions/themes) en DTO avec json.RawMessage (null si nil ou invalide).
+func toExamPrepCachedQuestionDTO(q *domain.QuestionBankItem) examPrepCachedQuestionDTO {
+	return examPrepCachedQuestionDTO{
+		ID:           q.ID,
+		Type:         q.Type,
+		Enonce:       q.Enonce,
+		Propositions: stringToRawJSON(q.Propositions),
+		Difficulte:   q.Difficulte,
+		Themes:       stringToRawJSON(q.Themes),
+	}
+}
+
+func toExamPrepCachedQuestionDTOs(items []*domain.QuestionBankItem) []examPrepCachedQuestionDTO {
+	out := make([]examPrepCachedQuestionDTO, 0, len(items))
+	for _, q := range items {
+		out = append(out, toExamPrepCachedQuestionDTO(q))
+	}
+	return out
+}
+
+// stringToRawJSON convertit un *string contenant du JSON en json.RawMessage.
+// Retourne nil si le pointeur est nil, la chaîne vide, ou si le parsing échoue.
+func stringToRawJSON(s *string) json.RawMessage {
+	if s == nil || *s == "" {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal([]byte(*s), &v); err != nil {
+		return nil
+	}
+	return json.RawMessage(*s)
+}
+
+// examPrepQuestionBankDTO est la forme JSON d'une question de la banque pour
+// l'onglet "Banque" (lecture seule + votes). Comme pour le cache, propositions
+// et themes sont en json.RawMessage pour faciliter le parsing côté frontend.
+type examPrepQuestionBankDTO struct {
+	ID              string          `json:"id"`
+	DocumentID      *string         `json:"documentId,omitempty"`
+	AuteurID        *string         `json:"auteurId,omitempty"`
+	Type            string          `json:"type"`
+	Enonce          string          `json:"enonce"`
+	Propositions    json.RawMessage `json:"propositions"`
+	ReponseCorrecte json.RawMessage `json:"reponseCorrecte"`
+	Explication     *string         `json:"explication,omitempty"`
+	Difficulte      string          `json:"difficulte"`
+	Themes          json.RawMessage `json:"themes"`
+	Validee         bool            `json:"validee"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	NetVotes        int             `json:"netVotes"`
+	Upvotes         int             `json:"upvotes"`
+	Downvotes       int             `json:"downvotes"`
+	UserVote        *int            `json:"userVote,omitempty"`
+}
+
+func toExamPrepQuestionBankDTO(q *domain.QuestionBankItem) examPrepQuestionBankDTO {
+	return examPrepQuestionBankDTO{
+		ID:              q.ID,
+		DocumentID:      q.DocumentID,
+		AuteurID:        q.AuteurID,
+		Type:            q.Type,
+		Enonce:          q.Enonce,
+		Propositions:    stringToRawJSON(q.Propositions),
+		ReponseCorrecte: stringToRawJSON(q.ReponseCorrecte),
+		Explication:     q.Explication,
+		Difficulte:      q.Difficulte,
+		Themes:          stringToRawJSON(q.Themes),
+		Validee:         q.Validee,
+		CreatedAt:       q.CreatedAt,
+		NetVotes:        q.NetVotes,
+		Upvotes:         q.Upvotes,
+		Downvotes:       q.Downvotes,
+		UserVote:        q.UserVote,
+	}
+}
+
+// listQuestionBank — GET /api/exam-prep/question-bank?documentId=X&limit=50&offset=0
+func (s *Server) listQuestionBank(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	documentID := r.URL.Query().Get("documentId")
+	if documentID == "" {
+		writeJSONError(w, http.StatusBadRequest, "documentId requis")
+		return
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 50
+	}
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	var chapterPtr *string
+	if ch := r.URL.Query().Get("chapterId"); ch != "" {
+		chapterPtr = &ch
+	}
+
+	items, err := s.examPrepUC.ListQuestionBank(r.Context(), claims, documentID, chapterPtr, limit, offset)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	dtos := make([]examPrepQuestionBankDTO, 0, len(items))
+	for _, q := range items {
+		dtos = append(dtos, toExamPrepQuestionBankDTO(q))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"questions": dtos})
+}
+
+// examPrepVoteBody est le body attendu par POST /api/exam-prep/questions/{id}/vote.
+type examPrepVoteBody struct {
+	Value int `json:"value"` // +1 ou -1
+}
+
+// voteQuestion — POST /api/exam-prep/questions/{id}/vote
+// Body : { "value": 1|-1 }. Upsert : si l'utilisateur a déjà voté, la valeur
+// est mise à jour. Retourne 200 avec le vote.
+func (s *Server) voteQuestion(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	questionID := chi.URLParam(r, "id")
+	if questionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id question requis")
+		return
+	}
+
+	var body examPrepVoteBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide: "+err.Error())
+		return
+	}
+
+	vote, err := s.examPrepUC.VoteQuestion(r.Context(), claims, questionID, body.Value)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"vote": vote})
+}
+
+// removeVote — DELETE /api/exam-prep/questions/{id}/vote
+// Supprime le vote de l'utilisateur courant sur la question (un-vote).
+// No-op si le vote n'existait pas. Retourne 204.
+func (s *Server) removeVote(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	questionID := chi.URLParam(r, "id")
+	if questionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id question requis")
+		return
+	}
+
+	if err := s.examPrepUC.RemoveVote(r.Context(), claims, questionID); err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -110,6 +110,96 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
   // (les inputs sont remis à zéro à la navigation, mais si l'utilisateur
   // revient sur une question sans résultat, on garde vide).
 
+  // Map une question issue de l'API (cache hit 200 PRET ou polling question-bank)
+  // vers PracticeQuestion. Normalise `propositions` qui peut arriver sous
+  // différentes formes selon la source :
+  //  - null / undefined  → null (question ouverte)
+  //  - string[]          → [{ texte: s }, ...]  (banque teacher-side)
+  //  - [{ text }]        → [{ texte: text }, ...]  (worker practice_worker.go)
+  //  - [{ texte }]       → [{ texte }]  (déjà au bon format)
+  // De même, `themes` peut être string[] ou un JSON string.
+  const mapApiQuestion = (q: any): PracticeQuestion => {
+    let propositions: PracticeQuestion['propositions'] = null
+    if (q.propositions) {
+      if (Array.isArray(q.propositions)) {
+        const mapped: Array<{ texte: string }> = q.propositions
+          .map((p: any) => {
+            if (typeof p === 'string') return { texte: p }
+            if (p && typeof p === 'object') {
+              if (typeof p.texte === 'string') return { texte: p.texte }
+              if (typeof p.text === 'string') return { texte: p.text }
+            }
+            return null
+          })
+          .filter((p: any): p is { texte: string } => p !== null)
+        propositions = mapped.length > 0 ? mapped : null
+      } else if (typeof q.propositions === 'string') {
+        try {
+          const parsed = JSON.parse(q.propositions)
+          if (Array.isArray(parsed)) {
+            const mapped2: Array<{ texte: string }> = parsed
+              .map((p: any) => (typeof p === 'string' ? { texte: p } : (p?.texte ?? p?.text ?? null)))
+              .filter((p: any): p is { texte: string } => p !== null)
+            propositions = mapped2.length > 0 ? mapped2 : null
+          }
+        } catch {
+          propositions = null
+        }
+      }
+    }
+    let themes: string[] = []
+    if (Array.isArray(q.themes)) {
+      themes = q.themes.filter((t: any): t is string => typeof t === 'string')
+    } else if (typeof q.themes === 'string' && q.themes) {
+      try { themes = JSON.parse(q.themes) } catch { themes = [] }
+    }
+    return {
+      id: q.id,
+      type: q.type,
+      enonce: q.enonce,
+      propositions,
+      difficulte: q.difficulte,
+      themes,
+    }
+  }
+
+  // pollQuestionBank interroge GET /api/exam-prep/question-bank?documentId=X
+  // jusqu'à obtenir `requestedCount` questions ou jusqu'au timeout. L'endpoint
+  // est student-accessible (contrairement à /api/questions qui est teacher-only)
+  // et retourne les questions validées (validee=true) insérées par le worker.
+  const pollQuestionBank = async (
+    docId: string,
+    requestedCount: number,
+    timeoutMs: number,
+    intervalMs: number,
+  ): Promise<any[]> => {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`/api/exam-prep/question-bank?documentId=${docId}&limit=${requestedCount}`)
+        if (res.ok) {
+          const data = await res.json()
+          const qs = Array.isArray(data.questions) ? data.questions : []
+          if (qs.length >= requestedCount) return qs.slice(0, requestedCount)
+        }
+      } catch {
+        // ignore — on réessaie au prochain intervalle
+      }
+      await new Promise((r) => setTimeout(r, intervalMs))
+    }
+    // Timeout — retourner ce qu'on a (potentiellement vide).
+    try {
+      const res = await fetch(`/api/exam-prep/question-bank?documentId=${docId}&limit=${requestedCount}`)
+      if (res.ok) {
+        const data = await res.json()
+        return Array.isArray(data.questions) ? data.questions.slice(0, requestedCount) : []
+      }
+    } catch {
+      // ignore
+    }
+    return []
+  }
+
   const handleGenerate = async () => {
     // Démarre une nouvelle session dans le store
     setSession(documentId, { count, type, difficulte: diff, chapterId })
@@ -117,15 +207,20 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
     setAnswer('')
     setSelectedProps([])
     try {
-      const res = await fetch('/api/exam-prep/practice', {
+      // QUESTION-BANK-1 : on appelle /practice/generate qui peut retourner
+      // soit 200 PRET (cache hit — questions prêtes immédiatement), soit
+      // 202 EN_COURS (cache miss — job IA poussé, il faut poller).
+      const res = await fetch('/api/exam-prep/practice/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           documentId,
-          chapterId: chapterId || undefined,
-          count,
-          type,
-          difficulte: diff,
+          config: {
+            nombreQuestions: count,
+            typesQuestions: type === 'MIXTE' ? {} : { [type.toLowerCase()]: count },
+            difficulte: diff,
+            chapterId: chapterId || undefined,
+          },
         }),
       })
       if (!res.ok) {
@@ -133,11 +228,29 @@ export function ExamPrepPracticeTab({ documentId, chapters }: Props) {
         throw new Error(err?.error ?? 'Erreur')
       }
       const data = await res.json()
-      setSessionQuestions(data.questions ?? [])
-      if (data.questions?.length === 0) {
-        toast.error('Aucune question générée. Réessayez.')
+
+      if (res.status === 200 && data.status === 'PRET' && Array.isArray(data.questions)) {
+        // Cache hit — questions disponibles immédiatement.
+        const questions = data.questions.map(mapApiQuestion)
+        setSessionQuestions(questions)
+        if (questions.length === 0) {
+          toast.error('Aucune question en cache. Réessayez.')
+        } else {
+          toast.success(`${questions.length} question(s) récupérée(s) de la banque`)
+        }
+        return
+      }
+
+      // 202 EN_COURS — cache miss : on poll /question-bank jusqu'à ce que
+      // suffisamment de questions validées soient disponibles (ou timeout).
+      toast.info('Génération en cours… Vos questions arrivent dans un instant.')
+      const polled = await pollQuestionBank(documentId, count, 60_000, 2_000)
+      const questions = polled.map(mapApiQuestion)
+      setSessionQuestions(questions)
+      if (questions.length === 0) {
+        toast.error('La génération prend plus de temps que prévu. Réessayez.')
       } else {
-        toast.success(`${data.questions.length} question(s) générée(s)`)
+        toast.success(`${questions.length} question(s) générée(s)`)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Échec de la génération')

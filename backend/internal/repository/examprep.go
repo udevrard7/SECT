@@ -1211,3 +1211,263 @@ func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, user
 
 	return tx.Commit(ctx)
 }
+
+
+// ============================================================
+// QUESTION BANK — votes collaboratifs + cache (QUESTION-BANK-1)
+// ============================================================
+
+// VoteQuestion upsert un vote (+1/-1) d'un utilisateur sur une question.
+// Stratégie : tente un INSERT ; si la contrainte UNIQUE("questionId","userId")
+// est violée (SQLSTATE 23505), on UPDATE la valeur existante.
+//
+// RLS désactivé : écriture système (un étudiant peut voter sur n'importe quelle
+// question validée de la banque — le scoping filière est assuré par le fait
+// que l'étudiant n'accède qu'aux documents de sa filière côté frontend, et
+// le backend trust le questionID passé par un utilisateur authentifié).
+func (r *ExamPrepRepository) VoteQuestion(ctx context.Context, userID, questionID string, value int) (*domain.QuestionVote, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	id := uuid.NewString()
+	vote := &domain.QuestionVote{
+		ID:         id,
+		QuestionID: questionID,
+		UserID:     userID,
+		Value:      value,
+	}
+	// Tentative d'INSERT. Si l'utilisateur a déjà voté → 23505 → on bascule en UPDATE.
+	err = tx.QueryRow(ctx, `
+		INSERT INTO "QuestionVote" ("id", "questionId", "userId", "value", "createdAt", "updatedAt")
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING "id", "questionId", "userId", "value", "createdAt", "updatedAt"
+	`, id, questionID, userID, value).Scan(
+		&vote.ID, &vote.QuestionID, &vote.UserID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt,
+	)
+	if err == nil {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit: %w", err)
+		}
+		return vote, nil
+	}
+
+	// INSERT a échoué. Si ce n'est PAS une violation de contrainte unique → propager.
+	if !isUniqueViolation(err) {
+		return nil, fmt.Errorf("insert question vote: %w", err)
+	}
+
+	// 23505 → l'utilisateur a déjà voté → UPDATE de la valeur existante.
+	// On réutilise la variable `vote` déclarée plus haut (QuestionID/UserID
+	// déjà positionnés) ; le UPDATE RETURNING rescanne ID/Value/timestamps.
+	err = tx.QueryRow(ctx, `
+		UPDATE "QuestionVote" SET "value" = $3, "updatedAt" = CURRENT_TIMESTAMP
+		WHERE "questionId" = $1 AND "userId" = $2
+		RETURNING "id", "value", "createdAt", "updatedAt"
+	`, questionID, userID, value).Scan(&vote.ID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("update question vote: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return vote, nil
+}
+
+// RemoveVote supprime le vote d'un utilisateur sur une question (un-vote).
+// RLS off. No-op (pas d'erreur) si le vote n'existait pas.
+func (r *ExamPrepRepository) RemoveVote(ctx context.Context, userID, questionID string) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return fmt.Errorf("disable rls: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		DELETE FROM "QuestionVote" WHERE "questionId" = $1 AND "userId" = $2
+	`, questionID, userID)
+	if err != nil {
+		return fmt.Errorf("delete question vote: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// ListQuestionBank liste les questions validées d'un document avec les stats
+// de vote agrégées + le vote du user courant.
+//
+// RLS activé (db.WithTx + claims) : lecture student-scoped. Le paramètre
+// chapterID est accepté mais IGNORÉ en v1 (la table Question n'a pas de
+// colonne chapterId — filtrage par documentId uniquement).
+//
+// Requête : LEFT JOIN QuestionVote v (tous les votes) pour l'agrégation,
+// LEFT JOIN QuestionVote v2 (vote du user courant) pour userVote. Le GROUP BY
+// q.id + v2.value est correct : v2.value est constant pour un (question, user)
+// donné, donc une seule ligne agrégée par question.
+//
+// Placeholders : $1=documentId, $2=userId, $3=limit, $4=offset (tous distincts
+// → compatible pgx Simple Protocol).
+func (r *ExamPrepRepository) ListQuestionBank(ctx context.Context, userID, documentID string, chapterID *string, limit, offset int) ([]*domain.QuestionBankItem, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
+
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var result []*domain.QuestionBankItem
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT q."id", q."documentId", q."auteurId", q."type", q."enonce",
+			       q."propositions", q."reponseCorrecte", q."explication",
+			       q."difficulte", q."themes", q."validee", q."createdAt",
+			       COALESCE(SUM(CASE WHEN v."value" > 0 THEN v."value" ELSE 0 END), 0)::int AS upvotes,
+			       COALESCE(SUM(CASE WHEN v."value" < 0 THEN -v."value" ELSE 0 END), 0)::int AS downvotes,
+			       COALESCE(SUM(v."value"), 0)::int AS netvotes,
+			       v2."value" AS uservote
+			FROM "Question" q
+			LEFT JOIN "QuestionVote" v ON v."questionId" = q."id"
+			LEFT JOIN "QuestionVote" v2 ON v2."questionId" = q."id" AND v2."userId" = $2
+			WHERE q."documentId" = $1 AND q."deletedAt" IS NULL AND q."validee" = true
+			GROUP BY q."id", q."documentId", q."auteurId", q."type", q."enonce",
+			         q."propositions", q."reponseCorrecte", q."explication",
+			         q."difficulte", q."themes", q."validee", q."createdAt", v2."value"
+			ORDER BY netvotes DESC, q."createdAt" DESC
+			LIMIT $3 OFFSET $4
+		`, documentID, userID, limit, offset)
+		if err != nil {
+			return fmt.Errorf("query question bank: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			item := &domain.QuestionBankItem{}
+			var userVote *int
+			if err := rows.Scan(
+				&item.ID, &item.DocumentID, &item.AuteurID, &item.Type, &item.Enonce,
+				&item.Propositions, &item.ReponseCorrecte, &item.Explication,
+				&item.Difficulte, &item.Themes, &item.Validee, &item.CreatedAt,
+				&item.Upvotes, &item.Downvotes, &item.NetVotes, &userVote,
+			); err != nil {
+				return fmt.Errorf("scan question bank item: %w", err)
+			}
+			item.UserVote = userVote
+			result = append(result, item)
+		}
+		if result == nil {
+			result = []*domain.QuestionBankItem{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// CountQuestionsByDocument compte les questions validées d'un document.
+// Utilisé par le cache check dans practice/generate. Le paramètre chapterID
+// est ignoré en v1 ; difficulte est appliqué si non-nil (dynamic query).
+//
+// RLS activé : lecture student-scoped.
+func (r *ExamPrepRepository) CountQuestionsByDocument(ctx context.Context, documentID string, chapterID *string, difficulte *string) (int, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return 0, fmt.Errorf("no RLS claims in context")
+	}
+
+	var count int
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		query := `SELECT count(*)::int FROM "Question" WHERE "documentId" = $1 AND "deletedAt" IS NULL AND "validee" = true`
+		args := []any{documentID}
+		if difficulte != nil && *difficulte != "" {
+			query += ` AND "difficulte" = $2`
+			args = append(args, *difficulte)
+		}
+		return tx.QueryRow(ctx, query, args...).Scan(&count)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListExistingQuestions retourne des questions validées existantes pour servir
+// le cache (sans les joins de vote — plus léger que ListQuestionBank).
+// Ordonné par createdAt DESC (questions les plus récentes d'abord).
+//
+// Le paramètre chapterID est ignoré en v1 ; difficulte est appliqué si non-nil.
+//
+// RLS activé : lecture student-scoped.
+func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, documentID string, chapterID *string, difficulte *string, limit int) ([]*domain.QuestionBankItem, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
+
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	var result []*domain.QuestionBankItem
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		query := `
+			SELECT "id", "documentId", "auteurId", "type", "enonce",
+			       "propositions", "reponseCorrecte", "explication",
+			       "difficulte", "themes", "validee", "createdAt"
+			FROM "Question"
+			WHERE "documentId" = $1 AND "deletedAt" IS NULL AND "validee" = true
+		`
+		args := []any{documentID}
+		argIdx := 2
+		if difficulte != nil && *difficulte != "" {
+			query += fmt.Sprintf(` AND "difficulte" = $%d`, argIdx)
+			args = append(args, *difficulte)
+			argIdx++
+		}
+		query += fmt.Sprintf(` ORDER BY "createdAt" DESC LIMIT $%d`, argIdx)
+		args = append(args, limit)
+
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query existing questions: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			item := &domain.QuestionBankItem{}
+			if err := rows.Scan(
+				&item.ID, &item.DocumentID, &item.AuteurID, &item.Type, &item.Enonce,
+				&item.Propositions, &item.ReponseCorrecte, &item.Explication,
+				&item.Difficulte, &item.Themes, &item.Validee, &item.CreatedAt,
+			); err != nil {
+				return fmt.Errorf("scan existing question: %w", err)
+			}
+			result = append(result, item)
+		}
+		if result == nil {
+			result = []*domain.QuestionBankItem{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}

@@ -327,6 +327,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Post("/practice/{id}/submit", s.submitPractice)
 			// EXAM-PREP-CONNECT-1 - Étape 3 : Q&A RAG synchrone.
 			r.Post("/qa", s.examPrepQA)
+			// QUESTION-BANK-1 — Banque de questions collaborative + cache.
+			// GET  /question-bank         : liste des questions validées avec votes.
+			// POST /questions/{id}/vote   : upsert un vote (+1/-1).
+			// DELETE /questions/{id}/vote : retire le vote (un-vote).
+			r.Get("/question-bank", s.listQuestionBank)
+			r.Post("/questions/{id}/vote", s.voteQuestion)
+			r.Delete("/questions/{id}/vote", s.removeVote)
 			// Help threads
 			r.Get("/help", s.listHelpThreads)
 			r.Post("/help", s.createHelpThread)

@@ -209,6 +209,52 @@ type ChapterLacune struct {
 }
 
 // ============================================================
+// QUESTION VOTES (QUESTION-BANK-1 — banque collaborative)
+// ============================================================
+
+// QuestionVote représente un vote d'un utilisateur sur une question de la
+// banque collaborative. value = +1 (upvote) ou -1 (downvote).
+//
+// QUESTION-BANK-1 : la contrainte UNIQUE("questionId", "userId") garantit
+// qu'un utilisateur ne vote qu'une fois par question. Le repository fait
+// l'upsert (INSERT → UPDATE sur SQLSTATE 23505).
+type QuestionVote struct {
+	ID         string    `json:"id"`
+	QuestionID string    `json:"questionId"`
+	UserID     string    `json:"userId"`
+	Value      int       `json:"value"` // +1 or -1
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// QuestionBankItem est une Question enrichie des stats de vote pour la banque
+// collaborative. Les champs propositions/reponseCorrecte/explication/themes
+// sont des *string (le SQL les lit en TEXT, NULL → nil) ; le handler les
+// parse en json.RawMessage pour la sortie JSON si nécessaire.
+//
+// QUESTION-BANK-1 : NetVotes = upvotes - downvotes. UserVote est le vote du
+// utilisateur courant (nil s'il n'a pas voté). Order by netVotes DESC.
+type QuestionBankItem struct {
+	ID              string  `json:"id"`
+	DocumentID      *string `json:"documentId,omitempty"`
+	AuteurID        *string `json:"auteurId,omitempty"`
+	Type            string  `json:"type"`
+	Enonce          string  `json:"enonce"`
+	Propositions    *string `json:"propositions,omitempty"`
+	ReponseCorrecte *string `json:"reponseCorrecte,omitempty"`
+	Explication     *string `json:"explication,omitempty"`
+	Difficulte      string  `json:"difficulte"`
+	Themes          *string `json:"themes,omitempty"`
+	Validee         bool    `json:"validee"`
+	CreatedAt       time.Time `json:"createdAt"`
+	// Champs collaboratifs
+	NetVotes  int  `json:"netVotes"`
+	Upvotes   int  `json:"upvotes"`
+	Downvotes int  `json:"downvotes"`
+	UserVote  *int `json:"userVote,omitempty"` // vote du user courant (+1/-1/nil)
+}
+
+// ============================================================
 // REPOSITORIES
 // ============================================================
 
@@ -268,4 +314,26 @@ type ExamPrepRepository interface {
 	// HIGHLIGHT-FLASHCARD-1). Defaults SM-2 : interval=0, easeFactor=2.5,
 	// repetitions=0, nextReviewAt=now (dû immédiatement).
 	CreateFlashcardReviewItem(ctx context.Context, userID, flashcardID string, chapterID *string) error
+
+	// QUESTION-BANK-1 — Banque de questions collaborative + cache pré-généré.
+	// VoteQuestion upsert un vote (+1/-1) pour un couple (userID, questionID).
+	// Si l'utilisateur a déjà voté, la valeur est mise à jour (INSERT → UPDATE
+	// sur SQLSTATE 23505 unique_violation). RLS off : écriture système.
+	VoteQuestion(ctx context.Context, userID, questionID string, value int) (*QuestionVote, error)
+	// RemoveVote supprime le vote d'un utilisateur sur une question (un-vote).
+	// RLS off : écriture système. No-op si le vote n'existait pas.
+	RemoveVote(ctx context.Context, userID, questionID string) error
+	// ListQuestionBank liste les questions validées d'un document avec les
+	// stats de vote agrégées (upvotes/downvotes/netVotes) + le vote du user
+	// courant. RLS on : lecture student-scoped. Le paramètre chapterID est
+	// accepté mais ignoré en v1 (la table Question n'a pas de chapterId —
+	// filtrage par documentId uniquement).
+	ListQuestionBank(ctx context.Context, userID, documentID string, chapterID *string, limit, offset int) ([]*QuestionBankItem, error)
+	// CountQuestionsByDocument compte les questions validées d'un document.
+	// Utilisé par le cache check dans practice/generate. Le paramètre chapterID
+	// est ignoré en v1 ; difficulte est appliqué si non-nil.
+	CountQuestionsByDocument(ctx context.Context, documentID string, chapterID *string, difficulte *string) (int, error)
+	// ListExistingQuestions retourne des questions validées existantes pour
+	// servir le cache (sans les joins de vote). Ordonné par createdAt DESC.
+	ListExistingQuestions(ctx context.Context, documentID string, chapterID *string, difficulte *string, limit int) ([]*QuestionBankItem, error)
 }
