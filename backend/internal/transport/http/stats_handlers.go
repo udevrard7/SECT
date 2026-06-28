@@ -749,7 +749,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		tx2, txErr := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 		if txErr == nil {
 			defer tx2.Rollback(ctx)
-			tx2.Exec(ctx, "SET LOCAL row_security = off")
+			tx2.Exec(ctx, "SET row_security = off")
 
 			rowsEtab2, q2err := tx2.Query(ctx, `
 				SELECT
