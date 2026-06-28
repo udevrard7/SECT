@@ -291,6 +291,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/certificats", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listCertificats)
+                        r.Get("/watermark-config", s.getWatermarkConfig)       // P3b
+                        r.Patch("/watermark-config", s.updateWatermarkConfig)  // P3b
+                        r.Post("/", s.createCertificat)                        // P3c
                         r.Get("/{id}", s.getCertificat)
                         r.Post("/{id}/revoquer", s.revokeCertificat)
                 })
