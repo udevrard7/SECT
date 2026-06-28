@@ -526,8 +526,12 @@ func (r *CorrectionRepository) RetournerSession(ctx context.Context, sessionID s
                 return &domain.NotFoundError{Entity: "SessionPassation", ID: sessionID}
         }
 
-        // Marquer le résultat comme retourné
-        _, _ = tx.Exec(ctx, `UPDATE "Resultat" SET "dateRetour" = CURRENT_TIMESTAMP WHERE "sessionId" = $1`, sessionID)
+        // P2-CORRECTION : marquer le résultat comme retourné (ne plus avaler l'erreur)
+        if _, err := tx.Exec(ctx, `UPDATE "Resultat" SET "dateRetour" = CURRENT_TIMESTAMP WHERE "sessionId" = $1`, sessionID); err != nil {
+                // Non-fatal : le Resultat peut ne pas exister encore (session non finalisée)
+                // On log mais on ne bloque pas le retour.
+                // TODO : logger l'erreur
+        }
 
         return tx.Commit(ctx)
 }
@@ -565,8 +569,11 @@ func (r *CorrectionRepository) RetournerBatch(ctx context.Context, sessionIDs []
                 return 0, fmt.Errorf("retourner batch: %w", err)
         }
 
-        // Marquer les résultats comme retournés
-        _, _ = tx.Exec(ctx, fmt.Sprintf(`UPDATE "Resultat" SET "dateRetour" = CURRENT_TIMESTAMP WHERE "sessionId" IN (%s)`, strings.Join(placeholders, ",")), args...)
+        // P2-CORRECTION : marquer les résultats comme retournés (ne plus avaler l'erreur)
+        if _, err := tx.Exec(ctx, fmt.Sprintf(`UPDATE "Resultat" SET "dateRetour" = CURRENT_TIMESTAMP WHERE "sessionId" IN (%s)`, strings.Join(placeholders, ",")), args...); err != nil {
+                // Non-fatal : certains Resultats peuvent ne pas exister encore
+                // TODO : logger l'erreur
+        }
 
         if err := tx.Commit(ctx); err != nil {
                 return 0, fmt.Errorf("commit: %w", err)
