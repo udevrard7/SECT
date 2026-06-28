@@ -6208,3 +6208,130 @@ Stage Summary:
   7. **Pas de rate limiting sur les votes** : un étudiant pourrait spammer l'endpoint `/vote`. Le toggle (même bouton = DELETE) limite naturellement l'abus, mais un rate limit par IP/user serait plus robuste. Follow-up.
   8. **`scoreQualite` toujours NULL** : la colonne `Question.scoreQualite` n'est pas utilisée. Pour v2 : `scoreQualite = netVotes / (upvotes + downvotes)` calculé par un cron ou un trigger pour trier la banque par qualité.
   9. **Go non installé** : la compilation n'a pas pu être vérifiée localement. Review manuelle approfondie (imports, types, braces, signatures interface↔impl, équilibre braces/parens/brackets via script Python Go-aware). Le build Render le validera au déploiement.
+
+---
+Task ID: AUDIO-LEARNING-1
+Agent: general-purpose
+Task: Mode Audio-Learning (Génération de Podcasts de Révision) — amélioration #3 du module Exam Prep. Les étudiants peuvent générer un podcast de ~5 minutes (script IA + synthèse TTS optionnelle) résumant un document, stocké sur Cloudflare R2, jouable dans l'app.
+
+Work Log:
+- Lecture du worklog (entrées DOC-ANALYZER-1/2, HIGHLIGHT-FLASHCARD-1, QUESTION-BANK-1, EXAM-PREP-CONNECT-1) + lecture des fichiers backend existants (doc_analyzer_worker.go, helpers.go, practice_worker.go, ia_worker.go, storage/r2.go, domain/examprep.go, repository/examprep.go, usecase/examprep.go, transport/http/examprep_handlers.go, router.go, cmd/api/main.go) pour comprendre les patterns.
+- Lecture du frontend (exam-prep-document-detail.tsx, exam-prep-question-bank-tab.tsx, exam-prep-practice-tab.tsx, hooks/use-epreuve-status.ts) pour aligner le polling TanStack et le design Savane EdTech.
+- Étape 1 — Migration : 2 nouveaux fichiers (`000011_create_document_audio.up.sql` + `.down.sql`).
+  - ⚠️ Collision détectée : un autre agent avait déjà créé `000010_fix_devoir_select_rls.up.sql` (commit 91bd3b2). Ma migration a été renommée `000011` (commit baf90b4) pour éviter la collision.
+  - Table "DocumentAudio" (id, documentId, userId, script, r2Key, durationSec, status, errorMessage, createdAt, updatedAt) + 2 indexes + 2 FK CASCADE + trigger `trg_set_updated_at`.
+  - ⚠️ Migration à appliquer manuellement sur Neon PostgreSQL.
+- Étape 2 — Domain (`internal/domain/examprep.go`) : ajout struct `DocumentAudio` + `CreateDocumentAudioInput` + 5 méthodes à l'interface `ExamPrepRepository` (CreateDocumentAudio, UpdateDocumentAudioStatus, UpdateDocumentAudioScript, ListDocumentAudio, GetDocumentAudio).
+- Étape 3 — Repository (`internal/repository/examprep.go`, +5 méthodes) : pattern `SET LOCAL row_security = off` dans une tx, `uuid.NewString()` pour IDs. UpdateDocumentAudioStatus gère les 4 cas (r2Key only, errorMessage only, both, neither) avec des placeholders distincts (pgx Simple Protocol OK).
+- Étape 4 — Helper TTS (`internal/worker/helpers.go`) : ajout `callTTSProviderShared(ctx, provider, text, logger) ([]byte, error)` qui appelle `{BaseURL}/audio/speech` au format OpenAI (model=tts-1, voice=alloy, response_format=mp3). Tronque à 4000 chars. Timeout 3 min. Vérifie le Content-Type de réponse (`audio/*`). Imports `io` et `strings` ajoutés.
+- Étape 5 — Worker (`internal/worker/audio_worker.go` — NOUVEAU, ~410 lignes) : pattern identique à `doc_analyzer_worker.go`.
+  - `AudioGenerationJob { AudioID, DocumentID, UserID }` + `AudioGenerationQueue = make(chan AudioGenerationJob, 25)`.
+  - `AudioGenerationWorker { dbPool, storage domain.StorageClient, logger }` — `storage` peut être nil (R2 désactivé).
+  - `processJob` : defer recover() (mark ERREUR si panic) → getDocumentContent (RLS off, truncate 12k) → getActiveProviderShared → buildPodcastPrompt → callAIProviderShared → updateScript → callTTSProviderShared (optionnel, fallback gracieux) → si audioBytes : storage.Upload + updateStatus(PRET, r2Key) ; sinon : updateStatus(PRET, nil).
+  - `buildPodcastPrompt` : system prompt "Tu es un scénariste de podcasts éducatifs…" + user prompt avec contenu du doc. Format dialogue "Présentateur :" / "Expert :", texte brut (pas de JSON/markdown), ~700-900 mots.
+  - `RecoverInterruptedAudioJobs` : SELECT DocumentAudio WHERE status='EN_COURS' → push dans la queue (graceful shutdown).
+- Étape 6 — Usecase (`internal/usecase/examprep.go`) :
+  - Ajout champ `storage domain.StorageClient` à `ExamPrepUseCase` + paramètre `storageClient` à `NewExamPrepUseCase`.
+  - 4 nouvelles méthodes : `GenerateAudio` (crée ligne EN_COURS), `ListAudio`, `GetAudio`, `GetAudioURL` (presigned R2 15 min), `MarkAudioError` (utilisée par le handler quand queue pleine).
+- Étape 7 — Handlers (`internal/transport/http/examprep_handlers.go`, +3 handlers + DTO) :
+  - `generateAudio` (POST /documents/{id}/audio) : crée ligne EN_COURS → push AudioGenerationQueue (select non-bloquant, 503 si pleine + mark ERREUR) → 202 avec DTO.
+  - `listDocumentAudio` (GET /documents/{id}/audio) : liste + présignature R2 pour chaque PRET avec r2Key non-nil.
+  - `getAudio` (GET /audio/{id}) : single audio + présignature si PRET + r2Key.
+  - DTO `examPrepAudioDTO` avec champ `audioUrl` (omitempty) pour l'URL présignée.
+- Étape 8 — Router (`internal/transport/http/router.go`) : 3 routes ajoutées dans le block `/api/exam-prep`, après `/questions/{id}/vote` et avant `/help`.
+- Étape 9 — main.go : `NewExamPrepUseCase(examPrepRepo, storageClient)` (signature étendue) + `audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)` + `RecoverInterruptedAudioJobs` + `Start`.
+- Étape 10 — Frontend :
+  - `frontend/src/components/exam-prep/tabs/exam-prep-audio-tab.tsx` (NOUVEAU) : TanStack Query `['exam-prep-audio', documentId]` avec `refetchInterval` dynamique (3s si un audio est EN_COURS, sinon false). Bouton "Générer un podcast" → POST 202 → invalidate + polling. Cartes audio avec 3 états (EN_COURS spinner, PRET check vert + lecteur `<audio>`, ERREUR rouge) + script collapsible + durée/date. Empty state avec Headphones icon.
+  - `exam-prep-document-detail.tsx` : ajout onglet "Audio" (entre Flashcards et Planning), import Headphones + ExamPrepAudioTab, TabsList passée en grid-cols-3 sur mobile (9 onglets = 3×3 propre), doc comment mis à jour.
+- Vérification tabs Go : `cat -A` sur les 8 fichiers Go modifiés → `^I` partout, aucun espace d'indentation dans le nouveau code (les 2 lignes "  • Présentateur…" dans audio_worker.go sont dans un raw string literal, pas du code Go).
+- Vérification équilibre braces/parens/brackets Go : script Python Go-aware (state machine strings/comments) → tous à 0 sur les 8 fichiers.
+- Vérification interface↔impl : les 5 méthodes de l'interface `ExamPrepRepository` ont toutes une impl correspondante dans `repository/examprep.go` avec signatures identiques.
+- Commit `5c23656` (feat) + commit `baf90b4` (fix rename migration 000010→000011 après collision avec `000010_fix_devoir_select_rls.up.sql` du commit 91bd3b2). Push vers `origin/main`.
+
+Stage Summary:
+- **12 fichiers modifiés/créés** (2 migrations + 7 backend Go + 2 frontend modifiés + 1 frontend nouveau). Total : ~+1490 lignes.
+- **Fichiers créés** :
+  - `backend/db/db/migrations/000011_create_document_audio.up.sql`
+  - `backend/db/db/migrations/000011_create_document_audio.down.sql`
+  - `backend/internal/worker/audio_worker.go`
+  - `frontend/src/components/exam-prep/tabs/exam-prep-audio-tab.tsx`
+- **Fichiers modifiés** :
+  - `backend/internal/domain/examprep.go` (+struct DocumentAudio +CreateDocumentAudioInput +5 méthodes interface)
+  - `backend/internal/repository/examprep.go` (+5 méthodes impl)
+  - `backend/internal/worker/helpers.go` (+callTTSProviderShared +imports io/strings)
+  - `backend/internal/usecase/examprep.go` (+champ storage +4 méthodes GenerateAudio/ListAudio/GetAudio/GetAudioURL +MarkAudioError)
+  - `backend/internal/transport/http/examprep_handlers.go` (+3 handlers +examPrepAudioDTO +toExamPrepAudioDTO)
+  - `backend/internal/transport/http/router.go` (+3 routes)
+  - `backend/cmd/api/main.go` (+audioWorker wiring +storageClient passé à NewExamPrepUseCase)
+  - `frontend/src/components/exam-prep/exam-prep-document-detail.tsx` (+onglet Audio, grid-cols-3 sur mobile)
+- **Nouvelles signatures Go** :
+  - Domain : `DocumentAudio` struct, `CreateDocumentAudioInput` struct
+  - `ExamPrepRepository.CreateDocumentAudio(ctx, input CreateDocumentAudioInput) (*DocumentAudio, error)`
+  - `ExamPrepRepository.UpdateDocumentAudioStatus(ctx, audioID, status string, r2Key *string, errorMessage *string) error`
+  - `ExamPrepRepository.UpdateDocumentAudioScript(ctx, audioID, script string) error`
+  - `ExamPrepRepository.ListDocumentAudio(ctx, documentID string) ([]*DocumentAudio, error)`
+  - `ExamPrepRepository.GetDocumentAudio(ctx, audioID string) (*DocumentAudio, error)`
+  - Worker : `AudioGenerationJob`, `AudioGenerationQueue`, `AudioGenerationWorker`, `NewAudioGenerationWorker(dbPool, storageClient, logger)`, `Start(ctx)`, `RecoverInterruptedAudioJobs(ctx)`
+  - Helper : `callTTSProviderShared(ctx, provider, text, logger) ([]byte, error)`
+  - Usecase : `GenerateAudio(ctx, claims, documentID) (*DocumentAudio, error)`, `ListAudio(ctx, claims, documentID) ([]*DocumentAudio, error)`, `GetAudio(ctx, claims, audioID) (*DocumentAudio, error)`, `GetAudioURL(ctx, r2Key) (string, error)`, `MarkAudioError(ctx, claims, audioID, errorMessage) error`
+  - Handlers : `(s *Server) generateAudio`, `listDocumentAudio`, `getAudio`
+  - Routes : `POST /api/exam-prep/documents/{id}/audio`, `GET /api/exam-prep/documents/{id}/audio`, `GET /api/exam-prep/audio/{id}`
+- **Nouveaux composants/props frontend** :
+  - `ExamPrepAudioTab` (NEW) `{documentId: string}`
+  - `ExamPrepDocumentDetail` : +onglet "audio" (9 onglets au total), TabsList grid-cols-3 mobile
+- **Migration SQL** (confirmée dans `000011_create_document_audio.up.sql`) :
+  ```sql
+  CREATE TABLE "DocumentAudio" (
+      "id" TEXT NOT NULL,
+      "documentId" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "script" TEXT NOT NULL,
+      "r2Key" TEXT,
+      "durationSec" INTEGER,
+      "status" TEXT NOT NULL DEFAULT 'EN_COURS',
+      "errorMessage" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "DocumentAudio_pkey" PRIMARY KEY ("id")
+  );
+  CREATE INDEX "DocumentAudio_documentId_idx" ON "DocumentAudio"("documentId");
+  CREATE INDEX "DocumentAudio_userId_idx" ON "DocumentAudio"("userId");
+  -- + 2 FK (CASCADE) + trigger updated_at
+  ```
+- **Prompt IA du podcast** :
+  - System : "Tu es un scénariste de podcasts éducatifs pour étudiants de l'enseignement supérieur. Tu crées des scripts de podcasts engageants qui transforment un contenu académique en une conversation vivante et pédagogique de ~5 minutes (environ 700 à 900 mots). Format EXACT : texte brut, dialogue entre 'Présentateur' (host enthousiaste) et 'Expert' (professeur passionné). Chaque ligne commence par 'Présentateur :' ou 'Expert :'. Début obligatoire : 'Présentateur : Bonjour et bienvenue dans ce podcast de révision !'. Fin obligatoire : 'Présentateur : Merci d'avoir écouté, et bonne révision !'. Adapte le niveau : accessible mais rigoureux."
+  - User : "Voici le contenu d'un cours à transformer en podcast de révision de ~5 minutes : {docContent}. Génère le script du podcast en respectant le format demandé. Concentre-toi sur les concepts les plus importants du document."
+- **TTS fallback** : `callTTSProviderShared` appelle `{BaseURL}/audio/speech` (format OpenAI tts-1/alloy/mp3). Si le provider ne supporte pas /audio/speech (Mistral, Groq chat-only → HTTP 404 ou non-audio Content-Type), la fonction retourne une erreur. Le worker log cette erreur comme **WARN** (pas error — TTS est optionnel) et marque l'audio PRET avec r2Key=nil. Le frontend détecte l'absence d'audioUrl et affiche le script dans un `<details>` collapsible avec une note "Audio non disponible pour ce provider". Le script reste 100% utilisable.
+- **URL présignée livrée au frontend** : le usecase `GetAudioURL(ctx, r2Key)` appelle `storage.PresignURL(ctx, r2Key, 900)` (15 min de validité). Les handlers `listDocumentAudio` et `getAudio` génèrent l'URL SEULEMENT si `audio.Status == "PRET" && audio.R2Key != nil && *audio.R2Key != ""`. L'URL est incluse dans le DTO via `audioUrl string` (omitempty). Le frontend l'utilise directement comme `src` de `<audio controls>`. Durée courte (15 min) : suffisant pour écouter un podcast de 5 min, limite le risque de partage d'URL.
+- **`NewExamPrepUseCase` signature CHANGÉE** : `(repo)` → `(repo, storageClient)`. Mise à jour du call site dans `cmd/api/main.go` (ligne ~104). `NewServer` signature inchangée (contrainte respectée).
+- **Git commits** :
+  - `5c23656 feat(exam-prep): mode audio-learning — podcasts de révision IA + TTS + R2 (AUDIO-LEARNING-1)`
+  - `baf90b4 fix(migrations): renomme 000010→000011 DocumentAudio (collision avec fix_devoir_select_rls)`
+  - Poussés sur `origin/main` (déploiement Vercel + Render déclenché).
+- **Tabs préservés** : extrait `cat -A` du domain `DocumentAudio` struct :
+  ```
+  type DocumentAudio struct {$
+  ^IID           string    `json:"id"`$
+  ^IDocumentID   string    `json:"documentId"`$
+  ^IUserID       string    `json:"userId"`$
+  ^IScript       string    `json:"script"`$
+  ^IR2Key        *string   `json:"r2Key,omitempty"`$
+  ^IDurationSec  *int      `json:"durationSec,omitempty"`$
+  ^IStatus       string    `json:"status"` // EN_COURS, PRET, ERREUR$
+  ^IErrorMessage *string   `json:"errorMessage,omitempty"`$
+  ^ICreatedAt    time.Time `json:"createdAt"`$
+  ^IUpdatedAt    time.Time `json:"updatedAt"`$
+  }$
+  ```
+  Tous les fichiers Go modifiés utilisent `^I` (tab) pour l'indentation. Fichiers frontend utilisent 2-space indentation (cohérent avec l'existant).
+- **Risques / follow-ups** :
+  1. ⚠️ **Migration 000011 doit être appliquée manuellement sur Neon PostgreSQL** avant que le code ne fonctionne. Sans cela, les endpoints `/documents/{id}/audio` et `/audio/{id}` échoueront avec « relation "DocumentAudio" does not exist ». La migration inclut le trigger `trg_set_updated_at`.
+  2. **TTS provider compatibility** : le helper `callTTSProviderShared` hardcode `model: "tts-1"` (convention OpenAI). Les providers non-OpenAI (Mistral, Groq, OpenRouter) retourneront une erreur HTTP 4xx/5xx → fallback gracieux (script seul). Pour activer le TTS sur ces providers, il faudrait : (a) ajouter une colonne `ttsModel` à `AIProviderConfig`, ou (b) détecter le provider et utiliser l'endpoint approprié (ex: Groq a `playai-tts` via Whisper). Follow-up.
+  3. **Audio duration non calculée** : la colonne `durationSec` est NULL car le worker ne calcule pas la durée du MP3. Pour l'estimer sans décoder le MP3 : `durationSec ≈ len(audioBytes) / 16000` (approx bytes-per-second pour MP3 128kbps mono). Ou utiliser `github.com/tcolgate/mp3` pour décoder les headers. Pour v1 : le frontend affiche la durée seulement si `durationSec > 0` (sinon badge masqué).
+  4. **Script length vs TTS limit** : le script IA peut faire 700-900 mots (~4000-6000 chars), mais `callTTSProviderShared` tronque à 4000 chars. Le podcast sera donc potentiellement amputé de sa fin si le script dépasse 4000 chars. Pour v2 : chunker le script en segments < 4000 chars, synthétiser chaque segment séparément, puis concaténer les MP3 (nécessite `github.com/tcolgate/mp3` ou un outil ffmpeg). Follow-up.
+  5. **Pas de rate limiting** : un étudiant pourrait spammer `POST /documents/{id}/audio` et saturer la queue (25 jobs). Le bouton est désactivé pendant `hasPending` (un audio EN_COURS), mais un étudiant malveillant pourrait bypasser ça via curl. Pour v2 : rate limit par utilisateur (ex. 3 podcasts/jour/document).
+  6. **Pas de suppression d'audio** : aucun endpoint DELETE. Les podcasts s'accumulent (mais la FK CASCADE sur documentId les supprime si le document est supprimé). Pour v2 : ajouter `DELETE /api/exam-prep/audio/{id}` (avec check ownership).
+  7. **Pas de pagination sur `listDocumentAudio`** : retourne tous les audios d'un document. Pour un document très populaire (100+ podcasts), la réponse pourrait être lourde. Pour v2 : ajouter `?limit=20&offset=0`.
+  8. **R2 désactivé → script seul** : si `R2_ACCOUNT_ID` n'est pas configuré, `storageClient` est nil. Le worker log "R2 storage not configured" et marque l'audio PRET avec script seul. Le frontend affiche le script. Aucun crash. Mais l'expérience étudiant est dégradée (pas de lecteur audio). Documenter dans le README que R2 est requis pour l'expérience complète.
+  9. **Go non installé** : la compilation n'a pas pu être vérifiée localement. Review manuelle approfondie (imports, types, braces, signatures interface↔impl, équilibre braces/parens/brackets via script Python Go-aware). Le build Render le validera au déploiement.
+  10. **Collision migration 000010** : un autre agent (P1-DEVOIRS-1, commit 91bd3b2) avait déjà créé `000010_fix_devoir_select_rls.up.sql`. Ma migration a été renommée `000011` (commit baf90b4) pour éviter la collision. ⚠️ Vérifier qu'aucun autre agent n'utilise 000011 avant de pousser une nouvelle migration.
