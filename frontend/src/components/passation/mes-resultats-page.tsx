@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────
 // Page principale "Mes Résultats" (étudiant) — refonte complète
-// 3 onglets : Vue d'ensemble | Mes épreuves | Évolution
+// 2 onglets : Vue d'ensemble | Mes épreuves
+// (l'onglet "Évolution" a été fusionné dans "Vue d'ensemble" car il
+//  rendait le même composant EtudiantOverviewTab — doublon)
 // ─────────────────────────────────────────────────────────────
 
 'use client'
@@ -10,7 +12,6 @@ import {
   Trophy,
   LayoutDashboard,
   BookOpen,
-  TrendingUp,
   RefreshCw,
   AlertCircle,
 } from 'lucide-react'
@@ -170,7 +171,7 @@ export function MesResultatsPage() {
 
       {/* ─── Onglets ─── */}
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
+        <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
           <TabsTrigger value="overview" className="gap-1.5">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Vue d&apos;ensemble</span>
@@ -190,11 +191,6 @@ export function MesResultatsPage() {
                 {pendingCount}
               </Badge>
             )}
-          </TabsTrigger>
-          <TabsTrigger value="evolution" className="gap-1.5">
-            <TrendingUp className="h-4 w-4" />
-            <span className="hidden sm:inline">Évolution</span>
-            <span className="sm:hidden">Évol.</span>
           </TabsTrigger>
         </TabsList>
 
@@ -275,23 +271,6 @@ export function MesResultatsPage() {
               showAverage
               onRowClick={handleGradeClick}
             />
-          )}
-        </TabsContent>
-
-        {/* ─── Évolution ─── */}
-        <TabsContent value="evolution" className="mt-6">
-          {overview && overview.totalEpreuves > 0 ? (
-            <EtudiantOverviewTab data={overview} />
-          ) : (
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <TrendingUp className="h-10 w-10 text-muted-foreground/50" />
-                <h3 className="mt-3 text-lg font-display font-semibold tracking-tight">Pas encore de données</h3>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  L&apos;évolution de vos performances sera visible après vos premières épreuves corrigées.
-                </p>
-              </CardContent>
-            </Card>
           )}
         </TabsContent>
       </Tabs>
