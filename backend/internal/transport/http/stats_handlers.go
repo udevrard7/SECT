@@ -643,15 +643,6 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
-		// BUGFIX (ADMIN-DASHBOARD-FIX-1) : désactiver RLS pour les stats admin.
-		// La policy Etablissement_select exige admin_has_etablissement_access(id)
-		// qui vérifie EtablissementAccess. Les subqueries LATERAL sur User
-		// peuvent aussi échouer via RLS (admin n'a pas d'etablissementId).
-		// SET LOCAL row_security = off permet à l'admin de voir tous les
-		// établissements + users pour les stats globales.
-		if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-			return fmt.Errorf("disable rls: %w", err)
-		}
 		// 1. Compteur global établissements
 		var nbEtab int
 		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "Etablissement"`).Scan(&nbEtab)
