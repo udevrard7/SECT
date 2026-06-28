@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 000010 — DocumentAudio (AUDIO-LEARNING-1)
+-- Migration 000011 — DocumentAudio (AUDIO-LEARNING-1)
 -- ============================================================
 -- Mode Audio-Learning : chaque enregistrement = un script de podcast
 -- généré par l'IA (dialogue Présentateur ↔ Expert) + optionnellement
