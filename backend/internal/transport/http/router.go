@@ -8,6 +8,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udevrard7/sect/backend/internal/ai"
 	"github.com/udevrard7/sect/backend/internal/cache"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/repository"
@@ -35,6 +36,7 @@ type Server struct {
 	certificatUC *usecase.CertificatUseCase
 	correctionUC *usecase.CorrectionUseCase
 	examPrepUC   *usecase.ExamPrepUseCase
+	aiService    *ai.AIService
 	// CACHE-RAM-1 : cache en mémoire write-behind pour les sessions d'examen actives.
 	// Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
 	// vers Neon toutes les 30s ; le handler submitSession force un flush immédiat.
@@ -60,6 +62,7 @@ func NewServer(
 	certificatUC *usecase.CertificatUseCase,
 	correctionUC *usecase.CorrectionUseCase,
 	examPrepUC *usecase.ExamPrepUseCase,
+	aiService *ai.AIService,
 	dbPool *pgxpool.Pool,
 	corsOrigins []string,
 	authMiddleware func(http.Handler) http.Handler,
@@ -83,6 +86,7 @@ func NewServer(
 		certificatUC: certificatUC,
 		correctionUC: correctionUC,
 		examPrepUC:   examPrepUC,
+		aiService:    aiService,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -224,6 +228,15 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Patch("/{id}", s.updateEpreuve)
 			r.Delete("/{id}", s.deleteEpreuve)
 			r.Get("/{id}/questions", s.listEpreuveQuestions)
+			// AI-CONNECT-1 : génération IA d'épreuves via le backend AIService.
+			r.Post("/generate", s.epreuvesGenerate)
+		})
+
+		// AI-CONNECT-1 : /api/ai-assistant — chat flottant pédagogique.
+		// Appelle le backend AIService (jamais d'appel IA direct côté client).
+		r.Route("/api/ai-assistant", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Post("/", s.aiAssistant)
 		})
 
 		// /api/questions
