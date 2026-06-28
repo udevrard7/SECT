@@ -80,7 +80,7 @@ func (w *CorrectionWorker) processCorrectionJob(ctx context.Context, job Correct
 	}
 
 	// 3. Récupérer le provider IA actif
-	provider, err := w.getActiveProvider(ctx)
+	provider, err := getActiveProviderShared(ctx, w.dbPool)
 	if err != nil {
 		w.logger.Error("Failed to get active AI provider", "error", err)
 		w.markReponseError(ctx, job.ReponseID, "aucun provider IA actif")
@@ -91,7 +91,7 @@ func (w *CorrectionWorker) processCorrectionJob(ctx context.Context, job Correct
 	messages := w.buildCorrectionPrompt(question, reponse)
 
 	// 5. Appeler l'API du provider IA
-	result, err := w.callAIProvider(ctx, provider, messages)
+	result, err := callAIProviderShared(ctx, provider, messages, w.logger)
 	if err != nil {
 		w.logger.Error("AI provider call failed", "error", err, "provider", provider.Name)
 		w.markReponseError(ctx, job.ReponseID, fmt.Sprintf("erreur API IA: %v", err))
