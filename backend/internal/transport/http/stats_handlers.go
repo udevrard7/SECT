@@ -745,35 +745,13 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 	// via WithTx (RLS filtre les subqueries sur User). On utilise le pool
 	// directement (sans transaction, sans claims RLS) — l'admin a le droit
 	// de voir tous les établissements + users pour les stats globales.
+	// BUGFIX (ADMIN-DASHBOARD-FIX-1) : utiliser une fonction SECURITY DEFINER
+	// pour bypasser le RLS (SET row_security = off ne fonctionne pas en
+	// Simple Protocol avec PgBouncer). La fonction admin_get_etablissements_overview
+	// est exécutée avec les droits du propriétaire de la DB (bypass RLS).
 	escapedAdminID := strings.ReplaceAll(claims.UserID, "'", "''")
-	// Transaction avec row_security = off (le pool peut avoir des claims résiduels)
-	tx2, _ := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
-	if tx2 != nil {
-		defer tx2.Rollback(ctx)
-		tx2.Exec(ctx, "SET row_security = off")
-	}
-	rowsEtab2, q2err := tx2.Query(ctx, fmt.Sprintf(`
-		SELECT
-			e.id, e.nom, e.ville, e.type, e.actif,
-			(SELECT a.statut::text FROM "Abonnement" a
-			 WHERE a."etablissementId" = e.id
-			 ORDER BY a."dateDebut" DESC LIMIT 1) AS abonnement_statut,
-			(SELECT p.nom FROM "Abonnement" a
-			 JOIN "Plan" p ON p.id = a."planId"
-			 WHERE a."etablissementId" = e.id
-			 ORDER BY a."dateDebut" DESC LIMIT 1) AS plan_nom,
-			(SELECT count(*) FROM "User" u WHERE u."etablissementId" = e.id) AS nb_users,
-			(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id) AS nb_filieres,
-			(SELECT count(*) FROM "EtablissementAccess" ea
-			 WHERE ea."etablissementId" = e.id
-			   AND ea."adminId" = '%s'
-			   AND ea.statut = 'ACTIF') AS admin_has_access,
-			(SELECT u.id FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_id,
-			(SELECT u.name FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_name,
-			(SELECT u.email FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_email,
-			(SELECT u.actif FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_actif
-		FROM "Etablissement" e
-		ORDER BY e.nom ASC
+	rowsEtab2, q2err := s.dbPool.Query(ctx, fmt.Sprintf(`
+		SELECT * FROM admin_get_etablissements_overview('%s')
 	`, escapedAdminID))
 	if q2err == nil {
 		defer rowsEtab2.Close()
@@ -782,16 +760,12 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			var o etablissementOverview
 			var respID, respName, respEmail *string
 			var respActif *bool
-			scanErr := rowsEtab2.Scan(
+			if err := rowsEtab2.Scan(
 				&o.ID, &o.Nom, &o.Ville, &o.Type, &o.Actif,
 				&o.AbonnementStatut, &o.PlanNom,
 				&o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
 				&respID, &respName, &respEmail, &respActif,
-			)
-			if scanErr != nil {
-				fmt.Printf("ADMIN-STATS: scan error: %v\n", scanErr)
-			}
-			if scanErr == nil {
+			); err == nil {
 				if respID != nil && respName != nil && respEmail != nil && respActif != nil {
 					o.Responsable = &responsableRef{
 						ID:    *respID,
@@ -804,9 +778,6 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		stats["etablissementsOverview"] = overviews
-	}
-	if tx2 != nil {
-		tx2.Commit(ctx)
 	}
 
 if err != nil {
