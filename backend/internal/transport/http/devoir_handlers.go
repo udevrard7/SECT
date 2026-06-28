@@ -317,7 +317,7 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 				u."id", u."name", u."email",
 				ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
 				g."id", g."criteres",
-				COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."deletedAt" IS NULL AND sub."statut"::text = 'SOUMIS'), 0)
+				COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)
 			FROM "Devoir" d
 			LEFT JOIN "User" u ON u."id" = d."enseignantId"
 			LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
@@ -378,7 +378,7 @@ func (s *Server) getDevoir(w http.ResponseWriter, r *http.Request) {
 				u."id", u."name", u."email", u."matricule"
 			FROM "Soumission" s
 			LEFT JOIN "User" u ON u."id" = s."etudiantId"
-			WHERE s."devoirId" = $1 AND s."deletedAt" IS NULL
+			WHERE s."devoirId" = $1
 			ORDER BY s."renduAt" DESC, s."createdAt" DESC
 		`, devoirID)
 		if err != nil {
@@ -828,7 +828,7 @@ func (s *Server) updateSoumission(w http.ResponseWriter, r *http.Request) {
 			       d."enseignantId"
 			FROM "Soumission" s
 			JOIN "Devoir" d ON d."id" = s."devoirId"
-			WHERE s."id" = $1 AND s."deletedAt" IS NULL
+			WHERE s."id" = $1
 		`, soumissionID).Scan(&existingDevoirID, &existingEtudiantID, &existingStatut, &devoirEnseignantID)
 		if err == nil {
 			found = true
@@ -1279,7 +1279,7 @@ func (s *Server) aiGradeSoumission(w http.ResponseWriter, r *http.Request) {
 			SELECT s."devoirId"
 			FROM "Soumission" s
 			JOIN "Devoir" d ON d."id" = s."devoirId"
-			WHERE s."id" = $1 AND s."deletedAt" IS NULL AND d."enseignantId" = $2
+			WHERE s."id" = $1 AND d."enseignantId" = $2
 		`, soumissionID, claims.UserID).Scan(&devoirID)
 		if err == nil {
 			found = true
