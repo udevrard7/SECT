@@ -320,11 +320,23 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 				sr := domain.SessionRef{}
 				var epreuveID string
 				var etuID, etuName, etuEmail *string
-				if err := sessRows.Scan(&sr.ID, &epreuveID, &sr.EtudiantID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score, &etuID, &etuName, &etuEmail); err != nil {
+				var rID *string
+				var rScoreFinal, rTotalPossible *float64
+				var rDetail *string
+				if err := sessRows.Scan(&sr.ID, &epreuveID, &sr.EtudiantID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score, &etuID, &etuName, &etuEmail, &rID, &rScoreFinal, &rTotalPossible, &rDetail); err != nil {
 					return fmt.Errorf("scan session ref: %w", err)
 				}
 				if etuID != nil && etuName != nil {
 					sr.Etudiant = &domain.UserRef{ID: *etuID, Name: *etuName, Email: derefStr(etuEmail)}
+				}
+				// B1-MES-EPREUVES : hydrater Resultat si présent (LEFT JOIN)
+				if rID != nil && rScoreFinal != nil {
+					sr.Resultat = &domain.ResultatRef{
+						ID:                *rID,
+						ScoreFinal:        *rScoreFinal,
+						TotalPossible:     derefFloat(rTotalPossible),
+						DetailParQuestion: derefStr(rDetail),
+					}
 				}
 				sessionsByEpreuve[epreuveID] = append(sessionsByEpreuve[epreuveID], sr)
 			}
@@ -703,9 +715,14 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 
 	var result []*domain.EpreuveQuestion
 	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		// B7-MES-EPREUVES : LEFT JOIN Question pour peupler le champ QuestionRef.
+		// Sans cela, le frontend passation-page ne reçoit que la bare liaison.
 		rows, err := tx.Query(ctx, `
-			SELECT "id", "epreuveId", "questionId", "bareme", "ordre"
-			FROM "EpreuveQuestion" WHERE "epreuveId" = $1 ORDER BY "ordre" ASC
+			SELECT eq."id", eq."epreuveId", eq."questionId", eq."bareme", eq."ordre",
+			       q."id", q."type"::text, q."enonce", q."propositions", q."difficulte"::text, q."themes", q."explication"
+			FROM "EpreuveQuestion" eq
+			LEFT JOIN "Question" q ON q."id" = eq."questionId" AND q."deletedAt" IS NULL
+			WHERE eq."epreuveId" = $1 ORDER BY eq."ordre" ASC
 		`, epreuveID)
 		if err != nil {
 			return fmt.Errorf("query epreuve questions: %w", err)
@@ -714,8 +731,24 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 
 		for rows.Next() {
 			eq := &domain.EpreuveQuestion{}
-			if err := rows.Scan(&eq.ID, &eq.EpreuveID, &eq.QuestionID, &eq.Bareme, &eq.Ordre); err != nil {
+			var qID, qType, qEnonce *string
+			var qProp, qThemes []byte
+			var qDiff *string
+			var qExp *string
+			if err := rows.Scan(&eq.ID, &eq.EpreuveID, &eq.QuestionID, &eq.Bareme, &eq.Ordre, &qID, &qType, &qEnonce, &qProp, &qDiff, &qThemes, &qExp); err != nil {
 				return fmt.Errorf("scan epreuve question: %w", err)
+			}
+			// B7 : hydrater Question si le JOIN a matché
+			if qID != nil && qEnonce != nil {
+				eq.Question = &domain.QuestionRef{
+					ID:           *qID,
+					Type:         domain.TypeQuestion(derefStr(qType)),
+					Enonce:       *qEnonce,
+					Propositions: sanitizeEpreuveRawMessage(qProp),
+					Difficulte:   domain.Difficulte(derefStr(qDiff)),
+					Themes:       sanitizeEpreuveRawMessage(qThemes),
+					Explication:  qExp,
+				}
 			}
 			result = append(result, eq)
 		}
@@ -729,6 +762,49 @@ func (r *EpreuveRepository) ListQuestions(ctx context.Context, epreuveID string)
 	}
 	return result, nil
 }
+
+// ListQuestionsForGrading retourne les questions avec la réponse correcte
+// (usage backend uniquement — JAMAIS retourné au frontend étudiant).
+// B6-MES-EPREUVES : utilisé par Submit pour l'auto-grading QCU/QCM.
+func (r *EpreuveRepository) ListQuestionsForGrading(ctx context.Context, epreuveID string) ([]*domain.QuestionForGrading, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
+
+	var result []*domain.QuestionForGrading
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT eq."questionId", q."type"::text, eq."bareme", eq."ordre", q."reponseCorrecte"::text
+			FROM "EpreuveQuestion" eq
+			JOIN "Question" q ON q."id" = eq."questionId" AND q."deletedAt" IS NULL
+			WHERE eq."epreuveId" = $1 ORDER BY eq."ordre" ASC
+		`, epreuveID)
+		if err != nil {
+			return fmt.Errorf("query epreuve questions for grading: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			qfg := &domain.QuestionForGrading{}
+			var qType, qCorrect *string
+			if err := rows.Scan(&qfg.QuestionID, &qType, &qfg.Bareme, &qfg.Ordre, &qCorrect); err != nil {
+				return fmt.Errorf("scan question for grading: %w", err)
+			}
+			qfg.Type = domain.TypeQuestion(derefStr(qType))
+			if qCorrect != nil {
+				qfg.ReponseCorrecte = *qCorrect
+			}
+			result = append(result, qfg)
+		}
+		if result == nil {
+			result = []*domain.QuestionForGrading{}
+		}
+		return nil
+	})
+	return result, err
+}
+
 
 // nullableStr convertit une string en *string (NULL si vide).
 func nullableStr(s *string) any {
