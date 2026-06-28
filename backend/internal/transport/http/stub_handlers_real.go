@@ -28,15 +28,15 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type logEntry struct {
-		ID         string `json:"id"`
-		UserID     *string `json:"userId,omitempty"`
-		UserEmail  *string `json:"userEmail,omitempty"`
-		Action     string `json:"action"`
-		Entite     string `json:"entite"`
-		EntiteID   *string `json:"entiteId,omitempty"`
-		Details    *string `json:"details,omitempty"`
-		AdresseIP  *string `json:"adresseIp,omitempty"`
-		CreatedAt  string `json:"createdAt"`
+		ID        string  `json:"id"`
+		UserID    *string `json:"userId,omitempty"`
+		UserEmail *string `json:"userEmail,omitempty"`
+		Action    string  `json:"action"`
+		Entite    string  `json:"entite"`
+		EntiteID  *string `json:"entiteId,omitempty"`
+		Details   *string `json:"details,omitempty"`
+		AdresseIP *string `json:"adresseIp,omitempty"`
+		CreatedAt string  `json:"createdAt"`
 	}
 
 	result := []logEntry{}
@@ -59,13 +59,13 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := fmt.Sprintf(`
-			SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
-			       "details", "adresseIp", "createdAt"
-			FROM "AuditLog"
-			%s
-			ORDER BY "createdAt" DESC
-			LIMIT $%d
-		`, whereClause, argIdx)
+                        SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
+                               "details", "adresseIp", "createdAt"
+                        FROM "AuditLog"
+                        %s
+                        ORDER BY "createdAt" DESC
+                        LIMIT $%d
+                `, whereClause, argIdx)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)
@@ -105,45 +105,55 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type provider struct {
-		ID           string   `json:"id"`
-		Name         string   `json:"name"`
-		Provider     string   `json:"provider"`
-		BaseURL      *string  `json:"baseUrl,omitempty"`
-		Model        *string  `json:"model,omitempty"`
-		Temperature  float64  `json:"temperature"`
-		MaxTokens    int      `json:"maxTokens"`
-		IsActive     bool     `json:"isActive"`
-		Priority     int      `json:"priority"`
-		ExtraConfig  *string  `json:"extraConfig,omitempty"`
-		LastTestAt   *string  `json:"lastTestAt,omitempty"`
-		LastTestOk   *bool    `json:"lastTestOk,omitempty"`
+		ID          string  `json:"id"`
+		Name        string  `json:"name"`
+		Provider    string  `json:"provider"`
+		BaseURL     *string `json:"baseUrl,omitempty"`
+		HasAPIKey   bool    `json:"hasApiKey"`
+		Model       *string `json:"model,omitempty"`
+		Temperature float64 `json:"temperature"`
+		MaxTokens   int     `json:"maxTokens"`
+		IsActive    bool    `json:"isActive"`
+		Priority    int     `json:"priority"`
+		ExtraConfig *string `json:"extraConfig,omitempty"`
+		LastTestAt  *string `json:"lastTestAt,omitempty"`
+		LastTestOk  *bool   `json:"lastTestOk,omitempty"`
+		CreatedAt   string  `json:"createdAt"`
+		UpdatedAt   string  `json:"updatedAt"`
 	}
 
 	result := []provider{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "name", "provider", "baseUrl", "model",
-			       "temperature", "maxTokens", "isActive", "priority",
-			       "extraConfig", "lastTestAt", "lastTestOk"
-			FROM "AIProviderConfig"
-			ORDER BY "priority" ASC
-		`)
+                        SELECT "id", "name", "provider", "baseUrl", "apiKey", "model",
+                               "temperature", "maxTokens", "isActive", "priority",
+                               "extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"
+                        FROM "AIProviderConfig"
+                        ORDER BY "priority" ASC
+                `)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			p := provider{}
+			var apiKey *string
 			var lastTestAt *time.Time
-			if err := rows.Scan(&p.ID, &p.Name, &p.Provider, &p.BaseURL, &p.Model,
+			var createdAt, updatedAt time.Time
+			if err := rows.Scan(&p.ID, &p.Name, &p.Provider, &p.BaseURL, &apiKey, &p.Model,
 				&p.Temperature, &p.MaxTokens, &p.IsActive, &p.Priority,
-				&p.ExtraConfig, &lastTestAt, &p.LastTestOk); err != nil {
+				&p.ExtraConfig, &lastTestAt, &p.LastTestOk, &createdAt, &updatedAt); err != nil {
 				return err
 			}
+			// Sécurité : ne jamais retourner l'apiKey brut dans la liste.
+			// On expose uniquement le flag hasApiKey pour l'UI.
+			p.HasAPIKey = apiKey != nil && *apiKey != ""
 			if lastTestAt != nil {
 				ts := lastTestAt.UTC().Format(time.RFC3339)
 				p.LastTestAt = &ts
 			}
+			p.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+			p.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
 			result = append(result, p)
 		}
 		return rows.Err()
@@ -200,13 +210,13 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := fmt.Sprintf(`
-			SELECT "id", "titre", "description", "severity"::text, "type"::text,
-			       "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt"
-			FROM "Alerte"
-			%s
-			ORDER BY "createdAt" DESC
-			LIMIT $%d
-		`, whereClause, argIdx)
+                        SELECT "id", "titre", "description", "severity"::text, "type"::text,
+                               "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt"
+                        FROM "Alerte"
+                        %s
+                        ORDER BY "createdAt" DESC
+                        LIMIT $%d
+                `, whereClause, argIdx)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)
@@ -246,18 +256,18 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type validation struct {
-		ID                    string  `json:"id"`
-		EtudiantID            string  `json:"etudiantId"`
-		UniteEnseignementID   string  `json:"uniteEnseignementId"`
-		AnneeAcademiqueID     *string `json:"anneeAcademiqueId,omitempty"`
-		Statut                string  `json:"statut"`
-		MoyenneUE             float64 `json:"moyenneUE"`
-		NoteNormale           *float64 `json:"noteNormale,omitempty"`
-		NoteRattrapage        *float64 `json:"noteRattrapage,omitempty"`
-		NoteFinale            float64 `json:"noteFinale"`
-		NbEpreuvesTotal       int     `json:"nbEpreuvesTotal"`
-		NbEpreuvesCompletees  int     `json:"nbEpreuvesCompletees"`
-		DateValidation        *string `json:"dateValidation,omitempty"`
+		ID                   string   `json:"id"`
+		EtudiantID           string   `json:"etudiantId"`
+		UniteEnseignementID  string   `json:"uniteEnseignementId"`
+		AnneeAcademiqueID    *string  `json:"anneeAcademiqueId,omitempty"`
+		Statut               string   `json:"statut"`
+		MoyenneUE            float64  `json:"moyenneUE"`
+		NoteNormale          *float64 `json:"noteNormale,omitempty"`
+		NoteRattrapage       *float64 `json:"noteRattrapage,omitempty"`
+		NoteFinale           float64  `json:"noteFinale"`
+		NbEpreuvesTotal      int      `json:"nbEpreuvesTotal"`
+		NbEpreuvesCompletees int      `json:"nbEpreuvesCompletees"`
+		DateValidation       *string  `json:"dateValidation,omitempty"`
 	}
 
 	result := []validation{}
@@ -278,13 +288,13 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := fmt.Sprintf(`
-			SELECT "id", "etudiantId", "uniteEnseignementId", "anneeAcademiqueId",
-			       "statut"::text, "moyenneUE", "noteNormale", "noteRattrapage",
-			       "noteFinale", "nbEpreuvesTotal", "nbEpreuvesCompletees", "dateValidation"
-			FROM "ValidationUE"
-			%s
-			ORDER BY "createdAt" DESC
-		`, whereClause)
+                        SELECT "id", "etudiantId", "uniteEnseignementId", "anneeAcademiqueId",
+                               "statut"::text, "moyenneUE", "noteNormale", "noteRattrapage",
+                               "noteFinale", "nbEpreuvesTotal", "nbEpreuvesCompletees", "dateValidation"
+                        FROM "ValidationUE"
+                        %s
+                        ORDER BY "createdAt" DESC
+                `, whereClause)
 
 		rows, err := tx.Query(r.Context(), query, args...)
 		if err != nil {
@@ -326,17 +336,17 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type abonnement struct {
-		ID               string   `json:"id"`
-		EtablissementID  string   `json:"etablissementId"`
-		PlanID           string   `json:"planId"`
-		Statut           string   `json:"statut"`
-		DateDebut        string   `json:"dateDebut"`
-		DateFin          *string  `json:"dateFin,omitempty"`
-		PeriodeEssaiJours int     `json:"periodeEssaiJours"`
-		ModePaiement     *string  `json:"modePaiement,omitempty"`
-		MontantPaye      float64  `json:"montantPaye"`
-		RenouvellementAuto bool   `json:"renouvellementAuto"`
-		Notes            *string  `json:"notes,omitempty"`
+		ID                 string  `json:"id"`
+		EtablissementID    string  `json:"etablissementId"`
+		PlanID             string  `json:"planId"`
+		Statut             string  `json:"statut"`
+		DateDebut          string  `json:"dateDebut"`
+		DateFin            *string `json:"dateFin,omitempty"`
+		PeriodeEssaiJours  int     `json:"periodeEssaiJours"`
+		ModePaiement       *string `json:"modePaiement,omitempty"`
+		MontantPaye        float64 `json:"montantPaye"`
+		RenouvellementAuto bool    `json:"renouvellementAuto"`
+		Notes              *string `json:"notes,omitempty"`
 		// Relations
 		Etablissement *struct {
 			ID  string `json:"id"`
@@ -352,15 +362,15 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
 	result := []abonnement{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-			SELECT a."id", a."etablissementId", a."planId", a."statut"::text,
-			       a."dateDebut", a."dateFin", a."periodeEssaiJours", a."modePaiement",
-			       a."montantPaye", a."renouvellementAuto", a."notes",
-			       e."id", e."nom", p."id", p."nom", p."prixMensuel"
-			FROM "Abonnement" a
-			LEFT JOIN "Etablissement" e ON e."id" = a."etablissementId"
-			LEFT JOIN "Plan" p ON p."id" = a."planId"
-			ORDER BY a."createdAt" DESC
-		`)
+                        SELECT a."id", a."etablissementId", a."planId", a."statut"::text,
+                               a."dateDebut", a."dateFin", a."periodeEssaiJours", a."modePaiement",
+                               a."montantPaye", a."renouvellementAuto", a."notes",
+                               e."id", e."nom", p."id", p."nom", p."prixMensuel"
+                        FROM "Abonnement" a
+                        LEFT JOIN "Etablissement" e ON e."id" = a."etablissementId"
+                        LEFT JOIN "Plan" p ON p."id" = a."planId"
+                        ORDER BY a."createdAt" DESC
+                `)
 		if err != nil {
 			return err
 		}
@@ -419,37 +429,37 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type plan struct {
-		ID                 string   `json:"id"`
-		Nom                string   `json:"nom"`
-		Type               string   `json:"type"`
-		PrixMensuel        float64  `json:"prixMensuel"`
-		PrixAnnuel         *float64 `json:"prixAnnuel,omitempty"`
-		NbEtablissementsMax int     `json:"nbEtablissementsMax"`
-		NbFilieresMax      int      `json:"nbFilieresMax"`
-		NbEnseignantsMax   int      `json:"nbEnseignantsMax"`
-		NbEtudiantsMax     int      `json:"nbEtudiantsMax"`
-		NbQuestionsMax     int      `json:"nbQuestionsMax"`
-		NbEvaluationsMois  int      `json:"nbEvaluationsMois"`
-		IaGeneration       bool     `json:"iaGeneration"`
-		IaCorrection       bool     `json:"iaCorrection"`
-		Proctoring         bool     `json:"proctoring"`
-		ExportPDF          bool     `json:"exportPDF"`
-		Support            string   `json:"support"`
-		Description        *string  `json:"description,omitempty"`
-		Actif              bool     `json:"actif"`
+		ID                  string   `json:"id"`
+		Nom                 string   `json:"nom"`
+		Type                string   `json:"type"`
+		PrixMensuel         float64  `json:"prixMensuel"`
+		PrixAnnuel          *float64 `json:"prixAnnuel,omitempty"`
+		NbEtablissementsMax int      `json:"nbEtablissementsMax"`
+		NbFilieresMax       int      `json:"nbFilieresMax"`
+		NbEnseignantsMax    int      `json:"nbEnseignantsMax"`
+		NbEtudiantsMax      int      `json:"nbEtudiantsMax"`
+		NbQuestionsMax      int      `json:"nbQuestionsMax"`
+		NbEvaluationsMois   int      `json:"nbEvaluationsMois"`
+		IaGeneration        bool     `json:"iaGeneration"`
+		IaCorrection        bool     `json:"iaCorrection"`
+		Proctoring          bool     `json:"proctoring"`
+		ExportPDF           bool     `json:"exportPDF"`
+		Support             string   `json:"support"`
+		Description         *string  `json:"description,omitempty"`
+		Actif               bool     `json:"actif"`
 	}
 
 	result := []plan{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "nom", "type"::text, "prixMensuel", "prixAnnuel",
-			       "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
-			       "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
-			       "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
-			       "support", "description", "actif"
-			FROM "Plan"
-			ORDER BY "prixMensuel" ASC
-		`)
+                        SELECT "id", "nom", "type"::text, "prixMensuel", "prixAnnuel",
+                               "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
+                               "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
+                               "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
+                               "support", "description", "actif"
+                        FROM "Plan"
+                        ORDER BY "prixMensuel" ASC
+                `)
 		if err != nil {
 			return err
 		}
@@ -486,20 +496,20 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type notif struct {
-		ID              string   `json:"id"`
-		Type            string   `json:"type"`
-		Titre           string   `json:"titre"`
-		Message         string   `json:"message"`
-		DestinataireID  *string  `json:"destinataireId,omitempty"`
+		ID               string  `json:"id"`
+		Type             string  `json:"type"`
+		Titre            string  `json:"titre"`
+		Message          string  `json:"message"`
+		DestinataireID   *string `json:"destinataireId,omitempty"`
 		DestinataireRole *string `json:"destinataireRole,omitempty"`
-		Lu              bool     `json:"lu"`
-		ActionURL       *string  `json:"actionUrl,omitempty"`
-		ActionLabel     *string  `json:"actionLabel,omitempty"`
-		Priorite        string   `json:"priorite"`
-		Categorie       string   `json:"categorie"`
-		Icone           *string  `json:"icone,omitempty"`
-		ExpireLe        *string  `json:"expireLe,omitempty"`
-		CreatedAt       string   `json:"createdAt"`
+		Lu               bool    `json:"lu"`
+		ActionURL        *string `json:"actionUrl,omitempty"`
+		ActionLabel      *string `json:"actionLabel,omitempty"`
+		Priorite         string  `json:"priorite"`
+		Categorie        string  `json:"categorie"`
+		Icone            *string `json:"icone,omitempty"`
+		ExpireLe         *string `json:"expireLe,omitempty"`
+		CreatedAt        string  `json:"createdAt"`
 	}
 
 	result := []notif{}
@@ -522,14 +532,14 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
 		}
 
 		query := fmt.Sprintf(`
-			SELECT "id", "type", "titre", "message", "destinataireId", "destinataireRole",
-			       "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
-			       "expireLe", "createdAt"
-			FROM "NotificationAdmin"
-			%s
-			ORDER BY "createdAt" DESC
-			LIMIT $%d
-		`, whereClause, argIdx)
+                        SELECT "id", "type", "titre", "message", "destinataireId", "destinataireRole",
+                               "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
+                               "expireLe", "createdAt"
+                        FROM "NotificationAdmin"
+                        %s
+                        ORDER BY "createdAt" DESC
+                        LIMIT $%d
+                `, whereClause, argIdx)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)
