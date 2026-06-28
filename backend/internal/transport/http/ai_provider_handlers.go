@@ -151,8 +151,8 @@ func scanProviderWithKey(row pgx.Row) (aiProviderJSON, error) {
 // scanProviderWithoutKey scan une ligne AIProviderConfig sans l'apiKey
 // (pour la liste publique et les mutations POST/PATCH/DELETE).
 const providerColumnsWithKey = `"id", "name", "provider", "baseUrl", "apiKey", "model",
-        "temperature", "maxTokens", "isActive", "priority",
-        "extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"`
+	"temperature", "maxTokens", "isActive", "priority",
+	"extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"`
 
 // requireAdminClaims vérifie que la requête est authentifiée en tant qu'ADMIN.
 // Retourne (claims, true) si OK, sinon écrit une erreur et retourne (zero, false).
@@ -265,12 +265,12 @@ func (s *Server) aiProviderCreate(w http.ResponseWriter, r *http.Request) {
 		priority := maxPriority + 1
 
 		row := tx.QueryRow(r.Context(), `
-                        INSERT INTO "AIProviderConfig"
-                                ("id", "name", "provider", "baseUrl", "apiKey", "model",
-                                 "temperature", "maxTokens", "isActive", "priority",
-                                 "extraConfig", "createdAt", "updatedAt")
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10, NOW(), NOW())
-                        RETURNING `+providerColumnsWithKey,
+			INSERT INTO "AIProviderConfig"
+				("id", "name", "provider", "baseUrl", "apiKey", "model",
+				 "temperature", "maxTokens", "isActive", "priority",
+				 "extraConfig", "createdAt", "updatedAt")
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10, NOW(), NOW())
+			RETURNING `+providerColumnsWithKey,
 			id, strings.TrimSpace(*in.Name), strings.TrimSpace(*in.Provider),
 			in.BaseURL, in.APIKey, in.Model,
 			temperature, maxTokens, priority, extraConfig,
@@ -314,8 +314,8 @@ func (s *Server) aiProviderGet(w http.ResponseWriter, r *http.Request) {
 	var provider aiProviderJSON
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), `
-                        SELECT `+providerColumnsWithKey+`
-                        FROM "AIProviderConfig" WHERE "id" = $1`, id)
+			SELECT `+providerColumnsWithKey+`
+			FROM "AIProviderConfig" WHERE "id" = $1`, id)
 		p, err := scanProviderWithKey(row)
 		if err != nil {
 			return err
@@ -509,7 +509,7 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
 		// Active celui-ci et récupère son nom.
 		err := tx.QueryRow(r.Context(),
 			`UPDATE "AIProviderConfig" SET "isActive" = true, "updatedAt" = NOW()
-                         WHERE "id" = $1 RETURNING "name"`, body.ProviderID,
+			 WHERE "id" = $1 RETURNING "name"`, body.ProviderID,
 		).Scan(&activatedName)
 		if err != nil {
 			return err
@@ -555,8 +555,8 @@ func (s *Server) aiProviderTest(w http.ResponseWriter, r *http.Request) {
 	var providerType string
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), `
-                        SELECT "id", "name", "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", ''), COALESCE("model", '')
-                        FROM "AIProviderConfig" WHERE "id" = $1`, id)
+			SELECT "id", "name", "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", ''), COALESCE("model", '')
+			FROM "AIProviderConfig" WHERE "id" = $1`, id)
 		return row.Scan(&id, &provider, &providerType, &baseURL, &apiKey, &model)
 	})
 	if err != nil {
@@ -620,8 +620,8 @@ func (s *Server) aiProviderModels(w http.ResponseWriter, r *http.Request) {
 	var providerType, baseURL, apiKey string
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), `
-                        SELECT "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", '')
-                        FROM "AIProviderConfig" WHERE "id" = $1`, providerID)
+			SELECT "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", '')
+			FROM "AIProviderConfig" WHERE "id" = $1`, providerID)
 		return row.Scan(&providerType, &baseURL, &apiKey)
 	})
 	if err != nil {
@@ -726,9 +726,9 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 
 		// 2. Lister tous les providers.
 		rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "name", "provider", "model", "isActive", "priority",
-                               "lastTestAt", "lastTestOk"
-                        FROM "AIProviderConfig" ORDER BY "priority" ASC`)
+			SELECT "id", "name", "provider", "model", "isActive", "priority",
+			       "lastTestAt", "lastTestOk"
+			FROM "AIProviderConfig" ORDER BY "priority" ASC`)
 		if err != nil {
 			return err
 		}
@@ -789,11 +789,11 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 
 		// 4. Récupérer les 20 derniers événements.
 		evRows, err := tx.Query(r.Context(), `
-                        SELECT "id", "eventType", "fromProvider", "toProvider",
-                               "reason", "errorDetails", "resolved", "createdAt"
-                        FROM "AIFailoverEvent"
-                        ORDER BY "createdAt" DESC
-                        LIMIT 20`)
+			SELECT "id", "eventType", "fromProvider", "toProvider",
+			       "reason", "errorDetails", "resolved", "createdAt"
+			FROM "AIFailoverEvent"
+			ORDER BY "createdAt" DESC
+			LIMIT 20`)
 		if err != nil {
 			return err
 		}
@@ -899,9 +899,9 @@ func (s *Server) aiProviderFailoverConfig(w http.ResponseWriter, r *http.Request
 			return err
 		}
 		_, err = tx.Exec(r.Context(), `
-                        INSERT INTO "PlatformSettings" ("id", "settings", "updatedAt")
-                        VALUES ('ai_failover_config', $1, NOW())
-                        ON CONFLICT ("id") DO UPDATE SET "settings" = EXCLUDED."settings", "updatedAt" = NOW()`,
+			INSERT INTO "PlatformSettings" ("id", "settings", "updatedAt")
+			VALUES ('ai_failover_config', $1, NOW())
+			ON CONFLICT ("id") DO UPDATE SET "settings" = EXCLUDED."settings", "updatedAt" = NOW()`,
 			string(settingsBytes))
 		return err
 	})
@@ -1018,7 +1018,7 @@ func (s *Server) aiProviderFailoverHealth(w http.ResponseWriter, r *http.Request
 	allHealthy := true
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "name", "lastTestOk" FROM "AIProviderConfig" ORDER BY "priority" ASC`)
+			SELECT "id", "name", "lastTestOk" FROM "AIProviderConfig" ORDER BY "priority" ASC`)
 		if err != nil {
 			return err
 		}

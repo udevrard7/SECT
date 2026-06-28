@@ -25,8 +25,8 @@ func NewQuestionRepository(pool *pgxpool.Pool) *QuestionRepository {
 }
 
 const columnsQuestion = `"id", "documentId", "auteurId", "type", "enonce", "propositions",
-        "reponseCorrecte", "explication", "difficulte", "themes", "tags",
-        "scoreQualite", "validee", "langue", "createdAt", "updatedAt", "deletedAt"`
+	"reponseCorrecte", "explication", "difficulte", "themes", "tags",
+	"scoreQualite", "validee", "langue", "createdAt", "updatedAt", "deletedAt"`
 
 func scanQuestion(s scanner) (*domain.Question, error) {
 	q := &domain.Question{}
@@ -219,11 +219,11 @@ func (r *QuestionRepository) Create(ctx context.Context, input domain.CreateQues
 	}
 
 	row := tx.QueryRow(ctx, `
-                INSERT INTO "Question" ("id", "documentId", "auteurId", "type", "enonce", "propositions",
-                        "reponseCorrecte", "explication", "difficulte", "themes", "tags",
-                        "scoreQualite", "validee", "langue", "createdAt", "updatedAt", "deletedAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, NULL, true, 'fr', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
-                RETURNING `+columnsQuestion,
+		INSERT INTO "Question" ("id", "documentId", "auteurId", "type", "enonce", "propositions",
+			"reponseCorrecte", "explication", "difficulte", "themes", "tags",
+			"scoreQualite", "validee", "langue", "createdAt", "updatedAt", "deletedAt")
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, NULL, true, 'fr', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
+		RETURNING `+columnsQuestion,
 		id, nullableStrPtr(input.DocumentID), auteurID, input.Type, input.Enonce,
 		props, reponse, nullableStrPtr(input.Explication), difficulte, themes)
 
