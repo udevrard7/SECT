@@ -230,8 +230,10 @@ export function ParQuestionView({
                 })
                 criteriaScore = Math.min(criteriaScore, horizontalCurrentQuestion.bareme)
 
-                const scoreValue = horizontalScores[session.id] ?? (rep?.score !== null && rep?.score !== undefined ? String(rep.score) : '')
-                const commentValue = horizontalComments[session.id] ?? (rep?.commentaire ?? '')
+                // P3-CORRECTION (K10) : key par sessionId::questionId pour éviter la fuite
+                const hKey = `${session.id}::${horizontalCurrentQuestion?.questionId ?? ''}`
+                const scoreValue = horizontalScores[hKey] ?? (rep?.score !== null && rep?.score !== undefined ? String(rep.score) : '')
+                const commentValue = horizontalComments[hKey] ?? (rep?.commentaire ?? '')
                 const isSavingRow = savingSessionId === session.id
                 const statusDot = getStudentStatusDot(session)
 

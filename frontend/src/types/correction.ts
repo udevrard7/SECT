@@ -7,6 +7,7 @@
 
 export interface CorrectionSession {
   id: string
+  sessionId?: string
   statut: string
   score: number | null
   alertes: number
@@ -15,6 +16,12 @@ export interface CorrectionSession {
   autoGradedScore: number
   autoGradedTotal: number
   etudiant: { id: string; name: string; email: string }
+  // P3-CORRECTION : champs flat retournés par le backend (rétrocompat)
+  etudiantId?: string
+  etudiantNom?: string
+  etudiantEmail?: string
+  epreuveId?: string
+  epreuveTitre?: string
   epreuve: {
     id: string
     titre: string
