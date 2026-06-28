@@ -839,7 +839,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 		// Construction dynamique du LEFT JOIN sur Soumission (étudiant seulement)
 		soumissionJoin := ""
 		if etudiantID != "" {
-			soumissionJoin = fmt.Sprintf(`LEFT JOIN "Soumission" s ON s."devoirId" = d."id" AND s."etudiantId" = $%d AND s."deletedAt" IS NULL`, argIdx)
+			soumissionJoin = fmt.Sprintf(`LEFT JOIN "Soumission" s ON s."devoirId" = d."id" AND s."etudiantId" = $%d`, argIdx)
 			args = append(args, etudiantID)
 			argIdx++
 		}
@@ -863,7 +863,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 				u."id", u."name", u."email",
 				ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
 				g."id", g."criteres",
-				COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."deletedAt" IS NULL AND sub."statut"::text = 'SOUMIS'), 0)%s
+				COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."statut"::text = 'SOUMIS'), 0)%s
 			FROM "Devoir" d
 			LEFT JOIN "User" u ON u."id" = d."enseignantId"
 			LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
@@ -1042,10 +1042,10 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Devoir" WHERE "deletedAt" IS NULL AND "statut"::text = 'ARCHIVE'`).Scan(&stats.Kpis.Archives)
 
 		// Soumissions
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL`).Scan(&stats.Kpis.TotalSoumissions)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL AND "statut"::text = 'SOUMIS'`).Scan(&stats.Kpis.SoumissionsEnAttente)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL AND "statut"::text IN ('CORRIGE','RETOURNE')`).Scan(&stats.Kpis.SoumissionsCorrigees)
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE s."deletedAt" IS NULL AND s."renduAt" IS NULL AND d."dateLimite" < CURRENT_TIMESTAMP`).Scan(&stats.Kpis.EnRetard)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE 1=1`).Scan(&stats.Kpis.TotalSoumissions)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "statut"::text = 'SOUMIS'`).Scan(&stats.Kpis.SoumissionsEnAttente)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" WHERE "statut"::text IN ('CORRIGE','RETOURNE')`).Scan(&stats.Kpis.SoumissionsCorrigees)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE s."renduAt" IS NULL AND d."dateLimite" < CURRENT_TIMESTAMP`).Scan(&stats.Kpis.EnRetard)
 
 		// byType : répartition par type de séance
 		rows, err := tx.Query(r.Context(), `SELECT "typeSeance"::text, count(*) FROM "Devoir" WHERE "deletedAt" IS NULL GROUP BY "typeSeance" ORDER BY count(*) DESC`)
@@ -1062,7 +1062,7 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// soumissionsByStatut
-		rows2, err := tx.Query(r.Context(), `SELECT "statut"::text, count(*) FROM "Soumission" WHERE "deletedAt" IS NULL GROUP BY "statut" ORDER BY count(*) DESC`)
+		rows2, err := tx.Query(r.Context(), `SELECT "statut"::text, count(*) FROM "Soumission" WHERE 1=1 GROUP BY "statut" ORDER BY count(*) DESC`)
 		if err == nil {
 			defer rows2.Close()
 		statutLabels := map[string]string{"BROUILLON": "Brouillon", "SOUMIS": "Soumis", "CORRIGE": "Corrigé", "RETOURNE": "Rendu"}
@@ -1078,7 +1078,7 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		// timeline : 7 derniers jours
 		rows3, err := tx.Query(r.Context(), `
 			SELECT to_char(d::date, 'YYYY-MM-DD') as date,
-			(SELECT count(*) FROM "Soumission" WHERE "deletedAt" IS NULL AND date_trunc('day', "createdAt") = d) as soumissions
+			(SELECT count(*) FROM "Soumission" WHERE date_trunc('day', "createdAt") = d) as soumissions
 			FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') AS d
 			ORDER BY d ASC
 		`)
@@ -1096,7 +1096,7 @@ func (s *Server) devoirsStatsReal(w http.ResponseWriter, r *http.Request) {
 		// moyenneNotes
 		var moy *float64
 		var moyVal float64
-		err = tx.QueryRow(r.Context(), `SELECT AVG("note") FROM "Soumission" WHERE "deletedAt" IS NULL AND "note" IS NOT NULL`).Scan(&moyVal)
+		err = tx.QueryRow(r.Context(), `SELECT AVG("note") FROM "Soumission" WHERE "note" IS NOT NULL`).Scan(&moyVal)
 		if err == nil {
 			moy = &moyVal
 			stats.MoyenneNotes = moy
