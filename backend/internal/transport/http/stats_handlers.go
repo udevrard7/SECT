@@ -768,14 +768,11 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			 WHERE ea."etablissementId" = e.id
 			   AND ea."adminId" = '%s'
 			   AND ea.statut = 'ACTIF') AS admin_has_access,
-			ru.id, ru.name, ru.email, ru.actif
+			(SELECT u.id FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_id,
+			(SELECT u.name FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_name,
+			(SELECT u.email FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_email,
+			(SELECT u.actif FROM "User" u WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE' LIMIT 1) AS resp_actif
 		FROM "Etablissement" e
-		LEFT JOIN LATERAL (
-			SELECT u.id, u.name, u.email, u.actif
-			FROM "User" u
-			WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE'
-			LIMIT 1
-		) ru ON true
 		ORDER BY e.nom ASC
 	`, escapedAdminID))
 	if q2err == nil {
