@@ -750,7 +750,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 	tx2, _ := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if tx2 != nil {
 		defer tx2.Rollback(ctx)
-		tx2.Exec(ctx, "SET LOCAL row_security = off")
+		tx2.Exec(ctx, "SET row_security = off")
 	}
 	rowsEtab2, q2err := tx2.Query(ctx, fmt.Sprintf(`
 		SELECT
@@ -809,12 +809,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		tx2.Commit(ctx)
 	}
 
-	// Debug: inclure q2err dans la réponse temporairement
-	if q2err != nil {
-		stats["_debug_q2err"] = q2err.Error()
-	}
-
-	if err != nil {
+if err != nil {
 		http.Error(w, `{"error":"failed to load admin stats"}`, http.StatusInternalServerError)
 		return
 	}
