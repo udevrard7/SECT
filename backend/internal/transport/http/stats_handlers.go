@@ -737,43 +737,6 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		stats["nbEtablissementsProteges"] = 0
 		stats["nbVerificationIdentite"] = 0
 
-		// 8. Vue d'ensemble par établissement.
-		// Pour chaque établissement, on récupère en une seule query :
-		//   - l'abonnement le plus récent (statut + plan)
-		//   - le nombre d'utilisateurs rattachés
-		//   - le nombre de filières
-		//   - si l'admin courant a un accès ACTIF
-		//   - le responsable (User role=RESPONSABLE, lié via User.etablissementId
-		//     — pas via Etablissement.responsableId qui n'existe pas)
-		// proctoringActif est forcé à false (colonne non disponible ici).
-		rowsEtab, qerr := tx.Query(ctx, `
-			SELECT
-				e.id, e.nom, e.ville, e.type, e.actif,
-				(SELECT a.statut::text FROM "Abonnement" a
-				 WHERE a."etablissementId" = e.id
-				 ORDER BY a."dateDebut" DESC LIMIT 1) AS abonnement_statut,
-				(SELECT p.nom FROM "Abonnement" a
-				 JOIN "Plan" p ON p.id = a."planId"
-				 WHERE a."etablissementId" = e.id
-				 ORDER BY a."dateDebut" DESC LIMIT 1) AS plan_nom,
-				(SELECT count(*) FROM "User" u WHERE u."etablissementId" = e.id) AS nb_users,
-				(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id) AS nb_filieres,
-				(SELECT count(*) FROM "EtablissementAccess" ea
-				 WHERE ea."etablissementId" = e.id
-				   AND ea."adminId" = $1
-				   AND ea.statut = 'ACTIF') AS admin_has_access,
-				ru.id, ru.name, ru.email, ru.actif
-			FROM "Etablissement" e
-			LEFT JOIN LATERAL (
-				SELECT u.id, u.name, u.email, u.actif
-				FROM "User" u
-				WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE'
-				LIMIT 1
-			) ru ON true
-			ORDER BY e.nom ASC
-		`, claims.UserID)
-		_ = qerr // ignore, query retries below without RLS
-		_ = rowsEtab // not used, query retries below
 
 		return nil
 	})
