@@ -23,7 +23,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap, FileText, BookOpen, ArrowLeft, RefreshCw,
-  AlertCircle, Sparkles, Clock, Award, Eye, Download, Trophy, Layers,
+  AlertCircle, Eye, Download, Trophy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -187,37 +187,6 @@ export function ExamPrepPage() {
         </Card>
       ) : (
         <>
-          {/* Features preview (rappel des piliers) */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { icon: Sparkles, label: 'Q&A IA', desc: 'Contextuel RAG' },
-              { icon: Award, label: 'Entraînement', desc: 'Questions auto' },
-              { icon: Clock, label: 'Planning', desc: 'Spaced repetition' },
-              { icon: Layers, label: 'Flashcards', desc: 'Actives & IA' },
-            ].map((f, i) => (
-              <motion.div
-                key={f.label}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05, duration: 0.25 }}
-              >
-                <Card className="border-l-4 border-l-primary/50 ds-kente-top">
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                        <f.icon className="h-4 w-4 text-primary-text" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold truncate">{f.label}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{f.desc}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-
           {/* Liste des documents — EntityCard DS unifié */}
           <motion.div
             initial={{ opacity: 0 }}
