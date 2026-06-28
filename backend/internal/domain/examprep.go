@@ -309,6 +309,10 @@ type ExamPrepRepository interface {
 
 	// Documents (student-scoped)
 	ListStudentDocuments(ctx context.Context, userID, filiereID, niveau string) ([]*Document, error)
+	// GetUserNiveau récupère le niveau d'un utilisateur depuis la table User.
+	// EXAM-PREP-NIVEAU-FIX-1 : le JWT SessionClaims n'a pas de champ Niveau,
+	// on le récupère depuis la DB. Retourne "" si l'utilisateur n'existe pas.
+	GetUserNiveau(ctx context.Context, userID string) (string, error)
 	// GetDocumentContent récupère le contenu textuel d'un document.
 	// EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG.
 	GetDocumentContent(ctx context.Context, documentID string) (string, error)

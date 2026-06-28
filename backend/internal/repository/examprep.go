@@ -173,6 +173,43 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
 	return result, nil
 }
 
+// GetUserNiveau récupère le niveau d'un utilisateur depuis la table User.
+// EXAM-PREP-NIVEAU-FIX-1 : le JWT SessionClaims n'a pas de champ Niveau,
+// on le récupère depuis la DB. Retourne "" si l'utilisateur n'existe pas
+// ou si la colonne "niveau" est NULL. RLS désactivé : lecture système
+// (métadonnée non sensible, userID provient des claims authentifiés).
+func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (string, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return "", fmt.Errorf("disable rls: %w", err)
+	}
+
+	var niveau *string
+	err = tx.QueryRow(ctx, `
+		SELECT "niveau" FROM "User" WHERE "id" = $1
+	`, userID).Scan(&niveau)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			tx.Commit(ctx)
+			return "", nil
+		}
+		return "", fmt.Errorf("query user niveau: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit: %w", err)
+	}
+	if niveau == nil {
+		return "", nil
+	}
+	return *niveau, nil
+}
+
 // GetDocumentContent récupère le contenu textuel d'un document.
 // EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG pour construire
 // le prompt avec le contexte du document.
