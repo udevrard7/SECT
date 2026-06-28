@@ -20,6 +20,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/storage"
 	httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
 	"github.com/udevrard7/sect/backend/internal/usecase"
+	"github.com/udevrard7/sect/backend/internal/worker"
 )
 
 func main() {
@@ -108,6 +109,10 @@ func main() {
 
 	// 4. Configurer le serveur HTTP
 	authMiddleware := middleware.Auth(signer)
+	// IA-WORKER-1 : démarrer le worker IA asynchrone (goroutine)
+	iaWorker := worker.NewIAWorker(pool, logger)
+	iaWorker.Start(context.Background())
+
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
 	// CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
