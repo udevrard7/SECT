@@ -304,7 +304,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listCorrectionSessions)
                         r.Post("/retourner-batch", s.retournerBatch)
                         r.Post("/{sessionId}/retourner", s.retournerSession)
-                        r.Post("/{sessionId}/ai-grade", s.aiGradeSession) // IA-CORRECTION-1
+                        r.Post("/{sessionId}/ai-grade", s.aiGradeSession)            // IA-CORRECTION-1
+                        r.Patch("/{sessionId}/ai-grade", s.saveGradeOrFinalize)      // P1b-CORRECTION : save grade + finalize
+                        r.Post("/{sessionId}/ai-grade-batch", s.batchAiGrade)        // P1b-CORRECTION : batch IA
                         r.Patch("/reponses/{reponseId}", s.updateReponse)
                 })
 
