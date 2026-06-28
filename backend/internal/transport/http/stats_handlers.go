@@ -742,71 +742,61 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// BUGFIX (ADMIN-DASHBOARD-FIX-1) : la query etablissementsOverview échoue
-	// via WithTx (RLS pose les claims, mais les subqueries sur User sont
-	// filtrées). On refait cette query SANS RLS (transaction directe sans
-	// claims) — l'admin a le droit de voir tous les établissements + users.
-	if err == nil {
-		tx2, txErr := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
-		if txErr == nil {
-			defer tx2.Rollback(ctx)
-			tx2.Exec(ctx, "SET row_security = off")
-
-			// Inline le adminId (contournement Simple Protocol + RLS)
-			escapedAdminID := strings.ReplaceAll(claims.UserID, "'", "''")
-			rowsEtab2, q2err := tx2.Query(ctx, fmt.Sprintf(`
-				SELECT
-					e.id, e.nom, e.ville, e.type, e.actif,
-					(SELECT a.statut::text FROM "Abonnement" a
-					 WHERE a."etablissementId" = e.id
-					 ORDER BY a."dateDebut" DESC LIMIT 1) AS abonnement_statut,
-					(SELECT p.nom FROM "Abonnement" a
-					 JOIN "Plan" p ON p.id = a."planId"
-					 WHERE a."etablissementId" = e.id
-					 ORDER BY a."dateDebut" DESC LIMIT 1) AS plan_nom,
-					(SELECT count(*) FROM "User" u WHERE u."etablissementId" = e.id) AS nb_users,
-					(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id) AS nb_filieres,
-					(SELECT count(*) FROM "EtablissementAccess" ea
-					 WHERE ea."etablissementId" = e.id
-					   AND ea."adminId" = '%s'
-					   AND ea.statut = 'ACTIF') AS admin_has_access,
-					ru.id, ru.name, ru.email, ru.actif
-				FROM "Etablissement" e
-				LEFT JOIN LATERAL (
-					SELECT u.id, u.name, u.email, u.actif
-					FROM "User" u
-					WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE'
-					LIMIT 1
-				) ru ON true
-				ORDER BY e.nom ASC
-			`, escapedAdminID))
-			if q2err == nil {
-				defer rowsEtab2.Close()
-				overviews := []etablissementOverview{}
-				for rowsEtab2.Next() {
-					var o etablissementOverview
-					var respID, respName, respEmail *string
-					var respActif *bool
-					if err := rowsEtab2.Scan(
-						&o.ID, &o.Nom, &o.Ville, &o.Type, &o.Actif,
-						&o.AbonnementStatut, &o.PlanNom,
-						&o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
-						&respID, &respName, &respEmail, &respActif,
-					); err == nil {
-						if respID != nil && respName != nil && respEmail != nil && respActif != nil {
-							o.Responsable = &responsableRef{
-								ID:    *respID,
-								Name:  *respName,
-								Email: *respEmail,
-								Actif: *respActif,
-							}
-						}
-						overviews = append(overviews, o)
+	// via WithTx (RLS filtre les subqueries sur User). On utilise le pool
+	// directement (sans transaction, sans claims RLS) — l'admin a le droit
+	// de voir tous les établissements + users pour les stats globales.
+	escapedAdminID := strings.ReplaceAll(claims.UserID, "'", "''")
+	rowsEtab2, q2err := s.dbPool.Query(ctx, fmt.Sprintf(`
+		SELECT
+			e.id, e.nom, e.ville, e.type, e.actif,
+			(SELECT a.statut::text FROM "Abonnement" a
+			 WHERE a."etablissementId" = e.id
+			 ORDER BY a."dateDebut" DESC LIMIT 1) AS abonnement_statut,
+			(SELECT p.nom FROM "Abonnement" a
+			 JOIN "Plan" p ON p.id = a."planId"
+			 WHERE a."etablissementId" = e.id
+			 ORDER BY a."dateDebut" DESC LIMIT 1) AS plan_nom,
+			(SELECT count(*) FROM "User" u WHERE u."etablissementId" = e.id) AS nb_users,
+			(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id) AS nb_filieres,
+			(SELECT count(*) FROM "EtablissementAccess" ea
+			 WHERE ea."etablissementId" = e.id
+			   AND ea."adminId" = '%s'
+			   AND ea.statut = 'ACTIF') AS admin_has_access,
+			ru.id, ru.name, ru.email, ru.actif
+		FROM "Etablissement" e
+		LEFT JOIN LATERAL (
+			SELECT u.id, u.name, u.email, u.actif
+			FROM "User" u
+			WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE'
+			LIMIT 1
+		) ru ON true
+		ORDER BY e.nom ASC
+	`, escapedAdminID))
+	if q2err == nil {
+		defer rowsEtab2.Close()
+		overviews := []etablissementOverview{}
+		for rowsEtab2.Next() {
+			var o etablissementOverview
+			var respID, respName, respEmail *string
+			var respActif *bool
+			if err := rowsEtab2.Scan(
+				&o.ID, &o.Nom, &o.Ville, &o.Type, &o.Actif,
+				&o.AbonnementStatut, &o.PlanNom,
+				&o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
+				&respID, &respName, &respEmail, &respActif,
+			); err == nil {
+				if respID != nil && respName != nil && respEmail != nil && respActif != nil {
+					o.Responsable = &responsableRef{
+						ID:    *respID,
+						Name:  *respName,
+						Email: *respEmail,
+						Actif: *respActif,
 					}
 				}
-				stats["etablissementsOverview"] = overviews
+				overviews = append(overviews, o)
 			}
-			tx2.Commit(ctx)
 		}
+		stats["etablissementsOverview"] = overviews
 	}
 
 	if err != nil {
