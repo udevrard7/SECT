@@ -396,7 +396,11 @@ export function DevoirsPage() {
   const refreshDevoirs = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['devoirs', user?.id] })
     queryClient.invalidateQueries({ queryKey: ['devoirs-stats', user?.id] })
+    queryClient.invalidateQueries({ queryKey: ['devoirs-ues', user?.id] })
   }, [queryClient, user?.id])
+
+  // isFetching global pour le spinner du bouton Actualiser
+  const isRefreshing = devoirsQuery.isFetching || statsQuery.isFetching
 
   // ═══════════════════════════════════════
   //  FILTERING & SORTING
@@ -1041,8 +1045,8 @@ export function DevoirsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => refreshDevoirs()} aria-label="Rafraîchir">
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              <Button variant="outline" size="sm" onClick={() => refreshDevoirs()} disabled={isRefreshing} aria-label="Rafraîchir">
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 Actualiser
               </Button>
               <Button size="sm" onClick={handleOpenCreate} className="font-semibold" aria-label="Nouveau devoir">
@@ -1215,8 +1219,8 @@ export function DevoirsPage() {
             <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
             <p className="mt-2 text-sm font-medium text-destructive">Erreur de chargement</p>
             <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
-            <Button variant="outline" size="sm" onClick={() => refreshDevoirs()} className="mt-3">
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" onClick={() => refreshDevoirs()} disabled={isRefreshing} className="mt-3">
+              <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
               Réessayer
             </Button>
           </CardContent>
