@@ -1471,3 +1471,194 @@ func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, document
 	}
 	return result, nil
 }
+
+
+// ============================================================
+// DOCUMENT AUDIO (AUDIO-LEARNING-1 — Mode Audio-Learning)
+// ============================================================
+
+// CreateDocumentAudio insère une nouvelle ligne DocumentAudio avec le statut
+// EN_COURS et un script vide (le worker le remplira après génération IA).
+// RLS désactivé : écriture système (le worker/handler n'a pas de claims HTTP).
+func (r *ExamPrepRepository) CreateDocumentAudio(ctx context.Context, input domain.CreateDocumentAudioInput) (*domain.DocumentAudio, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	id := uuid.NewString()
+	audio := &domain.DocumentAudio{
+		ID:         id,
+		DocumentID: input.DocumentID,
+		UserID:     input.UserID,
+		Script:     input.Script,
+		Status:     "EN_COURS",
+	}
+
+	err = tx.QueryRow(ctx, `
+		INSERT INTO "DocumentAudio" ("id", "documentId", "userId", "script",
+			"r2Key", "durationSec", "status", "errorMessage",
+			"createdAt", "updatedAt")
+		VALUES ($1, $2, $3, $4, NULL, NULL, $5, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING "createdAt", "updatedAt"
+	`, id, input.DocumentID, input.UserID, input.Script, "EN_COURS").Scan(&audio.CreatedAt, &audio.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("insert document audio: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return audio, nil
+}
+
+// UpdateDocumentAudioStatus met à jour le statut d'un audio (+ r2Key et/ou
+// errorMessage si non-nil). RLS désactivé : écriture système (worker).
+func (r *ExamPrepRepository) UpdateDocumentAudioStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return fmt.Errorf("disable rls: %w", err)
+	}
+
+	if r2Key != nil && errorMessage != nil {
+		_, err = tx.Exec(ctx, `
+			UPDATE "DocumentAudio"
+			SET "status" = $1, "r2Key" = $2, "errorMessage" = $3, "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $4
+		`, status, *r2Key, *errorMessage, audioID)
+	} else if r2Key != nil {
+		_, err = tx.Exec(ctx, `
+			UPDATE "DocumentAudio"
+			SET "status" = $1, "r2Key" = $2, "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $3
+		`, status, *r2Key, audioID)
+	} else if errorMessage != nil {
+		_, err = tx.Exec(ctx, `
+			UPDATE "DocumentAudio"
+			SET "status" = $1, "errorMessage" = $2, "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $3
+		`, status, *errorMessage, audioID)
+	} else {
+		_, err = tx.Exec(ctx, `
+			UPDATE "DocumentAudio"
+			SET "status" = $1, "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $2
+		`, status, audioID)
+	}
+	if err != nil {
+		return fmt.Errorf("update document audio status: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// UpdateDocumentAudioScript met à jour uniquement le script d'un audio
+// (avant la synthèse TTS). RLS désactivé : écriture système (worker).
+func (r *ExamPrepRepository) UpdateDocumentAudioScript(ctx context.Context, audioID, script string) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return fmt.Errorf("disable rls: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE "DocumentAudio"
+		SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
+		WHERE "id" = $2
+	`, script, audioID)
+	if err != nil {
+		return fmt.Errorf("update document audio script: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// ListDocumentAudio liste tous les audios d'un document, ordonnés par
+// createdAt DESC. RLS désactivé : lecture système (les audios sont
+// partagés entre étudiants d'une même filière — comme les questions de
+// la banque collaborative).
+func (r *ExamPrepRepository) ListDocumentAudio(ctx context.Context, documentID string) ([]*domain.DocumentAudio, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `
+		SELECT "id", "documentId", "userId", "script", "r2Key",
+		       "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
+		FROM "DocumentAudio"
+		WHERE "documentId" = $1
+		ORDER BY "createdAt" DESC
+	`, documentID)
+	if err != nil {
+		return nil, fmt.Errorf("query document audio: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*domain.DocumentAudio
+	for rows.Next() {
+		a := &domain.DocumentAudio{}
+		if err := rows.Scan(
+			&a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
+			&a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan document audio: %w", err)
+		}
+		result = append(result, a)
+	}
+	if result == nil {
+		result = []*domain.DocumentAudio{}
+	}
+
+	tx.Commit(ctx)
+	return result, nil
+}
+
+// GetDocumentAudio récupère un audio par son ID. RLS désactivé : lecture système.
+func (r *ExamPrepRepository) GetDocumentAudio(ctx context.Context, audioID string) (*domain.DocumentAudio, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	a := &domain.DocumentAudio{}
+	err = tx.QueryRow(ctx, `
+		SELECT "id", "documentId", "userId", "script", "r2Key",
+		       "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
+		FROM "DocumentAudio"
+		WHERE "id" = $1
+	`, audioID).Scan(
+		&a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
+		&a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get document audio: %w", err)
+	}
+
+	tx.Commit(ctx)
+	return a, nil
+}

@@ -101,7 +101,8 @@ func main() {
 	documentUC := usecase.NewDocumentUseCase(documentRepo, storageClient)
 	certificatUC := usecase.NewCertificatUseCase(certificatRepo)
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
-	examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo)
+	// AUDIO-LEARNING-1 : storageClient passé au ExamPrepUseCase pour les URLs présignées R2 des podcasts.
+	examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo, storageClient)
 
 	// AI-CONNECT-1 : AIService — lit le provider actif depuis AIProviderConfig
 	// et fait les appels chat completion vers le provider (Mistral, Groq, etc.).
@@ -130,6 +131,15 @@ func main() {
 	// pousse un job dans worker.PracticeQueue et retourne 202 Accepted.
 	practiceWorker := worker.NewPracticeWorker(pool, logger)
 	practiceWorker.Start(context.Background())
+
+	// AUDIO-LEARNING-1 — Mode Audio-Learning : worker de génération de podcasts
+	// de révision (script IA + synthèse TTS optionnelle + upload R2). Async :
+	// le handler POST /api/exam-prep/documents/{id}/audio crée la ligne
+	// DocumentAudio (status=EN_COURS) puis pousse un job dans
+	// worker.AudioGenerationQueue et retourne 202 Accepted.
+	audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
+	audioWorker.RecoverInterruptedAudioJobs(context.Background())
+	audioWorker.Start(context.Background())
 
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)
 

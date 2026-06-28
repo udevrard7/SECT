@@ -3,21 +3,22 @@
 /**
  * ExamPrepDocumentDetail — Vue détail d'un document avec onglets.
  *
- * 8 onglets (respectent l'identité Savane EdTech) :
+ * 9 onglets (respectent l'identité Savane EdTech) :
  *  1. Aperçu — chapitres + résumé + thèmes
  *  2. Questions au cours — chat RAG ancré au document (exige exam-prep-qa-tab)
  *  3. Entraînement — génération de questions + correction (exam-prep-practice-tab)
  *  4. Banque — questions partagées + votes collaboratifs (exam-prep-question-bank-tab, QUESTION-BANK-1)
  *  5. Flashcards — cartes Q/R générées depuis une sélection (exam-prep-flashcards-tab)
- *  6. Planning — sessions de révision + spaced repetition (exam-prep-planning-tab)
- *  7. Aide prof — messagerie étudiant↔enseignant (exam-prep-help-tab)
- *  8. Progression — tableau de bord (exam-prep-progress-tab)
+ *  6. Audio — podcasts de révision IA + TTS + R2 (exam-prep-audio-tab, AUDIO-LEARNING-1)
+ *  7. Planning — sessions de révision + spaced repetition (exam-prep-planning-tab)
+ *  8. Aide prof — messagerie étudiant↔enseignant (exam-prep-help-tab)
+ *  9. Progression — tableau de bord (exam-prep-progress-tab)
  */
 
 import { useState } from 'react'
 import {
   ArrowLeft, FileText, Sparkles, Award, Clock, BookOpen, TrendingUp,
-  ChevronRight, Layers, Library,
+  ChevronRight, Layers, Library, Headphones,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +32,7 @@ import { ExamPrepHelpTab } from './tabs/exam-prep-help-tab'
 import { ExamPrepProgressTab } from './tabs/exam-prep-progress-tab'
 import { ExamPrepFlashcardsTab } from './tabs/exam-prep-flashcards-tab'
 import { ExamPrepQuestionBankTab } from './tabs/exam-prep-question-bank-tab'
+import { ExamPrepAudioTab } from './tabs/exam-prep-audio-tab'
 
 interface Props {
   document: ExamPrepDocument
@@ -96,7 +98,7 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
 
       {/* ─── Onglets ─── */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full grid-cols-4 sm:inline-flex sm:w-auto">
+        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
           <TabsTrigger value="overview" className="gap-1.5">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Aperçu</span>
@@ -119,6 +121,10 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
             <Layers className="h-4 w-4" />
             <span className="hidden sm:inline">Flashcards</span>
             <span className="sm:hidden">Cards</span>
+          </TabsTrigger>
+          <TabsTrigger value="audio" className="gap-1.5">
+            <Headphones className="h-4 w-4" />
+            <span className="hidden sm:inline">Audio</span>
           </TabsTrigger>
           <TabsTrigger value="planning" className="gap-1.5">
             <Clock className="h-4 w-4" />
@@ -249,6 +255,11 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
             {/* ─── Flashcards (HIGHLIGHT-FLASHCARD-1) ─── */}
             <TabsContent value="flashcards" className="mt-0">
               <ExamPrepFlashcardsTab documentId={doc.id} chapters={doc.chapters} />
+            </TabsContent>
+
+            {/* ─── Audio (AUDIO-LEARNING-1) ─── */}
+            <TabsContent value="audio" className="mt-0">
+              <ExamPrepAudioTab documentId={doc.id} />
             </TabsContent>
 
             {/* ─── Planning ─── */}
