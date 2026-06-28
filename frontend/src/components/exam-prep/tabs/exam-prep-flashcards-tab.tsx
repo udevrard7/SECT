@@ -3,20 +3,28 @@
 /**
  * Onglet Flashcards — HIGHLIGHT-FLASHCARD-1.
  *
+ * EXAM-PREP-REFACTOR-1 : DS "Savane EdTech".
+ *  - PulseSkeleton pendant le chargement
+ *  - Empty state avec icône Inbox + ds-kente-watermark + CTA "Lire le document"
+ *  - StatCard pour le compteur en haut
+ *  - Cartes avec animation flip (Framer Motion) + kente-top sur la première
+ *  - Couleurs sémantiques (primary pour "Question", success pour "Réponse")
+ *
  * Liste les flashcards de l'étudiant pour le document courant (générées
  * depuis le DocumentReader via "Sélectionner → Créer une Flashcard").
  *
- * - GET /api/exam-prep/flashcards?documentId=X (TanStack Query)
+ * - GET    /api/exam-prep/flashcards?documentId=X (TanStack Query)
  * - DELETE /api/exam-prep/flashcards/{id} (avec invalidation)
- * - Cartes recto/verso avec animation flip (framer-motion)
  */
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Layers, Trash2, Loader2, Sparkles, RotateCw, Inbox } from 'lucide-react'
+import { Layers, Trash2, Loader2, Sparkles, RotateCw, Inbox, AlertCircle, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { StatCard, PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 interface Chapter {
@@ -53,12 +61,14 @@ export function ExamPrepFlashcardsTab({ documentId, chapters }: Props) {
       const data = await res.json()
       return { flashcards: data.flashcards ?? [] }
     },
-    staleTime: 30 * 1000,
+    staleTime: 3 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   })
 
   const flashcards = flashcardsQuery.data?.flashcards ?? []
   const loading = flashcardsQuery.isLoading
+  const error = flashcardsQuery.error
 
   // ─── Mutation : suppression ───
   const deleteMutation = useMutation({
@@ -92,8 +102,46 @@ export function ExamPrepFlashcardsTab({ documentId, chapters }: Props) {
   // ─── Loading ───
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Layers}
+          title="Flashcards"
+          desc="Cartes Q/R générées depuis les passages sélectionnés dans le lecteur."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <PulseSkeleton key={i} variant="card" className="h-56" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Error ───
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Layers}
+          title="Flashcards"
+          desc="Cartes Q/R générées depuis les passages sélectionnés dans le lecteur."
+        />
+        <Card className="border-l-4 border-l-destructive">
+          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <p className="mt-3 text-sm font-medium">Échec du chargement des flashcards</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-1.5"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['exam-prep-flashcards', documentId] })}
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Réessayer
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -101,40 +149,46 @@ export function ExamPrepFlashcardsTab({ documentId, chapters }: Props) {
   // ─── Empty state ───
   if (flashcards.length === 0) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Inbox className="h-8 w-8 text-primary-text" />
-          </div>
-          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
-            Aucune flashcard pour l&apos;instant
-          </h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Ouvrez le document en mode lecture (bouton <span className="font-medium">Lire</span>),
-            sélectionnez un passage pertinent, puis cliquez sur
-            <span className="inline-flex items-center gap-1 mx-1 font-medium text-primary-text">
-              <Sparkles className="h-3 w-3" /> Créer une Flashcard
-            </span>
-            pour générer automatiquement une carte Q/R.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Layers}
+          title="Flashcards"
+          desc="Cartes Q/R générées depuis les passages sélectionnés dans le lecteur."
+        />
+        <Card className="border-dashed ds-kente-watermark">
+          <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Inbox className="h-8 w-8 text-primary-text" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+              Aucune flashcard pour l&apos;instant
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Ouvrez le document en mode lecture (bouton <span className="font-medium">Lire</span>),
+              sélectionnez un passage pertinent, puis cliquez sur
+              <span className="inline-flex items-center gap-1 mx-1 font-medium text-primary-text">
+                <Sparkles className="h-3 w-3" /> Créer une Flashcard
+              </span>
+              pour générer automatiquement une carte Q/R.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   // ─── Liste ───
   return (
-    <div className="space-y-4">
-      {/* Bandeau contextuel */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Layers className="h-4 w-4 shrink-0 text-primary-text" />
-          <span>
-            {flashcards.length} flashcard{flashcards.length > 1 ? 's' : ''} · cliquez sur une carte
-            pour la retourner
-          </span>
-        </div>
-        <Badge variant="outline" className="text-[10px]">
+    <div className="space-y-6">
+      {/* Header + compteur */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <SectionHeader
+          icon={Layers}
+          title="Flashcards"
+          desc={`${flashcards.length} carte(s) · cliquez pour retourner la carte`}
+        />
+        <Badge variant="outline" className="text-[10px] gap-1">
+          <RotateCw className="h-3 w-3" />
           SRS actif
         </Badge>
       </div>
@@ -156,7 +210,7 @@ export function ExamPrepFlashcardsTab({ documentId, chapters }: Props) {
                 className="group"
               >
                 <Card
-                  className="relative h-56 cursor-pointer overflow-hidden ds-lift transition-all hover:shadow-lg"
+                  className={`relative h-56 cursor-pointer overflow-hidden ds-lift transition-all hover:shadow-lg ${i === 0 ? 'ds-kente-top' : ''}`}
                   onClick={() => handleFlip(fc.id)}
                 >
                   <CardContent className="h-full p-0">
@@ -205,7 +259,7 @@ export function ExamPrepFlashcardsTab({ documentId, chapters }: Props) {
 
                       {/* Verso */}
                       <div
-                        className={`absolute inset-0 flex flex-col p-4 bg-primary/5 transition-all duration-300 ${
+                        className={`absolute inset-0 flex flex-col p-4 bg-success/5 transition-all duration-300 ${
                           isFlipped ? 'opacity-100' : 'opacity-0 translate-y-2'
                         }`}
                       >
@@ -250,6 +304,28 @@ export function ExamPrepFlashcardsTab({ documentId, chapters }: Props) {
             )
           })}
         </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+// ─── Header de section réutilisable ───
+
+function SectionHeader({
+  icon: Icon, title, desc,
+}: {
+  icon: typeof Layers
+  title: string
+  desc: string
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="h-5 w-5 text-primary-text" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="font-display text-base font-semibold tracking-tight">{title}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>
       </div>
     </div>
   )

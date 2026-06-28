@@ -3,17 +3,28 @@
 /**
  * Onglet Q&A IA — chat RAG ancré au document.
  *
- * - Recharge l'historique du thread au montage (GET /api/exam-prep/qa)
- * - POST /api/exam-prep/qa à chaque envoi
- * - Affiche les citations [Chapitre X] sous la réponse de l'IA
- * - Suggestions de questions cliquables au démarrage
+ * EXAM-PREP-REFACTOR-1 : DS "Savane EdTech".
+ *  - PulseSkeleton pendant le chargement initial
+ *  - Empty state avec icône Sparkles + ds-logo-glow
+ *  - Bulles user/assistant cohérentes avec la palette (primary pour user, muted pour assistant)
+ *  - Citations affichées en badges primary en bas des réponses assistant
+ *
+ * Flux backend :
+ *  - GET  /api/exam-prep/qa?documentId=X  → (endpoint non implémenté côté backend
+ *    pour l'instant — on tente l'appel et on retombe gracieusement sur un thread
+ *    vide si 404/405. L'historique sera disponible dès que le backend exposera GET /qa.)
+ *  - POST /api/exam-prep/qa body { documentId, question } → { response, model, citations, documentId }
+ *
+ * HIGHLIGHT-FLASHCARD-1 : prop `prefillQuestion` (depuis DocumentReader "Explique-moi
+ * ce passage"). Quand elle est non vide, on envoie automatiquement la question.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Send, Loader2, BookOpen, User } from 'lucide-react'
+import { Sparkles, Send, BookOpen, User, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import { MarkdownRenderer } from '../markdown-renderer'
 
@@ -25,9 +36,9 @@ interface Chapter {
 }
 
 interface Citation {
-  chapterId: string
-  chapterTitle: string
-  chapterNumber: number
+  chapterId?: string
+  chapterTitle?: string
+  chapterNumber?: number
 }
 
 interface Message {
@@ -68,16 +79,21 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
   const prefillConsumedRef = useRef<string | undefined>(undefined)
 
   // ─── Charge l'historique ───
+  // NOTE backend : GET /qa n'est pas encore implémenté — on tente l'appel
+  // et on retombe gracieusement sur un thread vide si l'endpoint est absent.
   const loadHistory = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch(`/api/exam-prep/qa?documentId=${documentId}`)
       if (res.ok) {
         const data = await res.json()
-        setMessages(data.messages ?? [])
+        setMessages(Array.isArray(data.messages) ? data.messages : [])
+      } else {
+        // Endpoint non implémenté (404/405) — thread vide.
+        setMessages([])
       }
     } catch {
-      // Silent — l'utilisateur verra juste un thread vide
+      setMessages([])
     } finally {
       setLoading(false)
     }
@@ -88,8 +104,6 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
   }, [loadHistory])
 
   // ─── HIGHLIGHT-FLASHCARD-1 : prefill question depuis le DocumentReader ───
-  // Si prefillQuestion change et est non vide, on l'envoie automatiquement
-  // (une seule fois par valeur — le ref évite la double émission en StrictMode).
   useEffect(() => {
     if (
       prefillQuestion &&
@@ -102,13 +116,11 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
       handleSend(prefillQuestion)
       onConsumePrefill?.()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefillQuestion, sending, loading])
+    // handleSend is stable enough (uses state setters + closures) — we intentionally
+    // omit it from deps to avoid re-firing the prefill on every render.
+  }, [prefillQuestion, sending, loading, onConsumePrefill])
 
-  // Scroll en bas :
-  // - au chargement initial de l'historique → instant (behavior: 'auto')
-  //   pour éviter l'animation de scroll depuis le haut qui est disgracieuse
-  // - pour chaque nouveau message → smooth (behavior: 'smooth')
+  // Scroll en bas : instant au chargement initial, smooth ensuite.
   useEffect(() => {
     const behavior: ScrollBehavior = hasInitiallyScrolled.current ? 'smooth' : 'auto'
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior })
@@ -121,7 +133,6 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
 
     setInput('')
     setSending(true)
-    // Optimistic : ajoute le message user immédiatement
     const optimistic: Message[] = [...messages, { role: 'user', content }]
     setMessages(optimistic)
 
@@ -136,8 +147,6 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
         throw new Error(err?.error ?? 'Erreur')
       }
       const data = await res.json()
-      // HIGHLIGHT-FLASHCARD-1 : le backend retourne { response, model, citations, documentId }.
-      // On mappe vers le format Message attendu par le thread (role: 'assistant').
       const assistantMsg: Message = {
         role: 'assistant',
         content: data.response ?? '',
@@ -146,7 +155,6 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
       setMessages([...optimistic, assistantMsg])
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Échec de la question')
-      // Retire le message optimistic en cas d'erreur
       setMessages(messages)
     } finally {
       setSending(false)
@@ -155,34 +163,46 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <SectionHeader
+          icon={MessageCircle}
+          title="Questions au cours"
+          desc="Posez vos questions — l'IA répond en citant votre document."
+        />
+        <Card className="h-[480px] p-4">
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <PulseSkeleton key={i} className={`h-12 ${i % 2 === 0 ? 'w-3/4' : 'w-2/3 ml-auto'}`} />
+            ))}
+          </div>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Bandeau contextuel */}
-      {chapters.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-          <BookOpen className="h-3.5 w-3.5 shrink-0" />
-          <span>L'IA s'appuie sur {chapters.length} chapitre{chapters.length > 1 ? 's' : ''} de ce document pour répondre.</span>
-        </div>
-      )}
+    <div className="space-y-6">
+      <SectionHeader
+        icon={MessageCircle}
+        title="Questions au cours"
+        desc={chapters.length > 0
+          ? `L'IA s'appuie sur ${chapters.length} chapitre(s) de ce document pour répondre.`
+          : 'L\'IA s\'appuie sur le contenu textuel de votre document pour répondre.'
+        }
+      />
 
       {/* Zone de messages */}
-      <Card className="flex flex-col h-[480px]">
+      <Card className="flex flex-col h-[520px]">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 ds-logo-glow">
-                <Sparkles className="h-7 w-7 text-primary-text" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 ds-logo-glow">
+                <Sparkles className="h-8 w-8 text-primary-text" />
               </div>
               <div>
-                <p className="font-display font-semibold">Posez votre première question</p>
+                <p className="font-display font-semibold text-base">Posez votre première question</p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                  L'IA répond en citant les passages pertinents de votre document de cours.
+                  L&apos;IA répond en citant les passages pertinents de votre document de cours.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-lg">
@@ -230,7 +250,8 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
                         {msg.citations.map((c, idx) => (
                           <span key={idx} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-primary/10 text-primary-text border border-primary/20">
                             <BookOpen className="h-2.5 w-2.5" />
-                            Chapitre {c.chapterNumber} : {c.chapterTitle}
+                            {c.chapterNumber ? `Chapitre ${c.chapterNumber}` : 'Passage'}
+                            {c.chapterTitle ? ` : ${c.chapterTitle}` : ''}
                           </span>
                         ))}
                       </div>
@@ -281,6 +302,28 @@ export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsume
           </Button>
         </div>
       </Card>
+    </div>
+  )
+}
+
+// ─── Header de section réutilisable ───
+
+function SectionHeader({
+  icon: Icon, title, desc,
+}: {
+  icon: typeof MessageCircle
+  title: string
+  desc: string
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="h-5 w-5 text-primary-text" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="font-display text-base font-semibold tracking-tight">{title}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>
+      </div>
     </div>
   )
 }

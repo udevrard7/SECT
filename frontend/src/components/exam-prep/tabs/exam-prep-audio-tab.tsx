@@ -3,12 +3,15 @@
 /**
  * Onglet Audio — AUDIO-LEARNING-1 (Mode Audio-Learning / Podcasts de révision).
  *
+ * EXAM-PREP-REFACTOR-1 : DS "Savane EdTech".
+ *  - PulseSkeleton pendant le chargement
+ *  - Empty state avec icône Headphones + CTA générer
+ *  - Cards cohérentes (rounded-xl, border-l-4 selon statut)
+ *  - Couleurs sémantiques (info=EN_COURS, success=PRET, destructive=ERREUR)
+ *  - Boutons touch-target ≥ 44px (h-9 minimum)
+ *
  * Permet à l'étudiant de générer un podcast de ~5 minutes (script IA + synthèse
- * TTS optionnelle) qui résume les concepts clés d'un document. Le podcast est
- * un dialogue entre un "Présentateur" (host enthousiaste) et un "Expert"
- * (professeur). Si le provider IA supporte /audio/speech (TTS), un MP3 est
- * généré et stocké sur Cloudflare R2 ; sinon, seul le script textuel est
- * disponible (dégradation gracieuse).
+ * TTS optionnelle) qui résume les concepts clés d'un document.
  *
  * - GET    /api/exam-prep/documents/{id}/audio  (TanStack Query, polling 3s si EN_COURS)
  * - POST   /api/exam-prep/documents/{id}/audio  (202 → AudioGenerationQueue)
@@ -18,7 +21,6 @@
  * - Chaque carte affiche : statut (EN_COURS spinner / PRET check vert / ERREUR rouge),
  *   lecteur HTML5 <audio> si PRET + audioUrl, script collapsible (toujours si PRET),
  *   date + durée (si disponible).
- * - Empty state : "Aucun podcast généré. Cliquez sur 'Générer un podcast'…"
  */
 
 import { useState } from 'react'
@@ -26,11 +28,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Headphones, Loader2, CheckCircle2, AlertCircle, ChevronDown,
-  Play, Podcast, FileText, Clock,
+  Play, Podcast, FileText, Clock, RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 interface Props {
@@ -87,6 +90,7 @@ export function ExamPrepAudioTab({ documentId }: Props) {
     },
     staleTime: 5 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
     refetchInterval: (query) => {
       const audios = query.state.data?.audios ?? []
       const hasPending = audios.some((a) => a.status === 'EN_COURS')
@@ -96,6 +100,7 @@ export function ExamPrepAudioTab({ documentId }: Props) {
 
   const audios = audioQuery.data?.audios ?? []
   const loading = audioQuery.isLoading
+  const error = audioQuery.error
   const hasPending = audios.some((a) => a.status === 'EN_COURS')
 
   // ─── Mutation : générer un podcast ───
@@ -126,8 +131,46 @@ export function ExamPrepAudioTab({ documentId }: Props) {
   // ─── Loading ───
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Headphones}
+          title="Podcasts de révision"
+          desc="Générez un résumé audio de ~5 minutes — idéal pour réviser en mobilité."
+        />
+        <div className="space-y-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <PulseSkeleton key={i} variant="card" className="h-24" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Error ───
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Headphones}
+          title="Podcasts de révision"
+          desc="Générez un résumé audio de ~5 minutes — idéal pour réviser en mobilité."
+        />
+        <Card className="border-l-4 border-l-destructive">
+          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <p className="mt-3 text-sm font-medium">Échec du chargement des podcasts</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-1.5"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['exam-prep-audio', documentId] })}
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Réessayer
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -135,54 +178,59 @@ export function ExamPrepAudioTab({ documentId }: Props) {
   // ─── Empty state ───
   if (audios.length === 0) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Headphones className="h-8 w-8 text-primary-text" />
-          </div>
-          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
-            Aucun podcast généré
-          </h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Cliquez sur « Générer un podcast » pour créer un résumé audio de
-            ~5 minutes de ce document. L&apos;IA produira un dialogue engageant
-            entre un présentateur et un expert.
-          </p>
-          <Button
-            onClick={handleGenerate}
-            disabled={generateMutation.isPending}
-            className="mt-5 gap-2"
-            size="sm"
-          >
-            {generateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Lancement…</span>
-              </>
-            ) : (
-              <>
-                <Podcast className="h-4 w-4" />
-                <span>Générer un podcast</span>
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Headphones}
+          title="Podcasts de révision"
+          desc="Générez un résumé audio de ~5 minutes — idéal pour réviser en mobilité."
+        />
+        <Card className="border-dashed ds-kente-watermark">
+          <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Headphones className="h-8 w-8 text-primary-text" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+              Aucun podcast généré
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Cliquez sur « Générer un podcast » pour créer un résumé audio de
+              ~5 minutes de ce document. L&apos;IA produira un dialogue engageant
+              entre un présentateur et un expert.
+            </p>
+            <Button
+              onClick={handleGenerate}
+              disabled={generateMutation.isPending}
+              className="mt-5 gap-2"
+              size="sm"
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Lancement…</span>
+                </>
+              ) : (
+                <>
+                  <Podcast className="h-4 w-4" />
+                  <span>Générer un podcast</span>
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   // ─── Liste ───
   return (
-    <div className="space-y-4">
-      {/* Bandeau contextuel + bouton générer */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Headphones className="h-4 w-4 shrink-0 text-primary-text" />
-          <span>
-            {audios.length} podcast{audios.length > 1 ? 's' : ''} ·
-            {hasPending ? ' génération en cours…' : ' à votre écoute'}
-          </span>
-        </div>
+    <div className="space-y-6">
+      {/* Header + bouton générer */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <SectionHeader
+          icon={Headphones}
+          title="Podcasts de révision"
+          desc={`${audios.length} podcast(s) · ${hasPending ? 'génération en cours…' : 'à votre écoute'}`}
+        />
         <Button
           onClick={handleGenerate}
           disabled={generateMutation.isPending || hasPending}
@@ -245,7 +293,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
               Cela peut prendre 30 à 90 secondes.
             </p>
           </div>
-          <Badge variant="outline" className="bg-info/10 text-info border-info/30 text-[10px]">
+          <Badge variant="outline" className="bg-info/10 text-info border-info/30 text-[10px] shrink-0">
             <Clock className="h-3 w-3 mr-1" />
             {formatDate(audio.createdAt)}
           </Badge>
@@ -271,7 +319,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
               Réessayez en générant un nouveau podcast.
             </p>
           </div>
-          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-[10px]">
+          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-[10px] shrink-0">
             <Clock className="h-3 w-3 mr-1" />
             {formatDate(audio.createdAt)}
           </Badge>
@@ -341,6 +389,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
         <button
           onClick={() => setScriptOpen((v) => !v)}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          aria-expanded={scriptOpen}
         >
           <ChevronDown
             className={`h-3.5 w-3.5 transition-transform ${scriptOpen ? 'rotate-180' : ''}`}
@@ -358,7 +407,7 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
               className="overflow-hidden"
             >
               <div className="pt-2 border-t border-border/40">
-                <pre className="whitespace-pre-wrap text-xs leading-relaxed font-sans text-foreground/90 max-h-96 overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-xs leading-relaxed font-sans text-foreground/90 max-h-96 overflow-y-auto scrollbar-thin">
                   {audio.script || '(script vide)'}
                 </pre>
               </div>
@@ -367,5 +416,27 @@ function AudioCard({ audio }: { audio: DocumentAudio }) {
         </AnimatePresence>
       </CardContent>
     </Card>
+  )
+}
+
+// ─── Header de section réutilisable ───
+
+function SectionHeader({
+  icon: Icon, title, desc,
+}: {
+  icon: typeof Headphones
+  title: string
+  desc: string
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="h-5 w-5 text-primary-text" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="font-display text-base font-semibold tracking-tight">{title}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>
+      </div>
+    </div>
   )
 }

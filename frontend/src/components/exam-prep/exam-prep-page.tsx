@@ -3,22 +3,18 @@
 /**
  * ExamPrepPage — Page maîtresse du module Préparation aux examens (étudiant).
  *
+ * EXAM-PREP-REFACTOR-1 : refonte complète alignée sur le Design System
+ * "Savane EdTech". Utilise EntityCard (DS unifié) pour la liste des documents,
+ * PulseSkeleton pour le chargement, motif kente sur le hero, boutons de
+ * téléchargement gracieux (le backend n'expose pas encore /download — toast
+ * informatif au lieu d'une erreur 404).
+ *
  * Architecture à 2 vues :
- *  1. Liste des documents de cours accessibles (cartes cliquables)
- *  2. Vue détail d'un document avec onglets :
- *     - Aperçu (chapitres + résumé)
- *     - Q&A IA (chat RAG ancré au document)
- *     - Entraînement (génération de questions + correction + SRS)
- *     - Planning (sessions de révision + spaced repetition)
- *     - Aide prof (messagerie étudiant↔enseignant)
- *     - Progression (tableau de bord)
+ *  1. Liste des documents de cours accessibles (EntityCard cliquables)
+ *  2. Vue détail d'un document avec 9 onglets (cf. exam-prep-document-detail)
  *
- * Le passage liste→détail se fait via state local (selectedDocumentId)
- * synchronisé avec ?documentId= dans l'URL (pour le partage/refresh).
- *
- * Identité visuelle : Savane EdTech (ds-kente-pattern hero, ds-kente-top
- * cards, tokens oklch, framer-motion) — aligné sur mes-certificats /
- * mes-resultats.
+ * Le DocumentReader reste monté au niveau de cette page (pour le highlight
+ * → flashcard / explain passage).
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -26,14 +22,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  GraduationCap, FileText, BookOpen, ArrowLeft, Loader2,
-  AlertCircle, Sparkles, Clock, Award, Eye, Download,
+  GraduationCap, FileText, BookOpen, ArrowLeft, RefreshCw,
+  AlertCircle, Sparkles, Clock, Award, Eye, Download, Trophy, Layers,
 } from 'lucide-react'
-import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { PulseSkeleton } from '@/components/ds'
+import { EntityCard, PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 import { ExamPrepDocumentDetail } from './exam-prep-document-detail'
@@ -67,7 +62,6 @@ export interface ExamPrepDocument {
 export function ExamPrepPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user } = useAuthStore()
   const queryClient = useQueryClient()
 
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -75,14 +69,8 @@ export function ExamPrepPage() {
   )
   const [readerDocumentId, setReaderDocumentId] = useState<string | null>(null)
   // HIGHLIGHT-FLASHCARD-1 : prefill Q&A depuis le DocumentReader
-  // ("Explique-moi ce passage"). Remonté au niveau page car le reader est
-  // monté ici (pas dans ExamPrepDocumentDetail) et le tab Q&A est dans le détail.
   const [qaPrefill, setQaPrefill] = useState<string | undefined>(undefined)
 
-  // HIGHLIGHT-FLASHCARD-1 : callback "Explique-moi ce passage".
-  // 1. Ferme le lecteur.
-  // 2. Bascule sur la vue détail du document (selectedId).
-  // 3. Pré-remplit la question du Q&A avec le passage sélectionné.
   const handleExplainPassage = useCallback((text: string, documentId: string) => {
     setReaderDocumentId(null)
     setSelectedId(documentId)
@@ -90,7 +78,6 @@ export function ExamPrepPage() {
   }, [])
 
   // ─── Fetch documents (TanStack Query) ───
-  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
   const documentsQuery = useQuery<{ documents: ExamPrepDocument[] }>({
     queryKey: ['exam-prep-documents'],
     queryFn: async () => {
@@ -99,18 +86,23 @@ export function ExamPrepPage() {
       const data = await res.json()
       return { documents: data.documents ?? [] }
     },
-    staleTime: 60 * 1000,
+    staleTime: 3 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   })
 
   const documents = documentsQuery.data?.documents ?? []
   const loading = documentsQuery.isLoading
   const error = documentsQuery.error ? 'Impossible de charger vos supports de cours.' : null
-  const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['exam-prep-documents'] })
+  const refreshDocuments = () => {
+    toast.promise(queryClient.invalidateQueries({ queryKey: ['exam-prep-documents'] }), {
+      loading: 'Actualisation…',
+      success: 'Liste actualisée',
+      error: 'Échec de l\'actualisation',
+    })
+  }
 
   // Synchronise ?documentId dans l'URL (pour partage/refresh).
-  // Utilise router.replace (Next.js) plutôt que window.history.replaceState
-  // pour préserver la navigation SPA et l'état du router.
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString())
     if (selectedId) {
@@ -141,9 +133,9 @@ export function ExamPrepPage() {
     return (
       <div className="space-y-6">
         <PulseSkeleton className="h-24 w-full" variant="card" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <PulseSkeleton key={i} variant="card" className="h-48" />
+            <PulseSkeleton key={i} variant="card" className="h-56" />
           ))}
         </div>
       </div>
@@ -153,53 +145,35 @@ export function ExamPrepPage() {
   // ─── Error ───
   if (error) {
     return (
-      <Card className="border-l-4 border-l-destructive">
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={refreshDocuments}>
-            Réessayer
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <HeroHeader count={0} onRefresh={refreshDocuments} />
+        <Card className="border-l-4 border-l-destructive">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
+            <Button variant="outline" size="sm" className="mt-4 gap-1.5" onClick={refreshDocuments}>
+              <RefreshCw className="h-3.5 w-3.5" /> Réessayer
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   // ─── Vue liste ───
   return (
     <div className="space-y-6">
-      {/* Hero canonique */}
-      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 ds-logo-glow">
-            <GraduationCap className="h-6 w-6 text-primary-text" />
-          </div>
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
-              Préparation aux examens
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Transformez vos supports de cours en moteur de préparation actif
-            </p>
-          </div>
-        </div>
-        {documents.length > 0 && (
-          <Badge variant="secondary" className="self-start sm:self-auto gap-1.5 bg-primary/10 text-primary-text">
-            <BookOpen className="h-3.5 w-3.5" />
-            {documents.length} support{documents.length > 1 ? 's' : ''}
-          </Badge>
-        )}
-      </div>
+      <HeroHeader count={documents.length} onRefresh={refreshDocuments} />
 
       {/* Empty state */}
       {documents.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
-              <FileText className="h-10 w-10 text-primary-text" />
+        <Card className="border-dashed ds-kente-watermark">
+          <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 ds-logo-glow">
+              <Trophy className="h-10 w-10 text-primary-text" />
             </div>
             <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
               Aucun support de cours disponible
@@ -219,7 +193,7 @@ export function ExamPrepPage() {
               { icon: Sparkles, label: 'Q&A IA', desc: 'Contextuel RAG' },
               { icon: Award, label: 'Entraînement', desc: 'Questions auto' },
               { icon: Clock, label: 'Planning', desc: 'Spaced repetition' },
-              { icon: BookOpen, label: 'Aide prof', desc: 'Messagerie' },
+              { icon: Layers, label: 'Flashcards', desc: 'Actives & IA' },
             ].map((f, i) => (
               <motion.div
                 key={f.label}
@@ -227,7 +201,7 @@ export function ExamPrepPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05, duration: 0.25 }}
               >
-                <Card className="border-l-4 border-l-primary/50">
+                <Card className="border-l-4 border-l-primary/50 ds-kente-top">
                   <CardContent className="p-3">
                     <div className="flex items-center gap-2.5">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -244,12 +218,12 @@ export function ExamPrepPage() {
             ))}
           </div>
 
-          {/* Liste des documents */}
+          {/* Liste des documents — EntityCard DS unifié */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
           >
             <AnimatePresence mode="popLayout">
               {documents.map((doc, i) => (
@@ -261,101 +235,11 @@ export function ExamPrepPage() {
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ delay: i * 0.06, duration: 0.3, ease: 'easeOut' }}
                 >
-                  <button
-                    onClick={() => setSelectedId(doc.id)}
-                    className="group relative w-full overflow-hidden rounded-xl border border-border/60 bg-card p-5 text-left shadow-sm ds-kente-top hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 ds-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {/* En-tête : icône + nb chapitres */}
-                    <div className="flex items-start justify-between mb-4 mt-1">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-secondary/10 shadow-md">
-                        <FileText className="h-5 w-5 text-primary-text" />
-                      </div>
-                      {doc.chapters.length > 0 && (
-                        <Badge variant="outline" className="bg-primary/10 text-primary-text border-primary/30">
-                          {doc.chapters.length} ch.
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* UE */}
-                    <div className="mb-2">
-                      <p className="font-mono text-[11px] text-muted-foreground">
-                        {doc.uniteEnseignement.code}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {doc.uniteEnseignement.nom}
-                      </p>
-                    </div>
-
-                    {/* Titre du document */}
-                    <h3 className="font-semibold text-sm leading-snug font-display line-clamp-2 mb-2">
-                      {doc.nomFichier}
-                    </h3>
-
-                    {/* Résumé */}
-                    {doc.resumeAnalyse && (
-                      <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
-                        {doc.resumeAnalyse}
-                      </p>
-                    )}
-
-                    {/* Thèmes */}
-                    {doc.themesDetectes.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {doc.themesDetectes.slice(0, 3).map((t, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                            {t}
-                          </Badge>
-                        ))}
-                        {doc.themesDetectes.length > 3 && (
-                          <span className="text-[10px] text-muted-foreground self-center">
-                            +{doc.themesDetectes.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Footer : prof + date */}
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-2 border-t border-border/40">
-                      <span className="truncate">{doc.owner.name}</span>
-                      <span>{new Date(doc.dateUpload).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
-                    </div>
-
-                    {/* Actions : Lire + Télécharger (ne déclenchent pas le clic carte) */}
-                    <div className="mt-2 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => setReaderDocumentId(doc.id)}
-                        className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        Lire
-                      </button>
-                      <a
-                        href={`/api/exam-prep/documents/${doc.id}/download?format=pdf`}
-                        download
-                        className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
-                        title="Télécharger en PDF"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">PDF</span>
-                      </a>
-                      <a
-                        href={`/api/exam-prep/documents/${doc.id}/download?format=txt`}
-                        download
-                        className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
-                        title="Télécharger en TXT"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">TXT</span>
-                      </a>
-                    </div>
-
-                    {/* CTA hover */}
-                    <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary-text opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Commencer la révision
-                    </div>
-                  </button>
+                  <DocumentEntityCard
+                    doc={doc}
+                    onOpen={() => setSelectedId(doc.id)}
+                    onRead={() => setReaderDocumentId(doc.id)}
+                  />
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -363,12 +247,132 @@ export function ExamPrepPage() {
         </>
       )}
 
-      {/* Visionneuse de document (lecture directe) */}
+      {/* Visionneuse de document (lecture directe) — montée au niveau page */}
       <DocumentReader
         documentId={readerDocumentId}
         onClose={() => setReaderDocumentId(null)}
         onExplainPassage={handleExplainPassage}
       />
+    </div>
+  )
+}
+
+// ─── Hero header avec motif kente ───
+
+function HeroHeader({ count, onRefresh }: { count: number; onRefresh: () => void }) {
+  return (
+    <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 ds-logo-glow">
+          <GraduationCap className="h-6 w-6 text-primary-text" />
+        </div>
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
+            Préparation aux examens
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Transformez vos supports de cours en moteur de préparation actif
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 self-start sm:self-auto">
+        {count > 0 && (
+          <Badge variant="secondary" className="gap-1.5 bg-primary/10 text-primary-text">
+            <BookOpen className="h-3.5 w-3.5" />
+            {count} support{count > 1 ? 's' : ''}
+          </Badge>
+        )}
+        <Button variant="outline" size="sm" onClick={onRefresh} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Actualiser</span>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Carte de document (EntityCard + actions) ───
+
+function DocumentEntityCard({
+  doc, onOpen, onRead,
+}: {
+  doc: ExamPrepDocument
+  onOpen: () => void
+  onRead: () => void
+}) {
+  // EXAM-PREP-REFACTOR-1 : le backend n'expose pas encore /documents/{id}/download
+  // (404). On affiche un toast informatif au lieu de déclencher une erreur.
+  const handleDownload = (e: React.MouseEvent, format: 'txt' | 'pdf') => {
+    e.stopPropagation()
+    toast.info('Téléchargement bientôt disponible', {
+      description: `L'export ${format.toUpperCase()} sera disponible prochainement.`,
+    })
+  }
+
+  return (
+    <div className="relative h-full">
+      <EntityCard
+        title={doc.nomFichier}
+        subtitle={`${doc.uniteEnseignement.code} — ${doc.uniteEnseignement.nom}`}
+        thumbnailIcon={FileText}
+        badge={
+          doc.chapters.length > 0
+            ? { label: `${doc.chapters.length} ch.`, variant: 'primary' as const }
+            : undefined
+        }
+        meta={`${doc.owner.name} · ${new Date(doc.dateUpload).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
+        index={0}
+        onClick={onOpen}
+      >
+        {/* Résumé + thèmes (contenu personnalisé dans le corps de la card) */}
+        {doc.resumeAnalyse && (
+          <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{doc.resumeAnalyse}</p>
+        )}
+        {doc.themesDetectes.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {doc.themesDetectes.slice(0, 3).map((t, idx) => (
+              <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
+                {t}
+              </Badge>
+            ))}
+            {doc.themesDetectes.length > 3 && (
+              <span className="text-[10px] text-muted-foreground self-center">
+                +{doc.themesDetectes.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Actions : Lire + Télécharger (ne déclenchent pas le clic carte) */}
+        <div className="mt-3 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onRead}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
+            aria-label={`Lire ${doc.nomFichier}`}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Lire
+          </button>
+          <button
+            onClick={(e) => handleDownload(e, 'pdf')}
+            className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
+            aria-label="Télécharger en PDF"
+            title="Télécharger en PDF"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">PDF</span>
+          </button>
+          <button
+            onClick={(e) => handleDownload(e, 'txt')}
+            className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
+            aria-label="Télécharger en TXT"
+            title="Télécharger en TXT"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">TXT</span>
+          </button>
+        </div>
+      </EntityCard>
     </div>
   )
 }

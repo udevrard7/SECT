@@ -3,6 +3,12 @@
 /**
  * Onglet Banque — QUESTION-BANK-1.
  *
+ * EXAM-PREP-REFACTOR-1 : DS "Savane EdTech".
+ *  - PulseSkeleton pendant le chargement (au lieu d'un spinner isolé)
+ *  - Cards cohérentes avec le reste du module (rounded-xl, border, kente-top sur la première)
+ *  - Couleurs sémantiques cohérentes (success pour upvote, destructive pour downvote)
+ *  - Empty state avec icône Inbox + CTA vers l'onglet Entraînement
+ *
  * Banque de questions collaborative pour le document courant. Affiche toutes
  * les questions validées (générées par l'IA lors des sessions d'entraînement
  * précédentes) avec leurs stats de vote. Les étudiants peuvent upvote/
@@ -23,11 +29,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Library,
-  Loader2, Inbox, Award,
+  Inbox, Award, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 interface Props {
@@ -115,12 +122,14 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
       const data = await res.json()
       return { questions: data.questions ?? [] }
     },
-    staleTime: 30 * 1000,
+    staleTime: 3 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   })
 
   const questions = bankQuery.data?.questions ?? []
   const loading = bankQuery.isLoading
+  const error = bankQuery.error
 
   // ─── Mutation : voter (upsert) ───
   const voteMutation = useMutation({
@@ -158,8 +167,6 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
   })
 
   // Handler unifié pour le clic sur un bouton de vote.
-  // - Si userVote === value → retirer le vote (toggle off)
-  // - Sinon → voter avec cette valeur (upsert : bascule ou nouveau vote)
   const handleVote = (q: QuestionBankItem, value: 1 | -1) => {
     if (q.userVote === value) {
       removeVoteMutation.mutate(q.id)
@@ -175,8 +182,46 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
   // ─── Loading ───
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Library}
+          title="Banque de questions"
+          desc="Questions collaboratives partagées entre étudiants de votre filière."
+        />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <PulseSkeleton key={i} variant="card" className="h-24" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Error ───
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Library}
+          title="Banque de questions"
+          desc="Questions collaboratives partagées entre étudiants de votre filière."
+        />
+        <Card className="border-l-4 border-l-destructive">
+          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <p className="mt-3 text-sm font-medium">Échec du chargement de la banque</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-1.5"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['exam-prep-question-bank', documentId] })}
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Réessayer
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -184,43 +229,42 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
   // ─── Empty state ───
   if (questions.length === 0) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Inbox className="h-8 w-8 text-primary-text" />
-          </div>
-          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
-            Aucune question partagée pour ce document
-          </h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Soyez le premier à vous entraîner ! Lancez une session dans l&apos;onglet
-            <span className="inline-flex items-center gap-1 mx-1 font-medium text-primary-text">
-              <Award className="h-3 w-3" /> Entraînement
-            </span>
-            — les questions générées par l&apos;IA seront automatiquement partagées
-            ici pour toute la classe.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <SectionHeader
+          icon={Library}
+          title="Banque de questions"
+          desc="Questions collaboratives partagées entre étudiants de votre filière."
+        />
+        <Card className="border-dashed ds-kente-watermark">
+          <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Inbox className="h-8 w-8 text-primary-text" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+              Aucune question partagée pour ce document
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Soyez le premier à vous entraîner ! Lancez une session dans l&apos;onglet
+              <span className="inline-flex items-center gap-1 mx-1 font-medium text-primary-text">
+                <Award className="h-3 w-3" /> Entraînement
+              </span>
+              — les questions générées par l&apos;IA seront automatiquement partagées
+              ici pour toute la classe.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   // ─── Liste ───
   return (
-    <div className="space-y-4">
-      {/* Bandeau contextuel */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Library className="h-4 w-4 shrink-0 text-primary-text" />
-          <span>
-            {questions.length} question{questions.length > 1 ? 's' : ''} partagée{questions.length > 1 ? 's' : ''} ·
-            cliquez pour voir le détail · votez pour faire émerger les meilleures
-          </span>
-        </div>
-        <Badge variant="outline" className="text-[10px]">
-          Collaboratif
-        </Badge>
-      </div>
+    <div className="space-y-6">
+      <SectionHeader
+        icon={Library}
+        title="Banque de questions"
+        desc={`${questions.length} question(s) partagée(s) · cliquez pour voir le détail · votez pour faire émerger les meilleures`}
+      />
 
       {/* Liste des questions */}
       <div className="space-y-3">
@@ -241,7 +285,7 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ delay: i * 0.03, duration: 0.2 }}
               >
-                <Card className="overflow-hidden">
+                <Card className={i === 0 ? 'ds-kente-top overflow-hidden' : 'overflow-hidden'}>
                   <CardContent className="p-4 space-y-3">
                     {/* Ligne 1 : badges + vote */}
                     <div className="flex items-start gap-3">
@@ -272,7 +316,7 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
                         <button
                           onClick={() => handleVote(q, 1)}
                           disabled={voteMutation.isPending || removeVoteMutation.isPending}
-                          className={`flex h-7 w-7 items-center justify-center rounded-md transition-all ds-press disabled:opacity-40 ${
+                          className={`flex h-8 w-8 items-center justify-center rounded-md transition-all ds-press disabled:opacity-40 ${
                             userVotedUp
                               ? 'bg-success/20 text-success-text'
                               : 'text-muted-foreground hover:bg-success/10 hover:text-success-text'
@@ -280,7 +324,7 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
                           aria-label="Vote positif"
                           title={userVotedUp ? 'Retirer mon vote positif' : 'Voter positivement'}
                         >
-                          <ThumbsUp className="h-3.5 w-3.5" />
+                          <ThumbsUp className="h-4 w-4" />
                         </button>
                         <span className={`text-xs font-semibold tabular-nums ${
                           q.netVotes > 0 ? 'text-success-text' : q.netVotes < 0 ? 'text-destructive' : 'text-muted-foreground'
@@ -290,7 +334,7 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
                         <button
                           onClick={() => handleVote(q, -1)}
                           disabled={voteMutation.isPending || removeVoteMutation.isPending}
-                          className={`flex h-7 w-7 items-center justify-center rounded-md transition-all ds-press disabled:opacity-40 ${
+                          className={`flex h-8 w-8 items-center justify-center rounded-md transition-all ds-press disabled:opacity-40 ${
                             userVotedDown
                               ? 'bg-destructive/20 text-destructive'
                               : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
@@ -298,7 +342,7 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
                           aria-label="Vote négatif"
                           title={userVotedDown ? 'Retirer mon vote négatif' : 'Voter négativement'}
                         >
-                          <ThumbsDown className="h-3.5 w-3.5" />
+                          <ThumbsDown className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
@@ -307,6 +351,7 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
                     <button
                       onClick={() => toggleExpand(q.id)}
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      aria-expanded={isExpanded}
                     >
                       {isExpanded ? (
                         <><ChevronUp className="h-3.5 w-3.5" /> Masquer le détail</>
@@ -383,6 +428,28 @@ export function ExamPrepQuestionBankTab({ documentId }: Props) {
             )
           })}
         </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+// ─── Header de section réutilisable ───
+
+function SectionHeader({
+  icon: Icon, title, desc,
+}: {
+  icon: typeof Library
+  title: string
+  desc: string
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="h-5 w-5 text-primary-text" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="font-display text-base font-semibold tracking-tight">{title}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>
       </div>
     </div>
   )

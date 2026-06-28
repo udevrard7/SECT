@@ -1,29 +1,37 @@
 'use client'
 
 /**
- * ExamPrepDocumentDetail — Vue détail d'un document avec onglets.
+ * ExamPrepDocumentDetail — Vue détail d'un document avec 9 onglets.
  *
- * 9 onglets (respectent l'identité Savane EdTech) :
- *  1. Aperçu — chapitres + résumé + thèmes
- *  2. Questions au cours — chat RAG ancré au document (exige exam-prep-qa-tab)
- *  3. Entraînement — génération de questions + correction (exam-prep-practice-tab)
- *  4. Banque — questions partagées + votes collaboratifs (exam-prep-question-bank-tab, QUESTION-BANK-1)
- *  5. Flashcards — cartes Q/R générées depuis une sélection (exam-prep-flashcards-tab)
- *  6. Audio — podcasts de révision IA + TTS + R2 (exam-prep-audio-tab, AUDIO-LEARNING-1)
- *  7. Planning — sessions de révision + spaced repetition (exam-prep-planning-tab)
- *  8. Aide prof — messagerie étudiant↔enseignant (exam-prep-help-tab)
- *  9. Progression — tableau de bord (exam-prep-progress-tab)
+ * EXAM-PREP-REFACTOR-1 : refonte DS "Savane EdTech".
+ *  - Hero avec motif kente + métadonnées du document
+ *  - TabsList scrollable horizontalement sur mobile (9 onglets trop serrés
+ *    pour un grid-cols-4), inline-flex sur desktop
+ *  - Chaque TabsContent a un padding consistent (p-4 sm:p-6) et space-y-6
+ *
+ * 9 onglets :
+ *  1. Vue d'ensemble (overview) — LayoutDashboard
+ *  2. Entraînement (practice) — Zap
+ *  3. Banque (bank) — Library
+ *  4. Flashcards (flashcards) — Layers
+ *  5. Audio (audio) — Headphones
+ *  6. Q&A IA (qa) — MessageCircle
+ *  7. Aide (help) — HelpCircle
+ *  8. Planification (planning) — Calendar
+ *  9. Progression (progress) — TrendingUp
  */
 
 import { useState } from 'react'
 import {
-  ArrowLeft, FileText, Sparkles, Award, Clock, BookOpen, TrendingUp,
-  ChevronRight, Layers, Library, Headphones,
+  ArrowLeft, FileText, Sparkles, Award, Calendar, HelpCircle, TrendingUp,
+  Layers, Library, Headphones, MessageCircle, LayoutDashboard, BookOpen,
+  ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { EntityCard } from '@/components/ds'
 import type { ExamPrepDocument } from './exam-prep-page'
 import { ExamPrepQaTab } from './tabs/exam-prep-qa-tab'
 import { ExamPrepPracticeTab } from './tabs/exam-prep-practice-tab'
@@ -47,12 +55,24 @@ interface Props {
   onConsumeQaPrefill?: () => void
 }
 
+const TABS = [
+  { value: 'overview', label: 'Vue d\'ensemble', short: 'Aperçu', icon: LayoutDashboard },
+  { value: 'practice', label: 'Entraînement', short: 'Train', icon: Award },
+  { value: 'bank', label: 'Banque', short: 'Banque', icon: Library },
+  { value: 'flashcards', label: 'Flashcards', short: 'Cards', icon: Layers },
+  { value: 'audio', label: 'Audio', short: 'Audio', icon: Headphones },
+  { value: 'qa', label: 'Q&A IA', short: 'Questions', icon: MessageCircle },
+  { value: 'help', label: 'Aide', short: 'Aide', icon: HelpCircle },
+  { value: 'planning', label: 'Planification', short: 'Planning', icon: Calendar },
+  { value: 'progress', label: 'Progression', short: 'Progr.', icon: TrendingUp },
+] as const
+
 export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onConsumeQaPrefill }: Props) {
   const [tab, setTab] = useState<string>(qaPrefill && qaPrefill.trim() ? 'qa' : 'overview')
 
   return (
     <div className="space-y-5">
-      {/* ─── Header avec retour ─── */}
+      {/* ─── Breadcrumb retour ─── */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5 shrink-0">
           <ArrowLeft className="h-4 w-4" />
@@ -66,7 +86,7 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
         </div>
       </div>
 
-      {/* ─── Hero du document ─── */}
+      {/* ─── Hero du document (motif kente) ─── */}
       <div className="ds-kente-pattern rounded-lg px-4 py-4 sm:px-6">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 ds-logo-glow">
@@ -98,186 +118,211 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
 
       {/* ─── Onglets ─── */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
-          <TabsTrigger value="overview" className="gap-1.5">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Aperçu</span>
-          </TabsTrigger>
-          <TabsTrigger value="qa" className="gap-1.5">
-            <Sparkles className="h-4 w-4" />
-            <span className="hidden sm:inline">Questions au cours</span>
-            <span className="sm:hidden">Questions</span>
-          </TabsTrigger>
-          <TabsTrigger value="practice" className="gap-1.5">
-            <Award className="h-4 w-4" />
-            <span className="hidden sm:inline">Entraînement</span>
-            <span className="sm:hidden">Train</span>
-          </TabsTrigger>
-          <TabsTrigger value="bank" className="gap-1.5">
-            <Library className="h-4 w-4" />
-            <span className="hidden sm:inline">Banque</span>
-          </TabsTrigger>
-          <TabsTrigger value="flashcards" className="gap-1.5">
-            <Layers className="h-4 w-4" />
-            <span className="hidden sm:inline">Flashcards</span>
-            <span className="sm:hidden">Cards</span>
-          </TabsTrigger>
-          <TabsTrigger value="audio" className="gap-1.5">
-            <Headphones className="h-4 w-4" />
-            <span className="hidden sm:inline">Audio</span>
-          </TabsTrigger>
-          <TabsTrigger value="planning" className="gap-1.5">
-            <Clock className="h-4 w-4" />
-            <span className="hidden sm:inline">Planning</span>
-          </TabsTrigger>
-          <TabsTrigger value="help" className="gap-1.5">
-            <BookOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">Aide prof</span>
-            <span className="sm:hidden">Aide</span>
-          </TabsTrigger>
-          <TabsTrigger value="progress" className="gap-1.5">
-            <TrendingUp className="h-4 w-4" />
-            <span className="hidden sm:inline">Progression</span>
-            <span className="sm:hidden">Progr.</span>
-          </TabsTrigger>
+        {/* TabsList : scroll horizontal sur mobile (9 onglets), inline-flex sur desktop */}
+        <TabsList
+          aria-label="Sections du document"
+          className="flex w-full overflow-x-auto scrollbar-thin justify-start sm:inline-flex sm:w-auto sm:overflow-visible h-auto py-1 gap-1"
+        >
+          {TABS.map((t) => {
+            const Icon = t.icon
+            return (
+              <TabsTrigger
+                key={t.value}
+                value={t.value}
+                className="gap-1.5 shrink-0 h-9"
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="hidden md:inline">{t.label}</span>
+                <span className="md:hidden">{t.short}</span>
+              </TabsTrigger>
+            )
+          })}
         </TabsList>
 
         <div className="mt-5">
-          {/* ─── Aperçu ─── */}
-          <TabsContent value="overview" className="mt-0 space-y-4">
-              {/* Chapitres */}
-              <div>
-                <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3">
-                  Chapitres du document
-                </h3>
-                {doc.chapters.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">
-                    Aucun chapitre structuré détecté lors de l'analyse. Vous pouvez
-                    quand même utiliser « Questions au cours » et l'entraînement sur l'ensemble du document.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {doc.chapters.map((ch, i) => (
-                      <Card key={ch.id} className="border-l-4 border-l-primary/60">
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 font-mono text-sm font-bold text-primary-text">
-                              {ch.ordre + 1}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm leading-snug">{ch.titre}</p>
-                              {ch.sujets.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1.5">
-                                  {ch.sujets.slice(0, 3).map((s, idx) => (
-                                    <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                                      {s}
-                                    </Badge>
-                                  ))}
-                                  {ch.sujets.length > 3 && (
-                                    <span className="text-[10px] text-muted-foreground">+{ch.sujets.length - 3}</span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* ─── Vue d'ensemble ─── */}
+          <TabsContent value="overview" className="mt-0 space-y-6 p-4 sm:p-0">
+            <OverviewTab doc={doc} onSelectTab={setTab} />
+          </TabsContent>
 
-              {/* Thèmes + infos */}
-              {doc.themesDetectes.length > 0 && (
-                <div>
-                  <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3">
-                    Thèmes détectés
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {doc.themesDetectes.map((t, i) => (
-                      <Badge key={i} variant="outline" className="bg-accent/50">
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {/* ─── Entraînement ─── */}
+          <TabsContent value="practice" className="mt-0 p-4 sm:p-0">
+            <ExamPrepPracticeTab documentId={doc.id} chapters={doc.chapters} />
+          </TabsContent>
 
-              {/* CTAs vers les autres onglets */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => setTab('qa')}
-                  className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 hover:shadow-md hover:-translate-y-0.5 transition-all ds-lift text-left"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Sparkles className="h-5 w-5 text-primary-text" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Poser une question</p>
-                    <p className="text-xs text-muted-foreground">L'IA répond en citant votre cours</p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setTab('practice')}
-                  className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 hover:shadow-md hover:-translate-y-0.5 transition-all ds-lift text-left"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
-                    <Award className="h-5 w-5 text-success-text" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">S'entraîner</p>
-                    <p className="text-xs text-muted-foreground">Questions auto + correction IA</p>
-                  </div>
-                </button>
-              </div>
-            </TabsContent>
+          {/* ─── Banque (QUESTION-BANK-1) ─── */}
+          <TabsContent value="bank" className="mt-0 p-4 sm:p-0">
+            <ExamPrepQuestionBankTab documentId={doc.id} />
+          </TabsContent>
 
-            {/* ─── Questions au cours ─── */}
-            <TabsContent value="qa" className="mt-0">
-              <ExamPrepQaTab
-                documentId={doc.id}
-                chapters={doc.chapters}
-                prefillQuestion={qaPrefill}
-                onConsumePrefill={onConsumeQaPrefill}
-              />
-            </TabsContent>
+          {/* ─── Flashcards (HIGHLIGHT-FLASHCARD-1) ─── */}
+          <TabsContent value="flashcards" className="mt-0 p-4 sm:p-0">
+            <ExamPrepFlashcardsTab documentId={doc.id} chapters={doc.chapters} />
+          </TabsContent>
 
-            {/* ─── Entraînement ─── */}
-            <TabsContent value="practice" className="mt-0">
-              <ExamPrepPracticeTab documentId={doc.id} chapters={doc.chapters} />
-            </TabsContent>
+          {/* ─── Audio (AUDIO-LEARNING-1) ─── */}
+          <TabsContent value="audio" className="mt-0 p-4 sm:p-0">
+            <ExamPrepAudioTab documentId={doc.id} />
+          </TabsContent>
 
-            {/* ─── Banque (QUESTION-BANK-1) ─── */}
-            <TabsContent value="bank" className="mt-0">
-              <ExamPrepQuestionBankTab documentId={doc.id} />
-            </TabsContent>
+          {/* ─── Q&A IA ─── */}
+          <TabsContent value="qa" className="mt-0 p-4 sm:p-0">
+            <ExamPrepQaTab
+              documentId={doc.id}
+              chapters={doc.chapters}
+              prefillQuestion={qaPrefill}
+              onConsumePrefill={onConsumeQaPrefill}
+            />
+          </TabsContent>
 
-            {/* ─── Flashcards (HIGHLIGHT-FLASHCARD-1) ─── */}
-            <TabsContent value="flashcards" className="mt-0">
-              <ExamPrepFlashcardsTab documentId={doc.id} chapters={doc.chapters} />
-            </TabsContent>
+          {/* ─── Aide ─── */}
+          <TabsContent value="help" className="mt-0 p-4 sm:p-0">
+            <ExamPrepHelpTab documentId={doc.id} documentName={doc.nomFichier} />
+          </TabsContent>
 
-            {/* ─── Audio (AUDIO-LEARNING-1) ─── */}
-            <TabsContent value="audio" className="mt-0">
-              <ExamPrepAudioTab documentId={doc.id} />
-            </TabsContent>
+          {/* ─── Planification ─── */}
+          <TabsContent value="planning" className="mt-0 p-4 sm:p-0">
+            <ExamPrepPlanningTab documentId={doc.id} chapters={doc.chapters} />
+          </TabsContent>
 
-            {/* ─── Planning ─── */}
-            <TabsContent value="planning" className="mt-0">
-              <ExamPrepPlanningTab documentId={doc.id} chapters={doc.chapters} />
-            </TabsContent>
-
-            {/* ─── Aide prof ─── */}
-            <TabsContent value="help" className="mt-0">
-              <ExamPrepHelpTab documentId={doc.id} chapters={doc.chapters} documentName={doc.nomFichier} />
-            </TabsContent>
-
-            {/* ─── Progression ─── */}
-            <TabsContent value="progress" className="mt-0">
-              <ExamPrepProgressTab documentId={doc.id} chapters={doc.chapters} />
-            </TabsContent>
+          {/* ─── Progression ─── */}
+          <TabsContent value="progress" className="mt-0 p-4 sm:p-0">
+            <ExamPrepProgressTab documentId={doc.id} chapters={doc.chapters} />
+          </TabsContent>
         </div>
       </Tabs>
     </div>
+  )
+}
+
+// ─── Vue d'ensemble ───
+
+function OverviewTab({
+  doc, onSelectTab,
+}: {
+  doc: ExamPrepDocument
+  onSelectTab: (tab: string) => void
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Chapitres */}
+      <div>
+        <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3 flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-primary-text" />
+          Chapitres du document
+        </h3>
+        {doc.chapters.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-6 text-center text-sm text-muted-foreground">
+              Aucun chapitre structuré détecté lors de l&apos;analyse. Vous pouvez
+              quand même utiliser « Q&A IA » et l&apos;entraînement sur l&apos;ensemble du document.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {doc.chapters.map((ch, i) => (
+              <EntityCard
+                key={ch.id}
+                title={ch.titre}
+                subtitle={ch.sujets.length > 0 ? ch.sujets.slice(0, 2).join(' · ') : undefined}
+                badge={{ label: `Ch. ${ch.ordre + 1}`, variant: 'primary' }}
+                index={i}
+              >
+                {ch.sujets.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {ch.sujets.slice(0, 3).map((s, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
+                        {s}
+                      </Badge>
+                    ))}
+                    {ch.sujets.length > 3 && (
+                      <span className="text-[10px] text-muted-foreground">+{ch.sujets.length - 3}</span>
+                    )}
+                  </div>
+                )}
+              </EntityCard>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Thèmes détectés */}
+      {doc.themesDetectes.length > 0 && (
+        <div>
+          <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3">
+            Thèmes détectés
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {doc.themesDetectes.map((t, i) => (
+              <Badge key={i} variant="outline" className="bg-accent/50">
+                {t}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CTAs vers les autres onglets */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+        <QuickAction
+          icon={Sparkles}
+          title="Poser une question"
+          desc="L'IA répond en citant votre cours"
+          accent="primary"
+          onClick={() => onSelectTab('qa')}
+        />
+        <QuickAction
+          icon={Award}
+          title="S'entraîner"
+          desc="Questions auto + correction"
+          accent="success"
+          onClick={() => onSelectTab('practice')}
+        />
+        <QuickAction
+          icon={Layers}
+          title="Créer des flashcards"
+          desc="Sélectionnez un passage dans le lecteur"
+          accent="info"
+          onClick={() => onSelectTab('flashcards')}
+        />
+      </div>
+    </div>
+  )
+}
+
+function QuickAction({
+  icon: Icon, title, desc, accent, onClick,
+}: {
+  icon: typeof Sparkles
+  title: string
+  desc: string
+  accent: 'primary' | 'success' | 'info' | 'warning'
+  onClick: () => void
+}) {
+  const accentBg = {
+    primary: 'bg-primary/10',
+    success: 'bg-success/10',
+    info: 'bg-info/10',
+    warning: 'bg-warning/10',
+  }[accent]
+  const accentText = {
+    primary: 'text-primary-text',
+    success: 'text-success-text',
+    info: 'text-info',
+    warning: 'text-warning',
+  }[accent]
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 hover:shadow-md hover:-translate-y-0.5 transition-all ds-lift text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${accentBg}`}>
+        <Icon className={`h-5 w-5 ${accentText}`} />
+      </div>
+      <div className="min-w-0">
+        <p className="font-semibold text-sm">{title}</p>
+        <p className="text-xs text-muted-foreground">{desc}</p>
+      </div>
+    </button>
   )
 }
