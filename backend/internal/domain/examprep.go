@@ -188,6 +188,9 @@ type ExamPrepRepository interface {
 
 	// Documents (student-scoped)
 	ListStudentDocuments(ctx context.Context, userID, filiereID, niveau string) ([]*Document, error)
+	// GetDocumentContent récupère le contenu textuel d'un document.
+	// EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG.
+	GetDocumentContent(ctx context.Context, documentID string) (string, error)
 
 	// Review (spaced repetition)
 	ListReviewItems(ctx context.Context, params ReviewListParams) ([]*ReviewItem, error)

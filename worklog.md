@@ -5739,3 +5739,230 @@ bunx tsc --noEmit 2>&1 | grep -i "factory.ts\|ai-analyzer.ts\|/api/ai-assistant\
 - **Auto-détection UE** : `autoDetectedUEId` est actuellement `null`. Pour le supporter côté backend, il faudrait parser le contenu des documents et matcher contre la table `UniteEnseignement` (par code UE détecté dans le texte).
 - **Historique de conversation** : `aiAssistant` ne conserve pas l'historique (chaque message est traité indépendamment). Pour une vraie conversation multi-turn, il faudrait soit stocker les messages en DB (`ChatThread`/`ChatMessage` — tables déjà présentes), soit passer tout l'historique dans le body du frontend.
 - **Rate limiting** : ajouter un rate limit par utilisateur sur `/api/ai-assistant` (les LLM externes coûtent cher).
+
+---
+
+## EXAM-PREP-CONNECT-1 — Câblage SRS auto + Worker Practice + Endpoint Q&A
+
+**Task ID** : `EXAM-PREP-CONNECT-1`
+**Date** : 2025-06-28
+**Portée** : backend Go uniquement (aucun frontend touché)
+
+### 1. Objectif
+
+Câbler 3 fonctionnalités manquantes du module Exam-prep :
+
+1. **SRS automatique** dans `SubmitPractice` (upsert `ReviewItem` + algorithme SM-2)
+2. **Worker asynchrone** pour la génération de questions d'entraînement
+   (`POST /api/exam-prep/practice/generate` → 202 Accepted + `PracticeQueue`)
+3. **Endpoint Q&A RAG synchrone** (`POST /api/exam-prep/qa`)
+
+### 2. Fichiers modifiés / créés
+
+| Fichier | Action | Lignes |
+|---------|--------|--------|
+| `backend/internal/repository/examprep.go` | modifié | +155 |
+| `backend/internal/usecase/examprep.go` | modifié | +16 |
+| `backend/internal/domain/examprep.go` | modifié | +3 (interface) |
+| `backend/internal/transport/http/examprep_handlers.go` | modifié | +204 |
+| `backend/internal/transport/http/router.go` | modifié | +6 (2 routes) |
+| `backend/cmd/api/main.go` | modifié | +6 (worker startup) |
+| `backend/internal/worker/practice_worker.go` | **créé** | +428 |
+
+### 3. Détail des changements
+
+#### 3.1. Étape 1 — SRS automatique dans `SubmitPractice`
+
+`internal/repository/examprep.go::SubmitPractice` :
+
+- Après l'INSERT dans `PracticeAttempt`, on SELECT l'état courant du `ReviewItem`
+  pour le couple `(userId, questionId)`.
+- Si **non trouvé** → INSERT d'un nouveau `ReviewItem` avec `easeFactor=2.5`,
+  `repetitions=1`, `interval = SM-2(quality, reps, ease)`.
+- Si **trouvé** → UPDATE en appliquant la formule SM-2 :
+  `newEase = max(1.3, ease + (0.1 - (5-q)*(0.08 + (5-q)*0.02)))`
+  `newInterval = int(newReps * newEase)` (min 1 jour)
+  `nextReviewAt = now + newInterval days`
+
+Choix d'implémentation (vs la spec initiale) : **pas de `fmt.Sprintf` avec `%d`**
+dans le SQL. À la place, lecture des valeurs courantes en Go, calcul SM-2 en Go,
+puis UPDATE avec paramètres bindés (`$1, $2, ...`). Plus lisible, moins error-prone
+avec pgx en mode `SimpleProtocol` (qui ne supporte pas les prepared statements).
+
+Helper ajouté : `computeSM2Quality(score float64, correct bool) int` :
+- `correct && score >= 0.8` → 5 (parfait)
+- `correct` (sinon) → 3 (correct mais imparfait)
+- `incorrect` → 1 (échec, mais pas zéro pour rester "à revoir")
+- sinon mapping linéaire `score * 5` clampé à `[1, 5]`
+
+Le SRS est **best-effort** : si l'INSERT ou l'UPDATE échoue, on log l'erreur
+mais on ne fait pas échouer `SubmitPractice` (l'attempt a déjà été inséré).
+
+#### 3.2. Étape 2a — Worker Practice
+
+Nouveau fichier `internal/worker/practice_worker.go` :
+
+- `PracticeJob` : `{ UserID, DocumentID, Config }`
+- `PracticeConfig` : `{ NombreQuestions, TypesQuestions map[string]int, Difficulte, ChapterID }`
+- `PracticeQueue = make(chan PracticeJob, 100)` (buffer cohérent avec `GeneratorQueue`)
+- `PracticeWorker.Start(ctx)` : goroutine qui consomme la queue avec `select` sur `ctx.Done()`
+
+Flux `processJob` :
+1. `getDocumentContent` (SELECT direct, RLS off) — tronque à 12k caractères
+2. `getActiveProviderShared` (helper partagé avec `IAWorker`/`CorrectionWorker`)
+3. `buildPracticePrompt` — system prompt JSON-strict + user prompt avec contenu du doc
+4. `callAIProviderShared` (helper partagé)
+5. `parsePracticeResponse` — tolérant (blocs markdown ``` ou JSON brut),
+   normalise types/difficultés, skip énoncés vides
+6. `insertQuestions` — INSERT bulk dans la table `Question` (UUID générés côté Go via `google/uuid`),
+   `auteurId = job.UserID` (permet à l'étudiant de retrouver ses questions via `/api/questions?documentId=X`)
+
+Pattern de `recover()` dans `processJob` pour qu'un panic n'arrête pas le worker.
+
+#### 3.3. Étape 2b — Handler `examPrepGeneratePractice`
+
+`POST /api/exam-prep/practice/generate` :
+
+- Body : `{ documentId, config: { nombreQuestions, typesQuestions, difficulte, chapterId? } }`
+- Rôles autorisés : `ETUDIANT`, `ENSEIGNANT`, `ADMIN`
+- Validation : `documentId` non vide + `nombreQuestions > 0`
+- Pousse un `PracticeJob` dans `worker.PracticeQueue` via `select` non-bloquant
+  (si queue pleine → 503 Service Unavailable au lieu de bloquer)
+- Retourne **202 Accepted** avec `{ status: "EN_COURS", documentId, message }`
+
+Route déclarée **AVANT** `/practice/{id}/submit` pour que chi distingue
+`/practice/generate` (statique) de `/practice/{id}/submit` (paramétrée).
+
+#### 3.4. Étape 2c — Démarrage du worker dans `main.go`
+
+```go
+practiceWorker := worker.NewPracticeWorker(pool, logger)
+practiceWorker.Start(context.Background())
+```
+
+Pattern identique à `IAWorker` et `CorrectionWorker` (déjà démarrés dans main.go).
+Pas de `RecoverInterruptedJobs` pour v1 (les jobs ne sont pas persistés en DB —
+un redémarrage pendant une génération = job perdu, à refaire côté frontend).
+
+#### 3.5. Étape 3 — Handler `examPrepQA`
+
+`POST /api/exam-prep/qa` :
+
+- Body : `{ documentId, question }`
+- Rôles autorisés : `ETUDIANT`, `ENSEIGNANT`, `ADMIN`
+- Récupère le contenu du document via `examPrepUC.GetDocumentContentForQA`
+  (nouvelle méthode usecase → repo `GetDocumentContent`)
+- Si contenu vide → 422 Unprocessable Entity
+- Construit un prompt RAG avec system prompt strict ("réponds UNIQUEMENT à
+  partir du document", "si pas dans le doc, dis-le clairement")
+- Appelle `s.aiService.ChatCompletion(ctx, messages)` (synchrone — l'étudiant attend)
+- Retourne `{ response, model, citations: [], documentId }`
+
+`citations` est un array vide en v1 (placeholder pour future v2 avec extraction
+de spans). L'IA est invitée à citer les passages entre guillemets dans sa réponse.
+
+#### 3.6. Nouvelles méthodes usecase/repo pour Q&A
+
+- `domain.ExamPrepRepository.GetDocumentContent(ctx, documentID) (string, error)` — ajouté à l'interface
+- `repository.ExamPrepRepository.GetDocumentContent` — implémentation (RLS off,
+  SELECT `contenuTexte` filtré par `deletedAt IS NULL`, tronqué à 12k chars,
+  retourne `""` si doc introuvable sans erreur)
+- `usecase.ExamPrepUseCase.GetDocumentContentForQA(ctx, claims, documentID)` —
+  wrapper avec validation de rôle (`ETUDIANT` ou `ENSEIGNANT`)
+
+### 4. Routes ajoutées
+
+```go
+// Dans /api/exam-prep :
+r.Post("/practice/generate", s.examPrepGeneratePractice)  // 202 + PracticeQueue
+r.Post("/qa", s.examPrepQA)                                // synchrone RAG
+```
+
+Total endpoints exam-prep : **16** (14 existants + 2 nouveaux).
+
+### 5. Contraintes respectées
+
+| Contrainte | Statut |
+|------------|--------|
+| Tabs pour l'indentation Go (gofmt) | ✅ `gofmt -l` clean sur les 7 fichiers touchés |
+| `go build ./...` réussit | ✅ EXIT=0 |
+| `go vet ./...` réussit | ✅ EXIT=0 |
+| Ne pas casser les endpoints existants | ✅ 14 routes existantes préservées ; signature `NewServer` inchangée ; `SubmitPractice` retourne toujours `*domain.PracticeAttempt` |
+| Utiliser les fonctions shared du worker | ✅ `getActiveProviderShared` + `callAIProviderShared` utilisées dans `practice_worker.go` |
+| `go.mod` sans nouvelle dépendance | ✅ uniquement `github.com/google/uuid` (déjà présent) |
+
+### 6. Difficultés rencontrées
+
+1. **Éditeur `Write`/`Edit` convertit les tabs Go en espaces** — même problème
+   que pour AI-CONNECT-1. Pour `repository/examprep.go`, l'Edit a réécrit tout
+   le fichier avec des espaces, y compris dans les raw string literals SQL
+   (multi-lignes entre backticks). `gofmt -w` ne touche pas le contenu des raw
+   strings → diff bruité (311 lignes au lieu de 155). **Fix** : restauration
+   du fichier depuis HEAD puis application ciblée via script Python
+   (`/home/z/apply_examprep_repo_changes.py`) qui préserve les tabs.
+   Diff final : 155 lignes, 100% insertions.
+
+2. **Edit tool sur `router.go` a échoué** : le fichier utilise des tabs, mon
+   `old_str` avait des espaces → "did not appear verbatim". **Fix** : utilisation
+   d'un script Python (`python3 -c`) avec bytes literals (`b'\t\t\t...'`) pour
+   faire le remplacement en préservant les tabs.
+
+3. **Pas de table `PracticeSession` en DB** : la spec initiale mentionnait
+   "crée une PracticeSession (statut PRETE)" mais aucune migration n'existe pour
+   cette table. **Décision** : on insère directement les questions générées dans
+   la table `Question` existante (avec `documentId` + `auteurId`), ce qui permet
+   au frontend de les récupérer via `GET /api/questions?documentId=X` sans
+   nécessiter de migration. Le statut "PRETE" n'a pas de sens sans table dédiée.
+
+4. **`ReviewItem.lastReviewedAt` vs `lastReviewAt`** : la migration `000002`
+   crée la colonne `"lastReviewedAt"` (avec "ed"), mais le code existant
+   (`ListReviewItems`, `MarkReviewed`) utilise `"lastReviewAt"`. Incohérence
+   pré-existante non résolue. **Décision** : suivre la convention du code
+   existant (`lastReviewAt`) pour rester cohérent — soit la prod a la colonne
+   `lastReviewAt` (et le schéma de migration est inexact), soit le code
+   existant a un bug latent. Je n'ai pas introduit de nouveau code utilisant
+   ce champ côté read ; mon UPDATE utilise `"lastReviewAt"` (cohérent avec
+   `MarkReviewed`).
+
+5. **`documentUC.GetByID` requiert rôle ENSEIGNANT/ADMIN** : or le Q&A est
+   pour les étudiants. **Fix** : ajout d'une nouvelle méthode
+   `examPrepRepo.GetDocumentContent` + `examPrepUC.GetDocumentContentForQA`
+   qui autorise `ETUDIANT` (avec validation de rôle côté usecase). Le scoping
+   strict filière+niveau est assuré côté frontend via `ListStudentDocuments` ;
+   le backend trust le `documentID` passé (le JWT authentifie déjà l'utilisateur).
+
+6. **Chi router ordering** : `/practice/generate` (statique) doit être déclaré
+   AVANT `/practice/{id}/submit` (paramétrée) pour que chi matche correctement.
+   Chi gère nativement cette distinction, mais l'ordre aide à la lisibilité.
+
+### 7. Commandes de vérification
+
+```bash
+cd /home/z/SECT/backend
+gofmt -l cmd/api/main.go internal/domain/examprep.go internal/repository/examprep.go \
+       internal/usecase/examprep.go internal/transport/http/examprep_handlers.go \
+       internal/transport/http/router.go internal/worker/practice_worker.go
+# → (vide, OK)
+
+go build ./...    # → EXIT=0
+go vet ./...      # → EXIT=0
+```
+
+### 8. Prochaines étapes suggérées
+
+- **Migration `PracticeSession`** : si on veut tracker les sessions de génération
+  (statut EN_COURS → PRETE, métadonnées), créer une table dédiée. Pour v1, on
+  se contente d'insérer les questions directement.
+- **Scoping strict `GetDocumentContent`** : actuellement best-effort (trust le
+  documentID passé par l'utilisateur authentifié). Pour durcir, ajouter un
+  JOIN sur `UniteEnseignement` → `Filiere` filtré par `claims.FiliereID`
+  (comme `ListStudentDocuments`).
+- **`RecoverInterruptedJobs` pour PracticeWorker** : actuellement, un job en
+  cours au moment d'un redémarrage est perdu. Pour le récupérer, il faudrait
+  persister les jobs en DB avant de les pousser dans la queue.
+- **Citations Q&A v2** : extraire les spans du document cités par l'IA dans sa
+  réponse (nécessite un parsing plus fin ou un modèle fine-tuné pour la
+  citation). Pour v1, l'IA est invitée à citer entre guillemets.
+- **Rate limiting** : `examPrepQA` et `examPrepGeneratePractice` font des appels
+  LLM coûteux. Ajouter un rate limit par utilisateur (ex. 10 Q&A/min, 3
+  générations/jour) pour éviter l'abus.
