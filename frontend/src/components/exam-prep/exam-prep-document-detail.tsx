@@ -15,7 +15,7 @@
 import { useState } from 'react'
 import {
   ArrowLeft, FileText, Sparkles, Award, Clock, BookOpen, TrendingUp,
-  ChevronRight,
+  ChevronRight, Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -27,14 +27,23 @@ import { ExamPrepPracticeTab } from './tabs/exam-prep-practice-tab'
 import { ExamPrepPlanningTab } from './tabs/exam-prep-planning-tab'
 import { ExamPrepHelpTab } from './tabs/exam-prep-help-tab'
 import { ExamPrepProgressTab } from './tabs/exam-prep-progress-tab'
+import { ExamPrepFlashcardsTab } from './tabs/exam-prep-flashcards-tab'
 
 interface Props {
   document: ExamPrepDocument
   onBack: () => void
+  /**
+   * HIGHLIGHT-FLASHCARD-1 : question pré-remplie depuis le DocumentReader
+   * (action "Explique-moi ce passage"). Quand cette prop est non vide,
+   * le composant bascule sur l'onglet Q&A et transmet le prefill.
+   */
+  qaPrefill?: string
+  /** Appelé quand le prefill a été consommé par ExamPrepQaTab. */
+  onConsumeQaPrefill?: () => void
 }
 
-export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
-  const [tab, setTab] = useState('overview')
+export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onConsumeQaPrefill }: Props) {
+  const [tab, setTab] = useState<string>(qaPrefill && qaPrefill.trim() ? 'qa' : 'overview')
 
   return (
     <div className="space-y-5">
@@ -84,7 +93,7 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
 
       {/* ─── Onglets ─── */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto">
+        <TabsList className="grid w-full grid-cols-4 sm:inline-flex sm:w-auto">
           <TabsTrigger value="overview" className="gap-1.5">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Aperçu</span>
@@ -98,6 +107,11 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
             <Award className="h-4 w-4" />
             <span className="hidden sm:inline">Entraînement</span>
             <span className="sm:hidden">Train</span>
+          </TabsTrigger>
+          <TabsTrigger value="flashcards" className="gap-1.5">
+            <Layers className="h-4 w-4" />
+            <span className="hidden sm:inline">Flashcards</span>
+            <span className="sm:hidden">Cards</span>
           </TabsTrigger>
           <TabsTrigger value="planning" className="gap-1.5">
             <Clock className="h-4 w-4" />
@@ -207,12 +221,22 @@ export function ExamPrepDocumentDetail({ document: doc, onBack }: Props) {
 
             {/* ─── Questions au cours ─── */}
             <TabsContent value="qa" className="mt-0">
-              <ExamPrepQaTab documentId={doc.id} chapters={doc.chapters} />
+              <ExamPrepQaTab
+                documentId={doc.id}
+                chapters={doc.chapters}
+                prefillQuestion={qaPrefill}
+                onConsumePrefill={onConsumeQaPrefill}
+              />
             </TabsContent>
 
             {/* ─── Entraînement ─── */}
             <TabsContent value="practice" className="mt-0">
               <ExamPrepPracticeTab documentId={doc.id} chapters={doc.chapters} />
+            </TabsContent>
+
+            {/* ─── Flashcards (HIGHLIGHT-FLASHCARD-1) ─── */}
+            <TabsContent value="flashcards" className="mt-0">
+              <ExamPrepFlashcardsTab documentId={doc.id} chapters={doc.chapters} />
             </TabsContent>
 
             {/* ─── Planning ─── */}

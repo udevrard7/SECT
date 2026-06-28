@@ -305,9 +305,15 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/dashboard", s.examPrepDashboard)
 			// Documents (student-scoped)
 			r.Get("/documents", s.listExamPrepDocuments)
+			// HIGHLIGHT-FLASHCARD-1 — DocumentReader endpoint (contenuTexte + métadonnées).
+			r.Get("/documents/{id}/read", s.readExamPrepDocument)
 			// Review (spaced repetition)
 			r.Get("/review", s.listReviewItems)
 			r.Post("/review", s.markReviewed)
+			// HIGHLIGHT-FLASHCARD-1 — Flashcards (highlight to flashcard).
+			r.Get("/flashcards", s.listFlashcards)
+			r.Post("/flashcards", s.createFlashcard)
+			r.Delete("/flashcards/{id}", s.deleteFlashcard)
 			// Planning (study sessions)
 			r.Get("/planning", s.listStudySessions)
 			r.Post("/planning", s.createStudySession)

@@ -41,6 +41,14 @@ interface Message {
 interface Props {
   documentId: string
   chapters: Chapter[]
+  /**
+   * HIGHLIGHT-FLASHCARD-1 : question pré-remplie depuis le DocumentReader
+   * (action "Explique-moi ce passage"). Quand cette prop change et est non
+   * vide, on l'envoie automatiquement comme question au Q&A RAG.
+   */
+  prefillQuestion?: string
+  /** Appelé après consommation du prefill (pour vider l'état parent). */
+  onConsumePrefill?: () => void
 }
 
 const SUGGESTIONS = [
@@ -50,13 +58,14 @@ const SUGGESTIONS = [
   'Quelles sont les notions les plus difficiles ?',
 ]
 
-export function ExamPrepQaTab({ documentId, chapters }: Props) {
+export function ExamPrepQaTab({ documentId, chapters, prefillQuestion, onConsumePrefill }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const hasInitiallyScrolled = useRef(false)
+  const prefillConsumedRef = useRef<string | undefined>(undefined)
 
   // ─── Charge l'historique ───
   const loadHistory = useCallback(async () => {
@@ -77,6 +86,24 @@ export function ExamPrepQaTab({ documentId, chapters }: Props) {
   useEffect(() => {
     loadHistory()
   }, [loadHistory])
+
+  // ─── HIGHLIGHT-FLASHCARD-1 : prefill question depuis le DocumentReader ───
+  // Si prefillQuestion change et est non vide, on l'envoie automatiquement
+  // (une seule fois par valeur — le ref évite la double émission en StrictMode).
+  useEffect(() => {
+    if (
+      prefillQuestion &&
+      prefillQuestion.trim().length > 0 &&
+      prefillConsumedRef.current !== prefillQuestion &&
+      !sending &&
+      !loading
+    ) {
+      prefillConsumedRef.current = prefillQuestion
+      handleSend(prefillQuestion)
+      onConsumePrefill?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillQuestion, sending, loading])
 
   // Scroll en bas :
   // - au chargement initial de l'historique → instant (behavior: 'auto')
@@ -102,14 +129,21 @@ export function ExamPrepQaTab({ documentId, chapters }: Props) {
       const res = await fetch('/api/exam-prep/qa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId, message: content }),
+        body: JSON.stringify({ documentId, question: content }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.error ?? 'Erreur')
       }
       const data = await res.json()
-      setMessages([...optimistic, data.message])
+      // HIGHLIGHT-FLASHCARD-1 : le backend retourne { response, model, citations, documentId }.
+      // On mappe vers le format Message attendu par le thread (role: 'assistant').
+      const assistantMsg: Message = {
+        role: 'assistant',
+        content: data.response ?? '',
+        citations: Array.isArray(data.citations) ? data.citations : [],
+      }
+      setMessages([...optimistic, assistantMsg])
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Échec de la question')
       // Retire le message optimistic en cas d'erreur

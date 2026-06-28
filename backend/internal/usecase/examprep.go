@@ -143,6 +143,30 @@ func (uc *ExamPrepUseCase) GetDocumentContentForQA(ctx context.Context, claims d
 	return uc.repo.GetDocumentContent(ctx, documentID)
 }
 
+// GetDocumentForReader récupère un document complet pour le lecteur modal
+// (HIGHLIGHT-FLASHCARD-1). Rôles : ETUDIANT, ENSEIGNANT.
+func (uc *ExamPrepUseCase) GetDocumentForReader(ctx context.Context, claims db.SessionClaims, documentID string) (*domain.Document, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return nil, &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+	return uc.repo.GetDocumentForReader(ctx, documentID)
+}
+
+// ListUEsByIDs expose le batch lookup des UEs (HIGHLIGHT-FLASHCARD-1 — utilisé
+// par readExamPrepDocument pour résoudre l'UE du document).
+func (uc *ExamPrepUseCase) ListUEsByIDs(ctx context.Context, ueIDs []string) (map[string]*domain.UniteEnseignement, error) {
+	return uc.repo.ListUEsByIDs(ctx, ueIDs)
+}
+
+// ListUserRefsByIDs expose le batch lookup des users (HIGHLIGHT-FLASHCARD-1 —
+// utilisé par readExamPrepDocument pour résoudre le propriétaire du document).
+func (uc *ExamPrepUseCase) ListUserRefsByIDs(ctx context.Context, userIDs []string) (map[string]*domain.UserRef, error) {
+	return uc.repo.ListUserRefsByIDs(ctx, userIDs)
+}
+
 // ListReviewItems liste les items de révision.
 func (uc *ExamPrepUseCase) ListReviewItems(ctx context.Context, claims db.SessionClaims, documentID string, dueOnly bool) ([]*domain.ReviewItem, error) {
 	if claims.Role != string(domain.RoleEtudiant) {
@@ -262,6 +286,58 @@ func (uc *ExamPrepUseCase) CreateHelpMessage(ctx context.Context, claims db.Sess
 		return nil, &domain.ValidationError{Field: "contenu", Message: "requis"}
 	}
 	return uc.repo.CreateHelpMessage(ctx, threadID, claims.UserID, input)
+}
+
+// ============================================================
+// FLASHCARDS (HIGHLIGHT-FLASHCARD-1)
+// ============================================================
+
+// CreateFlashcard crée une flashcard (recto/verso déjà générés par l'IA
+// côté handler) puis crée le ReviewItem associé (SM-2 init, dû immédiatement).
+//
+// Rôle : ETUDIANT seulement. Le chapterId est optionnel (la flashcard peut
+// être rattachée à un chapitre si l'étudiant était positionné sur un chapitre
+// précis dans le lecteur).
+func (uc *ExamPrepUseCase) CreateFlashcard(ctx context.Context, claims db.SessionClaims, input domain.CreateFlashcardInput) (*domain.Flashcard, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	input.UserID = claims.UserID
+	if input.Recto == "" || input.Verso == "" {
+		return nil, &domain.ValidationError{Field: "recto/verso", Message: "requis"}
+	}
+
+	f, err := uc.repo.CreateFlashcard(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Best-effort : si la création du ReviewItem échoue, la flashcard existe
+	// déjà mais ne sera pas dans la file SRS. On ne fait pas échouer l'opération
+	// (la flashcard est quand même utilisable via l'onglet Flashcards).
+	_ = uc.repo.CreateFlashcardReviewItem(ctx, claims.UserID, f.ID, input.ChapterID)
+
+	return f, nil
+}
+
+// ListFlashcards liste les flashcards de l'utilisateur (filtrées par documentId
+// si non vide).
+func (uc *ExamPrepUseCase) ListFlashcards(ctx context.Context, claims db.SessionClaims, documentID string) ([]*domain.Flashcard, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	return uc.repo.ListFlashcards(ctx, claims.UserID, documentID)
+}
+
+// DeleteFlashcard supprime une flashcard (ETUDIANT propriétaire seulement).
+func (uc *ExamPrepUseCase) DeleteFlashcard(ctx context.Context, claims db.SessionClaims, flashcardID string) error {
+	if claims.Role != string(domain.RoleEtudiant) {
+		return &domain.UnauthorizedError{Message: "réservé aux étudiants"}
+	}
+	if flashcardID == "" {
+		return &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	return uc.repo.DeleteFlashcard(ctx, claims.UserID, flashcardID)
 }
 
 var _ = fmt.Sprintf

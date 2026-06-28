@@ -21,7 +21,7 @@
  * mes-resultats.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -74,6 +74,20 @@ export function ExamPrepPage() {
     searchParams.get('documentId')
   )
   const [readerDocumentId, setReaderDocumentId] = useState<string | null>(null)
+  // HIGHLIGHT-FLASHCARD-1 : prefill Q&A depuis le DocumentReader
+  // ("Explique-moi ce passage"). Remonté au niveau page car le reader est
+  // monté ici (pas dans ExamPrepDocumentDetail) et le tab Q&A est dans le détail.
+  const [qaPrefill, setQaPrefill] = useState<string | undefined>(undefined)
+
+  // HIGHLIGHT-FLASHCARD-1 : callback "Explique-moi ce passage".
+  // 1. Ferme le lecteur.
+  // 2. Bascule sur la vue détail du document (selectedId).
+  // 3. Pré-remplit la question du Q&A avec le passage sélectionné.
+  const handleExplainPassage = useCallback((text: string, documentId: string) => {
+    setReaderDocumentId(null)
+    setSelectedId(documentId)
+    setQaPrefill(text)
+  }, [])
 
   // ─── Fetch documents (TanStack Query) ───
   // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
@@ -116,6 +130,8 @@ export function ExamPrepPage() {
       <ExamPrepDocumentDetail
         document={selectedDocument}
         onBack={() => setSelectedId(null)}
+        qaPrefill={qaPrefill}
+        onConsumeQaPrefill={() => setQaPrefill(undefined)}
       />
     )
   }
@@ -348,7 +364,11 @@ export function ExamPrepPage() {
       )}
 
       {/* Visionneuse de document (lecture directe) */}
-      <DocumentReader documentId={readerDocumentId} onClose={() => setReaderDocumentId(null)} />
+      <DocumentReader
+        documentId={readerDocumentId}
+        onClose={() => setReaderDocumentId(null)}
+        onExplainPassage={handleExplainPassage}
+      />
     </div>
   )
 }

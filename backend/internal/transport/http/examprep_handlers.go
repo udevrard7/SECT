@@ -651,5 +651,308 @@ func (s *Server) createHelpMessage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"message": msg})
 }
 
+// ============================================================
+// DOCUMENT READER (HIGHLIGHT-FLASHCARD-1)
+// ============================================================
+
+// examPrepReaderDocumentDTO est la forme JSON attendue par le frontend
+// DocumentReader (interface ReaderDocument).
+type examPrepReaderDocumentDTO struct {
+	ID                 string     `json:"id"`
+	NomFichier         string     `json:"nomFichier"`
+	ContenuTexte       *string    `json:"contenuTexte"`
+	TypeMime           *string    `json:"typeMime"`
+	ThemesDetectes     []string   `json:"themesDetectes"`
+	ResumeAnalyse      *string    `json:"resumeAnalyse"`
+	DateUpload         time.Time  `json:"dateUpload"`
+	Owner              ownerRefDTO `json:"owner"`
+	UniteEnseignement  *ueRefDTO  `json:"uniteEnseignement"`
+}
+
+type ownerRefDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type ueRefDTO struct {
+	ID   string `json:"id"`
+	Code string `json:"code"`
+	Nom  string `json:"nom"`
+}
+
+// readExamPrepDocument — GET /api/exam-prep/documents/{id}/read
+//
+// Retourne le document (avec contenuTexte) pour le lecteur modal.
+// Rôles : ETUDIANT, ENSEIGNANT.
+func (s *Server) readExamPrepDocument(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	docID := chi.URLParam(r, "id")
+	doc, err := s.examPrepUC.GetDocumentForReader(r.Context(), claims, docID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	// Résoudre l'UE et le propriétaire via les batch methods existants.
+	var ueDTO *ueRefDTO
+	if doc.UniteEnseignementID != nil && *doc.UniteEnseignementID != "" {
+		ues, err := s.examPrepUC.ListUEsByIDs(r.Context(), []string{*doc.UniteEnseignementID})
+		if err == nil {
+			if ue, ok := ues[*doc.UniteEnseignementID]; ok && ue != nil {
+				ueDTO = &ueRefDTO{ID: ue.ID, Code: ue.Code, Nom: ue.Nom}
+			}
+		}
+	}
+
+	ownerDTO := ownerRefDTO{ID: doc.OwnerID, Name: "Enseignant"}
+	if doc.OwnerID != "" {
+		owners, err := s.examPrepUC.ListUserRefsByIDs(r.Context(), []string{doc.OwnerID})
+		if err == nil {
+			if o, ok := owners[doc.OwnerID]; ok && o != nil {
+				ownerDTO = ownerRefDTO{ID: o.ID, Name: o.Name}
+			}
+		}
+	}
+
+	dto := examPrepReaderDocumentDTO{
+		ID:             doc.ID,
+		NomFichier:     doc.NomFichier,
+		ContenuTexte:   doc.ContenuTexte,
+		TypeMime:       doc.TypeMime,
+		ThemesDetectes: parseJSONStringArray(doc.ThemesDetectes),
+		ResumeAnalyse:  doc.ResumeAnalyse,
+		DateUpload:     doc.DateUpload,
+		Owner:          ownerDTO,
+		UniteEnseignement: ueDTO,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"document": dto})
+}
+
+// ============================================================
+// FLASHCARDS (HIGHLIGHT-FLASHCARD-1)
+// ============================================================
+
+// examPrepCreateFlashcardBody est le body attendu par POST /api/exam-prep/flashcards.
+type examPrepCreateFlashcardBody struct {
+	DocumentID    string  `json:"documentId"`
+	SelectedText  string  `json:"selectedText"`
+	ChapterID     *string `json:"chapterId,omitempty"`
+}
+
+// examPrepFlashcardDTO est la forme JSON retournée au frontend.
+type examPrepFlashcardDTO struct {
+	ID         string    `json:"id"`
+	ChapterID  *string   `json:"chapterId,omitempty"`
+	DocumentID *string   `json:"documentId,omitempty"`
+	Recto      string    `json:"recto"`
+	Verso      string    `json:"verso"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// toExamPrepFlashcardDTO convertit un domain.Flashcard en DTO.
+func toExamPrepFlashcardDTO(f *domain.Flashcard) examPrepFlashcardDTO {
+	return examPrepFlashcardDTO{
+		ID:         f.ID,
+		ChapterID:  f.ChapterID,
+		DocumentID: f.DocumentID,
+		Recto:      f.Recto,
+		Verso:      f.Verso,
+		CreatedAt:  f.CreatedAt,
+	}
+}
+
+// createFlashcard — POST /api/exam-prep/flashcards
+//
+// Flux synchrone (l'étudiant attend la flashcard) :
+//  1. Valide le body (documentId + selectedText non vides)
+//  2. Tronque selectedText à 4000 caractères (garde-fou contre les abus)
+//  3. Appelle l'IA pour générer { recto, verso } au format JSON
+//  4. Insère la Flashcard + crée le ReviewItem SRS associé
+//  5. Retourne 201 avec la flashcard créée
+//
+// Si l'IA échoue ou retourne un JSON invalide, on retourne 503 (pas de
+// flashcard vide).
+func (s *Server) createFlashcard(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	var body examPrepCreateFlashcardBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide: "+err.Error())
+		return
+	}
+	if body.DocumentID == "" {
+		writeJSONError(w, http.StatusBadRequest, "documentId requis")
+		return
+	}
+	selectedText := strings.TrimSpace(body.SelectedText)
+	if len(selectedText) < 10 {
+		writeJSONError(w, http.StatusBadRequest, "selectedText trop court (min 10 caractères)")
+		return
+	}
+	if len(selectedText) > 4000 {
+		selectedText = selectedText[:4000]
+	}
+
+	// 1. Construire le prompt IA pour générer recto/verso.
+	messages := buildFlashcardPrompt(selectedText)
+
+	// 2. Appel IA synchrone.
+	result, err := s.aiService.ChatCompletion(r.Context(), messages)
+	if err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "IA indisponible: "+err.Error())
+		return
+	}
+
+	// 3. Parser la réponse JSON { recto, verso } (tolérant aux markdown fences).
+	recto, verso, perr := parseFlashcardAIResponse(result.Content)
+	if perr != nil {
+		writeJSONError(w, http.StatusUnprocessableEntity, "réponse IA illisible: "+perr.Error())
+		return
+	}
+	if strings.TrimSpace(recto) == "" || strings.TrimSpace(verso) == "" {
+		writeJSONError(w, http.StatusUnprocessableEntity, "réponse IA vide (recto ou verso manquant)")
+		return
+	}
+
+	// 4. Insérer la flashcard + créer le ReviewItem SRS.
+	input := domain.CreateFlashcardInput{
+		DocumentID: &body.DocumentID,
+		ChapterID:  body.ChapterID,
+		Recto:      strings.TrimSpace(recto),
+		Verso:      strings.TrimSpace(verso),
+	}
+	flashcard, err := s.examPrepUC.CreateFlashcard(r.Context(), claims, input)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]any{"flashcard": toExamPrepFlashcardDTO(flashcard)})
+}
+
+// listFlashcards — GET /api/exam-prep/flashcards?documentId=X
+func (s *Server) listFlashcards(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	documentID := r.URL.Query().Get("documentId")
+	flashcards, err := s.examPrepUC.ListFlashcards(r.Context(), claims, documentID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	dtos := make([]examPrepFlashcardDTO, 0, len(flashcards))
+	for _, f := range flashcards {
+		dtos = append(dtos, toExamPrepFlashcardDTO(f))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"flashcards": dtos})
+}
+
+// deleteFlashcard — DELETE /api/exam-prep/flashcards/{id}
+func (s *Server) deleteFlashcard(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if err := s.examPrepUC.DeleteFlashcard(r.Context(), claims, id); err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// buildFlashcardPrompt construit les messages (system + user) pour la génération
+// d'une flashcard Q/R à partir d'un passage sélectionné.
+//
+// Le système exige une réponse JSON strict : {"recto": "...", "verso": "..."}.
+// recto = question courte, verso = réponse concise mais complète.
+func buildFlashcardPrompt(selectedText string) []ai.ChatMessage {
+	system := strings.TrimSpace(`Tu es un assistant pédagogique qui crée des flashcards de révision.
+À partir d'un passage de cours sélectionné par l'étudiant, tu génères UNE flashcard au format JSON strict :
+
+{"recto": "<question claire et concise>", "verso": "<réponse pédagogique correcte>"}
+
+Règles :
+1. La question (recto) doit être reformulée à partir du passage — ne recopie pas le texte tel quel.
+2. La réponse (verso) doit être fidèle au passage, concise (1–4 phrases), et suffisante pour réviser.
+3. Réponds UNIQUEMENT avec le JSON, sans markdown, sans commentaire, sans texte avant ou après.
+4. Si le passage est trop court ou incohérent, réponds : {"recto": "", "verso": ""}`)
+
+	user := fmt.Sprintf(`[PASSAGE SÉLECTIONNÉ]
+%s
+
+Génère la flashcard JSON.`, selectedText)
+
+	return []ai.ChatMessage{
+		{Role: "system", Content: system},
+		{Role: "user", Content: user},
+	}
+}
+
+// parseFlashcardAIResponse extrait { recto, verso } de la réponse IA.
+// Tolérant aux markdown fences ```json ... ``` et au texte avant/après le JSON.
+func parseFlashcardAIResponse(raw string) (recto string, verso string, err error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", "", fmt.Errorf("réponse vide")
+	}
+
+	// Retirer les éventuelles markdown fences ```json ... ``` ou ``` ... ```.
+	if strings.HasPrefix(trimmed, "```") {
+		// Enlever la première ligne (```json ou ```)
+		if idx := strings.Index(trimmed, "\n"); idx >= 0 {
+			trimmed = trimmed[idx+1:]
+		}
+		// Enlever le ``` final s'il existe
+		trimmed = strings.TrimSuffix(strings.TrimSpace(trimmed), "```")
+		trimmed = strings.TrimSpace(trimmed)
+	}
+
+	// Chercher le premier { ... } dans la chaîne (au cas où l'IA ajoute du texte).
+	start := strings.Index(trimmed, "{")
+	end := strings.LastIndex(trimmed, "}")
+	if start < 0 || end <= start {
+		return "", "", fmt.Errorf("JSON introuvable dans la réponse")
+	}
+	jsonStr := trimmed[start : end+1]
+
+	var parsed struct {
+		Recto string `json:"recto"`
+		Verso string `json:"verso"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		return "", "", fmt.Errorf("parse JSON: %w", err)
+	}
+	return parsed.Recto, parsed.Verso, nil
+}
+
+
 // Suppress unused warning
 var _ = strconv.Atoi
