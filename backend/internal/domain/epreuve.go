@@ -249,6 +249,20 @@ type SessionRef struct {
 	// spéciale étape 2 ne peut ni afficher le nom de l'étudiant ni le
 	// sélectionner (session.etudiantId etait absent de la réponse API).
 	Etudiant *UserRef `json:"etudiant,omitempty"`
+
+	// B1-MES-EPREUVES : Resultat peuplé par LEFT JOIN Resultat dans
+	// l'hydratation des sessions (List). Permet au frontend mes-epreuves
+	// d'afficher le détail par question (detailParQuestion JSON).
+	Resultat *ResultatRef `json:"resultat,omitempty"`
+}
+
+// ResultatRef est un résumé léger du Resultat (pour SessionRef).
+// Évite d'importer le Resultat complet de domain/session.go.
+type ResultatRef struct {
+	ID                string  `json:"id"`
+	ScoreFinal        float64 `json:"scoreFinal"`
+	TotalPossible     float64 `json:"totalPossible,omitempty"`
+	DetailParQuestion string  `json:"detailParQuestion,omitempty"`
 }
 
 // EpreuveQuestion est la liaison épreuve ↔ question (format relationnel legacy).
@@ -258,6 +272,22 @@ type EpreuveQuestion struct {
 	QuestionID string  `json:"questionId"`
 	Bareme     float64 `json:"bareme"`
 	Ordre      int     `json:"ordre"`
+	// B7-MES-EPREUVES : Question peuplée par LEFT JOIN Question dans ListQuestions.
+	// Sans cela, le frontend passation-page ne reçoit que la bare liaison (sans
+	// énoncé, propositions, type) et ne peut pas afficher les questions.
+	Question   *QuestionRef `json:"question,omitempty"`
+}
+
+// QuestionRef est un résumé léger de Question (pour EpreuveQuestion).
+// Ne expose PAS reponseCorrecte (sécurité : l'étudiant ne doit pas voir la réponse).
+type QuestionRef struct {
+	ID            string          `json:"id"`
+	Type          TypeQuestion   `json:"type"`
+	Enonce        string          `json:"enonce"`
+	Propositions  json.RawMessage `json:"propositions,omitempty"`
+	Difficulte    Difficulte     `json:"difficulte,omitempty"`
+	Themes        json.RawMessage `json:"themes,omitempty"`
+	Explication   *string         `json:"explication,omitempty"`
 }
 
 // CreateEpreuveInput pour créer une épreuve.
@@ -339,4 +369,7 @@ type EpreuveRepository interface {
 	Update(ctx context.Context, id string, input UpdateEpreuveInput) (*Epreuve, error)
 	SoftDelete(ctx context.Context, id string) error
 	ListQuestions(ctx context.Context, epreuveID string) ([]*EpreuveQuestion, error)
+
+	// B6-MES-EPREUVES : ListQuestionsForGrading expose reponseCorrecte (backend only).
+	ListQuestionsForGrading(ctx context.Context, epreuveID string) ([]*QuestionForGrading, error)
 }
