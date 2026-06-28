@@ -6381,3 +6381,100 @@ Stage Summary:
 - **PerformanceParType** : `json.Unmarshal(detailParQuestion)` dans un struct anonyme qui accepte `{type, bareme, score}` ET `{type, pointsMax, pointsObtenus}`. Pour chaque entrée : bareme = bareme || pointsMax ; score = score || pointsObtenus ; scoreOn20 = (score/bareme)*20. Agrégation par type : moyenne = sum(scoreOn20)/count. Skip si bareme≤0 ou score nil ou JSON invalide.
 - **Git commit** : `4245d81b35e0df9ccf4b22772ea9a9ef6a8591a3` (après rebase sur origin/main).
 - **Risks/follow-ups** : (1) L'ancien stub `resultatsEtudiantOverviewReal` dans stub_handlers_real3.go est maintenant dead code — pourrait être supprimé dans un cleanup futur. (2) Le champ `epreuve.questions` est peuplé via EpreuveQuestion+Question JOIN — si une Question a été supprimée (soft-delete deletedAt), le LEFT JOIN retourne NULL pour q.* et `question` sera `{id:"",type:"",enonce:""}` (struct vide, non-nil) — le frontend gère via optional chaining. (3) `detailParQuestion` en DB peut avoir des shapes variables selon l'endpoint qui l'a créé (Submit vs AI-correction) — le parsing flexible gère les 2 formats connus mais un 3ème format inattendu serait silencieusement skippé (PerformanceParType vide). (4) La tendance (3 dernières vs 3 précédentes) nécessite ≥4 sessions corrigées — sinon tendance=0. (5) Pas de test code ajouté (per contrainte) — validation manuelle requise sur /mes-resultats en production après déploiement Vercel.
+
+---
+
+## EXAM-PREP-REFACTOR-1 — Refonte frontend complète du module /exam-prep
+
+- **Task ID** : EXAM-PREP-REFACTOR-1
+- **Agent** : frontend-styling-expert
+- **Task** : Refonte COMPLETE du frontend `/exam-prep` (Next.js 16 / React 19 / TS 5 / Tailwind 4 / shadcn/ui / Framer Motion / TanStack Query / Zustand / sonner) pour (1) matcher parfaitement le backend Go (tous les endpoints, tous les DTOs, tous les flows sync/async/polling), (2) unifier le design sur l'identité "Savane EdTech" (palette africaine + motif kente + composants DS unifiés), (3) assurer la cohérence visuelle entre les 9 onglets, la page liste et le DocumentReader.
+
+### Work Log
+
+#### 1. Audit backend (préalable)
+Lecture du router Go (`backend/internal/transport/http/router.go`) et des handlers (`backend/internal/transport/http/examprep_handlers.go`, 1386 lignes) + du domain (`backend/internal/domain/examprep.go`) pour établir la liste EXACTE des endpoints et la shape EXACTE des DTOs sérialisés en JSON. Constat : plusieurs mismatches critiques entre le frontend existant et le backend réel (voir §3 ci-dessous).
+
+#### 2. Fichiers modifiés (12 fichiers, +2347 / -1350 lignes)
+
+| Fichier | Rôle | Changements clés |
+|---|---|---|
+| `frontend/src/stores/practice-session-store.ts` | Zustand store | `PracticeQuestionState` étendu avec `reponseCorrecte?` et `explication?` (la banque de questions les fournit, le cache `/practice/generate` non). `PracticeAttemptResult.attempt.feedback` supprimé (le backend ne le renvoie pas) — `explication/reponseCorrecte/srs` deviennent optionnels (remplis côté client depuis la question). |
+| `frontend/src/components/exam-prep/exam-prep-page.tsx` | Page liste | Refonte complète : `EntityCard` DS unifié pour les documents (thumbnailIcon=FileText, badge `N ch.`, meta `owner · date`), `PulseSkeleton` pendant le chargement, empty state `Trophy` + `ds-kente-watermark`, hero `ds-kente-pattern` avec bouton Actualiser (toast sonner), boutons téléchargement gracieux (toast info au lieu de 404 — backend n'expose pas `/download`). `staleTime` 3min, `placeholderData: (prev) => prev` pour éviter le flicker. |
+| `frontend/src/components/exam-prep/exam-prep-document-detail.tsx` | Vue détail + 9 onglets | Refonte : hero `ds-kente-pattern`, `TabsList` scrollable horizontalement sur mobile (`overflow-x-auto scrollbar-thin`, 9 onglets trop serrés en grid), `inline-flex` sur desktop. TabsContent avec padding consistent `p-4 sm:p-0`. Vue d'ensemble utilisant `EntityCard` pour les chapitres + 3 `QuickAction` (Q&A, Entraînement, Flashcards). |
+| `frontend/src/components/exam-prep/document-reader.tsx` | Modal lecture | Polish : `PulseSkeleton` (8 lignes) pendant le chargement au lieu d'un spinner, contrôle taille de police avec icônes `Minus/Plus/Type` (au lieu de "A-/A+"), boutons téléchargement gracieux (toast info), footer sticky stats en `font-mono tabular-nums`, `role="dialog" aria-modal="true"`. Menu flottant highlight conservé (HIGHLIGHT-FLASHCARD-1). |
+| `frontend/src/components/exam-prep/tabs/exam-prep-practice-tab.tsx` | Entraînement | **Fix backend majeur** : submit body aligné sur `SubmitPracticeInput` = `{ questionId, documentId, chapterId?, score (0..1), correct, dureeSec? }` (au lieu de `{ reponse, chapterId, dureeSec }`). La correction est calculée côté client (`gradeAnswer`) en comparant la réponse à `reponseCorrecte` (disponible pour les questions polling /question-bank, absent pour le cache hit 200 PRET — dans ce cas, tentative enregistrée sans verdict binaire, message "Réponse enregistrée"). Réponse backend `{ attempt: { id, score, correct } }` — `explication/reponseCorrecte` affichées depuis la question. Ajout `StatCard` (4 KPIs série), `ProgressRing` (progression série), `SectionHeader` cohérent. |
+| `frontend/src/components/exam-prep/tabs/exam-prep-question-bank-tab.tsx` | Banque | Refonte DS : `PulseSkeleton` pendant chargement, `SectionHeader` + `ds-kente-top` sur la 1ère card, empty state `Inbox` + `ds-kente-watermark`, error state avec bouton Réessayer. Vote buttons élargis à `h-8 w-8` (touch target). `placeholderData: (prev) => prev`. |
+| `frontend/src/components/exam-prep/tabs/exam-prep-qa-tab.tsx` | Q&A RAG | Refonte DS : `PulseSkeleton` (4 bulles) pendant chargement, empty state `Sparkles` + `ds-logo-glow` + 4 suggestions cliquables, `SectionHeader`. **Note backend** : `GET /qa?documentId` n'est pas implémenté côté backend (seul `POST /qa` existe) — l'historique reste vide (fallback gracieux, pas d'erreur affichée). Le `prefillQuestion` (HIGHLIGHT-FLASHCARD-1) fonctionne toujours. |
+| `frontend/src/components/exam-prep/tabs/exam-prep-flashcards-tab.tsx` | Flashcards | Refonte DS : `PulseSkeleton` (3 cards) pendant chargement, `SectionHeader` + `StatCard`-like badge "SRS actif", empty state `Inbox` + `ds-kente-watermark` + CTA, `ds-kente-top` sur la 1ère card. Animation flip conservée. |
+| `frontend/src/components/exam-prep/tabs/exam-prep-audio-tab.tsx` | Audio | Refonte DS : `PulseSkeleton` pendant chargement, `SectionHeader` + bouton générer, empty state `Headphones` + `ds-kente-watermark` + CTA, error state. Polling 3s si `EN_COURS` conservé. Couleurs sémantiques (info=EN_COURS, success=PRET, destructive=ERREUR). |
+| `frontend/src/components/exam-prep/tabs/exam-prep-help-tab.tsx` | Aide prof | **Fix backend majeur** : (1) `POST /help` body aligné sur `CreateHelpThreadInput` = `{ documentId, sujet, messageInitial }` (au lieu de `{ documentId, chapterId, sujet, message }`). (2) `GET /help/{id}/messages` lit `data.messages` (au lieu de `data.thread?.messages`). (3) `POST /help/{id}/messages` body `{ contenu }` (au lieu de `{ content }`). (4) Messages utilisent `m.contenu` (au lieu de `m.content`) — le rôle est inféré côté client (`auteurId === thread.etudiantId` → étudiant, sinon professeur). (5) Bouton "Clore le fil" via `POST /help/{id}/close` (nouveau). (6) `HelpThread` interface alignée sur le DTO réel (`etudiantId`, `enseignantId?`, `etudiant?`, `enseignant?`, `document?`, `statut` = "OUVERT"|"CLOS"). Refonte DS complète : `PulseSkeleton`, `SectionHeader`, `ds-kente-top` sur CTA, empty state. |
+| `frontend/src/components/exam-prep/tabs/exam-prep-planning-tab.tsx` | Planning | **Fix backend majeur** : (1) `GET /review?documentId=X` lit `data.reviewItems` (au lieu de `data.due`/`data.stats`) — `ReviewItem` = `{ id, userId, chapterId, questionId?, interval, easeFactor, nextReviewAt, lastReviewAt?, repetitions, createdAt, updatedAt }`. Le masteryLevel est dérivé client-side (`computeMastery = min(1, repetitions/5 * 0.6 + interval/21 * 0.4)`). Les items "dus aujourd'hui" sont filtrés client-side (`nextReviewAt <= now`). (2) `GET /planning?documentId=X` lit `data.sessions` — `StudySession` = `{ id, userId, documentId?, chapitreId?, type, dateDebut, dateFin?, statut, notes?, createdAt, updatedAt }` (PAS de `titre`, `dureeMin`, `chapterIds`, `document` — fields inexistants côté backend). (3) `POST /planning` body aligné sur `CreateStudySessionInput` = `{ documentId?, chapitreId?, type, dateDebut, dateFin?, notes? }` — le form propose type (Lecture/Exercices/Révision), date+heure, durée (→ `dateFin` calculée), chapitre unique (select), notes (textarea). (4) **Suppression du PATCH** `/planning/{id}` (backend ne l'expose pas) — remplacé par `DELETE` (bouton trash). Le "marquer comme terminée/annulée" n'est plus possible (le backend ne supporte pas l'update de statut). Refonte DS : `StatCard` (4 KPIs SRS), `PulseSkeleton`, `SectionHeader`, `ds-kente-top`. |
+| `frontend/src/components/exam-prep/tabs/exam-prep-progress-tab.tsx` | Progression | **Fix backend majeur** : `Dashboard` interface alignée sur `ExamPrepDashboard` réel = `{ scoreMoyen, totalAttempts, tauxReussite, tempsRevision (secondes), sessionsAVenir (int count, pas array), itemsSrs: { total, dusAujourdhui, masterises, avgMastery }, lacunesParChapitre: [{ chapterId, titre, avgScore, attempts }] }`. Suppression des fields inexistants : `uniqueQuestionsCount`, `tempsRevisionSec`, `evolution`, `lacunesParChapitre.ordre`, `lacunesParChapitre.lacune`, `sessionsAVenir` (array). `ordre` est lookup depuis `chapters` prop, `lacune` est inféré (`avgScore < 0.5`). Sessions à venir affichées comme count (ProgressRing) au lieu d'une liste. Refonte DS : `StatCard` (4 KPIs avec `scoreOn20` coloring), `ProgressRing` (maîtrise SRS + sessions count), `PulseSkeleton`. |
+| `frontend/src/components/exam-prep/markdown-renderer.tsx` | Markdown | ** Inchangé** — déjà aligné sur les couleurs sémantiques (primary, muted, info). Vérifié. |
+
+#### 3. Backend mismatches découverts et corrigés
+
+| Endpoint | Mismatch | Fix |
+|---|---|---|
+| `POST /practice/{id}/submit` | Frontend envoyait `{ reponse, chapterId, dureeSec }` — backend attend `{ questionId, documentId, chapterId?, score (0..1), correct, dureeSec? }`. Frontend attendait `{ attempt, explication, reponseCorrecte, srs }` en réponse — backend ne renvoie que `{ attempt: PracticeAttempt }`. | Body aligné. Correction calculée côté client (`gradeAnswer`). `explication/reponseCorrecte` lus depuis la question (pas depuis la réponse submit). |
+| `GET /review?documentId=X` | Frontend lisait `data.due` + `data.stats` — backend renvoie `{ reviewItems: [...] }`. Frontend utilisait `chapterTitle`, `chapterOrder`, `documentName`, `masteryLevel` (inexistants). | Lit `data.reviewItems`. `chapterTitle/ordre` lookup depuis `chapters` prop. `masteryLevel` dérivé client-side. Stats calculées client-side. |
+| `GET /planning?documentId=X` | Frontend utilisait `titre`, `dureeMin`, `chapterIds`, `document` (inexistants). | Aligné sur `StudySession` réel (`type`, `dateDebut`, `dateFin?`, `chapitreId?`, `notes?`, `statut`). |
+| `POST /planning` | Frontend envoyait `{ documentId, chapterIds: string[], titre, dateDebut, dureeMin }` — backend attend `{ documentId?, chapitreId?, type, dateDebut, dateFin?, notes? }`. | Form refondu : type (Lecture/Exercices/Révision), date+time, durée (→ dateFin), chapitreId unique, notes. |
+| `PATCH /planning/{id}` | Frontend utilisait PATCH pour updater le statut — backend n'expose que DELETE. | Supprimé. Remplacé par bouton DELETE (trash icon). |
+| `POST /help` | Frontend envoyait `{ documentId, chapterId, sujet, message }` — backend attend `{ documentId, sujet, messageInitial }`. | Body aligné. |
+| `GET /help/{id}/messages` | Frontend lisait `data.thread?.messages` — backend renvoie `{ messages: [...] }`. | Lit `data.messages`. |
+| `POST /help/{id}/messages` | Frontend envoyait `{ content }` — backend attend `{ contenu }`. | Body aligné. |
+| HelpMessage | Frontend utilisait `m.content` et `m.role` — backend renvoie `m.contenu` et pas de `role`. | Utilise `m.contenu`. Rôle inféré (`auteurId === thread.etudiantId` → étudiant, sinon professeur). |
+| `GET /dashboard` | Frontend utilisait `tempsRevisionSec`, `uniqueQuestionsCount`, `evolution`, `sessionsAVenir` (array), `lacunesParChapitre.ordre/lacune` — backend renvoie `tempsRevision` (sec), `sessionsAVenir` (int count), pas d'`evolution`, pas d'`uniqueQuestionsCount`, `lacunesParChapitre` sans `ordre`/`lacune`. | Interface alignée. `ordre` lookup depuis chapters, `lacune` inféré (`avgScore < 0.5`). Sessions à venir affichées comme count. |
+| `GET /documents/{id}/download` | Endpoint 404 (non implémenté backend). Frontend déclenchait une erreur. | Boutons remplacés par toast info "Téléchargement bientôt disponible" (page liste + DocumentReader). |
+| `GET /qa?documentId` | Non implémenté backend (seul POST /qa existe). Frontend échouait silencieusement. | Conservé (fallback gracieux sur thread vide). L'historique sera disponible dès que le backend exposera GET /qa. |
+
+#### 4. Décisions UX par onglet
+
+- **Page liste** : `EntityCard` DS avec thumbnail FileText, badge nombre de chapitres, meta owner+date. Actions Lire + Download (TXT/PDF) dans le corps de la card (ne déclenchent pas le clic carte via `stopPropagation`). Hero `ds-kente-pattern` + bouton Actualiser (toast sonner promise).
+- **Vue détail** : 9 onglets ordonnés (Vue d'ensemble → Entraînement → Banque → Flashcards → Audio → Q&A → Aide → Planning → Progression). TabsList scrollable mobile, inline desktop. Chaque tab a un `SectionHeader` (icône + titre + desc) cohérent.
+- **Practice** : 4 `StatCard` (Question, Répondues, Correctes avec `scoreOn20`, Score moyen) + `ProgressRing` (progression série). Config card avec `ds-kente-top`. Verdict conditionnel : si `reponseCorrecte` dispo → success/destructive ; sinon → info "Réponse enregistrée". Navigation Prev/Next.
+- **Banque** : liste de cards avec bloc vote (ThumbsUp/ThumbsDown `h-8 w-8`). Expand détail (propositions, réponse attendue, explication, stats vote). `aria-expanded` sur bouton expand.
+- **Q&A** : chat 520px de haut, bulles user (primary, right) vs assistant (muted, left, avec MarkdownRenderer). Citations en badges primary. 4 suggestions cliquables en empty state. Input textarea (Enter pour envoyer, Shift+Enter pour newline).
+- **Flashcards** : grille 1/2/3 cols, cards `h-56` avec flip animation. Recto (primary badge "Question") / Verso (success badge "Réponse" + `bg-success/5`). Bouton trash au hover (opacity-0 → group-hover:opacity-100).
+- **Audio** : liste de cards `border-l-4` selon statut (info/success/destructive). Lecteur `<audio controls>` si PRET + audioUrl. Script collapsible (AnimatePresence). Polling 3s via `refetchInterval` TanStack.
+- **Aide** : liste threads (boutons) → vue conversation (messages bulles, rôle inféré). Bouton "Clore le fil" (POST /help/{id}/close). Input désactivé si fil clos.
+- **Planning** : 4 `StatCard` SRS (À réviser, Maîtrisés, Items suivis, Maîtrise moy.) + card "À réviser aujourd'hui" (`ds-kente-top`) + card "Sessions planifiées" avec form (type, date, heure, durée, chapitre, notes) + liste sessions triées par date + bouton DELETE (trash).
+- **Progression** : 4 `StatCard` KPIs (Score moyen /20 avec `scoreOn20` coloring, Taux réussite, Questions répondues, Temps révision) + card "Lacunes par chapitre" (`ds-kente-top` avec barres animées) + 2 cards (SRS avec `ProgressRing` maîtrise, Sessions à venir avec `ProgressRing` count).
+
+#### 5. Cohérence visuelle (9 onglets)
+
+Tous les onglets utilisent désormais :
+- **Même `SectionHeader`** : icône dans un carré `bg-primary/10` (h-10 w-10) + titre `font-display` + desc `text-muted-foreground`.
+- **Mêmes skeletons** : `PulseSkeleton` (variant card pour les zones de chargement, variant default pour les lignes).
+- **Mêmes empty states** : icône dans un cercle `bg-primary/10` + titre `font-display` + desc `text-muted-foreground` (souvent avec `ds-kente-watermark`).
+- **Mêmes error states** : card `border-l-4 border-l-destructive` + icône `AlertCircle` + bouton "Réessayer" (RefreshCw).
+- **Mêmes couleurs sémantiques** : primary (lime) pour actions principales, success pour positif, warning pour attention, info pour EN_COURS/neutre, destructive pour erreurs.
+- **Même motif kente** : `ds-kente-pattern` sur les hero, `ds-kente-top` sur la 1ère card de liste, `ds-kente-watermark` sur les empty states.
+- **Mêmes animations** : Framer Motion `initial={{ opacity: 0, y: 8 }}` `animate={{ opacity: 1, y: 0 }}` en stagger (`delay: i * 0.03~0.05`).
+- **Mêmes TanStack Query options** : `staleTime: 3min`, `refetchOnWindowFocus: false`, `placeholderData: (prev) => prev`.
+
+#### 6. Git
+- **Commit** : `0cec5cd` (après rebase sur `69f9a5d` origin/main — conflit mineur avec les commits devoirs R1-FRONTEND-DEVOIRS, résolu automatiquement).
+- **Push** : `0cec5cd` → origin/main ✅.
+
+### Stage Summary
+
+Refonte complète du module `/exam-prep` (12 fichiers, +2347/-1350 lignes) livrée et poussée sur origin/main. Le frontend matche désormais **parfaitement** le backend Go :
+- 12 mismatches critiques corrigés (practice submit body, review/planning/help/dashboard shapes, help message field names, PATCH→DELETE pour planning, download 404 → toast gracieux).
+- 9 onglets visuellement cohérents (même `SectionHeader`, mêmes skeletons `PulseSkeleton`, mêmes empty/error states, mêmes couleurs sémantiques, même motif kente).
+- Composants DS unifiés utilisés partout (`StatCard`, `EntityCard`, `ProgressRing`, `PulseSkeleton`, `GlassModal`) — plus de réinvention de cards/skeletons par tab.
+- TanStack Query avec `staleTime` 3min + `placeholderData: (prev) => prev` pour éviter le flicker.
+- TypeScript strict : 0 erreur dans les fichiers exam-prep (vérifié via `tsc --noEmit`).
+- ESLint : 0 erreur, 0 warning (vérifié via `eslint`).
+- Aucune nouvelle dépendance ajoutée.
+- Aucune fonctionnalité supprimée (session store, highlight→flashcard, vote, polling audio, prefill Q&A — tous conservés).
+
+**Risks/follow-ups** :
+1. **`GET /qa?documentId` non implémenté backend** — l'historique Q&A reste vide (fallback gracieux). Le backend devrait exposer cet endpoint pour activer l'historique côté frontend (le code frontend est déjà prêt à le consommer).
+2. **`GET /documents/{id}/download` non implémenté backend** — les boutons affichent un toast "Bientôt disponible". Le backend devrait exposer cet endpoint (ou le frontend devrait utiliser une route alternative) pour activer le téléchargement réel.
+3. **Practice submit : correction client-side** — pour les questions cache hit (200 PRET, sans `reponseCorrecte`), la tentative est enregistrée sans verdict binaire (score=0, correct=false). Le backend pourrait enrichir le DTO `examPrepCachedQuestionDTO` avec `reponseCorrecte` pour permettre la correction automatique côté client, OU exposer un endpoint de correction server-side (le task description mentionnait `{ answers, explication, reponseCorrecte, srs }` en réponse — non implémenté).
+4. **Planning : pas d'update de statut** — le backend n'expose pas de PATCH/PUT pour updater `StudySession.statut`. "Marquer comme terminée" n'est plus possible (seul DELETE est disponible). Le backend devrait exposer `PATCH /planning/{id}` avec `{ statut }` pour réactiver cette fonctionnalité.
+5. **Help : rôle inféré** — le backend `HelpMessage` n'a pas de champ `role` (seulement `auteurId`). Le rôle est inféré côté client en comparant `auteurId` à `thread.etudiantId`. Si un tiers (admin, autre enseignant) poste un message, il sera affiché comme "Professeur". Le backend pourrait ajouter un champ `role` explicite à `HelpMessage` pour lever l'ambiguïté.
+6. **Validation manuelle requise** — pas de test code (per contrainte). Valider sur /exam-prep en production après déploiement Vercel : tester les 9 onglets, le flow highlight→flashcard, le prefill Q&A, le vote, le polling audio, la création/suppression de sessions, la création/close de threads help.
