@@ -270,7 +270,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.listResultats)
 			r.Get("/overview", s.resultatsOverviewRealV2)
-			r.Get("/etudiant-overview", s.resultatsEtudiantOverviewReal)
+			r.Get("/etudiant-overview", s.resultatsEtudiantOverview)
 		})
 
 		// /api/documents
