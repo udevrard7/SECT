@@ -5403,3 +5403,32 @@ Stage Summary:
 - `npx tsc --noEmit` : 0 erreur dans les 10 fichiers migrés (erreurs pré-existantes confirmées dans d'autres fichiers non touchés).
 - Logique métier préservée : handlers, dialogs, forms, filters, toasts d'erreur, auto-sélection, redirect automatique — tout identique.
 - Bénéfice : le cache TanStack survit au démontage → 0 refetch au retour navigation, 0 skeleton, navigation instantanée (comme documents-page/devoirs-page).
+
+---
+Task ID: CACHE-RAM-1
+Agent: full-stack-developer
+Task: Cache RAM write-behind pour sessions examen (Go)
+
+Work Log:
+- Lecture du code existant : `internal/cache/memory.go` (déjà créé), `internal/transport/http/router.go`, `internal/transport/http/session_handlers.go`, `internal/usecase/session.go`, `internal/domain/session.go`, `cmd/api/main.go`, `internal/db/db.go`, `internal/middleware/auth.go`.
+- Découverte clé : `domain.SaveReponseInput` est **single-question** (`SessionID`, `QuestionID`, `Contenu`, `Alerte`) — il n'a PAS de champ `EpreuveID` ni `Reponses map[string]string` comme supposé dans l'énoncé. Le cache `SaveAnswers(sessionID, epreuveID, etudiantID, reponses map[string]string)` attend un map. Adaptation : on appelle `SaveAnswers` avec un map à 1 entrée `{QuestionID: Contenu}` et `epreuveID=""` (le handler n'a pas l'info — premier write gagne).
+- `internal/transport/http/router.go` : ajout de l'import `internal/cache`, du champ `sessionCache *cache.SessionCache` au `Server struct`, et de `s.sessionCache = cache.NewSessionCache()` dans `NewServer` après la création du struct.
+- `internal/transport/http/session_handlers.go` :
+  - Imports ajoutés : `context`, `internal/cache`, `internal/db` (pour `db.SessionClaims`).
+  - `saveReponse` : remplacement de l'appel direct à `s.sessionUC.SaveReponse` par `s.sessionCache.SaveAnswers(input.SessionID, "", claims.UserID, map[string]string{input.QuestionID: input.Contenu})`. Le handler répond toujours `{"saved": true}` en < 1ms.
+  - `submitSession` : avant `s.sessionUC.Submit(...)`, appel de `s.sessionCache.FlushAndGetDirty(id)` qui retourne TOUTES les sessions dirty. Pour chacune, appel de `s.FlushSessionToNeon(r.Context(), ds)` (méthode publique qui construit les claims RLS depuis l'`EtudiantID` stocké en cache). Ensuite `s.sessionCache.RemoveSession(id)` nettoie le cache pour la session soumise.
+  - Ajout de 2 méthodes publiques : `GetDirtySessions() []*cache.CachedSession` (wrapper nil-safe) et `FlushSessionToNeon(ctx, sess) error` (construit `db.SessionClaims{UserID: sess.EtudiantID, Role: "ETUDIANT"}` puis itère `sess.Reponses` pour appeler `sessionUC.SaveReponse` une fois par question — `SaveReponseInput` étant single-question). RLS reste ON : `WithTx` pose `app.claims.user_id = EtudiantID`, ce qui filtre correctement sans nécessiter de désactivation.
+- `cmd/api/main.go` : ajout d'une goroutine worker après `server := httptransport.NewServer(...)`. Le worker utilise `time.NewTicker(30 * time.Second)`, appelle `server.GetDirtySessions()` à chaque tick, et pour chaque session dirty appelle `server.FlushSessionToNeon(context.Background(), ds)` en loggant les erreurs via `logger.Warn`. Pas d'import `cache` ajouté dans main.go : le type `*cache.CachedSession` est inféré via `:=` et `range`, donc l'import serait inutilisé (Go refuse les imports inutilisés). C'est une déviation volontaire de l'énoncé (qui demandait d'ajouter l'import), justifiée par les règles de compilation Go.
+- L'énoncé suggérait `_ = server.FlushSessionToNeon(ctx, ds)` (erreur ignorée). Amélioration : on logge l'erreur avec `logger.Warn(...)` pour le debug en production.
+- Vérification des tabs : `cat -A` et `od -tx1` confirment que les 3 fichiers modifiés utilisent 100% de tabs (`09`) pour l'indentation (168/134/137 lignes tabulées, 0 espace). `main.go` était initialement indenté avec 8 espaces — `gofmt -w` a normalisé tout le fichier vers les tabs.
+- `go build ./...` : EXIT=0, binaire 23 MB généré à `/tmp/sect-api`.
+- `go vet ./...` : EXIT=0, aucune erreur.
+- `gofmt -l` sur les 4 fichiers modifiés (memory.go inclus) : aucun fichier listé (tous conformes).
+
+Stage Summary:
+- Cache RAM write-behind intégré au serveur Go. Le handler `saveReponse` (auto-save) écrit désormais en RAM (< 1ms) au lieu d'appeler Neon (~50-100ms) à chaque clic. Un worker goroutine synchronise vers Neon toutes les 30s. Le handler `submitSession` force un flush immédiat avant la soumission finale.
+- 4 fichiers touchés : `internal/cache/memory.go` (inchangé — déjà créé), `internal/transport/http/router.go` (+7 lignes : import + champ struct + init), `internal/transport/http/session_handlers.go` (+75 lignes : saveReponse rewrite + submitSession flush + 2 méthodes publiques), `cmd/api/main.go` (+25 lignes logiques + normalisation gofmt spaces→tabs).
+- Adaptation de l'énoncé aux types réels : `SaveReponseInput` est single-question (pas de map `Reponses`), donc le flush boucle une fois par question. Le cache `SaveAnswers` merge les single-question maps.
+- Sécurité RLS préservée : le worker n'a pas de claims HTTP, mais `FlushSessionToNeon` construit `db.SessionClaims{UserID: sess.EtudiantID, Role: "ETUDIANT"}` depuis le cache, et `SaveReponse` appelle `db.WithTx` qui pose `app.claims.user_id` → le RLS Postgres filtre correctement sans nécessiter de `SET LOCAL row_security = off`.
+- 0 handler cassé : tous les autres handlers (`listSessions`, `getSession`, `startSession`, `submitSession`, `listResultats`, etc.) sont intacts. Seul `saveReponse` a été modifié (et `submitSession` étendu avec un flush avant l'appel existant à `Submit`).
+- Difficultés : (1) l'outil Edit/MultiEdit convertit les tabs en 8 espaces — contournement via scripts Python `string.replace` qui écrivent des `\t` littéraux, puis `gofmt -w` pour normaliser. (2) `main.go` était indenté en espaces (seul fichier du codebase avec ce style) — `gofmt -w` a tout converti en tabs (diff important mais aucune logique modifiée hors du worker). (3) `SaveReponseInput` n'a pas la shape annoncée dans l'énoncé — adaptation nécessaire (single-question → boucle).

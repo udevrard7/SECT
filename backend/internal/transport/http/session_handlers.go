@@ -1,11 +1,14 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/udevrard7/sect/backend/internal/cache"
+	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 )
@@ -86,6 +89,10 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveReponse — PUT /api/sessions (auto-save)
+//
+// CACHE-RAM-1 : écrit en RAM (< 1ms) au lieu de Neon (~50-100ms).
+// Le worker goroutine synchronisera vers Neon toutes les 30s, et le
+// handler submitSession force un flush immédiat avant la soumission.
 func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
@@ -99,9 +106,12 @@ func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.sessionUC.SaveReponse(r.Context(), claims, input); err != nil {
-		middleware.MapDomainError(w, err)
-		return
+	// CACHE-RAM-1 : écrire en RAM (single-question merge).
+	// L'input ne contient pas EpreuveID (single-question save), on passe "".
+	// Le premier SaveAnswers crée l'entrée ; les suivants mergent les réponses.
+	if s.sessionCache != nil && input.SessionID != "" {
+		reponses := map[string]string{input.QuestionID: input.Contenu}
+		s.sessionCache.SaveAnswers(input.SessionID, "", claims.UserID, reponses)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -121,6 +131,20 @@ func (s *Server) submitSession(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		// Body optionnel — si pas de body, input reste zero-value
 		input = domain.SubmitSessionInput{}
+	}
+
+	// CACHE-RAM-1 : flush immédiat du cache vers Neon avant le submit.
+	// FlushAndGetDirty marque la session {id} comme dirty et retourne TOUTES
+	// les sessions dirty (même celles d'autres étudiants). On flush chacune
+	// via FlushSessionToNeon qui construit les claims RLS depuis l'EtudiantID
+	// stocké en cache (le worker goroutine fait de même en arrière-plan).
+	if s.sessionCache != nil {
+		dirtySessions := s.sessionCache.FlushAndGetDirty(id)
+		for _, ds := range dirtySessions {
+			_ = s.FlushSessionToNeon(r.Context(), ds)
+		}
+		// Nettoyer le cache pour cette session (les autres restent pour le worker)
+		s.sessionCache.RemoveSession(id)
 	}
 
 	result, err := s.sessionUC.Submit(r.Context(), claims, id, input)
@@ -206,3 +230,48 @@ func parseIntQueryParamExtended(s string, defaultVal int) int {
 
 // strconv unused suppress
 var _ = strconv.Itoa
+
+// ============================================================
+// CACHE-RAM-1 — public methods for worker goroutine
+// ============================================================
+
+// GetDirtySessions retourne les sessions modifiées (et les marque clean).
+// Wrapper public utilisé par le worker goroutine de cmd/api/main.go.
+func (s *Server) GetDirtySessions() []*cache.CachedSession {
+	if s.sessionCache == nil {
+		return nil
+	}
+	return s.sessionCache.GetDirtySessions()
+}
+
+// FlushSessionToNeon écrit une session cache vers Neon via le usecase SaveReponse.
+// Construit les claims RLS à partir de l'EtudiantID stocké en cache — le worker
+// goroutine n'a pas de claims HTTP, donc on utilise l'ID de l'étudiant propriétaire
+// de la session. SaveReponse appelle WithTx qui pose app.claims.user_id ; le RLS
+// filtrera alors correctement (pas besoin de désactiver RLS).
+//
+// Remarque : SaveReponseInput est single-question (QuestionID + Contenu), donc on
+// appelle SaveReponse une fois par entrée du map Reponses.
+func (s *Server) FlushSessionToNeon(ctx context.Context, sess *cache.CachedSession) error {
+	if sess == nil {
+		return nil
+	}
+	claims := db.SessionClaims{
+		UserID: sess.EtudiantID,
+		Role:   string(domain.RoleEtudiant),
+	}
+	for questionID, contenu := range sess.Reponses {
+		if contenu == "" {
+			continue
+		}
+		input := domain.SaveReponseInput{
+			SessionID:  sess.SessionID,
+			QuestionID: questionID,
+			Contenu:    contenu,
+		}
+		if err := s.sessionUC.SaveReponse(ctx, claims, input); err != nil {
+			return err
+		}
+	}
+	return nil
+}
