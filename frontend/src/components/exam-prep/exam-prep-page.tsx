@@ -18,17 +18,21 @@
  * → flashcard / explain passage).
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap, FileText, BookOpen, ArrowLeft, RefreshCw,
-  AlertCircle, Eye, Trophy,
+  AlertCircle, Eye, Trophy, LayoutGrid, List, Search, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { EntityCard, PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
@@ -72,6 +76,19 @@ export function ExamPrepPage() {
   // HIGHLIGHT-FLASHCARD-1 : prefill Q&A depuis le DocumentReader
   const [qaPrefill, setQaPrefill] = useState<string | undefined>(undefined)
 
+  // EXAM-PREP-LIST-TOOLBAR : vue Liste/Groupé + recherche + filtres (miroir /epreuves)
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+  const [groupBy, setGroupBy] = useState<'ue' | 'enseignant' | 'theme'>('ue')
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterUEId, setFilterUEId] = useState<string>('')
+
+  // Debounce recherche (300ms) — évite un refiltre à chaque frappe
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchInput), 300)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
   const handleExplainPassage = useCallback((text: string, documentId: string) => {
     setReaderDocumentId(null)
     setSelectedId(documentId)
@@ -92,9 +109,72 @@ export function ExamPrepPage() {
     placeholderData: (prev) => prev,
   })
 
-  const documents = documentsQuery.data?.documents ?? []
+  const allDocuments = documentsQuery.data?.documents ?? []
   const loading = documentsQuery.isLoading
   const error = documentsQuery.error ? 'Impossible de charger vos supports de cours.' : null
+
+  // ─── Filtres côté client (recherche + UE) ───
+  // La recherche matche sur nomFichier, titre UE, nom enseignant, thèmes, résumé.
+  const documents = useMemo(() => {
+    let result = allDocuments
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase().trim()
+      result = result.filter((d) =>
+        d.nomFichier.toLowerCase().includes(q) ||
+        d.uniteEnseignement.code.toLowerCase().includes(q) ||
+        d.uniteEnseignement.nom.toLowerCase().includes(q) ||
+        d.owner.name.toLowerCase().includes(q) ||
+        (d.resumeAnalyse ?? '').toLowerCase().includes(q) ||
+        d.themesDetectes.some((t) => t.toLowerCase().includes(q)) ||
+        d.chapters.some((c) => c.titre.toLowerCase().includes(q))
+      )
+    }
+    if (filterUEId) {
+      result = result.filter((d) => d.uniteEnseignement.id === filterUEId)
+    }
+    return result
+  }, [allDocuments, debouncedSearch, filterUEId])
+
+  // Liste dédoublonnée des UEs (pour le select filtre)
+  const ueOptions = useMemo(() => {
+    const map = new Map<string, { id: string; code: string; nom: string }>()
+    allDocuments.forEach((d) => {
+      if (!map.has(d.uniteEnseignement.id)) {
+        map.set(d.uniteEnseignement.id, d.uniteEnseignement)
+      }
+    })
+    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code))
+  }, [allDocuments])
+
+  // ─── Groupement (mode groupé) ───
+  const groupedDocuments = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; subtitle?: string; docs: ExamPrepDocument[] }>()
+    for (const doc of documents) {
+      let key: string
+      let label: string
+      let subtitle: string | undefined
+      if (groupBy === 'ue') {
+        key = doc.uniteEnseignement.id
+        label = `${doc.uniteEnseignement.code} — ${doc.uniteEnseignement.nom}`
+        subtitle = `${doc.chapters.length} chapitre${doc.chapters.length > 1 ? 's' : ''}`
+      } else if (groupBy === 'enseignant') {
+        key = doc.owner.id
+        label = doc.owner.name
+        subtitle = 'Enseignant'
+      } else {
+        // theme : regroupe par premier thème détecté (ou « Autres »)
+        const theme = doc.themesDetectes[0] ?? 'Autres'
+        key = theme
+        label = theme
+        subtitle = 'Thème'
+      }
+      if (!groups.has(key)) {
+        groups.set(key, { key, label, subtitle, docs: [] })
+      }
+      groups.get(key)!.docs.push(doc)
+    }
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label))
+  }, [documents, groupBy])
   const refreshDocuments = () => {
     toast.promise(queryClient.invalidateQueries({ queryKey: ['exam-prep-documents'] }), {
       loading: 'Actualisation…',
@@ -169,8 +249,8 @@ export function ExamPrepPage() {
     <div className="space-y-6">
       <HeroHeader count={documents.length} onRefresh={refreshDocuments} />
 
-      {/* Empty state */}
-      {documents.length === 0 ? (
+      {/* Empty state (aucun document du tout) */}
+      {allDocuments.length === 0 ? (
         <Card className="border-dashed ds-kente-watermark">
           <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 ds-logo-glow">
@@ -188,32 +268,185 @@ export function ExamPrepPage() {
         </Card>
       ) : (
         <>
-          {/* Liste des documents — EntityCard DS unifié */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-          >
-            <AnimatePresence mode="popLayout">
-              {documents.map((doc, i) => (
-                <motion.div
-                  key={doc.id}
-                  layout
-                  initial={{ opacity: 0, y: 12, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: i * 0.06, duration: 0.3, ease: 'easeOut' }}
+          {/* ─── Barre d'outils : recherche + toggle Liste/Groupé + filtres ─── */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Recherche */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Rechercher un cours, un thème, un chapitre…"
+                className="pl-9 pr-9 h-9 text-sm"
+                aria-label="Rechercher"
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Effacer la recherche"
                 >
-                  <DocumentEntityCard
-                    doc={doc}
-                    onRevision={() => setSelectedId(doc.id)}
-                    onRead={() => setReaderDocumentId(doc.id)}
-                  />
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Filtre UE */}
+              <Select value={filterUEId} onValueChange={(v) => setFilterUEId(v === 'all' ? '' : v)}>
+                <SelectTrigger className="h-9 w-[180px] text-xs">
+                  <SelectValue placeholder="Toutes les UE" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les UE</SelectItem>
+                  {ueOptions.map((ue) => (
+                    <SelectItem key={ue.id} value={ue.id}>
+                      {ue.code} — {ue.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* View mode toggle — Liste / Groupé */}
+              <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    viewMode === 'flat' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => setViewMode('flat')}
+                >
+                  <List className="h-3.5 w-3.5" /> Liste
+                </button>
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    viewMode === 'grouped' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => setViewMode('grouped')}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" /> Groupé
+                </button>
+              </div>
+
+              {/* Group by selector (visible en mode grouped uniquement) */}
+              {viewMode === 'grouped' && (
+                <Select value={groupBy} onValueChange={(v) => setGroupBy(v as 'ue' | 'enseignant' | 'theme')}>
+                  <SelectTrigger className="h-9 w-[150px] text-xs">
+                    <SelectValue placeholder="Grouper par" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ue">Par UE</SelectItem>
+                    <SelectItem value="enseignant">Par enseignant</SelectItem>
+                    <SelectItem value="theme">Par thème</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          {/* Empty state (recherche/filtre sans résultat) */}
+          {documents.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                  <Search className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+                  Aucun résultat
+                </h3>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  Aucun document ne correspond à votre recherche ou vos filtres.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 gap-1.5"
+                  onClick={() => {
+                    setSearchInput('')
+                    setFilterUEId('')
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" /> Réinitialiser les filtres
+                </Button>
+              </CardContent>
+            </Card>
+          ) : viewMode === 'grouped' ? (
+            /* ─── Mode groupé : sections par UE/enseignant/thème ─── */
+            <div className="space-y-8">
+              {groupedDocuments.map((group, gi) => (
+                <motion.div
+                  key={group.key}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: gi * 0.05, duration: 0.3 }}
+                >
+                  {/* En-tête de groupe */}
+                  <div className="flex items-center gap-3 mb-4 pb-2 border-b border-border">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      {groupBy === 'ue' ? (
+                        <BookOpen className="h-5 w-5 text-primary-text" />
+                      ) : groupBy === 'enseignant' ? (
+                        <GraduationCap className="h-5 w-5 text-primary-text" />
+                      ) : (
+                        <FileText className="h-5 w-5 text-primary-text" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-display text-base font-semibold tracking-tight truncate">
+                        {group.label}
+                      </h3>
+                      {group.subtitle && (
+                        <p className="text-xs text-muted-foreground truncate">{group.subtitle}</p>
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="bg-primary/10 text-primary-text shrink-0">
+                      {group.docs.length} doc{group.docs.length > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+
+                  {/* Cartes du groupe */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {group.docs.map((doc, i) => (
+                      <DocumentEntityCard
+                        key={doc.id}
+                        doc={doc}
+                        onRevision={() => setSelectedId(doc.id)}
+                        onRead={() => setReaderDocumentId(doc.id)}
+                      />
+                    ))}
+                  </div>
                 </motion.div>
               ))}
-            </AnimatePresence>
-          </motion.div>
+            </div>
+          ) : (
+            /* ─── Mode liste : grid de cartes (par défaut) ─── */
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            >
+              <AnimatePresence mode="popLayout">
+                {documents.map((doc, i) => (
+                  <motion.div
+                    key={doc.id}
+                    layout
+                    initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ delay: i * 0.06, duration: 0.3, ease: 'easeOut' }}
+                  >
+                    <DocumentEntityCard
+                      doc={doc}
+                      onRevision={() => setSelectedId(doc.id)}
+                      onRead={() => setReaderDocumentId(doc.id)}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          )}
         </>
       )}
 
