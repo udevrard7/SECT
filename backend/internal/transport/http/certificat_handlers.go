@@ -245,6 +245,29 @@ func (s *Server) updateReponse(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // P2-CORRECTION : ownership check — vérifier que la Reponse appartient
+        // à une session d'un épreuve de l'enseignant courant.
+        if claims.Role == "ENSEIGNANT" {
+                hasAccess := false
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        err := tx.QueryRow(r.Context(), `
+                                SELECT 1
+                                FROM "Reponse" r
+                                JOIN "SessionPassation" sp ON sp."id" = r."sessionId"
+                                JOIN "Epreuve" e ON e."id" = sp."epreuveId"
+                                WHERE r."id" = $1 AND e."enseignantId" = $2
+                        `, reponseID, claims.UserID).Scan(&hasAccess)
+                        if err != nil {
+                                return err
+                        }
+                        return nil
+                })
+                if !hasAccess {
+                        writeJSONError(w, http.StatusForbidden, "accès refusé à cette réponse")
+                        return
+                }
+        }
+
         if err := s.correctionUC.UpdateReponse(r.Context(), claims, reponseID, input); err != nil {
                 middleware.MapDomainError(w, err)
                 return
@@ -263,6 +286,28 @@ func (s *Server) retournerSession(w http.ResponseWriter, r *http.Request) {
         }
 
         sessionID := chi.URLParam(r, "sessionId")
+
+        // P2-CORRECTION : ownership check pour ENSEIGNANT
+        if claims.Role == "ENSEIGNANT" {
+                hasAccess := false
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        err := tx.QueryRow(r.Context(), `
+                                SELECT 1
+                                FROM "SessionPassation" sp
+                                JOIN "Epreuve" e ON e."id" = sp."epreuveId"
+                                WHERE sp."id" = $1 AND e."enseignantId" = $2
+                        `, sessionID, claims.UserID).Scan(&hasAccess)
+                        if err != nil {
+                                return err
+                        }
+                        return nil
+                })
+                if !hasAccess {
+                        writeJSONError(w, http.StatusForbidden, "accès refusé à cette session")
+                        return
+                }
+        }
+
         if err := s.correctionUC.RetournerSession(r.Context(), claims, sessionID); err != nil {
                 middleware.MapDomainError(w, err)
                 return
