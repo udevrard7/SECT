@@ -256,7 +256,6 @@ func (s *Server) epreuvesGenerate(w http.ResponseWriter, r *http.Request) {
 		"autoDetectedUEId": nil,
 	})
 }
-}
 
 // buildEpreuvePrompt construit les messages (system + user) envoyés au LLM
 // pour générer une épreuve à partir des documents fournis.
