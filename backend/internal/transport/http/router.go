@@ -368,6 +368,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.devoirsListReal)
 			r.Get("/stats", s.devoirsStatsReal)
+
+			// P2-DEVOIRS-1 : mutations (ENSEIGNANT uniquement)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Post("/", s.createDevoir)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Get("/{id}", s.getDevoir)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Patch("/{id}", s.updateDevoir)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Delete("/{id}", s.deleteDevoir)
 		})
 
 		r.Route("/api/alertes", func(r chi.Router) {
