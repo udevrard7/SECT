@@ -9,6 +9,7 @@ import (
 	"github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/storage"
+	"github.com/udevrard7/sect/backend/internal/worker"
 )
 
 // DocumentUseCase implémente les cas d'usage des documents.
@@ -119,6 +120,16 @@ func (uc *DocumentUseCase) Upload(ctx context.Context, claims db.SessionClaims, 
 		message = "Document uploadé et texte extrait avec succès"
 	} else if erreurAnalyse != nil {
 		message = "Document uploadé mais extraction du texte impossible"
+	}
+
+	// DOC-ANALYZER-1 : déclencher l'analyse automatique en arrière-plan
+	if doc.ContenuTexte != nil && wordCount > 0 {
+		select {
+		case worker.DocumentAnalysisQueue <- worker.DocumentAnalysisJob{DocumentID: doc.ID}:
+			// job envoyé
+		default:
+			// queue pleine, on ignore (le worker RecoverInterruptedAnalyses le traitera au prochain démarrage)
+		}
 	}
 
 	return &UploadResult{
