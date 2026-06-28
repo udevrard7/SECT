@@ -1,37 +1,33 @@
 'use client'
 
 /**
- * ExamPrepDocumentDetail — Vue détail d'un document avec 9 onglets.
+ * ExamPrepDocumentDetail — Vue détail d'un document avec 8 onglets.
  *
  * EXAM-PREP-REFACTOR-1 : refonte DS "Savane EdTech".
  *  - Hero avec motif kente + métadonnées du document
- *  - TabsList scrollable horizontalement sur mobile (9 onglets trop serrés
- *    pour un grid-cols-4), inline-flex sur desktop
- *  - Chaque TabsContent a un padding consistent (p-4 sm:p-6) et space-y-6
+ *  - TabsList scrollable horizontalement sur mobile (8 onglets), inline-flex sur desktop
+ *  - Chaque TabsContent a un padding consistent (p-4 sm:p-0) et space-y-6
  *
- * 9 onglets :
- *  1. Vue d'ensemble (overview) — LayoutDashboard
- *  2. Entraînement (practice) — Zap
- *  3. Banque (bank) — Library
- *  4. Flashcards (flashcards) — Layers
- *  5. Audio (audio) — Headphones
- *  6. Q&A IA (qa) — MessageCircle
- *  7. Aide (help) — HelpCircle
- *  8. Planification (planning) — Calendar
- *  9. Progression (progress) — TrendingUp
+ * 8 onglets :
+ *  1. Entraînement (practice) — Award
+ *  2. Banque (bank) — Library
+ *  3. Flashcards (flashcards) — Layers
+ *  4. Audio (audio) — Headphones
+ *  5. Q&A IA (qa) — MessageCircle
+ *  6. Aide (help) — HelpCircle
+ *  7. Planification (planning) — Calendar
+ *  8. Progression (progress) — TrendingUp
  */
 
 import { useState } from 'react'
 import {
-  ArrowLeft, FileText, Sparkles, Award, Calendar, HelpCircle, TrendingUp,
-  Layers, Library, Headphones, MessageCircle, LayoutDashboard, BookOpen,
+  ArrowLeft, FileText, Award, Calendar, HelpCircle, TrendingUp,
+  Layers, Library, Headphones, MessageCircle, BookOpen,
   ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { EntityCard } from '@/components/ds'
 import type { ExamPrepDocument } from './exam-prep-page'
 import { ExamPrepQaTab } from './tabs/exam-prep-qa-tab'
 import { ExamPrepPracticeTab } from './tabs/exam-prep-practice-tab'
@@ -56,7 +52,6 @@ interface Props {
 }
 
 const TABS = [
-  { value: 'overview', label: 'Vue d\'ensemble', short: 'Aperçu', icon: LayoutDashboard },
   { value: 'practice', label: 'Entraînement', short: 'Train', icon: Award },
   { value: 'bank', label: 'Banque', short: 'Banque', icon: Library },
   { value: 'flashcards', label: 'Flashcards', short: 'Cards', icon: Layers },
@@ -68,7 +63,7 @@ const TABS = [
 ] as const
 
 export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onConsumeQaPrefill }: Props) {
-  const [tab, setTab] = useState<string>(qaPrefill && qaPrefill.trim() ? 'qa' : 'overview')
+  const [tab, setTab] = useState<string>(qaPrefill && qaPrefill.trim() ? 'qa' : 'practice')
 
   return (
     <div className="space-y-5">
@@ -140,11 +135,6 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
         </TabsList>
 
         <div className="mt-5">
-          {/* ─── Vue d'ensemble ─── */}
-          <TabsContent value="overview" className="mt-0 space-y-6 p-4 sm:p-0">
-            <OverviewTab doc={doc} onSelectTab={setTab} />
-          </TabsContent>
-
           {/* ─── Entraînement ─── */}
           <TabsContent value="practice" className="mt-0 p-4 sm:p-0">
             <ExamPrepPracticeTab documentId={doc.id} chapters={doc.chapters} />
@@ -192,137 +182,5 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
         </div>
       </Tabs>
     </div>
-  )
-}
-
-// ─── Vue d'ensemble ───
-
-function OverviewTab({
-  doc, onSelectTab,
-}: {
-  doc: ExamPrepDocument
-  onSelectTab: (tab: string) => void
-}) {
-  return (
-    <div className="space-y-6">
-      {/* Chapitres */}
-      <div>
-        <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3 flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-primary-text" />
-          Chapitres du document
-        </h3>
-        {doc.chapters.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="py-6 text-center text-sm text-muted-foreground">
-              Aucun chapitre structuré détecté lors de l&apos;analyse. Vous pouvez
-              quand même utiliser « Q&A IA » et l&apos;entraînement sur l&apos;ensemble du document.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {doc.chapters.map((ch, i) => (
-              <EntityCard
-                key={ch.id}
-                title={ch.titre}
-                subtitle={ch.sujets.length > 0 ? ch.sujets.slice(0, 2).join(' · ') : undefined}
-                badge={{ label: `Ch. ${ch.ordre + 1}`, variant: 'primary' }}
-                index={i}
-              >
-                {ch.sujets.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {ch.sujets.slice(0, 3).map((s, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                        {s}
-                      </Badge>
-                    ))}
-                    {ch.sujets.length > 3 && (
-                      <span className="text-[10px] text-muted-foreground">+{ch.sujets.length - 3}</span>
-                    )}
-                  </div>
-                )}
-              </EntityCard>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Thèmes détectés */}
-      {doc.themesDetectes.length > 0 && (
-        <div>
-          <h3 className="font-display text-sm font-semibold tracking-tight text-muted-foreground uppercase mb-3">
-            Thèmes détectés
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {doc.themesDetectes.map((t, i) => (
-              <Badge key={i} variant="outline" className="bg-accent/50">
-                {t}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* CTAs vers les autres onglets */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-        <QuickAction
-          icon={Sparkles}
-          title="Poser une question"
-          desc="L'IA répond en citant votre cours"
-          accent="primary"
-          onClick={() => onSelectTab('qa')}
-        />
-        <QuickAction
-          icon={Award}
-          title="S'entraîner"
-          desc="Questions auto + correction"
-          accent="success"
-          onClick={() => onSelectTab('practice')}
-        />
-        <QuickAction
-          icon={Layers}
-          title="Créer des flashcards"
-          desc="Sélectionnez un passage dans le lecteur"
-          accent="info"
-          onClick={() => onSelectTab('flashcards')}
-        />
-      </div>
-    </div>
-  )
-}
-
-function QuickAction({
-  icon: Icon, title, desc, accent, onClick,
-}: {
-  icon: typeof Sparkles
-  title: string
-  desc: string
-  accent: 'primary' | 'success' | 'info' | 'warning'
-  onClick: () => void
-}) {
-  const accentBg = {
-    primary: 'bg-primary/10',
-    success: 'bg-success/10',
-    info: 'bg-info/10',
-    warning: 'bg-warning/10',
-  }[accent]
-  const accentText = {
-    primary: 'text-primary-text',
-    success: 'text-success-text',
-    info: 'text-info',
-    warning: 'text-warning',
-  }[accent]
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 hover:shadow-md hover:-translate-y-0.5 transition-all ds-lift text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${accentBg}`}>
-        <Icon className={`h-5 w-5 ${accentText}`} />
-      </div>
-      <div className="min-w-0">
-        <p className="font-semibold text-sm">{title}</p>
-        <p className="text-xs text-muted-foreground">{desc}</p>
-      </div>
-    </button>
   )
 }
