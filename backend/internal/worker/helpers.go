@@ -1,18 +1,11 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"net/http"
-	"bytes"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
-
-// pgxTxOptions retourne les options de transaction par défaut.
-func pgxTxOptions() pgx.TxOptions {
-	return pgx.TxOptions{}
-}
 
 // httpClient est le client HTTP partagé pour les appels IA.
 var httpClient = &http.Client{
