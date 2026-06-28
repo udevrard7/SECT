@@ -120,6 +120,11 @@ func main() {
 	correctionWorker.RecoverInterruptedCorrections(context.Background())
 	correctionWorker.Start(context.Background())
 
+	// DOC-ANALYZER-1 : worker d'analyse automatique des documents
+	docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
+	docAnalyzer.RecoverInterruptedAnalyses(context.Background())
+	docAnalyzer.Start(context.Background())
+
 	// EXAM-PREP-CONNECT-1 — Étape 2c : worker de génération de questions
 	// d'entraînement (Practice). Async : le handler POST /api/exam-prep/practice/generate
 	// pousse un job dans worker.PracticeQueue et retourne 202 Accepted.
