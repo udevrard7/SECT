@@ -141,7 +141,7 @@ func main() {
 	audioWorker.RecoverInterruptedAudioJobs(context.Background())
 	audioWorker.Start(context.Background())
 
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
 	// CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
 	// toutes les 30s en une série d'appels SaveReponse (un par question).
