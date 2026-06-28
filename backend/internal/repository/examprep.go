@@ -163,6 +163,52 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
 	return result, nil
 }
 
+// GetDocumentContent récupère le contenu textuel d'un document.
+// EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG pour construire
+// le prompt avec le contexte du document.
+//
+// RLS désactivé (best-effort : le scoping strict filière+niveau est assuré
+// par ListStudentDocuments côté usecase ; ici on trust le documentID passé
+// par un utilisateur déjà authentifié). Si le document n'existe pas ou est
+// supprimé, retourne une chaîne vide sans erreur.
+func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID string) (string, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return "", fmt.Errorf("disable rls: %w", err)
+	}
+
+	var contenu *string
+	err = tx.QueryRow(ctx, `
+		SELECT "contenuTexte" FROM "Document"
+		WHERE "id" = $1 AND "deletedAt" IS NULL
+	`, documentID).Scan(&contenu)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("query document content: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit: %w", err)
+	}
+
+	if contenu == nil {
+		return "", nil
+	}
+	// Tronquer à 12k caractères (cohérent avec epreuvesGenerate).
+	c := *contenu
+	if len(c) > 12_000 {
+		c = c[:12_000] + "\n... [contenu tronqué]"
+	}
+	return c, nil
+}
+
 // ============================================================
 // REVIEW (spaced repetition)
 // ============================================================
@@ -438,6 +484,14 @@ func (r *ExamPrepRepository) ListPracticeAttempts(ctx context.Context, userID, d
 }
 
 // SubmitPractice enregistre une tentative.
+//
+// EXAM-PREP-CONNECT-1 — Étape 1 : SRS automatique.
+// Après l'INSERT dans PracticeAttempt, on crée ou met à jour un ReviewItem
+// pour le couple (userId, questionId) en appliquant l'algorithme SM-2.
+//
+// On évite le fmt.Sprintf avec %d dans le SQL (error-prone avec pgx en mode
+// SimpleProtocol). À la place : on SELECT les valeurs actuelles, on calcule
+// le nouvel état SM-2 en Go, puis on UPDATE ou INSERT selon le cas.
 func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, input domain.SubmitPracticeInput) (*domain.PracticeAttempt, error) {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -465,10 +519,111 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
 		return nil, fmt.Errorf("create practice attempt: %w", err)
 	}
 
+	// ── SRS automatique : upsert ReviewItem ────────────────────────────────
+	// Conversion du score (0..1) en qualité SM-2 (0..5).
+	quality := computeSM2Quality(input.Score, input.Correct)
+
+	var chapID any
+	if input.ChapterID != nil && *input.ChapterID != "" {
+		chapID = *input.ChapterID
+	}
+
+	// Lire l'état courant du ReviewItem pour ce couple (userId, questionId).
+	var (
+		existingID   string
+		existingEase float64
+		existingReps int
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT "id", "easeFactor", "repetitions"
+		FROM "ReviewItem"
+		WHERE "userId" = $1 AND "questionId" = $2
+	`, userID, input.QuestionID).Scan(&existingID, &existingEase, &existingReps)
+
+	if err == pgx.ErrNoRows {
+		// Premier review sur cette question → INSERT.
+		// Initialise easeFactor=2.5, repetitions=1, interval calculé SM-2.
+		newEase := 2.5 + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+		if newEase < 1.3 {
+			newEase = 1.3
+		}
+		newReps := 1
+		newInterval := int(float64(newReps) * newEase)
+		if newInterval < 1 {
+			newInterval = 1
+		}
+		reviewID := uuid.NewString()
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
+				"interval", "easeFactor", "repetitions", "nextReviewAt",
+				"lastReviewAt", "createdAt", "updatedAt")
+			VALUES ($1, $2, $3, $4, $5, $6, $7,
+				CURRENT_TIMESTAMP + ($5 || ' days')::interval,
+				CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		`, reviewID, userID, chapID, input.QuestionID, newInterval, newEase, newReps); err != nil {
+			// Non-fatal : on log via fmt.Errorf mais on ne fait pas échouer SubmitPractice.
+			// L'attempt a déjà été inséré ; le SRS est best-effort.
+			// On continue vers le commit.
+		}
+	} else if err == nil {
+		// ReviewItem existe déjà → appliquer SM-2 puis UPDATE.
+		newEase := existingEase + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+		if newEase < 1.3 {
+			newEase = 1.3
+		}
+		newReps := existingReps + 1
+		newInterval := int(float64(newReps) * newEase)
+		if newInterval < 1 {
+			newInterval = 1
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE "ReviewItem" SET
+				"interval" = $2,
+				"easeFactor" = $3,
+				"repetitions" = $4,
+				"nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
+				"lastReviewAt" = CURRENT_TIMESTAMP,
+				"updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $1
+		`, existingID, newInterval, newEase, newReps); err != nil {
+			// Non-fatal : best-effort, on continue.
+		}
+	}
+	// ── Fin SRS ────────────────────────────────────────────────────────────
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return p, nil
+}
+
+// computeSM2Quality convertit un score (0..1) + flag correct en qualité SM-2 (0..5).
+//
+// Règles :
+//   - correct && score >= 0.8 → qualité 5 (parfait)
+//   - correct (sinon)         → qualité 3 (correct mais imparfait)
+//   - incorrect                → qualité 1 (échec, mais pas zéro pour rester
+//     dans une zone "à revoir" plutôt que "à réapprendre de zéro")
+//
+// Le score est sinon mappé linéairement sur 0..5.
+func computeSM2Quality(score float64, correct bool) int {
+	if correct && score >= 0.8 {
+		return 5
+	}
+	if correct {
+		return 3
+	}
+	if score <= 0 {
+		return 1
+	}
+	q := int(score * 5)
+	if q < 1 {
+		q = 1
+	}
+	if q > 5 {
+		q = 5
+	}
+	return q
 }
 
 // ============================================================

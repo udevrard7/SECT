@@ -120,6 +120,12 @@ func main() {
 	correctionWorker.RecoverInterruptedCorrections(context.Background())
 	correctionWorker.Start(context.Background())
 
+	// EXAM-PREP-CONNECT-1 — Étape 2c : worker de génération de questions
+	// d'entraînement (Practice). Async : le handler POST /api/exam-prep/practice/generate
+	// pousse un job dans worker.PracticeQueue et retourne 202 Accepted.
+	practiceWorker := worker.NewPracticeWorker(pool, logger)
+	practiceWorker.Start(context.Background())
+
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
 	// CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon

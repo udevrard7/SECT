@@ -314,7 +314,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Delete("/planning/{id}", s.deleteStudySession)
 			// Practice
 			r.Get("/practice", s.listPracticeAttempts)
+			// EXAM-PREP-CONNECT-1 - Étape 2b : génération async (202 + PracticeQueue).
+			// Déclarée AVANT la route paramétrée /practice/{id}/submit pour que chi
+			// distingue correctement "/practice/generate" (statique) de "/practice/{id}/submit" (param).
+			r.Post("/practice/generate", s.examPrepGeneratePractice)
 			r.Post("/practice/{id}/submit", s.submitPractice)
+			// EXAM-PREP-CONNECT-1 - Étape 3 : Q&A RAG synchrone.
+			r.Post("/qa", s.examPrepQA)
 			// Help threads
 			r.Get("/help", s.listHelpThreads)
 			r.Post("/help", s.createHelpThread)

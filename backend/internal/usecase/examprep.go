@@ -39,6 +39,22 @@ func (uc *ExamPrepUseCase) ListDocuments(ctx context.Context, claims db.SessionC
 	return uc.repo.ListStudentDocuments(ctx, claims.UserID, claims.FiliereID, niveau)
 }
 
+// GetDocumentContentForQA récupère le contenu textuel d'un document pour le
+// Q&A RAG (EXAM-PREP-CONNECT-1 — Étape 3).
+//
+// Rôles autorisés : ETUDIANT, ENSEIGNANT. L'étudiant peut poser une question
+// sur un document de son filière (le scoping strict est assuré côté frontend
+// via ListStudentDocuments ; le backend trust le documentID passé).
+func (uc *ExamPrepUseCase) GetDocumentContentForQA(ctx context.Context, claims db.SessionClaims, documentID string) (string, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return "", &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return "", &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+	return uc.repo.GetDocumentContent(ctx, documentID)
+}
+
 // ListReviewItems liste les items de révision.
 func (uc *ExamPrepUseCase) ListReviewItems(ctx context.Context, claims db.SessionClaims, documentID string, dueOnly bool) ([]*domain.ReviewItem, error) {
 	if claims.Role != string(domain.RoleEtudiant) {
