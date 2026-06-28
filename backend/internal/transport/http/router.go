@@ -228,6 +228,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Patch("/{id}", s.updateEpreuve)
 			r.Delete("/{id}", s.deleteEpreuve)
 			r.Get("/{id}/questions", s.listEpreuveQuestions)
+			r.Get("/{id}/status", s.getEpreuveStatus) // IA-WORKER-1 : polling statut génération IA
 			// AI-CONNECT-1 : génération IA d'épreuves via le backend AIService.
 			r.Post("/generate", s.epreuvesGenerate)
 		})

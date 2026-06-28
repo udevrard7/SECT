@@ -94,6 +94,35 @@ func (s *Server) createEpreuve(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getEpreuveStatus — GET /api/epreuves/{id}/status
+// IA-WORKER-1 : retourne le statut d'une épreuve en cours de génération IA.
+// Le frontend poll cet endpoint toutes les 3s via TanStack Query.
+func (s *Server) getEpreuveStatus(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	e, err := s.epreuveUC.GetByID(r.Context(), claims, id)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	// Retourner le statut + contenu si disponible
+	result := map[string]any{
+		"status":    string(e.Statut),
+		"updatedAt": e.UpdatedAt,
+	}
+	if e.Contenu != nil && e.Statut == "TERMINE" {
+		result["contenu"] = json.RawMessage(e.Contenu)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
 // updateEpreuve — PATCH /api/epreuves/{id}
 func (s *Server) updateEpreuve(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
