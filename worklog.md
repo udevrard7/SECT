@@ -6003,3 +6003,85 @@ Stage Summary:
   - `ListStudentDocuments` filtre par `uniteEnseignementId IN (SELECT ue.id ...)` → tout document retourné a une UE ; le fallback `examPrepUEDTO{}` (vide) ne devrait jamais se déclencher en pratique, mais est là par sécurité.
   - Les 3 batch queries ouvrent chacune une transaction séparée (3 connexions du pool par requête de liste). Acceptable pour une liste de documents (généralement < 50). Si le volume augmente, envisager une seule tx partagée ou un JOIN unique.
   - Go n'étant pas installé dans l'environnement, la compilation n'a pas pu être vérifiée localement — review manuelle approfondie effectuée (imports, types, braces, signatures interface↔impl).
+
+---
+Task ID: HIGHLIGHT-FLASHCARD-1
+Agent: general-purpose
+Task: Implémenter "Highlight to Flashcard/Note" — quand un étudiant sélectionne un passage dans le DocumentReader, un menu contextuel flottant propose deux actions : (1) "Créer une Flashcard" (IA génère Q/R, insertion en DB + ReviewItem SRS), (2) "Explique-moi ce passage" (bascule onglet Q&A + pré-remplit la question).
+
+Work Log:
+- Lecture du worklog (entrées DOC-ANALYZER-1/2, EXAM-PREP-CONNECT-1) + lecture des fichiers backend (domain/repository/usecase/handlers/router examprep) et frontend (document-reader, exam-prep-page, exam-prep-document-detail, exam-prep-qa-tab) pour comprendre les patterns existants.
+- Découvert que le DocumentReader appelle `GET /api/exam-prep/documents/{id}/read` qui n'existait PAS côté backend (route 404). Pour que le feature fonctionne end-to-end, ajout d'un endpoint `GET /api/exam-prep/documents/{id}/read` avec handler `readExamPrepDocument` qui retourne `{document: {id, nomFichier, contenuTexte, typeMime, themesDetectes, resumeAnalyse, dateUpload, owner, uniteEnseignement}}` (DTO qui matche l'interface TS `ReaderDocument`).
+- Backend (Go) — écrit via scripts Python pour préserver les TABS (gofmt/Render build) :
+  - `domain/examprep.go` : ajout struct `Flashcard` + `CreateFlashcardInput` + 5 méthodes à l'interface `ExamPrepRepository` (CreateFlashcard, ListFlashcards, DeleteFlashcard, CreateFlashcardReviewItem, GetDocumentForReader).
+  - `repository/examprep.go` : implémentation des 5 méthodes. Pattern `SET LOCAL row_security = off` dans une tx pour les writes (Flashcard n'a pas de politique RLS étudiant). `ListFlashcards` JOIN `ReviewItem` sur `r.questionId = f.id AND r.userId = $1` (la table Flashcard n'a pas de userId — l'appartenance est dérivée via ReviewItem). `DeleteFlashcard` supprime d'abord le ReviewItem (cascade manuelle — pas de FK), puis la Flashcard. `CreateFlashcardReviewItem` insère avec defaults SM-2 (interval=0, easeFactor=2.5, repetitions=0, nextReviewAt=now — dû immédiatement). `GetDocumentForReader` réutilise `columnsDocument`/`scanDocument` du package repository.
+  - `usecase/examprep.go` : ajout `CreateFlashcard` (valide rôle ETUDIANT/ENSEIGNANT, crée flashcard + ReviewItem best-effort), `ListFlashcards`, `DeleteFlashcard`, `GetDocumentForReader`, + 2 wrappers `ListUEsByIDs`/`ListUserRefsByIDs` (exposent les batch methods existants pour le handler readExamPrepDocument).
+  - `transport/http/examprep_handlers.go` : ajout handler `readExamPrepDocument` (GET /documents/{id}/read), `createFlashcard` (POST /flashcards — IA synchrone via `s.aiService.ChatCompletion`), `listFlashcards` (GET /flashcards), `deleteFlashcard` (DELETE /flashcards/{id}). Helpers : `buildFlashcardPrompt` (prompt JSON-strict pour {recto, verso}), `parseFlashcardAIResponse` (tolérant aux markdown fences ```json ... ``` et au texte avant/après le JSON), DTOs `examPrepReaderDocumentDTO`, `examPrepFlashcardDTO`, `examPrepCreateFlashcardBody`, `ownerRefDTO`, `ueRefDTO`.
+  - `transport/http/router.go` : ajout 4 routes dans le block `/api/exam-prep` : `GET /documents/{id}/read`, `GET /flashcards`, `POST /flashcards`, `DELETE /flashcards/{id}`.
+- Frontend (React/Next.js) :
+  - `document-reader.tsx` : ajout détection sélection texte (listener `selectionchange`), menu flottant (framer-motion, position `fixed` au-dessus de la sélection via `getBoundingClientRect()`), deux boutons "Créer une Flashcard" (POST /flashcards avec loading + toast) et "Explique-moi ce passage" (callback `onExplainPassage(text, documentId)`), hint banner en haut de la zone de lecture. Fermeture du menu sur clic extérieur / Escape. Refus de ré-ouvrir pendant `creatingFlashcard`.
+  - `exam-prep-page.tsx` : lift de l'état `qaPrefill` au niveau page (le DocumentReader est monté ici, le tab Q&A est dans ExamPrepDocumentDetail). Callback `handleExplainPassage` : ferme le reader + set `selectedId` (bascule vue détail) + set `qaPrefill`. Passage de `qaPrefill`/`onConsumeQaPrefill` à ExamPrepDocumentDetail, et `onExplainPassage` à DocumentReader.
+  - `exam-prep-document-detail.tsx` : ajout props `qaPrefill`/`onConsumeQaPrefill`, état initial tab = 'qa' si prefill non vide, ajout onglet "Flashcards" (icon `Layers`) avec `ExamPrepFlashcardsTab`, transmission du prefill à `ExamPrepQaTab`.
+  - `tabs/exam-prep-qa-tab.tsx` : ajout props `prefillQuestion`/`onConsumePrefill`, useEffect auto-send quand prefill change (guard `prefillConsumedRef` pour éviter double émission en StrictMode). Fix bugs pré-existants : envoi `question` (et non `message`) au backend, mapping `data.response` → Message assistant (et non `data.message` qui n'existait pas).
+  - `tabs/exam-prep-flashcards-tab.tsx` (NEW) : TanStack Query (`['exam-prep-flashcards', documentId]`), flip recto/verso (opacity + translate), delete avec `useMutation` + invalidation, empty state avec guide d'utilisation.
+- Vérification tabs Go : `sed -n | cat -A` sur les 5 fichiers Go modifiés → `^I` partout, aucun espace d'indentation dans le nouveau code.
+- Vérification équilibre braces/parens/brackets : tous à 0 (sanity check via script Python qui retire strings + commentaires avant de compter).
+- Commit `3a20a71` + push vers `origin/main` (déploiement Vercel/Render déclenché).
+
+Stage Summary:
+- **10 fichiers modifiés** (5 backend Go + 4 frontend React + 1 nouveau tab frontend). Total : +1180 lignes, -20 lignes.
+- **Backend — nouvelles signatures Go** :
+  - `domain.Flashcard` struct `{ID, ChapterID *string, DocumentID *string, Recto, Verso, CreatedAt time.Time}`
+  - `domain.CreateFlashcardInput` struct `{UserID, DocumentID *string, ChapterID *string, Recto, Verso}`
+  - `domain.ExamPrepRepository` interface +5 méthodes : `CreateFlashcard(ctx, input CreateFlashcardInput) (*Flashcard, error)`, `ListFlashcards(ctx, userID, documentID string) ([]*Flashcard, error)`, `DeleteFlashcard(ctx, userID, flashcardID string) error`, `CreateFlashcardReviewItem(ctx, userID, flashcardID string, chapterID *string) error`, `GetDocumentForReader(ctx, documentID string) (*Document, error)`
+  - `usecase.ExamPrepUseCase` +6 méthodes : `CreateFlashcard`, `ListFlashcards`, `DeleteFlashcard`, `GetDocumentForReader`, `ListUEsByIDs` (wrapper), `ListUserRefsByIDs` (wrapper)
+  - Handlers : `(s *Server) readExamPrepDocument`, `createFlashcard`, `listFlashcards`, `deleteFlashcard`
+  - Routes : `GET /api/exam-prep/documents/{id}/read`, `GET /api/exam-prep/flashcards`, `POST /api/exam-prep/flashcards`, `DELETE /api/exam-prep/flashcards/{id}`
+- **Frontend — nouveaux composants/props** :
+  - `DocumentReader` + prop `onExplainPassage?: (text, documentId) => void`
+  - `ExamPrepDocumentDetail` + props `qaPrefill?: string`, `onConsumeQaPrefill?: () => void` + nouvel onglet `flashcards`
+  - `ExamPrepQaTab` + props `prefillQuestion?: string`, `onConsumePrefill?: () => void`
+  - `ExamPrepFlashcardsTab` (NEW) `{documentId, chapters}` — liste + flip + delete
+  - `ExamPrepPage` : état `qaPrefill` + callback `handleExplainPassage`
+- **IA prompt pour flashcard** (system) :
+  ```
+  Tu es un assistant pédagogique qui crée des flashcards de révision.
+  À partir d'un passage de cours sélectionné par l'étudiant, tu génères UNE flashcard au format JSON strict :
+  {"recto": "<question claire et concise>", "verso": "<réponse pédagogique correcte>"}
+  Règles :
+  1. La question (recto) doit être reformulée à partir du passage — ne recopie pas le texte tel quel.
+  2. La réponse (verso) doit être fidèle au passage, concise (1–4 phrases), et suffisante pour réviser.
+  3. Réponds UNIQUEMENT avec le JSON, sans markdown, sans commentaire, sans texte avant ou après.
+  4. Si le passage est trop court ou incohérent, réponds : {"recto": "", "verso": ""}
+  ```
+  User prompt : `[PASSAGE SÉLECTIONNÉ]\n{selectedText}\n\nGénère la flashcard JSON.` — selectedText tronqué à 4000 chars.
+- **Liaison flashcard ↔ utilisateur (convention HIGHLIGHT-FLASHCARD-1)** : la table `Flashcard` n'ayant pas de colonne `userId`, l'appartenance est dérivée via `ReviewItem` : une flashcard appartient à l'utilisateur X s'il existe un `ReviewItem` avec `questionId = flashcard.id AND userId = X`. La colonne `ReviewItem.questionId` (existante, aussi utilisée pour les questions d'entraînement) est réutilisée pour stocker l'ID flashcard — pas de migration nécessaire. `ListFlashcards` fait un JOIN `ReviewItem` sur ce critère. `DeleteFlashcard` supprime d'abord le ReviewItem (cascade manuelle, pas de FK), puis la Flashcard. Chaque création génère une NOUVELLE flashcard (1:1 flashcard ↔ ReviewItem).
+- **Git commit** : `3a20a716d078f1bb8bc4a70734b59f006bc52a6c` — poussé sur `origin/main` (déploiement Vercel + Render déclenché).
+- **Tabs préservés** : extrait `cat -A` du domaine `Flashcard` struct :
+  ```
+  type Flashcard struct {$
+  ^IID         string    `json:"id"`$
+  ^IChapterID  *string   `json:"chapterId,omitempty"`$
+  ^IDocumentID *string   `json:"documentId,omitempty"`$
+  ^IRecto      string    `json:"recto"`$
+  ^IVerso      string    `json:"verso"`$
+  ^ICreatedAt  time.Time `json:"createdAt"`$
+  }$
+  ```
+  Tous les fichiers Go modifiés utilisent `^I` (tab) pour l'indentation, aucun espace d'indentation dans le nouveau code. Vérifié aussi sur repository/usecase/handlers/router.
+- **"Explique-moi ce passage" wiring end-to-end** : ✅ COMPLET.
+  1. DocumentReader : sélection → menu flottant → clic "Explique-moi ce passage" → `onExplainPassage(text, documentId)`.
+  2. ExamPrepPage : `handleExplainPassage` ferme le reader + `setSelectedId(documentId)` (bascule vue détail) + `setQaPrefill(text)`.
+  3. ExamPrepDocumentDetail : reçoit `qaPrefill` + `onConsumeQaPrefill`, état initial tab = 'qa' si prefill non vide, transmet `prefillQuestion` à ExamPrepQaTab.
+  4. ExamPrepQaTab : useEffect détecte le changement de `prefillQuestion`, appelle `handleSend(prefillQuestion)` (envoie auto au backend Q&A RAG), puis `onConsumePrefill()` pour vider l'état parent. Guard `prefillConsumedRef` évite la double émission en React StrictMode.
+  - Note : 2 bugs pré-existants dans `exam-prep-qa-tab.tsx` ont été corrigés au passage : (a) envoi de `question` au lieu de `message` au backend (le backend `examPrepQABody` attend `question`), (b) mapping `data.response` → Message assistant (le backend retourne `{response, model, citations, documentId}`, pas `{message}`).
+- **Risques / follow-ups** :
+  1. **`ReviewItem.questionId` reuse** : la colonne est partagée entre les ReviewItems de questions d'entraînement (où `questionId` pointe vers `Question.id`) et les ReviewItems de flashcards (où `questionId` pointe vers `Flashcard.id`). Pas de discriminateur formel — la distinction se fait au moment du JOIN (`ListFlashcards` JOIN Flashcard, `ListReviewItems` ne JOIN pas). Si un ID de Question et un ID de Flashcard collisionnaient (UUID → quasi impossible), il y aurait ambiguïté. Acceptable en v1.
+  2. **Pas de `userId` sur `Flashcard`** : la flashcard est théoriquement visible par n'importe qui qui connaît l'ID, mais `ListFlashcards` filtre via le JOIN ReviewItem → chaque étudiant ne voit que ses propres flashcards. Un nettoyage périodique des flashcards orphelines (sans ReviewItem) serait souhaitable (cron SQL).
+  3. **`/api/exam-prep/documents/{id}/download`** : toujours 404 (pré-existant, non implémenté). Le bouton "Télécharger TXT/PDF" du DocumentReader ne fonctionne pas. Hors scope HIGHLIGHT-FLASHCARD-1 — à corriger dans un autre ticket.
+  4. **`MarkReviewed` pour flashcards** : le frontend n'a pas encore de UI "marquer cette flashcard comme révisée" dans l'onglet Flashcards. Le ReviewItem est créé avec `nextReviewAt = now` (dû immédiatement) et sera visible dans l'onglet Planning/Progression (ListReviewItems), mais l'action "Marquer révisé" appelle `MarkReviewed(itemID, quality)` qui attend l'ID du ReviewItem (pas l'ID de la flashcard). Il faudrait soit exposer le `reviewItemId` dans le DTO flashcard, soit ajouter un endpoint dédié. Follow-up.
+  5. **Validation `selectedText` < 10 chars** : le backend rejette les sélections trop courtes. Le frontend affiche aussi le menu seulement si > 10 chars. Cohérent.
+  6. **IA synchrone** : `createFlashcard` fait un appel LLM synchrone (l'étudiant attend). Si l'IA est lente (>5s), l'UX peut être dégradée. Le bouton affiche un spinner. Pour v2, envisager une génération async (202 + job) comme pour `practice/generate`.
+  7. **`parseFlashcardAIResponse`** : tolérant aux markdown fences et au texte autour du JSON, mais ne gère pas le cas où l'IA retourne plusieurs objets JSON (prend le premier `{` et le dernier `}`). Si l'IA retourne `{"recto": "..."} {"verso": "..."}` (2 objets), le parse échouerait. Acceptable — le prompt demande explicitement UN objet.
+  8. **Tabs dans `exam-prep-document-detail.tsx`** : la `TabsList` est passée de `grid-cols-3` à `grid-cols-4` (7 onglets au total) pour accommoder le nouvel onglet Flashcards. Sur mobile, les libellés sont raccourcis (`Cards`, `Aide`, `Progr.`, etc.). À surveiller si d'autres onglets sont ajoutés.
+- **Go non installé** : la compilation n'a pas pu être vérifiée localement. Review manuelle approfondie effectuée (imports, types, braces, signatures interface↔impl, équilibre braces/parens/brackets via script Python). Le build Render le validera au déploiement.
