@@ -59,13 +59,13 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := fmt.Sprintf(`
-                        SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
-                               "details", "adresseIp", "createdAt"
-                        FROM "AuditLog"
-                        %s
-                        ORDER BY "createdAt" DESC
-                        LIMIT $%d
-                `, whereClause, argIdx)
+			SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
+			       "details", "adresseIp", "createdAt"
+			FROM "AuditLog"
+			%s
+			ORDER BY "createdAt" DESC
+			LIMIT $%d
+		`, whereClause, argIdx)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)
@@ -125,12 +125,12 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
 	result := []provider{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "name", "provider", "baseUrl", "apiKey", "model",
-                               "temperature", "maxTokens", "isActive", "priority",
-                               "extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"
-                        FROM "AIProviderConfig"
-                        ORDER BY "priority" ASC
-                `)
+			SELECT "id", "name", "provider", "baseUrl", "apiKey", "model",
+			       "temperature", "maxTokens", "isActive", "priority",
+			       "extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"
+			FROM "AIProviderConfig"
+			ORDER BY "priority" ASC
+		`)
 		if err != nil {
 			return err
 		}
@@ -210,13 +210,13 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := fmt.Sprintf(`
-                        SELECT "id", "titre", "description", "severity"::text, "type"::text,
-                               "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt"
-                        FROM "Alerte"
-                        %s
-                        ORDER BY "createdAt" DESC
-                        LIMIT $%d
-                `, whereClause, argIdx)
+			SELECT "id", "titre", "description", "severity"::text, "type"::text,
+			       "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt"
+			FROM "Alerte"
+			%s
+			ORDER BY "createdAt" DESC
+			LIMIT $%d
+		`, whereClause, argIdx)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)
@@ -288,13 +288,13 @@ func (s *Server) validationsUEListReal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := fmt.Sprintf(`
-                        SELECT "id", "etudiantId", "uniteEnseignementId", "anneeAcademiqueId",
-                               "statut"::text, "moyenneUE", "noteNormale", "noteRattrapage",
-                               "noteFinale", "nbEpreuvesTotal", "nbEpreuvesCompletees", "dateValidation"
-                        FROM "ValidationUE"
-                        %s
-                        ORDER BY "createdAt" DESC
-                `, whereClause)
+			SELECT "id", "etudiantId", "uniteEnseignementId", "anneeAcademiqueId",
+			       "statut"::text, "moyenneUE", "noteNormale", "noteRattrapage",
+			       "noteFinale", "nbEpreuvesTotal", "nbEpreuvesCompletees", "dateValidation"
+			FROM "ValidationUE"
+			%s
+			ORDER BY "createdAt" DESC
+		`, whereClause)
 
 		rows, err := tx.Query(r.Context(), query, args...)
 		if err != nil {
@@ -362,15 +362,15 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
 	result := []abonnement{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-                        SELECT a."id", a."etablissementId", a."planId", a."statut"::text,
-                               a."dateDebut", a."dateFin", a."periodeEssaiJours", a."modePaiement",
-                               a."montantPaye", a."renouvellementAuto", a."notes",
-                               e."id", e."nom", p."id", p."nom", p."prixMensuel"
-                        FROM "Abonnement" a
-                        LEFT JOIN "Etablissement" e ON e."id" = a."etablissementId"
-                        LEFT JOIN "Plan" p ON p."id" = a."planId"
-                        ORDER BY a."createdAt" DESC
-                `)
+			SELECT a."id", a."etablissementId", a."planId", a."statut"::text,
+			       a."dateDebut", a."dateFin", a."periodeEssaiJours", a."modePaiement",
+			       a."montantPaye", a."renouvellementAuto", a."notes",
+			       e."id", e."nom", p."id", p."nom", p."prixMensuel"
+			FROM "Abonnement" a
+			LEFT JOIN "Etablissement" e ON e."id" = a."etablissementId"
+			LEFT JOIN "Plan" p ON p."id" = a."planId"
+			ORDER BY a."createdAt" DESC
+		`)
 		if err != nil {
 			return err
 		}
@@ -452,14 +452,14 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
 	result := []plan{}
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "nom", "type"::text, "prixMensuel", "prixAnnuel",
-                               "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
-                               "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
-                               "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
-                               "support", "description", "actif"
-                        FROM "Plan"
-                        ORDER BY "prixMensuel" ASC
-                `)
+			SELECT "id", "nom", "type"::text, "prixMensuel", "prixAnnuel",
+			       "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
+			       "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
+			       "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
+			       "support", "description", "actif"
+			FROM "Plan"
+			ORDER BY "prixMensuel" ASC
+		`)
 		if err != nil {
 			return err
 		}
@@ -532,14 +532,14 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
 		}
 
 		query := fmt.Sprintf(`
-                        SELECT "id", "type", "titre", "message", "destinataireId", "destinataireRole",
-                               "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
-                               "expireLe", "createdAt"
-                        FROM "NotificationAdmin"
-                        %s
-                        ORDER BY "createdAt" DESC
-                        LIMIT $%d
-                `, whereClause, argIdx)
+			SELECT "id", "type", "titre", "message", "destinataireId", "destinataireRole",
+			       "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
+			       "expireLe", "createdAt"
+			FROM "NotificationAdmin"
+			%s
+			ORDER BY "createdAt" DESC
+			LIMIT $%d
+		`, whereClause, argIdx)
 		args = append(args, limit)
 
 		rows, err := tx.Query(r.Context(), query, args...)

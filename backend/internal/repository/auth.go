@@ -45,12 +45,12 @@ func (r *AuthRepository) FindUserForAuth(ctx context.Context, identifier string)
 	}
 
 	query := fmt.Sprintf(`
-                SELECT "id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                       "image", "actif", "mustChangePwd", "niveau", "loginAttempts", "lockedUntil",
-                       "derniereConnexion"
-                FROM "User"
-                WHERE %s
-        `, whereClause)
+		SELECT "id", "email", "name", "password", "role", "etablissementId", "filiereId",
+		       "image", "actif", "mustChangePwd", "niveau", "loginAttempts", "lockedUntil",
+		       "derniereConnexion"
+		FROM "User"
+		WHERE %s
+	`, whereClause)
 
 	row := tx.QueryRow(ctx, query, identifier)
 	u, err := scanAuthUser(row)
@@ -80,12 +80,12 @@ func (r *AuthRepository) GetUserByID(ctx context.Context, userID string) (*domai
 	}
 
 	row := tx.QueryRow(ctx, `
-                SELECT "id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                       "image", "actif", "mustChangePwd", "niveau", "loginAttempts", "lockedUntil",
-                       "derniereConnexion"
-                FROM "User"
-                WHERE "id" = $1
-        `, userID)
+		SELECT "id", "email", "name", "password", "role", "etablissementId", "filiereId",
+		       "image", "actif", "mustChangePwd", "niveau", "loginAttempts", "lockedUntil",
+		       "derniereConnexion"
+		FROM "User"
+		WHERE "id" = $1
+	`, userID)
 
 	u, err := scanAuthUser(row)
 	if err != nil {
@@ -114,10 +114,10 @@ func (r *AuthRepository) UpdateLoginSuccess(ctx context.Context, userID string) 
 	}
 
 	_, err = tx.Exec(ctx, `
-                UPDATE "User"
-                SET "loginAttempts" = 0, "lockedUntil" = NULL, "derniereConnexion" = CURRENT_TIMESTAMP
-                WHERE "id" = $1
-        `, userID)
+		UPDATE "User"
+		SET "loginAttempts" = 0, "lockedUntil" = NULL, "derniereConnexion" = CURRENT_TIMESTAMP
+		WHERE "id" = $1
+	`, userID)
 	if err != nil {
 		return fmt.Errorf("update login success: %w", err)
 	}
@@ -141,11 +141,11 @@ func (r *AuthRepository) IncrementLoginAttempts(ctx context.Context, userID stri
 	// Incrémenter + récupérer le nouveau count
 	var attempts int
 	err = tx.QueryRow(ctx, `
-                UPDATE "User"
-                SET "loginAttempts" = "loginAttempts" + 1
-                WHERE "id" = $1
-                RETURNING "loginAttempts"
-        `, userID).Scan(&attempts)
+		UPDATE "User"
+		SET "loginAttempts" = "loginAttempts" + 1
+		WHERE "id" = $1
+		RETURNING "loginAttempts"
+	`, userID).Scan(&attempts)
 	if err != nil {
 		return 0, fmt.Errorf("increment login attempts: %w", err)
 	}
@@ -153,10 +153,10 @@ func (r *AuthRepository) IncrementLoginAttempts(ctx context.Context, userID stri
 	// Si seuil atteint, poser lockedUntil
 	if attempts >= maxAttempts {
 		_, err = tx.Exec(ctx, `
-                        UPDATE "User"
-                        SET "lockedUntil" = CURRENT_TIMESTAMP + $1::interval
-                        WHERE "id" = $2
-                `, fmt.Sprintf("%d seconds", int(lockDuration.Seconds())), userID)
+			UPDATE "User"
+			SET "lockedUntil" = CURRENT_TIMESTAMP + $1::interval
+			WHERE "id" = $2
+		`, fmt.Sprintf("%d seconds", int(lockDuration.Seconds())), userID)
 		if err != nil {
 			return 0, fmt.Errorf("set locked until: %w", err)
 		}
@@ -181,9 +181,9 @@ func (r *AuthRepository) CreateRefreshToken(ctx context.Context, rt *domain.Refr
 	}
 
 	_, err = tx.Exec(ctx, `
-                INSERT INTO "RefreshToken" ("id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip")
-                VALUES ($1, $2, $3, $4, NULL, CURRENT_TIMESTAMP, $5, $6)
-        `, rt.ID, rt.UserID, rt.TokenHash, rt.ExpiresAt, rt.UserAgent, rt.IP)
+		INSERT INTO "RefreshToken" ("id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip")
+		VALUES ($1, $2, $3, $4, NULL, CURRENT_TIMESTAMP, $5, $6)
+	`, rt.ID, rt.UserID, rt.TokenHash, rt.ExpiresAt, rt.UserAgent, rt.IP)
 	if err != nil {
 		return fmt.Errorf("insert refresh token: %w", err)
 	}
@@ -204,10 +204,10 @@ func (r *AuthRepository) FindRefreshTokenByHash(ctx context.Context, hash string
 	}
 
 	row := tx.QueryRow(ctx, `
-                SELECT "id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip"
-                FROM "RefreshToken"
-                WHERE "tokenHash" = $1
-        `, hash)
+		SELECT "id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip"
+		FROM "RefreshToken"
+		WHERE "tokenHash" = $1
+	`, hash)
 
 	rt := &domain.RefreshToken{}
 	err = row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
@@ -237,8 +237,8 @@ func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenID string)
 	}
 
 	_, err = tx.Exec(ctx, `
-                UPDATE "RefreshToken" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "id" = $1
-        `, tokenID)
+		UPDATE "RefreshToken" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "id" = $1
+	`, tokenID)
 	if err != nil {
 		return fmt.Errorf("revoke refresh token: %w", err)
 	}
@@ -259,10 +259,10 @@ func (r *AuthRepository) RevokeAllUserRefreshTokens(ctx context.Context, userID 
 	}
 
 	_, err = tx.Exec(ctx, `
-                UPDATE "RefreshToken"
-                SET "revokedAt" = CURRENT_TIMESTAMP
-                WHERE "userId" = $1 AND "revokedAt" IS NULL
-        `, userID)
+		UPDATE "RefreshToken"
+		SET "revokedAt" = CURRENT_TIMESTAMP
+		WHERE "userId" = $1 AND "revokedAt" IS NULL
+	`, userID)
 	if err != nil {
 		return fmt.Errorf("revoke all user refresh tokens: %w", err)
 	}
@@ -280,9 +280,9 @@ func (r *AuthRepository) CreateAuditLog(ctx context.Context, entry *domain.Audit
 
 	// AuditLog a une policy INSERT WITH CHECK(true) → pas besoin de bypass RLS
 	_, err = tx.Exec(ctx, `
-                INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "createdAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
-        `,
+		INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "createdAt")
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+	`,
 		uuid.NewString(), nullableString(entry.UserID), nullableString(entry.UserEmail),
 		entry.Action, entry.Entite, nullableString(entry.EntiteID),
 		entry.Details, entry.AdresseIP,
@@ -307,10 +307,10 @@ func (r *AuthRepository) UpdatePassword(ctx context.Context, userID string, pass
 	}
 
 	_, err = tx.Exec(ctx, `
-                UPDATE "User"
-                SET "password" = $2, "mustChangePwd" = false, "loginAttempts" = 0, "lockedUntil" = NULL
-                WHERE "id" = $1
-        `, userID, passwordHash)
+		UPDATE "User"
+		SET "password" = $2, "mustChangePwd" = false, "loginAttempts" = 0, "lockedUntil" = NULL
+		WHERE "id" = $1
+	`, userID, passwordHash)
 	if err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
