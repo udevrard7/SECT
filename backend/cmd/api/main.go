@@ -111,6 +111,8 @@ func main() {
 	authMiddleware := middleware.Auth(signer)
 	// IA-WORKER-1 : démarrer le worker IA asynchrone (goroutine)
 	iaWorker := worker.NewIAWorker(pool, logger)
+	// Graceful shutdown : reprendre les jobs interrompus par un redemarrage
+	iaWorker.RecoverInterruptedJobs(context.Background())
 	iaWorker.Start(context.Background())
 
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)

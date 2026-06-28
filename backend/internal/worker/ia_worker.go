@@ -267,3 +267,56 @@ func (w *IAWorker) markEpreuveError(ctx context.Context, epreuveID, errorMsg str
 	w.updateEpreuveStatus(ctx, epreuveID, "BROUILLON", "", "")
 	w.logger.Error("IA job failed", "epreuveId", epreuveID, "error", errorMsg)
 }
+
+
+// RecoverInterruptedJobs recherche les epreuves restees bloquees au statut
+// EN_COURS (a cause d'un redemarrage Render) et les reinjecte dans la queue.
+//
+// A appeler au demarrage de main.go, apres NewIAWorker et avant Start.
+// Graceful shutdown : aucun job n'est jamais perdu a cause de l'infra.
+func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
+	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		w.logger.Error("RecoverInterruptedJobs: failed to begin tx", "error", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	tx.Exec(ctx, "SET LOCAL row_security = off")
+
+	rows, err := tx.Query(ctx, `
+		SELECT "id", "enseignantId", "contenu"
+		FROM "Epreuve"
+		WHERE "statut" = 'EN_COURS'
+			AND "deletedAt" IS NULL
+			AND ("contenu" IS NULL OR "contenu" = 'null'::jsonb)
+	`)
+	if err != nil {
+		w.logger.Error("RecoverInterruptedJobs: query failed", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	recovered := 0
+	for rows.Next() {
+		var epreuveID, enseignantID string
+		var contenu *[]byte
+		if err := rows.Scan(&epreuveID, &enseignantID, &contenu); err != nil {
+			continue
+		}
+		w.logger.Warn("Recovering interrupted epreuve", "epreuveId", epreuveID, "enseignantId", enseignantID)
+		tx.Exec(ctx, `
+			UPDATE "Epreuve" SET "statut" = 'BROUILLON', "updatedAt" = CURRENT_TIMESTAMP
+			WHERE "id" = $1
+		`, epreuveID)
+		recovered++
+	}
+
+	tx.Commit(ctx)
+
+	if recovered > 0 {
+		w.logger.Info("Recovered interrupted jobs", "count", recovered)
+	} else {
+		w.logger.Info("No interrupted jobs to recover")
+	}
+}
