@@ -28,18 +28,18 @@ import (
 // Contrat attendu par le frontend (cf. EnseignantStatsData dans
 // frontend/src/hooks/use-dashboard.ts) :
 //
-//      {
-//        nbDocuments, nbQuestionsTotal, nbEpreuves, nbEpreuvesActives,
-//        nbCorrectionsEnAttente,
-//        pendingCorrections: [{ sessionId, etudiantNom, etudiantEmail,
-//          epreuveTitre, questionType, questionPreview, submittedAt }],
-//        recentEpreuves:    [{ id, titre, statut, nbParticipants, moyenne?, date }],
-//        performanceParEpreuve: [{ titre, moyenne, tauxReussite }],
-//        evolutionMoyennes: [{ mois, moyenne, nbEvaluations }],
-//        epreuvesAVenir:    [{ id, titre, date, dateFin, duree, statut,
-//          nbParticipants }],
-//        badges?: [...]  // ignoré par le frontend (utilise /api/badges)
-//      }
+//	{
+//	  nbDocuments, nbQuestionsTotal, nbEpreuves, nbEpreuvesActives,
+//	  nbCorrectionsEnAttente,
+//	  pendingCorrections: [{ sessionId, etudiantNom, etudiantEmail,
+//	    epreuveTitre, questionType, questionPreview, submittedAt }],
+//	  recentEpreuves:    [{ id, titre, statut, nbParticipants, moyenne?, date }],
+//	  performanceParEpreuve: [{ titre, moyenne, tauxReussite }],
+//	  evolutionMoyennes: [{ mois, moyenne, nbEvaluations }],
+//	  epreuvesAVenir:    [{ id, titre, date, dateFin, duree, statut,
+//	    nbParticipants }],
+//	  badges?: [...]  // ignoré par le frontend (utilise /api/badges)
+//	}
 //
 // Tous les tableaux sont des slices vides (non null) quand il n'y a pas de
 // données, pour éviter les crashes runtime côté frontend (ex: .map() sur undefined).
@@ -323,17 +323,17 @@ func (s *Server) statsEnseignant(w http.ResponseWriter, r *http.Request) {
 //
 // Contrat attendu par le frontend (EtudiantStatsData) :
 //
-//      {
-//        nbEpreuvesAVenir, nbEpreuvesTerminees, moyenne, meilleureNote,
-//        epreuvesAVenir: [{ id, titre, date, dateFin, duree, enseignant,
-//          nbQuestions, totalPoints }],
-//        resultatsRecents: [{ id, epreuveId, titre, enseignant, date, score,
-//          statut, resultat: { scoreFinal, totalPossible } | null }],
-//        evolutionScores: [{ titre, score, date }],
-//        performanceParType: [{ type, moyenne, nbReponses }],
-//        sessionEnCours: { id, epreuveId, epreuveTitre, dateDebut } | null,
-//        badges?: [...]
-//      }
+//	{
+//	  nbEpreuvesAVenir, nbEpreuvesTerminees, moyenne, meilleureNote,
+//	  epreuvesAVenir: [{ id, titre, date, dateFin, duree, enseignant,
+//	    nbQuestions, totalPoints }],
+//	  resultatsRecents: [{ id, epreuveId, titre, enseignant, date, score,
+//	    statut, resultat: { scoreFinal, totalPossible } | null }],
+//	  evolutionScores: [{ titre, score, date }],
+//	  performanceParType: [{ type, moyenne, nbReponses }],
+//	  sessionEnCours: { id, epreuveId, epreuveTitre, dateDebut } | null,
+//	  badges?: [...]
+//	}
 func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -379,23 +379,23 @@ func (s *Server) statsEtudiant(w http.ResponseWriter, r *http.Request) {
 		NbReponses int     `json:"nbReponses"`
 	}
 	type sessionEnCours struct {
-		ID            string `json:"id"`
-		EpreuveID     string `json:"epreuveId"`
-		EpreuveTitre  string `json:"epreuveTitre"`
-		DateDebut     string `json:"dateDebut"`
+		ID           string `json:"id"`
+		EpreuveID    string `json:"epreuveId"`
+		EpreuveTitre string `json:"epreuveTitre"`
+		DateDebut    string `json:"dateDebut"`
 	}
 
 	stats := map[string]any{
-		"nbEpreuvesAVenir":      0,
-		"nbEpreuvesTerminees":   0,
-		"moyenne":               0,
-		"meilleureNote":         0,
-		"epreuvesAVenir":        []epreuveAVenir{},
-		"resultatsRecents":      []resultatRecent{},
-		"evolutionScores":       []evolutionScore{},
-		"performanceParType":    []performanceType{},
-		"sessionEnCours":        nil,
-		"badges":                []any{},
+		"nbEpreuvesAVenir":    0,
+		"nbEpreuvesTerminees": 0,
+		"moyenne":             0,
+		"meilleureNote":       0,
+		"epreuvesAVenir":      []epreuveAVenir{},
+		"resultatsRecents":    []resultatRecent{},
+		"evolutionScores":     []evolutionScore{},
+		"performanceParType":  []performanceType{},
+		"sessionEnCours":      nil,
+		"badges":              []any{},
 	}
 
 	err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
@@ -596,28 +596,216 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	stats := map[string]any{
-		"totalEtablissements": 0,
-		"totalUsers":          0,
-		"totalEpreuves":       0,
-		"totalSessions":       0,
-		"abonnementsActifs":   0,
+	// Types de réponse (toujours initialisés avec slices vides — JAMAIS nil).
+	type planCount struct {
+		Plan  string `json:"plan"`
+		Count int    `json:"count"`
+	}
+	type statutCount struct {
+		Statut string `json:"statut"`
+		Count  int    `json:"count"`
+	}
+	type responsableRef struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+		Actif bool   `json:"actif"`
+	}
+	type etablissementOverview struct {
+		ID               string          `json:"id"`
+		Nom              string          `json:"nom"`
+		Ville            *string         `json:"ville"`
+		Type             *string         `json:"type"`
+		Actif            bool            `json:"actif"`
+		AbonnementStatut *string         `json:"abonnementStatut"`
+		PlanNom          *string         `json:"planNom"`
+		NbUsers          int             `json:"nbUsers"`
+		NbFilieres       int             `json:"nbFilieres"`
+		ProctoringActif  bool            `json:"proctoringActif"`
+		AdminHasAccess   bool            `json:"adminHasAccess"`
+		Responsable      *responsableRef `json:"responsable"`
 	}
 
-	_ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
-		var nbEtab, nbUsers, nbEpreuves, nbSessions, nbAbo int
+	stats := map[string]any{
+		"nbEtablissements":         0,
+		"nbAbonnementsActifs":      0,
+		"nbAbonnementsEssai":       0,
+		"nbAbonnementsExpires":     0,
+		"revenuMensuel":            float64(0),
+		"revenuAnnuel":             float64(0),
+		"repartitionPlans":         []planCount{},
+		"etablissementsParStatut":  []statutCount{},
+		"nbEtablissementsProteges": 0,
+		"nbVerificationIdentite":   0,
+		"nbAutorisationsActives":   0,
+		"nbAutorisationsEnAttente": 0,
+		"etablissementsOverview":   []etablissementOverview{},
+	}
+
+	err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
+		// 1. Compteur global établissements
+		var nbEtab int
 		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "Etablissement"`).Scan(&nbEtab)
-		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE actif = true`).Scan(&nbUsers)
-		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "Epreuve" WHERE "deletedAt" IS NULL`).Scan(&nbEpreuves)
-		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation"`).Scan(&nbSessions)
-		_ = tx.QueryRow(ctx, `SELECT count(*) FROM "Abonnement" WHERE statut = 'ACTIF'`).Scan(&nbAbo)
-		stats["totalEtablissements"] = nbEtab
-		stats["totalUsers"] = nbUsers
-		stats["totalEpreuves"] = nbEpreuves
-		stats["totalSessions"] = nbSessions
-		stats["abonnementsActifs"] = nbAbo
+		stats["nbEtablissements"] = nbEtab
+
+		// 2. Compteurs abonnements par statut
+		var nbAboActif, nbAboEssai, nbAboExpire int
+		_ = tx.QueryRow(ctx, `
+			SELECT
+				count(*) FILTER (WHERE statut = 'ACTIF'),
+				count(*) FILTER (WHERE statut = 'ESSAI'),
+				count(*) FILTER (WHERE statut = 'EXPIRE')
+			FROM "Abonnement"
+		`).Scan(&nbAboActif, &nbAboEssai, &nbAboExpire)
+		stats["nbAbonnementsActifs"] = nbAboActif
+		stats["nbAbonnementsEssai"] = nbAboEssai
+		stats["nbAbonnementsExpires"] = nbAboExpire
+
+		// 3. Revenus mensuel / annuel (somme des prix des plans pour les
+		// abonnements ACTIF ou ESSAI).
+		var revenuMensuel, revenuAnnuel float64
+		_ = tx.QueryRow(ctx, `
+			SELECT COALESCE(sum(p."prixMensuel"), 0)
+			FROM "Abonnement" a
+			JOIN "Plan" p ON p."id" = a."planId"
+			WHERE a.statut IN ('ACTIF', 'ESSAI')
+		`).Scan(&revenuMensuel)
+		_ = tx.QueryRow(ctx, `
+			SELECT COALESCE(sum(p."prixAnnuel"), 0)
+			FROM "Abonnement" a
+			JOIN "Plan" p ON p."id" = a."planId"
+			WHERE a.statut IN ('ACTIF', 'ESSAI')
+		`).Scan(&revenuAnnuel)
+		stats["revenuMensuel"] = revenuMensuel
+		stats["revenuAnnuel"] = revenuAnnuel
+
+		// 4. Répartition des abonnements par plan (tous les plans, même
+		// sans abonnement, pour l'affichage du pie chart).
+		rowsPlans, qerr := tx.Query(ctx, `
+			SELECT COALESCE(p.nom, '—') AS plan, count(a.id) AS count
+			FROM "Plan" p
+			LEFT JOIN "Abonnement" a ON a."planId" = p."id"
+			GROUP BY p.nom
+			ORDER BY count DESC
+		`)
+		if qerr == nil {
+			defer rowsPlans.Close()
+			rep := []planCount{}
+			for rowsPlans.Next() {
+				var pc planCount
+				if err := rowsPlans.Scan(&pc.Plan, &pc.Count); err == nil {
+					rep = append(rep, pc)
+				}
+			}
+			stats["repartitionPlans"] = rep
+		}
+
+		// 5. Répartition des abonnements par statut
+		rowsStatuts, qerr := tx.Query(ctx, `
+			SELECT statut::text, count(*) AS count
+			FROM "Abonnement"
+			GROUP BY statut
+			ORDER BY count DESC
+		`)
+		if qerr == nil {
+			defer rowsStatuts.Close()
+			st := []statutCount{}
+			for rowsStatuts.Next() {
+				var sc statutCount
+				if err := rowsStatuts.Scan(&sc.Statut, &sc.Count); err == nil {
+					st = append(st, sc)
+				}
+			}
+			stats["etablissementsParStatut"] = st
+		}
+
+		// 6. Autorisations EtablissementAccess
+		var nbAutActif, nbAutAttente int
+		_ = tx.QueryRow(ctx, `
+			SELECT
+				count(*) FILTER (WHERE statut = 'ACTIF'),
+				count(*) FILTER (WHERE statut = 'EN_ATTENTE')
+			FROM "EtablissementAccess"
+		`).Scan(&nbAutActif, &nbAutAttente)
+		stats["nbAutorisationsActives"] = nbAutActif
+		stats["nbAutorisationsEnAttente"] = nbAutAttente
+
+		// 7. nbEtablissementsProteges & nbVerificationIdentite
+		// Les colonnes proctoringActif/verificationIdentite n'existent PAS
+		// directement sur Etablissement (elles vivent sur SecuritySettings,
+		// non jointes ici pour rester performant). On retourne 0 par défaut.
+		stats["nbEtablissementsProteges"] = 0
+		stats["nbVerificationIdentite"] = 0
+
+		// 8. Vue d'ensemble par établissement.
+		// Pour chaque établissement, on récupère en une seule query :
+		//   - l'abonnement le plus récent (statut + plan)
+		//   - le nombre d'utilisateurs rattachés
+		//   - le nombre de filières
+		//   - si l'admin courant a un accès ACTIF
+		//   - le responsable (User role=RESPONSABLE, lié via User.etablissementId
+		//     — pas via Etablissement.responsableId qui n'existe pas)
+		// proctoringActif est forcé à false (colonne non disponible ici).
+		rowsEtab, qerr := tx.Query(ctx, `
+			SELECT
+				e.id, e.nom, e.ville, e.type, e.actif,
+				(SELECT a.statut::text FROM "Abonnement" a
+				 WHERE a."etablissementId" = e.id
+				 ORDER BY a."dateDebut" DESC LIMIT 1) AS abonnement_statut,
+				(SELECT p.nom FROM "Abonnement" a
+				 JOIN "Plan" p ON p.id = a."planId"
+				 WHERE a."etablissementId" = e.id
+				 ORDER BY a."dateDebut" DESC LIMIT 1) AS plan_nom,
+				(SELECT count(*) FROM "User" u WHERE u."etablissementId" = e.id) AS nb_users,
+				(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id) AS nb_filieres,
+				(SELECT count(*) FROM "EtablissementAccess" ea
+				 WHERE ea."etablissementId" = e.id
+				   AND ea."adminId" = $1
+				   AND ea.statut = 'ACTIF') AS admin_has_access,
+				ru.id, ru.name, ru.email, ru.actif
+			FROM "Etablissement" e
+			LEFT JOIN LATERAL (
+				SELECT u.id, u.name, u.email, u.actif
+				FROM "User" u
+				WHERE u."etablissementId" = e.id AND u.role = 'RESPONSABLE'
+				LIMIT 1
+			) ru ON true
+			ORDER BY e.nom ASC
+		`, claims.UserID)
+		if qerr == nil {
+			defer rowsEtab.Close()
+			overviews := []etablissementOverview{}
+			for rowsEtab.Next() {
+				var o etablissementOverview
+				var respID, respName, respEmail *string
+				var respActif *bool
+				if err := rowsEtab.Scan(
+					&o.ID, &o.Nom, &o.Ville, &o.Type, &o.Actif,
+					&o.AbonnementStatut, &o.PlanNom,
+					&o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
+					&respID, &respName, &respEmail, &respActif,
+				); err == nil {
+					if respID != nil && respName != nil && respEmail != nil && respActif != nil {
+						o.Responsable = &responsableRef{
+							ID:    *respID,
+							Name:  *respName,
+							Email: *respEmail,
+							Actif: *respActif,
+						}
+					}
+					overviews = append(overviews, o)
+				}
+			}
+			stats["etablissementsOverview"] = overviews
+		}
+
 		return nil
 	})
+
+	if err != nil {
+		http.Error(w, `{"error":"failed to load admin stats"}`, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
