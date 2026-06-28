@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/udevrard7/sect/backend/internal/ai"
 	"github.com/udevrard7/sect/backend/internal/config"
 	appdb "github.com/udevrard7/sect/backend/internal/db"
 	"github.com/udevrard7/sect/backend/internal/domain"
@@ -101,9 +102,13 @@ func main() {
 	correctionUC := usecase.NewCorrectionUseCase(correctionRepo)
 	examPrepUC := usecase.NewExamPrepUseCase(examPrepRepo)
 
+	// AI-CONNECT-1 : AIService — lit le provider actif depuis AIProviderConfig
+	// et fait les appels chat completion vers le provider (Mistral, Groq, etc.).
+	aiService := ai.NewAIService(pool)
+
 	// 4. Configurer le serveur HTTP
 	authMiddleware := middleware.Auth(signer)
-	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, pool, cfg.CORSAllowedOrigins, authMiddleware)
+	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
 	// CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
 	// toutes les 30s en une série d'appels SaveReponse (un par question).

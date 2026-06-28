@@ -5587,3 +5587,155 @@ go vet ./...      # → EXIT=0
 - Implémenter un vrai mécanisme de cooldown temps-réel (avec `cooldownUntil` persisté) — actuellement `isCoolingDown` est toujours `false`.
 - Logger les `AIFailoverEvent` lors des bascules automatiques (côté service AI, pas dans ces handlers).
 - Cache court (5s) sur `GET /api/ai-providers/failover/status` pour éviter le polling 30s qui hit la DB à chaque fois.
+
+---
+
+## Task ID : AI-CONNECT-1 — Connecter l'IA à tous les services de l'app
+
+**Objectif** : 3 services frontend cassés par des appels IA à des endpoints inexistants ou à un module `factory.ts` absent. Connecter le frontend au backend Go qui pilote les LLM externes (Mistral, Groq, OpenRouter, Z-AI) via la table `AIProviderConfig`.
+
+### 1. Problèmes initiaux
+
+| # | Service cassé | Cause | Symptôme |
+|---|---------------|-------|----------|
+| 1 | AI Assistant (chat flottant) | `POST /api/ai-assistant` non implémenté côté backend Go | 404 sur `authenticated-layout.tsx:120` |
+| 2 | Generation IA (épreuves) | `POST /api/epreuves/generate` non implémenté | 404 sur `generation-ia-page.tsx:661` |
+| 3 | AI Analyzer (`lib/ai-analyzer.ts`) | `import { getAIProvider } from '@/lib/ai-providers'` mais `factory.ts` n'existait pas | build TS cassé pour tout importateur |
+
+### 2. Architecture cible
+
+```
+Frontend (Next.js)                Backend Go                       Provider LLM (Mistral…)
+─────────────────                 ──────────                       ───────────────────────
+ai-analyzer.ts                                                   POST {baseUrl}/chat/completions
+  ↓ getAIProvider()              POST /api/ai-assistant           Authorization: Bearer {apiKey}
+  ↓ factory.ts (BackendAIProvider)  ↓ aiAssistant handler          Body: { model, messages,
+  ↓ fetch('/api/ai-assistant')      ↓ s.aiService.ChatCompletion()         temperature, max_tokens }
+                                    ↓ getActiveProvider() (RLS off)       ← { choices: [{ message }] }
+                                   SELECT * FROM "AIProviderConfig"
+                                   WHERE "isActive" = true
+```
+
+Règle : **jamais d'appel IA direct côté client** (clé API jamais exposée, failover centralisé côté backend).
+
+### 3. Fichiers créés
+
+#### `backend/internal/ai/service.go` (NOUVEAU, 209 lignes)
+
+Package `internal/ai` avec :
+
+- `AIService` struct (pool DB + `*http.Client` 180s timeout)
+- `NewAIService(dbPool *pgxpool.Pool) *AIService`
+- `ChatCompletion(ctx, []ChatMessage) (*ChatResult, error)` :
+  1. Lit le provider actif via `SELECT * FROM "AIProviderConfig" WHERE "isActive" = true ORDER BY "priority" ASC, "createdAt" ASC LIMIT 1`
+  2. Transaction avec `SET LOCAL row_security = off` (le worker de fond n'a pas de claims HTTP — appelable depuis n'importe quel contexte)
+  3. POST `{baseUrl}/chat/completions` avec headers `Authorization: Bearer {apiKey}` + `Content-Type: application/json`
+  4. Body : `{ model, messages, temperature, max_tokens }` (format OpenAI-compatible)
+  5. Parse la réponse `{ choices: [{ message: { content } }], model }`
+  6. Retourne `ChatResult{ Content, Model }`
+- Defaults de secours : `Model = "gpt-4o-mini"` si vide, `MaxTokens = 4096` si ≤ 0
+- Lecture body limitée à 8 MiB via `io.LimitReader`
+- Snippet d'erreur tronqué à 500 chars pour ne pas fuiter toute la réponse en log
+
+#### `backend/internal/transport/http/ai_handlers.go` (NOUVEAU, 480 lignes)
+
+2 handlers :
+
+**`aiAssistant` (POST /api/ai-assistant)** :
+- Body : `{ message: string, context?: { page?: string, role?: string } }`
+- Construit un system prompt pédagogique SECT (avec contexte page/role si fournis)
+- Appelle `s.aiService.ChatCompletion(ctx, [system, user])`
+- Réponse : `{ response: string, model: string }`
+
+**`epreuvesGenerate` (POST /api/epreuves/generate)** :
+- Body : `{ documentIds: string[], enseignantId: string, config: {...}, preview: boolean }`
+- Récupère le contenu textuel de chaque document via `s.documentUC.GetByID` (RLS via claims)
+- Tronque chaque doc à 12 000 chars (cohérent avec l'ancien frontend), total ≤ 60 000 chars
+- Construit un prompt système (sortie JSON stricte, structure attendue détaillée) + un prompt utilisateur (type/difficulté/langue/documents/consignes/note totale)
+- Appelle l'IA, parse la réponse JSON avec `extractJSON` (supporte blocs markdown ```json ... ``` et JSON brut)
+- Normalise chaque question (valide `type` ∈ QCU/QCM/QRC/REFLEXION/CODE, `difficulte` ∈ FACILE/MOYEN/DIFFICILE/EXPERT, propositions uniquement pour QCU/QCM, champs CODE optionnels)
+- Réponse alignée sur le shape attendu par `generation-ia-page.tsx` :
+  ```json
+  { "contenu": { "questions": [...], "consignes": "...", "baremeTotal": 20 }, "autoDetectedUEId": null }
+  ```
+
+#### `frontend/src/lib/ai-providers/factory.ts` (NOUVEAU, 196 lignes)
+
+Implémente `BackendAIProvider` (classe qui implémente l'interface `AIProvider`) :
+- `chatCompletion({ messages })` :
+  - Extrait le dernier message utilisateur + prépend le system message s'il existe
+  - POST `/api/ai-assistant` avec body `{ message, context: { page: 'ai-analyzer' } }`
+  - Reformate la réponse backend `{ response, model }` en `ChatCompletionResult` OpenAI-compatible (pour rester drop-in avec les consumers existants : `ai-analyzer.ts`, `failover-provider.ts`, etc.)
+- `testConnection()` : envoie un mini message de test et mesure le temps de réponse
+- Singleton `backendProviderInstance` pour éviter les ré-instantiations
+
+Fonctions exportées (re-exportées par `index.ts`) :
+- `getAIProvider(): AIProvider` — retourne le singleton BackendAIProvider
+- `getFailoverProviderForAdmin(): AIProvider` — alias (failover géré côté backend)
+- `createProviderFromConfig(_config): AIProvider` — ignore la config côté client, retourne le backend provider
+- `invalidateProviderCache(): void` — reset du singleton
+- `configToProviderInfo(config): AIProviderInfo | null` — convertit une config DB en `AIProviderInfo` (sans données sensibles) pour l'UI
+- `configToProviderInfoWithPriority(config): AIProviderInfo | null` — variante préservant la priorité
+
+### 4. Fichiers modifiés
+
+#### `backend/internal/transport/http/router.go`
+- Import `github.com/udevrard7/sect/backend/internal/ai`
+- Ajout champ `aiService *ai.AIService` au `Server struct`
+- Ajout paramètre `aiService *ai.AIService` à `NewServer` (entre `examPrepUC` et `dbPool`)
+- Assignation `aiService: aiService` dans la construction du struct
+- Route `POST /api/epreuves/generate` ajoutée dans le groupe `/api/epreuves` (RequireAuth)
+- Nouveau groupe `r.Route("/api/ai-assistant", ...)` avec `r.Use(middleware.RequireAuth)` + `r.Post("/", s.aiAssistant)`
+
+#### `backend/cmd/api/main.go`
+- Import `github.com/udevrard7/sect/backend/internal/ai`
+- Instanciation `aiService := ai.NewAIService(pool)` juste avant `NewServer`
+- Passage à `httptransport.NewServer(..., aiService, pool, ...)`
+
+### 5. Contraintes respectées
+
+| Contrainte | Statut |
+|------------|--------|
+| Tabs pour le Go, espaces pour le TypeScript | ✅ `gofmt -w` appliqué sur les 4 fichiers Go ; `factory.ts` utilise des espaces |
+| `go build ./...` réussit | ✅ EXIT=0 |
+| `cd frontend && bun run lint` passe (0 erreur) | ✅ EXIT=0, 1 warning préexistant (`certificat-pdf-react.tsx:312` alt-text) sans lien avec la task |
+| `go vet ./...` réussit | ✅ EXIT=0 (correction d'un fmt.Sprintf mal aligné après vet) |
+| `gofmt -l` (vérification formatage) | ✅ aucun fichier listé |
+| Ne pas casser les endpoints existants | ✅ routes existantes préservées ; `NewServer` signature étendue par ajout (param ajouté à la fin avant `dbPool` pour minimiser l'impact) |
+| `go.mod` sans nouvelle dépendance | ✅ uniquement `net/http`, `encoding/json`, `bytes`, `io`, `strings`, `time`, `context`, `fmt` de la stdlib + `pgx/v5` déjà présent |
+
+### 6. Difficultés rencontrées
+
+1. **Éditeur `Write` convertit les tabs Go en espaces** : comme pour AI-PROVIDERS-1, j'ai dû passer `gofmt -w` sur les 4 fichiers Go après écriture. Vérifié via `cat -A` (tous `^I`).
+
+2. **`router.go` n'était pas tab-formatté avant mes modifications** : le fichier contenait des espaces (8 par niveau d'indentation). `gofmt -l` listait déjà le fichier avant que je n'y touche. J'ai lancé `gofmt -w` une fois pour normaliser, puis fait mes edits. La conversion n'affecte que le whitespace (pas la logique).
+
+3. **`go vet` a détecté un mismatch args/verbs dans `fmt.Sprintf`** : dans `buildEpreuvePrompt`, le format avait 7 `%s` + 1 `%.2f` (8 verbs) mais seulement 7 args (`typeInstr, diffInstr, langInstr, ...`). Le `%.2f` récupérait l'arg suivant (inexistant) → `cfg.NoteTotal` (float64) était associé à un `%s`. Correction : réécriture du template avec un `%s` en moins (fusion des lignes "Documents sources" et le `%s` précédent) et ré-alignement de l'ordre des args (`diffInstr` d'abord pour "Génère une épreuve {difficulté}", puis `typeInstr`, etc.).
+
+4. **Body du POST /api/epreuves/generate** : la spec de la task décrivait un body simplifié (`{ documentIds, typeControle, nombreQuestions, difficulte, ueNom? }`), mais le frontend `generation-ia-page.tsx` envoie un body plus riche (`{ documentIds, enseignantId, config: { titre, difficulte, langue, duree, typesQuestions: {qcu,qcm,qrc,reflexion,code}, consignes, noteTotal, filiereId, uniteEnseignementId, niveau }, preview }`). J'ai aligné le handler sur le **shape réel du frontend** pour ne pas casser l'UI (sinon le frontend aurait cassé). La spec était illustrative ; la règle "ne pas casser les endpoints existants" l'emporte.
+
+5. **Shape de réponse** : idem — le frontend s'attend à `{ contenu: { questions, consignes, baremeTotal }, autoDetectedUEId? }`. J'ai reproduit ce shape exact (avec `autoDetectedUEId: null` car pas d'auto-détection UE côté backend pour l'instant). Les questions sont normalisées pour matcher le type `ContenuQuestion` du frontend (types valides QCU/QCM/QRC/REFLEXION/CODE, difficultés valides FACILE/MOYEN/DIFFICILE/EXPERT).
+
+6. **RLS sur `AIProviderConfig`** : la policy `AIProviderConfig_all_admin` restreint `FOR ALL TO neondb_owner USING (is_admin())`. Or le `AIService.ChatCompletion` peut être appelé par un ETUDIANT via `/api/ai-assistant` (pas ADMIN). Solution : transaction directe avec `SET LOCAL row_security = off` au début (comme pour `DocumentRepository.Create` et `DocumentRepository.SoftDelete`). Pas besoin de claims RLS car on ne fait qu'un SELECT en lecture sur une table de config système.
+
+7. **`z-ai-web-dev-sdk` en backend only** : la règle du projet est respectée — `factory.ts` ne fait aucun `import` du SDK. Tout passe par `fetch('/api/ai-assistant')` qui est un endpoint backend Go. Le SDK reste utilisé uniquement dans `lib/zai.ts` (côté serveur Next.js) et `lib/ai-providers/zai-provider.ts` (legacy, mais n'est plus invoqué par `getAIProvider()`).
+
+### 7. Commandes de vérification
+
+```bash
+cd /home/z/workspace/SECT/backend
+gofmt -l cmd/api/main.go internal/ai/service.go internal/transport/http/router.go internal/transport/http/ai_handlers.go  # → vide (OK)
+go build ./...    # → EXIT=0
+go vet ./...      # → EXIT=0
+
+cd /home/z/workspace/SECT/frontend
+bun run lint      # → EXIT=0, 1 warning préexistant (jsx-a11y/alt-text dans certificat-pdf-react.tsx)
+bunx tsc --noEmit 2>&1 | grep -i "factory.ts\|ai-analyzer.ts\|/api/ai-assistant\|/api/epreuves/generate"  # → aucun match (0 erreur sur mes fichiers)
+```
+
+### 8. Prochaines étapes suggérées
+
+- **Migrer `failover-provider.ts`** : actuellement `failover-provider.ts` référence `db.aIProviderConfig.findMany(...)` avec `const db = null` (pré-existing bug — tsc remonte 2 erreurs). Le vrai failover devrait maintenant être implémenté côté backend (lire plusieurs providers actifs et faire un round-robin/failover dans `internal/ai/service.go`). Le frontend `failover-provider.ts` peut être simplifié en wrapper autour de `getAIProvider()` (backend-only).
+- **Auto-détection UE** : `autoDetectedUEId` est actuellement `null`. Pour le supporter côté backend, il faudrait parser le contenu des documents et matcher contre la table `UniteEnseignement` (par code UE détecté dans le texte).
+- **Historique de conversation** : `aiAssistant` ne conserve pas l'historique (chaque message est traité indépendamment). Pour une vraie conversation multi-turn, il faudrait soit stocker les messages en DB (`ChatThread`/`ChatMessage` — tables déjà présentes), soit passer tout l'historique dans le body du frontend.
+- **Rate limiting** : ajouter un rate limit par utilisateur sur `/api/ai-assistant` (les LLM externes coûtent cher).
