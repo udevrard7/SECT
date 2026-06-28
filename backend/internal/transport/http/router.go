@@ -376,6 +376,22 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.With(middleware.RequireRole("ENSEIGNANT")).Delete("/{id}", s.deleteDevoir)
 		})
 
+		// P2-DEVOIRS-2 : soumissions (étudiant crée, enseignant note)
+		r.Route("/api/soumissions", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Post("/", s.createSoumission)                        // ETUDIANT
+			r.Patch("/{id}", s.updateSoumission)                   // ETUDIANT (brouillon) ou ENSEIGNANT (note)
+			// POST /{id}/ai-grade sera ajouté en P4 (HomeworkCorrectionWorker)
+		})
+
+		// P2-DEVOIRS-2 : grilles d'évaluation (ENSEIGNANT)
+		r.Route("/api/grilles-evaluation", func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Get("/", s.listGrillesEvaluation)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Post("/", s.createGrilleEvaluation)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Patch("/{id}", s.updateGrilleEvaluation)
+		})
+
 		r.Route("/api/alertes", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/", s.alertesListReal)
