@@ -64,6 +64,46 @@ type SessionPassation struct {
 		Email   string  `json:"email"`
 		Filiere *string `json:"filiere,omitempty"`
 	} `json:"etudiant,omitempty"`
+	// BUGFIX (RESULTATS-FIX-1) : Epreuve peuplé par batch query dans ListByEtudiant.
+	Epreuve *SessionEpreuveRef `json:"epreuve,omitempty"`
+}
+
+// SessionEpreuveRef — épreuve allégée pour les sessions d'un étudiant (RESULTATS-FIX-1).
+// Contient les champs attendus par le frontend StudentSession.epreuve.
+type SessionEpreuveRef struct {
+	ID         string                `json:"id"`
+	Titre      string                `json:"titre"`
+	Desc       *string               `json:"description,omitempty"`
+	Duree      int                   `json:"duree"`
+	NoteTotal  float64               `json:"noteTotal"`
+	DateFin    *time.Time            `json:"dateFin,omitempty"`
+	Enseignant SessionEnseignantRef  `json:"enseignant"`
+	Questions  []EpreuveQuestionInfo `json:"questions"`
+}
+
+// SessionEnseignantRef — enseignant allégé (résultat étudiant).
+type SessionEnseignantRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// EpreuveQuestionInfo — question d'une épreuve (vue étudiant, RESULTATS-FIX-1).
+// Attendu par le frontend : { id, questionId, bareme, ordre, question: {...} }.
+type EpreuveQuestionInfo struct {
+	ID         string                `json:"id"`
+	QuestionID string                `json:"questionId"`
+	Bareme     float64               `json:"bareme"`
+	Ordre      int                   `json:"ordre"`
+	Question   EpreuveQuestionDetail `json:"question"`
+}
+
+// EpreuveQuestionDetail — détail de la question jointe (non-pointer pour
+// garantir la présence du champ question dans le JSON).
+type EpreuveQuestionDetail struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Enonce     string `json:"enonce"`
+	Difficulte string `json:"difficulte,omitempty"`
 }
 
 // Reponse représente la réponse d'un étudiant à une question.
