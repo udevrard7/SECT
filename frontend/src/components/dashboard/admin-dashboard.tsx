@@ -1,7 +1,8 @@
 'use client'
 
 import { getGreeting } from '@/lib/micro-copy'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
 import {
   Building2,
@@ -246,9 +247,7 @@ function RevenueTooltip({ active, payload, label }: { active?: boolean; payload?
 
 export function AdminDashboard() {
   const user = useAuthStore((s) => s.user)
-  const [stats, setStats] = useState<AdminStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [accessRecords, setAccessRecords] = useState<AccessRecord[]>([])
+  const queryClient = useQueryClient()
   const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const [selectedEtablissement, setSelectedEtablissement] = useState<EtablissementOverview | null>(null)
   const [requestMotif, setRequestMotif] = useState('')
@@ -256,67 +255,84 @@ export function AdminDashboard() {
   const [requestDateFin, setRequestDateFin] = useState('')
   const [requestCommentaire, setRequestCommentaire] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [badges, setBadges] = useState<BadgeWithProgress[]>([])
   const [newlyUnlocked, setNewlyUnlocked] = useState<BadgeWithProgress | null>(null)
 
-  // Fetch admin stats
-  useEffect(() => {
-    async function fetchStats() {
-      try {
-        const url = user?.id
-          ? `/api/stats/admin?adminId=${user.id}`
-          : '/api/stats/admin'
-        const res = await fetch(url)
-        if (!res.ok) throw new Error('Erreur réseau')
-        const data: AdminStats = await res.json()
-        setStats(data)
-      } catch {
-        toast.error('Impossible de charger les statistiques')
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStats()
-  }, [user?.id])
+  // Fetch admin stats (structured AdminStats contract from backend statsAdmin)
+  const statsQuery = useQuery({
+    queryKey: ['admin-stats', user?.id],
+    queryFn: async () => {
+      const url = user?.id
+        ? `/api/stats/admin?adminId=${user.id}`
+        : '/api/stats/admin'
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Erreur réseau')
+      return (await res.json()) as AdminStats
+    },
+    staleTime: 60 * 1000, // 1 minute
+    enabled: !!user?.id,
+  })
 
-  // Fetch access records
-  const fetchAccessRecords = useCallback(async () => {
-    if (!user?.id) return
-    try {
+  // Fetch access records (admin's EtablissementAccess demands)
+  const accessQuery = useQuery({
+    queryKey: ['admin-access', user?.id],
+    queryFn: async () => {
+      // Guard: 'enabled: !!user?.id' garantit user non-null à l'exécution,
+      // mais le closure callback n'hérite pas du narrowing TypeScript.
+      if (!user?.id) return [] as AccessRecord[]
       const res = await fetch(`/api/etablissement-access?adminId=${user.id}`)
       if (!res.ok) throw new Error('Erreur réseau')
       const data = await res.json()
-      setAccessRecords(data.accessRecords || [])
-    } catch {
-      toast.error('Impossible de charger les autorisations')
-    }
-  }, [user?.id])
+      return (data.accessRecords || []) as AccessRecord[]
+    },
+    staleTime: 60 * 1000, // 1 minute
+    enabled: !!user?.id,
+  })
 
-  useEffect(() => {
-    fetchAccessRecords()
-  }, [fetchAccessRecords])
-
-  // Fetch badges
-  useEffect(() => {
-    async function fetchBadges() {
-      try {
-        // First recalculate badges
-        await fetch('/api/badges', { method: 'POST' })
-        // Then get current badges
-        const res = await fetch('/api/badges')
-        if (!res.ok) return
-        const data = await res.json()
-        setBadges(data.badges || [])
-        // Show notification for newly unlocked badges
-        if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
-          setNewlyUnlocked(data.newlyUnlocked[0])
-        }
-      } catch {
-        // Silently fail — badges are non-critical
+  // Fetch + recalculate badges (non-critical: silent fail)
+  const badgesQuery = useQuery({
+    queryKey: ['admin-badges', user?.id],
+    queryFn: async () => {
+      // First recalculate badges server-side
+      await fetch('/api/badges', { method: 'POST' })
+      // Then get current badges
+      const res = await fetch('/api/badges')
+      if (!res.ok) {
+        return { badges: [] as BadgeWithProgress[], newlyUnlocked: [] as BadgeWithProgress[] }
       }
+      const data = await res.json()
+      return {
+        badges: (data.badges || []) as BadgeWithProgress[],
+        newlyUnlocked: (data.newlyUnlocked || []) as BadgeWithProgress[],
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!user?.id,
+    // Silent fail — badges are non-critical
+    retry: false,
+  })
+
+  const stats = statsQuery.data ?? null
+  const accessRecords = accessQuery.data ?? []
+  const badges = badgesQuery.data?.badges ?? []
+  const loading = statsQuery.isLoading
+
+  // Toast on stats fetch error (one-shot per error transition)
+  useEffect(() => {
+    if (statsQuery.isError) toast.error('Impossible de charger les statistiques')
+  }, [statsQuery.isError])
+
+  // Toast on access fetch error (one-shot per error transition)
+  useEffect(() => {
+    if (accessQuery.isError) toast.error('Impossible de charger les autorisations')
+  }, [accessQuery.isError])
+
+  // Show notification when badges engine unlocks new badges
+  useEffect(() => {
+    const newly = badgesQuery.data?.newlyUnlocked
+    if (newly && newly.length > 0) {
+      setNewlyUnlocked(newly[0])
     }
-    fetchBadges()
-  }, [user?.id])
+  }, [badgesQuery.data?.newlyUnlocked])
 
   // Request access handler
   const handleRequestAccess = async () => {
@@ -350,7 +366,8 @@ export function AdminDashboard() {
       setRequestDateFin('')
       setRequestCommentaire('')
       setSelectedEtablissement(null)
-      fetchAccessRecords()
+      // Invalidate access query → TanStack refetches in background
+      queryClient.invalidateQueries({ queryKey: ['admin-access', user.id] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la demande')
     } finally {

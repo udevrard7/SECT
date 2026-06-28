@@ -5432,3 +5432,51 @@ Stage Summary:
 - Sécurité RLS préservée : le worker n'a pas de claims HTTP, mais `FlushSessionToNeon` construit `db.SessionClaims{UserID: sess.EtudiantID, Role: "ETUDIANT"}` depuis le cache, et `SaveReponse` appelle `db.WithTx` qui pose `app.claims.user_id` → le RLS Postgres filtre correctement sans nécessiter de `SET LOCAL row_security = off`.
 - 0 handler cassé : tous les autres handlers (`listSessions`, `getSession`, `startSession`, `submitSession`, `listResultats`, etc.) sont intacts. Seul `saveReponse` a été modifié (et `submitSession` étendu avec un flush avant l'appel existant à `Submit`).
 - Difficultés : (1) l'outil Edit/MultiEdit convertit les tabs en 8 espaces — contournement via scripts Python `string.replace` qui écrivent des `\t` littéraux, puis `gofmt -w` pour normaliser. (2) `main.go` était indenté en espaces (seul fichier du codebase avec ce style) — `gofmt -w` a tout converti en tabs (diff important mais aucune logique modifiée hors du worker). (3) `SaveReponseInput` n'a pas la shape annoncée dans l'énoncé — adaptation nécessaire (single-question → boucle).
+
+---
+Task ID: ADMIN-DASHBOARD-FIX-1
+Agent: full-stack-developer
+Task: Fix admin dashboard (contrat stats structuré + TanStack Query)
+
+Work Log:
+- Lecture du code existant : `backend/internal/transport/http/stats_handlers.go` (handler `statsAdmin` lignes 580-624, ancien contrat FLAT), `frontend/src/components/dashboard/admin-dashboard.tsx` (interface `AdminStats` riche attendue, 3 `useEffect + fetch`), `backend/internal/db/db.go` (`WithTx`, claims RLS, Simple Protocol), `backend/db/db/reference/schema.sql` (colonnes réelles : Etablissement SANS responsableId/proctoringActif/verificationIdentite, User.etablissementId, Filiere.etablissementId/responsableId, Abonnement, Plan, EtablissementAccess), `frontend/src/components/providers.tsx` (QueryClientProvider déjà en place, staleTime 3 min, refetchOnWindowFocus false).
+- Confirmation de la disponibilité de `@tanstack/react-query ^5.82.0` dans package.json.
+
+Étape 1 — Backend `statsAdmin` (stats_handlers.go lignes 580-812) :
+- Remplacement complet de l'ancien handler FLAT (`totalEtablissements, totalUsers, totalEpreuves, totalSessions, abonnementsActifs`) par un handler structuré qui retourne le contrat `AdminStats` complet attendu par le frontend :
+  - `nbEtablissements` (count Etablissement)
+  - `nbAbonnementsActifs/Essai/Expires` (count Abonnement FILTER par statut)
+  - `revenuMensuel/Annuel` (JOIN Abonnement+Plan WHERE statut IN ('ACTIF','ESSAI'), COALESCE sum prix → 0 pour plan Gratuit)
+  - `repartitionPlans[]` (LEFT JOIN Plan+Abonnement pour inclure plans sans abonnement)
+  - `etablissementsParStatut[]` (GROUP BY statut sur Abonnement)
+  - `nbEtablissementsProteges=0`, `nbVerificationIdentite=0` (colonnes non sur Etablissement — commenté explicitement)
+  - `nbAutorisationsActives/EnAttente` (count EtablissementAccess FILTER par statut)
+  - `etablissementsOverview[]` (une seule query LATERAL avec subqueries pour abonnement le plus récent + plan + nbUsers + nbFilieres + adminHasAccess + responsable via LEFT JOIN LATERAL sur User WHERE role='RESPONSABLE')
+- 4 types structurés déclarés : `planCount`, `statutCount`, `responsableRef`, `etablissementOverview` (avec `Ville *string`, `Type *string`, `AbonnementStatut *string`, `PlanNom *string`, `Responsable *responsableRef` — pointeurs pour gérer les NULL SQL proprement).
+- RLS préservé : `appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {...})` pose les claims `app.claims.user_id/role/etablissement_id` avant les queries.
+- Simple Protocol : `$1` utilisé une seule fois (claims.UserID dans subquery `admin_has_access`), pas de placeholder réutilisé.
+- `proctoringActif` forcé à `false` dans la struct (zero value Go) car colonne n'existe pas sur Etablissement — aucun scan explicite.
+- Auth check préservé : `claims.Role != string(domain.RoleAdmin)` → 403 (BUGFIX ADMIN-AUDIT-5 inchangé).
+- Vérifications Go : `gofmt -w` OK (tabs), `go build ./...` EXIT=0, `go vet ./...` EXIT=0. `od -c` confirme 100% de tabs (`\t`) pour l'indentation.
+- Aucun autre handler touché (statsEnseignant, statsEtudiant, statsResponsable, badgesList intacts).
+
+Étape 2 — Frontend `admin-dashboard.tsx` (lignes 1-335) :
+- Imports : remplacement de `useEffect, useState, useCallback` par `useEffect, useState` (useCallback supprimé — plus utilisé). Ajout de `import { useQuery, useQueryClient } from '@tanstack/react-query'`.
+- Suppression des 3 `useEffect + fetch` + états `stats/loading/accessRecords/badges` (4 useState → 0).
+- Ajout de 3 `useQuery` :
+  1. `statsQuery` (queryKey `['admin-stats', user?.id]`, staleTime 60s, enabled `!!user?.id`) → retourne `AdminStats`
+  2. `accessQuery` (queryKey `['admin-access', user?.id]`, staleTime 60s, enabled `!!user?.id`) → retourne `AccessRecord[]`
+  3. `badgesQuery` (queryKey `['admin-badges', user?.id]`, staleTime 5min, enabled `!!user?.id`, retry:false) → fait POST recalcul PUIS GET, retourne `{ badges, newlyUnlocked }`
+- Variables dérivées : `stats = statsQuery.data ?? null`, `accessRecords = accessQuery.data ?? []`, `badges = badgesQuery.data?.badges ?? []`, `loading = statsQuery.isLoading`. Toutes les expressions JSX `stats?.nbX ?? 0` restent compatibles.
+- Toasts d'erreur : 2 `useEffect` watchant `statsQuery.isError` et `accessQuery.isError` (one-shot par transition false→true, pas de spam). Badges silencieux (retry:false + aucun toast).
+- `newlyUnlocked` : `useEffect` watchant `badgesQuery.data?.newlyUnlocked` → `setNewlyUnlocked(newly[0])` comme avant.
+- `handleRequestAccess` : `fetchAccessRecords()` (callback supprimé) remplacé par `queryClient.invalidateQueries({ queryKey: ['admin-access', user.id] })` après POST succès. `user.id` est safe ici car le guard `if (!selectedEtablissement || !user?.id) return` en haut de la fonction narrow le type.
+- Fix TS18047 dans `accessQuery.queryFn` : ajout d'un guard explicite `if (!user?.id) return [] as AccessRecord[]` car `enabled: !!user?.id` ne narrow pas le type dans le closure callback.
+
+Stage Summary:
+- Backend : handler `statsAdmin` complètement réécrit pour respecter le contrat `AdminStats` structuré (13 champs + `etablissementsOverview[]` riche). 1 query LATERAL pour toute la vue d'ensemble (au lieu de N+1). Go build/vet/gofmt OK. Tabs préservés.
+- Frontend : 3 `useEffect+fetch+useState` → 3 `useQuery` (staleTime 60s/60s/5min). `fetchAccessRecords()` → `invalidateQueries`. Toasts d'erreur migrés vers `useEffect([isError])`. Cache TanStack active → 0 refetch au retour navigation, 0 skeleton, 0 fetch en double.
+- `cd /home/z/workspace/SECT/frontend && bun run lint` : EXIT=0, **0 erreur**, 1 warning pré-existant dans `certificat-pdf-react.tsx` (non touché, confirmé par worklog CACHE-RAM-1).
+- `bunx tsc --noEmit` sur `admin-dashboard.tsx` : 0 erreur. (Erreurs pré-existantes confirmées dans d'autres fichiers non touchés : abonnements-page, correction-sidebar, epreuves-page, etc.)
+- Aucun handler/statistique cassé. `statsEnseignant`, `statsEtudiant`, `statsResponsable`, `badgesList` intacts.
+- Difficultés : (1) L'outil Edit/MultiEdit convertit les tabs Go en espaces — contournement via script Python qui écrit des `\t` littéraux, puis `gofmt -w` pour normaliser. (2) `enabled: !!user?.id` ne narrow pas le type `user` dans le closure de `queryFn` (TypeScript closure typing) — fix par guard explicite `if (!user?.id) return [] as AccessRecord[]` en haut de queryFn. (3) Choix d'architecture pour `badgesQuery` : la spec demandait `useQuery` mais le POST recalcul est conceptuellement une mutation. Choix : appel POST en début de queryFn (avant le GET) — pas idéal sémantiquement mais respecte la consigne "useQuery" et le cache 5min évite les recalculs fréquents.
