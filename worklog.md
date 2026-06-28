@@ -5966,3 +5966,40 @@ go vet ./...      # → EXIT=0
 - **Rate limiting** : `examPrepQA` et `examPrepGeneratePractice` font des appels
   LLM coûteux. Ajouter un rate limit par utilisateur (ex. 10 Q&A/min, 3
   générations/jour) pour éviter l'abus.
+
+---
+Task ID: DOC-ANALYZER-2
+Agent: general-purpose
+Task: Câbler les chapitres dans l'API exam-prep — `GET /api/exam-prep/documents` doit retourner les chapitres (et les métadonnées enrichies) que le frontend attend.
+
+Work Log:
+- Lu le worklog + le code existant : `domain.Document` n'avait pas de champ `Chapters`, le handler `listExamPrepDocuments` encodait directement `[]*domain.Document` (sans chapitres, sans UE, sans owner, themesDetectes en *string JSON).
+- Investigation frontend (`exam-prep-page.tsx` + `exam-prep-document-detail.tsx` + 5 tabs) : le frontend accède SANS optional chaining à `doc.chapters.length`, `doc.uniteEnseignement.code`, `doc.uniteEnseignement.nom`, `doc.owner.name`, `doc.themesDetectes.length/slice/map`, `ch.sujets.length/slice` → TOUS ces champs doivent être non-null dans la réponse JSON.
+- Vérifié le frontend teacher-side (`documents-page.tsx`) : n'accède pas à `.chapters`, utilise optional chaining pour `uniteEnseignement` → l'ajout du champ `Chapters` à `domain.Document` (sérialisé `null` côté teacher) est sans risque.
+- Ajouté `Chapters []*Chapter json:"chapters"` (sans omitempty) à `domain.Document` — le champ reste nil après `scanDocument` (non touché par le SELECT/scan), le usecase le populate à `[]` ou les chapitres réels.
+- Ajouté 3 méthodes batch à l'interface `ExamPrepRepository` (`domain/examprep.go`) : `ListChaptersByDocumentIDs`, `ListUEsByIDs`, `ListUserRefsByIDs`.
+- Implémenté les 3 méthodes dans `repository/examprep.go` : pattern `SET LOCAL row_security = off` dans une tx, IN-clause avec placeholders distincts (`$1, $2, ...`), `strings.Join`, retour `map[string]*T` (non-nil même si vide). Pas de LATERAL JOIN, pas de placeholder réutilisé → compatible pgx Simple Protocol.
+- Ajouté `ExamPrepDocumentList` (composite) + `ListDocumentsWithChapters` au usecase : appelle `ListDocuments` existant, collecte docIDs/ueIDs/ownerIDs, appelle les 3 batch methods, attache les chapitres (non-nil `[]`) aux documents, retourne le composite `{Documents, UEs, Owners}`.
+- Modifié le handler `listExamPrepDocuments` : appelle `ListDocumentsWithChapters`, construit un DTO (`examPrepDocumentDTO`) qui matche exactement l'interface TS `ExamPrepDocument`. Le DTO parse `themesDetectes` (*string JSON → []string) et `chapters[].sujets` (*string JSON → []string) via `parseJSONStringArray`. `UniteEnseignement` et `Owner` sont des value-types (toujours non-null) avec fallback si l'ID n'est pas trouvé. `Chapters` est initialisé à `[]` (non-nil).
+- Ajouté l'import `time` au handler (pour `time.Time` dans le DTO `DateUpload`).
+- Vérifié les tabs avec `cat -A` sur les 5 fichiers : `^I` partout, aucun espace d'indentation dans le nouveau code Go. Les raw strings SQL conservent l'indentation backtick (pré-existant, non touché par gofmt).
+- Commit `15350a5` + push vers `origin/main`.
+
+Stage Summary:
+- **5 fichiers modifiés** : `domain/document.go`, `domain/examprep.go`, `repository/examprep.go`, `usecase/examprep.go`, `transport/http/examprep_handlers.go` (+367 lignes, -2).
+- **Nouvelles signatures** :
+  - `domain.Document.Chapters []*Chapter` (champ struct, `json:"chapters"`)
+  - `domain.ExamPrepRepository.ListChaptersByDocumentIDs(ctx, docIDs []string) (map[string][]*Chapter, error)`
+  - `domain.ExamPrepRepository.ListUEsByIDs(ctx, ueIDs []string) (map[string]*UniteEnseignement, error)`
+  - `domain.ExamPrepRepository.ListUserRefsByIDs(ctx, userIDs []string) (map[string]*UserRef, error)`
+  - `usecase.ExamPrepDocumentList` struct `{Documents, UEs, Owners}`
+  - `usecase.ExamPrepUseCase.ListDocumentsWithChapters(ctx, claims) (*ExamPrepDocumentList, error)`
+  - Handler : `examPrepDocumentDTO`, `examPrepUEDTO`, `examPrepOwnerDTO`, `examPrepChapterDTO` + `toExamPrepDocumentDTO()` + `parseJSONStringArray()`
+- **Champs fournis** : `chapters` (obligatoire), `themesDetectes` (parsé *string→[]string), `uniteEnseignement` (objet non-null), `owner` (objet non-null). Justification : le frontend accède à TOUS ces champs SANS optional chaining (`doc.chapters.length`, `doc.uniteEnseignement.code`, `doc.owner.name`, `doc.themesDetectes.length`) → crash immédiat si absent/null.
+- **Contraintes respectées** : tabs préservés (Python scripts), pgx Simple Protocol (placeholders distincts, pas de LATERAL), RLS off pour les batch queries (métadonnées), `NewServer` inchangé, `ListDocuments` usecase préservé (nouvelle méthode ajoutée), `columnsDocument`/`scanDocument` non modifiés, pas de test code.
+- **Git commit** : `15350a5` — poussé sur `origin/main` (déploiement Vercel/Render déclenché).
+- **Risques/follow-ups** :
+  - Le teacher-side `GET /api/documents` sérialise maintenant `"chapters": null` (champ ajouté à `domain.Document`). Sans impact frontend (la page documents-page.tsx n'y accède pas), mais c'est un diff cosmétique de l'API teacher.
+  - `ListStudentDocuments` filtre par `uniteEnseignementId IN (SELECT ue.id ...)` → tout document retourné a une UE ; le fallback `examPrepUEDTO{}` (vide) ne devrait jamais se déclencher en pratique, mais est là par sécurité.
+  - Les 3 batch queries ouvrent chacune une transaction séparée (3 connexions du pool par requête de liste). Acceptable pour une liste de documents (généralement < 50). Si le volume augmente, envisager une seule tx partagée ou un JOIN unique.
+  - Go n'étant pas installé dans l'environnement, la compilation n'a pas pu être vérifiée localement — review manuelle approfondie effectuée (imports, types, braces, signatures interface↔impl).
