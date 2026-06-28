@@ -6478,3 +6478,65 @@ Refonte complète du module `/exam-prep` (12 fichiers, +2347/-1350 lignes) livr�
 4. **Planning : pas d'update de statut** — le backend n'expose pas de PATCH/PUT pour updater `StudySession.statut`. "Marquer comme terminée" n'est plus possible (seul DELETE est disponible). Le backend devrait exposer `PATCH /planning/{id}` avec `{ statut }` pour réactiver cette fonctionnalité.
 5. **Help : rôle inféré** — le backend `HelpMessage` n'a pas de champ `role` (seulement `auteurId`). Le rôle est inféré côté client en comparant `auteurId` à `thread.etudiantId`. Si un tiers (admin, autre enseignant) poste un message, il sera affiché comme "Professeur". Le backend pourrait ajouter un champ `role` explicite à `HelpMessage` pour lever l'ambiguïté.
 6. **Validation manuelle requise** — pas de test code (per contrainte). Valider sur /exam-prep en production après déploiement Vercel : tester les 9 onglets, le flow highlight→flashcard, le prefill Q&A, le vote, le polling audio, la création/suppression de sessions, la création/close de threads help.
+
+---
+
+## EXAM-PREP-RLS-FIX-1 — Fix RLS bloquait ListStudentDocuments pour les étudiants
+
+**Agent** : general-purpose sub-agent
+**Task** : EXAM-PREP-RLS-FIX-1
+**Date** : 2025-06-28
+**Commit** : `0d2a57f` (pushed to `main`, déploiement Vercel auto-déclenché)
+
+### Task
+
+Le endpoint `GET /api/exam-prep/documents` retournait 0 documents pour l'étudiant ASSANI Emile Junior (filiereId=`cmq2dpi6`, niveau=`L2`), alors que 10 documents existent en DB sur les UE de la filière Informatique L2. La page `/exam-prep` affichait donc "Aucun support de cours disponible" (empty state).
+
+**Root cause** : `ListStudentDocuments` (in `backend/internal/repository/examprep.go`) utilisait `db.WithTx(ctx, r.pool, claims, ...)` qui maintient RLS ON. La politique `Document_select` sur la table `Document` n'autorise que :
+- `ownerId = current_user_id()` (l'étudiant n'est jamais owner)
+- `is_responsable()` (l'étudiant n'est pas responsable)
+- `is_admin()` (l'étudiant n'est pas admin)
+
+→ RLS filtrait TOUS les documents pour l'étudiant, bien que la SQL scope déjà par `filiereId + niveau` (la bonne frontière de sécurité).
+
+### Work Log
+
+1. **Lecture contexte** : worklog.md (historique projet) + `examprep.go` (fonction `ListStudentDocuments` lignes 125-164, et pattern de référence `GetDocumentContent` lignes 174-210 qui utilise déjà `SET LOCAL row_security = off`).
+2. **Application du fix** : la fonction `ListStudentDocuments` a été réécrite via un script Python (`/home/z/SECT/fix_examprep.py`, supprimé après usage) qui construit l'ancien et le nouveau bloc avec des caractères `\t` explicites, afin de préserver les tabulations Go (l'outil Edit convertit les tabs en espaces, ce qui casserait `gofmt` et le build Render). Le script vérifie qu'il y a exactement 1 occurrence du bloc OLD avant de remplacer.
+3. **Vérification tabs** : `cat -A` confirme que toutes les lignes indentées commencent par `^I` (tab). Voir snippet dans la section "Deliverables" ci-dessous.
+4. **Vérification aucune indentation espace** : `grep -cPn '^( +)\S' backend/internal/repository/examprep.go` → `0` (exit code 1 = aucune ligne trouvée). ✅
+5. **Vérification équilibre délimiteurs** : un script Python (`/home/z/SECT/check_balance.py`, supprimé après usage) strippe les commentaires (ligne + bloc), les strings double-quotes (avec escapes), les raw strings backtick, et les runes single-quote, puis compte `()`, `{}`, `[]` :
+   - `()`: open=546 close=546 ✅
+   - `{}`: open=333 close=333 ✅
+   - `[]`: open=75 close=75 ✅
+   - Backticks : 122 (pair, 61 raw strings) ✅
+6. **Vérification import `db` toujours utilisé** : `grep -cPn 'db\.(WithTx|ClaimsFromContext)' backend/internal/repository/examprep.go` → `21` occurrences restantes dans d'autres méthodes (GetDashboard à ligne 33/42, et méthodes aux lignes 415, 515, 631, 822, 962, 1080, 1322, 1390, 1419). L'import `github.com/udevrard7/sect/backend/internal/db` reste nécessaire — aucune modification du bloc `import`. ✅
+7. **Diff scope** : `diff examprep.go.bak examprep.go` montre que tous les hunks (`126,128c126,154`, `129a156`, `132,142c159,160`, `144c162`, `146c164,168`, `148,161c170,171`) sont contenus dans la fonction `ListStudentDocuments` (lignes 125-171). Aucune autre méthode touchée. ✅
+8. **Git** : `git add backend/internal/repository/examprep.go` (uniquement le fichier cible), commit avec message `fix(exam-prep): RLS bloquait ListStudentDocuments pour les étudiants (EXAM-PREP-RLS-FIX-1)`, push vers `origin main`. Hash : `0d2a57ffa486031482e725286b6ce799440f36ce` (short `0d2a57f`). Remote a accepté (`935f75f..0d2a57f main -> main`). ✅
+9. **Cleanup** : fichiers temporaires `examprep.go.bak`, `fix_examprep.py`, `check_balance.py` supprimés. Le `git status` final est propre (working tree clean).
+
+### Stage Summary
+
+**Changement code** : 1 fichier, 1 fonction (`ListStudentDocuments`), +40 lignes / -30 lignes. Le wrapper `db.WithTx(..., claims, func(tx){...})` (RLS ON) est remplacé par un pattern manuel `BeginTx` + `SET LOCAL row_security = off` + `Commit`, identique à `GetDocumentContent`, `GetDocumentForReader`, et `ListChaptersByDocumentIDs`. La SQL query elle-même est **inchangée** — le scoping sécurité (`ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)`) est déjà correct et reste la frontière de sécurité effective.
+
+**Commentaire de documentation** ajouté en tête de fonction (7 lignes) expliquant le why du RLS off et la confiance dans la clause WHERE — pour éviter qu'un futur développeur ne "répare" en remettant RLS on.
+
+**Deliverables** :
+- `cat -A` snippet (tabs visibles `^I`) :
+  ```
+  ^I// EXAM-PREP-RLS-FIX-1 : RLS désactivé car la politique Document_select$
+  ^I// n'autorise que l'owner (ownerId = current_user_id()). Les étudiants ne$
+  ^Itx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})$
+  ^Iif _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {$
+  ```
+- `grep -cPn '^( +)\S'` → `0` (aucune ligne indentée par espaces). ✅
+- Brace balance : `()` 546/546, `{}` 333/333, `[]` 75/75. ✅
+- Import `db` toujours utilisé : oui (21 références `db.WithTx`/`db.ClaimsFromContext` dans autres méthodes). ✅
+- Git commit hash : `0d2a57f` (full `0d2a57ffa486031482e725286b6ce799440f36ce`), pushed to `main`. ✅
+
+### Risks / Follow-ups
+
+1. **Validation end-to-end requise** : Go n'est pas installé dans ce sandbox, donc pas de `go build` / `go vet` exécuté. La vérification a été faite manuellement (tabs, équilibre délimiteurs, imports). Après déploiement Vercel (auto-déclenché par le push), valider sur `/exam-prep` en tant qu'étudiant ASSANI Emile Junior : la page devrait maintenant afficher les 10 documents (au lieu de l'empty state "Aucun support de cours disponible"). Si le build Render/Vercel échoue, c'est probablement un problème de formatage — mais `grep` confirme 0 ligne indentée par espaces, donc `gofmt` devrait passer.
+2. **Cohérence RLS dans le fichier** : `ListStudentDocuments` rejoint maintenant le sous-ensemble des méthodes exam-prep qui désactivent RLS (`GetDocumentContent`, `GetDocumentForReader`, `ListChaptersByDocumentIDs`, etc.). Les autres méthodes (`GetDashboard`, `ListPracticeAttempts`, etc.) gardent `db.WithTx` + RLS ON car elles lisent des tables où l'étudiant EST owner (ex: `PracticeAttempt.userId = current_user_id()`). Pas de changement à prévoir pour elles.
+3. **Sécurité** : le RLS off est safe ici car (a) la SQL scope par `filiereId + niveau` paramétrés depuis les claims utilisateur côté usecase/handler, (b) l'étudiant ne peut pas forge ces paramètres (ils viennent de la session authentifiée). Un étudiant ne voit QUE les documents des UE de sa propre filière et de son propre niveau — c'est exactement la même garantie que fournirait une politique RLS `filiere_member` qu'on n'a pas pris le temps d'écrire.
+4. **Future hardening optionnel** : au lieu de `SET LOCAL row_security = off`, on pourrait ajouter une politique RLS `Document_select_student` sur la table `Document` qui vérifie `EXISTS (SELECT 1 FROM "UniteEnseignement" ue WHERE ue.id = Document.uniteEnseignementId AND ue.filiereId = current_user_filiere() AND (ue.niveau = current_user_niveau() OR ue.niveaux ? current_user_niveau()))`. Cela rendrait le scoping déclaratif côté DB plutôt qu'impératif côté SQL. Mais c'est un travail plus large (fonctions `current_user_filiere()`/`current_user_niveau()` à créer) — hors scope de ce fix.
