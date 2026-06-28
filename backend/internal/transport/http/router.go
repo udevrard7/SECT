@@ -334,6 +334,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Get("/question-bank", s.listQuestionBank)
 			r.Post("/questions/{id}/vote", s.voteQuestion)
 			r.Delete("/questions/{id}/vote", s.removeVote)
+			// AUDIO-LEARNING-1 — Mode Audio-Learning (podcasts de révision).
+			// POST   /documents/{id}/audio : crée un podcast (202 + AudioGenerationQueue).
+			// GET    /documents/{id}/audio : liste les podcasts du document.
+			// GET    /audio/{id}           : récupère un podcast (+ URL présignée si PRET).
+			r.Post("/documents/{id}/audio", s.generateAudio)
+			r.Get("/documents/{id}/audio", s.listDocumentAudio)
+			r.Get("/audio/{id}", s.getAudio)
 			// Help threads
 			r.Get("/help", s.listHelpThreads)
 			r.Post("/help", s.createHelpThread)

@@ -255,6 +255,50 @@ type QuestionBankItem struct {
 }
 
 // ============================================================
+// DOCUMENT AUDIO (AUDIO-LEARNING-1 — Mode Audio-Learning / Podcasts)
+// ============================================================
+
+// DocumentAudio représente un podcast de révision généré par IA à partir
+// d'un document. Le worker audio_worker.go :
+//  1. lit le contenu textuel du document ;
+//  2. demande à l'IA un script de podcast (dialogue Présentateur ↔ Expert) ;
+//  3. tente une synthèse audio (TTS) via le provider IA actif (optionnel —
+//     fallback gracieux : si le provider ne supporte pas /audio/speech, seul
+//     le script textuel est conservé, r2Key = nil) ;
+//  4. upload le MP3 sur Cloudflare R2 et stocke la clé R2.
+//
+// Statuts :
+//   - EN_COURS : job en cours (script + audio en génération).
+//   - PRET     : script disponible (+ audio mp3 si TTS supporté).
+//   - ERREUR   : échec (errorMessage rempli).
+//
+// AUDIO-LEARNING-1 : le handler POST /documents/{id}/audio crée la ligne
+// (status=EN_COURS, script="") puis pousse un AudioGenerationJob dans la queue.
+// Le worker remplit le script + (option) r2Key puis passe à PRET.
+type DocumentAudio struct {
+	ID           string    `json:"id"`
+	DocumentID   string    `json:"documentId"`
+	UserID       string    `json:"userId"`
+	Script       string    `json:"script"`
+	R2Key        *string   `json:"r2Key,omitempty"`
+	DurationSec  *int      `json:"durationSec,omitempty"`
+	Status       string    `json:"status"` // EN_COURS, PRET, ERREUR
+	ErrorMessage *string   `json:"errorMessage,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+// CreateDocumentAudioInput — payload pour créer une ligne DocumentAudio.
+// Le script est vide à la création : c'est le worker qui le remplit après
+// génération IA. La ligne est créée coté handler avant de pousser le job
+// dans AudioGenerationQueue (pour que le frontend puisse poller son statut).
+type CreateDocumentAudioInput struct {
+	DocumentID string `json:"documentId"`
+	UserID     string `json:"userId"`
+	Script     string `json:"script"`
+}
+
+// ============================================================
 // REPOSITORIES
 // ============================================================
 
@@ -336,4 +380,21 @@ type ExamPrepRepository interface {
 	// ListExistingQuestions retourne des questions validées existantes pour
 	// servir le cache (sans les joins de vote). Ordonné par createdAt DESC.
 	ListExistingQuestions(ctx context.Context, documentID string, chapterID *string, difficulte *string, limit int) ([]*QuestionBankItem, error)
+	// AUDIO-LEARNING-1 — Mode Audio-Learning (podcasts de révision).
+	// CreateDocumentAudio insère une ligne DocumentAudio (status=EN_COURS, script="").
+	// RLS off : écriture système (le worker n'a pas de claims HTTP).
+	CreateDocumentAudio(ctx context.Context, input CreateDocumentAudioInput) (*DocumentAudio, error)
+	// UpdateDocumentAudioStatus met à jour le statut (+ r2Key/errorMessage si non-nil).
+	// RLS off : écriture système. Utilisé par le worker (PRET/ERREUR).
+	UpdateDocumentAudioStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string) error
+	// UpdateDocumentAudioScript met à jour uniquement le script (avant TTS).
+	// RLS off : écriture système.
+	UpdateDocumentAudioScript(ctx context.Context, audioID, script string) error
+	// ListDocumentAudio liste les audios d'un document (tous utilisateurs confondus,
+	// la portée étudiant/enseignant est déjà assurée par le fait que l'utilisateur
+	// accède au document via ListStudentDocuments). Ordonné par createdAt DESC.
+	// RLS off : lecture système (métadonnées non sensibles).
+	ListDocumentAudio(ctx context.Context, documentID string) ([]*DocumentAudio, error)
+	// GetDocumentAudio récupère un audio par son ID. RLS off.
+	GetDocumentAudio(ctx context.Context, audioID string) (*DocumentAudio, error)
 }

@@ -10,13 +10,22 @@ import (
 )
 
 // ExamPrepUseCase implémente les cas d'usage exam-prep.
+//
+// AUDIO-LEARNING-1 : le champ storage (Cloudflare R2) est ajouté pour
+// permettre la génération d'URLs présignées vers les MP3 des podcasts.
+// Peut être nil si R2 est désactivé (le frontend affichera le script seul).
 type ExamPrepUseCase struct {
-	repo domain.ExamPrepRepository
+	repo    domain.ExamPrepRepository
+	storage domain.StorageClient
 }
 
 // NewExamPrepUseCase crée un nouveau ExamPrepUseCase.
-func NewExamPrepUseCase(repo domain.ExamPrepRepository) *ExamPrepUseCase {
-	return &ExamPrepUseCase{repo: repo}
+//
+// AUDIO-LEARNING-1 : le paramètre storageClient est ajouté pour supporter
+// les podcasts audio (génération d'URLs présignées R2). Peut être nil si
+// R2 est désactivé — les podcasts seront PRET avec script seul (r2Key=nil).
+func NewExamPrepUseCase(repo domain.ExamPrepRepository, storageClient domain.StorageClient) *ExamPrepUseCase {
+	return &ExamPrepUseCase{repo: repo, storage: storageClient}
 }
 
 // GetDashboard récupère le tableau de bord de progression.
@@ -422,4 +431,88 @@ func (uc *ExamPrepUseCase) GetCachedQuestions(ctx context.Context, claims db.Ses
 		return nil, false, err
 	}
 	return questions, true, nil
+}
+
+// ============================================================
+// AUDIO-LEARNING-1 — Mode Audio-Learning (podcasts de révision)
+// ============================================================
+
+// GenerateAudio crée une ligne DocumentAudio (status=EN_COURS, script="") pour
+// le document donné. La ligne est créée AVANT de pousser le job dans la queue
+// pour que le frontend puisse poller son statut immédiatement. Le handler est
+// responsable de pousser le AudioGenerationJob dans worker.AudioGenerationQueue
+// (la usecase ne dépend pas du package worker — clean architecture).
+//
+// Rôles : ETUDIANT, ENSEIGNANT. L'étudiant doit avoir accès au document via
+// ListStudentDocuments (le scoping strict est assuré côté frontend ; le backend
+// trust le documentID passé par un utilisateur authentifié).
+func (uc *ExamPrepUseCase) GenerateAudio(ctx context.Context, claims db.SessionClaims, documentID string) (*domain.DocumentAudio, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return nil, &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+	input := domain.CreateDocumentAudioInput{
+		DocumentID: documentID,
+		UserID:     claims.UserID,
+		Script:     "",
+	}
+	return uc.repo.CreateDocumentAudio(ctx, input)
+}
+
+// ListAudio liste les podcasts d'un document, ordonnés par createdAt DESC.
+// Rôles : ETUDIANT, ENSEIGNANT. Les podcasts sont partagés entre étudiants
+// d'une même filière (comme les questions de la banque collaborative).
+func (uc *ExamPrepUseCase) ListAudio(ctx context.Context, claims db.SessionClaims, documentID string) ([]*domain.DocumentAudio, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return nil, &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+	return uc.repo.ListDocumentAudio(ctx, documentID)
+}
+
+// GetAudio récupère un podcast par son ID. Rôles : ETUDIANT, ENSEIGNANT.
+// Ne génère PAS l'URL présignée — utiliser GetAudioURL pour cela.
+func (uc *ExamPrepUseCase) GetAudio(ctx context.Context, claims db.SessionClaims, audioID string) (*domain.DocumentAudio, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if audioID == "" {
+		return nil, &domain.ValidationError{Field: "audioId", Message: "requis"}
+	}
+	return uc.repo.GetDocumentAudio(ctx, audioID)
+}
+
+// MarkAudioError marque un audio en ERREUR avec un message. Utilisé par le
+// handler generateAudio quand la queue est pleine (job non poussé → la ligne
+// reste EN_COURS sinon, ce qui ferait poller le frontend indéfiniment).
+//
+// Rôles : ETUDIANT, ENSEIGNANT, ADMIN. RLS off : écriture système.
+func (uc *ExamPrepUseCase) MarkAudioError(ctx context.Context, claims db.SessionClaims, audioID, errorMessage string) error {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) && claims.Role != string(domain.RoleAdmin) {
+		return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if audioID == "" {
+		return &domain.ValidationError{Field: "audioId", Message: "requis"}
+	}
+	return uc.repo.UpdateDocumentAudioStatus(ctx, audioID, "ERREUR", nil, &errorMessage)
+}
+
+// GetAudioURL génère une URL présignée R2 (15 min de validité) pour télécharger
+// le MP3 d'un podcast. Retourne une erreur si storage est nil (R2 désactivé)
+// ou si la présignature échoue. À appeler seulement si audio.R2Key est non-nil.
+//
+// AUDIO-LEARNING-1 : la durée de validité est de 15 minutes (900s) — suffisant
+// pour écouter un podcast de 5 min, et limite le risque de partage d'URL.
+func (uc *ExamPrepUseCase) GetAudioURL(ctx context.Context, r2Key string) (string, error) {
+	if r2Key == "" {
+		return "", &domain.ValidationError{Field: "r2Key", Message: "requis"}
+	}
+	if uc.storage == nil {
+		return "", fmt.Errorf("storage client not configured")
+	}
+	return uc.storage.PresignURL(ctx, r2Key, 900) // 15 minutes
 }

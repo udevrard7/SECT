@@ -1196,3 +1196,190 @@ func (s *Server) removeVote(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ============================================================
+// AUDIO-LEARNING-1 — Mode Audio-Learning (podcasts de révision)
+// ============================================================
+
+// examPrepAudioDTO est la forme JSON renvoyée au frontend. Le champ audioUrl
+// est présent uniquement si l'audio a un r2Key ET que la présignature R2 a
+// réussi. Sinon, le frontend affiche uniquement le script (cas TTS non supporté).
+type examPrepAudioDTO struct {
+	ID           string  `json:"id"`
+	DocumentID   string  `json:"documentId"`
+	UserID       string  `json:"userId"`
+	Script       string  `json:"script"`
+	R2Key        *string `json:"r2Key,omitempty"`
+	DurationSec  *int    `json:"durationSec,omitempty"`
+	Status       string  `json:"status"`
+	ErrorMessage *string `json:"errorMessage,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
+	UpdatedAt    string  `json:"updatedAt"`
+	AudioURL     string  `json:"audioUrl,omitempty"`
+}
+
+// toExamPrepAudioDTO converts a domain.DocumentAudio to a DTO with RFC3339
+// timestamps. The audioUrl field is left empty here — the handler fills it
+// in after generating the presigned URL (if applicable).
+func toExamPrepAudioDTO(a *domain.DocumentAudio) examPrepAudioDTO {
+	return examPrepAudioDTO{
+		ID:           a.ID,
+		DocumentID:   a.DocumentID,
+		UserID:       a.UserID,
+		Script:       a.Script,
+		R2Key:        a.R2Key,
+		DurationSec:  a.DurationSec,
+		Status:       a.Status,
+		ErrorMessage: a.ErrorMessage,
+		CreatedAt:    a.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    a.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+// generateAudio — POST /api/exam-prep/documents/{id}/audio
+//
+// Crée une ligne DocumentAudio (status=EN_COURS, script="") puis pousse un
+// job dans worker.AudioGenerationQueue. Retourne 202 Accepted avec l'audio
+// (pour que le frontend puisse poller son statut via GET /audio/{id} ou
+// GET /documents/{id}/audio).
+//
+// Rôles : ETUDIANT, ENSEIGNANT.
+func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	documentID := chi.URLParam(r, "id")
+	if documentID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id document requis")
+		return
+	}
+
+	// 1. Créer la ligne DocumentAudio (status=EN_COURS, script="").
+	audio, err := s.examPrepUC.GenerateAudio(r.Context(), claims, documentID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	// 2. Pousser le job dans la queue (non-bloquant : si queue pleine → 503).
+	job := worker.AudioGenerationJob{
+		AudioID:    audio.ID,
+		DocumentID: documentID,
+		UserID:     claims.UserID,
+	}
+	select {
+	case worker.AudioGenerationQueue <- job:
+		// OK — job accepté, le worker le traitera en arrière-plan.
+	default:
+		// Queue pleine (25 jobs en attente) — on marque l'audio en ERREUR
+		// pour que le frontend arrête de poller.
+		errMsg := "file d'attente audio saturée, réessayez dans un instant"
+		_ = s.examPrepUC.MarkAudioError(r.Context(), claims, audio.ID, errMsg)
+		writeJSONError(w, http.StatusServiceUnavailable, errMsg)
+		return
+	}
+
+	// 3. Retourner 202 avec l'audio (status EN_COURS).
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{
+		"audio":   toExamPrepAudioDTO(audio),
+		"message": "génération du podcast lancée en arrière-plan",
+	})
+}
+
+// listDocumentAudio — GET /api/exam-prep/documents/{id}/audio
+//
+// Liste tous les podcasts d'un document (tous utilisateurs confondus — comme
+// la banque de questions, les podcasts sont partagés entre étudiants d'une
+// même filière). Ordonné par createdAt DESC côté repo.
+//
+// Pour chaque audio PRET avec un r2Key non-nil, génère une URL présignée R2
+// (15 min de validité) et l'inclut dans le DTO via audioUrl.
+//
+// Rôles : ETUDIANT, ENSEIGNANT.
+func (s *Server) listDocumentAudio(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	documentID := chi.URLParam(r, "id")
+	if documentID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id document requis")
+		return
+	}
+
+	audios, err := s.examPrepUC.ListAudio(r.Context(), claims, documentID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	dtos := make([]examPrepAudioDTO, 0, len(audios))
+	for _, a := range audios {
+		dto := toExamPrepAudioDTO(a)
+		// Générer l'URL présignée si l'audio est PRET et a un r2Key.
+		if a.Status == "PRET" && a.R2Key != nil && *a.R2Key != "" {
+			if url, urlErr := s.examPrepUC.GetAudioURL(r.Context(), *a.R2Key); urlErr == nil {
+				dto.AudioURL = url
+			}
+		}
+		dtos = append(dtos, dto)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"audios": dtos})
+}
+
+// getAudio — GET /api/exam-prep/audio/{id}
+//
+// Récupère un podcast par son ID. Si l'audio est PRET et a un r2Key non-nil,
+// génère une URL présignée R2 (15 min) et l'inclut dans la réponse via audioUrl.
+//
+// Rôles : ETUDIANT, ENSEIGNANT.
+func (s *Server) getAudio(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" && claims.Role != "ADMIN" {
+		writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+		return
+	}
+
+	audioID := chi.URLParam(r, "id")
+	if audioID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id audio requis")
+		return
+	}
+
+	audio, err := s.examPrepUC.GetAudio(r.Context(), claims, audioID)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	dto := toExamPrepAudioDTO(audio)
+	if audio.Status == "PRET" && audio.R2Key != nil && *audio.R2Key != "" {
+		if url, urlErr := s.examPrepUC.GetAudioURL(r.Context(), *audio.R2Key); urlErr == nil {
+			dto.AudioURL = url
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"audio": dto})
+}
