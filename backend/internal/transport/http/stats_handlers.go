@@ -781,6 +781,10 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			) ru ON true
 			ORDER BY e.nom ASC
 		`, claims.UserID)
+		if qerr != nil {
+			// Log l'erreur pour debug (ne crash pas)
+			fmt.Printf("ADMIN-STATS: etablissementsOverview query error: %v\n", qerr)
+		}
 		if qerr == nil {
 			defer rowsEtab.Close()
 			overviews := []etablissementOverview{}
