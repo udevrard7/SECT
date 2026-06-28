@@ -66,6 +66,8 @@ type devoirSoumissionListDTO struct {
 	CommentaireEnseignant *string  `json:"commentaireEnseignant"`
 	NoteIA                *float64 `json:"noteIA"`
 	JustificationIA       *string  `json:"justificationIA"`
+	StatutIA              string   `json:"statutIA"`
+	ErreurIA              *string  `json:"erreurIA"`
 	CreatedAt             string   `json:"createdAt"`
 	UpdatedAt             string   `json:"updatedAt"`
 	User                  struct {
