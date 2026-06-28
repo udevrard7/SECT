@@ -20,14 +20,30 @@ export interface PracticeQuestionState {
   propositions: Array<{ texte: string }> | null
   difficulte: string
   themes: string[]
+  /**
+   * EXAM-PREP-REFACTOR-1 : la réponse correcte et l'explication ne sont pas
+   * toujours disponibles. L'endpoint /practice/generate (cache hit 200 PRET)
+   * retourne des questions sans reponseCorrecte ; en revanche, /question-bank
+   * (polling après 202 EN_COURS) les inclut. On les conserve quand disponibles
+   * pour permettre la correction côté client (le backend /practice/{id}/submit
+   * attend déjà { score, correct } calculés par le frontend).
+   */
+  reponseCorrecte?: string | null
+  explication?: string | null
 }
 
 export interface PracticeAttemptResult {
   questionId: string
-  attempt: { id: string; score: number; correct: boolean; feedback: string }
-  explication: string | null
-  reponseCorrecte: string | null
-  srs: { nextReviewAt: string; masteryLevel: number; interval: number } | null
+  attempt: { id: string; score: number; correct: boolean }
+  /**
+   * EXAM-PREP-REFACTOR-1 : le backend /practice/{id}/submit ne renvoie QUE
+   * `attempt` (PracticeAttempt). Les champs ci-dessous sont remplis depuis la
+   * question elle-même (reponseCorrecte/explication) lorsque disponibles —
+   * ils sont donc optionnels.
+   */
+  explication?: string | null
+  reponseCorrecte?: string | null
+  srs?: { nextReviewAt: string; masteryLevel: number; interval: number } | null
 }
 
 interface PracticeSessionState {

@@ -1,15 +1,17 @@
 'use client'
 
 /**
- * DocumentReader — Visionneuse de document intégrée (modal).
+ * DocumentReader — Visionneuse de document intégrée (modal plein écran).
+ *
+ * EXAM-PREP-REFACTOR-1 : polish visuel + boutons téléchargement gracieux.
  *
  * Affiche le contenu textuel d'un document dans un dialog plein écran,
  * permettant à l'étudiant de lire le cours directement dans SECT sans
  * téléchargement. Inclut :
- *  - En-tête : nom, UE, auteur, date, thèmes
- *  - Zone de lecture scrollable avec contenu formaté
- *  - Bouton télécharger (TXT ou PDF)
- *  - Recherche dans le texte (Ctrl+F natif du navigateur)
+ *  - En-tête kente : nom, UE, auteur, date, thèmes
+ *  - Zone de lecture scrollable avec contenu formaté + taille de police ajustable
+ *  - Bouton télécharger (TXT/PDF) — backend non implémenté → toast info
+ *  - Footer sticky avec stats (caractères, mots)
  *
  * HIGHLIGHT-FLASHCARD-1 : sélection de texte → menu contextuel flottant avec
  * deux actions :
@@ -22,10 +24,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Download, Loader2, FileText, BookOpen, User, Calendar,
-  Sparkles, MessageCircle,
+  Sparkles, MessageCircle, Minus, Plus, Type,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
 interface ReaderDocument {
@@ -56,9 +59,8 @@ interface SelectionMenu {
 export function DocumentReader({ documentId, onClose, onExplainPassage }: Props) {
   const [doc, setDoc] = useState<ReaderDocument | null>(null)
   const [loading, setLoading] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-  const [fontSize, setFontSize] = useState(14)
   const [creatingFlashcard, setCreatingFlashcard] = useState(false)
+  const [fontSize, setFontSize] = useState(15)
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenu | null>(null)
 
   const articleRef = useRef<HTMLElement>(null)
@@ -88,10 +90,7 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
     }
   }, [documentId, loadDoc])
 
-  // ─── Détection de sélection de texte ───
-  // HIGHLIGHT-FLASHCARD-1 : on écoute mouseup dans la zone de lecture.
-  // Si la sélection est non vide et > 10 caractères, on affiche le menu
-  // flottant positionné au-dessus de la sélection.
+  // ─── Détection de sélection de texte (HIGHLIGHT-FLASHCARD-1) ───
   const handleSelectionChange = useCallback(() => {
     if (creatingFlashcard) return
     const selection = window.getSelection()
@@ -104,7 +103,6 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
       setSelectionMenu(null)
       return
     }
-    // Vérifier que la sélection est dans la zone de lecture (article).
     const range = selection.getRangeAt(0)
     const article = articleRef.current
     if (!article || !article.contains(range.commonAncestorContainer)) {
@@ -116,7 +114,6 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
       setSelectionMenu(null)
       return
     }
-    // Positionne le menu au-dessus du rectangle de sélection.
     setSelectionMenu({
       text,
       x: rect.left + rect.width / 2,
@@ -186,25 +183,12 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
     clearSelection()
   }
 
-  const handleDownload = async (format: 'txt' | 'pdf') => {
-    if (!documentId) return
-    setDownloading(true)
-    try {
-      const res = await fetch(`/api/exam-prep/documents/${documentId}/download?format=${format}`)
-      if (!res.ok) throw new Error()
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = doc ? `${doc.nomFichier.replace(/\.[^/.]+$/, '')}.${format}` : `document.${format}`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success(`Téléchargé (${format.toUpperCase()})`)
-    } catch {
-      toast.error('Échec du téléchargement')
-    } finally {
-      setDownloading(false)
-    }
+  // EXAM-PREP-REFACTOR-1 : le backend n'expose pas encore /download (404).
+  // Au lieu de déclencher une erreur, on affiche un toast informatif.
+  const handleDownload = (format: 'txt' | 'pdf') => {
+    toast.info('Téléchargement bientôt disponible', {
+      description: `L'export ${format.toUpperCase()} sera disponible prochainement.`,
+    })
   }
 
   return (
@@ -216,6 +200,9 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={onClose}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Lecteur de document"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 10 }}
@@ -225,7 +212,7 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-4xl max-h-[90vh] bg-card rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden"
           >
-            {/* Header */}
+            {/* Header kente */}
             <div className="ds-kente-pattern shrink-0 px-6 py-4 border-b border-border">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3 min-w-0">
@@ -260,17 +247,24 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
                 <div className="flex items-center gap-1.5 shrink-0">
                   {/* Taille de police */}
                   {doc && (
-                    <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
+                    <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
                       <button
                         onClick={() => setFontSize((s) => Math.max(12, s - 1))}
-                        className="h-7 w-7 rounded-md text-sm font-bold hover:bg-background transition-colors"
+                        className="h-7 w-7 rounded-md hover:bg-background transition-colors flex items-center justify-center"
                         title="Réduire la police"
-                      >A-</button>
+                        aria-label="Réduire la taille de la police"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+                      <Type className="h-3 w-3 text-muted-foreground" />
                       <button
-                        onClick={() => setFontSize((s) => Math.min(20, s + 1))}
-                        className="h-7 w-7 rounded-md text-base font-bold hover:bg-background transition-colors"
+                        onClick={() => setFontSize((s) => Math.min(22, s + 1))}
+                        className="h-7 w-7 rounded-md hover:bg-background transition-colors flex items-center justify-center"
                         title="Agrandir la police"
-                      >A+</button>
+                        aria-label="Agrandir la taille de la police"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   )}
                   {/* Télécharger TXT */}
@@ -278,7 +272,7 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
                     variant="outline"
                     size="sm"
                     onClick={() => handleDownload('txt')}
-                    disabled={downloading || !doc}
+                    disabled={!doc}
                     className="gap-1.5"
                     title="Télécharger en TXT"
                   >
@@ -290,7 +284,7 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
                     variant="outline"
                     size="sm"
                     onClick={() => handleDownload('pdf')}
-                    disabled={downloading || !doc}
+                    disabled={!doc}
                     className="gap-1.5"
                     title="Télécharger en PDF"
                   >
@@ -303,7 +297,7 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
                     size="sm"
                     onClick={onClose}
                     className="h-9 w-9 p-0"
-                    aria-label="Fermer"
+                    aria-label="Fermer le lecteur"
                   >
                     <X className="h-5 w-5" />
                   </Button>
@@ -332,8 +326,10 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
             {/* Zone de lecture */}
             <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
               {loading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="space-y-3">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <PulseSkeleton key={i} className="h-4 w-full" />
+                  ))}
                 </div>
               ) : doc?.contenuTexte ? (
                 <>
@@ -361,10 +357,10 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer sticky — stats */}
             {doc?.contenuTexte && (
               <div className="shrink-0 px-6 py-2 border-t border-border/50 bg-muted/20 text-center">
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground font-mono tabular-nums">
                   {doc.contenuTexte.length.toLocaleString('fr-FR')} caractères · {doc.contenuTexte.split(/\s+/).length.toLocaleString('fr-FR')} mots
                 </p>
               </div>
@@ -413,7 +409,7 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
                   onClick={handleExplainPassage}
                   disabled={!onExplainPassage}
                   className="gap-1.5 h-8 text-xs"
-                  title="Ouvrir l'onglet Questions au cours avec ce passage pré-rempli"
+                  title="Ouvrir l'onglet Q&A avec ce passage pré-rempli"
                 >
                   <MessageCircle className="h-3.5 w-3.5 text-info" />
                   <span className="hidden sm:inline">Explique-moi ce passage</span>
