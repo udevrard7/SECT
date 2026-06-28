@@ -209,6 +209,36 @@ func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID 
 	return c, nil
 }
 
+// GetDocumentForReader récupère un document complet (avec contenuTexte) pour
+// le lecteur modal (HIGHLIGHT-FLASHCARD-1). RLS désactivé : le scoping strict
+// filière+niveau est assuré côté usecase via ListStudentDocuments ; ici on trust
+// le documentID passé par un utilisateur déjà authentifié.
+func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentID string) (*domain.Document, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL`, columnsDocument), documentID)
+	d, err := scanDocument(row)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, &domain.NotFoundError{Entity: "Document", ID: documentID}
+		}
+		return nil, fmt.Errorf("query document for reader: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return d, nil
+}
+
 // ============================================================
 // BATCH LOOKUPS (DOC-ANALYZER-2)
 // ============================================================
@@ -995,4 +1025,189 @@ func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, au
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return m, nil
+}
+
+// ============================================================
+// FLASHCARDS (HIGHLIGHT-FLASHCARD-1)
+// ============================================================
+
+// CreateFlashcard insère une nouvelle Flashcard dans la table "Flashcard".
+// RLS désactivé : écriture système déclenchée par l'étudiant
+// (la table Flashcard n'a pas de politique RLS étudiant).
+//
+// HIGHLIGHT-FLASHCARD-1 : la table Flashcard n'a pas de colonne userId.
+// L'appartenance est dérivée via ReviewItem (cf. CreateFlashcardReviewItem).
+func (r *ExamPrepRepository) CreateFlashcard(ctx context.Context, input domain.CreateFlashcardInput) (*domain.Flashcard, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	id := uuid.NewString()
+	row := tx.QueryRow(ctx, `
+		INSERT INTO "Flashcard" ("id", "chapterId", "documentId", "recto", "verso", "createdAt")
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+		RETURNING "id", "chapterId", "documentId", "recto", "verso", "createdAt"
+	`, id, nullableStrPtr(input.ChapterID), nullableStrPtr(input.DocumentID), input.Recto, input.Verso)
+
+	f := &domain.Flashcard{}
+	var chapterID, documentID *string
+	if err := row.Scan(&f.ID, &chapterID, &documentID, &f.Recto, &f.Verso, &f.CreatedAt); err != nil {
+		return nil, fmt.Errorf("create flashcard: %w", err)
+	}
+	f.ChapterID = chapterID
+	f.DocumentID = documentID
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return f, nil
+}
+
+// ListFlashcards liste les flashcards d'un utilisateur. Le lien user↔flashcard
+// est assuré par JOIN ReviewItem : r.questionId = f.id AND r.userId = $1.
+// Si documentID != "", on filtre en plus par f.documentId = $2.
+//
+// Pas de placeholder réutilisé : si documentID == "", on construit la
+// requête avec un seul paramètre ($1 = userID) ; sinon avec deux ($1=userID,
+// $2=documentID). Compatible pgx Simple Protocol.
+func (r *ExamPrepRepository) ListFlashcards(ctx context.Context, userID, documentID string) ([]*domain.Flashcard, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RLS claims in context")
+	}
+
+	var result []*domain.Flashcard
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		var query string
+		var args []any
+		if documentID != "" {
+			query = `
+				SELECT f."id", f."chapterId", f."documentId", f."recto", f."verso", f."createdAt"
+				FROM "Flashcard" f
+				JOIN "ReviewItem" r ON r."questionId" = f."id"
+				WHERE r."userId" = $1 AND f."documentId" = $2
+				ORDER BY f."createdAt" DESC
+			`
+			args = []any{userID, documentID}
+		} else {
+			query = `
+				SELECT f."id", f."chapterId", f."documentId", f."recto", f."verso", f."createdAt"
+				FROM "Flashcard" f
+				JOIN "ReviewItem" r ON r."questionId" = f."id"
+				WHERE r."userId" = $1
+				ORDER BY f."createdAt" DESC
+			`
+			args = []any{userID}
+		}
+
+		rows, err := tx.Query(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query flashcards: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			f := &domain.Flashcard{}
+			var chapterID, documentID *string
+			if err := rows.Scan(&f.ID, &chapterID, &documentID, &f.Recto, &f.Verso, &f.CreatedAt); err != nil {
+				return fmt.Errorf("scan flashcard: %w", err)
+			}
+			f.ChapterID = chapterID
+			f.DocumentID = documentID
+			result = append(result, f)
+		}
+		if result == nil {
+			result = []*domain.Flashcard{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteFlashcard supprime la flashcard ET son ReviewItem associé.
+// L'ordre importe : on supprime d'abord le ReviewItem (pas de FK vers Flashcard
+// → cascade manuelle), puis la Flashcard. Si la flashcard n'existe pas ou
+// n'appartient pas à l'utilisateur, on retourne NotFoundError.
+//
+// RLS off : la table Flashcard n'a pas de politique RLS étudiant.
+func (r *ExamPrepRepository) DeleteFlashcard(ctx context.Context, userID, flashcardID string) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return fmt.Errorf("disable rls: %w", err)
+	}
+
+	// 1. Supprimer le ReviewItem associé (s'il existe). La condition
+	//    userId + questionId garantit qu'on ne touche que le ReviewItem de CET
+	//    utilisateur pour CETTE flashcard.
+	_, _ = tx.Exec(ctx, `
+		DELETE FROM "ReviewItem" WHERE "userId" = $1 AND "questionId" = $2
+	`, userID, flashcardID)
+
+	// 2. Supprimer la Flashcard. Si RowsAffected == 0, elle n'existe pas
+	//    (ou a déjà été supprimée) → NotFoundError.
+	tag, err := tx.Exec(ctx, `DELETE FROM "Flashcard" WHERE "id" = $1`, flashcardID)
+	if err != nil {
+		return fmt.Errorf("delete flashcard: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return &domain.NotFoundError{Entity: "Flashcard", ID: flashcardID}
+	}
+
+	return tx.Commit(ctx)
+}
+
+// CreateFlashcardReviewItem insère un ReviewItem pour une flashcard fraîchement
+// créée. Le champ questionId stocke l'ID de la flashcard (convention
+// HIGHLIGHT-FLASHCARD-1 — réutilisation de la colonne existante, pas de
+// migration).
+//
+// Defaults SM-2 : interval=0, easeFactor=2.5, repetitions=0,
+// nextReviewAt=CURRENT_TIMESTAMP (dû immédiatement). L'étudiant pourra
+// marquer la flashcard comme révisée via /api/exam-prep/review (MarkReviewed)
+// qui appliquera la formule SM-2 sur le premier review.
+//
+// RLS off : écriture système.
+func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, userID, flashcardID string, chapterID *string) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return fmt.Errorf("disable rls: %w", err)
+	}
+
+	var chapArg any
+	if chapterID != nil && *chapterID != "" {
+		chapArg = *chapterID
+	}
+
+	reviewID := uuid.NewString()
+	_, err = tx.Exec(ctx, `
+		INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
+			"interval", "easeFactor", "repetitions", "nextReviewAt",
+			"lastReviewAt", "createdAt", "updatedAt")
+		VALUES ($1, $2, $3, $4, 0, 2.5, 0,
+			CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`, reviewID, userID, chapArg, flashcardID)
+	if err != nil {
+		return fmt.Errorf("create flashcard review item: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }

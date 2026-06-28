@@ -21,6 +21,37 @@ type Chapter struct {
 }
 
 // ============================================================
+// FLASHCARD (HIGHLIGHT-FLASHCARD-1)
+// ============================================================
+
+// Flashcard représente une carte de révision générée depuis un passage
+// sélectionné dans un document.
+//
+// HIGHLIGHT-FLASHCARD-1 : la table "Flashcard" n'a PAS de colonne userId.
+// L'appartenance est dérivée via ReviewItem : une flashcard appartient à  un
+// utilisateur s'il existe un ReviewItem avec questionId = flashcard.id AND
+// userId = X. Convention : on réutilise la colonne ReviewItem.questionId
+// (qui existe déjà  pour les questions d'entraînement) pour stocker l'ID de
+// la flashcard. Pas de migration nécessaire.
+type Flashcard struct {
+	ID         string    `json:"id"`
+	ChapterID  *string   `json:"chapterId,omitempty"`
+	DocumentID *string   `json:"documentId,omitempty"`
+	Recto      string    `json:"recto"`
+	Verso      string    `json:"verso"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// CreateFlashcardInput pour créer une flashcard (recto/verso générés par l'IA).
+type CreateFlashcardInput struct {
+	UserID     string  `json:"-"`
+	DocumentID *string `json:"documentId,omitempty"`
+	ChapterID  *string `json:"chapterId,omitempty"`
+	Recto      string  `json:"recto"`
+	Verso      string  `json:"verso"`
+}
+
+// ============================================================
 // REVIEW ITEM (Spaced Repetition)
 // ============================================================
 
@@ -191,6 +222,8 @@ type ExamPrepRepository interface {
 	// GetDocumentContent récupère le contenu textuel d'un document.
 	// EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG.
 	GetDocumentContent(ctx context.Context, documentID string) (string, error)
+	// HIGHLIGHT-FLASHCARD-1 — DocumentReader: fetch a single document for the reader modal.
+	GetDocumentForReader(ctx context.Context, documentID string) (*Document, error)
 
 	// DOC-ANALYZER-2 : méthodes batch pour enrichir la liste de documents
 	// (chapitres + UE + propriétaire). RLS désactivé : métadonnées non
@@ -219,4 +252,20 @@ type ExamPrepRepository interface {
 	CloseHelpThread(ctx context.Context, threadID string) error
 	ListHelpMessages(ctx context.Context, threadID string) ([]*HelpMessage, error)
 	CreateHelpMessage(ctx context.Context, threadID, auteurID string, input CreateHelpMessageInput) (*HelpMessage, error)
+
+	// HIGHLIGHT-FLASHCARD-1 â Flashcards générées depuis une sélection de texte.
+	// CreateFlashcard insère une Flashcard (RLS off â écriture système).
+	CreateFlashcard(ctx context.Context, input CreateFlashcardInput) (*Flashcard, error)
+	// ListFlashcards liste les flashcards d'un utilisateur (filtrées par documentId
+	// si non vide). Le lien userâflashcard est assuré par JOIN ReviewItem :
+	// r.questionId = f.id AND r.userId = $1 (la table Flashcard n'a pas de userId).
+	ListFlashcards(ctx context.Context, userID, documentID string) ([]*Flashcard, error)
+	// DeleteFlashcard supprime la flashcard ET son ReviewItem associé
+	// (le ReviewItem.questionId n'a pas de FK vers Flashcard â cascade manuelle).
+	DeleteFlashcard(ctx context.Context, userID, flashcardID string) error
+	// CreateFlashcardReviewItem insère un ReviewItem pour une flashcard fraîchement
+	// créée. Le champ questionId stocke l'ID de la flashcard (convention
+	// HIGHLIGHT-FLASHCARD-1). Defaults SM-2 : interval=0, easeFactor=2.5,
+	// repetitions=0, nextReviewAt=now (dû immédiatement).
+	CreateFlashcardReviewItem(ctx context.Context, userID, flashcardID string, chapterID *string) error
 }
