@@ -3,19 +3,21 @@
 /**
  * ExamPrepDocumentDetail — Vue détail d'un document avec onglets.
  *
- * 6 onglets (respectent l'identité Savane EdTech) :
+ * 8 onglets (respectent l'identité Savane EdTech) :
  *  1. Aperçu — chapitres + résumé + thèmes
  *  2. Questions au cours — chat RAG ancré au document (exige exam-prep-qa-tab)
  *  3. Entraînement — génération de questions + correction (exam-prep-practice-tab)
- *  4. Planning — sessions de révision + spaced repetition (exam-prep-planning-tab)
- *  5. Aide prof — messagerie étudiant↔enseignant (exam-prep-help-tab)
- *  6. Progression — tableau de bord (exam-prep-progress-tab)
+ *  4. Banque — questions partagées + votes collaboratifs (exam-prep-question-bank-tab, QUESTION-BANK-1)
+ *  5. Flashcards — cartes Q/R générées depuis une sélection (exam-prep-flashcards-tab)
+ *  6. Planning — sessions de révision + spaced repetition (exam-prep-planning-tab)
+ *  7. Aide prof — messagerie étudiant↔enseignant (exam-prep-help-tab)
+ *  8. Progression — tableau de bord (exam-prep-progress-tab)
  */
 
 import { useState } from 'react'
 import {
   ArrowLeft, FileText, Sparkles, Award, Clock, BookOpen, TrendingUp,
-  ChevronRight, Layers,
+  ChevronRight, Layers, Library,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +30,7 @@ import { ExamPrepPlanningTab } from './tabs/exam-prep-planning-tab'
 import { ExamPrepHelpTab } from './tabs/exam-prep-help-tab'
 import { ExamPrepProgressTab } from './tabs/exam-prep-progress-tab'
 import { ExamPrepFlashcardsTab } from './tabs/exam-prep-flashcards-tab'
+import { ExamPrepQuestionBankTab } from './tabs/exam-prep-question-bank-tab'
 
 interface Props {
   document: ExamPrepDocument
@@ -107,6 +110,10 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
             <Award className="h-4 w-4" />
             <span className="hidden sm:inline">Entraînement</span>
             <span className="sm:hidden">Train</span>
+          </TabsTrigger>
+          <TabsTrigger value="bank" className="gap-1.5">
+            <Library className="h-4 w-4" />
+            <span className="hidden sm:inline">Banque</span>
           </TabsTrigger>
           <TabsTrigger value="flashcards" className="gap-1.5">
             <Layers className="h-4 w-4" />
@@ -232,6 +239,11 @@ export function ExamPrepDocumentDetail({ document: doc, onBack, qaPrefill, onCon
             {/* ─── Entraînement ─── */}
             <TabsContent value="practice" className="mt-0">
               <ExamPrepPracticeTab documentId={doc.id} chapters={doc.chapters} />
+            </TabsContent>
+
+            {/* ─── Banque (QUESTION-BANK-1) ─── */}
+            <TabsContent value="bank" className="mt-0">
+              <ExamPrepQuestionBankTab documentId={doc.id} />
             </TabsContent>
 
             {/* ─── Flashcards (HIGHLIGHT-FLASHCARD-1) ─── */}

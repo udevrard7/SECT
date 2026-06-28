@@ -341,3 +341,85 @@ func (uc *ExamPrepUseCase) DeleteFlashcard(ctx context.Context, claims db.Sessio
 }
 
 var _ = fmt.Sprintf
+
+
+// ============================================================
+// QUESTION BANK — votes + cache (QUESTION-BANK-1)
+// ============================================================
+
+// VoteQuestion upsert le vote d'un utilisateur sur une question.
+// value doit être +1 (upvote) ou -1 (downvote). Rôles : ETUDIANT, ENSEIGNANT.
+func (uc *ExamPrepUseCase) VoteQuestion(ctx context.Context, claims db.SessionClaims, questionID string, value int) (*domain.QuestionVote, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if questionID == "" {
+		return nil, &domain.ValidationError{Field: "questionId", Message: "requis"}
+	}
+	if value != 1 && value != -1 {
+		return nil, &domain.ValidationError{Field: "value", Message: "doit être +1 ou -1"}
+	}
+	return uc.repo.VoteQuestion(ctx, claims.UserID, questionID, value)
+}
+
+// RemoveVote supprime le vote d'un utilisateur sur une question (un-vote).
+// Rôles : ETUDIANT, ENSEIGNANT.
+func (uc *ExamPrepUseCase) RemoveVote(ctx context.Context, claims db.SessionClaims, questionID string) error {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if questionID == "" {
+		return &domain.ValidationError{Field: "questionId", Message: "requis"}
+	}
+	return uc.repo.RemoveVote(ctx, claims.UserID, questionID)
+}
+
+// ListQuestionBank liste les questions validées d'un document avec les stats
+// de vote. Rôles : ETUDIANT, ENSEIGNANT. Le chapterID est accepté mais ignoré
+// en v1 (filtrage par documentId uniquement).
+func (uc *ExamPrepUseCase) ListQuestionBank(ctx context.Context, claims db.SessionClaims, documentID string, chapterID *string, limit, offset int) ([]*domain.QuestionBankItem, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return nil, &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+	return uc.repo.ListQuestionBank(ctx, claims.UserID, documentID, chapterID, limit, offset)
+}
+
+// GetCachedQuestions vérifie si la banque contient déjà assez de questions
+// validées pour répondre à la demande. Si oui, retourne les questions + true
+// (cache hit → le handler répond 200 PRET, pas de génération IA). Sinon,
+// retourne (nil, false, nil) (cache miss → le handler pousse un job IA + 202).
+//
+// La stratégie de cache est volontairement simple : on compte les questions
+// validées du document (filtrage difficulte optionnel). Si count >= requestedCount,
+// on récupère les `requestedCount` plus récentes. Le chapterID est ignoré en v1.
+//
+// QUESTION-BANK-1 : c'est l'optimisation principale — le premier étudiant paie
+// le coût IA, les suivants obtiennent les questions instantanément (200 PRET).
+func (uc *ExamPrepUseCase) GetCachedQuestions(ctx context.Context, claims db.SessionClaims, documentID string, chapterID *string, difficulte *string, requestedCount int) ([]*domain.QuestionBankItem, bool, error) {
+	if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) && claims.Role != string(domain.RoleAdmin) {
+		return nil, false, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if documentID == "" {
+		return nil, false, &domain.ValidationError{Field: "documentId", Message: "requis"}
+	}
+	if requestedCount <= 0 {
+		return nil, false, &domain.ValidationError{Field: "requestedCount", Message: "doit être > 0"}
+	}
+
+	count, err := uc.repo.CountQuestionsByDocument(ctx, documentID, chapterID, difficulte)
+	if err != nil {
+		return nil, false, err
+	}
+	if count < requestedCount {
+		return nil, false, nil
+	}
+
+	questions, err := uc.repo.ListExistingQuestions(ctx, documentID, chapterID, difficulte, requestedCount)
+	if err != nil {
+		return nil, false, err
+	}
+	return questions, true, nil
+}
