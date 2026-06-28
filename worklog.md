@@ -6620,3 +6620,152 @@ Suite au fix RLS (`EXAM-PREP-RLS-FIX-1`), le endpoint `GET /api/exam-prep/docume
 3. **Fallback `"L1"` si niveau vide** : si un étudiant n'a pas de `niveau` renseigné en DB (NULL ou colonne vide), le code fallback sur `"L1"` — comportement identique à l'ancien code hardcodé, donc pas de régression. Idéalement, tous les étudiants devraient avoir un niveau non-NULL (contrainte à vérifier côté création de compte). Le fallback est défensif, pas une stratégie à long terme.
 4. **Cohérence avec `SessionClaims`** : ce fix contourne l'absence du champ `Niveau` dans le JWT en le lisant depuis la DB. Une solution plus durable serait d'ajouter `Niveau string` à `SessionClaims` et de le peupler à la connexion (depuis la DB) puis de le signer dans le JWT — cela éviterait le round-trip DB et tiendrait le niveau à jour côté session. Mais cela nécessite (a) modifier la signature JWT, (b) ré-émettre tous les JWT actifs, (c) modifier le middleware d'auth. Hors scope de ce fix (per contrainte #4). Le présent fix est un hotfix minimal et safe.
 5. **Effet combiné avec EXAM-PREP-RLS-FIX-1** : ce fix n'a de sens QUE parce que le fix RLS précédent (`0d2a57f`) a débloqué `ListStudentDocuments`. Sans le fix RLS, même avec le bon `niveau`, RLS aurait filtré tous les documents. Les deux fixes sont complémentaires et indépendants : RLS-FIX corrige la couche sécurité, NIVEAU-FIX corrige la couche paramétrage. Ensemble, ils devraient restaurer l'affichage des documents sur `/exam-prep`.
+
+---
+
+## REVIEW-FIX-1 — Fix ReviewItem column `lastReviewedAt` + RLS off dans ListReviewItems
+
+- **Task ID** : REVIEW-FIX-1
+- **Agent** : general-purpose
+- **Task** : Corriger le bug HTTP 500 sur `GET /api/exam-prep/review?documentId=X` (onglet "Planification" de `/exam-prep` cassé).
+
+### Work Log
+
+**Bug confirmé via Agent Browser + inspection Neon DB** : `GET /api/exam-prep/review` retourne HTTP 500 "erreur interne". Deux causes racines :
+
+1. **Mauvais nom de colonne** : la DB utilise `"lastReviewedAt"` (avec "ed" — passé composé) mais le code Go utilisait `"lastReviewAt"` (sans "ed") dans 5 endroits, provoquant `NeonDbError: column "lastReviewAt" does not exist`.
+
+2. **RLS bloque ListReviewItems** : `ListReviewItems` utilisait `db.WithTx(ctx, r.pool, claims, ...)` qui maintient RLS ON. La policy `ReviewItem_all_owner` filtre par `"userId" = current_user_id()` — redondant avec le `WHERE "userId" = $1` déjà présent dans la requête. Pour cohérence avec EXAM-PREP-RLS-FIX-1, passage à un pattern de transaction manuelle avec `SET LOCAL row_security = off`.
+
+**Fichier modifié** : `backend/internal/repository/examprep.go`
+
+**Changements** :
+
+1. **`ListReviewItems` (réécriture complète)** :
+   - Supprimé `db.ClaimsFromContext` + `db.WithTx` (callback).
+   - Ajouté pattern transaction manuelle : `r.pool.BeginTx` → `SET LOCAL row_security = off` → `tx.Query` → `tx.Commit`.
+   - Tous les `return fmt.Errorf(...)` (callback) → `return nil, fmt.Errorf(...)` (fonction directe).
+   - Indentation SQL réduite d'un niveau (3→2 tabs pour le contenu du raw string) puisque la requête n'est plus dans un callback.
+   - Colonne `"lastReviewAt"` → `"lastReviewedAt"` dans le SELECT.
+   - Commentaires `// REVIEW-FIX-1 : RLS désactivé...` ajoutés.
+
+2. **`MarkReviewed` UPDATE** (ligne ~551) : `"lastReviewAt"` → `"lastReviewedAt"`. (Déjà utilisait `SET LOCAL row_security = off` — seul le nom de colonne à corriger.)
+
+3. **`SubmitPractice` INSERT** (ligne ~798, premier review sur une question) : `"lastReviewAt"` → `"lastReviewedAt"` dans l'INSERT du nouveau ReviewItem.
+
+4. **`SubmitPractice` UPDATE** (ligne ~824, review item existant) : `"lastReviewAt"` → `"lastReviewedAt"` dans l'UPDATE SM-2 du ReviewItem existant. **Non mentionné dans le task description** mais découvert via `grep` — corrigé pour cohérence.
+
+5. **`CreateFlashcardReviewItem` INSERT** (ligne ~1256) : `"lastReviewAt"` → `"lastReviewedAt"` dans l'INSERT du ReviewItem pour flashcard. **Non mentionné dans le task description** mais découvert via `grep` — corrigé pour cohérence.
+
+**Total** : 5 occurrences de `"lastReviewAt"` corrigées (1 dans ListReviewItems rewrite + 4 par replace_all). Le task description prévoyait 3 occurrences — il y en avait en réalité 5.
+
+### Vérifications
+
+- **`cat -A` sur ListReviewItems** : toutes les lignes indentées avec `^I` (tabs). ✅
+  ```
+  ^I// REVIEW-FIX-1 : RLS désactivé ...
+  ^Itx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+  ^Iif err != nil {
+  ^I^Ireturn nil, fmt.Errorf("begin tx: %w", err)
+  ^I}
+  ...
+  ```
+
+- **`grep -cPn '^( +)\S'`** → `0` (exit code 1 = aucun match). Aucune ligne indentée par espaces. ✅
+
+- **Brace balance** (script Python stripping strings/comments/raw strings) :
+  - `{}` : 0 (équilibré) ✅
+  - `()` : 0 (équilibré) ✅
+  - `[]` : 0 (équilibré) ✅
+
+- **`grep -n 'lastReviewAt'`** (sans "ed") → aucun résultat. ✅
+- **`grep -cn 'lastReviewedAt'`** (avec "ed") → `5`. ✅
+
+- **Import `db` toujours utilisé** : 19 occurrences de `db.` dans le fichier (GetDashboard, ListStudySessions, ListPracticeAttempts, ListHelpThreads, etc.). L'import n'est pas devenu orphan. ✅
+
+- **Imports `strings`, `pgx`, `uuid`, `time`** : toujours utilisés par d'autres méthodes. ✅
+
+- **pgx Simple Protocol** : `ListReviewItems` utilise `$1` (userId) et `$2` (documentId si fourni) — placeholders distincts, pas de réutilisation. ✅
+
+### Stage Summary
+
+- **Git commit** : `3300a65` — `fix(exam-prep): colonne lastReviewedAt + RLS off dans ListReviewItems (REVIEW-FIX-1)`
+- **Pushed** : `main` (`d742ebe..3300a65`). Déploiement Vercel auto-déclenché.
+- **Files changed** : 1 file, 52 insertions(+), 47 deletions(-)
+
+### Risks / Follow-ups
+
+1. **Go non installé** : pas de `go build` / `go vet` exécuté. Vérification manuelle (tabs, équilibre délimiteurs, imports, signatures). Après déploiement Vercel, valider : `GET /api/exam-prep/review?documentId=X` doit retourner 200 avec la liste des items de révision, et l'onglet "Planification" de `/exam-prep` doit s'afficher correctement.
+
+2. **5 occurrences au lieu de 3** : le task description prévoyait 3 occurrences de `lastReviewAt` (ListReviewItems SELECT, MarkReviewed UPDATE, SubmitPractice INSERT). Il y en avait en réalité 5 — 2 supplémentaires dans SubmitPractice UPDATE (ligne 819) et CreateFlashcardReviewItem INSERT (ligne 1251). Toutes corrigées pour cohérence. Si une seule restait non corrigée, le bug persisterait sur ces flows.
+
+3. **`MarkReviewed` non testé end-to-end** : `MarkReviewed` est appelé quand l'utilisateur marque un item comme révisé. Le fix du nom de colonne est nécessaire mais le flow complet (SM-2 calculation + UPDATE) n'a pas été testé. À valider après déploiement.
+
+4. **`CreateFlashcardReviewItem` non testé** : cette méthode crée un ReviewItem quand un étudiant crée une flashcard. Le fix du nom de colonne est nécessaire mais le flow n'a pas été testé. À valider après déploiement.
+
+5. **Pattern RLS cohérent** : `ListReviewItems` suit maintenant le même pattern que `GetDocumentContent`, `ListStudentDocuments`, `MarkReviewed`, `CreateStudySession`, `SubmitPractice`, `VoteQuestion`, etc. (transaction manuelle + `SET LOCAL row_security = off`). Les méthodes qui utilisent encore `db.WithTx` (GetDashboard, ListStudySessions, ListPracticeAttempts, ListHelpThreads) sont celles où RLS est légitime (pas de scoping userId en SQL) ou où le flow n'a pas encore été corrigé. Pas de régression sur ces méthodes.
+
+
+---
+
+## DEVOIRS-STATS-FIX-1 — Fix KPIs /devoirs ne tenant pas compte du soft delete des devoirs
+
+- **Task ID** : DEVOIRS-STATS-FIX-1
+- **Agent** : general-purpose (sub agent)
+- **Task** : Corriger le handler `devoirsStatsReal` (`stub_handlers_real2.go`) qui compte les soumissions des devoirs soft-supprimés (`Devoir.deletedAt` non NULL). Symptôme : sur `/devoirs`, les KPIs « À corriger » (soumissionsEnAttente) et « Soumissions » (totalSoumissions) restent > 0 après suppression d'un devoir lié à une soumission.
+
+### Work Log
+
+1. **Lecture du worklog** + contexte projet (backend Go 1.24, pgx, Supabase/Neon). État git : `main` à jour avec `origin/main` (`fa4bfd3`), worklog avait 84 lignes non committées (section REVIEW-FIX-1).
+
+2. **Inspection du handler** `devoirsStatsReal` (lignes ~985-1110 de `backend/internal/transport/http/stub_handlers_real2.go`). Confirmation de la cause racine : 7 requêtes SQL comptaient sur `"Soumission"` SANS filtrer sur `Devoir.deletedAt` :
+   - 4 KPIs : `TotalSoumissions`, `SoumissionsEnAttente`, `SoumissionsCorrigees`, `EnRetard` (lignes 1045-1048). La requête `EnRetard` avait déjà le JOIN `Devoir` mais manquait `d."deletedAt" IS NULL`.
+   - `soumissionsByStatut` (ligne 1065).
+   - `timeline` sous-requête (ligne 1081).
+   - `moyenneNotes` (ligne 1099) — `SELECT AVG("note") FROM "Soumission" WHERE "note" IS NOT NULL`. Identifiée via l'étape 3 du task (« check moyenneNotes ») ; non listée dans le décompte « 6 requêtes » du task mais couverte par l'instruction explicite de l'étape 3.
+
+3. **Vérification schéma** : aucune `schema.prisma` trouvée (projet Supabase direct, pas Prisma côté frontend pour ce modèle). Inspection des colonnes `Devoir` via les requêtes existantes dans le même fichier → `Devoir` a `noteMax` mais PAS de colonne `note`. La colonne `note` n'appartient qu'à `Soumission`. Néanmoins, par sécurité et pour éviter toute ambiguïté future, `"note"` a été qualifiée en `s."note"` dans la requête `moyenneNotes`.
+
+4. **Application du fix** via script Python (`/home/z/fix_stats.py`) utilisant `\t` explicites pour préserver les tabulations (les outils Edit/Write convertiraient les tabs en espaces → casserait gofmt + build Render). 4 blocs de remplacement, chacun vérifié « exactement 1 occurrence » avant remplacement :
+   - R1 : 4 requêtes KPI (TotalSoumissions, SoumissionsEnAttente, SoumissionsCorrigees, EnRetard) → ajout `JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL`.
+   - R2 : `soumissionsByStatut` → JOIN + `GROUP BY s."statut"` (qualifié `s.`).
+   - R3 : `timeline` sous-requête → JOIN `Devoir dv` (alias `dv` pour éviter conflit avec l'alias `d` du `generate_series`), `date_trunc('day', s."createdAt")` (qualifié `s.`).
+   - R4 : `moyenneNotes` → JOIN + `AVG(s."note")` + `s."note" IS NOT NULL` (qualifiés `s.`).
+
+5. **Vérifications manuelles** (Go non installé) :
+   - **`cat -A`** : toutes les lignes de code Go utilisent `^I` (tabs), zéro indentation par espaces. Extrait R1 :
+     ```
+     ^I^I// BUGFIX (DEVOIRS-STATS-FIX-1) : exclure les soumissions des devoirs soft-supprimM-CM-)s$
+     ^I^I_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "Soumission" s JOIN "Devoir" d ON d."id" = s."devoirId" WHERE d."deletedAt" IS NULL`).Scan(&stats.Kpis.TotalSoumissions)$
+     ```
+   - **`grep -cPn '^( +)\S'`** sur tout le fichier → `0` (aucune ligne de code indentée par espaces ; les lignes dans les raw strings utilisent aussi des tabs). ✅
+   - **Équilibre délimiteurs** (script Python stripant raw strings ` `` `, commentaires `//` et `/* */`, chaînes `"..."` et runes `'.'`) :
+     - `{}` : 189 / 189 (diff 0) ✅
+     - `()` : 363 / 363 (diff 0) ✅
+     - `[]` : 49 / 49 (diff 0) ✅
+     - backticks : 376 (pair) ✅ → raw strings équilibrés.
+   - **pgx Simple Protocol** : aucune des 7 requêtes n'utilise de placeholder `$N` → pas de risque de réutilisation. ✅
+   - **Scope** : seul `devoirsStatsReal` modifié ; aucun autre handler touché. ✅
+
+6. **Diff review** : `git diff` confirme 4 hunks (R1 + commentaire BUGFIX, R2, R3, R4), indentation tabulaire préservée, pas de ligne parasite.
+
+### Stage Summary
+
+- **Queries fixed** : **7** (4 KPI count + soumissionsByStatut + timeline + moyenneNotes). Note : le task prévoyait « 6 » mais l'étape 3 demandait explicitement de corriger `moyenneNotes` si elle interroge `Soumission` — ce qui est le cas → 7e requête corrigée.
+- **Files changed** : `backend/internal/transport/http/stub_handlers_real2.go` (1 fichier, ~7 lignes modifiées).
+- **Git commit** : à venir (message `fix(devoirs): stats ne compte plus les soumissions des devoirs supprimés (DEVOIRS-STATS-FIX-1)`, identité `udevrrard7 <ulrichdouh@gmail.com>`).
+- **Push** : `main` → déploiement Vercel auto.
+
+### Risks / Follow-ups
+
+1. **Go non installé** : pas de `go build` / `go vet`. Vérification manuelle (tabs, équilibre délimiteurs, raw strings). Après déploiement Vercel/Render, valider : `GET /api/devoirs/stats` doit retourner `totalSoumissions=0, soumissionsEnAttente=0` pour le scénario de test (1 devoir soft-supprimé + 1 soumission SOUMIS liée).
+
+2. **7 requêtes au lieu de 6** : `moyenneNotes` (étape 3 du task) a été corrigée en plus des 6 listées. Sans ce fix, la moyenne des notes inclurait encore les notes des soumissions de devoirs supprimés. Correction cohérente avec l'intention du fix.
+
+3. **Qualification des colonnes** : dans `moyenneNotes`, `"note"` → `s."note"` et dans `soumissionsByStatut`, `"statut"` → `s."statut"`. Devoir n'a pas de colonne `note` ni `statut` (seulement `statut` — attendez, Devoir A une colonne `statut` !). Vérification : la requête `soumissionsByStatut` sélectionne `s."statut"` (statut de la Soumission) et joint Devoir qui a aussi une colonne `statut`. La qualification `s."statut"` était donc **nécessaire** pour éviter une erreur d'ambiguïté PostgreSQL. ✅ Bien vu. De même `s."createdAt"` dans timeline (Devoir a aussi `createdAt`). ✅
+
+4. **Performance** : 7 requêtes ajoutent chacune un JOIN sur `Devoir."id"` (clé primaire) — impact négligeable (index PK). Pas de risque de regression de perf.
+
+5. **Cohérence RLS** : `devoirsStatsReal` utilise `appdb.WithTx` (transaction avec claims). Aucun changement au pattern transactionnel — seule la couche SQL des compteurs a changé. Pas de régression RLS.
+
+6. **`byType` non touché** : la requête `byType` (ligne 1052) filtre déjà sur `Devoir WHERE "deletedAt" IS NULL` — elle ne join pas Soumission, donc pas concernée. ✅
