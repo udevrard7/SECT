@@ -751,7 +751,9 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			defer tx2.Rollback(ctx)
 			tx2.Exec(ctx, "SET row_security = off")
 
-			rowsEtab2, q2err := tx2.Query(ctx, `
+			// Inline le adminId (contournement Simple Protocol + RLS)
+			escapedAdminID := strings.ReplaceAll(claims.UserID, "'", "''")
+			rowsEtab2, q2err := tx2.Query(ctx, fmt.Sprintf(`
 				SELECT
 					e.id, e.nom, e.ville, e.type, e.actif,
 					(SELECT a.statut::text FROM "Abonnement" a
@@ -765,7 +767,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 					(SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id) AS nb_filieres,
 					(SELECT count(*) FROM "EtablissementAccess" ea
 					 WHERE ea."etablissementId" = e.id
-					   AND ea."adminId" = $1
+					   AND ea."adminId" = '%s'
 					   AND ea.statut = 'ACTIF') AS admin_has_access,
 					ru.id, ru.name, ru.email, ru.actif
 				FROM "Etablissement" e
@@ -776,7 +778,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 					LIMIT 1
 				) ru ON true
 				ORDER BY e.nom ASC
-			`, claims.UserID)
+			`, escapedAdminID))
 			if q2err == nil {
 				defer rowsEtab2.Close()
 				overviews := []etablissementOverview{}
