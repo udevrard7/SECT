@@ -7,6 +7,7 @@ import (
 
         "github.com/go-chi/chi/v5"
         "github.com/jackc/pgx/v5"
+        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/worker"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
@@ -279,15 +280,44 @@ func (s *Server) retournerBatch(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // P1c-CORRECTION : accepter soit {sessionIds:[]} soit {epreuveId:""}.
+        // Le frontend use-correction.ts envoie {epreuveId} (sans sessionIds).
+        // Si epreuveId est fourni, on lookup les sessions CORRIGEE de cet épreuve.
         var body struct {
                 SessionIDs []string `json:"sessionIds"`
+                EpreuveID  string   `json:"epreuveId"`
         }
         if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
                 return
         }
 
-        count, err := s.correctionUC.RetournerBatch(r.Context(), claims, body.SessionIDs)
+        sessionIDs := body.SessionIDs
+
+        // Si pas de sessionIds mais epreuveId fourni → lookup sessions CORRIGEE
+        if len(sessionIDs) == 0 && body.EpreuveID != "" {
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        rows, err := tx.Query(r.Context(), `
+                                SELECT sp."id"
+                                FROM "SessionPassation" sp
+                                JOIN "Epreuve" e ON e."id" = sp."epreuveId"
+                                WHERE sp."epreuveId" = $1 AND sp."statut" = 'CORRIGEE' AND e."enseignantId" = $2
+                        `, body.EpreuveID, claims.UserID)
+                        if err != nil {
+                                return err
+                        }
+                        defer rows.Close()
+                        for rows.Next() {
+                                var id string
+                                if err := rows.Scan(&id); err == nil {
+                                        sessionIDs = append(sessionIDs, id)
+                                }
+                        }
+                        return nil
+                })
+        }
+
+        count, err := s.correctionUC.RetournerBatch(r.Context(), claims, sessionIDs)
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
@@ -297,6 +327,8 @@ func (s *Server) retournerBatch(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]any{
                 "message": "Sessions retournées",
                 "count":   count,
+                "returned": count,
+                "total":   len(sessionIDs),
         })
 }
 

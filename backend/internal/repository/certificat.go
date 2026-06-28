@@ -265,7 +265,9 @@ func NewCorrectionRepository(pool *pgxpool.Pool) *CorrectionRepository {
         return &CorrectionRepository{pool: pool}
 }
 
-// ListSessions liste les sessions à corriger pour un enseignant (bypass RLS pour tenant check manuel).
+// ListSessions liste les sessions à corriger pour un enseignant.
+// P1-CORRECTION : enrichi avec Reponses, Resultat, Epreuve.questions, et champs calculés
+// (alertes, needsCorrectionCount, allCorrected, autoGradedScore, autoGradedTotal).
 func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.CorrectionListParams) ([]*domain.CorrectionSession, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
@@ -295,12 +297,20 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
 
         whereClause := "WHERE " + strings.Join(where, " AND ")
 
+        // Query 1 : sessions + alertes + subqueries calculés + LEFT JOIN Resultat
         query := fmt.Sprintf(`
                 SELECT s."id", s."etudiantId", u."name", u."email",
-                       s."epreuveId", e."titre", s."statut", s."dateFin", s."score"
+                       s."epreuveId", e."titre", s."statut", s."dateFin", s."score",
+                       s."alertes",
+                       COALESCE((SELECT count(*) FROM "Reponse" r WHERE r."sessionId" = s."id" AND r."score" IS NULL), 0) as needs_correction,
+                       CASE WHEN (SELECT count(*) FROM "Reponse" r WHERE r."sessionId" = s."id" AND r."score" IS NULL) = 0 THEN true ELSE false END as all_corrected,
+                       COALESCE((SELECT sum(r."score") FROM "Reponse" r JOIN "Question" q ON q."id" = r."questionId" WHERE r."sessionId" = s."id" AND q."type" IN ('QCU','QCM')), 0) as auto_score,
+                       COALESCE((SELECT sum(eq."bareme") FROM "EpreuveQuestion" eq JOIN "Reponse" rep ON rep."questionId" = eq."questionId" AND eq."epreuveId" = s."epreuveId" JOIN "Question" q ON q."id" = rep."questionId" WHERE rep."sessionId" = s."id" AND q."type" IN ('QCU','QCM')), 0) as auto_total,
+                       res."id", res."scoreFinal", res."totalPossible", res."dateCorrection"
                 FROM "SessionPassation" s
                 JOIN "Epreuve" e ON e."id" = s."epreuveId"
                 JOIN "User" u ON u."id" = s."etudiantId"
+                LEFT JOIN "Resultat" res ON res."sessionId" = s."id"
                 %s
                 ORDER BY s."dateFin" ASC
         `, whereClause)
@@ -312,25 +322,130 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
         defer rows.Close()
 
         var result []*domain.CorrectionSession
+        sessionIDs := make([]string, 0)
+        epreuveIDs := make(map[string]bool)
         for rows.Next() {
                 cs := &domain.CorrectionSession{}
+                var rID *string
+                var rScoreFinal, rTotalPossible *float64
+                var rDateCorrection *time.Time
                 if err := rows.Scan(&cs.SessionID, &cs.EtudiantID, &cs.EtudiantNom, &cs.EtudiantEmail,
-                        &cs.EpreuveID, &cs.EpreuveTitre, &cs.Statut, &cs.DateFin, &cs.Score); err != nil {
+                        &cs.EpreuveID, &cs.EpreuveTitre, &cs.Statut, &cs.DateFin, &cs.Score,
+                        &cs.Alertes, &cs.NeedsCorrectionCount, &cs.AllCorrected, &cs.AutoGradedScore, &cs.AutoGradedTotal,
+                        &rID, &rScoreFinal, &rTotalPossible, &rDateCorrection); err != nil {
                         return nil, fmt.Errorf("scan correction session: %w", err)
                 }
-                // BUGFIX (CORRECTION-SELECT-1): peupler id = sessionId (le frontend
-                // utilise s.id pour selectedSession.find(s => s.id === selectedSessionId))
-                // et etudiant:{id, name, email} (objet imbriqué attendu par le frontend).
                 cs.ID = cs.SessionID
                 cs.Etudiant = &domain.CorrectionEtudiant{
                         ID:    cs.EtudiantID,
                         Name:  cs.EtudiantNom,
                         Email: cs.EtudiantEmail,
                 }
+                if rID != nil && rScoreFinal != nil {
+                        cs.Resultat = &domain.CorrectionResultat{
+                                ID:             *rID,
+                                ScoreFinal:     *rScoreFinal,
+                                TotalPossible:  derefFloat(rTotalPossible),
+                                DateCorrection: rDateCorrection,
+                        }
+                }
+                cs.Reponses = []domain.CorrectionReponse{}
                 result = append(result, cs)
+                sessionIDs = append(sessionIDs, cs.SessionID)
+                epreuveIDs[cs.EpreuveID] = true
         }
         if result == nil {
                 result = []*domain.CorrectionSession{}
+        }
+
+        // Query 2 : batch Reponses pour toutes les sessions (avec JOIN Question + EpreuveQuestion)
+        if len(sessionIDs) > 0 {
+                reponseQuery := fmt.Sprintf(`
+                        SELECT r."id", r."sessionId", r."questionId", r."contenu", r."score",
+                               r."commentaire", r."noteIA", r."justificationIA",
+                               eq."bareme", eq."ordre", q."type"::text, q."enonce"
+                        FROM "Reponse" r
+                        LEFT JOIN "EpreuveQuestion" eq ON eq."questionId" = r."questionId" AND eq."epreuveId" = ANY($1)
+                        LEFT JOIN "Question" q ON q."id" = r."questionId"
+                        WHERE r."sessionId" = ANY($2)
+                        ORDER BY eq."ordre" ASC
+                `)
+                // Note : $1 = epreuveIDs, $2 = sessionIDs
+                epreuveIDList := make([]string, 0, len(epreuveIDs))
+                for id := range epreuveIDs {
+                        epreuveIDList = append(epreuveIDList, id)
+                }
+                repRows, err := tx.Query(ctx, reponseQuery, epreuveIDList, sessionIDs)
+                if err == nil {
+                        defer repRows.Close()
+                        reponsesBySession := make(map[string][]domain.CorrectionReponse)
+                        for repRows.Next() {
+                                var rep domain.CorrectionReponse
+                                var sessionID string
+                                var bareme *float64
+                                var ordre *int
+                                var qType, qEnonce *string
+                                if err := repRows.Scan(&rep.ID, &sessionID, &rep.QuestionID, &rep.Contenu,
+                                        &rep.Score, &rep.Commentaire, &rep.NoteIA, &rep.JustificationIA,
+                                        &bareme, &ordre, &qType, &qEnonce); err == nil {
+                                        if bareme != nil {
+                                                rep.Bareme = *bareme
+                                        }
+                                        if ordre != nil {
+                                                rep.Ordre = *ordre
+                                        }
+                                        rep.Type = derefStr(qType)
+                                        rep.Enonce = derefStr(qEnonce)
+                                        reponsesBySession[sessionID] = append(reponsesBySession[sessionID], rep)
+                                }
+                        }
+                        for _, cs := range result {
+                                if reps, ok := reponsesBySession[cs.SessionID]; ok {
+                                        cs.Reponses = reps
+                                }
+                        }
+                }
+        }
+
+        // Query 3 : batch EpreuveQuestion + Question pour les épreuves concernées
+        if len(epreuveIDs) > 0 {
+                epreuveIDList := make([]string, 0, len(epreuveIDs))
+                for id := range epreuveIDs {
+                        epreuveIDList = append(epreuveIDList, id)
+                }
+                eqQuery := `
+                        SELECT eq."epreuveId", eq."id", eq."questionId", eq."bareme", eq."ordre",
+                               q."type"::text, q."enonce"
+                        FROM "EpreuveQuestion" eq
+                        LEFT JOIN "Question" q ON q."id" = eq."questionId" AND q."deletedAt" IS NULL
+                        WHERE eq."epreuveId" = ANY($1)
+                        ORDER BY eq."epreuveId", eq."ordre" ASC
+                `
+                eqRows, err := tx.Query(ctx, eqQuery, epreuveIDList)
+                if err == nil {
+                        defer eqRows.Close()
+                        questionsByEpreuve := make(map[string][]domain.CorrectionQuestion)
+                        for eqRows.Next() {
+                                var epreuveID string
+                                var cq domain.CorrectionQuestion
+                                var qType, qEnonce *string
+                                if err := eqRows.Scan(&epreuveID, &cq.ID, &cq.QuestionID, &cq.Bareme, &cq.Ordre,
+                                        &qType, &qEnonce); err == nil {
+                                        cq.Type = derefStr(qType)
+                                        cq.Enonce = derefStr(qEnonce)
+                                        questionsByEpreuve[epreuveID] = append(questionsByEpreuve[epreuveID], cq)
+                                }
+                        }
+                        for _, cs := range result {
+                                if qs, ok := questionsByEpreuve[cs.EpreuveID]; ok {
+                                        cs.Epreuve = &domain.CorrectionEpreuve{
+                                                ID:        cs.EpreuveID,
+                                                Titre:     cs.EpreuveTitre,
+                                                Questions: qs,
+                                        }
+                                }
+                        }
+                }
         }
 
         if err := tx.Commit(ctx); err != nil {
@@ -369,6 +484,9 @@ func (r *CorrectionRepository) UpdateReponse(ctx context.Context, reponseID stri
         if len(setClauses) == 0 {
                 return nil // rien à updater
         }
+
+        // P1d-CORRECTION : toujours updater updatedAt
+        setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
 
         args = append(args, reponseID)
         updateSQL := fmt.Sprintf(`UPDATE "Reponse" SET %s WHERE "id" = $%d`,

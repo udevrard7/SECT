@@ -116,6 +116,14 @@ type CorrectionSession struct {
         DateFin       *time.Time          `json:"dateFin,omitempty"`
         Score         *float64            `json:"score,omitempty"`
         Reponses      []CorrectionReponse `json:"reponses,omitempty"`
+        // P1-CORRECTION : champs enrichis attendus par le frontend
+        Alertes             int                  `json:"alertes"`
+        NeedsCorrectionCount int                 `json:"needsCorrectionCount"`
+        AllCorrected        bool                 `json:"allCorrected"`
+        AutoGradedScore     float64              `json:"autoGradedScore"`
+        AutoGradedTotal     float64              `json:"autoGradedTotal"`
+        Resultat            *CorrectionResultat  `json:"resultat,omitempty"`
+        Epreuve             *CorrectionEpreuve   `json:"epreuve,omitempty"`
 }
 
 // CorrectionEtudiant est l'objet imbriqué etudiant attendu par le frontend.
@@ -136,6 +144,36 @@ type CorrectionReponse struct {
         JustificationIA *string  `json:"justificationIA,omitempty"`
         // IA-CORRECTION-1 : statut correction IA pour polling frontend
         StatusIA        string   `json:"statusIA,omitempty"`
+        // P1-CORRECTION : métadonnées question pour le frontend
+        Bareme          float64  `json:"bareme"`
+        Ordre           int      `json:"ordre"`
+        Type            string   `json:"type,omitempty"`
+        Enonce          string   `json:"enonce,omitempty"`
+}
+
+// CorrectionResultat est un résumé du Resultat pour la vue correction.
+type CorrectionResultat struct {
+        ID                string  `json:"id"`
+        ScoreFinal        float64 `json:"scoreFinal"`
+        TotalPossible     float64 `json:"totalPossible,omitempty"`
+        DateCorrection    *time.Time `json:"dateCorrection,omitempty"`
+}
+
+// CorrectionEpreuve est un résumé de l'Epreuve avec ses questions.
+type CorrectionEpreuve struct {
+        ID        string                `json:"id"`
+        Titre     string                `json:"titre"`
+        Questions []CorrectionQuestion  `json:"questions"`
+}
+
+// CorrectionQuestion est une question dans le contexte correction.
+type CorrectionQuestion struct {
+        ID         string  `json:"id"`
+        QuestionID string  `json:"questionId"`
+        Bareme     float64 `json:"bareme"`
+        Ordre      int     `json:"ordre"`
+        Type       string  `json:"type,omitempty"`
+        Enonce     string  `json:"enonce,omitempty"`
 }
 
 // CorrectionListParams pour filtrer.
