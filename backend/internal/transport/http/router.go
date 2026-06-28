@@ -386,7 +386,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 			r.Post("/presign-upload", s.presignUploadSoumission)  // P3-DEVOIRS-3 : URL présignée R2
 			r.Post("/", s.createSoumission)                        // ETUDIANT
 			r.Patch("/{id}", s.updateSoumission)                   // ETUDIANT (brouillon) ou ENSEIGNANT (note)
-			// POST /{id}/ai-grade sera ajouté en P4 (HomeworkCorrectionWorker)
+			r.With(middleware.RequireRole("ENSEIGNANT")).Post("/{id}/ai-grade", s.aiGradeSoumission) // P4-DEVOIRS-4
 		})
 
 		// P2-DEVOIRS-2 : grilles d'évaluation (ENSEIGNANT)

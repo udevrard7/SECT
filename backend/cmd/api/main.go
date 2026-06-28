@@ -132,6 +132,11 @@ func main() {
 	practiceWorker := worker.NewPracticeWorker(pool, logger)
 	practiceWorker.Start(context.Background())
 
+	// P4-DEVOIRS-4 : HomeworkCorrectionWorker (correction IA asynchrone des soumissions de devoirs)
+	homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
+	homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
+	homeworkWorker.Start(context.Background())
+
 	// AUDIO-LEARNING-1 — Mode Audio-Learning : worker de génération de podcasts
 	// de révision (script IA + synthèse TTS optionnelle + upload R2). Async :
 	// le handler POST /api/exam-prep/documents/{id}/audio crée la ligne
