@@ -8,6 +8,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udevrard7/sect/backend/internal/cache"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/repository"
 	"github.com/udevrard7/sect/backend/internal/usecase"
@@ -34,6 +35,10 @@ type Server struct {
 	certificatUC *usecase.CertificatUseCase
 	correctionUC *usecase.CorrectionUseCase
 	examPrepUC   *usecase.ExamPrepUseCase
+	// CACHE-RAM-1 : cache en mémoire write-behind pour les sessions d'examen actives.
+	// Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
+	// vers Neon toutes les 30s ; le handler submitSession force un flush immédiat.
+	sessionCache *cache.SessionCache
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -79,6 +84,8 @@ func NewServer(
 		correctionUC: correctionUC,
 		examPrepUC:   examPrepUC,
 	}
+	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
+	s.sessionCache = cache.NewSessionCache()
 	s.setupRouter(corsOrigins, authMiddleware)
 	return s
 }
