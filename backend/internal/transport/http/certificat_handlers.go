@@ -2,9 +2,12 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/udevrard7/sect/backend/internal/worker"
 	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 )
@@ -197,5 +200,80 @@ func (s *Server) retournerBatch(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"message": "Sessions retournées",
 		"count":   count,
+	})
+}
+
+
+// aiGradeSession — POST /api/correction/{sessionId}/ai-grade
+// IA-CORRECTION-1 : déclenche la correction IA asynchrone pour les QRC/CODE.
+// Renvoie 202 Accepted immédiatement. Le worker traite en arrière-plan.
+func (s *Server) aiGradeSession(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	sessionID := chi.URLParam(r, "sessionId")
+
+	// 1. Récupérer les réponses QRC/CODE sans noteIA pour cette session
+	tx, err := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	tx.Exec(r.Context(), "SET LOCAL row_security = off")
+
+	rows, err := tx.Query(r.Context(), `
+		SELECT r."id", r."questionId"
+		FROM "Reponse" r
+		JOIN "Question" q ON q."id" = r."questionId"
+		WHERE r."sessionId" = $1
+		  AND r."noteIA" IS NULL
+		  AND r."contenu" IS NOT NULL
+		  AND q."type" IN ('QRC', 'CODE', 'REFLEXION')
+	`, sessionID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
+
+	var jobs []worker.CorrectionJob
+	for rows.Next() {
+		var reponseID, questionID string
+		if err := rows.Scan(&reponseID, &questionID); err != nil {
+			continue
+		}
+		jobs = append(jobs, worker.CorrectionJob{
+			ReponseID:    reponseID,
+			SessionID:    sessionID,
+			QuestionID:   questionID,
+			EnseignantID: claims.UserID,
+		})
+	}
+	rows.Close()
+	tx.Commit(r.Context())
+
+	// 2. Pousser les jobs dans la CorrectionQueue
+	pushed := 0
+	for _, job := range jobs {
+		select {
+		case worker.CorrectionQueue <- job:
+			pushed++
+		default:
+			// Queue pleine — on continue
+		}
+	}
+
+	// 3. Retourner 202 Accepted
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":       "EN_COURS",
+		"message":      fmt.Sprintf("Correction IA lancee pour %d reponse(s).", pushed),
+		"jobCount":     pushed,
+		"sessionId":    sessionID,
 	})
 }

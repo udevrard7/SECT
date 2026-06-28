@@ -115,6 +115,11 @@ func main() {
 	iaWorker.RecoverInterruptedJobs(context.Background())
 	iaWorker.Start(context.Background())
 
+	// IA-CORRECTION-1 : worker de correction IA asynchrone
+	correctionWorker := worker.NewCorrectionWorker(pool, logger)
+	correctionWorker.RecoverInterruptedCorrections(context.Background())
+	correctionWorker.Start(context.Background())
+
 	server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
 	// CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon

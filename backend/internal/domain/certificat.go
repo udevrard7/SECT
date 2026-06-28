@@ -134,6 +134,8 @@ type CorrectionReponse struct {
 	Commentaire     *string  `json:"commentaire,omitempty"`
 	NoteIA          *float64 `json:"noteIA,omitempty"`
 	JustificationIA *string  `json:"justificationIA,omitempty"`
+	// IA-CORRECTION-1 : statut correction IA pour polling frontend
+	StatusIA        string   `json:"statusIA,omitempty"`
 }
 
 // CorrectionListParams pour filtrer.
