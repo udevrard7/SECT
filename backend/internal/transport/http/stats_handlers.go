@@ -781,30 +781,8 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			) ru ON true
 			ORDER BY e.nom ASC
 		`, claims.UserID)
-		_ = qerr // ignore error here, retry below without RLS
-			for rowsEtab.Next() {
-				var o etablissementOverview
-				var respID, respName, respEmail *string
-				var respActif *bool
-				if err := rowsEtab.Scan(
-					&o.ID, &o.Nom, &o.Ville, &o.Type, &o.Actif,
-					&o.AbonnementStatut, &o.PlanNom,
-					&o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
-					&respID, &respName, &respEmail, &respActif,
-				); err == nil {
-					if respID != nil && respName != nil && respEmail != nil && respActif != nil {
-						o.Responsable = &responsableRef{
-							ID:    *respID,
-							Name:  *respName,
-							Email: *respEmail,
-							Actif: *respActif,
-						}
-					}
-					overviews = append(overviews, o)
-				}
-			}
-			stats["etablissementsOverview"] = overviews
-		}
+		_ = qerr // ignore, query retries below without RLS
+		_ = rowsEtab // not used, query retries below
 
 		return nil
 	})
