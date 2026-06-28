@@ -3,15 +3,16 @@
 /**
  * ExamPrepPage — Page maîtresse du module Préparation aux examens (étudiant).
  *
- * EXAM-PREP-REFACTOR-1 : refonte complète alignée sur le Design System
- * "Savane EdTech". Utilise EntityCard (DS unifié) pour la liste des documents,
- * PulseSkeleton pour le chargement, motif kente sur le hero, boutons de
- * téléchargement gracieux (le backend n'expose pas encore /download — toast
- * informatif au lieu d'une erreur 404).
+ * EXAM-PREP-CARD-REFACTOR : cartes documents statiques avec 2 actions claires.
+ *  - Corps de carte non cliquable (plus de clic accidentel)
+ *  - Bouton « Lire » (outline) → ouvre le DocumentReader (lecteur + highlight)
+ *  - Bouton « Révision » (primary lime) → ouvre la vue détail avec 8 onglets
+ *  - Suppression des badges thèmes (illisibles en text-[10px])
+ *  - Suppression des boutons PDF/TXT (endpoint backend non implémenté)
  *
  * Architecture à 2 vues :
- *  1. Liste des documents de cours accessibles (EntityCard cliquables)
- *  2. Vue détail d'un document avec 9 onglets (cf. exam-prep-document-detail)
+ *  1. Liste des documents de cours accessibles (EntityCard statiques)
+ *  2. Vue détail d'un document avec 8 onglets (cf. exam-prep-document-detail)
  *
  * Le DocumentReader reste monté au niveau de cette page (pour le highlight
  * → flashcard / explain passage).
@@ -23,7 +24,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap, FileText, BookOpen, ArrowLeft, RefreshCw,
-  AlertCircle, Eye, Download, Trophy,
+  AlertCircle, Eye, Trophy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -206,7 +207,7 @@ export function ExamPrepPage() {
                 >
                   <DocumentEntityCard
                     doc={doc}
-                    onOpen={() => setSelectedId(doc.id)}
+                    onRevision={() => setSelectedId(doc.id)}
                     onRead={() => setReaderDocumentId(doc.id)}
                   />
                 </motion.div>
@@ -260,24 +261,20 @@ function HeroHeader({ count, onRefresh }: { count: number; onRefresh: () => void
   )
 }
 
-// ─── Carte de document (EntityCard + actions) ───
+// ─── Carte de document (statique, 2 actions : Lire + Révision) ───
+// EXAM-PREP-CARD-REFACTOR : carte statique (pas de clic global).
+// - Suppression des badges thèmes illisibles (text-[10px] trop petit)
+// - Suppression des boutons PDF/TXT (endpoint backend non implémenté)
+// - 2 actions claires : « Lire » (lecteur plein écran) et « Révision » (onglets)
+// - Seuls les boutons sont cliquables, le corps est statique
 
 function DocumentEntityCard({
-  doc, onOpen, onRead,
+  doc, onRevision, onRead,
 }: {
   doc: ExamPrepDocument
-  onOpen: () => void
+  onRevision: () => void
   onRead: () => void
 }) {
-  // EXAM-PREP-REFACTOR-1 : le backend n'expose pas encore /documents/{id}/download
-  // (404). On affiche un toast informatif au lieu de déclencher une erreur.
-  const handleDownload = (e: React.MouseEvent, format: 'txt' | 'pdf') => {
-    e.stopPropagation()
-    toast.info('Téléchargement bientôt disponible', {
-      description: `L'export ${format.toUpperCase()} sera disponible prochainement.`,
-    })
-  }
-
   return (
     <div className="relative h-full">
       <EntityCard
@@ -291,29 +288,14 @@ function DocumentEntityCard({
         }
         meta={`${doc.owner.name} · ${new Date(doc.dateUpload).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
         index={0}
-        onClick={onOpen}
       >
-        {/* Résumé + thèmes (contenu personnalisé dans le corps de la card) */}
+        {/* Résumé du document (corps statique, non cliquable) */}
         {doc.resumeAnalyse && (
           <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{doc.resumeAnalyse}</p>
         )}
-        {doc.themesDetectes.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {doc.themesDetectes.slice(0, 3).map((t, idx) => (
-              <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                {t}
-              </Badge>
-            ))}
-            {doc.themesDetectes.length > 3 && (
-              <span className="text-[10px] text-muted-foreground self-center">
-                +{doc.themesDetectes.length - 3}
-              </span>
-            )}
-          </div>
-        )}
 
-        {/* Actions : Lire + Télécharger (ne déclenchent pas le clic carte) */}
-        <div className="mt-3 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+        {/* Actions : Lire (secondaire) + Révision (principal) */}
+        <div className="mt-3 flex gap-1.5">
           <button
             onClick={onRead}
             className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
@@ -323,22 +305,12 @@ function DocumentEntityCard({
             Lire
           </button>
           <button
-            onClick={(e) => handleDownload(e, 'pdf')}
-            className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
-            aria-label="Télécharger en PDF"
-            title="Télécharger en PDF"
+            onClick={onRevision}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all ds-press shadow-sm"
+            aria-label={`Ouvrir la révision de ${doc.nomFichier}`}
           >
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">PDF</span>
-          </button>
-          <button
-            onClick={(e) => handleDownload(e, 'txt')}
-            className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-border/60 bg-background text-xs font-medium hover:border-primary/40 hover:bg-accent/40 transition-all ds-press"
-            aria-label="Télécharger en TXT"
-            title="Télécharger en TXT"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">TXT</span>
+            <BookOpen className="h-3.5 w-3.5" />
+            Révision
           </button>
         </div>
       </EntityCard>
