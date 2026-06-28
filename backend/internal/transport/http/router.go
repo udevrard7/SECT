@@ -262,8 +262,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listSessions)
                         r.Post("/", s.startSession)
                         r.Put("/", s.saveReponse)
+                        r.Put("/{id}", s.updateSessionBulk)    // B2-MES-EPREUVES : bulk save + alerte
                         r.Get("/{id}", s.getSession)
                         r.Post("/{id}/submit", s.submitSession)
+                        r.Post("/{id}/capture", s.captureSession) // B3-MES-EPREUVES : capture écran
                 })
 
                 // /api/resultats
