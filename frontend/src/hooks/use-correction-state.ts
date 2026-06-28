@@ -238,11 +238,12 @@ export function useCorrectionState(user: CurrentUser | null) {
     setIsAiLoading(true)
     try {
       const data = await aiGradeMutation.mutateAsync({ sessionId: sid, questionId: qid })
-      if (!sessionId && data.noteIA !== undefined && data.noteIA !== null) {
-        setNoteFinale(String(data.noteIA))
-      }
-      toast.success('Évaluation IA terminée', {
-        description: 'La proposition de note a été générée.',
+      // P3-CORRECTION : le backend retourne 202 Accepted (async worker).
+      // data.noteIA n'existe pas — le worker écrit noteIA sur la Reponse
+      // en arrière-plan. Le polling (refetchInterval sur useCorrectionSessions)
+      // rafraîchit automatiquement les données quand noteIA est non-null.
+      toast.success('Évaluation IA lancée', {
+        description: data.message || 'La correction IA est en cours. Les résultats apparaîtront automatiquement.',
       })
     } catch (err) {
       toast.error('Erreur IA', {
@@ -399,7 +400,8 @@ export function useCorrectionState(user: CurrentUser | null) {
   // ─── Horizontal grading: toggle criterion for a specific session ───
   const handleHorizontalToggleCriterion = (sessionId: string, criterionId: string, criteria: RubricCriterion[]) => {
     setHorizontalCriteria((prev) => {
-      const current = prev[sessionId] ?? new Set()
+      const hKey = `${sessionId}::${horizontalCurrentQuestion?.questionId ?? ""}`
+      const current = prev[hKey] ?? new Set()
       const next = new Set(current)
       if (next.has(criterionId)) {
         next.delete(criterionId)
@@ -412,16 +414,17 @@ export function useCorrectionState(user: CurrentUser | null) {
         if (c) total += c.points
       })
       const capped = Math.min(total, horizontalCurrentQuestion?.bareme ?? 0)
-      setHorizontalScores((prev2) => ({ ...prev2, [sessionId]: String(Math.round(capped * 10) / 10) }))
-      return { ...prev, [sessionId]: next }
+      setHorizontalScores((prev2) => ({ ...prev2, [hKey]: String(Math.round(capped * 10) / 10) }))
+      return { ...prev, [hKey]: next }
     })
   }
 
   // ─── Horizontal grading: save for one session ───
   const handleHorizontalSave = async (sessionId: string) => {
     if (!horizontalCurrentQuestion) return
-    const score = horizontalScores[sessionId]
-    const comment = horizontalComments[sessionId] ?? null
+    const hKey = `${sessionId}::${horizontalCurrentQuestion.questionId}`
+    const score = horizontalScores[hKey]
+    const comment = horizontalComments[hKey] ?? null
     const finalScore = score !== undefined && score !== '' ? parseFloat(score) : null
     if (finalScore !== null && (isNaN(finalScore) || finalScore < 0 || finalScore > horizontalCurrentQuestion.bareme)) {
       toast.error('Note invalide', {

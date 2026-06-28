@@ -44,10 +44,13 @@ interface CorrectionSessionsResponse {
 }
 
 export interface AiGradeResult {
-  noteIA: number
-  bareme: number
-  justification: string
+  // P3-CORRECTION : le backend retourne 202 Accepted (async worker), pas
+  // un résultat synchrone. Le frontend doit poller useCorrectionSessions
+  // jusqu'à ce que noteIA soit non-null sur la reponse.
+  status: string
   message: string
+  jobCount?: number
+  sessionId?: string
 }
 
 export interface FinalizeResult {
@@ -107,6 +110,17 @@ export function useCorrectionSessions(enseignantId: string | undefined, epreuveI
     enabled: !!enseignantId && !!epreuveId,
     staleTime: 30_000, // 30 s (données plus volatiles que la liste d'épreuves)
     placeholderData: (prev) => prev,
+    // P3-CORRECTION : polling IA — refetch toutes les 3s si au moins une
+    // reponse a noteIA === null (worker en cours). Le worker CorrectionWorker
+    // écrit noteIA + justificationIA quand il termine.
+    refetchInterval: (query) => {
+      const sessions = query.state.data
+      if (!sessions) return false
+      const hasPendingIA = sessions.some(s =>
+        s.reponses?.some(r => r.noteIA === null && r.contenu)
+      )
+      return hasPendingIA ? 3000 : false
+    },
   })
 }
 

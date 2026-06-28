@@ -221,7 +221,7 @@ export function ParCopieView({
           <Award className="h-3.5 w-3.5 text-success-text" />
           <span>
             <span className={`font-bold font-mono tabular-nums ${getScoreColor(selectedSession.score ?? 0, selectedSession.autoGradedTotal > 0 ? selectedSession.autoGradedTotal : 20)}`}>
-              {selectedSession.score !== null ? selectedSession.score.toFixed(1) : '—'}
+              {selectedSession.score !== null ? selectedSession.score?.toFixed(1) ?? "—" : '—'}
             </span>
             <span className="text-muted-foreground"> pts</span>
           </span>
@@ -229,7 +229,7 @@ export function ParCopieView({
         {selectedSession.autoGradedTotal > 0 && (
           <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
             <Zap className="h-3 w-3 text-info" />
-            Auto: <span className="font-mono tabular-nums">{selectedSession.autoGradedScore.toFixed(1)}/{selectedSession.autoGradedTotal.toFixed(1)}</span>
+            Auto: <span className="font-mono tabular-nums">{selectedSession.autoGradedScore?.toFixed(1) ?? "0.0"}/{selectedSession.autoGradedTotal?.toFixed(1) ?? "0.0"}</span>
           </div>
         )}
         {selectedSession.alertes > 0 && (

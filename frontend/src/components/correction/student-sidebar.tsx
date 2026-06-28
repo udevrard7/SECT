@@ -62,7 +62,7 @@ export function StudentSidebar({
                   )}
                   {session.score !== null && (
                     <span className={`text-xs font-semibold shrink-0 font-mono tabular-nums ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
-                      {session.score.toFixed(1)}
+                      {session.score?.toFixed(1) ?? "—"}
                     </span>
                   )}
                 </button>
@@ -100,7 +100,7 @@ export function StudentSidebar({
                   </div>
                   {session.score !== null && (
                     <span className={`text-xs font-semibold shrink-0 font-mono tabular-nums ${getScoreColor(session.score, session.autoGradedTotal > 0 ? session.autoGradedTotal : 20)}`}>
-                      {session.score.toFixed(1)}
+                      {session.score?.toFixed(1) ?? "—"}
                     </span>
                   )}
                 </button>
