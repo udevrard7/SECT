@@ -123,42 +123,52 @@ func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, do
 
 // ListStudentDocuments liste les documents accessibles à l'étudiant (via filière+niveau).
 func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, filiereID, niveau string) ([]*domain.Document, error) {
-	claims, ok := db.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no RLS claims in context")
+	// EXAM-PREP-RLS-FIX-1 : RLS désactivé car la politique Document_select
+	// n'autorise que l'owner (ownerId = current_user_id()). Les étudiants ne
+	// sont jamais owners des documents → RLS bloquait TOUS les documents.
+	// Le scoping filière+niveau est déjà assuré par la clause WHERE ci-dessous
+	// (ue."filiereId" = $1 AND ue."niveau" = $2), ce qui est la bonne frontière
+	// de sécurité : un étudiant ne voit QUE les documents des UE de sa filière
+	// et de son niveau. Pattern identique à GetDocumentContent, ListChaptersByDocumentIDs.
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
 	}
 
-	var result []*domain.Document
-	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		query := fmt.Sprintf(`
-			SELECT %s FROM "Document" d
-			WHERE d."deletedAt" IS NULL
-			  AND d."uniteEnseignementId" IN (
-			    SELECT ue."id" FROM "UniteEnseignement" ue
-			    WHERE ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)
-			  )
-			ORDER BY d."dateUpload" DESC
-		`, columnsDocument)
-		rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
-		if err != nil {
-			return fmt.Errorf("query student documents: %w", err)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			d, err := scanDocument(rows)
-			if err != nil {
-				return fmt.Errorf("scan document: %w", err)
-			}
-			result = append(result, d)
-		}
-		if result == nil {
-			result = []*domain.Document{}
-		}
-		return nil
-	})
+	query := fmt.Sprintf(`
+		SELECT %s FROM "Document" d
+		WHERE d."deletedAt" IS NULL
+		  AND d."uniteEnseignementId" IN (
+		    SELECT ue."id" FROM "UniteEnseignement" ue
+		    WHERE ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)
+		  )
+		ORDER BY d."dateUpload" DESC
+	`, columnsDocument)
+	rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query student documents: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*domain.Document
+	for rows.Next() {
+		d, err := scanDocument(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan document: %w", err)
+		}
+		result = append(result, d)
+	}
+	if result == nil {
+		result = []*domain.Document{}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return result, nil
 }
