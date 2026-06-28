@@ -779,6 +779,9 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 		}
 		stats["etablissementsOverview"] = overviews
 	}
+	if q2err != nil {
+		stats["_debug_q2err"] = q2err.Error()
+	}
 
 if err != nil {
 		http.Error(w, `{"error":"failed to load admin stats"}`, http.StatusInternalServerError)
