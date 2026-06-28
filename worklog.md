@@ -5480,3 +5480,110 @@ Stage Summary:
 - `bunx tsc --noEmit` sur `admin-dashboard.tsx` : 0 erreur. (Erreurs pré-existantes confirmées dans d'autres fichiers non touchés : abonnements-page, correction-sidebar, epreuves-page, etc.)
 - Aucun handler/statistique cassé. `statsEnseignant`, `statsEtudiant`, `statsResponsable`, `badgesList` intacts.
 - Difficultés : (1) L'outil Edit/MultiEdit convertit les tabs Go en espaces — contournement via script Python qui écrit des `\t` littéraux, puis `gofmt -w` pour normaliser. (2) `enabled: !!user?.id` ne narrow pas le type `user` dans le closure de `queryFn` (TypeScript closure typing) — fix par guard explicite `if (!user?.id) return [] as AccessRecord[]` en haut de queryFn. (3) Choix d'architecture pour `badgesQuery` : la spec demandait `useQuery` mais le POST recalcul est conceptuellement une mutation. Choix : appel POST en début de queryFn (avant le GET) — pas idéal sémantiquement mais respecte la consigne "useQuery" et le cache 5min évite les recalculs fréquents.
+
+---
+
+## Task ID: AI-PROVIDERS-1 — Endpoints backend AI Providers (Go 1.24)
+
+**Date** : 2026-06-28
+**Cible** : `backend/internal/transport/http/` (Go 1.24, chi v5, pgx v5)
+**Objectif** : implémenter les 11 endpoints REST manquants pour la gestion des AI providers. Le frontend `admin/ai-providers-page.tsx` (1882 lignes) appelait 10 endpoints qui retournaient 404 ; seul `GET /api/ai-providers` existait.
+
+### 1. Endpoints implémentés (11)
+
+| # | Méthode | Route | Handler | Rôle |
+|---|---------|-------|---------|------|
+| 1 | `POST` | `/api/ai-providers` | `aiProviderCreate` | ADMIN |
+| 2 | `GET` | `/api/ai-providers/{id}` | `aiProviderGet` | ADMIN |
+| 3 | `PATCH` | `/api/ai-providers/{id}` | `aiProviderUpdate` | ADMIN |
+| 4 | `DELETE` | `/api/ai-providers/{id}` | `aiProviderDelete` | ADMIN |
+| 5 | `POST` | `/api/ai-providers/activate` | `aiProviderActivate` | ADMIN |
+| 6 | `GET` + `POST` | `/api/ai-providers/{id}/test` | `aiProviderTest` | ADMIN |
+| 7 | `GET` | `/api/ai-providers/models?providerId=` | `aiProviderModels` | ADMIN |
+| 8 | `GET` | `/api/ai-providers/failover/status` | `aiProviderFailoverStatus` | ADMIN |
+| 9 | `POST` | `/api/ai-providers/failover/config` | `aiProviderFailoverConfig` | ADMIN |
+| 10 | `POST` | `/api/ai-providers/priority` | `aiProviderPriority` | ADMIN |
+| 11 | `GET` + `POST` | `/api/ai-providers/failover/health` | `aiProviderFailoverHealth` | ADMIN |
+
+**Note sur les méthodes doubles** (GET + POST) pour `/test` et `/failover/health` :
+la spec indiquait `GET`, mais le frontend utilise `POST` (body `{resetAll: true}` pour health, body vide pour test). J'ai enregistré **les deux méthodes** sur le même handler pour rester compatible avec la spec ET faire fonctionner le frontend sans modification.
+
+### 2. Fichiers modifiés
+
+- **`internal/transport/http/ai_provider_handlers.go`** (NOUVEAU, 1047 lignes)
+  - 11 handlers + 4 helpers (`scanProviderWithKey`, `requireAdminClaims`, `normalizeExtraConfig`, `fetchProviderModels`)
+  - 2 types partagés (`aiProviderJSON`, `failoverConfig`) + `defaultFailoverConfig()`
+  - Constante `providerColumnsWithKey` (raw string) pour factoriser la liste des 15 colonnes
+  - Client HTTP global `httpTimeoutClient` (15s timeout) pour les appels `{baseUrl}/models` vers les APIs externes
+
+- **`internal/transport/http/router.go`** : extension du `r.Route("/api/ai-providers", ...)`
+  - Chaque endpoint est protégé par `r.With(middleware.RequireRole("ADMIN"))` (en plus du `middleware.RequireAuth` au niveau du groupe parent)
+  - Sous-route `/failover` déclarée via `r.Route("/failover", ...)` avec son propre `RequireRole("ADMIN")`
+  - Routes paramétrées `/{id}` déclarées après les routes statiques (`/activate`, `/priority`, `/models`, `/failover/*`) — chi différencie automatiquement statique vs paramètre
+
+- **`internal/transport/http/stub_handlers_real.go`** : handler existant `aiProvidersListReal` enrichi
+  - Ajout de `hasApiKey bool` (flag dérivé de `"apiKey" IS NOT NULL AND "apiKey" != ''`) — ne révèle jamais l'apiKey brut
+  - Ajout de `createdAt` et `updatedAt` (RFC3339 UTC)
+  - SELECT étendu pour inclure `apiKey`, `createdAt`, `updatedAt`
+
+### 3. Contraintes respectées
+
+| Contrainte | Statut |
+|------------|--------|
+| Tabs pour indentation Go | ✅ `gofmt -w` appliqué + vérifié via `cat -A` (tous `^I`) |
+| `middleware.RequireAuth` + `RequireRole("ADMIN")` sur tous les endpoints | ✅ au niveau du groupe parent + clause `r.With(...)` explicite par endpoint |
+| `appdb.WithTx` pour les transactions DB (RLS claims) | ✅ tous les handlers DB passent par `appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {...})` |
+| Handler GET (liste) ne retourne pas l'apiKey | ✅ seul `hasApiKey` (booléen) est exposé |
+| GET `/{id}` retourne l'apiKey pour l'édition admin | ✅ `aiProviderGet` remplit `APIKey *string` via `scanProviderWithKey` |
+| `go build ./...` réussit | ✅ EXIT=0, 0 warning |
+| `go vet ./...` réussit | ✅ EXIT=0 |
+| `gofmt -l` (vérification formatage) | ✅ aucun fichier listé |
+
+### 4. Détails d'implémentation notables
+
+**1. Test de connexion (endpoint #6)** : effectue un `GET {baseUrl}/models` avec `Authorization: Bearer {apiKey}` via `httpTimeoutClient` (15s timeout). Met à jour `lastTestAt = NOW()` et `lastTestOk = true/false` dans la DB. Pour `ZAI` (pas d'endpoint `/models` public), simule un succès avec message `"Z-AI : test simulé (SDK natif, pas d'endpoint /models)"`.
+
+**2. Liste des modèles (endpoint #7)** : même appel HTTP, parse le format OpenAI-compatible `{data: [{id}]}`. Sur erreur (HTTP 4xx/5xx, réseau, JSON invalide), retourne `{models: []}` plutôt qu'un 500 — le frontend retombe sur `PROVIDER_MODELS[providerType]` (hardcodé côté client). Body limité à 1 MiB via `io.LimitReader`.
+
+**3. PATCH partiel (endpoint #3)** : construction dynamique de la clause `SET` selon les champs fournis dans le body. `apiKey` n'est écrasé que si **fourni ET non vide** (test `strings.TrimSpace(*in.APIKey) != ""`). `extraConfig` accepté en string JSON ou en objet (géré via `json.RawMessage` + `normalizeExtraConfig`).
+
+**4. Failover status (endpoint #8)** : réponse structurée pour matcher exactement le type `FailoverStatus` du frontend :
+- `config` : lu depuis `PlatformSettings` WHERE `id = 'ai_failover_config'`, fallback sur `{enabled: true, maxConsecutiveFailures: 3, cooldownDurationMs: 60000, retryAllProviders: false}` si absent
+- `summary` : `{totalProviders, healthy, degraded, coolingDown, failoverEnabled, totalCalls, totalFailovers, last24hEvents}`
+- `providers` : `ProviderWithHealth[]` avec `status: 'HEALTHY' | 'DEGRADED' | 'COOLING_DOWN'` (basé sur `lastTestOk`) et `health: {consecutiveFailures, lastFailureAt, lastSuccessAt, totalCalls, totalFailures, totalFailovers, isCoolingDown}` (compteurs dérivés de `lastTestAt`/`lastTestOk` — pas de cooldown temps-réel implémenté)
+- `recentEvents` : 20 derniers `AIFailoverEvent` ORDER BY `createdAt` DESC
+
+**5. Failover config (endpoint #9)** : merge partiel — décode le body en `map[string]json.RawMessage` PUIS en struct pour détecter les champs réellement fournis (sinon `false` et `absent` sont indistinguables avec un struct Go). Upsert via `INSERT ... ON CONFLICT ("id") DO UPDATE SET "settings" = EXCLUDED."settings"`.
+
+**6. Priority (endpoint #10)** : loop sur `body.Priorities` avec `tx.Exec(UPDATE ...)` pour chaque pair. Transaction unique → commit atomique.
+
+**7. Activate (endpoint #5)** : `UPDATE "AIProviderConfig" SET "isActive" = false` (tous) puis `UPDATE ... SET "isActive" = true WHERE "id" = $1 RETURNING "name"`. Si `RowsAffected() == 0` (provider introuvable), retourne 404.
+
+**8. Health reset (POST /failover/health)** : si body `{resetAll: true}`, fait `UPDATE "AIProviderConfig" SET "lastTestAt" = NULL, "lastTestOk" = NULL` pour tous les providers.
+
+### 5. Difficultés rencontrées
+
+1. **Outil `Write` convertit les tabs Go en espaces** : à l'écriture initiale, le fichier `ai_provider_handlers.go` utilisait 8 espaces au lieu de tabs. Contournement : `gofmt -w` sur les 3 fichiers modifiés pour normaliser. Vérifié via `cat -A` (tous `^I`). Problème déjà documenté dans le worklog précédent (ADMIN-DASHBOARD-TANSTACK-1).
+
+2. **Divergence spec vs frontend** : la spec indiquait `GET /api/ai-providers/{id}/test` et `GET /api/ai-providers/failover/health`, mais le frontend appelle ces endpoints en `POST` (avec body pour health). Solution : enregistrer **les deux méthodes** sur le même handler (`r.Get` + `r.Post` pointant vers la même fonction Go). Le handler dispatche sur `r.Method` en interne pour `/failover/health`.
+
+3. **Détection de champs absents vs zero-value dans le body JSON** : pour `POST /failover/config`, distinguer `{enabled: false}` (champ fourni, valeur false) de `{}` (champ absent) est impossible avec un simple `json.Unmarshal` en struct Go (`false` est la zero-value). Solution : décoder en `map[string]json.RawMessage` en parallèle et tester `if _, ok := raw["enabled"]; ok` pour chaque champ.
+
+4. **RLS policies admin-only sur `AIProviderConfig`** : la policy `AIProviderConfig_all_admin` restreint `FOR ALL TO neondb_owner USING (is_admin())`. Les claims RLS sont posés par `appdb.WithTx` (via `SetClaimsTx`), donc les queries fonctionnent seulement si `claims.Role == "ADMIN"`. J'ai ajouté un double check : `RequireRole("ADMIN")` au niveau router + `requireAdminClaims` au début de chaque handler (défense en profondeur).
+
+5. **Permission refusée pour `/agent-ctx` à la racine** : le user `z` n'a pas accès en écriture à `/`. Création du dossier sous `/home/z/workspace/SECT/agent-ctx/` à la place (chemin absolu documenté dans ce worklog).
+
+### 6. Commandes de vérification
+
+```bash
+cd /home/z/workspace/SECT/backend
+gofmt -l internal/transport/http/ai_provider_handlers.go internal/transport/http/stub_handlers_real.go internal/transport/http/router.go  # → vide (OK)
+go build ./...    # → EXIT=0
+go vet ./...      # → EXIT=0
+```
+
+### 7. Prochaines étapes suggérées
+
+- Implémenter un vrai mécanisme de cooldown temps-réel (avec `cooldownUntil` persisté) — actuellement `isCoolingDown` est toujours `false`.
+- Logger les `AIFailoverEvent` lors des bascules automatiques (côté service AI, pas dans ces handlers).
+- Cache court (5s) sur `GET /api/ai-providers/failover/status` pour éviter le polling 30s qui hit la DB à chaque fois.

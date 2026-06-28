@@ -378,7 +378,31 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
 		r.Route("/api/ai-providers", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Get("/", s.aiProvidersListReal)
+			r.With(middleware.RequireRole("ADMIN")).Get("/", s.aiProvidersListReal)
+
+			// AI-PROVIDERS-1 : 11 endpoints pour la gestion des AI providers.
+			// Tous réservés ADMIN (clauses r.With explicites ci-dessous).
+			r.With(middleware.RequireRole("ADMIN")).Post("/", s.aiProviderCreate)
+			r.With(middleware.RequireRole("ADMIN")).Post("/activate", s.aiProviderActivate)
+			r.With(middleware.RequireRole("ADMIN")).Post("/priority", s.aiProviderPriority)
+			r.With(middleware.RequireRole("ADMIN")).Get("/models", s.aiProviderModels)
+
+			// Sous-route failover (statut, config, health) — ADMIN uniquement.
+			r.Route("/failover", func(r chi.Router) {
+				r.Use(middleware.RequireRole("ADMIN"))
+				r.Get("/status", s.aiProviderFailoverStatus)
+				r.Post("/config", s.aiProviderFailoverConfig)
+				r.Get("/health", s.aiProviderFailoverHealth)
+				r.Post("/health", s.aiProviderFailoverHealth)
+			})
+
+			// Routes paramétrées {id} — déclarées après les routes statiques.
+			// Chi distingue automatiquement "/activate" (statique) de "/{id}" (param).
+			r.With(middleware.RequireRole("ADMIN")).Get("/{id}", s.aiProviderGet)
+			r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.aiProviderUpdate)
+			r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.aiProviderDelete)
+			r.With(middleware.RequireRole("ADMIN")).Get("/{id}/test", s.aiProviderTest)
+			r.With(middleware.RequireRole("ADMIN")).Post("/{id}/test", s.aiProviderTest)
 		})
 
 		r.Route("/api/monitoring", func(r chi.Router) {
