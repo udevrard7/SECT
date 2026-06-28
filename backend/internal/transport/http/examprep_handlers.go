@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/udevrard7/sect/backend/internal/ai"
@@ -43,7 +44,112 @@ func (s *Server) examPrepDashboard(w http.ResponseWriter, r *http.Request) {
 // DOCUMENTS
 // ============================================================
 
+// examPrepDocumentDTO est la forme JSON exacte attendue par le frontend
+// exam-prep-page.tsx (interface ExamPrepDocument).
+//
+// DOC-ANALYZER-2 : le frontend accède à doc.chapters.length,
+// doc.uniteEnseignement.code, doc.owner.name et doc.themesDetectes.length
+// SANS optional chaining — tous ces champs doivent donc être non-null.
+type examPrepDocumentDTO struct {
+	ID                string               `json:"id"`
+	NomFichier        string               `json:"nomFichier"`
+	TypeMime          *string              `json:"typeMime"`
+	TailleFichier     *int                 `json:"tailleFichier"`
+	StatutAnalyse     domain.StatutAnalyse `json:"statutAnalyse"`
+	ThemesDetectes    []string             `json:"themesDetectes"`
+	ResumeAnalyse     *string              `json:"resumeAnalyse"`
+	DateUpload        time.Time            `json:"dateUpload"`
+	UniteEnseignement examPrepUEDTO        `json:"uniteEnseignement"`
+	Owner             examPrepOwnerDTO     `json:"owner"`
+	Chapters          []examPrepChapterDTO `json:"chapters"`
+}
+
+type examPrepUEDTO struct {
+	ID          string `json:"id"`
+	Code        string `json:"code"`
+	Nom         string `json:"nom"`
+	CreditsECTS *int   `json:"creditsECTS"`
+}
+
+type examPrepOwnerDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type examPrepChapterDTO struct {
+	ID     string   `json:"id"`
+	Titre  string   `json:"titre"`
+	Ordre  int      `json:"ordre"`
+	Sujets []string `json:"sujets"`
+}
+
+// toExamPrepDocumentDTO convertit un domain.Document enrichi (avec chapitres)
+// en DTO JSON pour le frontend. themesDetectes et chapters[].sujets (stockés
+// en DB comme *string JSON) sont parsés en []string. L'UE et le propriétaire
+// sont résolus via les maps batch ; des valeurs de fallback sont utilisées
+// si l'ID n'est pas trouvé (pour ne jamais crasher le frontend).
+func toExamPrepDocumentDTO(doc *domain.Document, ues map[string]*domain.UniteEnseignement, owners map[string]*domain.UserRef) examPrepDocumentDTO {
+	ue := examPrepUEDTO{}
+	if doc.UniteEnseignementID != nil {
+		if found, ok := ues[*doc.UniteEnseignementID]; ok && found != nil {
+			ue = examPrepUEDTO{ID: found.ID, Code: found.Code, Nom: found.Nom, CreditsECTS: found.CreditsECTS}
+		}
+	}
+
+	owner := examPrepOwnerDTO{ID: doc.OwnerID, Name: "Enseignant"}
+	if found, ok := owners[doc.OwnerID]; ok && found != nil {
+		owner = examPrepOwnerDTO{ID: found.ID, Name: found.Name}
+	}
+
+	chapters := make([]examPrepChapterDTO, 0, len(doc.Chapters))
+	for _, ch := range doc.Chapters {
+		chapters = append(chapters, examPrepChapterDTO{
+			ID:     ch.ID,
+			Titre:  ch.Titre,
+			Ordre:  ch.Ordre,
+			Sujets: parseJSONStringArray(ch.Sujets),
+		})
+	}
+
+	return examPrepDocumentDTO{
+		ID:                doc.ID,
+		NomFichier:        doc.NomFichier,
+		TypeMime:          doc.TypeMime,
+		TailleFichier:     doc.TailleFichier,
+		StatutAnalyse:     doc.StatutAnalyse,
+		ThemesDetectes:    parseJSONStringArray(doc.ThemesDetectes),
+		ResumeAnalyse:     doc.ResumeAnalyse,
+		DateUpload:        doc.DateUpload,
+		UniteEnseignement: ue,
+		Owner:             owner,
+		Chapters:          chapters,
+	}
+}
+
+// parseJSONStringArray parse un *string contenant un tableau JSON (ex.
+// themesDetectes, chapters.sujets) en []string. Retourne un slice vide
+// (non-nil) si la valeur est nil ou si le parsing échoue.
+func parseJSONStringArray(raw *string) []string {
+	out := []string{}
+	if raw == nil || *raw == "" {
+		return out
+	}
+	if err := json.Unmarshal([]byte(*raw), &out); err != nil {
+		return []string{}
+	}
+	if out == nil {
+		return []string{}
+	}
+	return out
+}
+
 // listExamPrepDocuments — GET /api/exam-prep/documents
+//
+// DOC-ANALYZER-2 : retourne les documents enrichis avec leurs chapitres,
+// leur UE et leur propriétaire (batch queries). Le frontend accède à
+// doc.chapters.length, doc.uniteEnseignement.code, doc.owner.name et
+// doc.themesDetectes SANS optional chaining — le DTO garantit que tous
+// ces champs sont non-null.
 func (s *Server) listExamPrepDocuments(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
@@ -51,14 +157,19 @@ func (s *Server) listExamPrepDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	docs, err := s.examPrepUC.ListDocuments(r.Context(), claims)
+	list, err := s.examPrepUC.ListDocumentsWithChapters(r.Context(), claims)
 	if err != nil {
 		middleware.MapDomainError(w, err)
 		return
 	}
 
+	dtos := make([]examPrepDocumentDTO, 0, len(list.Documents))
+	for _, doc := range list.Documents {
+		dtos = append(dtos, toExamPrepDocumentDTO(doc, list.UEs, list.Owners))
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"documents": docs})
+	json.NewEncoder(w).Encode(map[string]any{"documents": dtos})
 }
 
 // ============================================================

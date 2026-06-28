@@ -44,6 +44,7 @@ type Document struct {
 	ErreurAnalyse       *string       `json:"erreurAnalyse,omitempty"`
 	ResumeAnalyse       *string       `json:"resumeAnalyse,omitempty"`
 	UniteEnseignementID *string       `json:"uniteEnseignementId,omitempty"`
+	Chapters             []*Chapter      `json:"chapters"`
 }
 
 // CreateDocumentInput pour créer un document.

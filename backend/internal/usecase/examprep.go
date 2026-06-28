@@ -39,6 +39,94 @@ func (uc *ExamPrepUseCase) ListDocuments(ctx context.Context, claims db.SessionC
 	return uc.repo.ListStudentDocuments(ctx, claims.UserID, claims.FiliereID, niveau)
 }
 
+// ExamPrepDocumentList est la liste enrichie de documents pour l'UI exam-prep.
+// Contient les documents (avec chapitres attachés) + les maps batch pour UE
+// et propriétaire, prêtes à être consommées par le handler pour construire
+// le DTO JSON attendu par le frontend.
+type ExamPrepDocumentList struct {
+	Documents []*domain.Document
+	UEs       map[string]*domain.UniteEnseignement
+	Owners    map[string]*domain.UserRef
+}
+
+// ListDocumentsWithChapters récupère les documents accessibles à l'étudiant
+// et les enrichit en batch avec leurs chapitres, leur UE et leur propriétaire.
+//
+// DOC-ANALYZER-2 : le frontend exam-prep accède à doc.chapters.length,
+// doc.uniteEnseignement.code et doc.owner.name SANS optional chaining —
+// ces champs doivent donc toujours être présents (non-null) dans la réponse.
+func (uc *ExamPrepUseCase) ListDocumentsWithChapters(ctx context.Context, claims db.SessionClaims) (*ExamPrepDocumentList, error) {
+	docs, err := uc.ListDocuments(ctx, claims)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ExamPrepDocumentList{
+		Documents: docs,
+		UEs:       make(map[string]*domain.UniteEnseignement),
+		Owners:    make(map[string]*domain.UserRef),
+	}
+
+	if len(docs) == 0 {
+		return result, nil
+	}
+
+	// 1. Chapitres par documentId (batch).
+	docIDs := make([]string, 0, len(docs))
+	for _, d := range docs {
+		docIDs = append(docIDs, d.ID)
+	}
+	chaptersByDoc, err := uc.repo.ListChaptersByDocumentIDs(ctx, docIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. UEs par ID (batch) — collecte des IDs non-nil.
+	ueIDSet := make(map[string]struct{})
+	for _, d := range docs {
+		if d.UniteEnseignementID != nil && *d.UniteEnseignementID != "" {
+			ueIDSet[*d.UniteEnseignementID] = struct{}{}
+		}
+	}
+	ueIDs := make([]string, 0, len(ueIDSet))
+	for id := range ueIDSet {
+		ueIDs = append(ueIDs, id)
+	}
+	ues, err := uc.repo.ListUEsByIDs(ctx, ueIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Propriétaires par ID (batch) — collecte des ownerIDs.
+	ownerIDSet := make(map[string]struct{})
+	for _, d := range docs {
+		if d.OwnerID != "" {
+			ownerIDSet[d.OwnerID] = struct{}{}
+		}
+	}
+	ownerIDs := make([]string, 0, len(ownerIDSet))
+	for id := range ownerIDSet {
+		ownerIDs = append(ownerIDs, id)
+	}
+	owners, err := uc.repo.ListUserRefsByIDs(ctx, ownerIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Attacher les chapitres (slice non-nil pour le frontend).
+	for _, d := range docs {
+		chs := chaptersByDoc[d.ID]
+		if chs == nil {
+			chs = []*domain.Chapter{}
+		}
+		d.Chapters = chs
+	}
+
+	result.UEs = ues
+	result.Owners = owners
+	return result, nil
+}
+
 // GetDocumentContentForQA récupère le contenu textuel d'un document pour le
 // Q&A RAG (EXAM-PREP-CONNECT-1 — Étape 3).
 //

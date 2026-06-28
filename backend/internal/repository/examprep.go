@@ -210,6 +210,163 @@ func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID 
 }
 
 // ============================================================
+// BATCH LOOKUPS (DOC-ANALYZER-2)
+// ============================================================
+
+// ListChaptersByDocumentIDs retourne les chapitres groupés par documentId.
+// RLS désactivé (les chapitres sont des métadonnées non sensibles ; la
+// liste de documents est déjà student-scoped via ListStudentDocuments).
+// Ordre : "ordre" ASC. Retourne une map vide (non-nil) si docIDs est vide.
+func (r *ExamPrepRepository) ListChaptersByDocumentIDs(ctx context.Context, docIDs []string) (map[string][]*domain.Chapter, error) {
+	result := make(map[string][]*domain.Chapter)
+	if len(docIDs) == 0 {
+		return result, nil
+	}
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	placeholders := make([]string, len(docIDs))
+	args := make([]any, len(docIDs))
+	for i, id := range docIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
+		SELECT "id", "documentId", "titre", "ordre", "sujets", "createdAt"
+		FROM "Chapter"
+		WHERE "documentId" IN (%s)
+		ORDER BY "ordre" ASC
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query chapters: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		ch := &domain.Chapter{}
+		if err := rows.Scan(&ch.ID, &ch.DocumentID, &ch.Titre, &ch.Ordre, &ch.Sujets, &ch.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan chapter: %w", err)
+		}
+		result[ch.DocumentID] = append(result[ch.DocumentID], ch)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return result, nil
+}
+
+// ListUEsByIDs retourne les unités d'enseignement par ID (batch).
+// RLS désactivé. Seuls id/code/nom/creditsECTS sont lus.
+func (r *ExamPrepRepository) ListUEsByIDs(ctx context.Context, ueIDs []string) (map[string]*domain.UniteEnseignement, error) {
+	result := make(map[string]*domain.UniteEnseignement)
+	if len(ueIDs) == 0 {
+		return result, nil
+	}
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	placeholders := make([]string, len(ueIDs))
+	args := make([]any, len(ueIDs))
+	for i, id := range ueIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
+		SELECT "id", "code", "nom", "creditsECTS"
+		FROM "UniteEnseignement"
+		WHERE "id" IN (%s)
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query UEs: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		ue := &domain.UniteEnseignement{}
+		if err := rows.Scan(&ue.ID, &ue.Code, &ue.Nom, &ue.CreditsECTS); err != nil {
+			return nil, fmt.Errorf("scan UE: %w", err)
+		}
+		result[ue.ID] = ue
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return result, nil
+}
+
+// ListUserRefsByIDs retourne des références utilisateurs par ID (batch).
+// RLS désactivé. Seuls id/name/email sont lus.
+func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []string) (map[string]*domain.UserRef, error) {
+	result := make(map[string]*domain.UserRef)
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
+	}
+
+	placeholders := make([]string, len(userIDs))
+	args := make([]any, len(userIDs))
+	for i, id := range userIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
+		SELECT "id", "name", "email"
+		FROM "User"
+		WHERE "id" IN (%s)
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query users: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		u := &domain.UserRef{}
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		result[u.ID] = u
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return result, nil
+}
+
+// ============================================================
 // REVIEW (spaced repetition)
 // ============================================================
 
