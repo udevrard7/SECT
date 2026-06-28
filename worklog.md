@@ -6540,3 +6540,83 @@ Le endpoint `GET /api/exam-prep/documents` retournait 0 documents pour l'étudia
 2. **Cohérence RLS dans le fichier** : `ListStudentDocuments` rejoint maintenant le sous-ensemble des méthodes exam-prep qui désactivent RLS (`GetDocumentContent`, `GetDocumentForReader`, `ListChaptersByDocumentIDs`, etc.). Les autres méthodes (`GetDashboard`, `ListPracticeAttempts`, etc.) gardent `db.WithTx` + RLS ON car elles lisent des tables où l'étudiant EST owner (ex: `PracticeAttempt.userId = current_user_id()`). Pas de changement à prévoir pour elles.
 3. **Sécurité** : le RLS off est safe ici car (a) la SQL scope par `filiereId + niveau` paramétrés depuis les claims utilisateur côté usecase/handler, (b) l'étudiant ne peut pas forge ces paramètres (ils viennent de la session authentifiée). Un étudiant ne voit QUE les documents des UE de sa propre filière et de son propre niveau — c'est exactement la même garantie que fournirait une politique RLS `filiere_member` qu'on n'a pas pris le temps d'écrire.
 4. **Future hardening optionnel** : au lieu de `SET LOCAL row_security = off`, on pourrait ajouter une politique RLS `Document_select_student` sur la table `Document` qui vérifie `EXISTS (SELECT 1 FROM "UniteEnseignement" ue WHERE ue.id = Document.uniteEnseignementId AND ue.filiereId = current_user_filiere() AND (ue.niveau = current_user_niveau() OR ue.niveaux ? current_user_niveau()))`. Cela rendrait le scoping déclaratif côté DB plutôt qu'impératif côté SQL. Mais c'est un travail plus large (fonctions `current_user_filiere()`/`current_user_niveau()` à créer) — hors scope de ce fix.
+
+---
+
+## EXAM-PREP-NIVEAU-FIX-1 — Niveau étudiant récupéré depuis DB au lieu de hardcoded L1
+
+**Agent** : general-purpose sub-agent
+**Task** : EXAM-PREP-NIVEAU-FIX-1
+**Date** : 2025-06-28
+**Commit** : `9aeac51` (pushed to `main`, déploiement Vercel auto-déclenché)
+**Prérequis** : EXAM-PREP-RLS-FIX-1 (`0d2a57f`, appliqué juste avant) — ce fix a débloqué le RLS sur `ListStudentDocuments`, mais le endpoint retournait toujours 0 document car le `niveau` passé était `"L1"` (hardcodé).
+
+### Task
+
+Suite au fix RLS (`EXAM-PREP-RLS-FIX-1`), le endpoint `GET /api/exam-prep/documents` retournait TOUJOURS 0 document pour l'étudiant ASSANI Emile Junior (filiereId=`cmq2dpi6`, **niveau=`L2`** en DB). La page `/exam-prep` affichait donc toujours "Aucun support de cours disponible".
+
+**Root cause** : la usecase `ExamPrepUseCase.ListDocuments` (in `backend/internal/usecase/examprep.go`) hardcodait `niveau := "L1"` car le JWT `db.SessionClaims` (in `backend/internal/db/db.go`) ne contient **pas** de champ `Niveau` — seuls `UserID`, `Role`, `EtablissementID`, `FiliereID` sont posés. Le scoping SQL de `ListStudentDocuments` filtre par `ue."niveau" = $2 OR ue."niveaux" LIKE $3` : avec `niveau = "L1"` et un étudiant en `L2`, aucun document n'était retourné (les UE de la filière Informatique sont taguées `L2`).
+
+**Fix** : récupérer le vrai `niveau` de l'étudiant depuis la table `User` (colonne `"niveau"`) via une nouvelle méthode repository `GetUserNiveau`, au lieu de hardcoder `"L1"`. Le JWT `SessionClaims` n'est **pas** modifié (cela nécessiterait de ré-émettre tous les JWT — hors scope).
+
+### Work Log
+
+1. **Lecture contexte** : `worklog.md` (section EXAM-PREP-RLS-FIX-1 lignes 6484-6543) + les 3 fichiers cibles (`domain/examprep.go`, `repository/examprep.go`, `usecase/examprep.go`) + `db/db.go` (struct `SessionClaims` lignes 64-70, confirmé : pas de champ `Niveau`). Vérifié que `fmt` est déjà importé dans la usecase (ligne 6) et le repository (ligne 6), et que `pgx` est importé dans le repository (ligne 11) — nécessaire pour `pgx.TxOptions` et `pgx.ErrNoRows`.
+2. **Pattern de référence** : étudié `GetDocumentContent` (repository lignes 184-210) et `ListStudentDocuments` (repository lignes 125-174) qui utilisent déjà `BeginTx` + `SET LOCAL row_security = off` + `Commit`. Le nouveau `GetUserNiveau` suit exactement le même pattern. La convention `err == pgx.ErrNoRows` (comparaison directe, pas `errors.Is`) est utilisée partout dans le codebase (`repository/question.go`, `auth.go`, `user.go`, `epreuve.go`, `affectation.go`) — j'ai suivi la même convention pour cohérence.
+3. **Backup** : `cp` des 3 fichiers cibles en `.bak` (restaurables en cas de problème). Les `.bak` n'apparaissent pas dans `git status` (gitignored).
+4. **Application du fix** : un script Python (`/home/z/SECT/apply_niveau_fix.py`, supprimé après usage) applique les 3 edits en construisant les blocs old/new avec des caractères `\t` explicites (l'outil Edit convertit les tabs en espaces → casserait `gofmt` et le build Render). Chaque edit asserte que l'old block apparaît exactement 1 fois avant de remplacer.
+5. **Edit 1 — domain/examprep.go** : ajout de la signature `GetUserNiveau(ctx context.Context, userID string) (string, error)` à l'interface `ExamPrepRepository` (avec 3 lignes de doc), juste après `ListStudentDocuments`. +4 lignes.
+6. **Edit 2 — repository/examprep.go** : ajout de la méthode `GetUserNiveau` (37 lignes : doc + impl) juste avant `GetDocumentContent`. RLS off via `SET LOCAL row_security = off`. Query : `SELECT "niveau" FROM "User" WHERE "id" = $1`. Scan dans `var niveau *string` (gère NULL). Si `pgx.ErrNoRows` ou `niveau == nil` → retourne `("", nil)` (pas d'erreur). Convention placeholder unique `$1` (pgx Simple Protocol).
+7. **Edit 3 — usecase/examprep.go** : remplacement des 2 lignes `niveau := "L1" ...; return uc.repo.ListStudentDocuments(...)` par 9 lignes qui appellent `uc.repo.GetUserNiveau`, propagent l'erreur via `fmt.Errorf("get user niveau: %w", err)`, et fallback `"L1"` si `niveau == ""`. La branche `FiliereID == ""` (retourne `[]*domain.Document{}, nil`) est **intentionnellement inchangée** pour ne pas casser le contrat API existant (minimal diff, per contrainte #4).
+8. **Vérification tabs** : `cat -A` sur le nouveau `GetUserNiveau` (repository lignes 176-212) → toutes les lignes indentées commencent par `^I` (tab), y compris la raw string SQL. ✅
+9. **Vérification aucune indentation espace** : `grep -cPn '^( +)\S'` pour les 3 fichiers → `0` (exit code 1 = aucune ligne trouvée). ✅
+10. **Vérification équilibre délimiteurs** : script Python (`/home/z/SECT/check_balance.py`, supprimé après usage) strippe commentaires (ligne + bloc), strings double-quotes (avec escapes), raw strings backtick, et runes single-quote, puis compte `()`, `{}`, `[]` + backticks :
+    - **domain** : `()` 61/61, `{}` 21/21, `[]` 18/18, backticks 258 (pair). ✅
+    - **repository** : `()` 560/560, `{}` 341/341, `[]` 75/75, backticks 122 (pair). ✅
+    - **usecase** : `()` 189/189, `{}` 165/165, `[]` 29/29, backticks 0 (pair). ✅
+11. **Vérification interface ↔ impl** : la signature interface `GetUserNiveau(ctx context.Context, userID string) (string, error)` correspond exactement à l'impl `func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (string, error)`. ✅
+12. **Vérification aucun autre implémentateur** : `rg -n "ExamPrepRepository" backend/` ne retourne que les 3 fichiers cibles (domain/repository/usecase). Aucun mock, aucun test implémente l'interface → ajouter une méthode ne casse rien. ✅
+13. **Vérification variables** : dans `ListDocuments`, `niveau, err :=` déclare les 2 variables (la fonction n'avait pas de `err` avant), puis `niveau = "L1"` (assignation, pas `:=`) est valide car `niveau` est déjà déclaré. ✅
+14. **Diff scope** : `diff *.bak *` confirme que les hunks sont strictement contenus dans (a) l'interface `ExamPrepRepository` du domain, (b) la nouvelle méthode `GetUserNiveau` du repository, (c) la fin de `ListDocuments` de la usecase. Aucune autre méthode touchée. ✅
+15. **Git** : `git add backend/internal/domain/examprep.go backend/internal/repository/examprep.go backend/internal/usecase/examprep.go` (uniquement les 3 fichiers cible — les `.py` et `.bak` restent non-traqués/gitignored), commit `fix(exam-prep): niveau étudiant récupéré depuis DB au lieu de hardcoded L1 (EXAM-PREP-NIVEAU-FIX-1)`, push vers `origin main`. Hash : `9aeac51038d2eee80f9a66f19466d6f4000260f8` (short `9aeac51`). Remote a accepté (`5da9067..9aeac51 main -> main`). `git stat` : 3 files changed, 50 insertions(+), 1 deletion(-). ✅
+16. **Cleanup** : fichiers temporaires `apply_niveau_fix.py`, `check_balance.py`, et les 3 `.bak` supprimés. `git status` final propre (working tree clean).
+
+### Stage Summary
+
+**Changement code** : 3 fichiers, +50 / -1 lignes.
+
+- `backend/internal/domain/examprep.go` : +1 méthode à l'interface `ExamPrepRepository` (`GetUserNiveau`) + 3 lignes de doc.
+- `backend/internal/repository/examprep.go` : +1 méthode impl `GetUserNiveau` (37 lignes) avec RLS off, gestion `ErrNoRows`/NULL → `("", nil)`.
+- `backend/internal/usecase/examprep.go` : `ListDocuments` ne hardcode plus `"L1"` — il appelle `uc.repo.GetUserNiveau(claims.UserID)` et fallback `"L1"` uniquement si la DB ne retourne rien.
+
+**Le scoping sécurité reste identique** : la clause WHERE de `ListStudentDocuments` (`ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)`) est inchangée — seuls les paramètres `filiereID` (depuis les claims) et `niveau` (depuis la DB, au lieu de `"L1"` hardcodé) sont maintenant corrects. Un étudiant ne voit QUE les documents des UE de sa propre filière et de son propre niveau réel.
+
+**Le JWT `SessionClaims` n'est PAS modifié** (per contrainte #4) — cela aurait nécessité de ré-émettre tous les JWT actifs. Le niveau est résolu à la volée depuis la DB à chaque appel `ListDocuments` (1 round-trip supplémentaire, négligeable).
+
+**Deliverables** :
+- `cat -A` snippet (tabs visibles `^I`) du nouveau `GetUserNiveau` (repository) :
+  ```
+  ^Ivar niveau *string$
+  ^Ierr = tx.QueryRow(ctx, `$
+  ^I^ISELECT "niveau" FROM "User" WHERE "id" = $1$
+  ^I`, userID).Scan(&niveau)$
+  ^Iif err != nil {$
+  ^I^Iif err == pgx.ErrNoRows {$
+  ^I^I^Itx.Commit(ctx)$
+  ^I^I^Ireturn "", nil$
+  ```
+- `grep -cPn '^( +)\S'` → `0` pour les 3 fichiers (domain, repository, usecase). ✅
+- Brace balance :
+  - domain : `()` 61/61, `{}` 21/21, `[]` 18/18, backticks 258. ✅
+  - repository : `()` 560/560, `{}` 341/341, `[]` 75/75, backticks 122. ✅
+  - usecase : `()` 189/189, `{}` 165/165, `[]` 29/29, backticks 0. ✅
+- Interface ↔ impl signatures matchent. Aucun autre implémentateur de `ExamPrepRepository` (pas de mock/test). ✅
+- Git commit hash : `9aeac51` (full `9aeac51038d2eee80f9a66f19466d6f4000260f8`), pushed to `main` (`5da9067..9aeac51`). ✅
+
+### Risks / Follow-ups
+
+1. **Validation end-to-end requise** : Go n'est pas installé dans ce sandbox, donc pas de `go build` / `go vet` exécuté. La vérification a été faite manuellement (tabs `^I`, équilibre délimiteurs, imports présents, signatures interface↔impl, convention `pgx.ErrNoRows` cohérente avec le codebase). Après déploiement Vercel (auto-déclenché par le push), valider sur `/exam-prep` en tant qu'étudiant ASSANI Emile Junior : la page devrait maintenant afficher les documents L2 (au lieu de l'empty state "Aucun support de cours disponible"). Si le build échoue, c'est probablement un problème de formatage — mais `grep` confirme 0 ligne indentée par espaces, donc `gofmt` devrait passer.
+2. **Round-trip DB supplémentaire** : `ListDocuments` fait désormais 2 requêtes (1 `GetUserNiveau` + 1 `ListStudentDocuments`) au lieu d'1. Négligeable (index PK sur `User.id`, 1 ligne). Si la perf devient critique, on pourrait mettre en cache court-terme le niveau dans le context HTTP — mais pas nécessaire pour un endpoint étudiant à faible trafic.
+3. **Fallback `"L1"` si niveau vide** : si un étudiant n'a pas de `niveau` renseigné en DB (NULL ou colonne vide), le code fallback sur `"L1"` — comportement identique à l'ancien code hardcodé, donc pas de régression. Idéalement, tous les étudiants devraient avoir un niveau non-NULL (contrainte à vérifier côté création de compte). Le fallback est défensif, pas une stratégie à long terme.
+4. **Cohérence avec `SessionClaims`** : ce fix contourne l'absence du champ `Niveau` dans le JWT en le lisant depuis la DB. Une solution plus durable serait d'ajouter `Niveau string` à `SessionClaims` et de le peupler à la connexion (depuis la DB) puis de le signer dans le JWT — cela éviterait le round-trip DB et tiendrait le niveau à jour côté session. Mais cela nécessite (a) modifier la signature JWT, (b) ré-émettre tous les JWT actifs, (c) modifier le middleware d'auth. Hors scope de ce fix (per contrainte #4). Le présent fix est un hotfix minimal et safe.
+5. **Effet combiné avec EXAM-PREP-RLS-FIX-1** : ce fix n'a de sens QUE parce que le fix RLS précédent (`0d2a57f`) a débloqué `ListStudentDocuments`. Sans le fix RLS, même avec le bon `niveau`, RLS aurait filtré tous les documents. Les deux fixes sont complémentaires et indépendants : RLS-FIX corrige la couche sécurité, NIVEAU-FIX corrige la couche paramétrage. Ensemble, ils devraient restaurer l'affichage des documents sur `/exam-prep`.
