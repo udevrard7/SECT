@@ -449,58 +449,63 @@ func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []st
 
 // ListReviewItems liste les items de révision (dus si DueOnly).
 func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.ReviewListParams) ([]*domain.ReviewItem, error) {
-	claims, ok := db.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no RLS claims in context")
+	// REVIEW-FIX-1 : RLS désactivé (scoping userId déjà en SQL WHERE clause).
+	// Pattern identique à ListStudentDocuments, GetDocumentContent.
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return nil, fmt.Errorf("disable rls: %w", err)
 	}
 
-	var result []*domain.ReviewItem
-	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-		var where []string
-		var args []any
-		argIdx := 1
+	var where []string
+	var args []any
+	argIdx := 1
 
-		where = append(where, fmt.Sprintf(`"userId" = $%d`, argIdx))
-		args = append(args, params.UserID)
+	where = append(where, fmt.Sprintf(`"userId" = $%d`, argIdx))
+	args = append(args, params.UserID)
+	argIdx++
+
+	if params.DueOnly {
+		where = append(where, fmt.Sprintf(`"nextReviewAt" <= CURRENT_TIMESTAMP`))
+	}
+	if params.DocumentID != "" {
+		where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Chapter" c WHERE c."id" = "ReviewItem"."chapterId" AND c."documentId" = $%d)`, argIdx))
+		args = append(args, params.DocumentID)
 		argIdx++
+	}
 
-		if params.DueOnly {
-			where = append(where, fmt.Sprintf(`"nextReviewAt" <= CURRENT_TIMESTAMP`))
-		}
-		if params.DocumentID != "" {
-			where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Chapter" c WHERE c."id" = "ReviewItem"."chapterId" AND c."documentId" = $%d)`, argIdx))
-			args = append(args, params.DocumentID)
-			argIdx++
-		}
+	query := fmt.Sprintf(`
+		SELECT "id", "userId", "chapterId", "questionId", "interval", "easeFactor",
+		       "nextReviewAt", "lastReviewedAt", "repetitions", "createdAt", "updatedAt"
+		FROM "ReviewItem" WHERE %s ORDER BY "nextReviewAt" ASC
+	`, strings.Join(where, " AND "))
 
-		query := fmt.Sprintf(`
-			SELECT "id", "userId", "chapterId", "questionId", "interval", "easeFactor",
-			       "nextReviewAt", "lastReviewAt", "repetitions", "createdAt", "updatedAt"
-			FROM "ReviewItem" WHERE %s ORDER BY "nextReviewAt" ASC
-		`, strings.Join(where, " AND "))
-
-		rows, err := tx.Query(ctx, query, args...)
-		if err != nil {
-			return fmt.Errorf("query review items: %w", err)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			item := &domain.ReviewItem{}
-			if err := rows.Scan(&item.ID, &item.UserID, &item.ChapterID, &item.QuestionID,
-				&item.Interval, &item.EaseFactor, &item.NextReviewAt, &item.LastReviewAt,
-				&item.Repetitions, &item.CreatedAt, &item.UpdatedAt); err != nil {
-				return fmt.Errorf("scan review item: %w", err)
-			}
-			result = append(result, item)
-		}
-		if result == nil {
-			result = []*domain.ReviewItem{}
-		}
-		return nil
-	})
+	rows, err := tx.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query review items: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*domain.ReviewItem
+	for rows.Next() {
+		item := &domain.ReviewItem{}
+		if err := rows.Scan(&item.ID, &item.UserID, &item.ChapterID, &item.QuestionID,
+			&item.Interval, &item.EaseFactor, &item.NextReviewAt, &item.LastReviewAt,
+			&item.Repetitions, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan review item: %w", err)
+		}
+		result = append(result, item)
+	}
+	if result == nil {
+		result = []*domain.ReviewItem{}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return result, nil
 }
@@ -543,7 +548,7 @@ func (r *ExamPrepRepository) MarkReviewed(ctx context.Context, itemID string, qu
 	_, err = tx.Exec(ctx, `
 		UPDATE "ReviewItem" SET "interval" = $2, "easeFactor" = $3, "repetitions" = $4,
 			"nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
-			"lastReviewAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+			"lastReviewedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
 		WHERE "id" = $1
 	`, itemID, newInterval, newEase, newRepetitions)
 	if err != nil {
@@ -790,7 +795,7 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
 				"interval", "easeFactor", "repetitions", "nextReviewAt",
-				"lastReviewAt", "createdAt", "updatedAt")
+				"lastReviewedAt", "createdAt", "updatedAt")
 			VALUES ($1, $2, $3, $4, $5, $6, $7,
 				CURRENT_TIMESTAMP + ($5 || ' days')::interval,
 				CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -816,7 +821,7 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
 				"easeFactor" = $3,
 				"repetitions" = $4,
 				"nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
-				"lastReviewAt" = CURRENT_TIMESTAMP,
+				"lastReviewedAt" = CURRENT_TIMESTAMP,
 				"updatedAt" = CURRENT_TIMESTAMP
 			WHERE "id" = $1
 		`, existingID, newInterval, newEase, newReps); err != nil {
@@ -1248,7 +1253,7 @@ func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, user
 	_, err = tx.Exec(ctx, `
 		INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
 			"interval", "easeFactor", "repetitions", "nextReviewAt",
-			"lastReviewAt", "createdAt", "updatedAt")
+			"lastReviewedAt", "createdAt", "updatedAt")
 		VALUES ($1, $2, $3, $4, 0, 2.5, 0,
 			CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`, reviewID, userID, chapArg, flashcardID)
