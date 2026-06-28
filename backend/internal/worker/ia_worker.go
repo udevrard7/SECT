@@ -111,7 +111,7 @@ func (w *IAWorker) processJob(ctx context.Context, job IAJob) {
 	w.updateEpreuveStatus(ctx, job.EpreuveID, "EN_COURS", "", "")
 
 	// 2. Lire le provider actif depuis la DB
-	provider, err := w.getActiveProvider(ctx)
+	provider, err := getActiveProviderShared(ctx, w.dbPool)
 	if err != nil {
 		w.logger.Error("Failed to get active AI provider", "error", err)
 		w.markEpreuveError(ctx, job.EpreuveID, "aucun provider IA actif")
