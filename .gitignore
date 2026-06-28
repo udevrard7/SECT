@@ -43,6 +43,7 @@ Caddyfile
 # Go backend
 backend/bin/
 backend/tmp/
+backend/api
 *.exe
 
 # Frontend
