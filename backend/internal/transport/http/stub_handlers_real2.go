@@ -733,7 +733,17 @@ func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 8. GET /api/devoirs — Devoir (0 row) + LEFT JOIN UE
+// 8. GET /api/devoirs — Liste enrichie (DTO complet matchant le type TS Devoir)
+//
+// FIX (P1-DEVOIRS-1) :
+//   • Suppression du filtre d."etudiantId" (colonne inexistante → erreur SQL).
+//   • Pour l'étudiant : le scoping se fait via RLS (policy Devoir_select
+//     corrigée par migration 000009 : filiere+niveau de l'étudiant).
+//     Le paramètre ?etudiantId sert uniquement à joindre SA soumission.
+//   • DTO enrichi : User (enseignant), UniteEnseignement, GrilleEvaluation,
+//     soumissionCount, et soumission (l'étudiant courant) — matche le type
+//     Devoir du frontend (devoirs-types.ts) qui accède à ces champs SANS
+//     optional chaining → crash si absents.
 // ──────────────────────────────────────────────────────────────────────────
 
 func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
@@ -743,13 +753,68 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// DTO User (enseignant) — matche { id, name, email } côté frontend
+	type userDTO struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+
+	// DTO UniteEnseignement — matche { id, code, nom, niveau } côté frontend
+	type ueDTO struct {
+		ID     string `json:"id"`
+		Code   string `json:"code"`
+		Nom    string `json:"nom"`
+		Niveau string `json:"niveau,omitempty"`
+	}
+
+	// DTO GrilleEvaluation — matche { id, criteres } | null côté frontend
+	type grilleDTO struct {
+		ID        string `json:"id"`
+		Criteres  string `json:"criteres"`
+	}
+
+	// DTO Soumission résumée (pour l'étudiant : sa propre soumission jointe)
+	type soumissionDTO struct {
+		ID                   string  `json:"id"`
+		ContenuTexte         *string `json:"contenuTexte"`
+		CommentaireEtudiant  *string `json:"commentaireEtudiant"`
+		Statut               string  `json:"statut"`
+		RenduAt              *string `json:"renduAt"`
+		Note                 *float64 `json:"note"`
+		CommentaireEnseignant *string `json:"commentaireEnseignant"`
+		NoteIA               *float64 `json:"noteIA"`
+		JustificationIA      *string `json:"justificationIA"`
+		CreatedAt            string  `json:"createdAt"`
+	}
+
+	// DTO Devoir complet — matche le type TS Devoir (devoirs-types.ts)
+	// Tous les champs accédés sans optional chaining par le frontend doivent
+	// être non-null dans la réponse JSON.
 	type devoir struct {
-		ID          string  `json:"id"`
-		Titre       string  `json:"titre"`
-		Description *string `json:"description,omitempty"`
-		Statut      string  `json:"statut"`
-		DateLimite  *string `json:"dateLimite,omitempty"`
-		UEID        *string `json:"uniteEnseignementId,omitempty"`
+		ID                 string      `json:"id"`
+		Titre              string      `json:"titre"`
+		Description        *string     `json:"description"`
+		Consignes          *string     `json:"consignes"`
+		UniteEnseignementID string     `json:"uniteEnseignementId"`
+		EnseignantID       string      `json:"enseignantId"`
+		TypeSeance         string      `json:"typeSeance"`
+		DatePublication    *string     `json:"datePublication"`
+		DateLimite         string      `json:"dateLimite"`
+		NoteMax            float64     `json:"noteMax"`
+		RenduFichiers      *string     `json:"renduFichiers"`
+		SoumissionGroupe   bool        `json:"soumissionGroupe"`
+		NbMaxFichiers      int         `json:"nbMaxFichiers"`
+		TailleMaxFichier   int         `json:"tailleMaxFichier"`
+		Statut             string      `json:"statut"`
+		AnneeUniversitaire string      `json:"anneeUniversitaire"`
+		CreatedAt          string      `json:"createdAt"`
+		UpdatedAt          string      `json:"updatedAt"`
+		User               userDTO     `json:"User"`
+		UniteEnseignement  ueDTO       `json:"UniteEnseignement"`
+		GrilleEvaluation   *grilleDTO  `json:"GrilleEvaluation"`
+		SoumissionCount    int         `json:"soumissionCount"`
+		Soumission         *soumissionDTO `json:"soumission"`
 	}
 
 	result := []devoir{}
@@ -766,20 +831,48 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 			args = append(args, enseignantID)
 			argIdx++
 		}
+		// ⚠️ Pas de filtre d."etudiantId" : la colonne n'existe pas sur Devoir.
+		// Le scoping étudiant se fait via RLS (policy Devoir_select corrigée
+		// par migration 000009). Le paramètre etudiantId sert uniquement à
+		// joindre la soumission de l'étudiant courant.
+
+		// Construction dynamique du LEFT JOIN sur Soumission (étudiant seulement)
+		soumissionJoin := ""
 		if etudiantID != "" {
-			where = append(where, fmt.Sprintf(`d."etudiantId" = $%d`, argIdx))
+			soumissionJoin = fmt.Sprintf(`LEFT JOIN "Soumission" s ON s."devoirId" = d."id" AND s."etudiantId" = $%d AND s."deletedAt" IS NULL`, argIdx)
 			args = append(args, etudiantID)
 			argIdx++
 		}
 
+		selectCols := ""
+		if etudiantID != "" {
+			selectCols = `,
+				s."id", s."contenuTexte", s."commentaireEtudiant", s."statut"::text,
+				s."renduAt", s."note", s."commentaireEnseignant",
+				s."noteIA", s."justificationIA", s."createdAt"`
+		}
+
 		query := fmt.Sprintf(`
-			SELECT d."id", d."titre", d."description", d."statut"::text,
-			       d."dateLimite", d."uniteEnseignementId"
+			SELECT
+				d."id", d."titre", d."description", d."consignes",
+				d."uniteEnseignementId", d."enseignantId", d."typeSeance"::text,
+				d."datePublication", d."dateLimite", d."noteMax",
+				d."renduFichiers", d."soumissionGroupe", d."nbMaxFichiers",
+				d."tailleMaxFichier", d."statut"::text, d."anneeUniversitaire",
+				d."createdAt", d."updatedAt",
+				u."id", u."name", u."email",
+				ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''),
+				g."id", g."criteres",
+				COALESCE((SELECT count(*) FROM "Soumission" sub WHERE sub."devoirId" = d."id" AND sub."deletedAt" IS NULL AND sub."statut"::text = 'SOUMIS'), 0)%s
 			FROM "Devoir" d
+			LEFT JOIN "User" u ON u."id" = d."enseignantId"
+			LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+			LEFT JOIN "GrilleEvaluation" g ON g."devoirId" = d."id"
+			%s
 			WHERE %s
 			ORDER BY d."createdAt" DESC
 			LIMIT 100
-		`, joinStringsArr(where, " AND "))
+		`, selectCols, soumissionJoin, joinStringsArr(where, " AND "))
 
 		rows, err := tx.Query(r.Context(), query, args...)
 		if err != nil {
@@ -788,14 +881,91 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			d := devoir{}
-			var dateLimite *time.Time
-			if err := rows.Scan(&d.ID, &d.Titre, &d.Description, &d.Statut, &dateLimite, &d.UEID); err == nil {
-				if dateLimite != nil {
-					ts := dateLimite.UTC().Format(time.RFC3339)
-					d.DateLimite = &ts
+			var (
+				descr, consignes, renduFichiers, datePub                  *string
+				dateLimite                                               *time.Time
+				createdAt, updatedAt                                     time.Time
+				ueNiveau                                                 string
+				grilleID, grilleCriteres                                 *string
+				sID, sContenu, sComment, sStatut, sCommentEns, sJustifIA *string
+				sNote, sNoteIA                                           *float64
+				sRenduAt, sCreatedAt                                     *time.Time
+			)
+
+			if etudiantID != "" {
+				if err := rows.Scan(
+					&d.ID, &d.Titre, &descr, &consignes,
+					&d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
+					&datePub, &dateLimite, &d.NoteMax,
+					&renduFichiers, &d.SoumissionGroupe, &d.NbMaxFichiers,
+					&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+					&createdAt, &updatedAt,
+					&d.User.ID, &d.User.Name, &d.User.Email,
+					&d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
+					&grilleID, &grilleCriteres,
+					&d.SoumissionCount,
+					&sID, &sContenu, &sComment, &sStatut, &sRenduAt, &sNote, &sCommentEns, &sNoteIA, &sJustifIA, &sCreatedAt,
+				); err != nil {
+					return nil
 				}
-				result = append(result, d)
+			} else {
+				if err := rows.Scan(
+					&d.ID, &d.Titre, &descr, &consignes,
+					&d.UniteEnseignementID, &d.EnseignantID, &d.TypeSeance,
+					&datePub, &dateLimite, &d.NoteMax,
+					&renduFichiers, &d.SoumissionGroupe, &d.NbMaxFichiers,
+					&d.TailleMaxFichier, &d.Statut, &d.AnneeUniversitaire,
+					&createdAt, &updatedAt,
+					&d.User.ID, &d.User.Name, &d.User.Email,
+					&d.UniteEnseignement.ID, &d.UniteEnseignement.Code, &d.UniteEnseignement.Nom, &ueNiveau,
+					&grilleID, &grilleCriteres,
+					&d.SoumissionCount,
+				); err != nil {
+					return nil
+				}
 			}
+
+			d.Description = descr
+			d.Consignes = consignes
+			d.RenduFichiers = renduFichiers
+			if datePub != nil {
+				d.DatePublication = datePub
+			}
+			if dateLimite != nil {
+				d.DateLimite = dateLimite.UTC().Format(time.RFC3339)
+			}
+			d.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+			d.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+			if ueNiveau != "" {
+				d.UniteEnseignement.Niveau = ueNiveau
+			}
+			if grilleID != nil && grilleCriteres != nil {
+				d.GrilleEvaluation = &grilleDTO{ID: *grilleID, Criteres: *grilleCriteres}
+			}
+
+			// Soumission de l'étudiant (si applicable)
+			if etudiantID != "" && sID != nil {
+				s := soumissionDTO{ID: *sID}
+				s.ContenuTexte = sContenu
+				s.CommentaireEtudiant = sComment
+				if sStatut != nil {
+					s.Statut = *sStatut
+				}
+				if sRenduAt != nil {
+					ts := sRenduAt.UTC().Format(time.RFC3339)
+					s.RenduAt = &ts
+				}
+				s.Note = sNote
+				s.CommentaireEnseignant = sCommentEns
+				s.NoteIA = sNoteIA
+				s.JustificationIA = sJustifIA
+				if sCreatedAt != nil {
+					s.CreatedAt = sCreatedAt.UTC().Format(time.RFC3339)
+				}
+				d.Soumission = &s
+			}
+
+			result = append(result, d)
 		}
 		return nil
 	})
@@ -806,6 +976,7 @@ func (s *Server) devoirsListReal(w http.ResponseWriter, r *http.Request) {
 		"total":   len(result),
 	})
 }
+
 
 // ──────────────────────────────────────────────────────────────────────────
 // 9. GET /api/devoirs/stats — Devoir stats
