@@ -44,7 +44,15 @@ func (uc *ExamPrepUseCase) ListDocuments(ctx context.Context, claims db.SessionC
 	if claims.FiliereID == "" {
 		return []*domain.Document{}, nil
 	}
-	niveau := "L1" // default — claims n'a pas niveau, on prendra tous les niveaux
+	// EXAM-PREP-NIVEAU-FIX-1 : récupérer le niveau réel de l'étudiant depuis la DB
+	// (le JWT SessionClaims n'a pas de champ Niveau). Si introuvable, fallback "L1".
+	niveau, err := uc.repo.GetUserNiveau(ctx, claims.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("get user niveau: %w", err)
+	}
+	if niveau == "" {
+		niveau = "L1" // fallback sécurisé
+	}
 	return uc.repo.ListStudentDocuments(ctx, claims.UserID, claims.FiliereID, niveau)
 }
 
