@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udevrard7/sect/backend/internal/ai"
 	"github.com/udevrard7/sect/backend/internal/cache"
+	"github.com/udevrard7/sect/backend/internal/domain"
 	"github.com/udevrard7/sect/backend/internal/middleware"
 	"github.com/udevrard7/sect/backend/internal/repository"
 	"github.com/udevrard7/sect/backend/internal/usecase"
@@ -37,6 +38,7 @@ type Server struct {
 	correctionUC *usecase.CorrectionUseCase
 	examPrepUC   *usecase.ExamPrepUseCase
 	aiService    *ai.AIService
+	storage       domain.StorageClient
 	// CACHE-RAM-1 : cache en mémoire write-behind pour les sessions d'examen actives.
 	// Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
 	// vers Neon toutes les 30s ; le handler submitSession force un flush immédiat.
@@ -63,6 +65,7 @@ func NewServer(
 	correctionUC *usecase.CorrectionUseCase,
 	examPrepUC *usecase.ExamPrepUseCase,
 	aiService *ai.AIService,
+	storage domain.StorageClient,
 	dbPool *pgxpool.Pool,
 	corsOrigins []string,
 	authMiddleware func(http.Handler) http.Handler,
@@ -87,6 +90,7 @@ func NewServer(
 		correctionUC: correctionUC,
 		examPrepUC:   examPrepUC,
 		aiService:    aiService,
+		storage:       storage,
 	}
 	// CACHE-RAM-1 : initialiser le cache RAM write-behind.
 	s.sessionCache = cache.NewSessionCache()
@@ -379,6 +383,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 		// P2-DEVOIRS-2 : soumissions (étudiant crée, enseignant note)
 		r.Route("/api/soumissions", func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Post("/presign-upload", s.presignUploadSoumission)  // P3-DEVOIRS-3 : URL présignée R2
 			r.Post("/", s.createSoumission)                        // ETUDIANT
 			r.Patch("/{id}", s.updateSoumission)                   // ETUDIANT (brouillon) ou ENSEIGNANT (note)
 			// POST /{id}/ai-grade sera ajouté en P4 (HomeworkCorrectionWorker)

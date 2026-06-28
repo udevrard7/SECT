@@ -93,6 +93,10 @@ type StorageClient interface {
 
 	// PresignURL génère une URL présignée pour télécharger un objet (validité en secondes).
 	PresignURL(ctx context.Context, key string, expiresIn int) (string, error)
+
+	// PresignUpload génère une URL présignée pour uploader un objet directement
+	// depuis le navigateur (PUT). P3-DEVOIRS-3 : upload direct-to-R2 des soumissions.
+	PresignUpload(ctx context.Context, key, contentType string, expiresIn int) (string, error)
 }
 
 // SupportedFileTypes — types de fichiers supportés pour l'upload.

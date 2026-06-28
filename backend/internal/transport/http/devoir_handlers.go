@@ -1162,3 +1162,72 @@ func (s *Server) updateGrilleEvaluation(w http.ResponseWriter, r *http.Request) 
                 "message": "grille mise à jour",
         })
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// P3-DEVOIRS-3 : Upload présigné R2 pour soumissions de fichiers
+// ══════════════════════════════════════════════════════════════════════════
+//
+// POST /api/soumissions/presign-upload
+// Body: { devoirId, filename, contentType }
+// Response: { uploadUrl, key, expiresIn }
+//
+// Le navigateur étudiant :
+//   1. POST /api/soumissions/presign-upload → obtient une URL présignée
+//   2. PUT direct vers R2 avec le fichier (0% charge Render)
+//   3. POST /api/soumissions avec fichiersSoumis = JSON [{key, filename, contentType}]
+//
+// Durée de validité : 5 minutes (300s). Clé format : soumissions/{etudiantId}/{timestamp}_{filename}
+
+func (s *Server) presignUploadSoumission(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.UserID == "" {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if claims.Role != "ETUDIANT" && claims.Role != "ENSEIGNANT" {
+		writeJSONError(w, http.StatusForbidden, "rôle étudiant ou enseignant requis")
+		return
+	}
+	if s.storage == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "stockage R2 non configuré")
+		return
+	}
+
+	var input struct {
+		DevoirID    string `json:"devoirId"`
+		Filename    string `json:"filename"`
+		ContentType string `json:"contentType"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "corps de requête invalide")
+		return
+	}
+	if input.Filename == "" {
+		writeJSONError(w, http.StatusBadRequest, "filename requis")
+		return
+	}
+
+	// Générer une clé R2 unique
+	key := fmt.Sprintf("soumissions/%s/%d_%s", claims.UserID, time.Now().UnixMilli(), input.Filename)
+
+	// Préfixer le contentType si vide
+	if input.ContentType == "" {
+		input.ContentType = "application/octet-stream"
+	}
+
+	uploadURL, err := s.storage.PresignUpload(r.Context(), key, input.ContentType, 300)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "échec génération URL présignée")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"uploadUrl":   uploadURL,
+		"key":         key,
+		"expiresIn":   300,
+		"method":      "PUT",
+		"contentType": input.ContentType,
+	})
+}

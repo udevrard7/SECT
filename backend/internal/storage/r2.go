@@ -139,6 +139,34 @@ func (c *R2Client) PresignURL(ctx context.Context, key string, expiresIn int) (s
 	return req.URL, nil
 }
 
+// PresignUpload génère une URL présignée pour uploader un objet directement
+// depuis le navigateur (méthode PUT). P3-DEVOIRS-3 : upload direct-to-R2.
+//
+// Le navigateur fait un PUT HTTP sur l'URL retournée avec le fichier en body.
+// Durée de validité recommandée : 300s (5 min) — max R2 = 7 jours.
+func (c *R2Client) PresignUpload(ctx context.Context, key, contentType string, expiresIn int) (string, error) {
+	if key == "" {
+		return "", fmt.Errorf("storage key required")
+	}
+	if expiresIn <= 0 {
+		expiresIn = 300 // 5 minutes par défaut pour l'upload
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	req, err := c.presigner.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(c.bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+	}, s3.WithPresignExpires(time.Duration(expiresIn)*time.Second))
+	if err != nil {
+		return "", fmt.Errorf("presign upload URL: %w", err)
+	}
+
+	return req.URL, nil
+}
+
 // GenerateObjectKey génère une clé R2 pour un document.
 // Format: documents/{userId}/{timestamp}_{filename}
 func GenerateObjectKey(userID, filename string) string {
