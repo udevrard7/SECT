@@ -3,6 +3,10 @@
   "regions": ["fra1"],
   "rewrites": [
     {
+      "source": "/api/certificats/:id/pdf",
+      "destination": "/api/certificats/:id/pdf"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://sect-s1pb.onrender.com/api/:path*"
     }
