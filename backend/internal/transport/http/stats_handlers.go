@@ -746,7 +746,13 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 	// directement (sans transaction, sans claims RLS) — l'admin a le droit
 	// de voir tous les établissements + users pour les stats globales.
 	escapedAdminID := strings.ReplaceAll(claims.UserID, "'", "''")
-	rowsEtab2, q2err := s.dbPool.Query(ctx, fmt.Sprintf(`
+	// Transaction avec row_security = off (le pool peut avoir des claims résiduels)
+	tx2, _ := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
+	if tx2 != nil {
+		defer tx2.Rollback(ctx)
+		tx2.Exec(ctx, "SET LOCAL row_security = off")
+	}
+	rowsEtab2, q2err := tx2.Query(ctx, fmt.Sprintf(`
 		SELECT
 			e.id, e.nom, e.ville, e.type, e.actif,
 			(SELECT a.statut::text FROM "Abonnement" a
@@ -797,6 +803,9 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		stats["etablissementsOverview"] = overviews
+	}
+	if tx2 != nil {
+		tx2.Commit(ctx)
 	}
 
 	if err != nil {
