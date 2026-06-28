@@ -192,6 +192,14 @@ type ExamPrepRepository interface {
 	// EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG.
 	GetDocumentContent(ctx context.Context, documentID string) (string, error)
 
+	// DOC-ANALYZER-2 : méthodes batch pour enrichir la liste de documents
+	// (chapitres + UE + propriétaire). RLS désactivé : métadonnées non
+	// sensibles ; la liste de documents est déjà student-scoped via
+	// ListStudentDocuments.
+	ListChaptersByDocumentIDs(ctx context.Context, docIDs []string) (map[string][]*Chapter, error)
+	ListUEsByIDs(ctx context.Context, ueIDs []string) (map[string]*UniteEnseignement, error)
+	ListUserRefsByIDs(ctx context.Context, userIDs []string) (map[string]*UserRef, error)
+
 	// Review (spaced repetition)
 	ListReviewItems(ctx context.Context, params ReviewListParams) ([]*ReviewItem, error)
 	MarkReviewed(ctx context.Context, itemID string, quality int) error
