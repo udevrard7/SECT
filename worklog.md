@@ -8097,3 +8097,60 @@ Stage Summary:
 - **NE PAS pousser** sur git (l'utilisateur fera le commit + push après vérification).
 - **Build Go validé** : `go build ./...` exit 0 + `go vet ./...` exit 0. Binaire 24.5 MB généré.
 - **Follow-up recommandé** : test fonctionnel sur Render après déploiement (vérifier les 6 endpoints avec curl, en particulier le routing chi public vs authentifié pour /api/invitations/verify vs /api/invitations/{id}).
+
+---
+Task ID: ETUDIANTS-AUDIT-FIX-1
+Agent: Z.ai Code (tuteur/assistant) + general-purpose subagent (E1 invitations)
+Task: Audit + correction du module /etudiants côté responsable (11 bugs E1-E11, corrections par priorité).
+
+Work Log:
+- Audit complet du module /etudiants : frontend (2119 lignes) + backend (user_handlers 210 lignes) + DB Neon (User + Invitation tables, RLS, volumes). 11 bugs identifiés (3 CRITICAL + 3 HIGH + 3 MEDIUM + 2 LOW).
+- Vérification API production : 3 features majeures cassées (invitation 404, import 405, création directe 400 password requis).
+
+ÉTAPE 1 — CRITICAL (commit c09fb73) :
+- E1 (invitations) : module ENTIEREMENT implémenté par sous-agent general-purpose.
+  - domain/invitation.go + repository/invitation.go + usecase/invitation.go + transport/http/invitation_handlers.go (4 nouveaux fichiers, ~600 lignes)
+  - 6 endpoints : GET/POST /api/invitations (auth RESPONSABLE+ADMIN), PATCH /api/invitations/{id}/renvoyer, DELETE /api/invitations/{id}, GET /api/invitations/verify?token=X (PUBLIC), POST /api/invitations/accept (PUBLIC)
+  - Token crypto/rand 32 hex, expiresAt now+7j, matricule auto-généré pour ETUDIANT, tx atomique pour accept
+  - main.go + router.go : instanciation + routes (verify/accept AVANT le groupe auth)
+- E2 (import) : handler importUsers (POST /api/users/import). Pour chaque user : génère password 8 chars, crée User, collecte tempPwd. Response {imported, errors:[], users:[{id,name,email,password,role}]}. Route /import AVANT /{id} (sinon chi matche comme param).
+- E3 (création directe) : usecase Create retourne (user, temporaryPassword, error). Si password vide : génère 8 chars crypto/rand + force mustChangePwd=true. Handler retourne {user, temporaryPassword}. Repository : mustChangePwd paramétrable (avant hardcodé false).
+- E4 (delete deps) : usecase Delete retourne (*DeletedDependencies, error). Interface UserDependencyCounter (optionnelle). Repo CountDependencies (sessions/reponses/soumissions, RLS off, best-effort). Handler response inclut deletedDependencies.
+- E5 (filtre niveau) : champ Niveau ajouté à UserListParams (domain) + ListParams (usecase) + WHERE u.niveau = $X (repository). Handler lit ?niveau=.
+- E6 (RequireRole) : router /api/users r.Group + RequireRole("RESPONSABLE","ADMIN") sur POST/PATCH/DELETE. GET / et GET /{id} restent ouverts (ENSEIGNANT via RLS).
+
+ÉTAPE 2 — MEDIUM frontend (commit 94ccf55) :
+- E5 frontend : etudiantsQuery envoie ?niveau=X au backend (avant client-side). Suppression useMemo filtre client. queryKey inclut niveauFilter.
+- E7 : handleToggleActive + handleRemoveFromFiliere extraient err.error au lieu de 'Erreur' générique. catch(err) au lieu de catch().
+- E8 : indicateur statsAreApprox = totalFromApi > etudiants.length. Commentaire documentant que activeEtudiants/withFiliere sont sur la page courante.
+- E9 : handleBulkAction collecte totalDepsSessions/Reponses/Soumissions. Toast bulk delete inclut "Données supprimées : N session(s)...". Bonus : erreurs bulk extraient err.error.
+
+ÉTAPE 3 — fix null arrays (commit 8261bd7) :
+- E2 : importUsers init errors et users avec [] au lieu de var (nil) → JSON [] au lieu de null.
+
+Vérification API production (Render, commit c09fb73 + 8261bd7 live) :
+- POST /api/invitations → 201 {token, invitation} ✅ (E1)
+- GET /api/invitations → 200 {invitations:[...]} ✅ (E1)
+- GET /api/invitations/verify?token=X (public) → 200 {invitation} ✅ (E1)
+- POST /api/users sans password → 201 {user, temporaryPassword:"uWpm5Xa8"} ✅ (E3)
+- POST /api/users/import → 200 {imported:1, errors:[], users:[{password:"u9sReyyw"}]} ✅ (E2)
+- GET /api/users?niveau=L1 → total:0 ✅ (E5, avant retournait 15)
+- GET /api/users?niveau=L2 → total:15 ✅ (E5)
+- DELETE /api/users/{id} → {deletedDependencies:{sessions,reponses,soumissions}} ✅ (E4)
+- POST /api/users par enseignant → 403 "insufficient permissions" ✅ (E6)
+
+Vérification Agent Browser (Vercel, compte registrar) :
+- Page /etudiants charge : 15 étudiants, stats, filtres ✅
+- Dialog "Ajouter un étudiant" mode Invitation : remplir email + nom → "Invitation envoyée" + lien /accept-invitation?token=... ✅ (E1 navigué)
+- Dialog mode "Création directe" : remplir nom + email → "Étudiant créé" + dialog "Étudiant créé avec succès" avec "Mot de passe temporaire : CuWH6zLy" ✅ (E3 navigué)
+
+Stage Summary:
+- **9 bugs traités** : E1 (invitations, CRITICAL, sous-agent), E2 (import, CRITICAL), E3 (création directe, CRITICAL), E4 (delete deps, HIGH), E5 (filtre niveau, HIGH, backend+frontend), E6 (RequireRole, HIGH), E7 (erreurs, MEDIUM), E8 (stats, MEDIUM), E9 (bulk deps, MEDIUM).
+- **3 commits poussés** : c09fb73 (E1-E6 backend, 10 fichiers, ~750 lignes) + 94ccf55 (E5/E7/E8/E9 frontend, 1 fichier) + 8261bd7 (fix E2 null arrays).
+- **3 features majeures récupérées** : invitations (404→201), import (405→200), création directe (400→201+temporaryPassword).
+- **Sécurité renforcée** : RequireRole RESPONSABLE+ADMIN sur mutations users (avant : étudiant pouvait spammer).
+- **Transparence suppression** : DELETE retourne deletedDependencies (sessions/reponses/soumissions) + bulk delete aussi.
+- **Aucune migration DB** nécessaire (tous les fixes côté code).
+- **Go toolchain** : compile-check avant chaque push (0 échec de build Render).
+- **Bugs non traités** (LOW optionnels) : E10 (GET /api/users/{id}/dependencies endpoint), E11 (data cleanup "Genie Tech").
+- ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
