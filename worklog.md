@@ -8017,3 +8017,83 @@ Stage Summary:
 - **1 commit poussé** : 4b87f71 (backend dependencies + route + frontend dialog + stats label).
 - **Aucune migration DB** nécessaire.
 - **Rappel sécurité** : mots de passe prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+---
+Task ID: E1-INVITATIONS
+Agent: general-purpose (invitations module)
+Task: Implémenter le module backend /api/invitations entièrement manquant (6 endpoints) — bug CRITICAL E1. Le frontend (etudiants-page.tsx, enseignants-page.tsx, utilisateurs-page.tsx, accept-invitation-page.tsx) appelait déjà ces endpoints qui n'existaient pas côté Go.
+
+Work Log:
+- Lecture préalable : worklog.md (sections MES-ETUDIANTS-REFOUND-1 + AFFECTATIONS-AUDIT-FIX-1) pour comprendre les patterns DDD (domain → repository → usecase → transport/http), le helper appdb.WithTx(ctx, pool, claims, fn) pour RLS, le bypass RLS via SET LOCAL row_security = off dans une tx (cf. repository/session.go L467), et la compilation Go obligatoire avant push.
+- Lecture des fichiers de pattern : domain/academique.go, repository/filiere.go, usecase/academique.go, transport/http/academique_handlers.go, router.go, db/db.go, middleware/auth.go, repository/user.go (Create avec bcrypt + nullableStrPtr).
+- Lecture du contrat frontend : accept-invitation-page.tsx (InvitationData avec etablissement/filiere/createdBy lowercase), etudiants-page.tsx + enseignants-page.tsx + utilisateurs-page.tsx (InvitationItem avec Etablissement/Filiere PascalCase). Contrat asymétrique respecté : 2 shapes JSON distinctes pour List vs Verify.
+
+- ÉTAPE 1 — domain/invitation.go (NOUVEAU) :
+  - Struct Invitation (12 champs DB + 5 champs relations : Etablissement/Filiere PascalCase pour List, VerifyEtablissement/VerifyFiliere/VerifyCreatedBy lowercase pour verify).
+  - InvitationListParams (createdById, used, role, limit).
+  - CreateInvitationInput (Token + ExpiresAt générés par usecase, CreatedByID forcé à claims.UserID).
+  - UpdateInvitationInput (partial update pour renvoyer).
+  - AcceptInvitationInput (Token, Password hashé, Name).
+  - Interface InvitationRepository : FindByID, FindByToken, List, Create, Update, Delete, MarkUsed, UserExistsByEmail, AcceptInvitation.
+  - Erreur domaine InvitationStateError{Code, Message} — codes NOT_FOUND/ALREADY_USED/EXPIRED/USER_EXISTS. Le handler l'utilise pour produire le JSON { error, code } attendu par le frontend (MapDomainError ne supporte pas le champ code).
+
+- ÉTAPE 2 — repository/invitation.go (NOUVEAU) :
+  - FindByID (RLS via claims, JOIN Etablissement + Filiere — peuplée pour List/Resend existence check).
+  - FindByToken (bypass RLS, JOIN Etablissement+Filiere+User creator — peuplée pour verify).
+  - List (RLS via claims, JOIN Etablissement + Filiere, filtres createdById/used/role/limit, ORDER BY createdAt DESC).
+  - Create (RLS via claims — Invitation_modify policy gère l'insert).
+  - Update (RLS via claims — partial update, utilisé par renvoyer pour regénérer token+expiresAt+reset used/usedAt).
+  - Delete (RLS via claims — hard delete, retourne NotFoundError si 0 rows affectées).
+  - MarkUsed (bypass RLS — défini dans l'interface mais non utilisé : AcceptInvitation gère le mark used inline dans la même tx atomique).
+  - UserExistsByEmail (bypass RLS — SELECT EXISTS sur "User" WHERE email=$1).
+  - AcceptInvitation (bypass RLS, tx atomique) : génère matricule FIL/LJ/YY/NNN si ETUDIANT (count+1 sur User ETUDIANT de la filière), INSERT User (id uuid, email=invitation.email, role=invitation.role, actif=true, mustChangePwd=false), UPDATE Invitation SET used=true, usedAt=now. ConflictError si email déjà pris (unique constraint).
+  - Helpers : nullableTimePtrHelper, scanInvitation, colonnesInvitation.
+
+- ÉTAPE 3 — usecase/invitation.go (NOUVEAU) :
+  - generateInvitationToken() : crypto/rand 16 octets → 32 chars hex (encoding/hex).
+  - validateEmail() : validation basique (présence @ + . dans le domaine).
+  - List : check rôle (RESPONSABLE/ADMIN/ENSEIGNANT), délègue au repo (RLS gère le scoping).
+  - Create : check rôle (RESPONSABLE/ADMIN), validation email+role, permission matrix (RESPONSABLE ne peut inviter que ENSEIGNANT/ETUDIANT ; ADMIN peut inviter RESPONSABLE/ENSEIGNANT/ETUDIANT mais pas ADMIN), force CreatedByID=claims.UserID (jamais le body), force EtablissementID=claims.EtablissementID pour RESPONSABLE, génère token + expiresAt=now+7j.
+  - Resend : check rôle, vérifie existence via FindByID (RLS filtre), génère nouveau token + expiresAt=now+7j + reset used=false + usedAt=NULL via Update.
+  - Cancel : check rôle, hard delete via Delete.
+  - Verify (PUBLIC) : FindByToken → si NotFoundError → InvitationStateError{NOT_FOUND} ; si used → ALREADY_USED ; si expiresAt<now → EXPIRED ; si UserExistsByEmail → USER_EXISTS ; sinon retourne invitation.
+  - Accept (PUBLIC) : FindByToken → checks état (NOT_FOUND/ALREADY_USED/EXPIRED), validation password (min 8 chars), hash bcrypt cost 10, délègue à AcceptInvitation (tx atomique). ConflictError si email déjà pris.
+  - Constantes : invitationTTL=7*24h, invitationBcryptCost=10 (cohérent avec usecase.AuthUseCase).
+
+- ÉTAPE 4 — transport/http/invitation_handlers.go (NOUVEAU) :
+  - listInvitations (GET /api/invitations) — RequireAuth (router), parse query params, délègue à usecase.
+  - createInvitation (POST /api/invitations) — RequireAuth, décode body (createdById ignoré), délègue à usecase, retourne 201 { token, invitation }.
+  - resendInvitation (PATCH /api/invitations/{id}/renvoyer) — RequireAuth, retourne 200 { token, invitation }.
+  - cancelInvitation (DELETE /api/invitations/{id}) — RequireAuth, retourne 200 { deleted: true, id }.
+  - verifyInvitation (GET /api/invitations/verify?token=X) — PUBLIC, retourne 200 { invitation } ou 404/400 { error, code }.
+  - acceptInvitation (POST /api/invitations/accept) — PUBLIC, retourne 201 { user: {id,name,email,role}, message: "Compte créé" }.
+  - Helper writeInvitationStateError : produit le JSON { error, code } avec le bon status (404 pour NOT_FOUND, 400 pour les autres).
+
+- ÉTAPE 5 — transport/http/router.go (MODIFIÉ) :
+  - Ajout de `invitationUC *usecase.InvitationUseCase` au struct Server.
+  - Ajout du paramètre invitationUC au constructeur NewServer (entre anneeUC et epreuveUC).
+  - Routes publiques déclarées AVANT le groupe authentifié (même pattern que /api/auth/login et /api/certificats/verify) : GET /api/invitations/verify, POST /api/invitations/accept. Chi v5 préfère les routes statiques sur les sous-routes paramétriques, donc pas de conflit avec /api/invitations/{id}/...
+  - Routes authentifiées sous r.Route("/api/invitations", ...) avec r.Use(RequireAuth) : GET / (ouvert à RESPONSABLE/ADMIN/ENSEIGNANT), POST / + PATCH /{id}/renvoyer + DELETE /{id} avec r.With(RequireRole("RESPONSABLE","ADMIN")).
+
+- ÉTAPE 6 — cmd/api/main.go (MODIFIÉ) :
+  - Instanciation invitationRepo := repository.NewInvitationRepository(pool).
+  - Instanciation invitationUC := usecase.NewInvitationUseCase(invitationRepo).
+  - Ajout du paramètre invitationUC à l'appel httptransport.NewServer(...) (positionnel, entre anneeUC et epreuveUC).
+
+- Compile-check obligatoire (exit 0) :
+  - `go build ./...` → exit 0 ✅
+  - `go vet ./...` → exit 0 ✅
+  - `go build -o /tmp/sect-api-test ./cmd/api/` → binaire 24.5 MB généré ✅
+
+Stage Summary:
+- **Module /api/invitations entièrement implémenté** côté backend Go (6 endpoints, 0 ligne n'existait avant). Le frontend (déjà en production Vercel) peut maintenant créer/lister/renvoyer/annuler des invitations + vérifier un token + accepter une invitation (création de compte self-service).
+- **4 fichiers créés** : domain/invitation.go (130 lignes), repository/invitation.go (430 lignes), usecase/invitation.go (260 lignes), transport/http/invitation_handlers.go (280 lignes).
+- **2 fichiers modifiés** : transport/http/router.go (struct Server + 4 routes), cmd/api/main.go (instanciation repo+usecase).
+- **Architecture DDD respectée** : patterns identiques à filiere/academique. appdb.WithTx pour les endpoints authentifiés (RLS claims posées automatiquement), SET LOCAL row_security = off pour verify/accept (token = auth, comme repository/session.go L467).
+- **Sécurité** : CreatedByID toujours forcé à claims.UserID (jamais le body), EtablissementID forcé à claims.EtablissementID pour RESPONSABLE, ADMIN peut inviter RESPONSABLE/ENSEIGNANT/ETUDIANT mais pas ADMIN, validation password min 8 chars, bcrypt cost 10, token 32 chars hex via crypto/rand.
+- **Matricule ETUDIANT** : format FIL/LJ/YY/NNN (ex: "INF/LJ/24/001") — count+1 sur User ETUDIANT de la filière, généré dans la même tx atomique que l'INSERT User (évite la race condition).
+- **Contrat frontend asymétrique respecté** : List retourne Etablissement/Filiere PascalCase (InvitationItem), Verify retourne etablissement/filiere/createdBy lowercase (InvitationData). Même struct Go avec 2 jeux de champs + omitempty.
+- **Aucune migration DB** nécessaire (table Invitation + RLS policies déjà en production Neon — non modifiées).
+- **NE PAS pousser** sur git (l'utilisateur fera le commit + push après vérification).
+- **Build Go validé** : `go build ./...` exit 0 + `go vet ./...` exit 0. Binaire 24.5 MB généré.
+- **Follow-up recommandé** : test fonctionnel sur Render après déploiement (vérifier les 6 endpoints avec curl, en particulier le routing chi public vs authentifié pour /api/invitations/verify vs /api/invitations/{id}).

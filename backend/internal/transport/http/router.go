@@ -29,6 +29,7 @@ type Server struct {
         ueUC         *usecase.UEUseCase
         efUC         *usecase.EnseignantFiliereUseCase
         anneeUC      *usecase.AnneeUseCase
+        invitationUC *usecase.InvitationUseCase
         epreuveUC    *usecase.EpreuveUseCase
         questionUC   *usecase.QuestionUseCase
         sessionUC    *usecase.SessionUseCase
@@ -56,6 +57,7 @@ func NewServer(
         ueUC *usecase.UEUseCase,
         efUC *usecase.EnseignantFiliereUseCase,
         anneeUC *usecase.AnneeUseCase,
+        invitationUC *usecase.InvitationUseCase,
         epreuveUC *usecase.EpreuveUseCase,
         questionUC *usecase.QuestionUseCase,
         sessionUC *usecase.SessionUseCase,
@@ -81,6 +83,7 @@ func NewServer(
                 ueUC:         ueUC,
                 efUC:         efUC,
                 anneeUC:      anneeUC,
+                invitationUC: invitationUC,
                 epreuveUC:    epreuveUC,
                 questionUC:   questionUC,
                 sessionUC:    sessionUC,
@@ -133,6 +136,16 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/auth/logout", s.logout)
         })
 
+        // E1-INVITATIONS — endpoints publics (pas de RequireAuth).
+        // Le token d'invitation sert d'authentification ; la RLS est
+        // désactivée pour ces deux opérations (cf. repository/invitation.go).
+        // Les routes /verify et /accept sont déclarées AVANT le r.Route
+        // authentifié "/api/invitations" pour que chi les traite comme des
+        // routes statiques publiques (la sous-route authentifiée
+        // "/api/invitations/{id}/..." ne les intercepte pas).
+        r.Get("/api/invitations/verify", s.verifyInvitation)
+        r.Post("/api/invitations/accept", s.acceptInvitation)
+
         // Certificats verify (public — no auth required for verification)
         r.Get("/api/certificats/verify/{code}", s.verifyCertificat)
 
@@ -145,13 +158,20 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.With(middleware.RequireAuth).Post("/api/auth/change-password", s.changePassword)
 
                 // /api/users
+                // ETUDIANTS-FIX-E2 : route /import déclarée AVANT /{id} pour éviter
+                // que chi matche "import" comme un paramètre id. E6 : RequireRole
+                // sur mutations (POST/PATCH/DELETE) pour defense-in-depth.
                 r.Route("/api/users", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listUsers)
-                        r.Post("/", s.createUser)
                         r.Get("/{id}", s.getUser)
-                        r.Patch("/{id}", s.updateUser)
-                        r.Delete("/{id}", s.deleteUser)
+                        r.Group(func(r chi.Router) {
+                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+                                r.Post("/", s.createUser)
+                                r.Post("/import", s.importUsers) // ETUDIANTS-FIX-E2
+                                r.Patch("/{id}", s.updateUser)
+                                r.Delete("/{id}", s.deleteUser)
+                        })
                 })
 
                 // /api/etablissements
@@ -241,6 +261,19 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/{id}", s.getAnnee)
                         r.Patch("/{id}", s.updateAnnee)
                         r.Delete("/{id}", s.deleteAnnee)
+                })
+
+                // E1-INVITATIONS — endpoints authentifiés (RESPONSABLE, ADMIN
+                // pour les mutations ; ENSEIGNANT inclus sur le GET car le
+                // frontend enseignant n'appelle pas /api/invitations, mais la
+                // RLS Invitation_select exclut les ETUDIANT de toute façon).
+                // Verify + accept sont déclarés en public plus haut.
+                r.Route("/api/invitations", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        r.Get("/", s.listInvitations)
+                        r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Post("/", s.createInvitation)
+                        r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Patch("/{id}/renvoyer", s.resendInvitation)
+                        r.With(middleware.RequireRole("RESPONSABLE", "ADMIN")).Delete("/{id}", s.cancelInvitation)
                 })
 
                 // /api/epreuves
