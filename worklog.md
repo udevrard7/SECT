@@ -8679,3 +8679,35 @@ Stage Summary:
 - **Code mort supprimé** : ~70 lignes frontend (blocs responsable/abonnements/users + getRoleBadge + imports) + requireNonEmptyStr backend.
 - **Outils installés** : Go 1.24 SDK à /home/z/go-sdk/go/bin pour compile-check backend (0 échec de build Render).
 - Bugs restants (LOW/cosmétiques, non bloquants) : E14 (defaults dupliqués), E16 (parseBoolQueryParam), E17 (README), E19 (RequireRole manquant), E20 (déjà traité), F5/F6/F9/F10/F12/F14/F15/F16/F17/F18-F36 (partiellement traités ou à planifier).
+
+---
+Task ID: SESSION-ONBOARDING
+Agent: Z.ai Code (tuteur/assistant)
+Task: Onboarding d'une nouvelle session — clonage du dépôt, configuration de l'environnement de travail, vérification des services (GitHub/Vercel/Render/Neon), audit de l'état courant.
+
+Work Log:
+- Clonage du dépôt `udevrard7/SECT` dans le sandbox de travail (branche `main`, HEAD = 9b58586 docs(worklog): ETAB-FIX-STEP-1 to 7). Branche `feat/responsable-dashboard-modules` présente (non fusionnée, contient alert center + habilitations + reports + dashboards modernisés + landing redesign).
+- Identité Git locale configurée : `user.name=udevrard7`, `user.email=ulrichdouh@gmail.com` (conforme à la demande utilisateur pour tous les commits futurs).
+- Remote `origin` authentifié via token GitHub → push fonctionnel, déclenche l'auto-déploiement Vercel (frontend) + Render (backend).
+- Vérification des services live :
+  - Vercel (frontend) https://sect-app.vercel.app → HTTP 200 ✅
+  - Render (backend) https://sect-s1pb.onrender.com/health → `{"service":"sect-api","status":"ok","version":"0.2.0"}` ✅
+  - Neon (DB) — connexion établie, inventaire confirmé ✅
+- Installation de la toolchain Go 1.24.3 SDK (compile-checks backend obligatoires avant chaque push pour ne pas casser le build Render). `go build ./...` + `go vet ./internal/usecase/...` → 0 erreur.
+- Installation de `golang-migrate` CLI (application des migrations DB vers Neon).
+- Création de `.env` locaux (gitignored) : backend (Neon URL + JWT dev + R2 vide → mode DB-only) et frontend (NEXT_PUBLIC_API_URL → Render).
+- Inventaire DB Neon (via pg) :
+  - 53 tables, 24 enums, 86 FK, 170 index, 98 policies RLS, 37 triggers, 50 tables RLS-activées.
+  - Données production : 17 users, 1 établissement, 1046 AuditLog, 677 Reponse, 34 sessions, 25 BadgeDefinition.
+- Contrainte DB identifiée : la table `schema_migrations` existe mais est VIDE (version 0). Un `migrate up` aveugle ré-appliquerait les 13 migrations existantes et échouerait (objets déjà présents). Procédure correcte pour une future migration : `migrate force 13` puis ajout du fichier `000014_*.up.sql` puis `migrate up`.
+
+Stage Summary:
+- **Environnement de travail pleinement opérationnel** : repo cloné, identité Git conforme, toolchain Go 1.24.3 + golang-migrate installés, services Vercel/Render/Neon vérifiés live, DB inspectée.
+- **Workflow confirmé** pour les modifications futures (strictement push vers GitHub main → auto-déploiement Vercel + Render, auteur udevrard7/ulrichdouh@gmail.com) :
+  - Backend Go : `go build ./...` + `go vet` → commit → push → Render build.
+  - Frontend Next.js : lint/type-check → commit → push → Vercel build.
+  - DB Neon : nouvelle migration `0000XX_*.up.sql` + `.down.sql` → `migrate force 13` (remettre le tracking à jour) → `migrate up` → vérification.
+- **Architecture respectée** : aucune nouveau projet créé, monorepo frontend/+backend/ conservé, conventions de nommage PascalCase DB, RLS claims, clean architecture domain→usecase→repository→transport préservées.
+- **Secrets locaux manquants** (non bloquants) : JWT_SECRET production et R2 credentials — présents sur Render en prod. Pour exécution backend locale, JWT dev et R2 désactivé (mode DB-only).
+- **Recommandation sécurité** : les tokens (GitHub/Vercel/Render/Neon) ayant été partagés en clair, une rotation post-session est conseillée.
+- **Prêt à poursuivre le développement** sur la base du travail antérieur (module /etablissements stabilisé en STEP-1→7). En attente des prochaines instructions utilisateur.
