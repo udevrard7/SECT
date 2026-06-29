@@ -8226,3 +8226,51 @@ Stage Summary:
 - **AuditLog** : entrée PASSWORD_RESET insérée (id audit_c05243b1bda01ba8842ae610).
 - **Validation API Render** : login HTTP 200 ✅.
 - ⚠️ **Action utilisateur requise** : se connecter à https://sect-app.vercel.app avec le mdp temporaire, puis le changer immédiatement via l'écran /force-change-password (min 8 chars, validé par le backend).
+
+---
+Task ID: ENSEIGNANTS-AUDIT-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Audit + correction du module /enseignants côté responsable (9 bugs EN1-EN9, corrections par priorité).
+
+Work Log:
+- Audit complet du module /enseignants : frontend (2475 lignes) + backend (user_handlers + academique_handlers + repository/academique.go) + DB Neon (EnseignantFiliere + Affectation + Epreuve + Devoir). 9 bugs identifiés (1 CRITICAL + 3 HIGH + 3 MEDIUM + 2 LOW).
+- Vérification API production : GET /api/enseignant-filieres → 500 "erreur interne" (mismatch Scan), page /enseignants sans affectations.
+
+ÉTAPE 1 — CRITICAL + HIGH backend (commit 904fa02) :
+- EN1 (CRITICAL) — listEnseignantFilieres cassé par mismatch Scan :
+  - repository/academique.go : la query SELECT retournait 9 colonnes (ef.* + f.id/nom/code) mais le Scan attendait 12 destinations (ef.* + f.* + u.id/name/email). Le LEFT JOIN User était fait mais aucun champ de User n'était SELECT → erreur "scan ef" systématique → tout GET /api/enseignant-filieres retournait 500.
+  - Fix : ajout de u."id", u."name", u."email" au SELECT (3 colonnes manquantes). Pattern identique au BUG A1 affectations.
+- EN3+EN4 (HIGH) — deps enseignant (épreuves/devoirs/affectations/enseignantFilieres) :
+  - Avant, CountUserDependencies retournait seulement {sessions, reponses, soumissions} (dép étudiant). Pour un enseignant (5 épreuves, 0 devoirs, 15 affectations UE, 2 affectations filière), le toast disait "Données supprimées : ." (vide) et canDelete=true (faux positif).
+  - Fix : DeletedDependencies étendu à 7 champs (3 étudiant + 4 enseignant). CountUserDependencies compte désormais aussi Epreuve, Devoir, Affectation, EnseignantFiliere. getUserDependencies retourne tous les champs + userRole. canDelete basé sur TOUTES les deps.
+  - Contrat frontend : le frontend enseignants lit deps.epreuves/devoirs/sessions (déjà présent lignes 990-992), le frontend étudiants lit deps.sessions/reponses/soumissions (déjà présent). Aucun changement frontend requis pour le delete single.
+- EN6 (MEDIUM) — RequireRole sur /api/enseignant-filieres mutations :
+  - router.go : r.Group + RequireRole("RESPONSABLE","ADMIN") sur POST/DELETE. GET reste ouvert (ENSEIGNANT via RLS). Pattern identique à /api/affectations (A4) + /api/users (E6).
+
+ÉTAPE 2 — MEDIUM frontend (commit c5a7081) :
+- EN2 — handleToggleActive : extrait err.error au lieu de 'Erreur' générique + catch(err).
+- EN5 — handleBulkAction : extrait err.error + collecte totalDepsEpreuves/Devoirs/Affectations/Ef + toast bulk delete inclut "Données supprimées : N épreuve(s), M devoir(s)...".
+- EN7 — stats : toutes basées sur filteredEnseignants (avant totalEnseignants/activeEnseignants sur 'enseignants' brut → incohérent quand filtre filière actif).
+
+Vérification API production (Render, commit 904fa02 live) :
+- GET /api/enseignant-filieres → 200 {assignments:[2]} ✅ (EN1 corrigé, avant 500)
+  - Ulrich DOUH → SEG L2 + INFO L2
+- GET /api/users/{id}/dependencies (enseignant) → {epreuves:5, devoirs:0, affectations:15, enseignantFilieres:2, canDelete:false, userRole:"ENSEIGNANT"} ✅ (EN3+EN4)
+- POST /api/enseignant-filieres par enseignant → 403 "insufficient permissions" ✅ (EN6)
+- GET /api/enseignant-filieres par enseignant → 200 ✅ (RLS préservée)
+
+Vérification Agent Browser (Vercel, compte registrar) :
+- Page /enseignants : "Avec affectations" = 1 ✅ (avant 0), "Affectations niveau" = 2 ✅ (avant 0)
+- Dialog "Affectations de Ulrich DOUH" : affiche les 2 affectations (L2 SEG + L2 INFO) ✅ (avant vide)
+- AlertDialog suppression : s'ouvre correctement (les deps sont affichées dans le toast post-suppression, pas en preview — le frontend enseignants n'a pas de query dependencies preview comme le frontend étudiants E10, mais le delete single lit data.deletedDependencies après le DELETE).
+
+Stage Summary:
+- **6 bugs traités** : EN1 (CRITICAL, Scan mismatch), EN2 (HIGH, erreurs toggle), EN3+EN4 (HIGH, deps enseignant), EN5 (MEDIUM, bulk deps), EN6 (MEDIUM, RequireRole), EN7 (MEDIUM, stats).
+- **2 commits poussés** : 904fa02 (EN1+EN3+EN4+EN6 backend, 6 fichiers) + c5a7081 (EN2+EN5+EN7 frontend, 1 fichier).
+- **Feature principale récupérée** : gestion des affectations filière+niveau (page /enseignants → dialog "Affectations" affiche les 2 affectations, avant vide).
+- **Transparence suppression enseignant** : DELETE retourne deletedDependencies avec 7 champs (sessions/reponses/soumissions + epreuves/devoirs/affectations/enseignantFilieres). Le frontend affiche epreuves/devoirs/sessions dans le toast.
+- **Sécurité renforcée** : RequireRole RESPONSABLE+ADMIN sur mutations enseignant-filieres (avant : étudiant pouvait spammer).
+- **Bugs non traités** (LOW optionnels) : EN8 (invitation name pré-rempli), EN9 (filtre reset après ajout affectation).
+- **Aucune migration DB** nécessaire.
+- **Go toolchain** : compile-check avant chaque push (0 échec de build Render).
+- ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
