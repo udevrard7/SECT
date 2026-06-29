@@ -227,11 +227,16 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/enseignant-filieres
+                // ENSEIGNANTS-FIX-EN6 : RequireRole RESPONSABLE+ADMIN sur mutations
+                // (POST/DELETE). GET ouvert (ENSEIGNANT via RLS auto-scoping).
                 r.Route("/api/enseignant-filieres", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listEnseignantFilieres)
-                        r.Post("/", s.createEnseignantFilieres)
-                        r.Delete("/", s.deleteEnseignantFilieres)
+                        r.Group(func(r chi.Router) {
+                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+                                r.Post("/", s.createEnseignantFilieres)
+                                r.Delete("/", s.deleteEnseignantFilieres)
+                        })
                 })
 
                 // /api/affectations (enseignant↔UE) — BUGFIX (PROG-ACAD-2)

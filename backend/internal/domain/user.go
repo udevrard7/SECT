@@ -134,11 +134,13 @@ type UserRepository interface {
 }
 
 // UserDependencyCounter est une interface optionnelle implémentée par le repo
-// pour compter les dépendances d'un user avant suppression (ETUDIANTS-FIX-E4).
-// Le usecase fait un type assertion : si le repo implémente cette interface,
-// on compte les deps ; sinon on retourne des 0.
+// pour compter les dépendances d'un user avant suppression (ETUDIANTS-FIX-E4
+// + ENSEIGNANTS-FIX-EN3). Le usecase fait un type assertion : si le repo
+// implémente cette interface, on compte les deps ; sinon on retourne des 0.
+// EN3 : étendu pour inclure les deps enseignant (épreuves, devoirs,
+// affectations, enseignantFilieres).
 type UserDependencyCounter interface {
-        CountDependencies(ctx context.Context, userID string) (sessions, reponses, soumissions int, err error)
+        CountDependencies(ctx context.Context, userID string) (sessions, reponses, soumissions, epreuves, devoirs, affectations, enseignantFilieres int, err error)
 }
 
 // Permission helpers

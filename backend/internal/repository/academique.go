@@ -594,9 +594,15 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
                 // BUGFIX (RESP-AUDIT-3) : LEFT JOIN Filiere pour peupler la relation
                 // filiere (FiliereRef{ID, Nom, Code}) attendue par le frontend
                 // (enseignants-page.tsx : assignment.filiere.nom).
+                // ENSEIGNANTS-FIX-EN1 (CRITICAL) : le SELECT ne contenait pas les colonnes
+                // de "User" (u.id, u.name, u.email) bien que le LEFT JOIN "User" u soit
+                // présent, et le Scan attendait 12 destinations → mismatch 9 vs 12 →
+                // erreur "scan ef" systématique → tout GET /api/enseignant-filieres
+                // retournait 500 "erreur interne" → page /enseignants sans affectations.
                 query := fmt.Sprintf(`
                         SELECT ef."id", ef."enseignantId", ef."filiereId", ef."niveau", ef."createdAt", ef."updatedAt",
-                               f."id", f."nom", f."code"
+                               f."id", f."nom", f."code",
+                               u."id", u."name", u."email"
                         FROM "EnseignantFiliere" ef
                         LEFT JOIN "Filiere" f ON f."id" = ef."filiereId"
                         LEFT JOIN "User" u ON u."id" = ef."enseignantId"
