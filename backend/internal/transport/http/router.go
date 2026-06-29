@@ -287,6 +287,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
                         r.Delete("/{id}", s.deleteDocument)
                         r.Get("/{id}/download", s.downloadDocument)
+                        r.Post("/{id}/analyze", s.analyzeDocument) // P1-D3
                 })
 
                 // /api/certificats (verify est publique, définie plus haut)
