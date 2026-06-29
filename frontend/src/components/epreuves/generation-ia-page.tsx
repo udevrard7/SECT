@@ -139,6 +139,11 @@ interface EnseignantFiliereContext {
 
 function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
+  // P2-Q6 : si la valeur est déjà un array/objet (backend json.RawMessage
+  // marshal en vrai JSON, pas en string), la retourner directement.
+  if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+    return value as unknown as T
+  }
   try {
     return JSON.parse(value as string) as T
   } catch {
