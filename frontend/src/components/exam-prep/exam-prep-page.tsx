@@ -154,29 +154,26 @@ export function ExamPrepPage() {
   }, [allDocuments])
 
   // ─── Groupement (mode groupé) ───
+  // Le badge affiche uniquement le nombre de documents (pas le nombre de chapitres).
   const groupedDocuments = useMemo(() => {
-    const groups = new Map<string, { key: string; label: string; subtitle?: string; docs: ExamPrepDocument[] }>()
+    const groups = new Map<string, { key: string; label: string; docs: ExamPrepDocument[] }>()
     for (const doc of documents) {
       let key: string
       let label: string
-      let subtitle: string | undefined
       if (groupBy === 'ue') {
         key = doc.uniteEnseignement.id
         label = `${doc.uniteEnseignement.code} — ${doc.uniteEnseignement.nom}`
-        subtitle = `${doc.chapters.length} chapitre${doc.chapters.length > 1 ? 's' : ''}`
       } else if (groupBy === 'enseignant') {
         key = doc.owner.id
         label = doc.owner.name
-        subtitle = 'Enseignant'
       } else {
         // theme : regroupe par premier thème détecté (ou « Autres »)
         const theme = doc.themesDetectes[0] ?? 'Autres'
         key = theme
         label = theme
-        subtitle = 'Thème'
       }
       if (!groups.has(key)) {
-        groups.set(key, { key, label, subtitle, docs: [] })
+        groups.set(key, { key, label, docs: [] })
       }
       groups.get(key)!.docs.push(doc)
     }
@@ -436,11 +433,8 @@ export function ExamPrepPage() {
                             <GroupIcon className="h-4 w-4 text-primary-text" />
                           </div>
                           <span className="truncate flex-1 text-left">{group.label}</span>
-                          {group.subtitle && (
-                            <span className="hidden sm:inline text-xs text-muted-foreground shrink-0">{group.subtitle}</span>
-                          )}
-                          <Badge variant="secondary" className="ml-auto shrink-0 text-[10px] px-1.5 py-0 bg-muted">
-                            {group.docs.length}
+                          <Badge variant="secondary" className="ml-auto shrink-0 text-xs px-2 py-0.5 bg-primary/10 text-primary-text font-semibold">
+                            {group.docs.length} doc{group.docs.length > 1 ? 's' : ''}
                           </Badge>
                         </button>
                       </CollapsibleTrigger>
