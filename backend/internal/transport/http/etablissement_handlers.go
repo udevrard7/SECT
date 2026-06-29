@@ -205,6 +205,38 @@ func (s *Server) uploadLogo(w http.ResponseWriter, r *http.Request) {
         })
 }
 
+// deleteLogo — DELETE /api/etablissements/{id}/logo
+// PARAMETRES-FIX-P3 : supprime le logo en passant une chaîne vide à UpdateLogo.
+// Le champ Logo a été retiré de UpdateEtablissementInput (fix E5 sécurité),
+// donc un PATCH {logo: null} était silencieusement ignoré. Cet endpoint dédié
+// utilise le repo UpdateLogo (qui valide l'autorisation via le usecase).
+func (s *Server) deleteLogo(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        // UpdateLogo avec chaîne vide efface le logo (repo fait SET "logo" = $1).
+        etab, err := s.etabUC.UpdateLogo(r.Context(), claims, id, "")
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "message":       "logo supprimé",
+                "etablissement": etab,
+        })
+}
+
 // getWatermark — GET /api/etablissements/{id}/watermark
 func (s *Server) getWatermark(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
