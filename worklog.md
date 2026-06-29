@@ -8274,3 +8274,32 @@ Stage Summary:
 - **Aucune migration DB** nécessaire.
 - **Go toolchain** : compile-check avant chaque push (0 échec de build Render).
 - ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+---
+Task ID: ENSEIGNANTS-COSMETIC-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Traitement des 2 bugs LOW restants du module /enseignants (EN8 + EN9).
+
+Work Log:
+- EN8 (LOW) — invitation name pré-rempli :
+  Vérification approfondie : EN8 est déjà entièrement fonctionnel. Le frontend
+  enseignants-page.tsx ligne 504 envoie déjà body.name = addName. Le backend
+  usecase Create passe input.Name au repo. Le repo INSERT contient 'name'
+  (ligne 263). La verify endpoint retourne l'invitation complète avec name.
+  La page accept-invitation-page.tsx ligne 263 pré-remplit setName(invitation.name
+  || ''). C'était un faux positif de l'audit initial — aucun code à changer.
+- EN9 (LOW) — filtre reset après ajout affectation :
+  handleAddAssignment : après ajout réussi d'une affectation filière B alors
+  que le filtre filière est sur A, l'enseignant restait invisible dans la
+  liste principale. Désormais, si l'enseignant n'a plus d'affectation dans la
+  filière filtrée (check assignmentMap[enseignantId].some(a.filiereId ===
+  filiereFilter)), on reset filiereFilter à 'all' pour qu'il réapparaisse.
+- Compile-check (frontend uniquement) : eslint 0 erreurs, tsc 0 erreurs.
+- Commit 4f2db43 poussé. Vercel déploie automatiquement.
+
+Stage Summary:
+- **2 bugs LOW traités** : EN8 (déjà fonctionnel — faux positif audit), EN9 (filtre reset).
+- **Module /enseignants 100% complet** : tous les 9 bugs de l'audit initial (EN1-EN9) sont désormais traités.
+- **1 commit poussé** : 4f2db43 (frontend EN9 seulement, EN8 aucun changement).
+- **Aucune migration DB** nécessaire.
+- ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
