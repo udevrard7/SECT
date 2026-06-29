@@ -89,13 +89,14 @@ func main() {
 
         signer := jwt.NewSigner(cfg.JWTSecret)
         authUC := usecase.NewAuthUseCase(authRepo, signer)
-        // U5 (CRITICAL) : UserUseCase dépend de authRepo pour ResetPassword +
-        // UnlockAccount + RevokeAllUserRefreshTokens + CreateAuditLog.
-        userUC := usecase.NewUserUseCase(userRepo, authRepo)
-        // E1/E6 : accessUC doit être créé AVANT etabUC car etabUC dépend de
-        // accessUC pour valider l'autorisation ADMIN sur les writes.
+        // E1/E6/U1/U7 : accessUC doit être créé AVANT etabUC et userUC car les
+        // deux dépendent de accessUC pour valider l'autorisation ADMIN sur les writes.
         accessUC := usecase.NewAccessUseCase(accessRepo)
         etabUC := usecase.NewEtablissementUseCase(etabRepo, accessUC)
+        // U5 (CRITICAL) : UserUseCase dépend de authRepo pour ResetPassword +
+        // UnlockAccount + RevokeAllUserRefreshTokens + CreateAuditLog.
+        // U1/U7 (CRITICAL) : UserUseCase dépend de accessUC pour ValidateAccessForEtablissement.
+        userUC := usecase.NewUserUseCase(userRepo, authRepo, accessUC)
         filiereUC := usecase.NewFiliereUseCase(filiereRepo)
         ueUC := usecase.NewUEUseCase(ueRepo)
         efUC := usecase.NewEnseignantFiliereUseCase(efRepo)
