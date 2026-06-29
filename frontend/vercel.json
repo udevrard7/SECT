@@ -7,6 +7,10 @@
       "destination": "/api/certificats/:id/pdf"
     },
     {
+      "source": "/api/etudiants/:id/releve-notes",
+      "destination": "/api/etudiants/:id/releve-notes"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://sect-s1pb.onrender.com/api/:path*"
     }

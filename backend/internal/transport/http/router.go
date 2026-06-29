@@ -520,6 +520,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
 
                 r.Route("/api/enseignant", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireRole("ENSEIGNANT", "ADMIN")) // P2-M8
                         r.Get("/context", s.enseignantContextReal)
                         r.Get("/etudiants", s.enseignantEtudiantsReal)
                 })

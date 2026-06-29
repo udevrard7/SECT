@@ -18,7 +18,7 @@
  * tokens oklch, framer-motion, font-mono tabular-nums.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -54,14 +54,19 @@ const NIVEAU_LABELS: Record<string, string> = {
 export function MesEtudiantsPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')  // P2-M9 : debounced
   const [filiereFilter, setFiliereFilter] = useState('')
   const [niveauFilter, setNiveauFilter] = useState('')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
+  // P2-M9 : debounce search 350ms
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 350)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
   // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
-  // Le queryKey inclut les filtres car l'API les prend en query params → refetch
-  // automatique quand un filtre change.
   const etudiantsQuery = useQuery<{ etudiants: Etudiant[] }>({
     queryKey: ['mes-etudiants', user?.id, search, filiereFilter, niveauFilter],
     queryFn: async () => {
@@ -77,6 +82,7 @@ export function MesEtudiantsPage() {
     enabled: !!user?.id,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,  // P2-M9 : éviter flash loading
   })
 
   const etudiants = etudiantsQuery.data?.etudiants ?? []
@@ -95,7 +101,7 @@ export function MesEtudiantsPage() {
   )
   const niveaux = Array.from(new Set(etudiants.map((e) => e.niveau).filter((n): n is string => n !== null)))
 
-  const handleDownloadReleve = async (etudiantId: string) => {
+  const handleDownloadReleve = async (etudiantId: string, etudiantName: string) => {
     setDownloadingId(etudiantId)
     try {
       const res = await fetch(`/api/etudiants/${etudiantId}/releve-notes`)
@@ -107,7 +113,7 @@ export function MesEtudiantsPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `releve_notes.pdf`
+      a.download = `releve_notes_${etudiantName.replace(/\s+/g, '_')}.pdf`
       a.click()
       URL.revokeObjectURL(url)
       toast.success('Relevé de notes téléchargé')
@@ -178,8 +184,8 @@ export function MesEtudiantsPage() {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Rechercher par nom, email ou matricule…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9 h-9 text-sm"
           />
         </div>
@@ -292,7 +298,7 @@ export function MesEtudiantsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleDownloadReleve(etu.id)}
+                            onClick={() => handleDownloadReleve(etu.id, etu.name)}
                             disabled={downloadingId === etu.id}
                             className="gap-1.5 ds-press"
                           >
