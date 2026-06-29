@@ -183,12 +183,27 @@ export function DocumentReader({ documentId, onClose, onExplainPassage }: Props)
     clearSelection()
   }
 
-  // EXAM-PREP-REFACTOR-1 : le backend n'expose pas encore /download (404).
-  // Au lieu de déclencher une erreur, on affiche un toast informatif.
-  const handleDownload = (format: 'txt' | 'pdf') => {
-    toast.info('Téléchargement bientôt disponible', {
-      description: `L'export ${format.toUpperCase()} sera disponible prochainement.`,
-    })
+  // P1-D4 : câbler le téléchargement au backend GET /api/documents/{id}/download
+  // qui retourne une URL présignée R2. Le navigateur ouvre l'URL directement.
+  const handleDownload = async (format: 'txt' | 'pdf') => {
+    try {
+      const res = await fetch(`/api/documents/${documentId}/download`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur de téléchargement')
+      }
+      const data = await res.json()
+      if (data.url) {
+        window.open(data.url, '_blank')
+        toast.success('Téléchargement démarré', {
+          description: 'Le fichier s\'ouvre dans un nouvel onglet.',
+        })
+      }
+    } catch (err) {
+      toast.error('Erreur de téléchargement', {
+        description: err instanceof Error ? err.message : 'Impossible de télécharger le document.',
+      })
+    }
   }
 
   return (
