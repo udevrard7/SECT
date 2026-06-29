@@ -1337,26 +1337,53 @@ function SessionsTab() {
    const res = await fetch(`/api/epreuves?${params.toString()}`)
    if (!res.ok) throw new Error('Failed to fetch classification')
    const data = await res.json()
-   // Build tree from API response
-   return {
-    filieres: (data.tree || []).map((f: any) => ({
-     id: f.filiereId || '__none__',
-     nom: f.filiereNom || 'Non classée',
-     code: f.filiereCode || null,
-     count: f.count || 0,
-     niveaux: (f.byNiveau || []).map((n: any) => ({
-      niveau: n.niveau || 'NON_DEFINI',
-      count: n.count || 0,
-      unites: (n.byUE || []).map((u: any) => ({
-       id: u.ueId || '__none__',
-       code: u.ueCode || 'N/A',
-       nom: u.ueNom || 'Non classée',
-       count: u.count || 0,
-      })),
-     })),
-    })),
-    nonClassees: data.uncategorizedCount || 0,
-   } as ClassificationTree
+   // P2-E7 : construire le tree côté client à partir de data.epreuves[]
+   // (le backend ne retourne pas data.tree — il retourne {epreuves: [...]})
+   const epreuves: any[] = data.epreuves || []
+   const filiereMap = new Map<string, { nom: string; code: string | null; epreuves: any[] }>()
+   let nonClassees = 0
+   for (const ep of epreuves) {
+    const filId = ep.filiereId || ep.filiere?.id
+    if (!filId) { nonClassees++; continue }
+    if (!filiereMap.has(filId)) {
+     filiereMap.set(filId, {
+      nom: ep.filiere?.nom || 'Non classée',
+      code: ep.filiere?.code || null,
+      epreuves: [],
+     })
+    }
+    filiereMap.get(filId)!.epreuves.push(ep)
+   }
+   const filieres = Array.from(filiereMap.entries()).map(([id, f]) => {
+    const niveauMap = new Map<string, any[]>()
+    for (const ep of f.epreuves) {
+     const niv = ep.niveau || 'NON_DEFINI'
+     if (!niveauMap.has(niv)) niveauMap.set(niv, [])
+     niveauMap.get(niv)!.push(ep)
+    }
+    return {
+     id,
+     nom: f.nom,
+     code: f.code,
+     count: f.epreuves.length,
+     niveaux: Array.from(niveauMap.entries()).map(([niveau, eps]) => {
+      const ueMap = new Map<string, { code: string; nom: string; count: number }>()
+      for (const ep of eps) {
+       const ueId = ep.uniteEnseignementId || ep.uniteEnseignement?.id || '__none__'
+       if (!ueMap.has(ueId)) {
+        ueMap.set(ueId, {
+         code: ep.uniteEnseignement?.code || 'N/A',
+         nom: ep.uniteEnseignement?.nom || 'Non classée',
+         count: 0,
+        })
+       }
+       ueMap.get(ueId)!.count++
+      }
+      return { niveau, count: eps.length, unites: Array.from(ueMap.entries()).map(([uid, u]) => ({ id: uid, ...u })) }
+     }),
+    }
+   })
+   return { filieres, nonClassees } as ClassificationTree
   },
   enabled: !!user?.id,
   staleTime: 60 * 1000,

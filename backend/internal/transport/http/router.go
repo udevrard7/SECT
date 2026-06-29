@@ -229,6 +229,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listEpreuves)
                         r.Post("/", s.createEpreuve)
                         r.Get("/auto-close", s.epreuveAutoClose) // B4-MES-EPREUVES : clôture auto
+                        r.Get("/orphelines", s.listOrphanEpreuves) // P2-E3
+                        r.Get("/session-speciale", s.listSessionSpeciale) // P2-E3
+                        r.Post("/session-speciale", s.createSessionSpeciale) // P2-E3
                         r.Get("/{id}", s.getEpreuve)
                         r.Patch("/{id}", s.updateEpreuve)
                         r.Delete("/{id}", s.deleteEpreuve)
@@ -265,6 +268,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/", s.startSession)
                         r.Put("/", s.saveReponse)
                         r.Put("/{id}", s.updateSessionBulk)    // B2-MES-EPREUVES : bulk save + alerte
+                        r.Patch("/{id}", s.updateSessionBulk)  // P2-E4 : alias PATCH pour frontend (force submit)
                         r.Get("/{id}", s.getSession)
                         r.Post("/{id}/submit", s.submitSession)
                         r.Post("/{id}/capture", s.captureSession) // B3-MES-EPREUVES : capture écran

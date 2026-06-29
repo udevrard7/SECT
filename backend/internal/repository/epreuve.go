@@ -959,7 +959,12 @@ func (r *EpreuveRepository) ListQuestionsForGrading(ctx context.Context, epreuve
 
 // nullableStr convertit une string en *string (NULL si vide).
 // strToNullPtr convertit un string en *string (pour nullableStr).
+// strToNullPtr convertit un string en *string (nil si vide).
+// P2-E12 : retourne nil pour les strings vides (au lieu de &"").
 func strToNullPtr(s string) *string {
+        if s == "" {
+                return nil
+        }
         return &s
 }
 
