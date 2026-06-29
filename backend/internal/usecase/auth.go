@@ -337,6 +337,7 @@ func sessionClaimsFromUser(u *domain.AuthUser) db.SessionClaims {
                 Role:            string(u.Role),
                 EtablissementID: derefString(u.EtablissementID),
                 FiliereID:       derefString(u.FiliereID),
+                MustChangePwd:   u.MustChangePwd, // U3
         }
 }
 
