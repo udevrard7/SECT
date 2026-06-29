@@ -252,6 +252,19 @@ func (uc *UEUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id
 	return uc.ueRepo.SoftDelete(ctx, id)
 }
 
+// GetDependencies récupère les dépendances d'une UE (avant suppression).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #1).
+func (uc *UEUseCase) GetDependencies(ctx context.Context, claims db.SessionClaims, id string) (*domain.UEDependencies, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if id == "" {
+		return nil, &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	return uc.ueRepo.GetUEDependencies(ctx, id)
+}
+
 // ============================================================
 // ENSEIGNANT FILIERE
 // ============================================================

@@ -363,6 +363,26 @@ func (s *Server) deleteUE(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getUEDependencies — GET /api/unites-enseignement/{id}/dependencies
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #1) : retourne les comptes d'entités liées
+// à une UE (épreuves, affectations, documents) pour avertir l'utilisateur
+// avant suppression. CanDelete=false si des dépendances actives existent.
+func (s *Server) getUEDependencies(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	deps, err := s.ueUC.GetDependencies(r.Context(), claims, id)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(deps)
+}
+
 // ============================================================
 // ENSEIGNANT FILIERES
 // ============================================================
