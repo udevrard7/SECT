@@ -184,6 +184,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/", s.createFiliere)
                         r.Patch("/bulk", s.bulkFilieres)
                         r.Get("/export", s.exportFilieres)
+                        // BUGFIX (FILIERES-CRITICAL-FIX-1) : /{id}/dependencies doit être
+                        // déclaré avant /{id} pour éviter toute ambiguïté de routing chi.
+                        r.Get("/{id}/dependencies", s.getFiliereDependencies)
                         r.Get("/{id}", s.getFiliere)
                         r.Patch("/{id}", s.updateFiliere)
                         r.Delete("/{id}", s.deleteFiliere)

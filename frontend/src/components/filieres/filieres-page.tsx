@@ -177,7 +177,16 @@ export function FilieresPage() {
   const [editingFiliere, setEditingFiliere] = useState<FiliereItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<FiliereItem | null>(null)
-  const [deleteDependencies, setDeleteDependencies] = useState<{ epreuves: number; etudiants: number; unitesEnseignement: number } | null>(null)
+  // BUGFIX (FILIERES-CRITICAL-FIX-1) : shape alignée sur la réponse du nouvel
+  // endpoint GET /api/filieres/{id}/dependencies (etudiantsCount/uesCount/
+  // epreuvesCount/canDelete). Avant, le frontend lisait data._count.etudiants
+  // sur la réponse GET /{id} qui ne contenait pas _count -> toujours 0.
+  const [deleteDependencies, setDeleteDependencies] = useState<{
+    etudiantsCount: number
+    uesCount: number
+    epreuvesCount: number
+    canDelete: boolean
+  } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   // ─── Detail view state ───
@@ -450,7 +459,7 @@ export function FilieresPage() {
       const deps = data.dependencies
       toast.success('Filière supprimée', {
         description: deps
-          ? `${deleteTarget.nom} a été désactivée (${deps.etudiants} étudiant(s), ${deps.epreuves} épreuve(s) affecté(s)).`
+          ? `${deleteTarget.nom} a été désactivée (${deps.etudiantsCount} étudiant(s), ${deps.epreuvesCount} épreuve(s), ${deps.uesCount} UE(s) affecté(s)).`
           : `${deleteTarget.nom} a été désactivée.`,
       })
       setDeleteTarget(null)
@@ -464,20 +473,18 @@ export function FilieresPage() {
   }
 
   // ─── Open delete confirmation with dependency check ───
+  //
+  // BUGFIX (FILIERES-CRITICAL-FIX-1) : fetch le nouvel endpoint dédié
+  // GET /api/filieres/{id}/dependencies (au lieu de lire data._count sur le
+  // GET /{id} qui ne le renvoyait jamais). canDelete bloque la confirmation.
   const handleOpenDelete = async (filiere: FiliereItem) => {
     setDeleteTarget(filiere)
-    // Fetch dependencies by getting the filiere detail
+    setDeleteDependencies(null)
     try {
-      const res = await fetch(`/api/filieres/${filiere.id}`)
+      const res = await fetch(`/api/filieres/${filiere.id}/dependencies`)
       if (res.ok) {
-        const data = await res.json()
-        // The API now returns dependency counts in the delete response
-        // But for preview, we can estimate from available data
-        setDeleteDependencies({
-          epreuves: 0, // Will be populated from actual DELETE response
-          etudiants: data._count?.etudiants ?? data.etudiants?.length ?? 0,
-          unitesEnseignement: 0,
-        })
+        const deps = await res.json()
+        setDeleteDependencies(deps)
       }
     } catch {
       setDeleteDependencies(null)
@@ -1209,19 +1216,27 @@ export function FilieresPage() {
                 <p className="text-warning">
                   Cette action désactivera la filière (suppression logique). Les données associées ne seront pas perdues.
                 </p>
-                {deleteDependencies && (deleteDependencies.etudiants > 0 || deleteDependencies.epreuves > 0 || deleteDependencies.unitesEnseignement > 0) && (
+                {deleteDependencies && (deleteDependencies.etudiantsCount > 0 || deleteDependencies.epreuvesCount > 0 || deleteDependencies.uesCount > 0) && (
                   <div className="rounded-lg bg-warning/10 p-3 text-sm space-y-1">
                     <p className="font-display font-medium text-warning">Dépendances trouvées :</p>
-                    {deleteDependencies.etudiants > 0 && (
-                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.etudiants}</span> étudiant(s) inscrit(s)</p>
+                    {deleteDependencies.etudiantsCount > 0 && (
+                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.etudiantsCount}</span> étudiant(s) inscrit(s)</p>
                     )}
-                    {deleteDependencies.epreuves > 0 && (
-                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.epreuves}</span> épreuve(s) associée(s)</p>
+                    {deleteDependencies.epreuvesCount > 0 && (
+                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.epreuvesCount}</span> épreuve(s) associée(s)</p>
                     )}
-                    {deleteDependencies.unitesEnseignement > 0 && (
-                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.unitesEnseignement}</span> unité(s) d'enseignement</p>
+                    {deleteDependencies.uesCount > 0 && (
+                      <p className="text-warning">• <span className="font-mono tabular-nums">{deleteDependencies.uesCount}</span> unité(s) d'enseignement</p>
                     )}
                   </div>
+                )}
+                {deleteDependencies && !deleteDependencies.canDelete && (
+                  <p className="text-destructive text-sm">
+                    Suppression impossible : dépendances actives. Veuillez d'abord transférer ou désactiver les étudiants et UEs liés.
+                  </p>
+                )}
+                {deleteDependencies && deleteDependencies.canDelete && (
+                  <p className="text-success-text text-sm">Suppression possible : aucune dépendance active.</p>
                 )}
               </div>
             </AlertDialogDescription>
@@ -1231,7 +1246,7 @@ export function FilieresPage() {
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
-              disabled={isDeleting}
+              disabled={isDeleting || (deleteDependencies ? !deleteDependencies.canDelete : false)}
             >
               {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Supprimer

@@ -100,7 +100,16 @@ func (s *Server) updateFiliere(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(f) // bare
 }
 
-// deleteFiliere — DELETE /api/filieres/{id} (soft delete)
+// deleteFiliere — DELETE /api/filieres/{id} (soft delete).
+//
+// BUGFIX (FILIERES-CRITICAL-FIX-1) : inclut `dependencies` dans la response
+// (best-effort) pour que le toast frontend puisse afficher « N étudiants,
+// M épreuves, K UEs affectés ». Avant, `data.dependencies` était toujours
+// undefined → le toast tombait sur le fallback générique.
+//
+// Note : on ne retourne pas 409 Conflict si !CanDelete car le soft-delete
+// (actif=false) ne provoque pas d'erreur FK — et le frontend bloque déjà la
+// confirmation côté UI via l'endpoint GET /{id}/dependencies.
 func (s *Server) deleteFiliere(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
@@ -113,13 +122,38 @@ func (s *Server) deleteFiliere(w http.ResponseWriter, r *http.Request) {
 		middleware.MapDomainError(w, err)
 		return
 	}
-	// Count dependencies (best-effort, ignore error)
 	_ = existing
+	// Best-effort : on récupère les dépendances pour le toast frontend.
+	// (les counts sont les mêmes avant/après soft-delete car actif=false
+	// ne change pas les FK).
+	deps, _ := s.filiereUC.GetDependencies(r.Context(), claims, id)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"message": "Filière désactivée (suppression logique)",
-		"filiere": updated,
+		"message":      "Filière désactivée (suppression logique)",
+		"filiere":      updated,
+		"dependencies": deps,
 	})
+}
+
+// getFiliereDependencies — GET /api/filieres/{id}/dependencies.
+//
+// BUGFIX (FILIERES-CRITICAL-FIX-1) : nouvel endpoint pour permettre au
+// frontend (handleOpenDelete) de preview les dépendances actives avant de
+// confirmer le soft-delete, et de bloquer la confirmation si !CanDelete.
+func (s *Server) getFiliereDependencies(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	deps, err := s.filiereUC.GetDependencies(r.Context(), claims, id)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(deps)
 }
 
 // bulkFilieres — PATCH /api/filieres/bulk

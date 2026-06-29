@@ -113,6 +113,18 @@ func (uc *FiliereUseCase) SoftDelete(ctx context.Context, claims db.SessionClaim
 	return existing, updated, nil
 }
 
+// GetDependencies récupère les dépendances actives d'une filière (pour
+// l'endpoint GET /api/filieres/{id}/dependencies). Le frontend l'utilise dans
+// handleOpenDelete pour afficher la preview « N étudiants, M UEs » et bloquer
+// la confirmation si !CanDelete. BUGFIX (FILIERES-CRITICAL-FIX-1).
+func (uc *FiliereUseCase) GetDependencies(ctx context.Context, claims db.SessionClaims, id string) (*domain.FiliereDependencies, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	return uc.filiereRepo.GetFiliereDependencies(ctx, id)
+}
+
 // BulkUpdate met à jour le statut de plusieurs filières.
 func (uc *FiliereUseCase) BulkUpdate(ctx context.Context, claims db.SessionClaims, input domain.BulkFiliereInput) (int, []*domain.Filiere, error) {
 	role := domain.Role(claims.Role)

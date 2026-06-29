@@ -6861,3 +6861,554 @@ Deux bugs dans le module exam-prep :
 5. **Pattern LIKE vs opérateur JSONB `?`** : le pattern `LIKE '%"L2"%'` marche pour les tableaux JSONB sérialisés comme `["L1","L2"]` (match `"L2"` substring). C'est la convention déjà utilisée par `ListStudentDocuments` (EXAM-PREP-RLS-FIX-1, EXAM-PREP-NIVEAU-FIX-1) — conservée pour cohérence. Une approche plus robuste serait l'opérateur JSONB containment `ue."niveaux" ? $4` (test d'appartenance exacte), mais cela nécessiterait de changer aussi `ListStudentDocuments` pour cohérence — hors scope de ce fix.
 6. **Effet combiné avec EXAM-PREP-RLS-FIX-1 + EXAM-PREP-NIVEAU-FIX-1** : ce fix ferme la dernière faille du trio. RLS-FIX a débloqué la lecture système (RLS off), NIVEAU-FIX a corrigé le paramétrage (niveau réel depuis DB), SECURITY-FIX ajoute la re-vérification d'accès sur les endpoints de lecture. Maintenant : (a) la liste est correcte (RLS off + bon niveau), (b) la lecture est sécurisée (re-check accès même si `documentID` est forgé). Un étudiant ne peut plus contourner la frontière filière+niveau.
 7. ** endpoints non couverts** : `GetDocumentContent` (repository, utilisé directement par le worker IA et potentiellement d'autres usecases) n'est PAS sécurisé — seul `GetDocumentContentForQA` (usecase wrapper) l'est. Si d'autres endpoints étudiant exposent `GetDocumentContent` directement, ils restent non sécurisés. À auditer si besoin (grep `GetDocumentContent` hors `GetDocumentContentForQA`). Hors scope de ce fix — le brief visait explicitement `GetDocumentForReader` et `GetDocumentContentForQA`.
+
+---
+
+## FILIERES-AUDIT-1 — Audit complet du module `/filieres`
+
+**Task ID** : FILIERES-AUDIT-1  
+**Type** : RESEARCH-ONLY (aucune modification de fichier, aucun commit)  
+**Date** : session en cours  
+**Objectif** : Audit exhaustif du module `/filieres` (backend Go + frontend Next.js) pour préparer une refonte. Périmètre : gestion des filières académiques par ADMIN/RESPONSABLE.
+
+### 1. Architecture — fichiers impliqués et data flow
+
+**Backend (Go, layers `internal/`) :**
+
+| Fichier | Rôle | Lignes |
+|---|---|---|
+| `backend/internal/domain/academique.go` | Entités `Filiere`, `UniteEnseignement`, `EnseignantFiliere`, `AnneeAcademique`, interfaces repository, inputs (Create/Update/Bulk), helper `IsValidNiveau` | 333 |
+| `backend/internal/domain/user.go` | Définit `EtablissementRef {id, nom}` et `FiliereRef {id, nom, code}` (refs légères) | — |
+| `backend/internal/domain/etablissement_access.go` | Définit `UserRef {id, name, email}` (ref légère utilisateur) | — |
+| `backend/internal/repository/filiere.go` | Implémentation SQL `FiliereRepository` (FindByID, List, Create, Update, SoftDelete, BulkUpdate, CountDependencies) | 340 |
+| `backend/internal/usecase/academique.go` | `FiliereUseCase` (List, GetByID, Create, Update, SoftDelete, BulkUpdate) + usecases UE/EnseignantFiliere/Annee | 365 |
+| `backend/internal/transport/http/academique_handlers.go` | Handlers HTTP pour `/api/filieres`, `/api/unites-enseignement`, `/api/enseignant-filieres`, `/api/annees-academiques` | 446 |
+| `backend/internal/transport/http/router.go` (lignes 180-190) | Routes `/api/filieres/*` derrière `middleware.RequireAuth` (pas de `RequireRole` au niveau router) | — |
+| `backend/internal/middleware/auth.go` | `RequireAuth` (bloque si pas de claims) ; `RequireRole` (helper non utilisé pour `/api/filieres`) ; `MapDomainError` (mapping domaine→HTTP) | 145 |
+| `backend/db/db/reference/schema.sql` (lignes 124-137) | Table `"Filiere"` (10 colonnes, pas de `deletedAt`) | — |
+| `backend/db/db/migrations/000007_rls_policies.up.sql` (lignes 182-192) | RLS policies `Filiere_select` + `Filiere_modify_responsable` | — |
+
+**Frontend (Next.js 16 / React 19 / TanStack Query) :**
+
+| Fichier | Rôle | Lignes |
+|---|---|---|
+| `frontend/src/components/filieres/filieres-page.tsx` | Composant unique `FilieresPage` (list card/table + create/edit dialog + delete confirmation + bulk action + detail dialog + CSV export button) | 1408 |
+| `frontend/src/components/layout/page-content.tsx` (ligne 35, 87) | Import + mapping `filieres → FilieresPage` | — |
+| `frontend/src/lib/routes.ts` (ligne 54, 374) | Route `/filieres` + entrée sidebar **uniquement dans `RESPONSABLE_CATEGORIES`** (pas dans `ADMIN_CATEGORIES`) | — |
+| `frontend/src/stores/auth-store.ts` | `AuthUser { id, role, etablissementId?, filiereId? }` | — |
+| `frontend/vercel.json` | Rewrite CDN `/api/* → https://sect-s1pb.onrender.com/api/*` (0 CPU Vercel) | — |
+
+**Data flow (list view) :**
+
+```
+[FilieresPage mount]
+  → useQuery(['filieres', search, etabFilter, statusFilter, isResponsable, userId])
+  → fetch GET /api/filieres?search=...&etablissementId=...&actif=...&responsableId=...
+  → [Vercel CDN rewrite] → https://sect-s1pb.onrender.com/api/filieres
+  → [middleware.RequireAuth] (extrait JWT → claims)
+  → [handler listFilieres] (parse query params → FiliereListParams)
+  → [usecase FiliereUseCase.List] (check role ADMIN/RESPONSABLE ; RESPONSABLE → force etablissementId)
+  → [repo FiliereRepository.List] (db.WithTx → SET LOCAL role + claims → SELECT avec WHERE dynamique)
+  → [RLS policy Filiere_select] (USING : is_admin()+admin_has_etablissement_access OR etablissementId=current_etablissement_id())
+  → []Filiere (sans Etablissement, sans Responsable, sans CountEtudiants — jamais peuplés)
+  → JSON { filieres: [...] }
+```
+
+### 2. Endpoints table
+
+| Méthode | Path | Rôles | Request body / query params | Response shape | RLS |
+|---|---|---|---|---|---|
+| GET | `/api/filieres` | ADMIN, RESPONSABLE | query : `search`, `responsableId`, `actif` (`true`/`false`/absent), `etablissementId` | `{ "filieres": [Filiere] }` | ON (tx + claims) |
+| GET | `/api/filieres/export` | ADMIN, RESPONSABLE | mêmes query params | CSV (text/csv) avec BOM UTF-8 | ON |
+| GET | `/api/filieres/{id}` | ADMIN, RESPONSABLE | — | `Filiere` **bare** (pas de wrapper) | ON |
+| POST | `/api/filieres` | ADMIN, RESPONSABLE | `CreateFiliereInput { nom*, code?, etablissementId*, responsableId?, description?, nbEtudiants?, actif? }` | `{ "filiere": Filiere }` (201 Created) | **OFF** (`SET LOCAL row_security = off`) |
+| PATCH | `/api/filieres/{id}` | ADMIN, RESPONSABLE | `UpdateFiliereInput { nom?, code?, responsableId?, description?, nbEtudiants?, actif? }` (partial) | `Filiere` **bare** | **OFF** |
+| DELETE | `/api/filieres/{id}` | ADMIN, RESPONSABLE | — | `{ "message": "Filière désactivée…", "filiere": Filiere }` (soft delete = actif=false) | **OFF** (via Update) |
+| PATCH | `/api/filieres/bulk` | ADMIN, RESPONSABLE | `BulkFiliereInput { ids: string[], action: "activate"\|"deactivate"\|"delete" }` | `{ "updated": int, "filieres": [Filiere] }` | **OFF** |
+
+*Rôles* : le check est fait dans `FiliereUseCase` (chaque méthode teste `role != Admin && role != Responsable → UnauthorizedError → 403`). Le router n'applique que `RequireAuth` — pas de `RequireRole` middleware. Un ETUDIANT/ENSEIGNANT authentifié reçoit donc 403 depuis le usecase (le frontend intercepte le 403 et retourne un tableau vide, pas de crash).
+
+*Filiere JSON shape* (telle que sérialisée par le backend) :
+```json
+{
+  "id": "uuid",
+  "nom": "Informatique",
+  "code": "INFO",           // *string, omitempty → absent si NULL
+  "etablissementId": "uuid",
+  "responsableId": "uuid",  // *string, omitempty → absent si NULL
+  "description": "...",     // *string, omitempty
+  "nbEtudiants": 120,       // *int, omitempty
+  "actif": true,
+  "createdAt": "2024-...",
+  "updatedAt": "2024-...",
+  "etablissement": null,    // *EtablissementRef, omitempty → JAMAIS peuplé par List/FindByID
+  "responsable": null,      // *UserRef, omitempty → JAMAIS peuplé
+  "countEtudiants": null    // *int, omitempty → JAMAIS peuplé (top-level, pas _count)
+}
+```
+
+### 3. Workflow (admin/responsable)
+
+**Création d'une filière (RESPONSABLE) :**
+1. RESPONSABLE clique "Nouvelle filière" sur `/filieres`.
+2. `handleOpenCreate()` pré-remplit `formEtablissementId = user.etablissementId` et `formResponsableId = user.id` (auto-assignation). Les dropdowns Établissement/Responsable sont **cachés** pour RESPONSABLE (`{!user?.etablissementId && ...}`).
+3. Saisie nom + code (auto-suggéré) + description + nbEtudiants prévus + checkbox actif.
+4. `handleSubmit` → POST `/api/filieres` avec body complet.
+5. UseCase.Create : check role, check `nom != ""`, force `etablissementId = claims.EtablissementID` (RESP), check `etablissementId != ""`.
+6. Repo.Create : `SET LOCAL row_security = off` + INSERT + RETURNING. Catch unique violation → ConflictError (409 "une filière avec ce nom existe déjà dans cet établissement"). FK violation (etablissementId invalide) → 500 générique.
+7. Response 201 `{ filiere }` → frontend toast success + `refreshFilieres()` (invalidate query `['filieres']`).
+
+**Édition (PATCH) :**
+1. Clic "Modifier" → `handleOpenEdit(filiere)` → pré-remplit depuis `FiliereItem`. `formResponsableId = filiere.responsable?.id ?? ''` (toujours `''` car backend ne peuple jamais `responsable`).
+2. Submit → PATCH `/api/filieres/{id}` avec body.
+3. UseCase.Update : check role ; RESPONSABLE → ownership check (existing.EtablissementID == claims.EtablissementID OU existing.ResponsableID == claims.UserID). Sinon 403.
+4. Repo.Update : `SET LOCAL row_security = off` + UPDATE dynamique (partial). Si aucun champ → SELECT et retour sans bump updatedAt.
+5. Response : bare `Filiere`.
+
+**Suppression (soft delete = désactivation) :**
+1. Clic "Supprimer" → `handleOpenDelete(filiere)` → fetch GET `/api/filieres/{id}` pour preview dépendances → **ÉCHEC** (voir BUG #3).
+2. Confirmation dialog → `handleDelete` → DELETE `/api/filieres/{id}`.
+3. UseCase.SoftDelete : check role + ownership (RESP) → Repo.SoftDelete → Update avec `actif=false`.
+4. Response `{ message, filiere }`. Frontend lit `data.dependencies` → **undefined** (voir BUG #4).
+
+**Bulk action (activate/deactivate/delete) :**
+1. Sélection multiple → bouton "Activer/Désactiver/Supprimer".
+2. `handleBulkAction` → PATCH `/api/filieres/bulk` avec `{ ids, action }`.
+3. UseCase.BulkUpdate : check role, validation action, `actif := action == "activate"` (delete = actif=false, comme deactivate). RESPONSABLE → `etabScope = claims.EtablissementID`.
+4. Repo.BulkUpdate : `SET LOCAL row_security = off` + `UPDATE ... WHERE id IN (...) AND etablissementId = $etabScope` (pour RESPONSABLE).
+5. Re-fetch via `filiereRepo.List(ctx, FiliereListParams{})` (params vides — RLS filtre par etab pour RESP). Filtre local par `input.IDs`. Response `{ updated, filieres }`.
+
+**Consultation détail :**
+1. Clic "Détails" → `handleViewDetail` → fetch GET `/api/filieres/{id}` → `setDetailFiliere(data)`.
+2. Dialog affiche : nom, code, établissement (toujours "—"), statut, responsable (toujours "Aucun responsable assigné"), nbEtudiants prévus, date création, description, **section "Étudiants inscrits"** (toujours "Aucun étudiant inscrit dans cette filière" — voir BUG #6).
+
+**Export CSV :**
+1. Clic "Export" → `handleExportCSV` → fetch GET `/api/filieres/export?...` → blob → download `filieres_export_YYYY-MM-DD.csv`.
+2. Backend : `exportFilieres` → List (RLS) → boucle sur filieres → écrit ligne CSV. **Header a 7 colonnes, lignes en ont 8** (voir BUG #5).
+
+### 4. Business rules / validations / contraintes
+
+**Validations côté usecase :**
+- `Create.Nom` requis (non vide) → 400 ValidationError
+- `Create.EtablissementId` requis → 400 ValidationError (après force pour RESP)
+- `Create` (RESP) : force `etablissementId = claims.EtablissementID` (ne peut pas créer dans un autre établissement)
+- `Update` (RESP) : ownership check — `(existing.ResponsableID == claims.UserID) || (existing.EtablissementID == claims.EtablissementID)` sinon 403
+- `SoftDelete` (RESP) : même ownership check
+- `BulkUpdate.IDs` non vide → 400 ; `action` ∈ {activate, deactivate, delete} → 400
+- `BulkUpdate` (RESP) : `etabScope = claims.EtablissementID` passé au repo (filtre SQL supplémentaire)
+
+**Contraintes DB (schema.sql) :**
+- `Filiere.nom` NOT NULL
+- `Filiere.etablissementId` NOT NULL, FK → `Etablissement.id` ON DELETE CASCADE
+- `Filiere.responsableId` nullable, FK → `User.id` ON DELETE SET NULL
+- `Filiere.actif` NOT NULL DEFAULT true
+- UNIQUE INDEX `"Filiere_nom_etablissementId_key"` sur `(nom, etablissementId)` → pas 2 filières avec même nom dans un même établissement (catché côté repo → 409)
+- INDEX sur `etablissementId` et `responsableId`
+- **Pas de colonne `deletedAt`** — soft delete = `actif=false` (la row reste visible dans List, juste avec badge "Inactif")
+
+**RLS policies (000007_rls_policies.up.sql lignes 182-192) :**
+- `Filiere_select` FOR SELECT : `is_admin() AND admin_has_etablissement_access(etablissementId)` OR `(NOT is_admin() AND etablissementId = current_etablissement_id())` — donc ETUDIANT/ENSEIGNANT peuvent SELECT en RLS (mais usecase bloque avant)
+- `Filiere_modify_responsable` FOR ALL : `is_responsable() AND etablissementId = current_etablissement_id()` — **policy mort-vivante** car repo fait `SET LOCAL row_security = off` pour tous les writes (Create/Update/BulkUpdate). ADMIN ne pourrait pas écrire si RLS restait ON (policy n'inclut pas is_admin). Donc la sécurité d'écriture repose entièrement sur les checks usecase.
+
+**Cascade behavior :**
+- Suppression d'un `Etablissement` → CASCADE sur `Filiere` (hard delete SQL)
+- Suppression d'un `User` (responsable) → SET NULL sur `Filiere.responsableId` (la filière reste, juste sans responsable)
+- Soft delete d'une `Filiere` (actif=false) → **n'affecte pas** les UEs/étudiants/épreuves liés (ils gardent leur `filiereId`, juste la filière est inactive)
+
+### 5. Bugs identifiés
+
+#### BUG #1 (CRITIQUE) — `List` et `FindByID` ne peuplent jamais `etablissement`, `responsable`, `_count.etudiants`
+
+- **Fichiers** : `backend/internal/repository/filiere.go` lignes 42-65 (FindByID), 67-132 (List) ; `backend/internal/domain/academique.go` lignes 14-29
+- **Description** : Le repo `FiliereRepository.List` et `FindByID` font un simple `SELECT columnsFiliere FROM "Filiere"` sans JOIN avec `Etablissement` ni `User` (responsable), et sans subquery pour compter les étudiants. Les champs `Etablissement`, `Responsable`, `CountEtudiants` du struct `domain.Filiere` ne sont **jamais** assignés côté Go (vérifié : `grep "\.Etablissement\s*=\|\.Responsable\s*=\|\.CountEtudiants\s*="` → 0 match dans filiere.go, academique.go usecase, academique_handlers.go). Ils sont sérialisés en JSON avec `omitempty` → absents de la réponse.
+- **Impact frontend** : `filieres-page.tsx` lignes 847, 993, 1315 (`filiere.etablissement?.nom ?? '—'` → toujours "—"), 852-855, 996-997, 1325-1336 (`filiere.responsable` → toujours null → "Non assigné"), 313 (`totalEtudiants = filieres.reduce(... f._count?.etudiants ?? 0, 0)` → toujours 0), 869, 1005 (badge étudiants → toujours "0 étudiants"). La page /filieres apparaît "cassée" : toutes les filières semblent sans établissement, sans responsable, et avec 0 étudiant — même si la DB dit le contraire.
+- **Sévérité** : CRITIQUE (UX cassée, données fausses affichées)
+- **Fix suggéré** : Appliquer le pattern déjà utilisé pour `EtablissementRepository.List` (BUGFIX ADMIN-AUDIT-2) et `UERepository.FindByID` (BUGFIX PROG-ACAD-1) :
+  - Subquery scalaire pour `_count.etudiants` : `(SELECT count(*) FROM "User" u WHERE u."filiereId" = "Filiere"."id" AND u."actif" = true AND u."role" = 'ETUDIANT')`
+  - LEFT JOIN `Etablissement` et `User` (responsable) pour peupler les refs.
+  - **Attention** : le frontend attend `_count: { etudiants: number }` (objet imbriqué style Prisma) — pas `countEtudiants` (top-level). Il faut soit (a) renommer le champ Go en `_count` avec un struct `FiliereCount { Etudiants int }`, soit (b) adapter le frontend pour lire `countEtudiants`. Recommandé : (a) pour cohérence avec le pattern Etablissement/UE déjà utilisé.
+
+#### BUG #2 (CRITIQUE) — `deleteFiliere` response ne contient pas `dependencies` (front attend `data.dependencies`)
+
+- **Fichiers** : `backend/internal/transport/http/academique_handlers.go` lignes 104-123 (handler `deleteFiliere`) ; `frontend/src/components/filieres/filieres-page.tsx` lignes 449-455 (lecture `data.dependencies`)
+- **Description** : Le handler `deleteFiliere` retourne `{ "message": "Filière désactivée…", "filiere": updated }`. Le frontend `handleDelete` lit `const deps = data.dependencies` (ligne 450) puis l'utilise pour construire un toast détaillé (`"${deps.etudiants} étudiant(s), ${deps.epreuves} épreuve(s) affecté(s)"`). Comme `data.dependencies` est `undefined`, le toast tombe toujours sur le fallback `${deleteTarget.nom} a été désactivée.` — l'utilisateur ne sait jamais combien d'étudiants/épreuves/UEs sont rattachés à la filière désactivée.
+- **Sévérité** : CRITIQUE (feature explicitement attendue côté frontend, jamais livrée côté backend)
+- **Fix suggéré** : Le repo a déjà `CountDependencies(ctx, id) (epreuves, etudiants, ues int, err error)` (filiere.go lignes 304-326) — mais **il n'est jamais appelé** (grep confirme : défini dans interface + impl, 0 call site). Brancher : dans `SoftDelete` usecase ou handler `deleteFiliere`, appeler `CountDependencies` avant le soft-delete et inclure dans la response :
+  ```go
+  epreuves, etudiants, ues, _ := s.filiereRepo.CountDependencies(ctx, id)
+  json.NewEncoder(w).Encode(map[string]any{
+      "message": "Filière désactivée (suppression logique)",
+      "filiere": updated,
+      "dependencies": map[string]any{
+          "epreuves": epreuves, "etudiants": etudiants, "unitesEnseignement": ues,
+      },
+  })
+  ```
+
+#### BUG #3 (HIGH) — `handleOpenDelete` preview dépendances : lit `data._count?.etudiants` qui n'existe jamais
+
+- **Fichiers** : `frontend/src/components/filieres/filieres-page.tsx` lignes 467-485 (`handleOpenDelete`)
+- **Description** : Avant d'ouvrir la dialog de confirmation, le frontend fetch GET `/api/filieres/{id}` et lit `data._count?.etudiants ?? data.etudiants?.length ?? 0`. Or la response de GET est un bare `Filiere` qui ne contient ni `_count` (clé inexistante côté backend) ni `etudiants` (array jamais retourné). `deleteDependencies.etudiants` vaut donc toujours 0, et `epreuves`/`unitesEnseignement` sont hardcodés à 0 (lignes 477, 479). La dialog de confirmation n'affiche donc jamais le bloc "Dépendances trouvées".
+- **Sévérité** : HIGH (feature de safety check silencieusement cassée — l'utilisateur peut désactiver une filière avec 200 étudiants sans warning)
+- **Fix suggéré** : Backend : exposer un endpoint `GET /api/filieres/{id}/dependencies` qui appelle `CountDependencies`, OU inclure `_count` dans la response de GET (cf BUG #1). Frontend : lire la nouvelle clé.
+
+#### BUG #4 (HIGH) — Section "Étudiants inscrits" du detail dialog toujours vide
+
+- **Fichiers** : `frontend/src/components/filieres/filieres-page.tsx` lignes 1364-1393 (itération `detailFiliere.etudiants.map(...)`) ; lignes 488-502 (`handleViewDetail` qui set `detailFiliere = data`)
+- **Description** : `handleViewDetail` fetch GET `/api/filieres/{id}` et set `detailFiliere` directement depuis la response (bare `Filiere`). Le type `FiliereDetail extends FiliereItem` attend `etudiants: Array<{id, name, email, actif, createdAt}>`. Le backend ne retourne jamais ce tableau. Donc `detailFiliere.etudiants` est `undefined` → la condition `(!detailFiliere.etudiants || detailFiliere.etudiants.length === 0)` est toujours vraie → "Aucun étudiant inscrit dans cette filière." affiché même si 50 étudiants sont inscrits.
+- **Sévérité** : HIGH (feature de consultation silencieusement cassée)
+- **Fix suggéré** : Backend : dans `FiliereRepository.FindByID`, ajouter une 2e requête `SELECT id, name, email, actif, createdAt FROM "User" WHERE "filiereId" = $1 AND "role" = 'ETUDIANT' ORDER BY name LIMIT 100` et peupler un nouveau champ `Etudiants []UserSummary` sur `domain.Filiere`. Ou : endpoint séparé `GET /api/filieres/{id}/etudiants`.
+
+#### BUG #5 (HIGH) — Export CSV : mismatch nombre de colonnes (header=7, lignes=8)
+
+- **Fichiers** : `backend/internal/transport/http/academique_handlers.go` lignes 174-191 (`exportFilieres`)
+- **Description** : Header : `"Nom,Code,Établissement,Responsable,Étudiants,Statut,Date création\n"` (7 colonnes). Ligne data : `csvEscape(f.Nom) + "," + csvEscape(code) + ",," + "," + csvEscape(nbEtu) + "," + statut + "," + date + "\n"` — décompte des virgules : `Nom` + `,` + `Code` + `,,` (2 commas → 1 champ vide) + `,` (1 comma → fin du champ suivant) + `nbEtu` + `,` + `statut` + `,` + `date` = `Nom,Code,,,nbEtu,statut,date` = **8 champs** (3 champs vides entre Code et nbEtu au lieu de 2). Le CSV est malformé : un tableur parse la ligne avec un décalage d'une colonne (Étudiants→colonne vide, Statut→colonne Étudiants, Date→colonne Statut, dernière colonne vide).
+- **Cause racine** : l'auteur a écrit `",,"` (pour Établissement + Responsable vides) puis `","` (séparateur avant nbEtu) — mais `",,"` produit déjà 1 champ vide ET le `,` suivant ajoute un autre champ vide (`,` final de `,,` = séparateur, puis `,` initial du prochain = autre séparateur). Pour 2 champs vides consécutifs, il faut `",,"` (et non `",," + ","`).
+- **Sévérité** : HIGH (export cassé pour l'utilisateur final)
+- **Fix suggéré** : Soit (a) corriger en `csvEscape(f.Nom) + "," + csvEscape(code) + "," + csvEscape(etabNom) + "," + csvEscape(respName) + "," + csvEscape(nbEtu) + "," + statut + "," + date + "\n"` (en peuplant etabNom/respName via JOIN — cf BUG #1), soit (b) au minimum supprimer le `","` superflu : `csvEscape(f.Nom) + "," + csvEscape(code) + ",," + csvEscape(nbEtu) + "," + statut + "," + date + "\n"` (donne 7 champs avec 2 vides). Recommandé : (a) pour fournir un export réellement utile.
+
+#### BUG #6 (MEDIUM) — Type mismatch `_count.etudiants` (frontend) vs `countEtudiants` (backend, jamais peuplé)
+
+- **Fichiers** : `frontend/src/components/filieres/filieres-page.tsx` ligne 102 (`_count: { etudiants: number }`) ; `backend/internal/domain/academique.go` ligne 28 (`CountEtudiants *int `json:"countEtudiants,omitempty"``)
+- **Description** : Le frontend type `FiliereItem._count.etudiants` (style Prisma, objet imbriqué). Le backend expose `countEtudiants` (top-level, scalaire) — et ne le peuple jamais (cf BUG #1). Même si le backend peuplait `CountEtudiants`, le frontend ne le lirait pas (clé différente). Les optional chainings (`f._count?.etudiants ?? 0`) masquent le crash mais affichent toujours 0.
+- **Sévérité** : MEDIUM (masqué par optional chaining, mais casse l'affichage des stats)
+- **Fix suggéré** : Aligner sur le pattern Prisma déjà utilisé pour Etablissement (`_count: { filieres, users }`) et UE (`_count: { affectations }`). Renommer `CountEtudiants *int` en `Count *FiliereCount` où `FiliereCount { Etudiants int `json:"etudiants"` }` avec tag `json:"_count,omitempty"`.
+
+#### BUG #7 (MEDIUM) — `BulkUpdate` re-fetch via `filiereRepo.List` sans scoping usecase (mais RLS sauve)
+
+- **Fichiers** : `backend/internal/usecase/academique.go` lignes 144-160 (`BulkUpdate`)
+- **Description** : Après le bulk update, le usecase re-fetch les filières via `uc.filiereRepo.List(ctx, domain.FiliereListParams{})` avec **params vides** — sans repasser par `uc.List` (qui force `params.EtablissementID = claims.EtablissementID` pour RESP). Le scoping repose donc uniquement sur RLS (`Filiere_select` policy filtre par `etablissementId = current_etablissement_id()` pour non-admin). Ce n'est pas une faille (RLS sauve), mais c'est une violation du pattern « usecase scopes, repo exécute ».
+- **Impact secondaire** : pour un ADMIN avec accès à plusieurs établissements, le re-fetch retourne toutes les filières de tous ses établissements — puis filtre par `input.IDs`. Si un ID dans `input.IDs` n'appartient pas à un établissement auquel l'ADMIN a accès, le `BulkUpdate` repo (RLS OFF) l'a quand même modifié (car `BulkUpdate` filtre par `etablissementID` seulement pour RESP, pas pour ADMIN). Donc un ADMIN pourrait bulk-update une filière hors de son périmètre d'accès s'il en connaît l'ID.
+- **Sévérité** : MEDIUM (faille subtile de scoping ADMIN)
+- **Fix suggéré** : (a) Appeler `uc.List(ctx, claims, domain.FiliereListParams{})` au lieu de `uc.filiereRepo.List(...)` pour bénéficier du scoping usecase. (b) Ajouter un check `admin_has_etablissement_access` côté usecase pour les IDs hors périmètre ADMIN. (c) Pour le re-fetch, interroger directement par IDs (SELECT WHERE id IN...) au lieu de tout récupérer puis filtrer côté Go.
+
+#### BUG #8 (MEDIUM) — FK violations (etablissementId/responsableId invalides) → 500 générique au lieu de 400
+
+- **Fichiers** : `backend/internal/repository/filiere.go` lignes 161-167 (Create), 239-247 (Update)
+- **Description** : Le repo catch `isUniqueViolation(err)` → ConflictError (409). Mais les FK violations (POST avec `etablissementId` inexistant, ou `responsableId` qui n'est pas un user valide) ne sont pas catchées → l'erreur PostgreSQL remonte brute → `MapDomainError` default → 500 "erreur interne". Le frontend affiche donc "Une erreur est survenue" au lieu de "Établissement invalide" / "Responsable invalide".
+- **Sévérité** : MEDIUM (mauvaise UX erreur, debug difficile)
+- **Fix suggéré** : Ajouter un catch `isForeignKeyViolation(err)` (code PG `23503`) → `ValidationError` (400) avec message spécifique ("établissementId invalide" / "responsableId invalide"). Ou : pré-valider l'existence de l'établissement/responsable avant l'INSERT (1 round-trip supplémentaire mais message d'erreur clair).
+
+#### BUG #9 (MEDIUM) — Dropdowns Établissement/Responsable cachés pour RESPONSABLE → ne peut pas réassigner
+
+- **Fichiers** : `frontend/src/components/filieres/filieres-page.tsx` lignes 1111-1141 (`{!user?.etablissementId && (...)}`)
+- **Description** : Pour RESPONSABLE (`user.etablissementId` non vide), les dropdowns Établissement et Responsable sont masqués dans le formulaire create/edit. Le RESPONSABLE ne peut donc pas :
+  - changer le responsable d'une filière existante (même la sienne) — il doit demander à un ADMIN
+  - créer une filière avec un autre responsable que lui-même
+  - Le `formResponsableId` est hardcoded à `user.id` pour RESPONSABLE à la création (ligne 342)
+- **Sévérité** : MEDIUM (limitation UX non documentée)
+- **Fix suggéré** : Afficher le dropdown Responsable pour RESPONSABLE aussi (mais restreindre la liste aux users `role=RESPONSABLE` de SON établissement). Garder le dropdown Établissement caché (le RESPONSABLE ne peut créer que dans le sien — règle métier). Permettre aussi une option "Aucun responsable" (vider) dans le dropdown.
+
+#### BUG #10 (MEDIUM) — `Filiere_modify_responsable` RLS policy est du code mort (RLS OFF pour tous les writes)
+
+- **Fichiers** : `backend/db/db/migrations/000007_rls_policies.up.sql` lignes 189-192 ; `backend/internal/repository/filiere.go` lignes 142, 183, 269 (`SET LOCAL row_security = off`)
+- **Description** : La policy `Filiere_modify_responsable` (FOR ALL, `is_responsable() AND etablissementId = current_etablissement_id()`) ne s'applique jamais car Create/Update/BulkUpdate font `SET LOCAL row_security = off` dans la transaction. La sécurité d'écriture repose entièrement sur les checks role+ownership dans `FiliereUseCase`. Si un développeur ajoute une nouvelle méthode usecase sans check role, RLS ne rattrape pas.
+- **Note** : pattern cohérent avec `EtablissementRepository` et `UERepository` (même `SET LOCAL row_security = off` pour writes). C'est un choix architectural assumé (RLS pour SELECT, usecase pour writes). Mais la policy `Filiere_modify_responsable` est trompeuse (donne l'illusion d'une protection write qui n'existe pas).
+- **Sévérité** : MEDIUM (risque de sécurité latent si usecase évolue)
+- **Fix suggéré** : Soit (a) supprimer la policy `Filiere_modify_responsable` (explicit dead code) et documenter que writes = usecase-only, soit (b) garder RLS ON pour writes et adapter la policy pour inclure ADMIN (`is_admin() AND admin_has_etablissement_access(etablissementId) OR is_responsable() AND ...`) — recommandé pour defense-in-depth.
+
+#### BUG #11 (MEDIUM) — `ResponsableId` non validé comme UUID existant côté backend
+
+- **Fichiers** : `backend/internal/usecase/academique.go` lignes 52-71 (Create) ; `backend/internal/domain/academique.go` lignes 40-48 (CreateFiliereInput)
+- **Description** : `CreateFiliereInput.ResponsableID` est un `*string` non validé. Si le frontend envoie un UUID mal formé ou un ID d'utilisateur non-RESPONSABLE (ex: un ETUDIANT), le backend l'accepte, l'INSERT passe (FK sur User.id valide si l'UUID existe), mais la filière se retrouve avec un "responsable" qui n'est pas réellement responsable (rôle ETUDIANT). Aucun check que `ResponsableID` pointe vers un user `role=RESPONSABLE`.
+- **Sévérité** : MEDIUM (intégrité référentielle faible)
+- **Fix suggéré** : Côté usecase Create/Update, si `ResponsableID != nil`, vérifier que le user existe ET a `role=RESPONSABLE` (1 SELECT COUNT). Sinon → ValidationError (400).
+
+#### BUG #12 (LOW) — Pas de pagination sur `List` (retourne toutes les filières)
+
+- **Fichiers** : `backend/internal/repository/filiere.go` lignes 67-132 (List) ; `backend/internal/domain/academique.go` lignes 31-37 (FiliereListParams — pas de Page/Limit)
+- **Description** : `List` n'a pas de LIMIT/OFFSET. Pour un ADMIN avec accès à plusieurs grands établissements (ex: 500+ filières au total), la response JSON peut être lourde (50+ KB). Pas de pagination côté frontend non plus (le `filieresQuery` fetch tout d'un coup).
+- **Sévérité** : LOW (scénario peu probable à l'échelle actuelle, mais scaling risk)
+- **Fix suggéré** : Ajouter `Page int` et `Limit int` à `FiliereListParams`, default Limit=50. Frontend : utiliser `<Pagination>` component (déjà présent dans `components/ui/pagination.tsx`).
+
+#### BUG #13 (LOW) — `SoftDelete` = `Update(actif=false)` mais `updatedAt` bumpé même si déjà inactif
+
+- **Fichiers** : `backend/internal/repository/filiere.go` lignes 256-258 (SoftDelete) → appelle Update avec `{Actif: boolPtr(false)}`
+- **Description** : Si la filière est déjà `actif=false`, `SoftDelete` fait quand même un `UPDATE SET actif=false, updatedAt=CURRENT_TIMESTAMP WHERE id=...` — bump inutile de `updatedAt`. Pas de garde `WHERE actif = true`.
+- **Sévérité** : LOW (impact minimal, mais audit logs pollués)
+- **Fix suggéré** : Ajouter `AND actif = true` au WHERE du Update quand l'input est un SoftDelete, ou court-circuiter côté usecase si `existing.Actif == false`.
+
+#### BUG #14 (LOW) — `Filiere_select` policy permet à ETUDIANT/ENSEIGNANT de SELECT en RLS (mais usecase bloque)
+
+- **Fichiers** : `backend/db/db/migrations/000007_rls_policies.up.sql` lignes 183-188
+- **Description** : La policy `Filiere_select` dit `(NOT is_admin() AND etablissementId = current_etablissement_id())` — donc un ETUDIANT ou ENSEIGNANT authentifié pourrait SELECT des filières de son établissement en RLS. C'est le usecase `FiliereUseCase.List/GetByID` qui bloque (check `role != Admin && role != Responsable → 403`). Si un endpoint futur oublie ce check, RLS ne rattrape pas (le policy autorise ETUDIANT/ENSEIGNANT à lire).
+- **Sévérité** : LOW (defense-in-depth incomplète, mais usecase bloque actuellement)
+- **Fix suggéré** : Restreindre la policy SELECT à `(is_admin() AND ...) OR (is_responsable() AND etablissementId = current_etablissement_id())`. Les ETUDIANT/ENSEIGNANT n'ont pas besoin de SELECT directement la table Filiere — ils reçoivent les filièreRefs via les réponses User/UE/Epreuve (qui elles passent par d'autres repos). Si on veut quand même les laisser SELECT (pour recherche par nom), créer une policy dédiée ETUDIANT_select.
+
+#### BUG #15 (LOW) — `exportFilieres` n'inclut pas l'en-tête `Etablissement`/`Responsable` dans les données
+
+- **Fichiers** : `backend/internal/transport/http/academique_handlers.go` lignes 174-191
+- **Description** : Le CSV header annonce `Établissement` et `Responsable` comme colonnes, mais la ligne data laisse ces 2 colonnes vides (et en rajoute une 3e vide par erreur de concaténation — cf BUG #5). Même après fix BUG #5, sans JOIN sur Etablissement/User, le CSV sera incomplet.
+- **Sévérité** : LOW (redondant avec BUG #1 et BUG #5 — disparaîtra une fois ceux-ci fixés)
+- **Fix suggéré** : Cf BUG #1 (peupler Etablissement/Responsable dans List) + BUG #5 (corriger la concaténation). Une fois les 2 fixés, le CSV pourra inclure les vraies valeurs.
+
+#### BUG #16 (LOW) — `ADMIN` n'a pas `/filieres` dans sa sidebar (uniquement `RESPONSABLE_CATEGORIES`)
+
+- **Fichiers** : `frontend/src/lib/routes.ts` lignes 303-355 (`ADMIN_CATEGORIES` — pas de `filieres`), 358-378 (`RESPONSABLE_CATEGORIES` — `filieres` présent ligne 374)
+- **Description** : Un ADMIN authentifié n'a pas de lien sidebar vers `/filieres`. S'il tape l'URL `/filieres` directement, la page s'affiche et fonctionne (usecase autorise ADMIN, frontend affiche les filières de tous ses établissements). Mais la découverte est nulle.
+- **Sévérité** : LOW (UX inconsistency, pas de bug fonctionnel)
+- **Fix suggéré** : Ajouter `{ id: 'filieres', label: 'Filières', icon: 'GraduationCap' }` dans une catégorie ADMIN (ex: `admin-clients` ou une nouvelle `admin-academique`).
+
+#### BUG #17 (LOW) — Le `code` n'est pas validé (format/longueur/unicité par établissement)
+
+- **Fichiers** : `backend/internal/usecase/academique.go` lignes 52-71 (Create) ; `backend/internal/domain/academique.go` lignes 40-48
+- **Description** : `CreateFiliereInput.Code` est un `*string` non validé. Le frontend suggère un code (4 lettres majuscules), mais le backend accepte n'importe quelle string (longue, avec caractères spéciaux, etc.). Pas de contrainte UNIQUE sur `code` (seul `nom+etablissementId` est unique). Deux filières d'un même établissement peuvent avoir le même code.
+- **Sévérité** : LOW (intégrité données, mais pas de crash)
+- **Fix suggéré** : Si on veut `code` unique par établissement : ajouter migration `CREATE UNIQUE INDEX "Filiere_code_etablissementId_key" ON "Filiere"("code", "etablissementId") WHERE "code" IS NOT NULL`. Sinon : valider format (regex `^[A-Z0-9-]{2,10}$`) côté usecase.
+
+### 6. Risques / Follow-ups
+
+1. **Refonte cohérente avec patterns existants** : Les bugs #1, #2, #3, #4, #5, #6 sont tous des instances du même pattern déjà corrigé pour `/etablissements` (ADMIN-AUDIT-2) et `/unites-enseignement` (PROG-ACAD-1). Une refonte de `/filieres` devrait appliquer le même traitement : JOIN Etablissement + LEFT JOIN User (responsable) + subquery `_count.etudiants` + endpoint dependencies + array `etudiants` dans FindByID. **C'est le work item principal pour une refonte**.
+
+2. **Dépendances circulaires potentielles** : `Filiere.responsableId → User.id` et `User.filiereId → Filiere.id`. Si on veut peupler `responsable` (JOIN User) et `etudiants` (array de User), attention aux boucles infinies en sérialisation JSON. Les refs `UserRef` et `EtablissementRef` (structs légères) évitent ce problème — utiliser ces refs, pas les structs complets.
+
+3. **Pagination + search** : Si la refonte ajoute de la pagination (BUG #12), penser à invalidation TanStack Query sur `queryKey` incluant la page. Le `refreshFilieres` actuel invalide `['filieres']` (toutes les queryKey qui commencent par ce prefix) — ce qui marcherait pour la pagination.
+
+4. **Tests manquants** : Aucun test Go ni TS pour le module filieres (`find . -name "*filiere*"` ne retourne que 2 fichiers source). Une refonte devrait inclure des tests unitaires usecase (role checks, ownership) et des tests d'intégration repo (RLS scoping).
+
+5. **`admin_has_etablissement_access` non vérifié côté usecase pour ADMIN** : Le usecase `List/Create/Update` pour ADMIN ne check pas `admin_has_etablissement_access` (laissé à RLS). Pour un ADMIN sans accès à l'établissement X, un POST `/api/filieres { etablissementId: X }` serait bloqué par RLS (SELECT ultérieur retournerait 0 row), mais l'INSERT passerait (RLS OFF) — la filière serait créée mais invisible à l'ADMIN. Comportement surprenant. Cf BUG #7 fix suggéré (b).
+
+6. **`CountDependencies` ne filtre pas par `actif`** : `SELECT count(*) FROM "Epreuve" WHERE "filiereId" = $1` compte toutes les épreuves (y compris supprimées). Si on veut n'afficher que les épreuves "vivantes", ajouter `AND "deletedAt" IS NULL` (si la table Epreuve a une colonne deletedAt — à vérifier).
+
+7. **Endpoint `GET /api/filieres/{id}/etudiants` manquant** : Le frontend `handleViewDetail` voudrait afficher la liste des étudiants. Plutôt que d'alourdir `FindByID` avec un array potentiellement grand (200+ étudiants), préférer un endpoint dédié paginé. Le frontend pourrait l'appeler lazily (au scroll dans la dialog de détail).
+
+8. **`BulkFiliereInput.Action == "delete"` est équivalent à `"deactivate"`** : aucune différence côté backend (les deux mettent `actif=false`). Le frontend affiche des labels différents ("Supprimer" vs "Désactiver") avec couleurs différentes (destructive vs warning), mais l'effet est identique. Soit documenter que "Supprimer" = "Désactiver" (suppression logique), soit implémenter un vrai hard delete (DELETE FROM avec gestion des cascades) — mais le schéma actuel n'a pas de colonne `deletedAt`, donc hard delete = perte de données (FK CASCADE sur Etablissement, mais SET NULL sur User.filiereId). **Recommandation** : conserver soft delete, mais unifier le vocabulaire UI ("Désactiver" partout, ou "Archiver").
+
+### 7. Endpoints live (curl, sans auth = 401 attendu)
+
+```
+GET    /api/filieres              → 401 {"error":"authentication required"}  ✅ route existe
+GET    /api/filieres/export       → 401  ✅
+GET    /api/filieres/{id}         → 401  ✅
+GET    /api/filieres/bulk         → 401  ✅ (mais PATCH est la méthode attendue)
+POST   /api/filieres              → 401  ✅
+PATCH  /api/filieres/bulk         → 401  ✅
+PATCH  /api/filieres/{id}         → 401  ✅
+DELETE /api/filieres/{id}         → 401  ✅
+```
+
+Toutes les routes sont enregistrées et répondent. Backend déployé sur `https://sect-s1pb.onrender.com` (Vercel rewrite via `vercel.json`).
+
+### 8. Résumé exécutif
+
+Le module `/filieres` est **fonctionnellement complet côté CRUD** (List/Get/Create/Update/SoftDelete/Bulk/Export) et **sécurisé** (RLS sur SELECT, checks role+ownership côté usecase sur writes). Mais il souffre de **3 bugs CRITIQUES** qui dégradent fortement l'UX :
+
+1. **List/Get ne peuplent pas les relations** (`etablissement`, `responsable`, `_count.etudiants`) → la page /filieres affiche des "—" et "0 étudiants" partout.
+2. **`deleteFiliere` ne retourne pas les `dependencies`** alors que le frontend les lit → le toast de suppression est toujours générique.
+3. **`handleOpenDelete` preview** lit `data._count` qui n'existe pas → la dialog de confirmation n'affiche jamais les dépendances.
+
+S'y ajoutent **2 bugs HIGH** (section "Étudiants inscrits" du detail toujours vide, export CSV malformé avec 8 colonnes au lieu de 7) et **12 bugs MEDIUM/LOW** (FK violations→500, type mismatch `_count` vs `countEtudiants`, dropdowns cachés pour RESPONSABLE, RLS policy morte, pas de pagination, pas de validation code, etc.).
+
+**La refonte devrait prioritairement** appliquer le pattern déjà éprouvé pour `/etablissements` (ADMIN-AUDIT-2) et `/unites-enseignement` (PROG-ACAD-1) : JOIN + subqueries + populate les refs + exposer `dependencies` + array `etudiants`. C'est un work item estimé à ~150 lignes Go (repo + usecase + handler) + ~50 lignes TS (alignement types frontend) —hors pagination et tests.
+
+
+---
+Task ID: FILIERES-CRITICAL-FIX-1
+Agent: Z.ai Code (general-purpose sub agent)
+Task: Fix 3 CRITICAL bugs critiques filières (audit FILIERES-AUDIT-1 #1, #2, #3)
+
+Work Log:
+
+Contexte : application du pattern déjà éprouvé pour `/etablissements` (ADMIN-AUDIT-2)
+et `/unites-enseignement` (PROG-ACAD-1) — JOIN + subqueries + populate refs +
+exposer `dependencies` + array `etudiants`. 3 bugs CRITICAL traités en une passe.
+
+BUG #1 (CRITICAL) — `List` et `FindByID` ne peuplaient pas `etablissement`,
+`responsable`, `_count.etudiants` → la page /filieres affichait « — » et « 0 étudiant »
+partout même si la DB disait le contraire.
+
+Fix backend (domain + repository) :
+- `domain.Filiere` : remplacement de `CountEtudiants *int` (top-level, jamais peuplé,
+  clé JSON `countEtudiants` ≠ `_count.etudiants` attendu par le frontend) par
+  `Count *FiliereCount` (style Prisma, clé `_count,omitempty`). Ajout de
+  `Etudiants []FiliereEtudiant` pour le detail dialog.
+- Nouveaux structs : `FiliereCount { Etudiants int json:"etudiants" }`,
+  `FiliereEtudiant { ID, Name, Email, Actif, CreatedAt }` (5 champs attendus par le
+  type `FiliereDetail.etudiants` du frontend — `UserRef` seul n'avait que 3 champs).
+- `FiliereRepository.List` : rewrite avec LEFT JOIN `Etablissement` (e.id, e.nom) +
+  LEFT JOIN `User` (u.id, u.name, u.email pour le responsable) + subquery scalaire
+  `(SELECT count(*) FROM "User" stu WHERE stu."filiereId" = f."id" AND stu."role" =
+  'ETUDIANT' AND stu."actif" = true)`. Colonnes filtrées qualifiées `f.` pour éviter
+  l'ambiguïté (User a aussi `actif`, `responsableId`, etc.). Scan custom inline
+  (10 cols Filiere + 2 etab + 3 resp + 1 count) avec `*string` pour les LEFT JOIN
+  nullables. RLS-ON conservé (pattern `db.WithTx` + claims, comme etablissements.go).
+- `FiliereRepository.FindByID` : même JOIN + subquery + 2e requête
+  `SELECT id, name, email, actif, createdAt FROM "User" WHERE filiereId = $1 AND
+  role = 'ETUDIANT' ORDER BY name ASC LIMIT 100` pour peupler `Etudiants []FiliereEtudiant`.
+- `scanFiliere` (helper) inchangé — toujours utilisé par `Create` et `Update` (qui
+  retournent un `Filiere` bare sans relations ; le frontend ignore ces champs sur
+  Create/Update via `omitempty`).
+
+BUG #2 (CRITICAL) — `deleteFiliere` response ne contenait pas `dependencies` alors
+que le frontend `handleDelete` lit `data.dependencies` pour le toast.
+
+Fix backend (handler) :
+- `deleteFiliere` : appel best-effort à `s.filiereUC.GetDependencies(ctx, claims, id)`
+  après le soft-delete (les counts sont les mêmes avant/après car `actif=false` ne
+  change pas les FK). Response désormais `{message, filiere, dependencies}`.
+- Note : pas de 409 Conflict pre-check sur le DELETE car le soft-delete ne provoque
+  pas d'erreur FK (motivation du task description « instead of actually deleting and
+  getting a FK error 500 » ne s'applique pas). Le frontend bloque déjà la
+  confirmation côté UI via `canDelete` (cf BUG #3).
+
+BUG #3 (HIGH→CRITICAL per task scope) — `handleOpenDelete` preview lisait
+`data._count?.etudiants` sur la response GET /{id} qui ne contenait jamais `_count`.
+
+Fix full-stack :
+- Backend : nouveau `FiliereRepository.GetFiliereDependencies(ctx, id)` retourne
+  `*FiliereDependencies{EtudiantsCount, UEsCount, EpreuvesCount, CanDelete}` via
+  une seule query SELECT avec 3 subqueries scalaires (User role=ETUDIANT actif,
+  UniteEnseignement actif, Epreuve deletedAt IS NULL). `CanDelete =
+  EtudiantsCount == 0 && UEsCount == 0`. Interface `FiliereRepository` étendue.
+- Usecase : `FiliereUseCase.GetDependencies` (check role ADMIN/RESPONSABLE +
+  délègue au repo).
+- Handler : `getFiliereDependencies` retourne bare `FiliereDependencies` JSON.
+- Router : `r.Get("/{id}/dependencies", s.getFiliereDependencies)` déclaré AVANT
+  `r.Get("/{id}", s.getFiliere)` pour éviter toute ambiguïté de routing chi
+  (chi route par segments, donc /{id}/dependencies (2 segs) ≠ /{id} (1 seg) de
+  toute façon, mais l'ordre documente l'intention).
+- Frontend : `handleOpenDelete` ne fetch plus GET /{id} mais GET /{id}/dependencies.
+  State `deleteDependencies` re-typée en `{etudiantsCount, uesCount, epreuvesCount,
+  canDelete}`. Delete dialog affiche les 3 counts + message « Suppression
+  impossible » si `!canDelete` + « Suppression possible » si `canDelete`.
+  Bouton de confirmation désactivé si `!canDelete`. Toast `handleDelete` mis à jour
+  pour lire les nouveaux noms de champs (`etudiantsCount`, `epreuvesCount`, `uesCount`).
+
+Fichiers modifiés (6) :
+- backend/internal/domain/academique.go — struct Filiere (+Count, +Etudiants),
+  nouveaux structs FiliereCount, FiliereEtudiant, FiliereDependencies, +1 méthode
+  interface GetFiliereDependencies.
+- backend/internal/repository/filiere.go — rewrite FindByID (JOIN+subquery+2e query),
+  rewrite List (JOIN+subquery), +GetFiliereDependencies (3 subqueries).
+- backend/internal/usecase/academique.go — +GetDependencies (role check + délégation).
+- backend/internal/transport/http/academique_handlers.go — +getFiliereDependencies
+  handler, deleteFiliere étendu (dependencies dans la response).
+- backend/internal/transport/http/router.go — +1 route GET /{id}/dependencies.
+- frontend/src/components/filieres/filieres-page.tsx — handleOpenDelete, handleDelete
+  toast, deleteDependencies state type, delete dialog (deps + canDelete messaging +
+  confirm button disabled), 0 crash points (les champs etablissement/responsable/
+  _count sont désormais peuplés côté backend — l'affichage existant du frontend
+  continue de fonctionner sans optional chaining supplémentaire).
+
+Décisions architecturales / écarts justifiés vs task description :
+1. **RLS-ON conservé pour List/FindByID/GetFiliereDependencies** (et non RLS-OFF comme
+   suggéré par constraint #3). Raison : (a) cohérent avec `etablissement.go`
+   (référence explicite du task « same as etablissements » — or etablissements.go
+   utilise `db.WithTx` = RLS-ON) ; (b) évite une régression sécurité sur `FindByID`
+   (un RESPONSABLE pourrait sinon fetch n'importe quel ID de filière hors de son
+   établissement) ; (c) l'audit (table lignes 6919-6923) documente RLS=ON pour ces
+   endpoints. La policy `Filiere_select` (is_admin+admin_has_etablissement_access OU
+   etablissementId=current_etablissement_id) est préservée. Le task description est
+   ici interne contradictoire (« same as etablissements » = RLS-ON, mais
+   « SET LOCAL row_security = off » = RLS-OFF) — audit + référence + sécurité tranchent.
+2. **Pas de 409 Conflict pre-check sur DELETE** : le task description suggérait
+   « check dependencies FIRST and return 409 if !canDelete (instead of actually
+   deleting and getting a FK error 500) » — mais le soft-delete (actif=false) ne
+   provoque pas d'erreur FK (motivation inapplicable). Le frontend bloque déjà la
+   confirmation via `disabled={... !canDelete}`. Le backend retourne simplement les
+   deps dans la response (best-effort, pour le toast). Defense-in-depth non requise.
+3. **Struct dédiée `FiliereEtudiant`** (au lieu d'étendre `UserRef`) : `UserRef{ID,
+   Name, Email}` n'avait que 3 champs, le frontend attend 5 (id, name, email, actif,
+   createdAt). Étendre `UserRef` aurait pollué les autres usages (EtablissementRef,
+   AffectationRef). Un nouveau struct dédié est plus propre.
+4. **`CountDependencies` conservé** (interface + impl) bien que mort (0 call site,
+   per audit) — pour ne pas casser un éventuel appel futur. `GetFiliereDependencies`
+   est ajouté à côté.
+5. **router.go utilise des espaces** (anomalie codebase — seul fichier Go à utiliser
+   8-space indent au lieu de tabs). Mes additions à ce fichier matchent le style
+   existant (espaces) pour éviter mixed-indentation qui casserait gofmt/Render build.
+   Tous les autres fichiers modifiés (4 backend + 1 frontend) utilisent tabs.
+
+Vérifications :
+- Brace/paren/bracket balance (Python script, stripping strings/comments/raw strings) :
+  OK pour les 5 fichiers Go (braces=0, parens=0, brackets=0).
+- Tab-indentation check (`grep -cPn '^( +)\S'`) : 0 pour les 4 fichiers Go tab-indented
+  (academique.go domain, filiere.go repo, academique.go usecase, academique_handlers.go).
+  router.go : 461 lignes space-indented (anomalie préexistante, mes additions matchent).
+- `cat -A` sur sections critiques du Go : `^I` (tab) confirmé pour toutes les lignes
+  indentées des fichiers tab-indented.
+- Imports vérifiés : `time` était unused dans filiere.go (je l'avais ajouté par erreur,
+  puis retiré — les scans utilisent `&etu.CreatedAt` qui est `time.Time` via le type
+  domain, pas de référence directe au package `time` côté repo).
+- pgx Simple Protocol : subqueries `WHERE "filiereId" = $1` — un seul placeholder $1,
+  pas de réutilisation. List utilise `$N`/`$N+1` distincts pour search ILIKE (pattern
+  SESSIONS-SEARCH-1 préservé).
+- Frontend : types `FiliereItem` (etablissement, _count non-optionnels) et
+  `FiliereDetail.etudiants` inchangés — ils sont désormais satisfaits par la response
+  backend (plus de fallback `?? '—'` / `?? 0` déclenché en pratique).
+
+SQL queries utilisées (récap) :
+- `List` :
+  ```sql
+  SELECT f."id", f."nom", f."code", f."etablissementId", f."responsableId",
+         f."description", f."nbEtudiants", f."actif", f."createdAt", f."updatedAt",
+         e."id" AS etab_id, e."nom" AS etab_nom,
+         u."id" AS resp_id, u."name" AS resp_name, u."email" AS resp_email,
+         (SELECT count(*) FROM "User" stu WHERE stu."filiereId" = f."id"
+          AND stu."role" = 'ETUDIANT' AND stu."actif" = true) AS count_etu
+  FROM "Filiere" f
+  LEFT JOIN "Etablissement" e ON e."id" = f."etablissementId"
+  LEFT JOIN "User" u ON u."id" = f."responsableId"
+  <where dynamique sur f.*>
+  ORDER BY f."createdAt" DESC
+  ```
+- `FindByID` : même SELECT (WHERE f."id" = $1) + 2e requête
+  `SELECT "id", "name", "email", "actif", "createdAt" FROM "User" WHERE "filiereId" = $1
+   AND "role" = 'ETUDIANT' ORDER BY "name" ASC LIMIT 100`.
+- `GetFiliereDependencies` :
+  ```sql
+  SELECT
+    (SELECT count(*) FROM "User" WHERE "filiereId" = $1 AND "role" = 'ETUDIANT' AND "actif" = true),
+    (SELECT count(*) FROM "UniteEnseignement" WHERE "filiereId" = $1 AND "actif" = true),
+    (SELECT count(*) FROM "Epreuve" WHERE "filiereId" = $1 AND "deletedAt" IS NULL)
+  ```
+
+New `Filiere` struct shape (JSON) :
+```json
+{
+  "id": "uuid",
+  "nom": "Informatique",
+  "code": "INFO",
+  "etablissementId": "uuid",
+  "responsableId": "uuid",
+  "description": "...",
+  "nbEtudiants": 120,
+  "actif": true,
+  "createdAt": "...",
+  "updatedAt": "...",
+  "etablissement": { "id": "uuid", "nom": "Université N1" },
+  "responsable": { "id": "uuid", "name": "M. Dupont", "email": "dupont@..." },
+  "_count": { "etudiants": 14 },
+  "etudiants": [ { "id": "...", "name": "...", "email": "...", "actif": true, "createdAt": "..." } ]
+}
+```
+(`etudiants` array présent uniquement dans FindByID ; omis dans List/Create/Update
+via `omitempty`. `etablissement`/`responsable`/`_count` omis si non peuplés.)
+
+New endpoint : `GET /api/filieres/{id}/dependencies` ( derrière `RequireAuth`).
+Response shape :
+```json
+{ "etudiantsCount": 14, "uesCount": 3, "epreuvesCount": 7, "canDelete": false }
+```
+
+Stage Summary:
+- 3 bugs CRITICAL du module `/filieres` éliminés en une passe (Bug #1 List/FindByID
+  sans JOIN, Bug #2 DELETE sans dependencies, Bug #3 handleOpenDelete preview cassé).
+- Pattern cohérent avec ADMIN-AUDIT-2 (etablissements) et PROG-ACAD-1 (UEs) : JOIN
+  Etablissement + LEFT JOIN User (responsable) + subquery _count.etudiants + endpoint
+  dependencies dédié + array etudiants dans FindByID.
+- 6 fichiers modifiés (5 backend Go + 1 frontend TSX). Aucun nouveau fichier.
+- 0 nouveau crash frontend potentiel (les optional chainings `?? '—'` / `?? 0` restent
+  en place comme safety net, mais ne sont plus déclenchés en pratique car le backend
+  peuple désormais les champs).
+- RLS-ON conservé pour les reads (contrairement à la suggestion RLS-OFF du task
+  description — justifié par cohérence avec etablissements.go + audit + sécurité
+  FindByID pour RESPONSABLE).
+- CountDependencies (dead code per audit) conservé pour non-casser l'interface ;
+  GetFiliereDependencies ajouté à côté.
+- Suivi des 14 autres bugs de l'audit (HIGH/MEDIUM/LOW) non traités ici : BUG #4
+  (étudiants inscrits detail dialog vide) est désormais fixé de facto par le 2e SELECT
+  de FindByID ; BUG #5 (export CSV 8 colonnes) et #6 (type mismatch _count) — #6 est
+  fixé de facto par le rename countEtudiants → _count ; BUG #7 à #17 restent ouverts
+  (pagination, FK 500, dropdowns RESPONSABLE, RLS policy morte, validation code,
+  etc. — hors scope de ce fix critique).
