@@ -271,7 +271,7 @@ func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentI
 		return nil, fmt.Errorf("disable rls: %w", err)
 	}
 
-	row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL`, columnsDocument), documentID)
+	row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`, columnsDocument), documentID)
 	d, err := scanDocument(row)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -284,6 +284,40 @@ func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentI
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return d, nil
+}
+
+// CheckDocumentAccess vérifie qu'un document appartient à une UE de la
+// filière + niveau de l'étudiant. RLS désactivé (lecture système).
+// EXAM-PREP-READER-SECURITY-FIX-1.
+func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return false, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+		return false, fmt.Errorf("disable rls: %w", err)
+	}
+
+	var exists bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM "Document" d
+			JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+			WHERE d."id" = $1 AND d."deletedAt" IS NULL
+				AND ue."filiereId" = $2
+				AND (ue."niveau" = $3 OR ue."niveaux" LIKE $4)
+		)
+	`, documentID, filiereID, niveau, "%\""+niveau+"\"%").Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check document access: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit: %w", err)
+	}
+	return exists, nil
 }
 
 // ============================================================
