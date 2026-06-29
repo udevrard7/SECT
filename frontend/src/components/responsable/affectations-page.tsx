@@ -192,6 +192,19 @@ const TYPE_STYLES: Record<string, { checked: string; unchecked: string }> = {
   },
 }
 
+// ─── Current academic year (dynamic, AFFECTATIONS-FIX-A10) ───
+// Avant, l'année par défaut était hardcodée '2024-2025' → en 2026, l'utilisateur
+// voyait une valeur obsolète. Désormais on calcule l'année universitaire courante
+// (septembre = rentrée → year-year+1, sinon year-1-year).
+function currentAnneeUniversitaire(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  if (now.getMonth() >= 8) { // septembre (0-indexed, 8 = sept)
+    return `${year}-${year + 1}`
+  }
+  return `${year - 1}-${year}`
+}
+
 // ─── Main Component ───
 
 export function AffectationsPage() {
@@ -204,7 +217,7 @@ export function AffectationsPage() {
   const [niveauFilter, setNiveauFilter] = useState('all')
   const [enseignantSearch, setEnseignantSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('all')
-  const [anneeFilter, setAnneeFilter] = useState('2024-2025')
+  const [anneeFilter, setAnneeFilter] = useState(currentAnneeUniversitaire())
 
   // ─── Matrix filter state ───
   const [matrixFiliereFilter, setMatrixFiliereFilter] = useState('all')
@@ -325,7 +338,7 @@ export function AffectationsPage() {
   const [addTypeSeances, setAddTypeSeances] = useState<Set<string>>(new Set(['CM']))
   const [addGroupe, setAddGroupe] = useState('')
   const [addVolumeHeures, setAddVolumeHeures] = useState('')
-  const [addAnnee, setAddAnnee] = useState('2024-2025')
+  const [addAnnee, setAddAnnee] = useState(currentAnneeUniversitaire())
   const [addCommentaire, setAddCommentaire] = useState('')
 
   // ─── Edit form state ───
@@ -507,7 +520,7 @@ export function AffectationsPage() {
     setAddTypeSeances(new Set(['CM']))
     setAddGroupe('')
     setAddVolumeHeures('')
-    setAddAnnee(anneeFilter || '2024-2025')
+    setAddAnnee(anneeFilter || currentAnneeUniversitaire())
     setAddCommentaire('')
     setAddDialogOpen(true)
   }
