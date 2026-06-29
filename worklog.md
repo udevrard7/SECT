@@ -8352,3 +8352,69 @@ Stage Summary:
 - **Aucune migration DB** nécessaire.
 - **Go toolchain** : compile-check avant push (0 échec de build Render).
 - ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+Task ID: ETAB-FIX-STEP-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 1 du fix module /etablissements — F13+F7+F8+F1+F22+F11 (CRITICAL+HIGH frontend).
+
+Work Log:
+- F13 (CRITICAL): crash runtime dialog Détails sur `f._count.etudiants` undefined → ErrorBoundary attrapait "Cannot read properties of undefined (reading 'etudiants')" → page cassée. Fix : optional chaining `f._count?.etudiants ?? 0` (etablissements-page.tsx:992).
+- F7 (HIGH): édition établissement cassée pour RESPONSABLE. handleSubmit envoyait systématiquement `pays` dans le body → backend 403 "RESPONSABLE ne peut pas modifier pays ou actif". Fix : omettre `pays` du body quand `user.role !== 'ADMIN'` (l'ADMIN garde tous les droits). Body typé en `Record<string, string | null>` pour permettre l'ajout conditionnel.
+- F8 (HIGH): bouton toggle actif visible pour RESPONSABLE mais backend 403. Fix : masqué pour non-ADMIN (`{isAdmin && <Button>...</Button>}`). Bonus : extraction `err.error` du body backend au lieu du message générique.
+- F1 (CRITICAL): bouton Supprimer absent du card → setDeleteTarget jamais appelé → AlertDialog jamais ouvert → handleDelete code mort. Fix : ajout bouton Supprimer (ADMIN only, `border-destructive/40 text-destructive hover:bg-destructive/10`, icône Trash2) qui set deleteTarget → AlertDialog s'ouvre.
+- F22 (MEDIUM): toggle actif sans confirmation (impact connexion users + accès filières). Fix : AlertDialog de confirmation via `toggleTarget` state + `confirmToggleActive()` handler.
+- F11 (HIGH): AlertDialogAction fire-and-forget sur handleDelete. Fix : `isDeleting` state + `e?.preventDefault()` pour empêcher fermeture auto + boutons disabled pendant mutation + extraction err.error.
+- Bonus: `useAuthStore` désormais utilisé (was import mort) pour récupérer `user.role`. `handleDelete` extrait `err.error` du body backend. AlertDialog de suppression : `onOpenChange` vérifie `!isDeleting` avant fermeture. Description suppression étendue (cascade UE/épreuves/sessions/certificats).
+- Imports : ajout `Trash2` (lucide-react).
+- Aucune migration DB. Aucun changement backend.
+- Vérifications : `tsc --noEmit` → 0 erreur sur etablissements-page.tsx (erreurs pré-existantes dans autres fichiers non touchés). `eslint` → 0 erreur.
+- Commit 45c0eed poussé. Rebase nécessaire (1 commit distant enseignants-page), résolu sans conflit.
+
+Vérification Agent Browser (Vercel, compte registrar@uniabidjan.com RESPONSABLE, commit 45c0eed live) :
+- Page /etablissements charge : 1 card "The University of Abidjan" avec 2 boutons (Modifier, Détails). ✅ Bouton "Désactiver" absent pour RESPONSABLE (F8 fix). ✅ Bouton "Supprimer" absent pour RESPONSABLE (F1: ADMIN only). ✅
+- Click Modifier → dialog s'ouvre, modification "Abidjan Updated" → "Abidjan", click Enregistrer → toast "Établissement modifié — The University of Abidjan a été mis à jour." ✅ (F7 fix — avant : toast "Erreur — RESPONSABLE ne peut pas modifier pays ou actif").
+- Click Détails → dialog s'ouvre, affiche 3 filières avec "0 étud." chacune, section "Utilisateurs (0)" avec "Aucun utilisateur dans cet établissement." ✅ (F13 fix — avant : ErrorBoundary "Une erreur est survenue" + console error "Cannot read properties of undefined (reading 'etudiants')").
+- Aucune erreur console, aucune page d'erreur. ✅
+
+Stage Summary:
+- **6 bugs frontend traités** : F13 (CRITICAL) + F7 (HIGH) + F8 (HIGH) + F1 (CRITICAL) + F22 (MEDIUM) + F11 (HIGH).
+- **1 commit poussé** : 45c0eed (frontend uniquement, +107/-31 lignes sur etablissements-page.tsx).
+- **Module /etablissements désormais utilisable pour RESPONSABLE** : édition fonctionne, dialog Détails ne crash plus.
+- **Bouton Supprimer désormais visible pour ADMIN** (était invisible avant — code mort).
+- **Confirmations AlertDialog** : toggle actif et suppression demandent désormais confirmation.
+- **Aucune migration DB** nécessaire. **Aucun changement backend**.
+- **Pattern respecté** : useAuthStore pour rôle, extraction err.error, AlertDialog de confirmation (cohérent avec modules /filieres, /affectations, /etudiants).
+- Bugs non traités dans cette étape : E1+E2+E5+E6 (CRITICAL/HIGH backend), F2+F3+F4 (HIGH frontend — étape 5), E3+E4+E9+E15 (backend — étapes 3+4), F17 (watermark panel code mort — à décider).
+
+---
+Task ID: ETAB-FIX-STEP-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 2 du fix module /etablissements — E2 (CRITICAL SQL) fonction RLS admin_has_etablissement_access.
+
+Work Log:
+- Création migration 000013_fix_admin_has_etablissement_access.up.sql :
+  - CREATE OR REPLACE FUNCTION public.admin_has_etablissement_access(p_etablissement_id TEXT)
+  - Ajout filtres : AND "statut" = 'APPROUVE' AND ("dateDebut" IS NULL OR "dateDebut" <= CURRENT_TIMESTAMP) AND ("dateFin" IS NULL OR "dateFin" >= CURRENT_TIMESTAMP)
+  - COMMENT ON FUNCTION mis à jour pour refléter le nouveau comportement.
+  - Alignée sur le repository Go CheckAccess (internal/repository/etablissement_access.go:255-261).
+- Création migration 000013_fix_admin_has_etablissement_access.down.sql :
+  - Rollback vers la version bugée d'origine (sans filtres statut/dates).
+  - ATTENTION : réintroduit le bug E2. À n'utiliser qu'en cas de régression avérée.
+- Mise à jour backend/db/db/reference/schema.sql : la définition de la fonction (lignes 1668-1684) reflète désormais le fix, pour cohérence avec les migrations.
+- Application directe à la base Neon de production (script /home/z/sect-tooling/apply-migration-013.mjs avec pg) — pas de table schema_migrations en DB, les migrations ne sont pas tracées automatiquement.
+- Validation sur Neon avec 4 cas de test (script verify-migration-013e.mjs, dans une transaction unique comme le fait db.WithTx côté Go) :
+  - Cas 1 (statut=APPROUVE, dateFin=2020-12-31, expiré) → has_access = FALSE ✅ (avant: TRUE — bug)
+  - Cas 4 (statut=APPROUVE, dateDebut=2027, accès futur) → has_access = FALSE ✅ (avant: TRUE — bug)
+  - Cas 5 (statut=REFUSE) → has_access = FALSE ✅ (avant: TRUE — bug)
+  - Cas 3 (statut=APPROUVE, dates NULL, accès valide) → has_access = TRUE ✅ (avant: TRUE — inchangé)
+  - Piège rencontré : set_config(..., true) scope les claims à la transaction courante (is_local=true). Les tests initiaux échouaient car chaque SELECT autonome perdait les claims. La validation correcte nécessite BEGIN + set_config + UPDATE + SELECT dans la même tx (pattern db.WithTx du backend Go).
+- Commit 018b5a7 poussé. Rebase nécessaire (1 commit distant), résolu sans conflit. Render déployé (live, fonction SQL appliquée).
+
+Stage Summary:
+- **1 bug CRITICAL traité** : E2 (fonction RLS admin_has_etablissement_access ne filtrait pas par statut/dates).
+- **Impact masse** : ~32 policies RLS utilisent cette fonction (via belongs_to_etablissement() ou directement) — User, Filiere, Epreuve, Session, Document, Certificat, etc. Toutes héritent désormais du filtrage correct.
+- **1 commit poussé** : 018b5a7 (migration SQL + schema.sql référence).
+- **Migration appliquée à Neon** en production (fonction CREATE OR REPLACE, immédiate).
+- **Rollback disponible** : migration down.sql restore la version bugée (à n'utiliser qu'en cas de régression).
+- **Aucun changement de code Go** nécessaire (la fonction est consommée par RLS au niveau DB).
+- Bugs non traités : E1+E6 (CRITICAL backend Go — wire ValidateAccessForEtablissement), E5/E18/E4/E3/E9 (HIGH backend), F2/F3/F4 (HIGH frontend).

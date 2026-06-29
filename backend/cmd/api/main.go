@@ -90,8 +90,10 @@ func main() {
         signer := jwt.NewSigner(cfg.JWTSecret)
         authUC := usecase.NewAuthUseCase(authRepo, signer)
         userUC := usecase.NewUserUseCase(userRepo)
-        etabUC := usecase.NewEtablissementUseCase(etabRepo)
+        // E1/E6 : accessUC doit être créé AVANT etabUC car etabUC dépend de
+        // accessUC pour valider l'autorisation ADMIN sur les writes.
         accessUC := usecase.NewAccessUseCase(accessRepo)
+        etabUC := usecase.NewEtablissementUseCase(etabRepo, accessUC)
         filiereUC := usecase.NewFiliereUseCase(filiereRepo)
         ueUC := usecase.NewUEUseCase(ueRepo)
         efUC := usecase.NewEnseignantFiliereUseCase(efRepo)
