@@ -8154,3 +8154,37 @@ Stage Summary:
 - **Go toolchain** : compile-check avant chaque push (0 échec de build Render).
 - **Bugs non traités** (LOW optionnels) : E10 (GET /api/users/{id}/dependencies endpoint), E11 (data cleanup "Genie Tech").
 - ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+---
+Task ID: ETUDIANTS-COSMETIC-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Traitement des 2 bugs LOW restants du module /etudiants (E10 + E11).
+
+Work Log:
+- E10 (LOW) — endpoint dependencies pour preview suppression :
+  - Backend : handler getUserDependencies (GET /api/users/{id}/dependencies). Retourne {sessions, reponses, soumissions, canDelete, userId, userName, userEmail}. Pattern identique à filieres/affectations/UE dependencies.
+  - Backend : usecase CountUserDependencies exportée (avant privé countUserDependencies).
+  - Backend : route /{id}/dependencies enregistrée sous RequireRole RESPONSABLE+ADMIN.
+  - Backend (bonus fix E4) : query Reponse corrigée. Avant, 'SELECT count(*) FROM Reponse WHERE etudiantId = $1' crashait systématiquement (la table Reponse n'a PAS de colonne etudiantId — elle référence sessionId). Le best-effort masquait le bug (reponses=0 toujours). Fix : JOIN SessionPassation s ON s.id = r.sessionId WHERE s.etudiantId = $1.
+  - Frontend : useQuery deleteDepsQuery (enabled quand deleteTarget set). AlertDialog de suppression étendu : encart warning avec liste précise (N session(s), M réponse(s), K soumission(s)) si deps > 0, encart succès vert 'Aucune donnée associée' si deps = 0. États loading + error gérés.
+- E11 (LOW) — cleanup data : compte de test 'Genie Tech' (genie.tech@uniabidjan.net, ETUDIANT, inactif) supprimé de la DB Neon. Étudiants restants : 14 (avant 15).
+- Compile-check Go (exit 0) + eslint (0 erreurs) + tsc (0 erreurs) avant push.
+- Commit 19501a7 poussé. Render déployé (live).
+
+Vérification API production (Render, commit 19501a7 live) :
+- GET /api/users/{id}/dependencies (étudiant AHOU avec sessions) : {sessions:1, reponses:19, soumissions:0, canDelete:false, userName, userEmail} ✅
+- Le fix Reponse (E4/E10) est validé : 19 réponses comptées (avant : 0 à cause du bug masqué).
+
+Vérification Agent Browser (Vercel, compte registrar) :
+- Page /etudiants : menu actions étudiant → "Supprimer l'étudiant" ✅
+- AlertDialog "Supprimer définitivement l'étudiant" s'ouvre ✅
+- Encart warning "Données associées à cet étudiant" avec "1 session(s) d'examen" + "19 réponse(s) à des questions" ✅ (counts exacts identiques à l'API)
+
+Stage Summary:
+- **2 bugs LOW traités** : E10 (dependencies endpoint + frontend preview) + E11 (cleanup Genie Tech).
+- **Bonus fix E4** : bug Reponse corrigé (query crashait systématiquement, best-effort masquait). Les counts de réponses sont désormais corrects dans DELETE response + dependencies endpoint.
+- **Module /etudiants 100% complet** : tous les 11 bugs de l'audit initial (E1-E11) sont désormais traités.
+- **Pattern dependencies étendu à User** (était déjà sur Filiere + UE + Affectation) — cohérence architecturale complète.
+- **1 commit poussé** : 19501a7 (backend dependencies + route + fix Reponse + frontend AlertDialog + cleanup DB).
+- **Aucune migration DB** nécessaire.
+- **Rappel sécurité** : mots de passe prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
