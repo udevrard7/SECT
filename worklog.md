@@ -8303,3 +8303,52 @@ Stage Summary:
 - **1 commit poussé** : 4f2db43 (frontend EN9 seulement, EN8 aucun changement).
 - **Aucune migration DB** nécessaire.
 - ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+---
+Task ID: EVALUATIONS-AUDIT-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Audit + correction du module /evaluations côté responsable (8 bugs EV1-EV8, corrections par priorité).
+
+Work Log:
+- Audit complet du module /evaluations : frontend (1093 lignes, vue responsable lecture seule) + backend (epreuve_handlers + repository/epreuve.go) + DB Neon (Epreuve + contenu JSON + SessionPassation). 8 bugs identifiés (2 CRITICAL + 2 HIGH + 2 MEDIUM + 2 LOW).
+- Vérification DB : Filiere a un champ responsableId (EV2 utilisable). Questions stockées dans Epreuve.contenu JSON (clé "questions", 25 items par épreuve), PAS dans EpreuveQuestion (0 rows — EV4 doit parser le JSON).
+- Vérification API production : GET /api/epreuves?responsableId=X → sessions:[] (EV1), filieres:[] (EV3), GET /api/epreuves/{id} → questions:[] sessions:[] (EV4).
+
+ÉTAPE 1 — CRITICAL + HIGH backend (commit cd5cab2) :
+- EV1 (CRITICAL) — sessions non hydratées pour responsable :
+  repository/epreuve.go List : l'hydratation des sessions ne se déclenchait que si EtudiantID ou EnseignantID était fourni. Le frontend evaluations-page utilise responsableId → sessions:[] pour toutes les épreuves → "Aucun participant" sur toutes les cartes, stats Alertes=0, dialog Résultats vide.
+  Fix : étendre la condition à params.ResponsableID != "" (1 ligne).
+- EV2 (CRITICAL) — ResponsableID ignoré par le repository :
+  Le handler parse responsableId, le usecase le passe au repo, mais le repo l'ignorait (aucune clause WHERE) → le responsable voyait toutes les épreuves de son établissement (via RLS) au lieu de seulement celles de ses filières.
+  Fix : WHERE EXISTS (SELECT 1 FROM "Filiere" f WHERE f."id" = "Epreuve"."filiereId" AND f."responsableId" = $X). Vérifié : Filiere a bien un champ responsableId.
+- EV3 (HIGH) — filieres non retourné par l'API :
+  Le frontend attend data.filieres pour alimenter le filtre filière. Le handler retournait seulement {epreuves: [...]}.
+  Fix : handler listEpreuves dérive les filieres uniques des épreuves retournées (map par ID) et les inclut dans la response {epreuves, filieres}.
+- EV4 (HIGH) — getEpreuve sans questions ni sessions :
+  FindByID retournait questions:[] et sessions:[]. Les questions sont stockées dans Epreuve.contenu JSON (génération IA), pas dans EpreuveQuestion (0 rows).
+  Fix :
+  - Questions : parser contenu.questions (JSON) et créer des EpreuveQuestion avec QuestionRef (id, type, enonce, difficulte, bareme, ordre).
+  - Sessions : query SessionPassation LEFT JOIN User + Resultat pour hydrater toutes les sessions (même pattern que List : epreuveID, etudiant, score, statut, resultat).
+  - Ajout champ Questions []EpreuveQuestion au struct domain.Epreuve (omitempty).
+- Bonus : EV5 (questionCount incohérent) résolu par EV4 (questions hydratées avec count correct). EV6 (EpreuveQuestion vide) résolu par EV4 (questions lues depuis contenu JSON). EV8 (stats alertes) résolu par EV1 (sessions hydratées → alertes calculées).
+
+Vérification API production (Render, commit cd5cab2 live) :
+- GET /api/epreuves?responsableId=X → 5 épreuves, 2 filieres (INFO + SEG), sessions=7 par épreuve (avant 0) ✅
+  - First session: statut=RETOURNEE, score=49.46, etudiant=ASSANI Emile Junior ✅
+- GET /api/epreuves/{id} → questions=15 (avec énoncé + bareme), sessions=7 (avec statut + score + etudiant) ✅
+
+Vérification Agent Browser (Vercel, compte registrar) :
+- Page /evaluations : 5 épreuves, stats "Total:5, Terminées:5" ✅
+- Cartes épreuves : "0/7" affiché (0 alertes sur 7 sessions) au lieu de "Aucun participant" ✅ (EV1)
+- Bouton "Filtres avancés" → clique → filtre filière "Toutes mes filières" affiché avec options INFORMATIQUE + SCIENCES ECONOMIQUES GESTION ✅ (EV3)
+- Dialog "Voir les détails" : "LISTE DES QUESTIONS" avec énoncés (Quel est le type de la variable..., Quelle instruction Python...) ✅ (EV4)
+
+Stage Summary:
+- **4 bugs traités** (EV1-EV4) + 3 résolus automatiquement (EV5, EV6, EV8).
+- **1 commit poussé** : cd5cab2 (3 fichiers : domain/epreuve.go + repository/epreuve.go + transport/http/epreuve_handlers.go).
+- **Feature principale récupérée** : la page /evaluations est désormais utilisable (participants affichés, dialog détail avec questions, dialog résultats avec sessions, filtre filière opérationnel).
+- **Scoping responsable corrigé** : le responsable ne voit que les épreuves de ses filières (avant : toutes les épreuves de l'établissement).
+- **Bugs non traités** (LOW) : EV7 (pagination — acceptable tant que volume faible).
+- **Aucune migration DB** nécessaire.
+- **Go toolchain** : compile-check avant push (0 échec de build Render).
+- ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
