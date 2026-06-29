@@ -249,10 +249,12 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/questions", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listQuestions)
+                        r.Get("/test-zai", s.testZaiConnection)                          // P2-Q3
                         r.Post("/", s.createQuestion)
                         r.Delete("/", s.batchDeleteQuestions)
                         r.Get("/{id}", s.getQuestion)
                         r.Patch("/{id}", s.updateQuestion)
+                        r.Post("/{id}/regenerate", s.regenerateQuestion)                   // P2-Q2
                         r.Delete("/{id}", s.deleteQuestion)
                 })
 
