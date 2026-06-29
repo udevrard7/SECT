@@ -8188,3 +8188,41 @@ Stage Summary:
 - **1 commit poussé** : 19501a7 (backend dependencies + route + fix Reponse + frontend AlertDialog + cleanup DB).
 - **Aucune migration DB** nécessaire.
 - **Rappel sécurité** : mots de passe prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+Task ID: ADMIN-PWD-RESET-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reset du mot de passe du super admin (compte ADMIN unique).
+
+Work Log:
+- Identification du super admin dans Neon (table "User", role='ADMIN') :
+  - 1 seul compte ADMIN trouvé : id=cmq24mga80002iapr8ylzqxum, email=ulrichdouh@gmail.com, name="Administrateur SECT".
+  - État avant reset : loginAttempts=3 (pas verrouillé, lockedUntil=NULL), mustChangePwd=false, hash bcrypt $2b$10$ (len=60).
+- Vérification de l'architecture de hash côté backend (internal/usecase/auth.go + user.go) :
+  - Confirmé : bcrypt cost 10 (constante BcryptCost=10), identique à bcryptjs côté Next.js.
+  - ChangePassword utilise bcrypt.GenerateFromPassword([]byte, 10) → hash $2b$10$.
+  - Repository.UpdatePassword SET password + mustChangePwd=false + loginAttempts=0 + lockedUntil=NULL (cohérent avec le reset appliqué ici, sauf mustChangePwd laissé à true pour forcer le changement à la prochaine connexion — sécurité).
+  - AuditAction disponible : AuditActionPasswordReset = "PASSWORD_RESET" (domain/auth.go).
+- Schéma DB réel (README pas tout à fait à jour) :
+  - Table "User" : colonnes password (pas passwordHash), name (pas firstName/lastName), actif (pas isActive), loginAttempts (pas failedLoginAttempts), mustChangePwd (pas mustChangePassword).
+  - Table "RefreshToken" : revokedAt timestamp (NULL=actif), pas de boolean revoked.
+  - Table "AuditLog" : id, userId, userEmail, action, entite, entiteId, details, adresseIp, createdAt.
+- Opération de reset (transaction BEGIN/COMMIT, script Node + pg + bcryptjs à /home/z/sect-tooling/reset-admin-pwd.mjs) :
+  1. Génération mdp temporaire fort (16 chars alphanumérique sans ambiguïtés).
+  2. Hash bcrypt cost 10 via bcryptjs.hashSync(pwd, 10) → hash $2b$10$ len=60.
+  3. Vérification bcrypt.compareSync → ✅.
+  4. UPDATE "User" SET password=$1, "loginAttempts"=0, "lockedUntil"=NULL, "mustChangePwd"=true, "updatedAt"=NOW() WHERE id=$2.
+  5. UPDATE "RefreshToken" SET "revokedAt"=NOW() WHERE "userId"=$1 AND "revokedAt" IS NULL → 29 refresh tokens révoqués (toutes les sessions existantes invalidées).
+  6. INSERT "AuditLog" action='PASSWORD_RESET', entite='User', entiteId=admin id, details JSON {reason, method, revokedRefreshTokens:29}, adresseIp='127.0.0.1'.
+- Validation end-to-end sur backend Render (https://sect-s1pb.onrender.com) :
+  - POST /api/auth/login {"identifier":"ulrichdouh@gmail.com","password":"<nouveau>"} → HTTP 200, response contient user.mustChangePwd=true + accessToken + refreshToken valides.
+  - Confirme que le hash bcrypt généré côté Node est bien reconnu par bcrypt Go (interopérabilité $2b$10$).
+- Aucun changement de code (opération DB pure). Aucun commit/push de code nécessaire. Worklog mis à jour pour traçabilité.
+
+Stage Summary:
+- **Super admin reset** : ulrichdouh@gmail.com (id cmq24mga80002iapr8ylzqxum).
+- **Nouveau mot de passe temporaire** : communiqué à l'utilisateur hors worklog (sécurité — ne pas stocker en clair dans le dépôt).
+- **mustChangePwd=true** : l'UI frontend redirigera vers /force-change-password à la prochaine connexion.
+- **29 sessions invalidées** : tous les refresh tokens actifs révoqués (force re-login partout).
+- **AuditLog** : entrée PASSWORD_RESET insérée (id audit_c05243b1bda01ba8842ae610).
+- **Validation API Render** : login HTTP 200 ✅.
+- ⚠️ **Action utilisateur requise** : se connecter à https://sect-app.vercel.app avec le mdp temporaire, puis le changer immédiatement via l'écran /force-change-password (min 8 chars, validé par le backend).
