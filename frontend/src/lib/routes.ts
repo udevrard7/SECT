@@ -524,6 +524,14 @@ export const NAV_CATEGORIES: Record<UserRole, NavCategory[]> = {
   ETUDIANT: ETUDIANT_CATEGORIES,
 }
 
+// RAPPORTS-FIX-R5 : rôles autorisés par page. Si une page n'est pas listée,
+// elle est accessible à tous les rôles authentifiés (comportement par défaut).
+// Les pages restreintes redirigent vers /dashboard si le rôle n'est pas autorisé.
+// Cohérent avec les checks backend (ex: /api/stats/responsable = RESPONSABLE+ADMIN).
+export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
+  rapports: ['RESPONSABLE', 'ADMIN'],
+}
+
 // Profile page labels (accessible from header, not sidebar)
 export const PROFILE_PAGE: Record<string, string> = {
   label: 'Mon profil',

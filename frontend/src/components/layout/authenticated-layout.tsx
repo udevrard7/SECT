@@ -11,7 +11,7 @@ import { ForceChangePasswordPage } from '@/components/auth/force-change-password
 import { AIAssistant } from '@/components/ds'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
-import { getPageIdFromSlug, PAGE_LABELS } from '@/lib/routes'
+import { getPageIdFromSlug, PAGE_LABELS, PAGE_ALLOWED_ROLES } from '@/lib/routes'
 import { useSessionKeepAlive } from '@/hooks/use-session-keepalive'
 import { Loader2 } from 'lucide-react'
 
@@ -87,6 +87,16 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
   const pageId = getPageIdFromSlug(slug)
   if (!pageId) {
     // Unknown route - redirect to dashboard
+    router.push('/dashboard')
+    return null
+  }
+
+  // RAPPORTS-FIX-R5 : garde de rôle — redirige vers /dashboard si le rôle
+  // de l'utilisateur n'est pas autorisé à voir cette page. Avant : un
+  // ENSEIGNANT/ETUDIANT qui tapait /rapports voyait la page se charger puis
+  // afficher "Aucune donnée disponible" (API 403 interprétée comme état vide).
+  const allowedRoles = PAGE_ALLOWED_ROLES[pageId]
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     router.push('/dashboard')
     return null
   }
