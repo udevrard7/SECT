@@ -705,6 +705,14 @@ export function ResponsableParametresPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        // PARAMETRES-FIX-P6 : message spécifique selon le code d'erreur.
+        if (res.status === 403) {
+          throw new Error(err.error || 'Vous n\'êtes pas autorisé à modifier ces paramètres')
+        } else if (res.status === 400) {
+          throw new Error(err.error || 'Données invalides')
+        } else if (res.status >= 500) {
+          throw new Error('Erreur serveur. Réessayez dans un instant.')
+        }
         throw new Error(err.error || 'Erreur lors de la sauvegarde')
       }
       const data = await res.json().catch(() => ({}))
