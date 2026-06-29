@@ -181,6 +181,22 @@ func (r *EtablissementRepository) Create(ctx context.Context, input domain.Creat
                 return nil, fmt.Errorf("disable rls: %w", err)
         }
 
+        etab, err := r.CreateInTx(ctx, tx, input)
+        if err != nil {
+                return nil, err
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return nil, fmt.Errorf("commit: %w", err)
+        }
+        return etab, nil
+}
+
+// CreateInTx insère un établissement dans une transaction existante.
+// ABONNEMENTS-FIX-A3 : extrait de Create pour permettre au usecase de faire
+// une transaction atomique (étab + responsable + abonnement). Le caller gère
+// begin/commit/rollback + SET LOCAL row_security = off.
+func (r *EtablissementRepository) CreateInTx(ctx context.Context, tx pgx.Tx, input domain.CreateEtablissementInput) (*domain.Etablissement, error) {
         id := uuid.NewString()
         pays := "Côte d'Ivoire"
         if input.Pays != nil && *input.Pays != "" {
@@ -210,10 +226,6 @@ func (r *EtablissementRepository) Create(ctx context.Context, input domain.Creat
                         return nil, &domain.ConflictError{Message: "nom d'établissement déjà utilisé"}
                 }
                 return nil, fmt.Errorf("create etablissement: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
         }
         return etab, nil
 }

@@ -92,7 +92,9 @@ func main() {
         // E1/E6/U1/U7 : accessUC doit être créé AVANT etabUC et userUC car les
         // deux dépendent de accessUC pour valider l'autorisation ADMIN sur les writes.
         accessUC := usecase.NewAccessUseCase(accessRepo)
-        etabUC := usecase.NewEtablissementUseCase(etabRepo, accessUC)
+        // ABONNEMENTS-FIX-A3 : pool passé au EtablissementUseCase pour la
+        // transaction atomique du wizard de souscription (étab + responsable + abonnement).
+        etabUC := usecase.NewEtablissementUseCase(etabRepo, accessUC, pool)
         // U5 (CRITICAL) : UserUseCase dépend de authRepo pour ResetPassword +
         // UnlockAccount + RevokeAllUserRefreshTokens + CreateAuditLog.
         // U1/U7 (CRITICAL) : UserUseCase dépend de accessUC pour ValidateAccessForEtablissement.

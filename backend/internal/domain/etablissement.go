@@ -4,6 +4,8 @@ package domain
 import (
         "context"
         "time"
+
+        "github.com/jackc/pgx/v5"
 )
 
 // Etablissement représente un établissement scolaire.
@@ -88,6 +90,17 @@ type CreateEtablissementInput struct {
         FormatMatricule  *string `json:"formatMatricule,omitempty"`
         ExempleMatricule *string `json:"exempleMatricule,omitempty"`
         RegexMatricule   *string `json:"regexMatricule,omitempty"`
+        // ABONNEMENTS-FIX-A3 : champs wizard de souscription (optionnels).
+        // Si ResponsableEmail + PlanID sont fournis, le usecase Create crée en plus
+        // un responsable (direct ou invitation) + un abonnement, le tout en une
+        // transaction atomique. Avant, ces champs étaient envoyés par le frontend
+        // mais silencieusement ignorés → seul l'établissement était créé.
+        ResponsableNom        *string `json:"responsableNom,omitempty"`
+        ResponsableEmail      *string `json:"responsableEmail,omitempty"`
+        ResponsableTelephone  *string `json:"responsableTelephone,omitempty"`
+        ResponsableMode       *string `json:"responsableMode,omitempty"` // "direct" | "invitation"
+        PlanID                *string `json:"planId,omitempty"`
+        PeriodeFacturation    *string `json:"periodeFacturation,omitempty"` // "mensuel" | "annuel"
 }
 
 // UpdateEtablissementInput — partial update.
@@ -126,6 +139,8 @@ type EtablissementRepository interface {
         FindByID(ctx context.Context, id string) (*Etablissement, error)
         List(ctx context.Context, params EtablissementListParams) ([]*Etablissement, error)
         Create(ctx context.Context, input CreateEtablissementInput) (*Etablissement, error)
+        // ABONNEMENTS-FIX-A3 : CreateInTx pour transaction atomique wizard.
+        CreateInTx(ctx context.Context, tx pgx.Tx, input CreateEtablissementInput) (*Etablissement, error)
         Update(ctx context.Context, id string, input UpdateEtablissementInput) (*Etablissement, error)
         UpdateLogo(ctx context.Context, id string, logoData string) (*Etablissement, error)
         // ClearLogo met le logo à NULL (suppression). Distinct d'UpdateLogo qui
