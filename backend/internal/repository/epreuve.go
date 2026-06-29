@@ -239,13 +239,17 @@ func (r *EpreuveRepository) FindByID(ctx context.Context, id string) (*domain.Ep
 }
 
 // List liste les épreuves (RLS actif).
-func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListParams) ([]*domain.Epreuve, error) {
+// EVALUATIONS-FIX-EV7 : List retourne désormais (epreuves, total, error) pour
+// supporter la pagination optionnelle. Si params.Page > 0, ajoute LIMIT/OFFSET
+// + un count total séparé. Sinon, total = len(epreuves) (pas de pagination).
+func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListParams) ([]*domain.Epreuve, int, error) {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok {
-                return nil, fmt.Errorf("no RLS claims in context")
+                return nil, 0, fmt.Errorf("no RLS claims in context")
         }
 
         var result []*domain.Epreuve
+        total := 0
         err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
                 var where []string
                 var args []any
@@ -322,10 +326,27 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
 
                 whereClause := "WHERE " + strings.Join(where, " AND ")
 
+                // EVALUATIONS-FIX-EV7 : si pagination active, faire un count
+                // séparé AVANT la query paginée. Le count utilise le même
+                // whereClause mais sans LEFT JOINs (plus rapide).
+                if params.Page > 0 && params.Limit > 0 {
+                        countQuery := fmt.Sprintf(`SELECT count(*) FROM "Epreuve" %s`, whereClause)
+                        if err := tx.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
+                                return fmt.Errorf("count epreuves: %w", err)
+                        }
+                }
+
+                // EV7 : suffixe pagination (LIMIT/OFFSET) si Page > 0.
+                paginationSuffix := ""
+                if params.Page > 0 && params.Limit > 0 {
+                        offset := (params.Page - 1) * params.Limit
+                        paginationSuffix = fmt.Sprintf(` LIMIT %d OFFSET %d`, params.Limit, offset)
+                }
+
                 var query string
                 if params.Select == "summary" {
                         // Format léger pour les dropdowns
-                        query = fmt.Sprintf(`SELECT "id", "titre", "dateDebut", "dateFin", "statut", "noteTotal" FROM "Epreuve" %s ORDER BY "dateDebut" DESC`, whereClause)
+                        query = fmt.Sprintf(`SELECT "id", "titre", "dateDebut", "dateFin", "statut", "noteTotal" FROM "Epreuve" %s ORDER BY "dateDebut" DESC%s`, whereClause, paginationSuffix)
                         rows, err := tx.Query(ctx, query, args...)
                         if err != nil {
                                 return fmt.Errorf("query epreuves summary: %w", err)
@@ -352,7 +373,7 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                         // uniteEnseignement (UERef{ID,Code,Nom,Niveau}). Mirroir du pattern
                         // Filiere. Corrige l'affichage du nom/code UE dans les cartes /epreuves
                         // et rend la duplication robuste.
-                        query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" %s ORDER BY "Epreuve"."dateDebut" DESC`, columnsEpreuveQualified, whereClause)
+                        query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" %s ORDER BY "Epreuve"."dateDebut" DESC%s`, columnsEpreuveQualified, whereClause, paginationSuffix)
                         rows, err := tx.Query(ctx, query, args...)
                         if err != nil {
                                 return fmt.Errorf("query epreuves: %w", err)
@@ -530,9 +551,16 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 return nil
         })
         if err != nil {
-                return nil, err
+                return nil, 0, err
         }
-        return result, nil
+        // EV7 : si pagination active, total a été calculé par le count séparé.
+        // Sinon, total = len(result).
+        if params.Page > 0 && total == 0 {
+                total = len(result)
+        } else if params.Page == 0 {
+                total = len(result)
+        }
+        return result, total, nil
 }
 
 // Create crée une épreuve (bypass RLS). Statut forcé à BROUILLON.

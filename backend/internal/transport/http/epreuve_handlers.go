@@ -42,8 +42,21 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 AnneeAcademiqueID:   r.URL.Query().Get("anneeAcademiqueId"),
                 UniteEnseignementID: r.URL.Query().Get("uniteEnseignementId"),
         }
+        // EVALUATIONS-FIX-EV7 : pagination optionnelle. ?page=X&limit=Y active
+        // la pagination. Si absents, comportement inchangé (tous les résultats).
+        if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+                if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+                        params.Page = p
+                        params.Limit = 20 // default
+                        if lStr := r.URL.Query().Get("limit"); lStr != "" {
+                                if l, err := strconv.Atoi(lStr); err == nil && l > 0 && l <= 200 {
+                                        params.Limit = l
+                                }
+                        }
+                }
+        }
 
-        epreuves, err := s.epreuveUC.List(r.Context(), claims, params)
+        epreuves, total, err := s.epreuveUC.List(r.Context(), claims, params)
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
@@ -75,11 +88,27 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 filieres = append(filieres, f)
         }
 
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        // EVALUATIONS-FIX-EV7 : inclure total/totalPages si pagination active.
+        resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
-        })
+        }
+        if params.Page > 0 {
+                totalPages := 1
+                if params.Limit > 0 {
+                        totalPages = (total + params.Limit - 1) / params.Limit
+                        if totalPages < 1 {
+                                totalPages = 1
+                        }
+                }
+                resp["total"] = total
+                resp["page"] = params.Page
+                resp["limit"] = params.Limit
+                resp["totalPages"] = totalPages
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(resp)
 }
 
 // getEpreuve — GET /api/epreuves/{id}
