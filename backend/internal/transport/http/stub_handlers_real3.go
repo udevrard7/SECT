@@ -390,7 +390,7 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
                         FROM "Epreuve" e
                         LEFT JOIN "UniteEnseignement" ue ON ue."id" = e."uniteEnseignementId"
                         WHERE %s
-                        ORDER BY e."createdAt" ASC
+                        ORDER BY e."titre" ASC
                 `, strings.Join(whereE, " AND ")), argsE...)
                 if err != nil {
                         return fmt.Errorf("query epreuves: %w", err)
