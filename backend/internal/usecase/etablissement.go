@@ -171,7 +171,7 @@ func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionCla
                         if _, err := tx.Exec(ctx, `
                                 INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId",
                                         "actif", "mustChangePwd", "loginAttempts", "createdAt", "updatedAt")
-                                VALUES ($1, $2, $3, $4, 'RESPONSABLE', $5, true, true, 0, now(), now())
+                                VALUES ($1, $2, $3, $4, 'RESPONSABLE'::"Role", $5, true, true, 0, now(), now())
                         `, userID, respEmail, respName, string(hash), etab.ID); err != nil {
                                 // unique violation (email déjà utilisé)
                                 return &domain.ConflictError{Message: "email responsable déjà utilisé"}
