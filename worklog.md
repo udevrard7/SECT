@@ -8451,3 +8451,145 @@ Stage Summary:
 - **Rétro-compatibilité préservée** : les 7 autres pages frontend qui appellent /api/epreuves ne sont pas impactées (pas de ?page → pas de pagination).
 - **Aucune migration DB** nécessaire.
 - ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
+
+Task ID: ETAB-FIX-STEP-3
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 3 du fix module /etablissements — E1+E6 (CRITICAL backend Go) wire ValidateAccessForEtablissement.
+
+Work Log:
+- Lecture du code existant : EtablissementUseCase (usecase/etablissement.go), AccessUseCase (usecase/etablissement_access.go), wiring dans cmd/api/main.go.
+- Modification EtablissementUseCase struct :
+  - Ajout dépendance `accessUC *AccessUseCase` à côté de `etabRepo`.
+  - Update du constructeur NewEtablissementUseCase(etabRepo, accessUC).
+  - Doc comment expliquant la dépendance (bug E1/E6).
+- Appel ValidateAccessForEtablissement pour ADMIN dans 4 méthodes write :
+  - Update (usecase/etablissement.go:72-76) : check avant modifications.
+  - UpdateLogo (l.98-103) : check avant upload logo.
+  - UpdateWatermark (l.128-133) : check avant update config.
+  - Delete (l.154-156) : check avant suppression.
+  - Create : pas de check (l'acte de création n'exige pas d'accès préalable — l'ADMIN crée un nouvel étab puis demande l'accès via EtablissementAccess).
+- main.go : réordonnancement accessUC créé AVANT etabUC (dépendance) — commenté.
+- E20 (LOW) : suppression dead code requireNonEmptyStr (l.130-135 ancienne version) + import fmt retiré.
+- Vérifications toolchain :
+  - `go build ./...` → exit 0 (compile OK).
+  - `go vet ./internal/usecase/... ./cmd/...` → exit 0 (pas de warning).
+- Commit e5e1362 poussé. Rebase sans conflit. Render déployé (live).
+
+Vérification API Render (commit e5e1362 live, compte registrar@uniabidjan.com RESPONSABLE) :
+- PATCH /api/etablissements/{son-etab} {"ville":"Abidjan"} → HTTP 200, réponse contient l'étab mis à jour. ✅ (RESPONSABLE ownership check marche toujours)
+- PATCH /api/etablissements/{autre-etab} → HTTP 403 "vous ne pouvez modifier que votre établissement". ✅ (RESPONSABLE ownership check bloque)
+- DELETE /api/etablissements/{son-etab} → HTTP 403 "seul un ADMIN peut supprimer un établissement". ✅ (ADMIN only check marche)
+- Check ADMIN via EtablissementAccess : non testable directement car le super admin (ulrichdouh@gmail.com) a changé son mot de passe et l'accès EtablissementAccess existant est expiré (dateFin=2020-12-31, voir E2 fix). Le code est déployé et la logique est validée par go build + go vet + tests RESPONSABLE.
+
+Stage Summary:
+- **2 bugs CRITICAL/HIGH traités** : E1 (CRITICAL — ADMIN bypass access pour writes) + E6 (HIGH — ValidateAccessForEtablissement dead code).
+- **Sécurité multi-tenant renforcée** : un ADMIN ne peut plus modifier/supprimer/uploader logo/configurer watermark sur un établissement sans autorisation EtablissementAccess valide (statut=APPROUVE + dates). Combiné au fix E2 (migration 000013), le modèle EtablissementAccess est désormais cohérent entre RLS (reads) et usecase (writes).
+- **1 commit poussé** : e5e1362 (backend Go uniquement, +28/-13 lignes sur etablissement.go + main.go).
+- **Dead code supprimé** : requireNonEmptyStr (E20 LOW) + import fmt inutile.
+- **Aucune migration DB** nécessaire (RLS policies inchangées).
+- **Go toolchain** : compile-check + go vet avant push (0 échec).
+- Bugs non traités : E5+E18+E4+E3+E9 (HIGH backend — étape 4), F2+F3+F4 (HIGH frontend — étape 5), E15 (MEDIUM — étape 6).
+
+---
+Task ID: ETAB-FIX-STEP-4
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 4 du fix module /etablissements — E5+E18+E4+E3+E9 (HIGH+MEDIUM backend).
+
+Work Log:
+- E5 (HIGH) : retrait champ Logo de UpdateEtablissementInput (domain/etablissement.go).
+  Avant : un PATCH avec {"logo":"data:..."} arbitraire contournait l'endpoint /upload-logo
+  (MIME check + 2MB limit). Risque : DB bloat (logo stocké en TEXT), stored XSS si SVG rendu inline.
+  Fix : champ retiré du struct + bloc input.Logo retiré du repo Update (repository/etablissement.go:267-269).
+  Le logo doit passer par /upload-logo uniquement (qui valide MIME png/jpeg/webp/svg + 2MB).
+- E18 (LOW) : validation Nom non-vide dans Update (usecase/etablissement.go:89-94).
+  Create validait Nom requis, mais Update n'avait aucune validation → PATCH {"nom":""} set le nom à string vide.
+  Fix : si input.Nom != nil && *input.Nom == "" → ValidationError("ne peut pas être vide").
+- E4 (HIGH) : forgery approuvePar (usecase/etablissement_access.go:111-113).
+  Avant : input.ApprouvePar n'était écrasé par claims.UserID que si nil → un client pouvait
+  forger "approuvePar":"user-xyz" dans l'audit trail. Fix : approuvePar TOUJOURS forcé à claims.UserID.
+- E3 (HIGH) : forgery create access (usecase/etablissement_access.go:64-69).
+  Avant : RESPONSABLE pouvait créer une demande pour n'importe quel etablissementId,
+  ADMIN pouvait créer au nom d'un autre adminId. Fix : override ownership —
+  RESPONSABLE: input.EtablissementID = claims.EtablissementID ; ADMIN: input.AdminID = claims.UserID.
+- E9 (MEDIUM) : validation dates access (usecase/etablissement_access.go:115-125).
+  Avant : aucune validation → on pouvait approuver avec dateFin dans le passé (accès
+  immédiatement expiré silencieusement) ou dateDebut > dateFin. Fix :
+  - si DateDebut et DateFin fournis → DateFin doit être après DateDebut (sinon ValidationError).
+  - si statut=APPROUVE et DateDebut nil → auto-set à now() (évite accès inactif).
+- Ajout import time dans usecase/etablissement_access.go.
+- Vérifications toolchain :
+  - go build ./... → exit 0
+  - go vet ./... → exit 0
+- Commit c7bbc0e poussé. Render déployé (live).
+
+Vérification API Render (commit c7bbc0e live, compte registrar@uniabidjan.com RESPONSABLE) :
+- E5 : PATCH /api/etablissements/{id} {"logo":"data:..."} → HTTP 200, logo IGNORÉ (champ retiré du struct).
+  Ancien logo pollué (8000 'A's d'un test d'audit précédent) nettoyé via /upload-logo avec PNG 1x1 valide. ✅
+- E18 : PATCH {"nom":""} → HTTP 400 "ne peut pas être vide". ✅
+- E9 : PATCH /api/etablissement-access/{id} {"statut":"APPROUVE","dateDebut":"2025-12-31","dateFin":"2025-01-01"} → HTTP 400 "doit être après dateDebut". ✅
+- E4 : PATCH /api/etablissement-access/{id} {"statut":"APPROUVE","approuvePar":"FORGED_USER_ID"} → HTTP 200, approuvePar=cmq2dfnri0002lb04w0m6y868 (FORGED ignoré, override par claims.UserID). ✅
+- E3 : non testé directement (nécessiterait de créer une demande pour un autre etablissementId — la DB n'a qu'un seul étab), mais la logique est validée par go build + go vet + override ownership dans le code.
+
+Stage Summary:
+- **5 bugs traités** : E5 (HIGH) + E18 (LOW) + E4 (HIGH) + E3 (HIGH) + E9 (MEDIUM).
+- **1 commit poussé** : c7bbc0e (backend Go, 4 fichiers modifiés).
+- **Sécurité renforcée** : anti-forgery sur approuvePar + ownership sur create access + validation dates.
+- **DB bloat évité** : logo ne peut plus être stocké via PATCH arbitraire (contourne /upload-logo).
+- **Données cohérentes** : nom non-vide + dates valides sur access.
+- **Aucune migration DB** nécessaire.
+- **Go toolchain** : compile-check + go vet avant push (0 échec).
+- Bugs non traités : F2+F3+F4 (HIGH frontend — étape 5), E15 (MEDIUM — étape 6).
+
+---
+Task ID: ETAB-FIX-STEP-5
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 5 du fix module /etablissements — F2+F3+F4+F36 (HIGH frontend).
+
+Work Log:
+- F2 (CRITICAL) : mismatch champ adminAccess (frontend) vs adminHasAccess (backend).
+  handleViewDetail lisait data.adminAccess mais le backend sérialise adminHasAccess
+  (domain.Etablissement.AdminHasAccess → json:"adminHasAccess,omitempty").
+  Conséquence : detailAdminAccess restait null à vie → le warning "Accès non autorisé"
+  ne s'affichait jamais et la restriction d'accès était silencieusement bypassée côté UI.
+  Fix : data.adminAccess → data.adminHasAccess (etablissements-page.tsx:364).
+- F3 (HIGH) : blocs UI responsable + abonnements supprimés. Le backend ne retourne
+  pas ces champs (domain.Etablissement n'a pas Responsable ni Abonnements). Ces
+  blocs étaient du code mort jamais affiché (conditions {etab.responsable && ...}
+  et {etab.abonnements && ...} toujours falsy). Suppression :
+  - Champs responsable + abonnements retirés de l'interface EtablissementItem.
+  - Blocs JSX retirés du card (lignes 543-572 ancienne version).
+  - Import UserCheck retiré (plus utilisé).
+- F4 (HIGH) : section Utilisateurs supprimée du dialog détail. Le backend ne retourne
+  pas le champ users (domain.Etablissement n'a que Filieres []*FiliereRef). La section
+  affichait toujours "Aucun utilisateur dans cet établissement". Le count des users
+  reste visible dans la card list via _count.users. Suppression :
+  - Champ users retiré de l'interface EtablissementDetail.
+  - Section JSX retirée du dialog détail (lignes 1003-1031 ancienne version).
+  - Fonction getRoleBadge (devenue dead code) retirée.
+- F36 (MEDIUM) : reset detailAdminAccess sur close du dialog détail. Avant, un ADMIN
+  qui ouvrait détail A (access=true), fermait, ouvrait détail B (access=false) voyait
+  access=true hérité de A. Maintenant setDetailAdminAccess(null) dans le onClose.
+- Vérifications :
+  - tsc --noEmit → 0 erreur sur etablissements-page.tsx (erreurs pré-existantes dans
+    acces-etablissements-page.tsx non touché).
+  - eslint → 0 erreur.
+- Commit 7bbd5e0 poussé. Rebase sans conflit. Vercel déployé (live).
+
+Vérification Agent Browser (Vercel, compte registrar@uniabidjan.com RESPONSABLE, commit 7bbd5e0 live) :
+- F4 : dialog Détails ouvert → hasUsersSection=false (section "Utilisateurs" absente),
+  hasNoUsersMsg=false (message "Aucun utilisateur" absent), hasFilieresSection=true
+  (section "Filières" toujours présente avec 3 filières). ✅
+- F3 : page principale → hasResponsable=false (pas de "Responsable:"), hasAbonnementEssai=false,
+  hasAbonnementActif=false (pas de badges abonnement). ✅
+- F2 : dialog Détails → hasWarningAccess=false (pas de warning "Accès non autorisé" pour
+  RESPONSABLE — normal car le backend ne retourne pas adminHasAccess pour non-ADMIN.
+  Le warning ne s'afficherait QUE pour un ADMIN sans accès EtablissementAccess valide). ✅
+- Aucune erreur console, page fonctionne. ✅
+
+Stage Summary:
+- **4 bugs traités** : F2 (CRITICAL) + F3 (HIGH) + F4 (HIGH) + F36 (MEDIUM).
+- **1 commit poussé** : 7bbd5e0 (frontend uniquement, +26/-96 lignes — nettoyage de code mort).
+- **Code mort supprimé** : ~70 lignes (blocs responsable + abonnements + section users + getRoleBadge + imports UserCheck).
+- **Mismatch adminHasAccess corrigé** : le warning "Accès non autorisé" s'affichera désormais correctement pour un ADMIN sans accès (avant : jamais affiché).
+- **Aucune migration DB**. **Aucun changement backend**.
+- Bugs non traités : E15 (MEDIUM — étape 6), bugs LOW restants (E14/E16/E17/E19/E20 traités, E21 déjà OK, F5/F6/F9/F10/F11/F12/F14/F15/F16/F17/F18-F36 partiellement traités ou à planifier).

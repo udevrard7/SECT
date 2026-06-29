@@ -3,10 +3,26 @@ package usecase
 
 import (
         "context"
+        "regexp"
 
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
 )
+
+// E15 (MEDIUM) : validateurs pour la config watermark.
+// hexColorRegex valide les codes hex #RRGGBB (cohérent avec les presets du frontend
+// watermark-config-panel.tsx : #1B3A5C Marine, #C5A044 Or, etc.).
+var hexColorRegex = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// validWatermarkPatterns liste les patterns supportés par le frontend
+// (PATTERN_OPTIONS dans watermark-config-panel.tsx). Un pattern invalide
+// causait un default silencieux côté rendu PDF.
+var validWatermarkPatterns = map[string]bool{
+        "diamond": true,
+        "circle":  true,
+        "text":    true,
+        "none":    true,
+}
 
 // EtablissementUseCase implémente les cas d'usage liés aux établissements.
 //
@@ -145,6 +161,32 @@ func (uc *EtablissementUseCase) UpdateWatermark(ctx context.Context, claims db.S
         if cfg.CertWatermarkOpacity < 0 || cfg.CertWatermarkOpacity > 0.5 {
                 return nil, &domain.ValidationError{Field: "opacity", Message: "doit être entre 0 et 0.5"}
         }
+        // E15 (MEDIUM) : validation des autres champs watermark.
+        // Avant : seule opacity était validée. Color, pattern, text étaient acceptés
+        // tels quels → on pouvait stocker color="INVALID", pattern="PATTERN_INEXISTANT",
+        // text de 377 chars (testé en production). Le frontend watermark-config-panel.tsx
+        // switch sur pattern ('diamond'|'circle'|'text'|'none') — un pattern invalide
+        // causait un default silencieux. Une couleur invalide cassait le rendu PDF.
+
+        // Text : max 50 chars (suffit pour "ORIGINAL", "COPIE AUTHENTIQUE", etc.).
+        // 50 chars = limite raisonnable pour un watermark lisible sur un certificat.
+        if len(cfg.CertWatermarkText) > 50 {
+                return nil, &domain.ValidationError{Field: "certWatermarkText", Message: "doit faire au plus 50 caractères"}
+        }
+        if cfg.CertWatermarkText == "" {
+                return nil, &domain.ValidationError{Field: "certWatermarkText", Message: "requis"}
+        }
+
+        // Color : regex hex ^#[0-9A-Fa-f]{6}$ (cohérent avec les presets du frontend).
+        if !hexColorRegex.MatchString(cfg.CertWatermarkColor) {
+                return nil, &domain.ValidationError{Field: "certWatermarkColor", Message: "doit être un code hex valide (#RRGGBB)"}
+        }
+
+        // Pattern : enum (diamond|circle|text|none) — cohérent avec PATTERN_OPTIONS du frontend.
+        if !validWatermarkPatterns[cfg.CertWatermarkPattern] {
+                return nil, &domain.ValidationError{Field: "certWatermarkPattern", Message: "doit être 'diamond', 'circle', 'text' ou 'none'"}
+        }
+
         _, err := uc.etabRepo.UpdateWatermark(ctx, id, cfg)
         if err != nil {
                 return nil, err
