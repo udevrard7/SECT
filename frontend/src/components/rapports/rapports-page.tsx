@@ -24,7 +24,6 @@ import {
   ArrowDownRight,
   Minus,
   CalendarDays,
-  Eye,
   UserX,
   BookOpen,
   Medal,
@@ -181,6 +180,20 @@ function formatMonth(mois: string): string {
   return `${months[month] || month} ${year.slice(2)}`
 }
 
+// ─── Number formatter (RAPPORTS-FIX-D1) ───
+// Le backend renvoie des moyennes brutes (ex: 16.87705882352941) qui
+// s'affichaient telles quelles. fmt() arrondit à 2 décimales max et
+// supprime les zéros de fin (17.50 → "17.5", 16.00 → "16").
+
+function fmt(n: number | undefined | null, decimals = 2): string {
+  if (n === undefined || n === null || Number.isNaN(n)) return '—'
+  const rounded = Number(n.toFixed(decimals))
+  return rounded.toLocaleString('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  })
+}
+
 // ─── Score color helpers (conservés) ───
 
 function getScoreColor(score: number): string {
@@ -290,7 +303,7 @@ function ChartTooltip({
             : Array.isArray(raw)
               ? Number(raw[0]) || 0
               : Number(raw) || 0
-          const display = valueFormatter ? valueFormatter(num) : `${num}${unit ?? ''}`
+          const display = valueFormatter ? valueFormatter(num) : `${fmt(num)}${unit ?? ''}`
           return (
             <p key={i} className="text-xs text-muted-foreground flex items-center gap-1.5">
               <span
@@ -508,8 +521,8 @@ export function RapportsPage() {
 
       rows.push(['INDICATEURS CLES'])
       rows.push(['Indicateur', 'Valeur'])
-      rows.push(['Moyenne generale', `${stats.moyenneGenerale}/20`])
-      rows.push(['Taux de reussite global', `${stats.tauxReussiteGlobal}%`])
+      rows.push(['Moyenne generale', `${fmt(stats.moyenneGenerale)}/20`])
+      rows.push(['Taux de reussite global', `${fmt(stats.tauxReussiteGlobal, 1)}%`])
       rows.push(["Nombre d'evaluations", stats.nbEvaluations.toString()])
       rows.push(["Nombre d'etudiants", stats.nbEtudiants.toString()])
       rows.push(["Nombre d'enseignants", stats.nbEnseignants.toString()])
@@ -529,7 +542,7 @@ export function RapportsPage() {
         rows.push(['RESULTATS PAR MATIERE'])
         rows.push(['Matiere', 'Enseignant', 'Moyenne', 'Taux de reussite', 'Participants'])
         stats.resultatsParMatiere.forEach((r) => {
-          rows.push([r.titre, r.enseignant, `${r.moyenne}/20`, `${r.tauxReussite}%`, r.nbParticipants.toString()])
+          rows.push([r.titre, r.enseignant, `${fmt(r.moyenne)}/20`, `${fmt(r.tauxReussite, 1)}%`, r.nbParticipants.toString()])
         })
       }
 
@@ -547,7 +560,7 @@ export function RapportsPage() {
         rows.push(['TOP ENSEIGNANTS'])
         rows.push(['Enseignant', 'Nb epreuves', 'Moyenne', 'Taux reussite'])
         stats.topEnseignants.forEach((e) => {
-          rows.push([e.nom, e.nbEpreuves.toString(), `${e.moyenne}/20`, `${e.tauxReussite}%`])
+          rows.push([e.nom, e.nbEpreuves.toString(), `${fmt(e.moyenne)}/20`, `${fmt(e.tauxReussite, 1)}%`])
         })
       }
 
@@ -556,7 +569,7 @@ export function RapportsPage() {
         rows.push(['TOP 5 ETUDIANTS'])
         rows.push(['Nom', 'Email', 'Filiere', 'Moyenne'])
         stats.topEtudiants.forEach((e) => {
-          rows.push([e.nom, e.email, e.filiere, `${e.moyenne}/20`])
+          rows.push([e.nom, e.email, e.filiere, `${fmt(e.moyenne)}/20`])
         })
       }
 
@@ -565,7 +578,7 @@ export function RapportsPage() {
         rows.push(['ETUDIANTS EN DIFFICULTE (< 10/20)'])
         rows.push(['Nom', 'Email', 'Filiere', 'Moyenne'])
         stats.etudiantsEnDifficulte.forEach((e) => {
-          rows.push([e.nom, e.email, e.filiere, `${e.moyenne}/20`])
+          rows.push([e.nom, e.email, e.filiere, `${fmt(e.moyenne)}/20`])
         })
       }
 
@@ -661,8 +674,8 @@ export function RapportsPage() {
 
       // KPI Cards row — accents variés Savane
       const kpis: { label: string; value: string; color: [number, number, number] }[] = [
-        { label: 'Moyenne Générale', value: `${stats.moyenneGenerale}/20`, color: lime },
-        { label: 'Taux de Réussite', value: `${stats.tauxReussiteGlobal}%`, color: terre },
+        { label: 'Moyenne Générale', value: `${fmt(stats.moyenneGenerale)}/20`, color: lime },
+        { label: 'Taux de Réussite', value: `${fmt(stats.tauxReussiteGlobal, 1)}%`, color: terre },
         { label: 'Évaluations', value: `${stats.nbEvaluations}`, color: gold },
         { label: 'Étudiants', value: `${stats.nbEtudiants}`, color: nuit },
       ]
@@ -705,8 +718,8 @@ export function RapportsPage() {
           body: stats.resultatsParMatiere.map((r) => [
             r.titre,
             r.enseignant,
-            `${r.moyenne}/20`,
-            `${r.tauxReussite}%`,
+            `${fmt(r.moyenne)}/20`,
+            `${fmt(r.tauxReussite, 1)}%`,
             r.nbParticipants.toString(),
           ]),
           headStyles: { fillColor: lime, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
@@ -769,8 +782,8 @@ export function RapportsPage() {
           body: stats.topEnseignants.map((e) => [
             e.nom,
             e.nbEpreuves.toString(),
-            `${e.moyenne}/20`,
-            `${e.tauxReussite}%`,
+            `${fmt(e.moyenne)}/20`,
+            `${fmt(e.tauxReussite, 1)}%`,
           ]),
           headStyles: { fillColor: nuit, textColor: lime, fontStyle: 'bold', fontSize: 9 },
           bodyStyles: { fontSize: 9, textColor: dark },
@@ -792,7 +805,7 @@ export function RapportsPage() {
           startY: yPos,
           margin: { left: margin, right: margin },
           head: [['Nom', 'Email', 'Filière', 'Moyenne']],
-          body: stats.topEtudiants.map((e) => [e.nom, e.email, e.filiere, `${e.moyenne}/20`]),
+          body: stats.topEtudiants.map((e) => [e.nom, e.email, e.filiere, `${fmt(e.moyenne)}/20`]),
           headStyles: { fillColor: gold, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
           bodyStyles: { fontSize: 8, textColor: dark },
           alternateRowStyles: { fillColor: light },
@@ -809,7 +822,7 @@ export function RapportsPage() {
           startY: yPos,
           margin: { left: margin, right: margin },
           head: [['Nom', 'Email', 'Filière', 'Moyenne']],
-          body: stats.etudiantsEnDifficulte.map((e) => [e.nom, e.email, e.filiere, `${e.moyenne}/20`]),
+          body: stats.etudiantsEnDifficulte.map((e) => [e.nom, e.email, e.filiere, `${fmt(e.moyenne)}/20`]),
           headStyles: { fillColor: red, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
           bodyStyles: { fontSize: 8, textColor: dark },
           alternateRowStyles: { fillColor: light },
@@ -1101,7 +1114,7 @@ export function RapportsPage() {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard
                 label="Moyenne générale"
-                value={`${stats.moyenneGenerale}`}
+                value={fmt(stats.moyenneGenerale)}
                 suffix="/20"
                 icon={TrendingUp}
                 accent="success"
@@ -1111,7 +1124,7 @@ export function RapportsPage() {
               />
               <StatCard
                 label="Taux de réussite"
-                value={`${stats.tauxReussiteGlobal}`}
+                value={fmt(stats.tauxReussiteGlobal, 1)}
                 suffix="%"
                 icon={Trophy}
                 accent="info"
@@ -1123,7 +1136,7 @@ export function RapportsPage() {
                 value={stats.nbEvaluations}
                 icon={ClipboardList}
                 accent="warning"
-                hint="Épreuves terminées"
+                hint={`${totalParticipants} participants · ${stats.nbEnseignants} enseignant${stats.nbEnseignants > 1 ? 's' : ''}`}
                 index={2}
               />
               <StatCard
@@ -1135,66 +1148,6 @@ export function RapportsPage() {
                 index={3}
               />
             </div>
-
-            {/* ═══ KPIs secondaires (bande compacte) ═══ */}
-            <FadeIn delay={0.1}>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {/* Enseignants actifs */}
-                <Card className="ds-kente-top overflow-hidden">
-                  <CardContent className="p-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-success/10 text-success-text shrink-0">
-                        <Users className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-display">Enseignants actifs</p>
-                        <p className="text-xl font-bold font-mono tabular-nums">{stats.nbEnseignants}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                {/* Participants */}
-                <Card className="ds-kente-top overflow-hidden">
-                  <CardContent className="p-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-info/10 text-info shrink-0">
-                        <Eye className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-display">Participants</p>
-                        <p className="text-xl font-bold font-mono tabular-nums">{totalParticipants}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                {/* Étudiants en difficulté (avec ProgressRing) */}
-                <Card className="ds-kente-top overflow-hidden">
-                  <CardContent className="p-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-destructive/10 text-destructive shrink-0">
-                        <UserX className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-display">En difficulté</p>
-                        <p className="text-xl font-bold font-mono tabular-nums text-destructive">{stats.etudiantsEnDifficulte.length}</p>
-                      </div>
-                    </div>
-                    {stats.nbEtudiants > 0 && (
-                      <ProgressRing
-                        value={(stats.etudiantsEnDifficulte.length / stats.nbEtudiants) * 100}
-                        size={42}
-                        strokeWidth={5}
-                        accent="danger"
-                        showPercent={false}
-                        label=""
-                        sublabel=""
-                        index={1}
-                      />
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </FadeIn>
 
             <div className="ds-african-divider" role="separator" aria-orientation="horizontal" aria-label="Séparateur" />
 
@@ -1433,7 +1386,7 @@ export function RapportsPage() {
                                   />
                                 </div>
                                 <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[56px] justify-center font-mono tabular-nums border`}>
-                                  {student.moyenne}/20
+                                  {fmt(student.moyenne)}/20
                                 </Badge>
                               </div>
                             </motion.div>
@@ -1489,7 +1442,7 @@ export function RapportsPage() {
                                 />
                               </div>
                               <Badge className={`${getScoreBg(student.moyenne)} text-xs min-w-[56px] justify-center font-mono tabular-nums border`}>
-                                {student.moyenne}/20
+                                {fmt(student.moyenne)}/20
                               </Badge>
                             </div>
                           </motion.div>
@@ -1551,12 +1504,12 @@ export function RapportsPage() {
                             <div className="flex items-center gap-1">
                               {getTrendIcon(trend)}
                               <span className={`text-lg font-bold font-mono tabular-nums ${ens.tauxReussite >= 50 ? 'text-success-text' : 'text-destructive'}`}>
-                                {ens.tauxReussite}%
+                                {fmt(ens.tauxReussite, 1)}%
                               </span>
                             </div>
                             <div className="flex flex-col items-center text-[11px] text-muted-foreground font-mono tabular-nums leading-tight">
                               <span>{ens.nbEpreuves} épreuve{ens.nbEpreuves > 1 ? 's' : ''}</span>
-                              <span>Moy: {ens.moyenne}/20</span>
+                              <span>Moy: {fmt(ens.moyenne)}/20</span>
                             </div>
                           </motion.div>
                         )
@@ -1638,13 +1591,13 @@ export function RapportsPage() {
                                       index={i}
                                     />
                                     <span className={`font-mono tabular-nums font-semibold ${getScoreColor(r.moyenne)}`}>
-                                      {r.moyenne}/20
+                                      {fmt(r.moyenne)}/20
                                     </span>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-center py-3">
                                   <span className={`font-mono tabular-nums font-semibold ${r.tauxReussite >= 50 ? 'text-success-text' : 'text-destructive'}`}>
-                                    {r.tauxReussite}%
+                                    {fmt(r.tauxReussite, 1)}%
                                   </span>
                                 </TableCell>
                               </motion.tr>
@@ -1672,7 +1625,7 @@ export function RapportsPage() {
                               strokeWidth={5}
                               accent={ringAccent}
                               showPercent={false}
-                              label={`${r.moyenne}`}
+                              label={`${fmt(r.moyenne)}`}
                               sublabel="/20"
                               index={i}
                             />
@@ -1682,7 +1635,7 @@ export function RapportsPage() {
                               <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
                                 <span>{r.nbParticipants} part.</span>
                                 <span className={r.tauxReussite >= 50 ? 'text-success-text font-semibold' : 'text-destructive font-semibold'}>
-                                  {r.tauxReussite}% réussite
+                                  {fmt(r.tauxReussite, 1)}% réussite
                                 </span>
                               </div>
                             </div>
