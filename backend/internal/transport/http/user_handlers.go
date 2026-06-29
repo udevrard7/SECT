@@ -217,6 +217,57 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
         })
 }
 
+// getUserDependencies — GET /api/users/{id}/dependencies
+//
+// ETUDIANTS-FIX-E10 : retourne les comptes d'entités liées à un user avant
+// suppression (sessions, réponses, soumissions). Permet au frontend d'afficher
+// une preview dans l'AlertDialog de suppression (pattern identique à
+// /api/filieres/{id}/dependencies, /api/unites-enseignement/{id}/dependencies,
+// /api/affectations/{id}/dependencies). canDelete=false si des dépendances
+// existent (informatif — la suppression reste autorisée car les tables
+// enfants ont ON DELETE CASCADE).
+func (s *Server) getUserDependencies(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        role := claims.Role
+        if role != "ADMIN" && role != "RESPONSABLE" {
+                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                return
+        }
+
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        // Ownership check : récupère le user + vérifie l'accès
+        user, err := s.userUC.GetByID(r.Context(), claims, id)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+
+        // Compter les dépendances (best-effort, RLS off)
+        deps := s.userUC.CountUserDependencies(r.Context(), id)
+        canDelete := deps.Sessions == 0 && deps.Reponses == 0 && deps.Soumissions == 0
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "sessions":    deps.Sessions,
+                "reponses":    deps.Reponses,
+                "soumissions": deps.Soumissions,
+                "canDelete":   canDelete,
+                "userId":      id,
+                "userName":    user.Name,
+                "userEmail":   user.Email,
+        })
+}
+
 // importUsers — POST /api/users/import
 // Auth : ADMIN, RESPONSABLE
 // ETUDIANTS-FIX-E2 : import en masse d'étudiants/enseignants via CSV parsé côté
