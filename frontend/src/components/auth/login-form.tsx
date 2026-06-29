@@ -711,92 +711,39 @@ export function LoginForm() {
         </motion.div>
       </div>
 
-      {/* ════════ DIALOG : Mot de passe oublié ════════ */}
+      {/* ════════ DIALOG : Mot de passe oublié (UF4) ════════ */}
+      {/* Avant ce fix : le dialog appelait /api/auth/password-reset qui n'existe pas */}
+      {/* côté backend (404). Le flux self-service password-reset n'est pas implémenté. */}
+      {/* Maintenant : dialog informatif qui explique la procédure (contacter l'admin */}
+      {/* qui peut reset via /api/users/{id}/reset-password — fixé en USERS-FIX-STEP-2). */}
       <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
         <DialogContent className="max-w-md rounded-2xl border-[#1E1B4B]/10">
           <DialogHeader>
-            <DialogTitle className="text-[#1E1B4B] font-bold">Réinitialiser le mot de passe</DialogTitle>
+            <DialogTitle className="text-[#1E1B4B] font-bold">Mot de passe oublié ?</DialogTitle>
             <DialogDescription className="text-[#1E1B4B]/50">
-              {resetSent
-                ? 'Entrez le token reçu par email et votre nouveau mot de passe.'
-                : 'Entrez votre adresse email pour recevoir un lien de réinitialisation.'}
+              Procédure de réinitialisation
             </DialogDescription>
           </DialogHeader>
-
-          {!resetSent ? (
-            <>
-              <div className="space-y-2 py-2">
-                <Label htmlFor="reset-email" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
-                  Adresse email
-                </Label>
-                <Input
-                  id="reset-email"
-                  type="email"
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  placeholder="votre.email@universite.fr"
-                  className="h-11 rounded-xl border-[#1E1B4B]/15 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20"
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-[#1E1B4B]/15">
-                  Annuler
-                </Button>
-                <Button
-                  onClick={handleResetRequest}
-                  disabled={resetSending || !resetEmail.trim()}
-                  className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
-                >
-                  {resetSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Envoyer
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label htmlFor="reset-token" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
-                    Token de réinitialisation
-                  </Label>
-                  <Input
-                    id="reset-token"
-                    type="text"
-                    value={resetToken ?? ''}
-                    onChange={(e) => setResetToken(e.target.value)}
-                    placeholder="Collez le token reçu par email"
-                    className="h-11 rounded-xl border-[#1E1B4B]/15 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reset-password" className="text-xs font-semibold text-[#1E1B4B]/70 uppercase tracking-wider">
-                    Nouveau mot de passe
-                  </Label>
-                  <Input
-                    id="reset-password"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="h-11 rounded-xl border-[#1E1B4B]/15 focus:border-[#84CC16] focus:ring-2 focus:ring-[#84CC16]/20"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-[#1E1B4B]/15">
-                  Annuler
-                </Button>
-                <Button
-                  onClick={handleResetConfirm}
-                  disabled={confirmSending || !resetToken?.trim() || !newPassword.trim()}
-                  className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold"
-                >
-                  {confirmSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Réinitialiser
-                </Button>
-              </DialogFooter>
-            </>
-          )}
+          <div className="space-y-3 py-2 text-sm text-[#1E1B4B]/80">
+            <p>
+              La réinitialisation autonome par email n&apos;est pas encore disponible sur la plateforme.
+              Pour réinitialiser votre mot de passe :
+            </p>
+            <ol className="list-decimal list-inside space-y-1.5 ml-1">
+              <li>Contactez le responsable de votre établissement ou un administrateur SECT.</li>
+              <li>Indiquez votre adresse email professionnelle.</li>
+              <li>L&apos;administrateur réinitialisera votre mot de passe via le panneau d&apos;administration.</li>
+              <li>Vous recevrez un mot de passe temporaire à changer lors de votre prochaine connexion.</li>
+            </ol>
+            <p className="text-xs text-[#1E1B4B]/60 pt-2 border-t border-[#1E1B4B]/10">
+              Si vous êtes administrateur et que vous connaissez votre mot de passe, vous pouvez le changer depuis votre profil.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setResetDialogOpen(false)} className="rounded-xl bg-[#84CC16] hover:bg-[#65A30D] text-[#1E1B4B] font-semibold">
+              J&apos;ai compris
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
