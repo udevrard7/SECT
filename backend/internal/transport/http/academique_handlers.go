@@ -389,15 +389,77 @@ func (s *Server) listEnseignantFilieres(w http.ResponseWriter, r *http.Request) 
 }
 
 // createEnseignantFilieres — POST /api/enseignant-filieres
+//
+// BUGFIX (PROG-ACAD-CRITICAL-FIX-1) : le frontend enseignants-page.tsx envoie
+// du bulk `{assignments: [...]}` (CreateAssignmentsInput) mais l'ancien handler
+// décodait un seul `CreateAssignmentInput` → Go's json.Decoder ignore les champs
+// inconnus, donc le décodage réussissait mais tous les champs étaient vides →
+// `efUC.Create` retournait `ValidationError{enseignantId: "requis"}` → 400
+// silencieux côté UI. On accepte désormais les deux formats (bulk ET single
+// rétro-compatible) en une seule passe de décodage.
 func (s *Server) createEnseignantFilieres(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
 		writeJSONError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	var input domain.CreateAssignmentInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+
+	// PROG-ACAD-CRITICAL-FIX-1 : décodage bulk {assignments:[...]} ET single
+	// (rétro-compat) en une seule passe. Si `assignments` est non vide, on est
+	// en bulk ; sinon on retombe sur les champs single (EnseignantID/FiliereID/Niveau).
+	var body struct {
+		Assignments  []domain.CreateAssignmentInput `json:"assignments"`
+		EnseignantID string                          `json:"enseignantId"`
+		FiliereID    string                          `json:"filiereId"`
+		Niveau       string                          `json:"niveau"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide (attendu: {assignments: [...]} ou {enseignantId, filiereId, niveau})")
+		return
+	}
+
+	// Branche bulk (format par défaut du frontend enseignants-page.tsx).
+	if len(body.Assignments) > 0 {
+		created := make([]any, 0, len(body.Assignments))
+		errs := make([]any, 0)
+		for _, input := range body.Assignments {
+			ef, err := s.efUC.Create(r.Context(), claims, input)
+			if err != nil {
+				errs = append(errs, map[string]any{
+					"input": input,
+					"error": err.Error(),
+				})
+				continue
+			}
+			created = append(created, ef)
+		}
+
+		status := http.StatusCreated
+		switch {
+		case len(created) == 0 && len(errs) > 0:
+			status = http.StatusBadRequest // 400 si tout a échoué (validation pattern)
+		case len(errs) > 0:
+			status = http.StatusMultiStatus // 207 partial
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]any{
+			"assignments": created,
+			"errors":      errs,
+		})
+		return
+	}
+
+	// Branche single (rétro-compat — non utilisée par le frontend actuel mais
+	// on préserve l'API pour d'éventuels clients directs).
+	input := domain.CreateAssignmentInput{
+		EnseignantID: body.EnseignantID,
+		FiliereID:    body.FiliereID,
+		Niveau:       body.Niveau,
+	}
+	if input.EnseignantID == "" && input.FiliereID == "" && input.Niveau == "" {
+		writeJSONError(w, http.StatusBadRequest, "assignments requis (format attendu: {assignments: [...]})")
 		return
 	}
 	ef, err := s.efUC.Create(r.Context(), claims, input)

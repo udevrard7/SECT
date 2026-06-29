@@ -589,10 +589,20 @@ export function EnseignantsPage() {
             },
           body: JSON.stringify(assignmentBody),
         })
-        if (!assignRes.ok) {
-          const assignErr = await assignRes.json().catch(() => ({}))
+        // PROG-ACAD-CRITICAL-FIX-1 : backend retourne désormais 201 (all OK),
+        // 207 (partial), 400 (all failed). 207 est dans 200-299 donc
+        // `assignRes.ok` est true — il faut lire `errors` pour détecter les
+        // échecs partiels.
+        const assignData = await assignRes.json().catch(() => ({}))
+        const assignErrCount = assignData.errors?.length ?? 0
+        const assignCreatedCount = assignData.assignments?.length ?? 0
+        if (assignRes.status === 207 || (assignErrCount > 0 && assignCreatedCount > 0)) {
           toast.warning('Affectations partielles', {
-            description: assignErr.error || 'Certaines affectations n\'ont pas pu être créées.',
+            description: `${assignErrCount} affectation(s) ont échoué sur ${validAssignments.length}.`,
+          })
+        } else if (!assignRes.ok || assignErrCount > 0) {
+          toast.error('Affectations échouées', {
+            description: assignData.error || assignData.errors?.[0]?.error || 'Erreur lors de la création des affectations.',
           })
         }
       }
@@ -721,9 +731,12 @@ export function EnseignantsPage() {
           }],
         }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Erreur lors de l\'ajout')
+      // PROG-ACAD-CRITICAL-FIX-1 : lire aussi `errors[0].error` (format bulk
+      // response). Pour 1 assignment, 207 ne se produit pas en pratique, mais
+      // on garde le check défensif.
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || (data.errors?.length ?? 0) > 0) {
+        throw new Error(data.error || data.errors?.[0]?.error || 'Erreur lors de l\'ajout')
       }
 
       toast.success('Affectation ajoutée', {

@@ -66,7 +66,7 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 
 	result := []affRow{}
 
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var where []string
 		var args []any
 		argIdx := 1
@@ -165,6 +165,24 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 		return rows.Err()
 	})
 
+	// PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
+	// Avant, `_ = appdb.WithTx(...)` jetait l'erreur → si la query fail
+	// (RLS policy block, syntax error, etc.), `result` restait `[]affRow{}`
+	// → response `{"affectations": []}` → l'utilisateur voyait une liste
+	// vide au lieu d'une erreur.
+	if err != nil {
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "foreign key constraint"):
+			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide (enseignant ou UE introuvable)")
+		case strings.Contains(errMsg, "unique constraint"), strings.Contains(errMsg, "duplicate key"):
+			writeJSONError(w, http.StatusConflict, "Conflit de données")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la lecture des affectations: "+errMsg)
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"affectations": result,
@@ -220,7 +238,7 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 		Commentaire         *string
 	}
 
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), `
 			INSERT INTO "Affectation" ("id", "enseignantId", "uniteEnseignementId", "typeSeance",
 				"groupe", "volumeHeures", "anneeUniversitaire", "statut", "commentaire", "createdAt", "updatedAt")
@@ -236,6 +254,35 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 			&row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
 		)
 	})
+
+	// PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
+	// Avant, `_ = appdb.WithTx(...)` jetait l'erreur → si l'INSERT fail
+	// (unique violation sur (enseignantId, uniteEnseignementId, typeSeance,
+	// groupe, anneeUniversitaire), FK violation, enum invalide pour
+	// typeSeance/statut, RLS policy block), la response était 201 Created
+	// avec `{affectation: {id: "", ...}}` (tous les champs vides) → le
+	// frontend voyait un 201, affichait un toast succès, mais aucune
+	// affectation n'était créée. Silent data loss.
+	if err != nil {
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "Affectation_enseignantId_fkey"),
+			strings.Contains(errMsg, "foreign key constraint") && strings.Contains(errMsg, "enseignantId"):
+			writeJSONError(w, http.StatusBadRequest, "Enseignant introuvable")
+		case strings.Contains(errMsg, "Affectation_uniteEnseignementId_fkey"),
+			strings.Contains(errMsg, "foreign key constraint") && strings.Contains(errMsg, "uniteEnseignementId"):
+			writeJSONError(w, http.StatusBadRequest, "Unité d'enseignement introuvable")
+		case strings.Contains(errMsg, "foreign key constraint"):
+			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide")
+		case strings.Contains(errMsg, "unique constraint"), strings.Contains(errMsg, "duplicate key"):
+			writeJSONError(w, http.StatusConflict, "Cette affectation existe déjà (doublon enseignant/UE/type/groupe/année)")
+		case strings.Contains(errMsg, "invalid_enum_value"), strings.Contains(errMsg, "invalid input value for enum"):
+			writeJSONError(w, http.StatusBadRequest, "Valeur d'enum invalide (typeSeance ou statut)")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la création: "+errMsg)
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -318,13 +365,40 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
 		ID                  string
 		Statut              string
 	}
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		return tx.QueryRow(r.Context(), fmt.Sprintf(`
 			UPDATE "Affectation" SET %s WHERE "id" = $%d
 			RETURNING "id", "statut"::text
 		`, strings.Join(setClauses, ", "), argIdx), args...,
 		).Scan(&row.ID, &row.Statut)
 	})
+
+	// PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
+	// Si l'UPDATE fail (not found → Scan retourne pgx.ErrNoRows, FK violation,
+	// unique constraint, enum invalide), on retourne le code HTTP approprié
+	// au lieu d'une response 200 avec `{affectation: {id: "", statut: ""}}`.
+	if err != nil {
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "no rows in result set"):
+			writeJSONError(w, http.StatusNotFound, "Affectation introuvable")
+		case strings.Contains(errMsg, "Affectation_enseignantId_fkey"),
+			strings.Contains(errMsg, "foreign key constraint") && strings.Contains(errMsg, "enseignantId"):
+			writeJSONError(w, http.StatusBadRequest, "Enseignant introuvable")
+		case strings.Contains(errMsg, "Affectation_uniteEnseignementId_fkey"),
+			strings.Contains(errMsg, "foreign key constraint") && strings.Contains(errMsg, "uniteEnseignementId"):
+			writeJSONError(w, http.StatusBadRequest, "Unité d'enseignement introuvable")
+		case strings.Contains(errMsg, "foreign key constraint"):
+			writeJSONError(w, http.StatusBadRequest, "Référence FK invalide")
+		case strings.Contains(errMsg, "unique constraint"), strings.Contains(errMsg, "duplicate key"):
+			writeJSONError(w, http.StatusConflict, "Cette affectation existe déjà (doublon)")
+		case strings.Contains(errMsg, "invalid_enum_value"), strings.Contains(errMsg, "invalid input value for enum"):
+			writeJSONError(w, http.StatusBadRequest, "Valeur d'enum invalide (typeSeance ou statut)")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la mise à jour: "+errMsg)
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -349,7 +423,7 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deleted := false
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		cmd, err := tx.Exec(r.Context(), `DELETE FROM "Affectation" WHERE "id" = $1`, id)
 		if err != nil {
 			return err
@@ -357,6 +431,22 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
 		deleted = cmd.RowsAffected() > 0
 		return nil
 	})
+
+	// PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
+	// `deleted` reflète RowsAffected (true si ligne supprimée, false si not
+	// found ou erreur) — mais les erreurs SQL étaient quand même silencieuses.
+	// On retourne désormais le code HTTP approprié en cas d'erreur.
+	if err != nil {
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "foreign key constraint"):
+			// Une affectation est référencée par une table enfant (Epreuve, etc.).
+			writeJSONError(w, http.StatusConflict, "Affectation référencée par d'autres entités (suppression impossible)")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la suppression: "+errMsg)
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
