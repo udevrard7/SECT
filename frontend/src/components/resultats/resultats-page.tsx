@@ -12,6 +12,7 @@ import {
   FileBarChart,
   RefreshCw,
   AlertTriangle,
+  AlertCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -130,16 +131,25 @@ export function ResultatsPage() {
 
         {/* ─── Étudiants en difficulté ─── */}
         <TabsContent value="students" className="mt-6 space-y-6">
-          {overview ? (
+          {overviewQuery.isError ? (
+            <Card className="border-destructive/30">
+              <CardContent className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                <AlertCircle className="h-8 w-8 text-destructive" />
+                <p className="text-sm text-muted-foreground">Impossible de charger les données étudiants.</p>
+                <Button variant="outline" size="sm" onClick={() => refresh()}>Réessayer</Button>
+              </CardContent>
+            </Card>
+          ) : overview ? (
             <div className="space-y-6">
-              {/* KPIs étudiants */}
+              {/* KPIs étudiants — P3-R8 : utilise studentsAtRisk.length au lieu de totalSessions */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Card className="border-l-4 border-l-primary">
                   <CardContent className="p-4">
-                    <p className="text-xs font-medium text-muted-foreground">Total étudiants évalués</p>
+                    <p className="text-xs font-medium text-muted-foreground">Étudiants évalués</p>
                     <p className="font-mono text-2xl font-bold tabular-nums">
-                      {overview?.totalSessions ?? 0}
+                      {overview.studentsAtRisk?.length ?? 0}
                     </p>
+                    <p className="text-xs text-muted-foreground">en difficulté sur {overview.totalSessions ?? 0} copies</p>
                   </CardContent>
                 </Card>
                 <Card className="border-l-4 border-l-primary">
@@ -153,11 +163,11 @@ export function ResultatsPage() {
                 </Card>
                 <Card className="border-l-4 border-l-primary">
                   <CardContent className="p-4">
-                    <p className="text-xs font-medium text-muted-foreground">Étudiants en réussite</p>
+                    <p className="text-xs font-medium text-muted-foreground">Taux de réussite global</p>
                     <p className="font-mono text-2xl font-bold tabular-nums text-success-text">
-                      {Math.max(0, (overview?.totalSessions ?? 0) - atRiskCount)}
+                      {Math.round(overview?.globalTauxReussite ?? 0)}%
                     </p>
-                    <p className="text-xs text-muted-foreground">moyenne ≥ 10/20</p>
+                    <p className="text-xs text-muted-foreground">moyenne ≥ 50% du barème</p>
                   </CardContent>
                 </Card>
               </div>

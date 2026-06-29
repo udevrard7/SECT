@@ -616,18 +616,34 @@ func (uc *ResultatUseCase) computeStats(ctx context.Context, sessions []*domain.
                 medianePct = roundTo1Decimal(mediane / noteTotal * 100)
         }
 
+        // P2-R6 : normaliser moyenne/mediane/min/max en /20 pour cohérence
+        // avec resultatsOverviewRealV2 (qui normalise systématiquement en /20).
+        // Les valeurs brutes restent disponibles via moyennePct/medianePct.
+        moyOn20 := 0.0
+        medOn20 := 0.0
+        minOn20 := 0.0
+        maxOn20 := 0.0
+        if noteTotal > 0 {
+                moyOn20 = roundTo2Decimals(moyenne / noteTotal * 20)
+                medOn20 = roundTo2Decimals(mediane / noteTotal * 20)
+                minOn20 = roundTo2Decimals(min / noteTotal * 20)
+                maxOn20 = roundTo2Decimals(max / noteTotal * 20)
+        }
+
         return map[string]any{
                 "totalSessions": total,
                 "soumis":        soumis,
                 "corriges":      corriges,
-                "moyenne":       roundTo2Decimals(moyenne),
-                "mediane":       roundTo2Decimals(mediane),
-                "min":           min,
-                "max":           max,
+                "moyenne":       moyOn20,
+                "mediane":       medOn20,
+                "min":           minOn20,
+                "max":           maxOn20,
                 "tauxReussite":  tauxReussite,
                 "noteTotal":     noteTotal,
                 "moyennePct":    moyennePct,
                 "medianePct":    medianePct,
+                "moyenneBrute":  roundTo2Decimals(moyenne),
+                "medianeBrute":  roundTo2Decimals(mediane),
         }
 }
 
