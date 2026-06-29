@@ -926,6 +926,21 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 where = buildAnd(wClauses)
                 return
         }
+        // RAPPORTS-FIX-R9 : buildJoinAndWhereStudent — variante pour les requêtes
+        // topEtudiants/etudiantsEnDifficulte : filtre par u."filiereId" (filière de
+        // l'étudiant) au lieu de e."filiereId" (filière de l'épreuve). Avant : un
+        // étudiant inscrit en INFO qui passait une épreuve de SEG apparaissait dans
+        // le rapport SEG à tort.
+        buildJoinAndWhereStudent := func() (joinOn, where string, args []any) {
+                var jClauses, wClauses []string
+                idx := 1
+                idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, ">=", dateDebutTs)
+                idx = appendFiltre(&jClauses, &args, idx, `s."dateFin"`, "<=", dateFinTs)
+                idx = appendFiltre(&wClauses, &args, idx, `u."filiereId"`, "=", filiereID)
+                joinOn = buildAnd(jClauses)
+                where = buildAnd(wClauses)
+                return
+        }
 
         _ = appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
                 // 1. Compteurs globaux (RLS filtre par établissement)
@@ -1063,13 +1078,13 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 // 6. Évolution des moyennes (6 derniers mois)
                 sWhere6, sArgs6 := buildSessionWhere()
                 rows4, err := tx.Query(ctx, fmt.Sprintf(`
-                        SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
+                        SELECT to_char(date_trunc('month', s."dateFin"), 'YYYY-MM') AS mois,
                                COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
                                count(*) AS nb_evaluations
                         FROM "SessionPassation" s
                         JOIN "Epreuve" e ON e.id = s."epreuveId"
                         WHERE s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
-                          AND s."updatedAt" > now() - interval '6 months'
+                          AND s."dateFin" > now() - interval '6 months'
                           %s
                         GROUP BY mois
                         ORDER BY mois ASC
@@ -1118,7 +1133,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 }
 
                 // 8. Top étudiants (par moyenne)
-                jOn8, wWhere8, jwArgs8 := buildJoinAndWhere()
+                jOn8, wWhere8, jwArgs8 := buildJoinAndWhereStudent()
                 rows6, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT u.id, u.name, u.email,
                                COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
@@ -1149,7 +1164,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 // 9. Étudiants en difficulté (moyenne < 10/20)
                 // RAPPORTS-FIX-R3 : aligné sur le seuil de réussite (≥ 10/20). Avant : < 8/20
                 // incohérent avec les labels frontend ("< 10/20" dans card, CSV, PDF).
-                jOn9, wWhere9, jwArgs9 := buildJoinAndWhere()
+                jOn9, wWhere9, jwArgs9 := buildJoinAndWhereStudent()
                 rows7, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT u.id, u.name, u.email,
                                COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
