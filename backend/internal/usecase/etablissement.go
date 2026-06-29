@@ -109,6 +109,16 @@ func (uc *EtablissementUseCase) Update(ctx context.Context, claims db.SessionCla
                 return nil, &domain.ValidationError{Field: "nom", Message: "ne peut pas être vide"}
         }
 
+        // PARAMETRES-FIX-P10 (LOW) : valider regexMatricule si fourni.
+        // Avant : une regex invalide (ex: "[unclosed") était stockée en DB et
+        // faisait crasher toute validation future (regexp.Compile panic côté
+        // frontend ou autre service). Maintenant : ValidationError si invalide.
+        if input.RegexMatricule != nil && *input.RegexMatricule != "" {
+                if _, err := regexp.Compile(*input.RegexMatricule); err != nil {
+                        return nil, &domain.ValidationError{Field: "regexMatricule", Message: "regex invalide: " + err.Error()}
+                }
+        }
+
         return uc.etabRepo.Update(ctx, id, input)
 }
 
