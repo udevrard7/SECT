@@ -534,6 +534,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/factures", func(r chi.Router) {
                         r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.facturesListReal)
+                        // FACTURATION-FIX-F1+F2+F3+F4 : mutations (POST/GET/{id}/PATCH/DELETE).
+                        r.Post("/", s.createFacture)
+                        r.Get("/{id}", s.getFactureByID)
+                        r.Patch("/{id}", s.updateFacture)
+                        r.Delete("/{id}", s.cancelFacture)
                 })
 
                 r.Route("/api/plans", func(r chi.Router) {
