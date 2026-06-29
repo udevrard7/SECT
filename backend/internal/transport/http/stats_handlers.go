@@ -1032,15 +1032,22 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 }
 
                 // 5. Étudiants par filière
-                rows3, err := tx.Query(ctx, `
+                // RAPPORTS-FIX-R6 : applique le filtre filiereId sur u."filiereId"
+                // (avant : ignoré → le graphique montrait toutes les filières même
+                // quand un filtre était sélectionné).
+                var uClauses5 []string
+                var uArgs5 []any
+                appendFiltre(&uClauses5, &uArgs5, 1, `u."filiereId"`, "=", filiereID)
+                rows3, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT COALESCE(f.nom, 'Sans filière') AS filiere_nom,
                                count(u.id) AS nb
                         FROM "User" u
                         LEFT JOIN "Filiere" f ON f.id = u."filiereId"
                         WHERE u.role = 'ETUDIANT' AND u.actif = true
+                          %s
                         GROUP BY f.nom
                         ORDER BY nb DESC
-                `)
+                `, buildAnd(uClauses5)), uArgs5...)
                 if err == nil {
                         defer rows3.Close()
                         etf := []etudiantParFiliere{}
