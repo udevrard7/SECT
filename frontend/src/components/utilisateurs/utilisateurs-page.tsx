@@ -36,6 +36,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
+import { ErrorState } from '@/components/shared/error-state'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -274,6 +275,15 @@ export function UtilisateursPage() {
   const [editingUser, setEditingUser] = useState<UserItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<UserItem | null>(null)
+  // UF6/F11: état isDeleting pour empêcher la fermeture auto de l'AlertDialog
+  // pendant la mutation DELETE (fire-and-forget → bouton disabled + preventDefault).
+  const [isDeleting, setIsDeleting] = useState(false)
+  // UF7/F22: toggleTarget pour l'AlertDialog de confirmation avant toggle actif.
+  const [toggleTarget, setToggleTarget] = useState<UserItem | null>(null)
+
+  // isAdmin/isResponsable déclarés ici pour être disponibles dans toute la fonction.
+  const isAdmin = user?.role === 'ADMIN'
+  const isResponsable = user?.role === 'RESPONSABLE'
 
   // ─── Registration mode ───
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('direct')
@@ -548,8 +558,8 @@ export function UtilisateursPage() {
 
         toast.success('Invitation envoyée', {
           description: etabName
-            ? `Invitation envoyée à ${formEmail} pour l'établissement ${etabName}. Valable 48h.`
-            : `Invitation envoyée à ${formEmail}. Valable 48h.`,
+            ? `Invitation envoyée à ${formEmail} pour l'établissement ${etabName}. Valable 7 jours.`
+            : `Invitation envoyée à ${formEmail}. Valable 7 jours.`,
         })
 
         // Show the invitation token for testing
@@ -617,6 +627,10 @@ export function UtilisateursPage() {
   }
 
   // ─── Toggle user active status ───
+  // UF7/F22: la mutation n'est déclenchée qu'après confirmation dans l'AlertDialog
+  // (toggleTarget state). Avant ce fix, un clic sur "Désactiver" exécutait le PATCH
+  // immédiatement sans garde — désactivation accidentelle trop facile.
+  // UF8: extraction err.error du body backend au lieu d'un message générique.
   const handleToggleActive = async (target: UserItem) => {
     try {
       const res = await fetch(`/api/users/${target.id}`, {
@@ -624,30 +638,49 @@ export function UtilisateursPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !target.actif }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
       toast.success(target.actif ? 'Utilisateur désactivé' : 'Utilisateur activé', {
         description: `${target.name} est maintenant ${target.actif ? 'inactif' : 'actif'}.`,
       })
       refreshUsers()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de modifier le statut.' })
     }
   }
 
+  // Appelé par l'AlertDialog de confirmation (UF7).
+  const confirmToggleActive = async () => {
+    if (!toggleTarget) return
+    await handleToggleActive(toggleTarget)
+    setToggleTarget(null)
+  }
+
   // ─── Delete user ───
-  const handleDelete = async () => {
-    if (!deleteTarget) return
+  // UF6/F11: isDeleting + e.preventDefault() pour empêcher la fermeture auto de
+  // l'AlertDialog pendant la mutation. Boutons disabled + extraction err.error (UF8).
+  const handleDelete = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault()
+    if (!deleteTarget || isDeleting) return
+    setIsDeleting(true)
     try {
       const res = await fetch(`/api/users/${deleteTarget.id}`, {
         method: 'DELETE',
         headers: { },
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
       toast.success('Utilisateur supprimé', { description: `${deleteTarget.name} a été supprimé.` })
       setDeleteTarget(null)
       refreshUsers()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de supprimer l\'utilisateur.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'utilisateur.' })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -687,7 +720,7 @@ export function UtilisateursPage() {
         throw new Error(data.error || 'Erreur lors du renvoi')
       }
       toast.success('Invitation renvoyée', {
-        description: `Une nouvelle invitation a été envoyée à ${renvoyerTarget.email}. Valable 48h.`,
+        description: `Une nouvelle invitation a été envoyée à ${renvoyerTarget.email}. Valable 7 jours.`,
       })
       setRenvoyerTarget(null)
       refreshInvitations()
@@ -771,9 +804,7 @@ export function UtilisateursPage() {
     setPage(1)
   }, [search, roleFilter, statusFilter])
 
-  // ─── Role restrictions based on current user ───
-  const isAdmin = user?.role === 'ADMIN'
-  const isResponsable = user?.role === 'RESPONSABLE'
+  // isAdmin/isResponsable déclarés en haut du composant (UF2 garde de rôle).
 
   /** Roles that the current user can create */
   const allowedCreateRoles = isAdmin
@@ -792,6 +823,22 @@ export function UtilisateursPage() {
   const pendingInvitations = invitations.filter((inv) => getInvitationStatus(inv) === 'pending')
   const expiredInvitations = invitations.filter((inv) => getInvitationStatus(inv) === 'expired')
   const usedInvitations = invitations.filter((inv) => getInvitationStatus(inv) === 'used')
+
+  // UF2 (HIGH): garde de rôle UI — la page /utilisateurs est réservée à ADMIN et RESPONSABLE.
+  // Un ETUDIANT/ENSEIGNANT qui tape l'URL directement voit un message au lieu d'une
+  // page vide trompeuse. Le backend renvoie 403, mais on évite le flash de contenu.
+  // Placé après tous les hooks (rules-of-hooks).
+  if (!isAdmin && !isResponsable) {
+    return (
+      <div className="space-y-6">
+        <ErrorState
+          message="Cette page est réservée aux administrateurs et responsables. Votre rôle ne vous permet pas d'accéder à la gestion des utilisateurs."
+          onRetry={() => window.history.back()}
+          retryLabel="Retour"
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -957,8 +1004,18 @@ export function UtilisateursPage() {
         </div>
       )}
 
+      {/* ─── UF9 (HIGH): ErrorState si la query échoue (403/500/network). */}
+      {/* Avant ce fix, usersQuery.error n'était jamais lu → l'utilisateur voyait */}
+      {/* l'empty state "Aucun utilisateur trouvé" même en cas d'erreur réelle. */}
+      {!isLoading && usersQuery.isError && (
+        <ErrorState
+          message="Impossible de charger la liste des utilisateurs. Vérifiez vos permissions ou réessayez."
+          onRetry={() => usersQuery.refetch()}
+        />
+      )}
+
       {/* ─── Empty state ─── */}
-      {!isLoading && users.length === 0 && (
+      {!isLoading && !usersQuery.isError && users.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <Users className="h-10 w-10 text-success-text" />
@@ -1074,7 +1131,7 @@ export function UtilisateursPage() {
                             <Edit3 className="h-4 w-4 mr-2" />
                             Modifier
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleToggleActive(u)}>
+                          <DropdownMenuItem onClick={() => setToggleTarget(u)}>
                             {u.actif ? (
                               <>
                                 <PowerOff className="h-4 w-4 mr-2" />
@@ -1371,7 +1428,7 @@ export function UtilisateursPage() {
                   <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 p-3">
                     <Mail className="h-4 w-4 text-info mt-0.5 shrink-0" />
                     <p className="text-xs text-info">
-                      Un email d&apos;invitation sera envoyé à l&apos;utilisateur. Il devra cliquer sur le lien et définir son propre mot de passe. Le lien est valable <strong>48 heures</strong>.
+                      Un email d&apos;invitation sera envoyé à l&apos;utilisateur. Il devra cliquer sur le lien et définir son propre mot de passe. Le lien est valable <strong>7 jours</strong>.
                     </p>
                   </div>
                 )}
@@ -1603,7 +1660,7 @@ export function UtilisateursPage() {
                 </div>
 
                 <p className="text-sm text-muted-foreground">
-                  L&apos;invitation a été envoyée à <strong>{invitationResult.email}</strong>. Le lien est valable <strong>48 heures</strong>.
+                  L&apos;invitation a été envoyée à <strong>{invitationResult.email}</strong>. Le lien est valable <strong>7 jours</strong>.
                 </p>
 
                 <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
@@ -2059,22 +2116,44 @@ export function UtilisateursPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Toggle Active Confirmation Dialog (UF7/F22) ─── */}
+      <AlertDialog open={!!toggleTarget} onOpenChange={(open) => { if (!open) setToggleTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{toggleTarget?.actif ? 'Désactiver' : 'Activer'} l&apos;utilisateur</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir <strong>{toggleTarget?.actif ? 'désactiver' : 'activer'}</strong> le compte de <strong>{toggleTarget?.name}</strong> ?
+              {toggleTarget?.actif && ' Cet utilisateur ne pourra plus se connecter à la plateforme jusqu\'à réactivation.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmToggleActive}>
+              {toggleTarget?.actif ? 'Désactiver' : 'Activer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ─── Delete Confirmation Dialog ─── */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+      {/* UF6: onOpenChange vérifie !isDeleting pour empêcher la fermeture mid-mutation. */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer l&apos;utilisateur</AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.name}</strong> ({deleteTarget?.email}) ?
-              Cette action est irréversible. Toutes les données associées à cet utilisateur seront définitivement supprimées.
+              Cette action est irréversible. Toutes les données associées à cet utilisateur (épreuves, sessions, soumissions, devoirs, affectations) seront définitivement supprimées en cascade.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
+              disabled={isDeleting}
             >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2113,7 +2192,7 @@ export function UtilisateursPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               Voulez-vous renvoyer une invitation à <strong>{renvoyerTarget?.email}</strong> ?
-              Un nouveau lien sera généré avec une validité de 48 heures. L&apos;ancien lien ne sera plus utilisable.
+              Un nouveau lien sera généré avec une validité de 7 jours. L&apos;ancien lien ne sera plus utilisable.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

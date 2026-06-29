@@ -382,6 +382,11 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     icon: 'Users',
     defaultOpen: true,
     items: [
+      // UF1 (CRITICAL): ajout de /utilisateurs à la sidebar RESPONSABLE.
+      // La page est conçue pour RESPONSABLE (crée ENSEIGNANT/ETUDIANT) mais
+      // le lien sidebar était absent — le RESPONSABLE ne pouvait y accéder
+      // qu'en tapant l'URL directement.
+      { id: 'utilisateurs', label: 'Tous les utilisateurs', icon: 'Users' },
       { id: 'etudiants', label: 'Étudiants', icon: 'Users' },
       { id: 'enseignants', label: 'Enseignants', icon: 'BookOpen' },
     ],
