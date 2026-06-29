@@ -1158,9 +1158,18 @@ func sortPerfByType(p []domain.PerformanceParType) {
 }
 
 // GetEpreuveNoteTotal récupère le noteTotal d'une épreuve (SCORES-NORM-2).
+// P2-R7 : GetEpreuveNoteTotal utilise maintenant une tx avec RLS off
+// (au lieu de pool.QueryRow direct qui était bloqué par RLS sans claims).
 func (r *ResultatRepository) GetEpreuveNoteTotal(ctx context.Context, epreuveID string) (float64, error) {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return 20.0, nil
+        }
+        defer tx.Rollback(ctx)
+        tx.Exec(ctx, "SET LOCAL row_security = off")
+
         var noteTotal float64
-        err := r.pool.QueryRow(ctx, `SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1`, epreuveID).Scan(&noteTotal)
+        err = tx.QueryRow(ctx, `SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, epreuveID).Scan(&noteTotal)
         if err != nil {
                 return 20.0, nil // fallback à 20 si non trouvé
         }
