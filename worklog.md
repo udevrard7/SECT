@@ -9271,3 +9271,38 @@ Stage Summary:
 - **Frontend** : routes.ts (A5 garde rôle) + abonnements-page.tsx (A10 calcul revenu).
 - **Aucune migration DB** nécessaire (RLS policies déjà en place).
 - **Bug restant** : A3 (CRITICAL — wizard de souscription cassé, champs responsable/plan ignorés par POST /api/etablissements). Nécessite un refactor frontend (3 appels séquentiels : créer étab → créer responsable/invitation → créer abonnement) ou une extension du backend CreateEtablissementInput. À traiter dans une étape dédiée.
+
+---
+Task ID: ABONNEMENTS-FIX-STEP-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 2 du fix module /abonnements — A3 (CRITICAL) wizard de souscription transactionnel.
+
+Work Log:
+- Approche choisie : backend transactionnelle (option B) plutôt que frontend 3 appels séquentiels. Plus propre atomiquement.
+- domain/etablissement.go : 6 champs optionnels ajoutés à CreateEtablissementInput (ResponsableNom/Email/Telephone/Mode, PlanID, PeriodeFacturation). CreateInTx ajouté à l'interface EtablissementRepository.
+- repository/etablissement.go : extraction de CreateInTx (corps de Create sans gestion tx) pour réutilisation dans une transaction du caller.
+- usecase/etablissement.go : struct étendu avec pool *pgxpool.Pool. Create retourne désormais *CreateResult (Etablissement + TemporaryPassword/InvitationToken/AbonnementID). Transaction atomique db.WithTx :
+  1. SET LOCAL row_security = off + INSERT Etablissement (CreateInTx)
+  2. mode direct : INSERT User RESPONSABLE (bcrypt cost 10 + mustChangePwd=true) + INSERT EtablissementAccess auto-approuvé (motif + statut APPROUVE + dateFin NULL) pour l'ADMIN créateur
+  3. mode invitation : INSERT Invitation (token 32 hex, expire 7 jours)
+  4. INSERT Abonnement (statut ESSAI, dateFin +30j mensuel / +365j annuel)
+  Validation : email, mode (direct/invitation), responsableNom requis en direct, regexMatricule, planId existant.
+- handler createEtablissement : réponse enrichie {etablissement, responsable:{temporaryPassword}, invitation:{token,expiresAt}, abonnement:{id, planNom}}.
+- main.go : pool passé à NewEtablissementUseCase.
+- Compatibilité : si ResponsableEmail/PlanID absents → comportement historique (création simple).
+- Bug rencontré et corrigé : EtablissementAccess.motif est NOT NULL sans default → SQLSTATE 23502. Ajout du motif 'Auto-approuvé (création wizard)'.
+- Conflit git résolu : cherry-pick du commit A3 après reset --hard origin/main (l'autre session avait pushé une refonte rapports en parallèle).
+- Vérifications live (auth admin) — wizard complet testé en mode direct ET invitation :
+  - Mode direct : 201 Created + etablissement + responsable.temporaryPassword + abonnement.planNom ✅
+  - Login du responsable créé avec password temporaire → 200 OK + mustChangePwd=true ✅
+  - Mode invitation : 201 Created + etablissement + invitation.token + invitation.expiresAt + abonnement ✅
+  - DB vérifiée : Abonnement (ESSAI, +30j), User RESPONSABLE, EtablissementAccess (APPROUVE, motif, dateFin NULL) ✅
+- Données de test nettoyées (5 établissements de test + users + abonnements + invitations supprimés).
+
+Stage Summary:
+- **1 bug CRITICAL traité** : A3 (wizard de souscription transactionnel).
+- **4 commits poussés** : 57d0fcd (A3 initial), 63cc3f4 (cast Role), 5132325 (debug temporaire), a250aa0 (fix motif + retrait debug).
+- **Backend** : 5 fichiers modifiés (domain + repository + usecase + handler + main.go).
+- **Aucune migration DB** nécessaire (RLS policies et schéma existants suffisants).
+- **Module /abonnements désormais pleinement fonctionnel** : les 10 bugs (A1-A10) sont tous traités. Le wizard de souscription crée en une transaction atomique : établissement + responsable (avec password temporaire ou invitation) + abonnement + accès admin auto-approuvé.
+- **Vérification live complète** : tests authentifiés (admin + responsable créé par wizard) confirment le fonctionnement end-to-end.
