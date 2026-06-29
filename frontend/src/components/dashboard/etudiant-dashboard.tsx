@@ -532,8 +532,8 @@ export function EtudiantDashboard() {
                           >
                             {scorePercent}%
                           </div>
-                          <div className="ml-4 flex-grow">
-                            <p className="font-semibold truncate">{result.titre}</p>
+                          <div className="ml-4 flex-grow min-w-0">
+                            <p className="font-semibold truncate" title={result.titre}>{result.titre}</p>
                             <p className="text-sm text-muted-foreground">{formatDateFR(result.date)}</p>
                           </div>
                           <Button variant="ghost" size="sm" onClick={() => router.push('/mes-resultats')}>
