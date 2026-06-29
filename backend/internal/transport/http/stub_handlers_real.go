@@ -9,10 +9,13 @@ import (
         "encoding/json"
         "fmt"
         "net/http"
+        "strings"
         "time"
 
+        "github.com/go-chi/chi/v5"
         "github.com/jackc/pgx/v5"
         appdb "github.com/udevrard7/sect/backend/internal/db"
+        "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
 )
 
@@ -176,18 +179,37 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // SURVEILLANCE-FIX-2 S8 : DTO enrichi avec relations imbriquées (filiere,
+        // epreuve, user) pour matcher le type AlerteItem côté frontend.
+        type alerteRef struct {
+                ID  string `json:"id"`
+                Nom string `json:"nom,omitempty"`
+        }
+        type alerteEpreuveRef struct {
+                ID    string `json:"id"`
+                Titre string `json:"titre,omitempty"`
+        }
+        type alerteUserRef struct {
+                ID    string `json:"id"`
+                Name  string `json:"name,omitempty"`
+                Email string `json:"email,omitempty"`
+        }
         type alerte struct {
-                ID          string  `json:"id"`
-                Titre       string  `json:"titre"`
-                Description string  `json:"description"`
-                Severity    string  `json:"severity"`
-                Type        string  `json:"type"`
-                Lue         bool    `json:"lue"`
-                Resolu      bool    `json:"resolu"`
-                FiliereID   *string `json:"filiereId,omitempty"`
-                EpreuveID   *string `json:"epreuveId,omitempty"`
-                UserID      *string `json:"userId,omitempty"`
-                CreatedAt   string  `json:"createdAt"`
+                ID          string            `json:"id"`
+                Titre       string            `json:"titre"`
+                Description string            `json:"description"`
+                Severity    string            `json:"severity"`
+                Type        string            `json:"type"`
+                Lue         bool              `json:"lue"`
+                Resolu      bool              `json:"resolu"`
+                FiliereID   *string           `json:"filiereId,omitempty"`
+                EpreuveID   *string           `json:"epreuveId,omitempty"`
+                UserID      *string           `json:"userId,omitempty"`
+                CreatedAt   string            `json:"createdAt"`
+                // Champs imbriqués (S8) — null si aucune relation.
+                Filiere     *alerteRef        `json:"filiere"`
+                Epreuve     *alerteEpreuveRef `json:"epreuve"`
+                User        *alerteUserRef    `json:"user"`
         }
 
         result := []alerte{}
@@ -204,17 +226,23 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
                 argIdx := 1
                 whereClause := ""
                 if lueParam == "false" {
-                        whereClause = fmt.Sprintf(`WHERE "lue" = false`)
+                        whereClause = fmt.Sprintf(`WHERE a."lue" = false`)
                 } else if lueParam == "true" {
-                        whereClause = fmt.Sprintf(`WHERE "lue" = true`)
+                        whereClause = fmt.Sprintf(`WHERE a."lue" = true`)
                 }
 
                 query := fmt.Sprintf(`
-                        SELECT "id", "titre", "description", "severity"::text, "type"::text,
-                               "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt"
-                        FROM "Alerte"
+                        SELECT a."id", a."titre", a."description", a."severity"::text, a."type"::text,
+                               a."lue", a."resolu", a."filiereId", a."epreuveId", a."userId", a."createdAt",
+                               f."id", f."nom",
+                               e."id", e."titre",
+                               u."id", u."name", u."email"
+                        FROM "Alerte" a
+                        LEFT JOIN "Filiere" f ON f."id" = a."filiereId"
+                        LEFT JOIN "Epreuve" e ON e."id" = a."epreuveId"
+                        LEFT JOIN "User" u ON u."id" = a."userId"
                         %s
-                        ORDER BY "createdAt" DESC
+                        ORDER BY a."createdAt" DESC
                         LIMIT $%d
                 `, whereClause, argIdx)
                 args = append(args, limit)
@@ -227,11 +255,24 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
                 for rows.Next() {
                         a := alerte{}
                         var createdAt time.Time
+                        var filiereID, filiereNom, epreuveID, epreuveTitre, userID, userName, userEmail *string
                         if err := rows.Scan(&a.ID, &a.Titre, &a.Description, &a.Severity, &a.Type,
-                                &a.Lue, &a.Resolu, &a.FiliereID, &a.EpreuveID, &a.UserID, &createdAt); err != nil {
+                                &a.Lue, &a.Resolu, &a.FiliereID, &a.EpreuveID, &a.UserID, &createdAt,
+                                &filiereID, &filiereNom,
+                                &epreuveID, &epreuveTitre,
+                                &userID, &userName, &userEmail); err != nil {
                                 return err
                         }
                         a.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+                        if filiereID != nil {
+                                a.Filiere = &alerteRef{ID: *filiereID, Nom: derefStr(filiereNom)}
+                        }
+                        if epreuveID != nil {
+                                a.Epreuve = &alerteEpreuveRef{ID: *epreuveID, Titre: derefStr(epreuveTitre)}
+                        }
+                        if userID != nil {
+                                a.User = &alerteUserRef{ID: *userID, Name: derefStr(userName), Email: derefStr(userEmail)}
+                        }
                         result = append(result, a)
                 }
                 return rows.Err()
@@ -654,4 +695,161 @@ func parseIntSafe(s string) (int, error) {
         var n int
         _, err := fmt.Sscanf(s, "%d", &n)
         return n, err
+}
+
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helper: derefStr — défini dans affectation_handlers.go (réutilisé).
+// ──────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /api/alertes/{id} — marquer lue / résoudre une alerte
+//
+// SURVEILLANCE-FIX-2 S7 : route manquante implémentée.
+// Body : { action: 'marquer_lue' | 'resoudre' }
+//   - 'marquer_lue' → UPDATE lue=true
+//   - 'resoudre'    → UPDATE resolu=true (et lue=true aussi)
+// Retourne l'alerte mise à jour (avec relations imbriquées).
+// ──────────────────────────────────────────────────────────────────────────
+
+func (s *Server) alerteUpdate(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        alerteID := chi.URLParam(r, "id")
+        if alerteID == "" {
+                writeJSONError(w, http.StatusBadRequest, "alerte id required")
+                return
+        }
+
+        var body struct {
+                Action string `json:"action"`
+                Lue    *bool  `json:"lue,omitempty"`
+                Resolu *bool  `json:"resolu,omitempty"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "invalid body")
+                return
+        }
+
+        // Déterminer les champs à updater selon action ou flags explicites.
+        setLue := body.Lue
+        setResolu := body.Resolu
+        switch body.Action {
+        case "marquer_lue":
+                t := true
+                setLue = &t
+        case "resoudre":
+                t := true
+                setLue = &t
+                setResolu = &t
+        case "":
+                // ok — on utilise les flags explicites lue/resolu
+        default:
+                writeJSONError(w, http.StatusBadRequest, "action invalide (attendu: marquer_lue | resoudre)")
+                return
+        }
+
+        type alerteRef struct {
+                ID  string `json:"id"`
+                Nom string `json:"nom,omitempty"`
+        }
+        type alerteEpreuveRef struct {
+                ID    string `json:"id"`
+                Titre string `json:"titre,omitempty"`
+        }
+        type alerteUserRef struct {
+                ID    string `json:"id"`
+                Name  string `json:"name,omitempty"`
+                Email string `json:"email,omitempty"`
+        }
+        type alerte struct {
+                ID          string            `json:"id"`
+                Titre       string            `json:"titre"`
+                Description string            `json:"description"`
+                Severity    string            `json:"severity"`
+                Type        string            `json:"type"`
+                Lue         bool              `json:"lue"`
+                Resolu      bool              `json:"resolu"`
+                FiliereID   *string           `json:"filiereId,omitempty"`
+                EpreuveID   *string           `json:"epreuveId,omitempty"`
+                UserID      *string           `json:"userId,omitempty"`
+                CreatedAt   string            `json:"createdAt"`
+                Filiere     *alerteRef        `json:"filiere"`
+                Epreuve     *alerteEpreuveRef `json:"epreuve"`
+                User        *alerteUserRef    `json:"user"`
+        }
+
+        var updated alerte
+        txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                var sets []string
+                var args []any
+                argIdx := 1
+                if setLue != nil {
+                        sets = append(sets, fmt.Sprintf(`"lue" = $%d`, argIdx))
+                        args = append(args, *setLue)
+                        argIdx++
+                }
+                if setResolu != nil {
+                        sets = append(sets, fmt.Sprintf(`"resolu" = $%d`, argIdx))
+                        args = append(args, *setResolu)
+                        argIdx++
+                }
+                if len(sets) == 0 {
+                        return &domain.ValidationError{Field: "action", Message: "aucune action à effectuer"}
+                }
+
+                args = append(args, alerteID)
+
+                query := fmt.Sprintf(`
+                        UPDATE "Alerte" SET %s WHERE "id" = $%d
+                        RETURNING "id", "titre", "description", "severity"::text, "type"::text",
+                                  "lue", "resolu", "filiereId", "epreuveId", "userId", "createdAt",
+                                  (SELECT "id" FROM "Filiere" WHERE "id" = "Alerte"."filiereId"),
+                                  (SELECT "nom" FROM "Filiere" WHERE "id" = "Alerte"."filiereId"),
+                                  (SELECT "id" FROM "Epreuve" WHERE "id" = "Alerte"."epreuveId"),
+                                  (SELECT "titre" FROM "Epreuve" WHERE "id" = "Alerte"."epreuveId"),
+                                  (SELECT "id" FROM "User" WHERE "id" = "Alerte"."userId"),
+                                  (SELECT "name" FROM "User" WHERE "id" = "Alerte"."userId"),
+                                  (SELECT "email" FROM "User" WHERE "id" = "Alerte"."userId")
+                `, strings.Join(sets, ", "), argIdx)
+
+                var createdAt time.Time
+                var filiereID, filiereNom, epreuveID, epreuveTitre, userID, userName, userEmail *string
+                err := tx.QueryRow(r.Context(), query, args...).Scan(
+                        &updated.ID, &updated.Titre, &updated.Description, &updated.Severity, &updated.Type,
+                        &updated.Lue, &updated.Resolu, &updated.FiliereID, &updated.EpreuveID, &updated.UserID, &createdAt,
+                        &filiereID, &filiereNom,
+                        &epreuveID, &epreuveTitre,
+                        &userID, &userName, &userEmail,
+                )
+                if err != nil {
+                        return fmt.Errorf("update alerte: %w", err)
+                }
+                updated.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+                if filiereID != nil {
+                        updated.Filiere = &alerteRef{ID: *filiereID, Nom: derefStr(filiereNom)}
+                }
+                if epreuveID != nil {
+                        updated.Epreuve = &alerteEpreuveRef{ID: *epreuveID, Titre: derefStr(epreuveTitre)}
+                }
+                if userID != nil {
+                        updated.User = &alerteUserRef{ID: *userID, Name: derefStr(userName), Email: derefStr(userEmail)}
+                }
+                return nil
+        })
+
+        if txErr != nil {
+                middleware.MapDomainError(w, txErr)
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "alerte":  updated,
+                "message": "Alerte mise à jour",
+        })
 }
