@@ -576,12 +576,18 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/ip-whitelist", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.ipWhitelistListReal)
+                        // PARAMETRES-FIX-P2 : mutations (POST/PATCH/DELETE) pour la whitelist IP.
+                        r.Post("/", s.createIpWhitelist)
+                        r.Patch("/{id}", s.updateIpWhitelist)
+                        r.Delete("/{id}", s.deleteIpWhitelist)
                 })
 
                 r.Route("/api/security-settings", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.securitySettingsGetReal)
-                        r.Get("/etablissement/{id}", s.securitySettingsByEtablissement) // B5-MES-EPREUVES
+                        r.Get("/etablissement/{id}", s.securitySettingsByEtablissement)    // B5-MES-EPREUVES
+                        // PARAMETRES-FIX-P1+P5 : upsert (UPDATE si existe, INSERT sinon).
+                        r.Patch("/etablissement/{id}", s.updateSecuritySettingsByEtablissement)
                 })
 
                 r.Route("/api/enseignant", func(r chi.Router) {
