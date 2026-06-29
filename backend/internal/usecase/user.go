@@ -19,14 +19,20 @@ import (
 // RevokeAllUserRefreshTokens + CreateAuditLog. Sans cette injection, l'admin
 // ne pouvait pas déverrouiller un compte (PATCH /api/users/{id} avec password
 // ne reset pas loginAttempts/lockedUntil via userRepo.Update).
+//
+// U1/U7 (CRITICAL) : dépend de accessUC pour ValidateAccessForEtablissement.
+// Avant ce fix, un ADMIN pouvait muter/créer des users dans n'importe quel
+// établissement sans autorisation EtablissementAccess (le repo bypass RLS sur
+// les writes, et checkOwnership ADMIN était un no-op avec TODO commenté).
 type UserUseCase struct {
         userRepo domain.UserRepository
         authRepo domain.AuthRepository
+        accessUC *AccessUseCase
 }
 
 // NewUserUseCase crée un nouveau UserUseCase.
-func NewUserUseCase(userRepo domain.UserRepository, authRepo domain.AuthRepository) *UserUseCase {
-        return &UserUseCase{userRepo: userRepo, authRepo: authRepo}
+func NewUserUseCase(userRepo domain.UserRepository, authRepo domain.AuthRepository, accessUC *AccessUseCase) *UserUseCase {
+        return &UserUseCase{userRepo: userRepo, authRepo: authRepo, accessUC: accessUC}
 }
 
 // GetProfile récupère le profil de l'utilisateur courant.
@@ -108,7 +114,7 @@ func (uc *UserUseCase) GetByID(ctx context.Context, claims db.SessionClaims, id 
         }
 
         // Ownership check
-        if err := uc.checkOwnership(claims, user); err != nil {
+        if err := uc.checkOwnership(ctx, claims, user); err != nil {
                 return nil, err
         }
         return user, nil
@@ -167,6 +173,18 @@ func (uc *UserUseCase) Create(ctx context.Context, claims db.SessionClaims, inpu
                 input.EtablissementID = &ownEtab
         }
 
+        // U7 (CRITICAL) : ADMIN doit avoir un accès EtablissementAccess valide pour
+        // créer un user dans un établissement. Avant ce fix, input.EtablissementID
+        // était utilisé tel quel sans validation → ADMIN pouvait créer un RESPONSABLE
+        // "fantôme" dans un étab auquel il n'a pas accès. Le repo bypass RLS, donc
+        // la policy User_insert (qui contient admin_has_etablissement_access) était
+        // court-circuitée.
+        if creatorRole == domain.RoleAdmin && input.EtablissementID != nil && *input.EtablissementID != "" {
+                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
+                        return nil, "", err
+                }
+        }
+
         // Hasher le mot de passe (bcrypt cost 10)
         hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), 10)
         if err != nil {
@@ -212,7 +230,7 @@ func (uc *UserUseCase) Update(ctx context.Context, claims db.SessionClaims, id s
                 return nil, err
         }
 
-        if err := uc.checkOwnership(claims, existing); err != nil {
+        if err := uc.checkOwnership(ctx, claims, existing); err != nil {
                 return nil, err
         }
 
@@ -271,7 +289,7 @@ func (uc *UserUseCase) Delete(ctx context.Context, claims db.SessionClaims, id s
                 return nil, err
         }
 
-        if err := uc.checkOwnership(claims, existing); err != nil {
+        if err := uc.checkOwnership(ctx, claims, existing); err != nil {
                 return nil, err
         }
 
@@ -318,17 +336,22 @@ func (uc *UserUseCase) CountUserDependencies(ctx context.Context, userID string)
 }
 
 // checkOwnership vérifie que l'utilisateur courant peut accéder au user cible.
-func (uc *UserUseCase) checkOwnership(claims db.SessionClaims, target *domain.User) error {
+//
+// U1 (CRITICAL) : pour ADMIN, appelle ValidateAccessForEtablissement si le target
+// a un etablissementId. Avant ce fix, le repo bypass RLS sur les writes et
+// checkOwnership ADMIN était un no-op → un ADMIN pouvait muter des users dans
+// n'importe quel établissement sans autorisation EtablissementAccess.
+func (uc *UserUseCase) checkOwnership(ctx context.Context, claims db.SessionClaims, target *domain.User) error {
         role := domain.Role(claims.Role)
 
         switch role {
         case domain.RoleAdmin:
-                // ADMIN peut accéder si target n'a pas d'établissement, OU via EtablissementAccess
-                // (la vérification EtablissementAccess est complexe — pour l'instant on permet l'accès
-                // car le RLS côté DB filtrera. TODO: ajouter check explicite EtablissementAccess)
+                // ADMIN : si le target a un établissement, valider l'accès via EtablissementAccess.
+                // Si le target n'a pas d'établissement (admin plat), pas de check.
                 if target.EtablissementID != nil && *target.EtablissementID != "" {
-                        // L'ADMIN a accès via RLS (admin_has_etablissement_access) — si pas d'accès, RLS bloque
-                        // On laisse passer, la DB fera le filtrage
+                        if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *target.EtablissementID); err != nil {
+                                return err
+                        }
                 }
                 return nil
         case domain.RoleResponsable:
@@ -370,7 +393,7 @@ func (uc *UserUseCase) ResetPassword(ctx context.Context, claims db.SessionClaim
                 return "", err
         }
 
-        if err := uc.checkOwnership(claims, existing); err != nil {
+        if err := uc.checkOwnership(ctx, claims, existing); err != nil {
                 return "", err
         }
 
@@ -426,7 +449,7 @@ func (uc *UserUseCase) UnlockAccount(ctx context.Context, claims db.SessionClaim
                 return err
         }
 
-        if err := uc.checkOwnership(claims, existing); err != nil {
+        if err := uc.checkOwnership(ctx, claims, existing); err != nil {
                 return err
         }
 
