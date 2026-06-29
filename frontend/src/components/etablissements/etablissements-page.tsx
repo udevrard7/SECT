@@ -25,6 +25,7 @@ import {
   UserCheck,
   Lock,
   ArrowRight,
+  Trash2,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -160,6 +161,9 @@ function getRoleBadge(role: string) {
 export function EtablissementsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const userRole = user?.role
+  const isAdmin = userRole === 'ADMIN'
 
   // ─── Data state ───
   // (Migration useEffect+fetch → useQuery. Voir plus bas.)
@@ -173,6 +177,7 @@ export function EtablissementsPage() {
   const [editingEtab, setEditingEtab] = useState<EtablissementItem | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<EtablissementItem | null>(null)
+  const [toggleTarget, setToggleTarget] = useState<EtablissementItem | null>(null)
 
   // ─── Detail view state ───
   const [detailEtab, setDetailEtab] = useState<EtablissementDetail | null>(null)
@@ -250,11 +255,12 @@ export function EtablissementsPage() {
 
     setIsSubmitting(true)
     try {
-      const body = {
+      // F7: RESPONSABLE ne peut pas modifier pays/actif (backend 403). On omet ces
+      // champs pour RESPONSABLE — l'ADMIN garde tous les droits.
+      const body: Record<string, string | null> = {
         nom: formNom,
         type: formType || null,
         ville: formVille || null,
-        pays: formPays || "Côte d'Ivoire",
         adresse: formAdresse || null,
         telephone: formTelephone || null,
         email: formEmail || null,
@@ -262,6 +268,9 @@ export function EtablissementsPage() {
         formatMatricule: formFormatMatricule || null,
         exempleMatricule: formExempleMatricule || null,
         regexMatricule: formRegexMatricule || null,
+      }
+      if (isAdmin) {
+        body.pays = formPays || "Côte d'Ivoire"
       }
 
       const res = await fetch(`/api/etablissements/${editingEtab.id}`, {
@@ -284,6 +293,9 @@ export function EtablissementsPage() {
   }
 
   // ─── Toggle active ───
+  // F22: demande confirmation avant de changer le statut (impact sur la connexion
+  // des utilisateurs et l'accès aux filières). La confirmation est gérée via
+  // AlertDialog (toggleTarget) — la mutation n'est déclenchée qu'après clic.
   const handleToggleActive = async (etab: EtablissementItem) => {
     try {
       const res = await fetch(`/api/etablissements/${etab.id}`, {
@@ -291,25 +303,47 @@ export function EtablissementsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actif: !etab.actif }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      // F8: extraire le message d'erreur backend au lieu d'un message générique.
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
       toast.success(etab.actif ? 'Établissement désactivé' : 'Établissement activé')
       refreshEtablissements()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de modifier le statut.' })
     }
   }
 
+  // Appelé par l'AlertDialog de confirmation (F22).
+  const confirmToggleActive = async () => {
+    if (!toggleTarget) return
+    await handleToggleActive(toggleTarget)
+    setToggleTarget(null)
+  }
+
   // ─── Delete ───
-  const handleDelete = async () => {
-    if (!deleteTarget) return
+  // F1+ F11: le bouton Supprimer est désormais visible dans le card (ADMIN only).
+  // On empêche la fermeture auto de l'AlertDialog pendant la mutation pour
+  // permettre l'état loading + éviter le double-clic.
+  const [isDeleting, setIsDeleting] = useState(false)
+  const handleDelete = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault()
+    if (!deleteTarget || isDeleting) return
+    setIsDeleting(true)
     try {
       const res = await fetch(`/api/etablissements/${deleteTarget.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur')
+      }
       toast.success('Établissement supprimé')
       setDeleteTarget(null)
       refreshEtablissements()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de supprimer l\'établissement.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de supprimer l\'établissement.' })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -562,23 +596,27 @@ export function EtablissementsPage() {
                     <Edit3 className="h-3.5 w-3.5" />
                     Modifier
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleToggleActive(etab)}
-                  >
-                    {etab.actif ? (
-                      <>
-                        <PowerOff className="h-3.5 w-3.5" />
-                        Désactiver
-                      </>
-                    ) : (
-                      <>
-                        <Power className="h-3.5 w-3.5" />
-                        Activer
-                      </>
-                    )}
-                  </Button>
+                  {/* F8: le toggle actif est réservé à l'ADMIN — le backend
+                      renvoie 403 pour RESPONSABLE (input.Actif != nil interdit). */}
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setToggleTarget(etab)}
+                    >
+                      {etab.actif ? (
+                        <>
+                          <PowerOff className="h-3.5 w-3.5" />
+                          Désactiver
+                        </>
+                      ) : (
+                        <>
+                          <Power className="h-3.5 w-3.5" />
+                          Activer
+                        </>
+                      )}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -588,6 +626,20 @@ export function EtablissementsPage() {
                     <Eye className="h-3.5 w-3.5" />
                     Détails
                   </Button>
+                  {/* F1: bouton Supprimer rendu visible (ADMIN only) —
+                      auparavant setDeleteTarget n'était jamais appelé, rendant
+                      handleDelete et l'AlertDialog de suppression code mort. */}
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeleteTarget(etab)}
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Supprimer
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -780,22 +832,43 @@ export function EtablissementsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Toggle Active Confirmation Dialog (F22) ─── */}
+      <AlertDialog open={!!toggleTarget} onOpenChange={(open) => { if (!open) setToggleTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{toggleTarget?.actif ? 'Désactiver' : 'Activer'} l&apos;établissement</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir <strong>{toggleTarget?.actif ? 'désactiver' : 'activer'}</strong> l&apos;établissement <strong>{toggleTarget?.nom}</strong> ?
+              {toggleTarget?.actif && ' Les utilisateurs de cet établissement ne pourront plus se connecter et les filières seront inaccessibles jusqu\'à réactivation.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmToggleActive}>
+              {toggleTarget?.actif ? 'Désactiver' : 'Activer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ─── Delete Confirmation Dialog ─── */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer l&apos;établissement</AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir supprimer <strong>{deleteTarget?.nom}</strong> ?
-              Cette action est irréversible. Toutes les filières et données associées seront supprimées.
+              Cette action est irréversible. Toutes les filières, unités d&apos;enseignement, épreuves, sessions, certificats et données associées seront supprimées en cascade.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleDelete}
+              disabled={isDeleting}
             >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -913,8 +986,11 @@ export function EtablissementsPage() {
                                     {f.code && <p className="text-xs text-muted-foreground">{f.code}</p>}
                                     {f.responsable && <p className="text-xs text-muted-foreground mt-0.5">Resp: {f.responsable.name}</p>}
                                   </div>
+                                  {/* F13: optional chaining — le backend peut omettre _count
+                                      sur certaines filières, ce qui crashait toute la page
+                                      via ErrorBoundary (« Cannot read properties of undefined (reading 'etudiants') »). */}
                                   <Badge variant="secondary" className="text-xs font-mono tabular-nums">
-                                    {f._count.etudiants} étud.
+                                    {f._count?.etudiants ?? 0} étud.
                                   </Badge>
                                 </div>
                               </CardContent>
