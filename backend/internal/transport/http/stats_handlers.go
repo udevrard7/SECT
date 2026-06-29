@@ -1139,7 +1139,9 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                         stats["topEtudiants"] = topE
                 }
 
-                // 9. Étudiants en difficulté (moyenne < 8/20)
+                // 9. Étudiants en difficulté (moyenne < 10/20)
+                // RAPPORTS-FIX-R3 : aligné sur le seuil de réussite (≥ 10/20). Avant : < 8/20
+                // incohérent avec les labels frontend ("< 10/20" dans card, CSV, PDF).
                 jOn9, wWhere9, jwArgs9 := buildJoinAndWhere()
                 rows7, err := tx.Query(ctx, fmt.Sprintf(`
                         SELECT u.id, u.name, u.email,
@@ -1153,7 +1155,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                         LEFT JOIN "Filiere" f ON f.id = u."filiereId"
                         WHERE u.role = 'ETUDIANT' %s
                         GROUP BY u.id, u.name, u.email, f.nom
-                        HAVING AVG(s.score / e."noteTotal" * 20) < 8
+                        HAVING AVG(s.score / e."noteTotal" * 20) < 10
                         ORDER BY moyenne ASC
                         LIMIT 5
                 `, jOn9, wWhere9), jwArgs9...)
