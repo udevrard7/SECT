@@ -357,10 +357,22 @@ type CreateAnneeInput struct {
 	EtablissementID string `json:"etablissementId"`
 }
 
+// UpdateAnneeInput pour modifier une année académique (tous optionnels).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9) : CRUD AnneeAcademique complet.
+type UpdateAnneeInput struct {
+	Libelle   *string `json:"libelle,omitempty"`
+	DateDebut *string `json:"dateDebut,omitempty"` // ISO string
+	DateFin   *string `json:"dateFin,omitempty"`   // ISO string
+	Actif     *bool   `json:"actif,omitempty"`
+}
+
 // AnneeAcademiqueRepository interface.
 type AnneeAcademiqueRepository interface {
 	List(ctx context.Context, etablissementID string, actif *bool) ([]*AnneeAcademique, error)
+	FindByID(ctx context.Context, id string) (*AnneeAcademique, error)
 	Create(ctx context.Context, input CreateAnneeInput) (*AnneeAcademique, error)
+	Update(ctx context.Context, id string, input UpdateAnneeInput) (*AnneeAcademique, error)
+	SoftDelete(ctx context.Context, id string) (*AnneeAcademique, error)
 }
 
 // Validation helpers

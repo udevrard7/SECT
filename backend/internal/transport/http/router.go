@@ -226,6 +226,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listAnnees)
                         r.Post("/", s.createAnnee)
+                        // PROG-ACAD-CRITICAL-FIX-1 (BUG #9) : CRUD complet
+                        r.Get("/{id}", s.getAnnee)
+                        r.Patch("/{id}", s.updateAnnee)
+                        r.Delete("/{id}", s.deleteAnnee)
                 })
 
                 // /api/epreuves

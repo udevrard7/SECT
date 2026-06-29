@@ -816,3 +816,85 @@ func (r *AnneeAcademiqueRepository) Create(ctx context.Context, input domain.Cre
         }
         return a, nil
 }
+
+// FindByID récupère une année académique par ID (RLS actif).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (r *AnneeAcademiqueRepository) FindByID(ctx context.Context, id string) (*domain.AnneeAcademique, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+        var a *domain.AnneeAcademique
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "AnneeAcademique" WHERE "id" = $1`, columnsAnnee), id)
+                var err2 error
+                a, err2 = scanAnnee(row)
+                return err2
+        })
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return nil, &domain.NotFoundError{Entity: "AnneeAcademique", ID: id}
+                }
+                return nil, err
+        }
+        return a, nil
+}
+
+// Update modifie une année académique (RLS actif).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (r *AnneeAcademiqueRepository) Update(ctx context.Context, id string, input domain.UpdateAnneeInput) (*domain.AnneeAcademique, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+        var a *domain.AnneeAcademique
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var sets []string
+                var args []any
+                argIdx := 1
+                if input.Libelle != nil {
+                        sets = append(sets, fmt.Sprintf(`"libelle" = $%d`, argIdx))
+                        args = append(args, *input.Libelle)
+                        argIdx++
+                }
+                if input.DateDebut != nil {
+                        sets = append(sets, fmt.Sprintf(`"dateDebut" = $%d`, argIdx))
+                        args = append(args, *input.DateDebut)
+                        argIdx++
+                }
+                if input.DateFin != nil {
+                        sets = append(sets, fmt.Sprintf(`"dateFin" = $%d`, argIdx))
+                        args = append(args, *input.DateFin)
+                        argIdx++
+                }
+                if input.Actif != nil {
+                        sets = append(sets, fmt.Sprintf(`"actif" = $%d`, argIdx))
+                        args = append(args, *input.Actif)
+                        argIdx++
+                }
+                if len(sets) == 0 {
+                        return fmt.Errorf("aucun champ à modifier")
+                }
+                sets = append(sets, `"updatedAt" = CURRENT_TIMESTAMP`)
+                args = append(args, id)
+                query := fmt.Sprintf(`UPDATE "AnneeAcademique" SET %s WHERE "id" = $%d RETURNING %s`,
+                        strings.Join(sets, ", "), argIdx, columnsAnnee)
+                row := tx.QueryRow(ctx, query, args...)
+                var err2 error
+                a, err2 = scanAnnee(row)
+                return err2
+        })
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return nil, &domain.NotFoundError{Entity: "AnneeAcademique", ID: id}
+                }
+                return nil, err
+        }
+        return a, nil
+}
+
+// SoftDelete désactive une année académique (actif=false, pas de hard delete).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (r *AnneeAcademiqueRepository) SoftDelete(ctx context.Context, id string) (*domain.AnneeAcademique, error) {
+        return r.Update(ctx, id, domain.UpdateAnneeInput{Actif: boolPtr(false)})
+}

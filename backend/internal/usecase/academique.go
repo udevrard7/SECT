@@ -376,6 +376,45 @@ func (uc *AnneeUseCase) Create(ctx context.Context, claims db.SessionClaims, inp
 	return uc.anneeRepo.Create(ctx, input)
 }
 
+// FindByID récupère une année académique par ID.
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (uc *AnneeUseCase) FindByID(ctx context.Context, claims db.SessionClaims, id string) (*domain.AnneeAcademique, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if id == "" {
+		return nil, &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	return uc.anneeRepo.FindByID(ctx, id)
+}
+
+// Update modifie une année académique.
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (uc *AnneeUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateAnneeInput) (*domain.AnneeAcademique, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if id == "" {
+		return nil, &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	return uc.anneeRepo.Update(ctx, id, input)
+}
+
+// SoftDelete désactive une année académique (actif=false).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (uc *AnneeUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) (*domain.AnneeAcademique, error) {
+	role := domain.Role(claims.Role)
+	if role != domain.RoleAdmin && role != domain.RoleResponsable {
+		return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+	}
+	if id == "" {
+		return nil, &domain.ValidationError{Field: "id", Message: "requis"}
+	}
+	return uc.anneeRepo.SoftDelete(ctx, id)
+}
+
 // ValidateAccessForEtablissement helper (sera étendu avec EtablissementAccess).
 func ValidateAccessForEtablissement(claims db.SessionClaims, etablissementID string) error {
 	if claims.Role == "ADMIN" {

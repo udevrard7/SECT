@@ -559,3 +559,65 @@ func (s *Server) createAnnee(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(a) // bare object
 }
+
+// getAnnee — GET /api/annees-academiques/{id}
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9) : CRUD AnneeAcademique complet.
+func (s *Server) getAnnee(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	a, err := s.anneeUC.FindByID(r.Context(), claims, id)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(a)
+}
+
+// updateAnnee — PATCH /api/annees-academiques/{id}
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (s *Server) updateAnnee(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var input domain.UpdateAnneeInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+		return
+	}
+	a, err := s.anneeUC.Update(r.Context(), claims, id, input)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(a)
+}
+
+// deleteAnnee — DELETE /api/annees-academiques/{id} (soft delete: actif=false)
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+func (s *Server) deleteAnnee(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	a, err := s.anneeUC.SoftDelete(r.Context(), claims, id)
+	if err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"anneeAcademique": a,
+		"message":         "Année académique désactivée avec succès",
+	})
+}
