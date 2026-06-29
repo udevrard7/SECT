@@ -1616,7 +1616,7 @@ function SessionsTab() {
  try {
  const res = await fetch(`/api/epreuves/${deleteTarget.id}`, { method:'DELETE' })
  if (!res.ok) throw new Error('Erreur')
- toast.success('Session déplacée vers la corbeille')
+ toast.success('Épreuve déplacée vers la corbeille') // CORBEILLE-FIX C12
  setDeleteTarget(null)
  await refreshSessions()
  } catch {

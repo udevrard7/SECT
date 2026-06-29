@@ -352,7 +352,10 @@ func (s *Server) deleteQuestion(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]string{"message": "Question déplacée vers la corbeille"})
 }
 
-// batchDeleteQuestions — DELETE /api/questions (batch hard delete)
+// batchDeleteQuestions — DELETE /api/questions (batch soft delete)
+// CORBEILLE-FIX C2 : utilise BatchSoftDelete au lieu de BatchHardDelete.
+// Avant : hard delete → data loss silencieuse, toast mensonger "corbeille 30j".
+// Maintenant : soft delete → questions restaurables depuis la corbeille.
 func (s *Server) batchDeleteQuestions(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -366,14 +369,14 @@ func (s *Server) batchDeleteQuestions(w http.ResponseWriter, r *http.Request) {
                 writeJSONError(w, http.StatusBadRequest, "JSON invalide")
                 return
         }
-        count, err := s.questionUC.BatchHardDelete(r.Context(), claims, body.IDs)
+        count, err := s.questionUC.BatchSoftDelete(r.Context(), claims, body.IDs)
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
         }
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
-                "message":      strconv.Itoa(count) + " question(s) supprimée(s) définitivement",
+                "message":      strconv.Itoa(count) + " question(s) déplacée(s) vers la corbeille",
                 "deletedCount": count,
         })
 }
