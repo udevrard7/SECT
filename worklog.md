@@ -8713,7 +8713,6 @@ Stage Summary:
 - **Prêt à poursuivre le développement** sur la base du travail antérieur (module /etablissements stabilisé en STEP-1→7). En attente des prochaines instructions utilisateur.
 
 ---
-<<<<<<< Updated upstream
 Task ID: RAPPORTS-FIX-STEP-1
 Agent: Z.ai Code (tuteur/assistant)
 Task: Étape 1 du fix module /rapports — R1 (CRITICAL injection SQL filiereId) + R2 (CRITICAL filtres date ignorés).
@@ -8754,7 +8753,6 @@ Stage Summary:
 - **Go toolchain** : compile-check + go vet avant push (0 échec).
 - **Vérification live partielle** : API répond 401 sans auth (pas 500 → nouveau code déployé). Vérification complète avec auth en attente (besoin du password RESPONSABLE pour tester les filtres date + injection en live).
 - Bugs restants du module /rapports : R3 (seuil difficulté 8 vs 10), R4 (alertes mortes), R5 (garde rôle frontend), R6 (filtre filière étudiants par filière), R7 (erreur vs vide), R8 (colonne évolution), R9 (sémantique topEtudiants).
-<<<<<<< Updated upstream
 
 ---
 Task ID: RAPPORTS-FIX-STEP-2-7
@@ -8795,8 +8793,8 @@ Stage Summary:
 - **Aucune migration DB** nécessaire (pas de changement de schéma).
 - **Module /rapports désormais pleinement fonctionnel** : injection SQL éliminée, filtres date opérationnels, alertes contextuelles, garde de rôle, gestion d'erreur, cohérence sémantique.
 - **Vérification live complète** en attente (besoin du password RESPONSABLE pour tester via Agent Browser — l'API répond 401 sans auth, pas de crash).
-=======
-=======
+
+---
 Task ID: USERS-FIX-STEP-1
 Agent: Z.ai Code (tuteur/assistant)
 Task: Étape 1 du fix module /utilisateurs — UF1+UF3+UF7+UF6+UF8+UF9+UF2 (CRITICAL+HIGH frontend).
@@ -9055,7 +9053,6 @@ Stage Summary:
   utilisé deux fois en parallèle (race condition éliminée).
 - **Aucune régression** : les users normaux peuvent toujours refresh sans souci.
 - Bugs non traités : U11+U12+U17+U18+U13 (validations) + UF4 (password-reset) — étape 7.
->>>>>>> Stashed changes
 
 ---
 Task ID: USERS-FIX-STEP-7
@@ -9119,7 +9116,6 @@ Total : 22 bugs traités (10 CRITICAL + 9 HIGH + 3 MEDIUM/LOW backend + 7 fronte
 8 commits poussés + 1 migration DB (000014) + 2 nouveaux endpoints (/reset-password, /unlock)
 3 nouvelles méthodes repo (ResetPassword, UnlockAccount, RevokeRefreshTokenByHashIfActive)
 Module /utilisateurs désormais sécurisé et fonctionnel.
->>>>>>> Stashed changes
 
 ---
 Task ID: PARAMETRES-FIX-STEP-1-5
