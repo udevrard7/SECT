@@ -209,61 +209,182 @@ func (s *Server) facturesListReal(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        type facture struct {
-                ID              string   `json:"id"`
-                EtablissementID string   `json:"etablissementId"`
-                AbonnementID    *string  `json:"abonnementId,omitempty"`
-                Montant         float64  `json:"montant"`
-                Statut          string   `json:"statut"`
-                DateFacture     string   `json:"dateFacture"`
-                DatePaiement    *string  `json:"datePaiement,omitempty"`
+        // FACTURATION-FIX-F5 : structure complète attendue par le frontend
+        // (montantHt/tva/montantTtc, numero, dateEmission/dateEcheance, lignes,
+        // abonnement nested avec plan, etablissement nested).
+        type ligneFacture struct {
+                Description string  `json:"description"`
+                Montant     float64 `json:"montant"`
         }
+        type planRef struct {
+                ID          string   `json:"id"`
+                Nom         string   `json:"nom"`
+                Type        string   `json:"type"`
+                PrixMensuel float64  `json:"prixMensuel"`
+                PrixAnnuel  *float64 `json:"prixAnnuel,omitempty"`
+        }
+        type abonnementRef struct {
+                ID     string  `json:"id"`
+                Statut string  `json:"statut"`
+                Plan   planRef `json:"plan"`
+        }
+        type etablissementRef struct {
+                ID        string  `json:"id"`
+                Nom       string  `json:"nom"`
+                Ville     *string `json:"ville,omitempty"`
+                Email     *string `json:"email,omitempty"`
+                Type      *string `json:"type,omitempty"`
+                Pays      *string `json:"pays,omitempty"`
+                Telephone *string `json:"telephone,omitempty"`
+                Adresse   *string `json:"adresse,omitempty"`
+        }
+        type facture struct {
+                ID                string          `json:"id"`
+                Numero            string          `json:"numero"`
+                AbonnementID      string          `json:"abonnementId"`
+                EtablissementID   string          `json:"etablissementId"`
+                MontantHt         float64         `json:"montantHt"`
+                Tva               float64         `json:"tva"`
+                MontantTtc        float64         `json:"montantTtc"`
+                Statut            string          `json:"statut"`
+                DateEmission      string          `json:"dateEmission"`
+                DateEcheance      string          `json:"dateEcheance"`
+                DatePaiement      *string         `json:"datePaiement,omitempty"`
+                ModePaiement      *string         `json:"modePaiement,omitempty"`
+                ReferencePaiement *string         `json:"referencePaiement,omitempty"`
+                Lignes            []ligneFacture  `json:"lignes"`
+                Notes             *string         `json:"notes,omitempty"`
+                Abonnement        *abonnementRef  `json:"abonnement,omitempty"`
+                Etablissement     *etablissementRef `json:"etablissement,omitempty"`
+        }
+
+        // Lecture du paramètre limit (default 100, max 200).
+        limit := 100
+        if l := r.URL.Query().Get("limit"); l != "" {
+                if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 200 {
+                        limit = n
+                }
+        }
+        etabID := r.URL.Query().Get("etablissementId")
 
         result := []facture{}
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                // ABONNEMENTS-FIX-A8 : filtre par etablissementId (paramètre bindé).
-                // Avant : handler ignorait ?etablissementId=X → l'ADMIN voyait toutes
-                // les factures sans pouvoir filtrer par établissement.
-                etabID := r.URL.Query().Get("etablissementId")
                 var rows pgx.Rows
                 var err error
                 if etabID != "" {
                         rows, err = tx.Query(r.Context(), `
-                                SELECT "id", "etablissementId", "abonnementId", "montant",
-                                       "statut"::text, "dateFacture", "datePaiement"
-                                FROM "Facture"
-                                WHERE "etablissementId" = $1
-                                ORDER BY "dateFacture" DESC
-                                LIMIT 100
-                        `, etabID)
+                                SELECT f."id", f."numero", f."abonnementId", f."etablissementId",
+                                       f."montantHt", f."tva", f."montantTtc", f."statut",
+                                       f."dateEmission", f."dateEcheance", f."datePaiement",
+                                       f."modePaiement", f."referencePaiement", f."lignes", f."notes",
+                                       a."id", a."statut"::text,
+                                       p."id", p."nom", p."type"::text, p."prixMensuel", p."prixAnnuel",
+                                       e."id", e."nom", e."ville", e."email", e."type", e."pays", e."telephone", e."adresse"
+                                FROM "Facture" f
+                                LEFT JOIN "Abonnement" a ON a."id" = f."abonnementId"
+                                LEFT JOIN "Plan" p ON p."id" = a."planId"
+                                LEFT JOIN "Etablissement" e ON e."id" = f."etablissementId"
+                                WHERE f."etablissementId" = $1
+                                ORDER BY f."dateEmission" DESC
+                                LIMIT $2
+                        `, etabID, limit)
                 } else {
                         rows, err = tx.Query(r.Context(), `
-                                SELECT "id", "etablissementId", "abonnementId", "montant",
-                                       "statut"::text, "dateFacture", "datePaiement"
-                                FROM "Facture"
-                                ORDER BY "dateFacture" DESC
-                                LIMIT 100
-                        `)
+                                SELECT f."id", f."numero", f."abonnementId", f."etablissementId",
+                                       f."montantHt", f."tva", f."montantTtc", f."statut",
+                                       f."dateEmission", f."dateEcheance", f."datePaiement",
+                                       f."modePaiement", f."referencePaiement", f."lignes", f."notes",
+                                       a."id", a."statut"::text,
+                                       p."id", p."nom", p."type"::text, p."prixMensuel", p."prixAnnuel",
+                                       e."id", e."nom", e."ville", e."email", e."type", e."pays", e."telephone", e."adresse"
+                                FROM "Facture" f
+                                LEFT JOIN "Abonnement" a ON a."id" = f."abonnementId"
+                                LEFT JOIN "Plan" p ON p."id" = a."planId"
+                                LEFT JOIN "Etablissement" e ON e."id" = f."etablissementId"
+                                ORDER BY f."dateEmission" DESC
+                                LIMIT $1
+                        `, limit)
                 }
                 if err != nil {
-                        return nil // table peut ne pas exister ou colonnes différentes
+                        return nil
                 }
                 defer rows.Close()
                 for rows.Next() {
                         f := facture{}
-                        var dateFacture time.Time
+                        var dateEmission, dateEcheance time.Time
                         var datePaiement *time.Time
-                        if err := rows.Scan(&f.ID, &f.EtablissementID, &f.AbonnementID, &f.Montant,
-                                &f.Statut, &dateFacture, &datePaiement); err == nil {
-                                f.DateFacture = dateFacture.UTC().Format(time.RFC3339)
-                                if datePaiement != nil {
-                                        ts := datePaiement.UTC().Format(time.RFC3339)
-                                        f.DatePaiement = &ts
-                                }
-                                result = append(result, f)
+                        var lignesJSON string
+                        var aboID, aboStatut, planID, planNom, planType *string
+                        var planPrix *float64
+                        var planAnnuel *float64
+                        var etabID2, etabNom, etabVille, etabEmail, etabType, etabPays, etabTel, etabAdr *string
+                        if err := rows.Scan(
+                                &f.ID, &f.Numero, &f.AbonnementID, &f.EtablissementID,
+                                &f.MontantHt, &f.Tva, &f.MontantTtc, &f.Statut,
+                                &dateEmission, &dateEcheance, &datePaiement,
+                                &f.ModePaiement, &f.ReferencePaiement, &lignesJSON, &f.Notes,
+                                &aboID, &aboStatut,
+                                &planID, &planNom, &planType, &planPrix, &planAnnuel,
+                                &etabID2, &etabNom, &etabVille, &etabEmail, &etabType, &etabPays, &etabTel, &etabAdr,
+                        ); err != nil {
+                                continue
                         }
+                        f.DateEmission = dateEmission.UTC().Format(time.RFC3339)
+                        f.DateEcheance = dateEcheance.UTC().Format(time.RFC3339)
+                        if datePaiement != nil {
+                                ts := datePaiement.UTC().Format(time.RFC3339)
+                                f.DatePaiement = &ts
+                        }
+                        // Désérialiser lignes (JSON text → []ligneFacture).
+                        f.Lignes = []ligneFacture{}
+                        if lignesJSON != "" {
+                                var lignes []ligneFacture
+                                if json.Unmarshal([]byte(lignesJSON), &lignes) == nil {
+                                        f.Lignes = lignes
+                                }
+                        }
+                        // Abonnement nested.
+                        if aboID != nil {
+                                plan := planRef{}
+                                if planID != nil {
+                                        plan.ID = *planID
+                                }
+                                if planNom != nil {
+                                        plan.Nom = *planNom
+                                }
+                                if planType != nil {
+                                        plan.Type = *planType
+                                }
+                                if planPrix != nil {
+                                        plan.PrixMensuel = *planPrix
+                                }
+                                plan.PrixAnnuel = planAnnuel
+                                aboStatutStr := ""
+                                if aboStatut != nil {
+                                        aboStatutStr = *aboStatut
+                                }
+                                f.Abonnement = &abonnementRef{
+                                        ID:     *aboID,
+                                        Statut: aboStatutStr,
+                                        Plan:   plan,
+                                }
+                        }
+                        // Etablissement nested.
+                        if etabID2 != nil && etabNom != nil {
+                                f.Etablissement = &etablissementRef{
+                                        ID:        *etabID2,
+                                        Nom:       *etabNom,
+                                        Ville:     etabVille,
+                                        Email:     etabEmail,
+                                        Type:      etabType,
+                                        Pays:      etabPays,
+                                        Telephone: etabTel,
+                                        Adresse:   etabAdr,
+                                }
+                        }
+                        result = append(result, f)
                 }
-                return nil
+                return rows.Err()
         })
 
         w.Header().Set("Content-Type", "application/json")
