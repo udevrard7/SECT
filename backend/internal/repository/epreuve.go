@@ -42,6 +42,44 @@ const columnsEpreuveQualified = `"Epreuve"."id", "Epreuve"."enseignantId", "Epre
         "Epreuve"."generationMode", "Epreuve"."isTemplate", "Epreuve"."noteTotal", "Epreuve"."clotureeAt", "Epreuve"."clotureeAutomatiquement",
         "Epreuve"."raisonCloture", "Epreuve"."clotureePar", "Epreuve"."delaiGrace", "Epreuve"."etudiantsAutorises", "Epreuve"."epreuveOrigineId"`
 
+// scanEpreuveWithJoins scan une épreuve + les colonnes User/Filiere/UE du LEFT JOIN.
+func scanEpreuveWithJoins(s scanner) (*domain.Epreuve, error) {
+        e := &domain.Epreuve{}
+        var ensID, ensName, ensEmail *string
+        var filID, filNom, filCode *string
+        var ueID, ueNom, ueCode, ueNiveau *string
+        err := s.Scan(
+                &e.ID, &e.EnseignantID, &e.Titre, &e.Description, &e.Duree, &e.DateDebut, &e.DateFin,
+                &e.MelangeQuestions, &e.MelangePropositions, &e.BlocageRetour, &e.Statut,
+                &e.GroupesCibles, &e.Contenu,
+                &e.FiliereID, &e.UniteEnseignementID, &e.Niveau, &e.SessionExamen, &e.AnneeAcademiqueID,
+                &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt,
+                &e.ProctoringActif, &e.VerificationIdentite,
+                &e.GenerationMode, &e.IsTemplate, &e.NoteTotal,
+                &e.ClotureeAt, &e.ClotureeAutomatiquement, &e.RaisonCloture, &e.ClotureePar,
+                &e.DelaiGrace, &e.EtudiantsAutorises, &e.EpreuveOrigineID,
+                &ensID, &ensName, &ensEmail,
+                &filID, &filNom, &filCode,
+                &ueID, &ueNom, &ueCode, &ueNiveau,
+        )
+        if err != nil {
+                return nil, err
+        }
+        e.GroupesCibles = sanitizeEpreuveRawMessage(e.GroupesCibles)
+        e.Contenu = sanitizeEpreuveRawMessage(e.Contenu)
+        e.EtudiantsAutorises = sanitizeEpreuveRawMessage(e.EtudiantsAutorises)
+        if ensID != nil && ensName != nil {
+                e.Enseignant = &domain.UserRef{ID: *ensID, Name: *ensName, Email: derefStr(ensEmail)}
+        }
+        if filID != nil && filNom != nil {
+                e.Filiere = &domain.FiliereRef{ID: *filID, Nom: *filNom, Code: derefStr(filCode)}
+        }
+        if ueID != nil && ueNom != nil {
+                e.UniteEnseignement = &domain.UERef{ID: *ueID, Nom: *ueNom, Code: derefStr(ueCode), Niveau: derefStr(ueNiveau)}
+        }
+        return e, nil
+}
+
 func scanEpreuve(s scanner) (*domain.Epreuve, error) {
         e := &domain.Epreuve{}
         err := s.Scan(
@@ -86,13 +124,42 @@ func (r *EpreuveRepository) FindByID(ctx context.Context, id string) (*domain.Ep
 
         var e *domain.Epreuve
         err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, columnsEpreuve), id)
-                ep, err := scanEpreuve(row)
+                // P1-E5 : mêmes JOINs que List (User + Filiere + UE)
+                row := tx.QueryRow(ctx, fmt.Sprintf(`
+                        SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau"
+                        FROM "Epreuve"
+                        LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId"
+                        LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId"
+                        LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId"
+                        WHERE "Epreuve"."id" = $1 AND "Epreuve"."deletedAt" IS NULL
+                `, columnsEpreuveQualified), id)
+                ep, err := scanEpreuveWithJoins(row)
                 if err != nil {
                         if err == pgx.ErrNoRows {
                                 return &domain.NotFoundError{Entity: "Epreuve", ID: id}
                         }
                         return fmt.Errorf("query epreuve: %w", err)
+                }
+                // P1-E5 : init Sessions à [] (évite null → crash frontend)
+                ep.Sessions = []domain.SessionRef{}
+                // P1-E5 : compute QuestionCount + TotalPoints depuis contenu
+                if ep.Contenu != nil && len(ep.Contenu) > 0 {
+                        var contenu struct {
+                                Questions []struct {
+                                        Bareme float64 `json:"bareme"`
+                                } `json:"questions"`
+                        }
+                        if json.Unmarshal(ep.Contenu, &contenu) == nil {
+                                qc := len(contenu.Questions)
+                                ep.QuestionCount = &qc
+                                tp := 0.0
+                                for _, q := range contenu.Questions {
+                                        tp += q.Bareme
+                                }
+                                if tp > 0 {
+                                        ep.TotalPoints = &tp
+                                }
+                        }
                 }
                 e = ep
                 return nil
@@ -584,37 +651,46 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
                 return nil, fmt.Errorf("disable rls: %w", err)
         }
 
-        // Gérer les actions (state machine)
+        // Gérer les actions (state machine) — P1-E6 : validation de transition
         if input.Action != nil {
                 action := *input.Action
                 var newStatut domain.StatutEpreuve
+                var expectedStatut domain.StatutEpreuve // statut courant requis
                 var message string
                 now := time.Now()
 
                 switch action {
                 case "publier":
                         newStatut = domain.StatutPlanifiee
+                        expectedStatut = domain.StatutBrouillon
                         message = "Épreuve publiée"
                 case "lancer":
                         newStatut = domain.StatutEnCours
+                        expectedStatut = domain.StatutPlanifiee
                         message = "Épreuve lancée"
                 case "terminer":
                         newStatut = domain.StatutTerminee
+                        expectedStatut = domain.StatutEnCours
                         message = "Épreuve terminée"
                 case "cloturer":
                         newStatut = domain.StatutCloturee
+                        expectedStatut = domain.StatutTerminee
                         message = "Épreuve clôturée"
                         clotureePar := ""
                         if input.UserID != nil {
                                 clotureePar = *input.UserID
                         }
-                        _, err := tx.Exec(ctx, `
+                        // P1-E6 : WHERE statut = expectedStatut (TERMINEE)
+                        tag, err := tx.Exec(ctx, `
                                 UPDATE "Epreuve" SET "statut" = $2, "clotureeAt" = $3, "clotureeAutomatiquement" = false,
                                         "clotureePar" = $4, "updatedAt" = CURRENT_TIMESTAMP
-                                WHERE "id" = $1 AND "deletedAt" IS NULL
-                        `, id, newStatut, now, nullableStr(&clotureePar))
+                                WHERE "id" = $1 AND "deletedAt" IS NULL AND "statut" = $5
+                        `, id, newStatut, now, nullableStr(&clotureePar), expectedStatut)
                         if err != nil {
                                 return nil, fmt.Errorf("cloturer epreuve: %w", err)
+                        }
+                        if tag.RowsAffected() == 0 {
+                                return nil, &domain.ValidationError{Field: "action", Message: "transition invalide : l'épreuve doit être TERMINEE pour être clôturée"}
                         }
                         if err := tx.Commit(ctx); err != nil {
                                 return nil, fmt.Errorf("commit: %w", err)
@@ -624,12 +700,16 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
                         return nil, &domain.ValidationError{Field: "action", Message: "action invalide (publier, lancer, terminer, cloturer)"}
                 }
 
-                _, err := tx.Exec(ctx, `
+                // P1-E6 : WHERE statut = expectedStatut
+                tag, err := tx.Exec(ctx, `
                         UPDATE "Epreuve" SET "statut" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $1 AND "deletedAt" IS NULL
-                `, id, newStatut)
+                        WHERE "id" = $1 AND "deletedAt" IS NULL AND "statut" = $3
+                `, id, newStatut, expectedStatut)
                 if err != nil {
                         return nil, fmt.Errorf("update statut epreuve: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return nil, &domain.ValidationError{Field: "action", Message: fmt.Sprintf("transition invalide : l'épreuve doit être %s pour l'action %s", expectedStatut, action)}
                 }
                 _ = message
                 if err := tx.Commit(ctx); err != nil {
@@ -880,7 +960,7 @@ func (r *EpreuveRepository) ListQuestionsForGrading(ctx context.Context, epreuve
 // nullableStr convertit une string en *string (NULL si vide).
 // strToNullPtr convertit un string en *string (pour nullableStr).
 func strToNullPtr(s string) *string {
-	return &s
+        return &s
 }
 
 func nullableStr(s *string) any {

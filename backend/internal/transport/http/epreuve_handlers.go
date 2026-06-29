@@ -116,7 +116,7 @@ func (s *Server) getEpreuveStatus(w http.ResponseWriter, r *http.Request) {
                 "status":    string(e.Statut),
                 "updatedAt": e.UpdatedAt,
         }
-        if e.Contenu != nil && e.Statut == "TERMINE" {
+        if e.Contenu != nil && e.Statut == "TERMINEE" {
                 result["contenu"] = json.RawMessage(e.Contenu)
         }
 

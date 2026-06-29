@@ -1550,15 +1550,23 @@ function SessionsTab() {
  }
  }
 
- // Status actions
+ // Status actions — P1-E8 : envoyer userId pour cloturer (audit clotureePar)
  const handleStatusAction = async (epreuveId: string, action: string, successMsg: string) => {
  try {
+ const body: Record<string, unknown> = { action }
+ // P1-E8 : pour cloturer, envoyer userId pour peupler clotureePar
+ if (action === 'cloturer' && user?.id) {
+ body.userId = user.id
+ }
  const res = await fetch(`/api/epreuves/${epreuveId}`, {
  method:'PATCH',
  headers: {'Content-Type':'application/json' },
- body: JSON.stringify({ action }),
+ body: JSON.stringify(body),
  })
- if (!res.ok) throw new Error('Erreur')
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}))
+ throw new Error(errData.error || 'Erreur')
+ }
  toast.success(successMsg)
  await refreshSessions()
  } catch {
