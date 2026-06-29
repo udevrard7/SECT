@@ -254,7 +254,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/session-speciale", s.createSessionSpeciale) // P2-E3
                         r.Get("/{id}", s.getEpreuve)
                         r.Patch("/{id}", s.updateEpreuve)
-                        r.Delete("/{id}", s.deleteEpreuve)
+                        // CORBEILLE-FIX C1 : RequireRole sur DELETE epreuves (avant : RequireAuth seul).
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteEpreuve)
                         r.Get("/{id}/questions", s.listEpreuveQuestions)
                         r.Get("/{id}/status", s.getEpreuveStatus) // IA-WORKER-1 : polling statut génération IA
                         // AI-CONNECT-1 : génération IA d'épreuves via le backend AIService.
@@ -274,11 +275,13 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listQuestions)
                         r.Get("/test-zai", s.testZaiConnection)                          // P2-Q3
                         r.Post("/", s.createQuestion)
-                        r.Delete("/", s.batchDeleteQuestions)
+                        // CORBEILLE-FIX C1+C2 : RequireRole + BatchSoftDelete (avant : hard delete).
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteQuestions)
                         r.Get("/{id}", s.getQuestion)
                         r.Patch("/{id}", s.updateQuestion)
                         r.Post("/{id}/regenerate", s.regenerateQuestion)                   // P2-Q2
-                        r.Delete("/{id}", s.deleteQuestion)
+                        // CORBEILLE-FIX C1 : RequireRole sur DELETE question (avant : RequireAuth seul).
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteQuestion)
                 })
 
                 // /api/sessions
@@ -453,9 +456,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 r.Route("/api/corbeille", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        // CORBEILLE-FIX C9 : RequireRole (avant : RequireAuth seul → étudiants
+                        // pouvaient appeler l'API corbeille).
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE"))
                         r.Get("/", s.corbeilleListReal)
-                        // BUGFIX (CORBEILLE-1) : endpoints restore + purge manquants
                         r.Post("/restore", s.corbeilleRestore)
                         r.Delete("/purge", s.corbeillePurge)
                 })

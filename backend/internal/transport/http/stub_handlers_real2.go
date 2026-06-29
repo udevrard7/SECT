@@ -353,15 +353,15 @@ func (s *Server) ipWhitelistListReal(w http.ResponseWriter, r *http.Request) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 7. GET /api/corbeille — soft-deleted items (Epreuve + Document + Question)
+// 7. GET /api/corbeille — soft-deleted items (Epreuve + Document + Question + Devoir)
+//
+// CORBEILLE-FIX-2 (P2) :
+//   - C6 : DTO Question avec document nested ({id, nomFichier}) au lieu de flat.
+//   - C7 : DTOs Epreuve/Devoir avec uniteEnseignement nested ({id, code, nom}).
+//   - C8 : dates (dateUpload, dateDebut, dateFin, dateLimite) formatées en RFC3339.
+//   - C11 : LIMIT 200 par type pour éviter payload lourd.
 // ──────────────────────────────────────────────────────────────────────────
 
-// BUGFIX (CORBEILLE-1) : la fonction retournait {items, total} (flat) mais le
-// frontend attend {documents, questions, epreuves, devoirs, totalCount}
-// (regroupé par type). De plus, la query Question utilisait "intitule"
-// (inexistant) au lieu de "enonce" → erreur SQL silencieuse (if err == nil).
-// Les Devoirs n'etaient jamais listés. Corrigé : bon contrat, bonnes
-// colonnes, devoirs ajoutés, erreurs SQL ne sont plus ignorées.
 func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -369,6 +369,17 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// C6 : document nested pour Question (au lieu de documentId/documentNom plats).
+	type docRef struct {
+		ID         string `json:"id"`
+		NomFichier string `json:"nomFichier,omitempty"`
+	}
+	// C7 : uniteEnseignement nested pour Epreuve et Devoir.
+	type ueRef struct {
+		ID   string `json:"id"`
+		Code string `json:"code,omitempty"`
+		Nom  string `json:"nom,omitempty"`
+	}
 	type deletedDocument struct {
 		ID            string  `json:"id"`
 		NomFichier    string  `json:"nomFichier"`
@@ -378,31 +389,32 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		DeletedAt     string  `json:"deletedAt"`
 	}
 	type deletedQuestion struct {
-		ID          string `json:"id"`
-		Type        string `json:"type"`
-		Enonce      string `json:"enonce"`
-		Difficulte  string `json:"difficulte"`
-		Validee     bool   `json:"validee"`
-		DeletedAt   string `json:"deletedAt"`
-		DocumentID  *string `json:"documentId,omitempty"`
-		DocumentNom *string `json:"documentNom,omitempty"`
+		ID         string  `json:"id"`
+		Type       string  `json:"type"`
+		Enonce     string  `json:"enonce"`
+		Difficulte string  `json:"difficulte"`
+		Validee    bool    `json:"validee"`
+		DeletedAt  string  `json:"deletedAt"`
+		Document   *docRef `json:"document"`
 	}
 	type deletedEpreuve struct {
-		ID        string `json:"id"`
-		Titre     string `json:"titre"`
-		Duree     int    `json:"duree"`
-		Statut    string `json:"statut"`
-		DateDebut string `json:"dateDebut"`
-		DateFin   string `json:"dateFin"`
-		DeletedAt string `json:"deletedAt"`
+		ID                string  `json:"id"`
+		Titre             string  `json:"titre"`
+		Duree             int     `json:"duree"`
+		Statut            string  `json:"statut"`
+		DateDebut         string  `json:"dateDebut"`
+		DateFin           string  `json:"dateFin"`
+		DeletedAt         string  `json:"deletedAt"`
+		UniteEnseignement *ueRef  `json:"uniteEnseignement"`
 	}
 	type deletedDevoir struct {
-		ID         string  `json:"id"`
-		Titre      string  `json:"titre"`
-		DateLimite *string `json:"dateLimite"`
-		Statut     string  `json:"statut"`
-		NoteMax    float64 `json:"noteMax"`
-		DeletedAt  string  `json:"deletedAt"`
+		ID                string  `json:"id"`
+		Titre             string  `json:"titre"`
+		DateLimite        *string `json:"dateLimite"`
+		Statut            string  `json:"statut"`
+		NoteMax           float64 `json:"noteMax"`
+		DeletedAt         string  `json:"deletedAt"`
+		UniteEnseignement *ueRef  `json:"uniteEnseignement"`
 	}
 
 	var documents []deletedDocument
@@ -411,11 +423,15 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 	var devoirs []deletedDevoir
 
 	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		// Epreuves supprimées
+		// Epreuves supprimées + LEFT JOIN UniteEnseignement (C7).
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "titre", "duree", "statut", "dateDebut", "dateFin", "deletedAt"
-			FROM "Epreuve" WHERE "deletedAt" IS NOT NULL
-			ORDER BY "deletedAt" DESC
+			SELECT e."id", e."titre", e."duree", e."statut"::text, e."dateDebut", e."dateFin", e."deletedAt",
+			       ue."id", ue."code", ue."nom"
+			FROM "Epreuve" e
+			LEFT JOIN "UniteEnseignement" ue ON ue."id" = e."uniteEnseignementId"
+			WHERE e."deletedAt" IS NOT NULL
+			ORDER BY e."deletedAt" DESC
+			LIMIT 200
 		`)
 		if err != nil {
 			return fmt.Errorf("query epreuves corbeille: %w", err)
@@ -423,19 +439,26 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var e deletedEpreuve
-			var deletedAt time.Time
-			if err := rows.Scan(&e.ID, &e.Titre, &e.Duree, &e.Statut, &e.DateDebut, &e.DateFin, &deletedAt); err != nil {
+			var deletedAt, dateDebut, dateFin time.Time
+			var ueID, ueCode, ueNom *string
+			if err := rows.Scan(&e.ID, &e.Titre, &e.Duree, &e.Statut, &dateDebut, &dateFin, &deletedAt, &ueID, &ueCode, &ueNom); err != nil {
 				return fmt.Errorf("scan epreuve corbeille: %w", err)
 			}
 			e.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			e.DateDebut = dateDebut.UTC().Format(time.RFC3339) // C8
+			e.DateFin = dateFin.UTC().Format(time.RFC3339)     // C8
+			if ueID != nil {
+				e.UniteEnseignement = &ueRef{ID: *ueID, Code: derefStr(ueCode), Nom: derefStr(ueNom)}
+			}
 			epreuves = append(epreuves, e)
 		}
 
-		// Documents supprimés
+		// Documents supprimés.
 		rows2, err := tx.Query(r.Context(), `
 			SELECT "id", "nomFichier", "tailleFichier", "typeMime", "dateUpload", "deletedAt"
 			FROM "Document" WHERE "deletedAt" IS NOT NULL
 			ORDER BY "deletedAt" DESC
+			LIMIT 200
 		`)
 		if err != nil {
 			return fmt.Errorf("query documents corbeille: %w", err)
@@ -443,22 +466,24 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		defer rows2.Close()
 		for rows2.Next() {
 			var d deletedDocument
-			var deletedAt time.Time
-			if err := rows2.Scan(&d.ID, &d.NomFichier, &d.TailleFichier, &d.TypeMime, &d.DateUpload, &deletedAt); err != nil {
+			var deletedAt, dateUpload time.Time
+			if err := rows2.Scan(&d.ID, &d.NomFichier, &d.TailleFichier, &d.TypeMime, &dateUpload, &deletedAt); err != nil {
 				return fmt.Errorf("scan document corbeille: %w", err)
 			}
+			d.DateUpload = dateUpload.UTC().Format(time.RFC3339) // C8
 			d.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
 			documents = append(documents, d)
 		}
 
-		// Questions supprimées — BUGFIX: "enonce" (pas "intitule") + LEFT JOIN Document
+		// Questions supprimées + LEFT JOIN Document (C6 : nested).
 		rows3, err := tx.Query(r.Context(), `
-			SELECT q."id", q."type", q."enonce", q."difficulte", q."validee", q."deletedAt",
-			q."documentId", doc."nomFichier"
+			SELECT q."id", q."type", q."enonce", q."difficulte"::text, q."validee", q."deletedAt",
+			       doc."id", doc."nomFichier"
 			FROM "Question" q
 			LEFT JOIN "Document" doc ON doc."id" = q."documentId"
 			WHERE q."deletedAt" IS NOT NULL
 			ORDER BY q."deletedAt" DESC
+			LIMIT 200
 		`)
 		if err != nil {
 			return fmt.Errorf("query questions corbeille: %w", err)
@@ -467,18 +492,26 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		for rows3.Next() {
 			var q deletedQuestion
 			var deletedAt time.Time
-			if err := rows3.Scan(&q.ID, &q.Type, &q.Enonce, &q.Difficulte, &q.Validee, &deletedAt, &q.DocumentID, &q.DocumentNom); err != nil {
+			var docID, docNom *string
+			if err := rows3.Scan(&q.ID, &q.Type, &q.Enonce, &q.Difficulte, &q.Validee, &deletedAt, &docID, &docNom); err != nil {
 				return fmt.Errorf("scan question corbeille: %w", err)
 			}
 			q.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			if docID != nil {
+				q.Document = &docRef{ID: *docID, NomFichier: derefStr(docNom)} // C6
+			}
 			questions = append(questions, q)
 		}
 
-		// Devoirs supprimés — BUGFIX: table Devoir non listée auparavant
+		// Devoirs supprimés + LEFT JOIN UniteEnseignement (C7).
 		rows4, err := tx.Query(r.Context(), `
-			SELECT "id", "titre", "dateLimite", "statut", "noteMax", "deletedAt"
-			FROM "Devoir" WHERE "deletedAt" IS NOT NULL
-			ORDER BY "deletedAt" DESC
+			SELECT d."id", d."titre", d."dateLimite", d."statut"::text, d."noteMax", d."deletedAt",
+			       ue."id", ue."code", ue."nom"
+			FROM "Devoir" d
+			LEFT JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+			WHERE d."deletedAt" IS NOT NULL
+			ORDER BY d."deletedAt" DESC
+			LIMIT 200
 		`)
 		if err != nil {
 			return fmt.Errorf("query devoirs corbeille: %w", err)
@@ -487,10 +520,19 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		for rows4.Next() {
 			var dv deletedDevoir
 			var deletedAt time.Time
-			if err := rows4.Scan(&dv.ID, &dv.Titre, &dv.DateLimite, &dv.Statut, &dv.NoteMax, &deletedAt); err != nil {
+			var dateLimite *time.Time
+			var ueID, ueCode, ueNom *string
+			if err := rows4.Scan(&dv.ID, &dv.Titre, &dateLimite, &dv.Statut, &dv.NoteMax, &deletedAt, &ueID, &ueCode, &ueNom); err != nil {
 				return fmt.Errorf("scan devoir corbeille: %w", err)
 			}
 			dv.DeletedAt = deletedAt.UTC().Format(time.RFC3339)
+			if dateLimite != nil {
+				ts := dateLimite.UTC().Format(time.RFC3339) // C8
+				dv.DateLimite = &ts
+			}
+			if ueID != nil {
+				dv.UniteEnseignement = &ueRef{ID: *ueID, Code: derefStr(ueCode), Nom: derefStr(ueNom)}
+			}
 			devoirs = append(devoirs, dv)
 		}
 		return nil
@@ -500,7 +542,7 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Si nil, retourner un tableau vide (pas null) pour le frontend
+	// Si nil, retourner un tableau vide (pas null) pour le frontend.
 	if documents == nil {
 		documents = []deletedDocument{}
 	}
@@ -527,10 +569,12 @@ func (s *Server) corbeilleListReal(w http.ResponseWriter, r *http.Request) {
 
 // ──────────────────────────────────────────────────────────────────────────
 // 7b. POST /api/corbeille/restore — Restaurer des éléments supprimés
+//
+// CORBEILLE-FIX-2 (P1) :
+//   - C4 : HTTP 207 Multi-Status si partiel, 409 si total échec, 200 si tout OK.
+//   - C16 : best-effort conservé (si un item échoue, les autres sont tentés).
 // ──────────────────────────────────────────────────────────────────────────
 
-// BUGFIX (CORBEILLE-1) : endpoint manquant — le frontend appelait
-// POST /api/corbeille/restore qui n'existait pas → 404 → restauration impossible.
 func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -559,20 +603,19 @@ func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
 		for _, item := range body.Items {
 			var tableName string
 			switch item.Type {
-				case "epreuve":
-					tableName = "Epreuve"
-				case "document":
-					tableName = "Document"
-				case "question":
-					tableName = "Question"
-				case "devoir":
-					tableName = "Devoir"
-				default:
-					errors = append(errors, "type inconnu: "+item.Type)
-					continue
+			case "epreuve":
+				tableName = "Epreuve"
+			case "document":
+				tableName = "Document"
+			case "question":
+				tableName = "Question"
+			case "devoir":
+				tableName = "Devoir"
+			default:
+				errors = append(errors, "type inconnu: "+item.Type)
+				continue
 			}
-			// Restore: set deletedAt = NULL. Utiliser fmt.Sprintf pour le nom de table
-			// (safe car c'est un switch contrôlé, pas une input utilisateur).
+			// SAFETY: tableName issu d'un switch contrôlé, pas d'une input utilisateur.
 			query := fmt.Sprintf(`UPDATE "%s" SET "deletedAt" = NULL, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, tableName)
 			tag, err := tx.Exec(r.Context(), query, item.ID)
 			if err != nil {
@@ -590,7 +633,19 @@ func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// C4 : code HTTP selon le résultat.
+	// - 200 si tout OK (restored == len(items))
+	// - 207 Multi-Status si partiel (0 < restored < len(items))
+	// - 409 Conflict si total échec (restored == 0)
+	statusCode := http.StatusOK
+	if restored == 0 {
+		statusCode = http.StatusConflict
+	} else if restored < len(body.Items) {
+		statusCode = http.StatusMultiStatus
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]any{
 		"message":  fmt.Sprintf("%d élément(s) restauré(s)", restored),
 		"restored": restored,
@@ -600,10 +655,15 @@ func (s *Server) corbeilleRestore(w http.ResponseWriter, r *http.Request) {
 
 // ──────────────────────────────────────────────────────────────────────────
 // 7c. DELETE /api/corbeille/purge — Suppression définitive
+//
+// CORBEILLE-FIX-2 (P1) :
+//   - C3 : vérifie FK RESTRICT avant DELETE (SessionPassation pour Epreuve,
+//     EpreuveQuestion pour Question). Refuse avec erreur claire si dépendances.
+//   - C4 : HTTP 207 Multi-Status si partiel, 409 si total échec, 200 si tout OK.
+//   - C5 : supprime aussi l'objet R2 pour les Documents (le fichier était
+//     conservé au soft-delete, supprimé ici à la purge définitive).
 // ──────────────────────────────────────────────────────────────────────────
 
-// BUGFIX (CORBEILLE-1) : endpoint manquant — le frontend appelait
-// DELETE /api/corbeille/purge qui n'existait pas → 404 → purge impossible.
 func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims.UserID == "" {
@@ -628,23 +688,64 @@ func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
 
 	purged := 0
 	var errors []string
+	// C5 : collecter les chemins R2 des documents à purger pour suppression post-commit.
+	var r2KeysToDelete []string
+	var r2DocIDs []string
+
 	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		for _, item := range body.Items {
 			var tableName string
 			switch item.Type {
-				case "epreuve":
-					tableName = "Epreuve"
-				case "document":
-					tableName = "Document"
-				case "question":
-					tableName = "Question"
-				case "devoir":
-					tableName = "Devoir"
-				default:
-					errors = append(errors, "type inconnu: "+item.Type)
-					continue
+			case "epreuve":
+				tableName = "Epreuve"
+			case "document":
+				tableName = "Document"
+			case "question":
+				tableName = "Question"
+			case "devoir":
+				tableName = "Devoir"
+			default:
+				errors = append(errors, "type inconnu: "+item.Type)
+				continue
 			}
-			// Hard delete: DELETE définitif. Safe (switch contrôlé).
+
+			// C3 : vérifier FK RESTRICT avant DELETE pour Epreuve et Question.
+			if item.Type == "epreuve" {
+				var sessionCount int
+				err := tx.QueryRow(r.Context(), `SELECT count(*) FROM "SessionPassation" WHERE "epreuveId" = $1`, item.ID).Scan(&sessionCount)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("purge epreuve %s: vérif sessions: %v", item.ID, err))
+					continue
+				}
+				if sessionCount > 0 {
+					errors = append(errors, fmt.Sprintf("purge epreuve %s impossible: %d session(s) de passation liée(s) — supprimez d'abord les sessions", item.ID, sessionCount))
+					continue
+				}
+			}
+			if item.Type == "question" {
+				var eqCount int
+				err := tx.QueryRow(r.Context(), `SELECT count(*) FROM "EpreuveQuestion" WHERE "questionId" = $1`, item.ID).Scan(&eqCount)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("purge question %s: vérif epreuveQuestion: %v", item.ID, err))
+					continue
+				}
+				if eqCount > 0 {
+					errors = append(errors, fmt.Sprintf("purge question %s impossible: utilisée dans %d épreuve(s) — retirez-la des épreuves d'abord", item.ID, eqCount))
+					continue
+				}
+			}
+
+			// C5 : pour Document, récupérer le chemin R2 avant DELETE.
+			if item.Type == "document" {
+				var cheminStockage string
+				err := tx.QueryRow(r.Context(), `SELECT "cheminStockage" FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, item.ID).Scan(&cheminStockage)
+				if err == nil && cheminStockage != "" {
+					r2KeysToDelete = append(r2KeysToDelete, cheminStockage)
+					r2DocIDs = append(r2DocIDs, item.ID)
+				}
+			}
+
+			// Hard delete. SAFETY: tableName issu d'un switch contrôlé.
 			query := fmt.Sprintf(`DELETE FROM "%s" WHERE "id" = $1 AND "deletedAt" IS NOT NULL`, tableName)
 			tag, err := tx.Exec(r.Context(), query, item.ID)
 			if err != nil {
@@ -662,11 +763,30 @@ func (s *Server) corbeillePurge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// C5 : suppression best-effort des objets R2 (post-commit, hors transaction).
+	// On utilise le storage du DocumentUseCase si disponible.
+	if len(r2KeysToDelete) > 0 && s.documentUC != nil {
+		ctx := r.Context()
+		for i, key := range r2KeysToDelete {
+			_ = s.documentUC.PurgeR2Object(ctx, key) // best-effort, ignoré si échec
+			_ = r2DocIDs[i]                          // docID conservé pour logging futur
+		}
+	}
+
+	// C4 : code HTTP selon le résultat.
+	statusCode := http.StatusOK
+	if purged == 0 {
+		statusCode = http.StatusConflict
+	} else if purged < len(body.Items) {
+		statusCode = http.StatusMultiStatus
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]any{
 		"message": fmt.Sprintf("%d élément(s) supprimé(s) définitivement", purged),
-		"purged": purged,
-		"errors": errors,
+		"purged":  purged,
+		"errors":  errors,
 	})
 }
 

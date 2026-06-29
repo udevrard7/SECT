@@ -157,30 +157,40 @@ func (uc *DocumentUseCase) GetByID(ctx context.Context, claims db.SessionClaims,
         return uc.docRepo.FindByID(ctx, id)
 }
 
-// SoftDelete déplace un document vers la corbeille + supprime de R2.
+// SoftDelete déplace un document vers la corbeille.
+// CORBEILLE-FIX C5 : ne supprime plus le fichier R2 au soft-delete.
+// Avant : uc.storage.Delete(ctx, doc.CheminStockage) était appelé immédiatement,
+// ce qui cassait la restauration (le fichier R2 n'existait plus après restore).
+// Maintenant : le fichier R2 est conservé jusqu'à la purge définitive
+// (DELETE /api/corbeille/purge), qui supprime aussi l'objet R2.
 func (uc *DocumentUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
         if role != domain.RoleEnseignant && role != domain.RoleAdmin {
                 return &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
 
-        // Récupérer le document pour avoir la clé R2
+        // Ownership check : FindByID utilise RLS → renvoie NotFound pour les rows non-owned.
+        // (déjà présent avant CORBEILLE-FIX — conservé.)
         doc, err := uc.docRepo.FindByID(ctx, id)
         if err != nil {
                 return err
         }
+        _ = doc // doc récupéré pour ownership check ; R2 non supprimé ici (C5).
 
-        // Soft delete en DB
-        if err := uc.docRepo.SoftDelete(ctx, id); err != nil {
-                return err
+        // Soft delete en DB uniquement (le fichier R2 reste jusqu'à la purge).
+        return uc.docRepo.SoftDelete(ctx, id)
+}
+
+// PurgeR2Object supprime un objet R2 par sa clé (best-effort).
+// CORBEILLE-FIX C5 : appelé par corbeillePurge après le hard-delete DB.
+// Le fichier R2 était conservé au soft-delete ; il est supprimé ici, à la purge
+// définitive, de sorte que la restauration reste possible tant que l'item est
+// seulement soft-supprimé.
+func (uc *DocumentUseCase) PurgeR2Object(ctx context.Context, key string) error {
+        if uc.storage == nil || key == "" {
+                return nil
         }
-
-        // Best-effort: supprimer de R2 (le fichier reste accessible si besoin via corbeille)
-        if uc.storage != nil && doc.CheminStockage != "" {
-                _ = uc.storage.Delete(ctx, doc.CheminStockage)
-        }
-
-        return nil
+        return uc.storage.Delete(ctx, key)
 }
 
 // GetDownloadURL génère une URL présignée pour télécharger un document.

@@ -96,15 +96,24 @@ func (uc *QuestionUseCase) Update(ctx context.Context, claims db.SessionClaims, 
 }
 
 // SoftDelete déplace une question vers la corbeille.
+// CORBEILLE-FIX C1 : ownership check via FindByID (qui utilise RLS).
+// Avant : seul le rôle était vérifié → n'importe quel enseignant pouvait
+// soft-supprimer les questions des autres.
 func (uc *QuestionUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
+        // Ownership check : FindByID utilise RLS → renvoie NotFound pour les rows non-owned.
+        if _, err := uc.questionRepo.FindByID(ctx, id); err != nil {
+                return err
+        }
         return uc.questionRepo.SoftDelete(ctx, id)
 }
 
 // BatchHardDelete supprime définitivement plusieurs questions.
+// CORBEILLE-FIX C2 : déprécié en faveur de BatchSoftDelete. Conservé pour
+// rétrocompatibilité mais ne devrait plus être appelé par les nouveaux handlers.
 func (uc *QuestionUseCase) BatchHardDelete(ctx context.Context, claims db.SessionClaims, ids []string) (int, error) {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
@@ -114,6 +123,31 @@ func (uc *QuestionUseCase) BatchHardDelete(ctx context.Context, claims db.Sessio
                 return 0, &domain.ValidationError{Field: "ids", Message: "non vide requis"}
         }
         return uc.questionRepo.BatchHardDelete(ctx, ids)
+}
+
+// BatchSoftDelete déplace plusieurs questions vers la corbeille (soft delete).
+// CORBEILLE-FIX C2 : remplace BatchHardDelete pour cohérence avec la corbeille.
+// Ownership : chaque question est vérifiée via FindByID (RLS) avant soft-delete.
+// Retourne le nombre de questions effectivement soft-supprimées.
+func (uc *QuestionUseCase) BatchSoftDelete(ctx context.Context, claims db.SessionClaims, ids []string) (int, error) {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
+                return 0, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if len(ids) == 0 {
+                return 0, &domain.ValidationError{Field: "ids", Message: "non vide requis"}
+        }
+        deleted := 0
+        for _, id := range ids {
+                // Ownership check : FindByID utilise RLS → skip si non-owned ou introuvable.
+                if _, err := uc.questionRepo.FindByID(ctx, id); err != nil {
+                        continue
+                }
+                if err := uc.questionRepo.SoftDelete(ctx, id); err == nil {
+                        deleted++
+                }
+        }
+        return deleted, nil
 }
 
 // ============================================================
@@ -231,10 +265,17 @@ func (uc *EpreuveUseCase) Update(ctx context.Context, claims db.SessionClaims, i
 }
 
 // SoftDelete déplace une épreuve vers la corbeille (refuse si EN_COURS).
+// CORBEILLE-FIX C1 : ownership check via FindByID (qui utilise RLS).
+// Avant : seul le rôle était vérifié → n'importe quel enseignant pouvait
+// soft-supprimer les épreuves des autres.
 func (uc *EpreuveUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant {
                 return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        // Ownership check : FindByID utilise RLS → renvoie NotFound pour les rows non-owned.
+        if _, err := uc.epreuveRepo.FindByID(ctx, id); err != nil {
+                return err
         }
         return uc.epreuveRepo.SoftDelete(ctx, id)
 }

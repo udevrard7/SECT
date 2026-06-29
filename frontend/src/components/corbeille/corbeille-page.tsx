@@ -108,7 +108,8 @@ interface DeletedDevoir {
   statut: string
   noteMax: number
   deletedAt: string
-  UniteEnseignement?: UniteEnseignement | null
+  // CORBEILLE-FIX C13 : uniformisé en lowercase (avant : UniteEnseignement capital).
+  uniteEnseignement?: UniteEnseignement | null
 }
 
 interface SelectedItem {
@@ -456,10 +457,12 @@ export function CorbeillePage() {
 
   // ─── Fetch deleted items (TanStack Query) ───
   // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // CORBEILLE-FIX C14 : query params userId/type supprimés (ignorés côté backend,
+  // le scoping est assuré par RLS via les claims JWT).
   const corbeilleQuery = useQuery<CorbeilleData>({
     queryKey: ['corbeille', user?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/corbeille?userId=${user!.id}&type=all`)
+      const res = await fetch('/api/corbeille')
       if (!res.ok) throw new Error('Failed to fetch corbeille')
       const json = await res.json()
       return {
@@ -543,8 +546,8 @@ export function CorbeillePage() {
       items = items.filter((dv) =>
         dv.titre.toLowerCase().includes(q) ||
         dv.statut.toLowerCase().includes(q) ||
-        (dv.UniteEnseignement?.nom?.toLowerCase().includes(q) ?? false) ||
-        (dv.UniteEnseignement?.code?.toLowerCase().includes(q) ?? false)
+        (dv.uniteEnseignement?.nom?.toLowerCase().includes(q) ?? false) ||
+        (dv.uniteEnseignement?.code?.toLowerCase().includes(q) ?? false)
       )
     }
     return sortItems(items, sortBy, (dv) => dv.titre)
@@ -592,6 +595,8 @@ export function CorbeillePage() {
   const selectedCount = selectedItems.length
 
   // ─── Restore handler ───
+  // CORBEILLE-FIX C4 : gère les codes HTTP 200 (tout OK), 207 (partiel), 409 (total échec).
+  // Affiche toast.success / toast.warning / toast.error selon le résultat.
   const handleRestore = async (items: SelectedItem[]) => {
     if (items.length === 0) return
     setIsRestoring(true)
@@ -610,12 +615,32 @@ export function CorbeillePage() {
         body: JSON.stringify({ items: mappedItems }),
       })
 
+      const result = await res.json().catch(() => ({}))
+
+      // C4 : 409 = total échec, 207 = partiel, 200 = tout OK.
+      if (res.status === 409) {
+        const errDesc = Array.isArray(result.errors) && result.errors.length > 0
+          ? result.errors[0]
+          : "Aucun élément n'a pu être restauré."
+        toast.error('Restauration impossible', { description: errDesc })
+        return
+      }
+      if (res.status === 207) {
+        // Partiel : certains restaurés, d'autres non.
+        const errDesc = Array.isArray(result.errors) && result.errors.length > 0
+          ? `${result.errors.length} erreur(s) : ${result.errors.slice(0, 2).join(' ; ')}${result.errors.length > 2 ? '…' : ''}`
+          : "Certains éléments n'ont pas pu être restaurés."
+        toast.warning('Restauration partielle', {
+          description: `${result.message || 'Restauration partielle'} — ${errDesc}`,
+        })
+        setSelectedItems([])
+        await refreshCorbeille()
+        return
+      }
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Erreur lors de la restauration')
+        throw new Error(result.error || 'Erreur lors de la restauration')
       }
 
-      const result = await res.json()
       toast.success('Élément(s) restauré(s)', {
         description: result.message || `${items.length} élément(s) restauré(s) avec succès.`,
       })
@@ -632,6 +657,9 @@ export function CorbeillePage() {
   }
 
   // ─── Purge handler ───
+  // CORBEILLE-FIX C4 : gère les codes HTTP 200 (tout OK), 207 (partiel), 409 (total échec).
+  // CORBEILLE-FIX C3 : les erreurs FK RESTRICT (Epreuve/Session, Question/EpreuveQuestion)
+  // arrivent maintenant dans result.errors[] avec un message clair.
   const handlePurge = async (items: SelectedItem[]) => {
     if (items.length === 0) return
     setIsPurging(true)
@@ -650,12 +678,33 @@ export function CorbeillePage() {
         body: JSON.stringify({ items: mappedItems }),
       })
 
+      const result = await res.json().catch(() => ({}))
+
+      // C4 : 409 = total échec (ex: FK RESTRICT sur tous les items), 207 = partiel.
+      if (res.status === 409) {
+        const errDesc = Array.isArray(result.errors) && result.errors.length > 0
+          ? result.errors[0]
+          : "Aucun élément n'a pu être supprimé (dépendances existantes)."
+        toast.error('Suppression impossible', { description: errDesc })
+        return
+      }
+      if (res.status === 207) {
+        const errDesc = Array.isArray(result.errors) && result.errors.length > 0
+          ? `${result.errors.length} erreur(s) : ${result.errors.slice(0, 2).join(' ; ')}${result.errors.length > 2 ? '…' : ''}`
+          : "Certains éléments n'ont pas pu être supprimés."
+        toast.warning('Suppression partielle', {
+          description: `${result.message || 'Suppression partielle'} — ${errDesc}`,
+        })
+        setPurgeTarget(null)
+        setPurgeDialogOpen(false)
+        setSelectedItems([])
+        await refreshCorbeille()
+        return
+      }
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Erreur lors de la suppression')
+        throw new Error(result.error || 'Erreur lors de la suppression')
       }
 
-      const result = await res.json()
       toast.success('Suppression définitive', {
         description: result.message || `${items.length} élément(s) supprimé(s) définitivement.`,
       })
@@ -998,10 +1047,10 @@ export function CorbeillePage() {
                 <Award className="h-3 w-3" />
                 <span className="font-mono tabular-nums">{dv.noteMax}</span> pts
               </span>
-              {dv.UniteEnseignement && (
+              {dv.uniteEnseignement && (
                 <span className="flex items-center gap-1">
                   <GraduationCap className="h-3 w-3" />
-                  {dv.UniteEnseignement.code} — {dv.UniteEnseignement.nom}
+                  {dv.uniteEnseignement.code} — {dv.uniteEnseignement.nom}
                 </span>
               )}
               <span className="flex items-center gap-1">

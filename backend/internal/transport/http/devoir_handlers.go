@@ -629,7 +629,10 @@ func (s *Server) deleteDevoir(w http.ResponseWriter, r *http.Request) {
 
 	var deletedID string
 	found := false
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	// CORBEILLE-FIX C10 : propager l'erreur SQL (avant : `_ =` swallowed).
+	// pgx.ErrNoRows est normal (devoir non trouvé / non owned) → géré via `found`.
+	// Les autres erreurs (connexion, etc.) doivent remonter en 500.
+	txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		err := tx.QueryRow(r.Context(), `
 			UPDATE "Devoir"
 			SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
@@ -638,9 +641,18 @@ func (s *Server) deleteDevoir(w http.ResponseWriter, r *http.Request) {
 		`, devoirID, claims.UserID).Scan(&deletedID)
 		if err == nil {
 			found = true
+			return nil
+		}
+		if err == pgx.ErrNoRows {
+			return nil // non trouvé / non owned → 404 géré ci-dessous
 		}
 		return err
 	})
+
+	if txErr != nil {
+		writeJSONError(w, http.StatusInternalServerError, "erreur interne")
+		return
+	}
 
 	if !found {
 		writeJSONError(w, http.StatusNotFound, "devoir introuvable ou accès refusé")
