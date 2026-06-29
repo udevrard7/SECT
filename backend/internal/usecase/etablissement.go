@@ -86,6 +86,13 @@ func (uc *EtablissementUseCase) Update(ctx context.Context, claims db.SessionCla
                 }
         }
 
+        // E18 (LOW) : valider que Nom n'est pas vide si fourni.
+        // Create valide Nom requis, mais Update n'avait aucune validation → un
+        // PATCH {"nom": ""} set le nom à string vide (unique index permet un seul).
+        if input.Nom != nil && *input.Nom == "" {
+                return nil, &domain.ValidationError{Field: "nom", Message: "ne peut pas être vide"}
+        }
+
         return uc.etabRepo.Update(ctx, id, input)
 }
 
