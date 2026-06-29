@@ -103,30 +103,51 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
                 enseignantID = claims.UserID
         }
 
-        // P1-M2 : ajout filiere.code + P1-M3 : nbEpreuves + P1-M4 : derniereConnexion
+        // MES-ETUDIANTS-REFOUND-1 : filière + niveau OBLIGATOIRES.
+        // Avant, la liste s'affichait immédiatement (tous les étudiants de
+        // l'enseignant). Désormais, l'enseignant doit choisir une filière ET un
+        // niveau avant que la liste ne se charge (gate côté frontend + backend).
+        filiereID := r.URL.Query().Get("filiereId")
+        niveau := r.URL.Query().Get("niveau")
+        if filiereID == "" || niveau == "" {
+                writeJSONError(w, http.StatusBadRequest, "filiereId et niveau sont requis (sélectionnez une filière et un niveau)")
+                return
+        }
+
+        // MES-ETUDIANTS-REFOUND-1 : scoping STRICT par UE affectée (Affectation).
+        // Avant, le scoping se faisait par filière (JOIN EnseignantFiliere) — trop
+        // large : un enseignant voyait TOUS les étudiants de sa filière même s'il
+        // n'avait qu'une seule UE affectée. Désormais, un étudiant n'est visible
+        // que si son couple (filiereId, niveau) correspond à au moins une UE
+        // affectée à l'enseignant via la table Affectation. Les UE multi-niveaux
+        // (champ JSON niveaux) et multi-filières (UniteEnseignementFiliere) sont
+        // prises en compte.
         type filiereRef struct {
                 ID   string `json:"id"`
                 Nom  string `json:"nom"`
                 Code string `json:"code,omitempty"`
         }
+        type ueRef struct {
+                ID   string `json:"id"`
+                Code string `json:"code"`
+                Nom  string `json:"nom"`
+        }
         type etudiant struct {
-                ID                 string      `json:"id"`
-                Name               string      `json:"name"`
-                Email              string      `json:"email"`
-                Matricule          *string     `json:"matricule,omitempty"`
-                Niveau             *string     `json:"niveau,omitempty"`
-                FiliereID          *string     `json:"filiereId,omitempty"`
-                Filiere            *filiereRef `json:"filiere,omitempty"`
-                NbEpreuves         int         `json:"nbEpreuves"`
-                DerniereConnexion  *string     `json:"derniereConnexion,omitempty"`
+                ID                string      `json:"id"`
+                Name              string      `json:"name"`
+                Email             string      `json:"email"`
+                Matricule         *string     `json:"matricule,omitempty"`
+                Niveau            *string     `json:"niveau,omitempty"`
+                FiliereID         *string     `json:"filiereId,omitempty"`
+                Filiere           *filiereRef `json:"filiere,omitempty"`
+                NbEpreuves        int         `json:"nbEpreuves"`
+                DerniereConnexion *string     `json:"derniereConnexion,omitempty"`
+                UEs               []ueRef     `json:"ues,omitempty"` // UEs de l'enseignant que cet étudiant suit
         }
 
         result := []etudiant{}
-        // P1-M7 : propager l'erreur au lieu de l'avaler
         txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
                 search := r.URL.Query().Get("search")
-                filiereID := r.URL.Query().Get("filiereId")    // P1-M5
-                niveau := r.URL.Query().Get("niveau")           // P1-M5
                 limit := 100
                 if l := r.URL.Query().Get("limit"); l != "" {
                         if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 500 {
@@ -134,28 +155,16 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
                         }
                 }
 
+                // Construction des args : $1=enseignantId, $2=filiereId, $3=niveau, puis search/limit
                 var args []any
                 argIdx := 1
-                args = append(args, enseignantID)
-                argIdx++
+                args = append(args, enseignantID, filiereID, niveau)
+                argIdx = 4
 
                 var where []string
-                // P1-M6 : search inclut matricule
                 if search != "" {
                         where = append(where, fmt.Sprintf(`(u."name" ILIKE $%d OR u."email" ILIKE $%d OR u."matricule" ILIKE $%d)`, argIdx, argIdx, argIdx))
                         args = append(args, "%"+search+"%")
-                        argIdx++
-                }
-                // P1-M5 : filtre filiereId
-                if filiereID != "" {
-                        where = append(where, fmt.Sprintf(`u."filiereId" = $%d`, argIdx))
-                        args = append(args, filiereID)
-                        argIdx++
-                }
-                // P1-M5 : filtre niveau
-                if niveau != "" {
-                        where = append(where, fmt.Sprintf(`u."niveau" = $%d`, argIdx))
-                        args = append(args, niveau)
                         argIdx++
                 }
 
@@ -164,16 +173,43 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
                         whereClause = " AND " + strings.Join(where, " AND ")
                 }
 
+                // Scoping UE strict : l'étudiant est visible ssi il existe une Affectation
+                // de l'enseignant sur une UE dont (filiereId, niveau) matche l'étudiant,
+                // soit via l'UE principale (ue.filiereId + ue.niveau/niveaux), soit via
+                // une filière secondaire (UniteEnseignementFiliere).
                 query := fmt.Sprintf(`
                         SELECT DISTINCT u."id", u."name", u."email", u."matricule", u."niveau",
                                u."filiereId", f."id", f."nom", f."code",
-                               COALESCE((SELECT count(DISTINCT s."epreuveId") FROM "SessionPassation" s WHERE s."etudiantId" = u."id"), 0),
+                               COALESCE((SELECT count(DISTINCT s."epreuveId")
+                                         FROM "SessionPassation" s
+                                         JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                                         WHERE s."etudiantId" = u."id" AND e."enseignantId" = $1
+                                           AND e."deletedAt" IS NULL), 0) AS nb_epreuves,
                                u."derniereConnexion"
                         FROM "User" u
-                        JOIN "EnseignantFiliere" ef ON ef."filiereId" = u."filiereId"
                         LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
-                        WHERE ef."enseignantId" = $1 AND u."role" = 'ETUDIANT' AND u."actif" = true
-                        %s
+                        WHERE u."role" = 'ETUDIANT' AND u."actif" = true
+                          AND u."filiereId" = $2
+                          AND u."niveau" = $3
+                          AND EXISTS (
+                            SELECT 1
+                            FROM "Affectation" a
+                            JOIN "UniteEnseignement" ue ON ue."id" = a."uniteEnseignementId"
+                            WHERE a."enseignantId" = $1
+                              AND (
+                                ue."filiereId" = u."filiereId"
+                                OR EXISTS (
+                                  SELECT 1 FROM "UniteEnseignementFiliere" uef
+                                  WHERE uef."uniteEnseignementId" = ue."id"
+                                    AND uef."filiereId" = u."filiereId"
+                                )
+                              )
+                              AND (
+                                ue."niveau" = u."niveau"
+                                OR ue."niveaux"::jsonb ? u."niveau"::text
+                              )
+                          )
+                          %s
                         ORDER BY u."name"
                         LIMIT $%d
                 `, whereClause, argIdx)
@@ -202,12 +238,57 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
                         }
                         result = append(result, e)
                 }
+                if err := rows.Err(); err != nil {
+                        return fmt.Errorf("rows iter: %w", err)
+                }
+
+                // MES-ETUDIANTS-REFOUND-1 : peupler les UEs de l'enseignant pour chaque
+                // étudiant (batch query pour éviter N+1). Utilisé par la modale de détail.
+                if len(result) > 0 {
+                        etudiantIDs := make([]string, len(result))
+                        for i, e := range result {
+                                etudiantIDs[i] = e.ID
+                        }
+                        ueRows, err := tx.Query(r.Context(), `
+                                SELECT DISTINCT ue."id", ue."code", ue."nom", u."id" AS etudiantId
+                                FROM "User" u
+                                JOIN "Affectation" a ON a."enseignantId" = $1
+                                JOIN "UniteEnseignement" ue ON ue."id" = a."uniteEnseignementId"
+                                WHERE u."id" = ANY($2)
+                                  AND (
+                                    ue."filiereId" = u."filiereId"
+                                    OR EXISTS (
+                                      SELECT 1 FROM "UniteEnseignementFiliere" uef
+                                      WHERE uef."uniteEnseignementId" = ue."id"
+                                        AND uef."filiereId" = u."filiereId"
+                                    )
+                                  )
+                                  AND (
+                                    ue."niveau" = u."niveau"
+                                    OR ue."niveaux"::jsonb ? u."niveau"::text
+                                  )
+                        `, enseignantID, etudiantIDs)
+                        if err == nil {
+                                defer ueRows.Close()
+                                ueMap := map[string][]ueRef{}
+                                for ueRows.Next() {
+                                        var ueID, ueCode, ueNom, etuID string
+                                        if err := ueRows.Scan(&ueID, &ueCode, &ueNom, &etuID); err == nil {
+                                                ueMap[etuID] = append(ueMap[etuID], ueRef{ID: ueID, Code: ueCode, Nom: ueNom})
+                                        }
+                                }
+                                for i := range result {
+                                        if ues, ok := ueMap[result[i].ID]; ok {
+                                                result[i].UEs = ues
+                                        }
+                                }
+                        }
+                }
                 return nil
         })
 
-        // P1-M7 : si erreur SQL, retourner 500 au lieu de 200 avec liste vide
         if txErr != nil {
-                writeJSONError(w, http.StatusInternalServerError, "erreur lors de la récupération des étudiants")
+                writeJSONError(w, http.StatusInternalServerError, "erreur lors de la récupération des étudiants: "+txErr.Error())
                 return
         }
 
@@ -215,6 +296,289 @@ func (s *Server) enseignantEtudiantsReal(w http.ResponseWriter, r *http.Request)
         json.NewEncoder(w).Encode(map[string]any{
                 "etudiants": result,
                 "total":     len(result),
+        })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// MES-ETUDIANTS-REFOUND-1 — GET /api/enseignant/fiche-notes
+// Fiche de notes globale : 1 ligne par étudiant, 1 colonne par épreuve de
+// l'enseignant (sur la filière + niveau + semestre + année sélectionnés).
+// Formats : ?format=csv (téléchargement direct) ou ?format=json (données
+// structurées pour génération PDF côté Next.js via jsPDF+autotable).
+// Filtres requis : filiereId + niveau. Optionnels : semestre (1|2),
+// anneeUniversitaire (ex. "2024-2025"). Si non fournis, tous les semestres/
+// années sont inclus.
+// ──────────────────────────────────────────────────────────────────────────
+
+func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        enseignantID := r.URL.Query().Get("enseignantId")
+        if enseignantID == "" {
+                enseignantID = claims.UserID
+        }
+
+        filiereID := r.URL.Query().Get("filiereId")
+        niveau := r.URL.Query().Get("niveau")
+        if filiereID == "" || niveau == "" {
+                writeJSONError(w, http.StatusBadRequest, "filiereId et niveau sont requis")
+                return
+        }
+
+        semestre := r.URL.Query().Get("semestre")           // "1" ou "2" (optionnel)
+        anneeUniversitaire := r.URL.Query().Get("anneeUniversitaire") // ex. "2024-2025" (optionnel)
+        format := r.URL.Query().Get("format")
+        if format == "" {
+                format = "json"
+        }
+
+        type epreuveCol struct {
+                ID       string  `json:"id"`
+                Titre    string  `json:"titre"`
+                NoteMax  float64 `json:"noteMax"`
+                UECode   string  `json:"ueCode"`
+                UENom    string  `json:"ueNom"`
+                Semestre *int    `json:"semestre,omitempty"`
+        }
+        type etudiantRow struct {
+                ID        string             `json:"id"`
+                Name      string             `json:"name"`
+                Matricule string             `json:"matricule"`
+                Email     string             `json:"email"`
+                Filiere   string             `json:"filiere"`
+                Notes     map[string]*float64 `json:"notes"`        // epreuveId -> note/20 (nil = absent)
+                Moyenne   *float64           `json:"moyenne,omitempty"`
+        }
+
+        epreuves := []epreuveCol{}
+        etudiants := []etudiantRow{}
+
+        txErr := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                // 1. Récupérer les épreuves de l'enseignant sur cette filière + niveau
+                // (avec filtres semestre/année optionnels via UniteEnseignement.semestre
+                // et extraction d'année depuis Epreuve.createdAt).
+                var argsE []any
+                argIdx := 1
+                argsE = append(argsE, enseignantID, filiereID, niveau)
+                argIdx = 4
+                var whereE []string
+                whereE = append(whereE, `e."enseignantId" = $1`)
+                whereE = append(whereE, `e."filiereId" = $2`)
+                whereE = append(whereE, `e."niveau" = $3`)
+                whereE = append(whereE, `e."deletedAt" IS NULL`)
+                if semestre != "" {
+                        whereE = append(whereE, fmt.Sprintf(`ue."semestre"::text = $%d`, argIdx))
+                        argsE = append(argsE, semestre)
+                        argIdx++
+                }
+                if anneeUniversitaire != "" {
+                        // anneeUniversitaire format "2024-2025" : on extrait la 1ère année
+                        // et on filtre les épreuves dont la date de création tombe dans cette année.
+                        year := strings.Split(anneeUniversitaire, "-")[0]
+                        whereE = append(whereE, fmt.Sprintf(`to_char(e."createdAt", 'YYYY') = $%d`, argIdx))
+                        argsE = append(argsE, year)
+                        argIdx++
+                }
+
+                eRows, err := tx.Query(r.Context(), fmt.Sprintf(`
+                        SELECT DISTINCT e."id", e."titre", e."noteTotal",
+                               COALESCE(ue."code", ''), COALESCE(ue."nom", ''), ue."semestre"
+                        FROM "Epreuve" e
+                        LEFT JOIN "UniteEnseignement" ue ON ue."id" = e."uniteEnseignementId"
+                        WHERE %s
+                        ORDER BY e."createdAt" ASC
+                `, strings.Join(whereE, " AND ")), argsE...)
+                if err != nil {
+                        return fmt.Errorf("query epreuves: %w", err)
+                }
+                defer eRows.Close()
+                for eRows.Next() {
+                        ep := epreuveCol{}
+                        var sem *int
+                        if err := eRows.Scan(&ep.ID, &ep.Titre, &ep.NoteMax, &ep.UECode, &ep.UENom, &sem); err != nil {
+                                return fmt.Errorf("scan epreuve: %w", err)
+                        }
+                        ep.Semestre = sem
+                        if ep.NoteMax == 0 {
+                                ep.NoteMax = 20
+                        }
+                        epreuves = append(epreuves, ep)
+                }
+                if err := eRows.Err(); err != nil {
+                        return fmt.Errorf("epreuves iter: %w", err)
+                }
+
+                // 2. Récupérer les étudiants (même scoping UE strict que enseignantEtudiantsReal)
+                var argsU []any
+                argIdxU := 1
+                argsU = append(argsU, enseignantID, filiereID, niveau)
+                argIdxU = 4
+                uRows, err := tx.Query(r.Context(), fmt.Sprintf(`
+                        SELECT DISTINCT u."id", u."name", COALESCE(u."matricule",''), COALESCE(u."email",''),
+                               COALESCE(f."nom",'')
+                        FROM "User" u
+                        LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
+                        WHERE u."role" = 'ETUDIANT' AND u."actif" = true
+                          AND u."filiereId" = $2
+                          AND u."niveau" = $3
+                          AND EXISTS (
+                            SELECT 1
+                            FROM "Affectation" a
+                            JOIN "UniteEnseignement" ue ON ue."id" = a."uniteEnseignementId"
+                            WHERE a."enseignantId" = $1
+                              AND (
+                                ue."filiereId" = u."filiereId"
+                                OR EXISTS (
+                                  SELECT 1 FROM "UniteEnseignementFiliere" uef
+                                  WHERE uef."uniteEnseignementId" = ue."id"
+                                    AND uef."filiereId" = u."filiereId"
+                                )
+                              )
+                              AND (
+                                ue."niveau" = u."niveau"
+                                OR ue."niveaux"::jsonb ? u."niveau"::text
+                              )
+                          )
+                        ORDER BY u."name"
+                `), argsU...)
+                if err != nil {
+                        return fmt.Errorf("query etudiants: %w", err)
+                }
+                defer uRows.Close()
+                for uRows.Next() {
+                        e := etudiantRow{Notes: map[string]*float64{}}
+                        if err := uRows.Scan(&e.ID, &e.Name, &e.Matricule, &e.Email, &e.Filiere); err != nil {
+                                return fmt.Errorf("scan etudiant: %w", err)
+                        }
+                        etudiants = append(etudiants, e)
+                }
+                if err := uRows.Err(); err != nil {
+                        return fmt.Errorf("etudiants iter: %w", err)
+                }
+
+                // 3. Récupérer les notes (SessionPassation.score normalisé /20) pour
+                // chaque étudiant × épreuve. RLS SessionPassation_select filtre déjà par
+                // enseignant via Epreuve.enseignantId.
+                if len(etudiants) > 0 && len(epreuves) > 0 {
+                        etuIDs := make([]string, len(etudiants))
+                        for i, e := range etudiants {
+                                etuIDs[i] = e.ID
+                        }
+                        epIDs := make([]string, len(epreuves))
+                        for i, e := range epreuves {
+                                epIDs[i] = e.ID
+                        }
+                        nRows, err := tx.Query(r.Context(), `
+                                SELECT s."etudiantId", s."epreuveId",
+                                       CASE WHEN e."noteTotal" > 0
+                                            THEN s."score" / e."noteTotal" * 20.0
+                                            ELSE s."score" END AS note_sur20
+                                FROM "SessionPassation" s
+                                JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                                WHERE s."etudiantId" = ANY($1)
+                                  AND s."epreuveId" = ANY($2)
+                                  AND s."statut" IN ('CORRIGEE','RETOURNEE')
+                                  AND s."score" IS NOT NULL
+                        `, etuIDs, epIDs)
+                        if err != nil {
+                                return fmt.Errorf("query notes: %w", err)
+                        }
+                        defer nRows.Close()
+                        noteMap := map[string]map[string]float64{} // etudiantId -> epreuveId -> note
+                        for nRows.Next() {
+                                var etuID, epID string
+                                var note float64
+                                if err := nRows.Scan(&etuID, &epID, &note); err != nil {
+                                        return fmt.Errorf("scan note: %w", err)
+                                }
+                                if _, ok := noteMap[etuID]; !ok {
+                                        noteMap[etuID] = map[string]float64{}
+                                }
+                                noteMap[etuID][epID] = note
+                        }
+                        // Remplir les notes + calculer la moyenne par étudiant
+                        for i := range etudiants {
+                                notes, ok := noteMap[etudiants[i].ID]
+                                if !ok {
+                                        continue
+                                }
+                                sum := 0.0
+                                count := 0
+                                for _, ep := range epreuves {
+                                        if note, ok := notes[ep.ID]; ok {
+                                                n := note
+                                                etudiants[i].Notes[ep.ID] = &n
+                                                sum += note
+                                                count++
+                                        }
+                                }
+                                if count > 0 {
+                                        moy := sum / float64(count)
+                                        etudiants[i].Moyenne = &moy
+                                }
+                        }
+                }
+                return nil
+        })
+
+        if txErr != nil {
+                writeJSONError(w, http.StatusInternalServerError, "erreur lors de la génération de la fiche de notes: "+txErr.Error())
+                return
+        }
+
+        // Format CSV : téléchargement direct
+        if format == "csv" {
+                var sb strings.Builder
+                // En-tête
+                sb.WriteString("Matricule;Nom;Email;Filiere")
+                for _, ep := range epreuves {
+                        titre := strings.ReplaceAll(ep.Titre, ";", ",")
+                        sb.WriteString(";" + titre + " (/20)")
+                }
+                sb.WriteString(";Moyenne (/20)\n")
+                // Lignes
+                for _, e := range etudiants {
+                        name := strings.ReplaceAll(e.Name, ";", ",")
+                        email := strings.ReplaceAll(e.Email, ";", ",")
+                        filiere := strings.ReplaceAll(e.Filiere, ";", ",")
+                        sb.WriteString(fmt.Sprintf("%s;%s;%s;%s", e.Matricule, name, email, filiere))
+                        for _, ep := range epreuves {
+                                if note, ok := e.Notes[ep.ID]; ok && note != nil {
+                                        sb.WriteString(fmt.Sprintf(";%.2f", *note))
+                                } else {
+                                        sb.WriteString(";—")
+                                }
+                        }
+                        if e.Moyenne != nil {
+                                sb.WriteString(fmt.Sprintf(";%.2f", *e.Moyenne))
+                        } else {
+                                sb.WriteString(";—")
+                        }
+                        sb.WriteString("\n")
+                }
+                // BOM UTF-8 pour Excel
+                body := "\xEF\xBB\xBF" + sb.String()
+                w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+                w.Header().Set("Content-Disposition", `attachment; filename="fiche_notes.csv"`)
+                w.WriteHeader(http.StatusOK)
+                w.Write([]byte(body))
+                return
+        }
+
+        // Format JSON (défaut) : pour génération PDF côté Next.js
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "epreuves":         epreuves,
+                "etudiants":        etudiants,
+                "filiereId":        filiereID,
+                "niveau":           niveau,
+                "semestre":         semestre,
+                "anneeUniversitaire": anneeUniversitaire,
+                "total":            len(etudiants),
         })
 }
 
