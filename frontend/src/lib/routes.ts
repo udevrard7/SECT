@@ -382,11 +382,15 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     icon: 'Users',
     defaultOpen: true,
     items: [
-      // UF1 (CRITICAL): ajout de /utilisateurs à la sidebar RESPONSABLE.
-      // La page est conçue pour RESPONSABLE (crée ENSEIGNANT/ETUDIANT) mais
-      // le lien sidebar était absent — le RESPONSABLE ne pouvait y accéder
-      // qu'en tapant l'URL directement.
-      { id: 'utilisateurs', label: 'Tous les utilisateurs', icon: 'Users' },
+      // OPTION-A : lien sidebar /utilisateurs supprimé pour le RESPONSABLE.
+      // Rationale : /utilisateurs est 100% redondant avec /etudiants + /enseignants
+      // pour le RESPONSABLE (mêmes endpoints /api/users, mêmes actions CRUD, mais
+      // /etudiants et /enseignants sont des supersets avec export CSV, bulk actions,
+      // recherche avancée, affectations filières, relevés de notes, etc.).
+      // La page /utilisateurs reste accessible à l'ADMIN (section admin-clients,
+      // label "Responsables") pour gérer les propriétaires d'établissements.
+      // Un RESPONSABLE qui tape /utilisateurs directement est redirigé vers /etudiants
+      // (voir proxy.ts).
       { id: 'etudiants', label: 'Étudiants', icon: 'Users' },
       { id: 'enseignants', label: 'Enseignants', icon: 'BookOpen' },
     ],
