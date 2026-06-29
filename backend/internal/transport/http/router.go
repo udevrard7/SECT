@@ -173,6 +173,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                                 r.Delete("/{id}", s.deleteUser)
                                 // ETUDIANTS-FIX-E10 : dependencies pour preview suppression
                                 r.Get("/{id}/dependencies", s.getUserDependencies)
+                                // U5 (CRITICAL) : endpoints admin pour reset password + unlock account.
+                                // Avant ce fix, un user verrouillé était perdu (lockout permanent de fait).
+                                r.Post("/{id}/reset-password", s.resetUserPassword)
+                                r.Post("/{id}/unlock", s.unlockUserAccount)
                         })
                 })
 

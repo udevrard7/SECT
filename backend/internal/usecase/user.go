@@ -14,13 +14,19 @@ import (
 )
 
 // UserUseCase implémente les cas d'usage liés aux utilisateurs.
+//
+// U5 (CRITICAL) : dépend de authRepo pour ResetPassword + UnlockAccount +
+// RevokeAllUserRefreshTokens + CreateAuditLog. Sans cette injection, l'admin
+// ne pouvait pas déverrouiller un compte (PATCH /api/users/{id} avec password
+// ne reset pas loginAttempts/lockedUntil via userRepo.Update).
 type UserUseCase struct {
         userRepo domain.UserRepository
+        authRepo domain.AuthRepository
 }
 
 // NewUserUseCase crée un nouveau UserUseCase.
-func NewUserUseCase(userRepo domain.UserRepository) *UserUseCase {
-        return &UserUseCase{userRepo: userRepo}
+func NewUserUseCase(userRepo domain.UserRepository, authRepo domain.AuthRepository) *UserUseCase {
+        return &UserUseCase{userRepo: userRepo, authRepo: authRepo}
 }
 
 // GetProfile récupère le profil de l'utilisateur courant.
@@ -344,4 +350,103 @@ func (uc *UserUseCase) checkOwnership(claims db.SessionClaims, target *domain.Us
 // isValidEmail valide basiquement un email.
 func isValidEmail(s string) bool {
         return strings.Contains(s, "@") && strings.Contains(s, ".")
+}
+
+// ResetPassword (U5 CRITICAL) : admin reset le password d'un user.
+//
+// Workflow :
+// 1. FindByID (ownership check via checkOwnership)
+// 2. Hash nouveau password (bcrypt cost 10)
+// 3. authRepo.ResetPassword : SET password + mustChangePwd=true + loginAttempts=0 + lockedUntil=NULL
+// 4. authRepo.RevokeAllUserRefreshTokens : invalide toutes les sessions existantes
+// 5. Audit PASSWORD_RESET
+//
+// Retourne le mot de passe temporaire en clair (pour que l'admin puisse le communiquer).
+// Le user devra changer ce password au prochain login (mustChangePwd=true).
+func (uc *UserUseCase) ResetPassword(ctx context.Context, claims db.SessionClaims, userID string, newPassword string) (string, error) {
+        // Récupérer l'utilisateur existant pour ownership check
+        existing, err := uc.userRepo.FindByID(ctx, userID)
+        if err != nil {
+                return "", err
+        }
+
+        if err := uc.checkOwnership(claims, existing); err != nil {
+                return "", err
+        }
+
+        // Validation : password min 8 chars (aligné avec ChangePassword)
+        if len(newPassword) < 8 {
+                return "", &domain.ValidationError{Field: "password", Message: "min 8 caractères"}
+        }
+
+        // Hasher le nouveau password
+        hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), BcryptCost)
+        if err != nil {
+                return "", fmt.Errorf("hash password: %w", err)
+        }
+
+        // ResetPassword : hash + mustChangePwd=true + loginAttempts=0 + lockedUntil=NULL
+        if err := uc.authRepo.ResetPassword(ctx, userID, string(hash)); err != nil {
+                return "", fmt.Errorf("reset password: %w", err)
+        }
+
+        // Révoquer tous les refresh tokens (force re-login partout)
+        if err := uc.authRepo.RevokeAllUserRefreshTokens(ctx, userID); err != nil {
+                return "", fmt.Errorf("revoke refresh tokens: %w", err)
+        }
+
+        // Audit PASSWORD_RESET
+        userIDPtr := userID
+        userEmailPtr := existing.Email
+        details := fmt.Sprintf(`{"resetBy":"%s","method":"admin_reset"}`, claims.UserID)
+        _ = uc.authRepo.CreateAuditLog(ctx, &domain.AuditLogEntry{
+                UserID:    &userIDPtr,
+                UserEmail: &userEmailPtr,
+                Action:    domain.AuditActionPasswordReset,
+                Entite:    "User",
+                EntiteID:  &userIDPtr,
+                Details:   details,
+                AdresseIP: "",
+        })
+
+        return newPassword, nil
+}
+
+// UnlockAccount (U5 CRITICAL) : admin déverrouille un compte sans changer le password.
+//
+// Workflow :
+// 1. FindByID (ownership check)
+// 2. authRepo.UnlockAccount : SET loginAttempts=0 + lockedUntil=NULL
+// 3. Audit (PASSWORD_RESET avec method=unlock_only)
+//
+// Retourne l'état précédent (était verrouillé ?) pour info.
+func (uc *UserUseCase) UnlockAccount(ctx context.Context, claims db.SessionClaims, userID string) error {
+        existing, err := uc.userRepo.FindByID(ctx, userID)
+        if err != nil {
+                return err
+        }
+
+        if err := uc.checkOwnership(claims, existing); err != nil {
+                return err
+        }
+
+        if err := uc.authRepo.UnlockAccount(ctx, userID); err != nil {
+                return fmt.Errorf("unlock account: %w", err)
+        }
+
+        // Audit
+        userIDPtr := userID
+        userEmailPtr := existing.Email
+        details := fmt.Sprintf(`{"unlockedBy":"%s","method":"unlock_only"}`, claims.UserID)
+        _ = uc.authRepo.CreateAuditLog(ctx, &domain.AuditLogEntry{
+                UserID:    &userIDPtr,
+                UserEmail: &userEmailPtr,
+                Action:    domain.AuditActionPasswordReset,
+                Entite:    "User",
+                EntiteID:  &userIDPtr,
+                Details:   details,
+                AdresseIP: "",
+        })
+
+        return nil
 }
