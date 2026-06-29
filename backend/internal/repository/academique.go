@@ -468,6 +468,49 @@ func (r *UERepository) SoftDelete(ctx context.Context, id string) (*domain.Unite
         return r.Update(ctx, id, domain.UpdateUEInput{Actif: boolPtr(false)})
 }
 
+// GetUEDependencies retourne les comptes d'entités liées à une UE.
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #1) : permet d'avertir l'utilisateur
+// avant de désactiver une UE qui a des épreuves/affectations/documents.
+// RLS actif (db.WithTx) — lecture sécurisée.
+func (r *UERepository) GetUEDependencies(ctx context.Context, id string) (*domain.UEDependencies, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
+        var deps domain.UEDependencies
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Compter les épreuves non supprimées liées à cette UE
+                if err := tx.QueryRow(ctx, `
+                        SELECT count(*) FROM "Epreuve" WHERE "uniteEnseignementId" = $1 AND "deletedAt" IS NULL
+                `, id).Scan(&deps.EpreuvesCount); err != nil {
+                        return fmt.Errorf("count epreuves: %w", err)
+                }
+
+                // Compter les affectations actives
+                if err := tx.QueryRow(ctx, `
+                        SELECT count(*) FROM "Affectation" WHERE "uniteEnseignementId" = $1
+                `, id).Scan(&deps.AffectationsCount); err != nil {
+                        return fmt.Errorf("count affectations: %w", err)
+                }
+
+                // Compter les documents liés
+                if err := tx.QueryRow(ctx, `
+                        SELECT count(*) FROM "Document" WHERE "uniteEnseignementId" = $1 AND "deletedAt" IS NULL
+                `, id).Scan(&deps.DocumentsCount); err != nil {
+                        return fmt.Errorf("count documents: %w", err)
+                }
+
+                return nil
+        })
+        if err != nil {
+                return nil, err
+        }
+
+        deps.CanDelete = deps.EpreuvesCount == 0 && deps.AffectationsCount == 0 && deps.DocumentsCount == 0
+        return &deps, nil
+}
+
 // ============================================================
 // ENSEIGNANT FILIERE
 // ============================================================

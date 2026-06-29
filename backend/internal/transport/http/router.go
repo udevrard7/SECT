@@ -197,6 +197,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listUEs)
                         r.Post("/", s.createUE)
+                        // PROG-ACAD-CRITICAL-FIX-1 (BUG #1) : dependencies AVANT /{id} (chi routing)
+                        r.Get("/{id}/dependencies", s.getUEDependencies)
                         r.Get("/{id}", s.getUE)
                         r.Patch("/{id}", s.updateUE)
                         r.Delete("/{id}", s.deleteUE)

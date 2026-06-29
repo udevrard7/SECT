@@ -260,12 +260,24 @@ type UpdateUEInput struct {
 }
 
 // UERepository interface.
+// UEDependencies — comptes d'entités liées à une UE (avant suppression).
+// PROG-ACAD-CRITICAL-FIX-1 (BUG #1) : permet d'avertir l'utilisateur
+// avant de désactiver une UE qui a des épreuves/affectations/documents.
+type UEDependencies struct {
+	EpreuvesCount    int  `json:"epreuvesCount"`
+	AffectationsCount int `json:"affectationsCount"`
+	DocumentsCount   int  `json:"documentsCount"`
+	CanDelete        bool `json:"canDelete"`
+}
+
 type UERepository interface {
 	FindByID(ctx context.Context, id string) (*UniteEnseignement, error)
 	List(ctx context.Context, params UEListParams) ([]*UniteEnseignement, error)
 	Create(ctx context.Context, input CreateUEInput) (*UniteEnseignement, error)
 	Update(ctx context.Context, id string, input UpdateUEInput) (*UniteEnseignement, error)
 	SoftDelete(ctx context.Context, id string) (*UniteEnseignement, error)
+	// GetUEDependencies retourne les comptes d'entités liées à une UE.
+	GetUEDependencies(ctx context.Context, id string) (*UEDependencies, error)
 }
 
 // ============================================================
