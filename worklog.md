@@ -6769,3 +6769,95 @@ Suite au fix RLS (`EXAM-PREP-RLS-FIX-1`), le endpoint `GET /api/exam-prep/docume
 5. **Cohérence RLS** : `devoirsStatsReal` utilise `appdb.WithTx` (transaction avec claims). Aucun changement au pattern transactionnel — seule la couche SQL des compteurs a changé. Pas de régression RLS.
 
 6. **`byType` non touché** : la requête `byType` (ligne 1052) filtre déjà sur `Devoir WHERE "deletedAt" IS NULL` — elle ne join pas Soumission, donc pas concernée. ✅
+
+---
+
+## EXAM-PREP-READER-SECURITY-FIX-1 — Alias SQL `d.` + sécurisation lecture document (anti-forge documentID)
+
+**Agent** : general-purpose sub-agent
+**Task** : EXAM-PREP-READER-SECURITY-FIX-1
+**Date** : 2025-06-28
+**Commit** : `aae1ef3` (pushed to `main`, déploiement Vercel auto-déclenché)
+**Prérequis** : EXAM-PREP-RLS-FIX-1 (`0d2a57f`), EXAM-PREP-NIVEAU-FIX-1 (`9aeac51`), HIGHLIGHT-FLASHCARD-1, EXAM-PREP-CONNECT-1.
+
+### Task
+
+Deux bugs dans le module exam-prep :
+
+1. **Bug 1 (HTTP 500)** : `GetDocumentForReader` (repository) exécutait `SELECT d."id", d."ownerId", ... FROM "Document" WHERE "id" = $1` — la macro `columnsDocument` préfixe toutes les colonnes avec `d.`, mais la clause `FROM` n'avait **pas** d'alias `d`. PostgreSQL : `missing FROM-clause entry for table "d"` → HTTP 500 sur l'ouverture du DocumentReader modal.
+
+2. **Bug 2 (sécurité)** : `GetDocumentForReader` (DocumentReader modal) et `GetDocumentContentForQA` (Q&A RAG) "trustaient" le `documentID` passé par le frontend. Le scoping filière+niveau n'était fait QUE dans `ListStudentDocuments` (endpoint liste). Une fois un `documentID` obtenu (légitimement ou par forge), un étudiant pouvait lire le contenu de N'IMPORTE QUEL document — y compris ceux d'autres filières/niveaux. Violation de la règle métier : *un étudiant ne peut lire/réviser QUE les documents uploadés par SES enseignants (UE de sa filière + niveau)*.
+
+### Work Log
+
+1. **Lecture contexte** : `worklog.md` (sections EXAM-PREP-RLS-FIX-1 lignes 6484-6543, EXAM-PREP-NIVEAU-FIX-1 lignes 6546-6623) + les 3 fichiers cibles (`domain/examprep.go` interface lignes 305-404, `repository/examprep.go` `GetDocumentForReader` lignes 259-287 + pattern `ListStudentDocuments` lignes 125-174 pour le LIKE `%"niveau"%`, `usecase/examprep.go` `GetDocumentContentForQA` lignes 153-161 + `GetDocumentForReader` lignes 165-173). Vérifié que `fmt` est importé dans la usecase (ligne 6) et le repository (ligne 6), et que `pgx` est importé dans le repository (ligne 11) — nécessaire pour `pgx.TxOptions`. Vérifié que `db.SessionClaims` (struct) a bien un champ `FiliereID` (utilisé par `ListDocuments` ligne 44). ✅
+2. **Backup** : `cp` des 3 fichiers cibles en `/tmp/{domain,repository,usecase}.bak` (restaurables en cas de problème).
+3. **Application des 5 edits** : un script Python (`/home/z/SECT/apply_security_fix.py`, supprimé après usage) applique les 5 edits en construisant les blocs old/new avec des caractères `\t` explicites (l'outil Edit convertit les tabs en espaces → casserait `gofmt` et le build Render). Chaque edit asserte que l'old block apparaît exactement 1 fois avant de remplacer.
+4. **Edit 1 — domain/examprep.go** : ajout de la signature `CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error)` à l'interface `ExamPrepRepository` (avec 5 lignes de doc), juste après `GetDocumentForReader` (avant le bloc `DOC-ANALYZER-2`). +6 lignes.
+5. **Edit 2 — repository/examprep.go (alias fix)** : ligne 274, `FROM "Document" WHERE "id" = $1 AND "deletedAt" IS NULL` → `FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`. 1 ligne modifiée (pas de changement de longueur).
+6. **Edit 3 — repository/examprep.go (CheckDocumentAccess impl)** : ajout de la méthode `CheckDocumentAccess` (33 lignes : doc + impl) juste après `GetDocumentForReader` (avant le bloc `BATCH LOOKUPS`). RLS off via `SET LOCAL row_security = off`. Query : `SELECT EXISTS(SELECT 1 FROM "Document" d JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId" WHERE d."id" = $1 AND d."deletedAt" IS NULL AND ue."filiereId" = $2 AND (ue."niveau" = $3 OR ue."niveaux" LIKE $4))`. Placeholders `$1, $2, $3, $4` distincts (pgx Simple Protocol OK). Pattern LIKE `$4` = `"%\""+niveau+"\"%"` (identique à `ListStudentDocuments` ligne 152). Scan dans `var exists bool`. Retourne `(exists, nil)` — pas d'erreur si accès refusé (juste `false`).
+7. **Edit 4 — usecase/examprep.go (GetDocumentContentForQA)** : remplacement de `return uc.repo.GetDocumentContent(ctx, documentID)` (1 ligne) par un bloc de 23 lignes qui, **pour le rôle ETUDIANT uniquement** : (a) vérifie `claims.FiliereID != ""` sinon `ValidationError`, (b) appelle `uc.repo.GetUserNiveau(ctx, claims.UserID)` (fallback `"L1"` si vide), (c) appelle `uc.repo.CheckDocumentAccess(ctx, documentID, claims.FiliereID, niveau)`, (d) si `!allowed` → `UnauthorizedError("vous n'avez pas accès à ce document")`. ENSEIGNANT skip le check (peut lire ses propres documents). Commentaire `EXAM-PREP-READER-SECURITY-FIX-1` ajouté.
+8. **Edit 5 — usecase/examprep.go (GetDocumentForReader)** : même pattern que Edit 4, retourne `(*domain.Document, error)` au lieu de `(string, error)`. +24 lignes.
+9. **Vérification tabs** : `cat -A` sur le nouveau `CheckDocumentAccess` (repository lignes 289-321) → toutes les lignes indentées commencent par `^I` (tab), y compris la raw string SQL. La ligne `"%\""+niveau+"\"%"` s'affiche correctement. ✅
+10. **Vérification aucune indentation espace** : `grep -cPn '^( +)\S'` pour les 3 fichiers → `0` (exit code 1 = aucune ligne trouvée) pour domain, repository, usecase. ✅
+11. **Vérification équilibre délimiteurs** : script Python (`/home/z/SECT/check_balance.py`, supprimé après usage) strippe commentaires (ligne + bloc), strings double-quotes (avec escapes), raw strings backtick, et runes single-quote, puis compte `()`, `{}`, `[]` + backticks :
+    - **domain** : `()` 63/63, `{}` 21/21, `[]` 18/18, backticks 258 (pair). ✅
+    - **repository** : `()` 576/576, `{}` 348/348, `[]` 75/75, backticks 124 (pair). ✅
+    - **usecase** : `()` 199/199, `{}` 181/181, `[]` 29/29, backticks 0 (pair). ✅
+12. **Vérification interface ↔ impl** : la signature interface `CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error)` correspond exactement à l'impl `func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error)`. Les appels usecase passent bien 4 args `(ctx, documentID, claims.FiliereID, niveau)`. ✅
+13. **Vérification aucun autre implémentateur** : `rg -n "ExamPrepRepository" backend/` ne retourne que les 3 fichiers cibles + `cmd/api/main.go:67` qui appelle juste `repository.NewExamPrepRepository(pool)` (constructor, pas d'impl d'interface). Aucun mock, aucun test implémente l'interface → ajouter une méthode ne casse rien. ✅
+14. **Vérification handlers toujours compatibles** : `grep -rn "GetDocumentForReader\|GetDocumentContentForQA" backend/internal/transport/` → 2 callers dans `examprep_handlers.go` (lignes 514 et 726). Les signatures usecase `(ctx, claims, documentID) → (T, error)` sont **inchangées** → aucune modification handler nécessaire. ✅
+15. **Vérification imports** : `fmt` déjà importé dans la usecase (ligne 6) et le repository (ligne 6) — nécessaire pour les nouveaux `fmt.Errorf`. `pgx` déjà importé dans le repository (ligne 11) — nécessaire pour `pgx.TxOptions`. Aucune modification du bloc `import`. ✅
+16. **Vérification convention LIKE pattern** : le pattern `"%\""+niveau+"\"%"` est identique à celui de `ListStudentDocuments` (ligne 152) — matche les tableaux JSONB `niveaux` comme `["L1","L2"]` (recherche `"L2"` substring). Cohérent avec EXAM-PREP-NIVEAU-FIX-1. ✅
+17. **Diff scope** : `diff /tmp/*.bak *` confirme que les hunks sont strictement contenus dans (a) l'interface `ExamPrepRepository` du domain (1 hunk +6 lignes), (b) `GetDocumentForReader` alias fix + nouvelle méthode `CheckDocumentAccess` du repository (2 hunks), (c) `GetDocumentContentForQA` + `GetDocumentForReader` de la usecase (2 hunks). Aucune autre méthode touchée. ✅
+18. **Git** : `git add backend/internal/domain/examprep.go backend/internal/repository/examprep.go backend/internal/usecase/examprep.go` (uniquement les 3 fichiers cible — les `.py` et `.bak` restent non-traqués/gitignored ou dans `/tmp/`), commit `fix(exam-prep): alias d. + sécurisation lecture document (EXAM-PREP-READER-SECURITY-FIX-1)`, push vers `origin main`. Hash : `aae1ef398be9b2600b8a9778dfa98bd07f3e4ff6` (short `aae1ef3`). Remote a accepté (`f2c47fa..aae1ef3 main -> main`). `git stat` : 3 files changed, 88 insertions(+), 1 deletion(-). ✅
+19. **Cleanup** : fichiers temporaires `apply_security_fix.py`, `check_balance.py`, et les 3 `.bak` (dans `/tmp/`) supprimés. `git status` final propre (working tree clean).
+
+### Stage Summary
+
+**Changement code** : 3 fichiers, +88 / -1 lignes.
+
+- `backend/internal/domain/examprep.go` : +1 méthode à l'interface `ExamPrepRepository` (`CheckDocumentAccess`) + 5 lignes de doc.
+- `backend/internal/repository/examprep.go` : alias `d.` ajouté au `FROM` de `GetDocumentForReader` (1 ligne modifiée) + 1 nouvelle méthode impl `CheckDocumentAccess` (33 lignes) avec RLS off, JOIN `UniteEnseignement`, filtre `filiereId + (niveau = $3 OR niveaux LIKE $4)`.
+- `backend/internal/usecase/examprep.go` : `GetDocumentContentForQA` et `GetDocumentForReader` sécurisés — pour le rôle ETUDIANT, vérifient l'accès via `CheckDocumentAccess` avant de déléguer au repository. ENSEIGNANT non restreint.
+
+**Frontière de sécurité déplacée** : avant ce fix, le scoping filière+niveau n'était appliqué QUE dans `ListStudentDocuments` (endpoint liste). Les endpoints de lecture (`GetDocumentForReader`, `GetDocumentContentForQA`) "trustaient" le `documentID`. Maintenant, **chaque endpoint de lecture re-vérifie l'accès** via `CheckDocumentAccess` — un étudiant qui forge un `documentID` d'une autre filière/niveau reçoit une `UnauthorizedError` (HTTP 403) avant que le contenu ne soit lu/retourné. Le pattern `CheckDocumentAccess` (`SELECT EXISTS(...)`) est cheap (1 round-trip, index PK sur `Document.id` + index sur `UniteEnseignement.id`).
+
+**Bug 1 (alias) corrigé en passant** : la même méthode `GetDocumentForReader` avait le bug d'alias `d.` — sans ce fix, même les étudiants légitimes auraient un HTTP 500 en ouvrant le DocumentReader. Les 2 bugs étaient liés (même endpoint, même fonction).
+
+**Deliverables** :
+- `cat -A` snippet (tabs visibles `^I`) du nouveau `CheckDocumentAccess` (repository lignes 289-321) :
+  ```
+  ^Itx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})$
+  ^Iif err != nil {$
+  ^I^Ireturn false, fmt.Errorf("begin tx: %w", err)$
+  ^I}$
+  ^Idefer tx.Rollback(ctx)$
+  ^Ivar exists bool$
+  ^Ierr = tx.QueryRow(ctx, `$
+  ^I^ISELECT EXISTS($
+  ^I^I^ISELECT 1 FROM "Document" d$
+  ^I^I^IJOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"$
+  ^I^I^IWHERE d."id" = $1 AND d."deletedAt" IS NULL$
+  ^I^I^I^IAND ue."filiereId" = $2$
+  ^I^I^I^IAND (ue."niveau" = $3 OR ue."niveaux" LIKE $4)$
+  ^I^I)$
+  ^I`, documentID, filiereID, niveau, "%\""+niveau+"\"%").Scan(&exists)$
+  ```
+- `grep -cPn '^( +)\S'` → `0` pour les 3 fichiers (domain, repository, usecase). ✅
+- Brace balance :
+  - domain : `()` 63/63, `{}` 21/21, `[]` 18/18, backticks 258. ✅
+  - repository : `()` 576/576, `{}` 348/348, `[]` 75/75, backticks 124. ✅
+  - usecase : `()` 199/199, `{}` 181/181, `[]` 29/29, backticks 0. ✅
+- Interface ↔ impl signatures matchent. Aucun autre implémentateur de `ExamPrepRepository` (pas de mock/test). Signatures usecase inchangées → handlers non modifiés. ✅
+- Git commit hash : `aae1ef3` (full `aae1ef398be9b2600b8a9778dfa98bd07f3e4ff6`), pushed to `main` (`f2c47fa..aae1ef3`). ✅
+
+### Risks / Follow-ups
+
+1. **Validation end-to-end requise** : Go n'est pas installé dans ce sandbox, donc pas de `go build` / `go vet` exécuté. La vérification a été faite manuellement (tabs `^I`, équilibre délimiteurs, imports présents, signatures interface↔impl, convention `pgx.TxOptions` cohérente, pattern LIKE identique à `ListStudentDocuments`). Après déploiement Vercel (auto-déclenché par le push), valider : (a) un étudiant légitime peut ouvrir le DocumentReader sur un document de SA filière+niveau (HTTP 200, pas de 500), (b) un étudiant qui forge un `documentID` d'une autre filière reçoit HTTP 403 "vous n'avez pas accès à ce document", (c) le Q&A RAG fonctionne sur un document autorisé. Si le build échoue, c'est probablement un problème de formatage — mais `grep` confirme 0 ligne indentée par espaces, donc `gofmt` devrait passer.
+2. **Round-trip DB supplémentaire pour étudiants** : `GetDocumentForReader` et `GetDocumentContentForQA` font désormais 2 requêtes (1 `GetUserNiveau` + 1 `CheckDocumentAccess` + 1 `GetDocumentForReader`/`GetDocumentContent` = 3 au total) au lieu d'1. Négligeable (index PK, 1 ligne, endpoints à faible trafic étudiant). Si la perf devient critique, on pourrait mettre en cache court-terme le niveau dans le context HTTP — mais pas nécessaire.
+3. **Enseignant non restreint** : par design, l'ENSEIGNANT skip le `CheckDocumentAccess` (il peut lire ses propres documents ET potentiellement ceux d'autres enseignants). C'est cohérent avec le comportement préexistant (avant ce fix, l'enseignant pouvait lire n'importe quel document via ces endpoints). Si on souhaite restreindre l'enseignant à SES documents uniquement (`ownerId = claims.UserID`), il faudrait ajouter un check supplémentaire — mais ce n'est pas la règle métier actuelle (un enseignant peut légitimement consulter les documents de ses collègues de la même filière). Hors scope.
+4. **Fallback `"L1"` si niveau vide** : si un étudiant n'a pas de `niveau` renseigné en DB (NULL ou colonne vide), le code fallback sur `"L1"` — comportement identique à `ListDocuments` (EXAM-PREP-NIVEAU-FIX-1). Cohérent : si l'étudiant ne voit pas le document dans `ListStudentDocuments` (à cause du fallback L1), il ne pourra pas non plus l'ouvrir via `GetDocumentForReader` (même fallback). Aucune inconsistance.
+5. **Pattern LIKE vs opérateur JSONB `?`** : le pattern `LIKE '%"L2"%'` marche pour les tableaux JSONB sérialisés comme `["L1","L2"]` (match `"L2"` substring). C'est la convention déjà utilisée par `ListStudentDocuments` (EXAM-PREP-RLS-FIX-1, EXAM-PREP-NIVEAU-FIX-1) — conservée pour cohérence. Une approche plus robuste serait l'opérateur JSONB containment `ue."niveaux" ? $4` (test d'appartenance exacte), mais cela nécessiterait de changer aussi `ListStudentDocuments` pour cohérence — hors scope de ce fix.
+6. **Effet combiné avec EXAM-PREP-RLS-FIX-1 + EXAM-PREP-NIVEAU-FIX-1** : ce fix ferme la dernière faille du trio. RLS-FIX a débloqué la lecture système (RLS off), NIVEAU-FIX a corrigé le paramétrage (niveau réel depuis DB), SECURITY-FIX ajoute la re-vérification d'accès sur les endpoints de lecture. Maintenant : (a) la liste est correcte (RLS off + bon niveau), (b) la lecture est sécurisée (re-check accès même si `documentID` est forgé). Un étudiant ne peut plus contourner la frontière filière+niveau.
+7. ** endpoints non couverts** : `GetDocumentContent` (repository, utilisé directement par le worker IA et potentiellement d'autres usecases) n'est PAS sécurisé — seul `GetDocumentContentForQA` (usecase wrapper) l'est. Si d'autres endpoints étudiant exposent `GetDocumentContent` directement, ils restent non sécurisés. À auditer si besoin (grep `GetDocumentContent` hors `GetDocumentContentForQA`). Hors scope de ce fix — le brief visait explicitement `GetDocumentForReader` et `GetDocumentContentForQA`.
