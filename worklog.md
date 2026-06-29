@@ -8711,3 +8711,45 @@ Stage Summary:
 - **Secrets locaux manquants** (non bloquants) : JWT_SECRET production et R2 credentials — présents sur Render en prod. Pour exécution backend locale, JWT dev et R2 désactivé (mode DB-only).
 - **Recommandation sécurité** : les tokens (GitHub/Vercel/Render/Neon) ayant été partagés en clair, une rotation post-session est conseillée.
 - **Prêt à poursuivre le développement** sur la base du travail antérieur (module /etablissements stabilisé en STEP-1→7). En attente des prochaines instructions utilisateur.
+
+---
+Task ID: RAPPORTS-FIX-STEP-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 1 du fix module /rapports — R1 (CRITICAL injection SQL filiereId) + R2 (CRITICAL filtres date ignorés).
+
+Work Log:
+- Lecture du handler `statsResponsable` (stats_handlers.go:795-1112) : 9 requêtes SQL agrégées dans une transaction RLS.
+- Constat R1 : `filiereID` interpolé directement via `fmt.Sprintf("AND e.\"filiereId\" = '%s'", filiereID)` dans 6 requêtes → injection SQL possible (ex: `filiereId=' UNION SELECT...--`).
+- Constat R2 : `dateDebut` et `dateFin` lus via `r.URL.Query().Get()` puis jetés (`_ = ...`). Le frontend envoyait les dates (queryKey TanStack inclut les filtres → refetch) mais aucune des 9 requêtes SQL ne les utilisait.
+- Bug caché découvert durant le refactor : les requêtes #8 (topEtudiants) et #9 (etudiantsEnDifficulte) référençaient `e."noteTotal"` et `e."filiereId"` SANS joindre `Epreuve` → erreur SQL silencieuse (handler ignore les erreurs via `if err == nil`) → les deux listes étaient TOUJOURS vides en production.
+- Choix de la colonne date : `SessionPassation.dateFin` (timestamp de complétion de l'évaluation), plus sémantique que `updatedAt` (qui change à chaque modification). Vérifié sur Neon : 34 sessions, toutes avec `dateFin` non-NULL (entre 2026-06-06 et 2026-06-08).
+- Refactoring : 3 helpers locaux introduits dans `statsResponsable` :
+  - `appendFiltre(clauses, args, idx, col, op, val)` : ajoute `"col op $N"` + arg si val non vide, retourne le prochain index.
+  - `buildSessionWhere()` : clause WHERE pour requêtes SessionPassation JOIN Epreuve (filiereId sur `e` + dates sur `s.dateFin`).
+  - `buildJoinAndWhere()` : sépare filtre date (JOIN ON, pour préserver LEFT JOIN) et filtre filiere (WHERE).
+- 9 requêtes SQL refactorisées (sur 9 — la #5 étudiants par filière reste inchangée, R6 traitera plus tard) :
+  - #1 nbEpreuves : paramètre bindé `$1` pour filiereId.
+  - #2 moyenne globale : `buildSessionWhere()` (filiere + dates).
+  - #3 répartition notes : `buildSessionWhere()`.
+  - #4 résultats par matière : `buildJoinAndWhere()` (dates dans LEFT JOIN ON, filiere dans WHERE).
+  - #5 étudiants par filière : inchangé (pas de filtre — R6 plus tard).
+  - #6 évolution : `buildSessionWhere()` (filiere + dates). Grouping reste sur `updatedAt` (R8 traitera).
+  - #7 top enseignants : `buildJoinAndWhere()` (dates dans LEFT JOIN ON, filiere dans WHERE).
+  - #8 top étudiants : `buildJoinAndWhere()` + ajout `JOIN "Epreuve" e ON e.id = s."epreuveId"` (bug caché).
+  - #9 étudiants en difficulté : `buildJoinAndWhere()` + ajout `JOIN "Epreuve" e` (bug caché).
+- Vérifications backend : `go build ./...` = 0 erreur, `go vet ./internal/transport/http/...` = 0 erreur.
+- Vérifications DB directes (Neon, via bun+pg) :
+  - R2 filtre date `2025-01-01..2025-12-31` → 0 session (correct, les 34 sessions sont en juin 2026).
+  - R2 filtre date `2026-06-01..2026-06-30` → 34 sessions attendues (cohérent).
+  - Bug caché topEtudiants : la requête avec `JOIN Epreuve` retourne maintenant 5 étudiants (KOKORA 18.17, LATH 17.69, ASSIELOU 17.58, LIATCHE 17.44, JAMAL 17.33). Avant le fix : liste vide.
+- Commit 81999b7 poussé. Render a déployé (healthcheck OK, API répond 401 sans auth au lieu de 500).
+- Rebase nécessaire : 3 commits utilisateurs (U1+U7, U2+U6+U8, U3 sur module /utilisateurs) pushés entre l'onboarding et ce fix. Aucun conflit (ne touchent pas stats_handlers.go).
+
+Stage Summary:
+- **2 bugs CRITICAL traités** : R1 (injection SQL) + R2 (filtres date ignorés).
+- **1 bug caché corrigé en bonus** : topEtudiants + etudiantsEnDifficulte étaient TOUJOURS vides en production (requêtes #8 et #9 cassées par référence à `e."noteTotal"` sans JOIN Epreuve). Maintenant fonctionnels.
+- **1 commit poussé** : 81999b7 (backend Go, 1 fichier modifié — stats_handlers.go).
+- **Aucune migration DB** nécessaire (pas de changement de schéma).
+- **Go toolchain** : compile-check + go vet avant push (0 échec).
+- **Vérification live partielle** : API répond 401 sans auth (pas 500 → nouveau code déployé). Vérification complète avec auth en attente (besoin du password RESPONSABLE pour tester les filtres date + injection en live).
+- Bugs restants du module /rapports : R3 (seuil difficulté 8 vs 10), R4 (alertes mortes), R5 (garde rôle frontend), R6 (filtre filière étudiants par filière), R7 (erreur vs vide), R8 (colonne évolution), R9 (sémantique topEtudiants).
