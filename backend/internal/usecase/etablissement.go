@@ -237,6 +237,9 @@ func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionCla
         })
 
         if errTx != nil {
+                // A3-DEBUG temporaire : logger l'erreur exacte pour diagnostiquer le 500.
+                // Sera retiré après résolution.
+                fmt.Printf("[A3-DEBUG] wizard tx error: %v (type: %T)\n", errTx, errTx)
                 return nil, errTx
         }
         return result, nil
