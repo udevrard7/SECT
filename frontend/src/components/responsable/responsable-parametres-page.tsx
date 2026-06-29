@@ -676,7 +676,9 @@ export function ResponsableParametresPage() {
     if (!securitySettings) return
     setSavingSecurity(true)
     try {
-      const res = await fetch(`/api/security-settings/${securitySettings.id}`, {
+      // PARAMETRES-FIX-P1+P5 : PATCH /etablissement/{etabId} (upsert) au lieu de
+      // PATCH /{configId} (route inexistante + id vide si pas de config existante).
+      const res = await fetch(`/api/security-settings/etablissement/${activeEtabId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -703,6 +705,11 @@ export function ResponsableParametresPage() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur lors de la sauvegarde')
+      }
+      const data = await res.json().catch(() => ({}))
+      // Mettre à jour le state local avec la config retournée (id peuplé si nouvel INSERT).
+      if (data?.securitySettings) {
+        setSecuritySettings(data.securitySettings)
       }
       toast.success('Sécurité mise à jour', {
         description: 'Les paramètres de sécurité ont été sauvegardés.',
