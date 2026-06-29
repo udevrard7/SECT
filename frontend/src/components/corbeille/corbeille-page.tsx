@@ -485,6 +485,9 @@ export function CorbeillePage() {
   const isLoading = corbeilleQuery.isLoading
   const refreshCorbeille = () => queryClient.invalidateQueries({ queryKey: ['corbeille', user?.id] })
 
+  // isFetching pour le spinner du bouton Actualiser
+  const isRefreshing = corbeilleQuery.isFetching
+
   // ─── Handle tab change with state reset ───
   const handleTabChange = (value: string) => {
     setActiveTab(value as CorbeilleTab)
@@ -758,15 +761,6 @@ export function CorbeillePage() {
             <SelectItem value="name-desc">Nom Z → A</SelectItem>
           </SelectContent>
         </Select>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-9 w-9"
-          onClick={() => refreshCorbeille()}
-          title="Actualiser"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
       </div>
     </div>
   )
@@ -1092,8 +1086,9 @@ export function CorbeillePage() {
             size="sm"
             className="gap-2"
             onClick={() => refreshCorbeille()}
+            disabled={isRefreshing}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
         </div>
