@@ -267,6 +267,7 @@ export function RapportsPage() {
 
   const stats = statsQuery.data ?? null
   const isLoading = statsQuery.isLoading
+  const isError = statsQuery.isError
   const filieres = filieresQuery.data?.filieres ?? []
 
   // ─── Derived data ───
@@ -912,8 +913,30 @@ export function RapportsPage() {
         </div>
       )}
 
+      {/* ─── Error state (RAPPORTS-FIX-R7) ─── */}
+      {!isLoading && isError && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-destructive/30 py-16">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10">
+            <AlertTriangle className="h-10 w-10 text-destructive" />
+          </div>
+          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Impossible de charger les statistiques</h3>
+          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+            Une erreur est survenue lors de la récupération des données. Vérifiez votre connexion et réessayez.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => statsQuery.refetch()}
+          >
+            <Loader2 className="h-4 w-4 mr-1" />
+            Réessayer
+          </Button>
+        </div>
+      )}
+
       {/* ─── Empty state ─── */}
-      {!isLoading && !hasData && (
+      {!isLoading && !hasData && !isError && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <BarChart3 className="h-10 w-10 text-success-text" />
