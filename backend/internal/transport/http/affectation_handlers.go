@@ -330,14 +330,31 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "enseignantId et uniteEnseignementId requis")
 		return
 	}
+	// PROG-ACAD-CRITICAL-FIX-1 (BUG #11) : validation enum typeSeance/statut
+	validTypes := map[string]bool{"CM": true, "TD": true, "TP": true}
+	validStatuts := map[string]bool{"PROVISOIRE": true, "CONFIRME": true, "ANNULE": true}
 	if input.TypeSeance == "" {
 		input.TypeSeance = "CM"
+	} else if !validTypes[input.TypeSeance] {
+		writeJSONError(w, http.StatusBadRequest, "typeSeance invalide (valeurs acceptées: CM, TD, TP)")
+		return
 	}
 	if input.Statut == "" {
 		input.Statut = "PROVISOIRE"
+	} else if !validStatuts[input.Statut] {
+		writeJSONError(w, http.StatusBadRequest, "statut invalide (valeurs acceptées: PROVISOIRE, CONFIRME, ANNULE)")
+		return
 	}
+	// PROG-ACAD-CRITICAL-FIX-1 (BUG #12) : au lieu de hardcoder "2024-2025",
+	// utiliser l'année courante (format YYYY-YYYY+1).
 	if input.AnneeUniversitaire == "" {
-		input.AnneeUniversitaire = "2024-2025"
+		now := time.Now()
+		year := now.Year()
+		if now.Month() >= 9 { // rentrée = septembre
+			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year, year+1)
+		} else {
+			input.AnneeUniversitaire = fmt.Sprintf("%d-%d", year-1, year)
+		}
 	}
 
 	id := uuid.NewString()

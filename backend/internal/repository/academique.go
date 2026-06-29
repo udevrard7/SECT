@@ -201,6 +201,15 @@ func (r *UERepository) List(ctx context.Context, params domain.UEListParams) ([]
                         args = append(args, params.Niveau, "%\""+params.Niveau+"\"%")
                         argIdx += 2
                 }
+
+                // PROG-ACAD-CRITICAL-FIX-1 (BUG #13) : filtre etablissementId
+                if params.EtablissementID != "" {
+                    where = append(where, fmt.Sprintf(`EXISTS (
+                    SELECT 1 FROM "Filiere" f3
+                    WHERE f3."id" = "UniteEnseignement"."filiereId" AND f3."etablissementId" = $%d)`, argIdx))
+                    args = append(args, params.EtablissementID)
+                    argIdx++
+                }
                 if params.Semestre != nil {
                         where = append(where, fmt.Sprintf(`"UniteEnseignement"."semestre" = $%d`, argIdx))
                         args = append(args, *params.Semestre)
@@ -570,6 +579,13 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
                         argIdx++
                 }
 
+                // PROG-ACAD-CRITICAL-FIX-1 (BUG #7) : filtre niveau
+                if params.Niveau != "" {
+                    where = append(where, fmt.Sprintf(`ef."niveau" = $%d`, argIdx))
+                    args = append(args, params.Niveau)
+                    argIdx++
+                }
+
                 whereClause := ""
                 if len(where) > 0 {
                         whereClause = "WHERE " + strings.Join(where, " AND ")
@@ -583,6 +599,7 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
                                f."id", f."nom", f."code"
                         FROM "EnseignantFiliere" ef
                         LEFT JOIN "Filiere" f ON f."id" = ef."filiereId"
+                        LEFT JOIN "User" u ON u."id" = ef."enseignantId"
                         %s
                         ORDER BY ef."createdAt" DESC`, whereClause)
                 rows, err := tx.Query(ctx, query, args...)
@@ -595,8 +612,10 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
                         ef := &domain.EnseignantFiliere{}
                         var filID, filNom *string
                         var filCode *string
+                        var ensID, ensName, ensEmail *string
                         err := rows.Scan(&ef.ID, &ef.EnseignantID, &ef.FiliereID, &ef.Niveau, &ef.CreatedAt, &ef.UpdatedAt,
-                                &filID, &filNom, &filCode)
+                                &filID, &filNom, &filCode,
+                        &ensID, &ensName, &ensEmail)
                         if err != nil {
                                 return fmt.Errorf("scan ef: %w", err)
                         }
@@ -605,6 +624,14 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
                                         ID:   *filID,
                                         Nom:  *filNom,
                                         Code: derefStr(filCode),
+                                }
+                        }
+                        // PROG-ACAD-CRITICAL-FIX-1 (BUG #6) : populate enseignant
+                        if ensID != nil && ensName != nil {
+                        ef.Enseignant = &domain.UserRef{
+                                ID:    *ensID,
+                                Name:  *ensName,
+                                Email: derefStr(ensEmail),
                                 }
                         }
                         result = append(result, ef)

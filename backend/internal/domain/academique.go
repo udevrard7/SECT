@@ -302,6 +302,7 @@ type EnseignantFiliereListParams struct {
 	EnseignantID    string
 	FiliereID       string
 	EtablissementID string
+	Niveau          string // PROG-ACAD-CRITICAL-FIX-1 (BUG #7)
 }
 
 // CreateAssignmentInput — single ou bulk.
