@@ -22,7 +22,6 @@ import {
   IdCard,
   Info,
   CreditCard,
-  UserCheck,
   Lock,
   ArrowRight,
   Trash2,
@@ -87,24 +86,13 @@ interface EtablissementItem {
   // Optional chaining + fallback 0 partout pour éviter le crash.
   _count?: { filieres: number; users: number }
   adminHasAccess?: boolean
-  responsable?: {
-    id: string
-    name: string
-    email: string
-    actif: boolean
-    derniereConnexion: string | null
-  } | null
-  abonnements?: Array<{
-    id: string
-    statut: string
-    plan: { nom: string }
-    dateFin: string | null
-  }>
+  // F3 (HIGH): champs responsable + abonnements supprimés — le backend ne les
+  // retourne pas (domain.Etablissement n'a pas ces champs).
 }
 
 interface EtablissementDetail extends EtablissementItem {
-  // BUGFIX (ADMIN-AUDIT-2) : filieres + users optionnels (l'API detail peut
-  // ne pas les inclure selon le contexte). Optional chaining partout.
+  // BUGFIX (ADMIN-AUDIT-2) : filieres optionnel (l'API detail peut ne pas
+  // l'inclure selon le contexte). Optional chaining partout.
   filieres?: Array<{
     id: string
     nom: string
@@ -113,15 +101,10 @@ interface EtablissementDetail extends EtablissementItem {
     nbEtudiants: number | null
     actif: boolean
     responsable: { id: string; name: string; email: string } | null
-    _count: { etudiants: number }
+    _count?: { etudiants: number } // F13: optionnel (optional chaining)
   }>
-  users?: Array<{
-    id: string
-    name: string
-    email: string
-    role: string
-    actif: boolean
-  }>
+  // F4 (HIGH): champ users supprimé — le backend ne retourne pas users dans
+  // le détail établissement. Le count reste disponible via _count.users.
 }
 
 // ─── Utility functions ───
@@ -141,20 +124,8 @@ function getTypeBadge(type: string | null) {
   }
 }
 
-function getRoleBadge(role: string) {
-  switch (role) {
-    case 'ADMIN':
-      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">Admin</Badge>
-    case 'RESPONSABLE':
-      return <Badge className="bg-warning/15 text-warning border-warning/30 text-xs">Responsable</Badge>
-    case 'ENSEIGNANT':
-      return <Badge className="bg-success/15 text-success-text border-success/30 text-xs">Enseignant</Badge>
-    case 'ETUDIANT':
-      return <Badge className="bg-info/15 text-info border-info/30 text-xs">Étudiant</Badge>
-    default:
-      return <Badge variant="outline" className="text-xs">{role}</Badge>
-  }
-}
+// F4: getRoleBadge supprimé — n'était utilisé que dans la section users du dialog
+// détail, qui a été retirée (le backend ne retourne pas users).
 
 // ─── Main Component ───
 
@@ -357,8 +328,12 @@ export function EtablissementsPage() {
       if (res.ok) {
         const data = await res.json()
         setDetailEtab(data.etablissement)
-        if (typeof data.adminAccess === 'boolean') {
-          setDetailAdminAccess(data.adminAccess)
+        // F2 (CRITICAL): le backend sérialise adminHasAccess (domain.Etablissement.AdminHasAccess
+        // → json:"adminHasAccess,omitempty"), pas adminAccess. Avant ce fix, detailAdminAccess
+        // restait null à vie → le warning "Accès non autorisé" ne s'affichait jamais et la
+        // restriction d'accès était silencieusement bypassée côté UI.
+        if (typeof data.adminHasAccess === 'boolean') {
+          setDetailAdminAccess(data.adminHasAccess)
         }
       }
     } catch {
@@ -540,36 +515,10 @@ export function EtablissementsPage() {
                       {etab.telephone}
                     </span>
                   )}
-                  {etab.responsable && (
-                    <span className="flex items-center gap-1.5">
-                      <UserCheck className="h-3.5 w-3.5 text-warning" />
-                      <span className="truncate">Responsable: {etab.responsable.name}</span>
-                      {!etab.responsable.actif && (
-                        <Badge className="bg-muted text-muted-foreground border-border text-[10px] px-1.5 py-0">Inactif</Badge>
-                      )}
-                    </span>
-                  )}
+                  {/* F3 (HIGH): blocs UI responsable + abonnements supprimés — le backend
+                      ne retourne pas ces champs (domain.Etablissement n'a pas Responsable
+                      ni Abonnements). Ces blocs étaient du code mort jamais affiché. */}
                 </div>
-
-                {/* Abonnement badge */}
-                {etab.abonnements && etab.abonnements.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {etab.abonnements.map((abo) => {
-                      const statutLabel = abo.statut === 'ESSAI' ? 'Essai' : abo.statut === 'ACTIF' ? 'Actif' : abo.statut === 'EXPIRE' ? 'Expiré' : abo.statut === 'RESILIE' ? 'Résilié' : abo.statut
-                      const statutClass = abo.statut === 'ACTIF'
-                        ? 'bg-success/15 text-success-text border-success/30'
-                        : abo.statut === 'ESSAI'
-                          ? 'bg-warning/15 text-warning border-warning/30'
-                          : 'bg-muted text-muted-foreground border-border'
-                      return (
-                        <Badge key={abo.id} className={`text-[10px] gap-1 ${statutClass}`}>
-                          <CreditCard className="h-2.5 w-2.5" />
-                          {abo.plan.nom} — {statutLabel}
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                )}
 
                 {/* Counts */}
                 <div className="flex gap-3">
@@ -880,6 +829,10 @@ export function EtablissementsPage() {
         if (!open) {
           setDetailOpen(false)
           setDetailEtab(null)
+          // F36 (MEDIUM): reset detailAdminAccess sur close — sinon un ADMIN qui
+          // ouvre détail A (access=true), ferme, ouvre détail B (access=false)
+          // verrait access=true hérité de A (après fix F2).
+          setDetailAdminAccess(null)
         }
       }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -1002,33 +955,10 @@ export function EtablissementsPage() {
 
                     <Separator />
 
-                    {/* Users section */}
-                    <div>
-                      <h3 className="text-sm font-display font-semibold mb-3 flex items-center gap-2">
-                        <Users className="h-4 w-4 text-info" />
-                        Utilisateurs (<span className="font-mono tabular-nums">{detailEtab.users?.length ?? 0}</span>)
-                      </h3>
-                      {!detailEtab.users || detailEtab.users.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-2">Aucun utilisateur dans cet établissement.</p>
-                      ) : (
-                        <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                          {detailEtab.users.map((u) => (
-                            <div key={u.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-muted/50">
-                              <div className="flex items-center gap-2">
-                                <div className="h-7 w-7 rounded-full bg-success/15 flex items-center justify-center text-xs font-bold text-success-text font-mono tabular-nums">
-                                  {u.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium">{u.name}</p>
-                                  <p className="text-xs text-muted-foreground">{u.email}</p>
-                                </div>
-                              </div>
-                              {getRoleBadge(u.role)}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    {/* F4 (HIGH): section Utilisateurs supprimée du dialog détail —
+                        le backend ne retourne pas le champ users (domain.Etablissement
+                        n'a que Filieres []*FiliereRef). Le count des users reste
+                        visible dans la card list via _count.users. */}
                   </>
                 )}
               </div>
