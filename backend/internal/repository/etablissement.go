@@ -348,6 +348,39 @@ func (r *EtablissementRepository) UpdateLogo(ctx context.Context, id string, log
         return etab, nil
 }
 
+// ClearLogo supprime le logo (SET "logo" = NULL). Distinct d'UpdateLogo qui
+// exige une data URL valide. Le champ Logo étant *string côté domaine, NULL
+// en DB → nil côté Go → logo: null en JSON (le frontend affiche la zone
+// d'upload au lieu de l'image).
+func (r *EtablissementRepository) ClearLogo(ctx context.Context, id string) (*domain.Etablissement, error) {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return nil, fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                return nil, fmt.Errorf("disable rls: %w", err)
+        }
+
+        row := tx.QueryRow(ctx, `
+                UPDATE "Etablissement" SET "logo" = NULL, "updatedAt" = CURRENT_TIMESTAMP
+                WHERE "id" = $1 RETURNING `+columnsEtab, id)
+
+        etab, err := scanEtablissement(row)
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return nil, &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                }
+                return nil, fmt.Errorf("clear logo: %w", err)
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return nil, err
+        }
+        return etab, nil
+}
+
 // UpdateWatermark met à jour la config watermark.
 func (r *EtablissementRepository) UpdateWatermark(ctx context.Context, id string, cfg domain.WatermarkConfig) (*domain.Etablissement, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})

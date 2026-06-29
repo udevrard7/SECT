@@ -352,16 +352,21 @@ function LogoUpload({
     setUploading(true)
     try {
       // PARAMETRES-FIX-P3 : endpoint dédié DELETE /api/etablissements/{id}/logo.
-      // Avant : PATCH {logo: null} était silencieusement ignoré (champ Logo retiré
-      // de UpdateEtablissementInput par le fix E5) → le logo restait en DB.
+      // PARAMETRES-FIX-P3b : le backend utilise désormais ClearLogo (SET logo = NULL)
+      // au lieu d'UpdateLogo(...,"") qui était rejeté par la validation.
       const res = await fetch(`/api/etablissements/${etablissementId}/logo`, {
         method: 'DELETE',
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || err.message || `Erreur ${res.status}`)
+      }
       onLogoUpdate(null)
       toast.success('Logo supprimé', { description: 'Le logo a été retiré.' })
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de supprimer le logo.' })
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de supprimer le logo.',
+      })
     } finally {
       setUploading(false)
     }

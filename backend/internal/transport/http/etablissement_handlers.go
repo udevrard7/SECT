@@ -206,10 +206,14 @@ func (s *Server) uploadLogo(w http.ResponseWriter, r *http.Request) {
 }
 
 // deleteLogo — DELETE /api/etablissements/{id}/logo
-// PARAMETRES-FIX-P3 : supprime le logo en passant une chaîne vide à UpdateLogo.
+// PARAMETRES-FIX-P3 : endpoint dédié pour supprimer le logo.
 // Le champ Logo a été retiré de UpdateEtablissementInput (fix E5 sécurité),
 // donc un PATCH {logo: null} était silencieusement ignoré. Cet endpoint dédié
-// utilise le repo UpdateLogo (qui valide l'autorisation via le usecase).
+// utilise ClearLogo (SET logo = NULL).
+//
+// PARAMETRES-FIX-P3b : corrige le bug où deleteLogo appelait UpdateLogo(ctx,
+// claims, id, "") qui était rejeté par la validation "données logo requises"
+// → suppression toujours en échec. Utilise désormais ClearLogo.
 func (s *Server) deleteLogo(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -223,8 +227,8 @@ func (s *Server) deleteLogo(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // UpdateLogo avec chaîne vide efface le logo (repo fait SET "logo" = $1).
-        etab, err := s.etabUC.UpdateLogo(r.Context(), claims, id, "")
+        // ClearLogo met le logo à NULL (repo fait SET "logo" = NULL).
+        etab, err := s.etabUC.ClearLogo(r.Context(), claims, id)
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
