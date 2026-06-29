@@ -23,6 +23,10 @@ func NewAccessUseCase(accessRepo domain.EtablissementAccessRepository) *AccessUs
 // List liste les demandes d'accès.
 // ADMIN : voit ses propres demandes (filtrées par adminId si fourni).
 // RESPONSABLE : voit les demandes de son établissement.
+//
+// ACCES-ETABLISSEMENTS-FIX-AE4 : pour ADMIN, params.AdminID est forcé à
+// claims.UserID (anti-IDOR). Avant, un ADMIN pouvait passer ?adminId=other
+// pour voir les demandes d'un autre admin.
 func (uc *AccessUseCase) List(ctx context.Context, claims db.SessionClaims, params domain.AccessListParams) ([]*domain.EtablissementAccess, error) {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable {
@@ -32,6 +36,9 @@ func (uc *AccessUseCase) List(ctx context.Context, claims db.SessionClaims, para
         if role == domain.RoleResponsable {
                 // RESPONSABLE ne voit que les demandes de son établissement
                 params.EtablissementID = claims.EtablissementID
+        } else if role == domain.RoleAdmin {
+                // AE4 : forcer adminId à l'utilisateur courant (anti-IDOR).
+                params.AdminID = claims.UserID
         }
 
         return uc.accessRepo.List(ctx, params)
@@ -126,6 +133,48 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
         }
 
         return uc.accessRepo.Update(ctx, id, input)
+}
+
+// Delete annule (supprime) une demande d'accès.
+// ACCES-ETABLISSEMENTS-FIX-AE1 : avant, la route DELETE n'existait pas → le
+// bouton "Annuler" du frontend retournait 405.
+//
+// Règles métier :
+// - ADMIN : ne peut annuler que SES propres demandes (adminId == claims.UserID).
+// - La demande doit être en statut EN_ATTENTE (on ne peut pas annuler une
+//   demande déjà APPROUVE/REFUSE/EXPIRE — utiliser PATCH pour révoquer).
+// - Hard-delete (la demande EN_ATTENTE n'a pas de valeur d'audit).
+func (uc *AccessUseCase) Delete(ctx context.Context, claims db.SessionClaims, id string) error {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+
+        // Récupérer la demande existante pour vérifier ownership + statut.
+        existing, err := uc.accessRepo.FindByID(ctx, id)
+        if err != nil {
+                return err
+        }
+
+        // Ownership check :
+        // - ADMIN : doit être le propriétaire de la demande (adminId == claims.UserID).
+        // - RESPONSABLE : la demande doit concerner son établissement.
+        if role == domain.RoleAdmin {
+                if existing.AdminID != claims.UserID {
+                        return &domain.UnauthorizedError{Message: "vous ne pouvez annuler que vos propres demandes"}
+                }
+        } else if role == domain.RoleResponsable {
+                if existing.EtablissementID != claims.EtablissementID {
+                        return &domain.UnauthorizedError{Message: "cette demande ne concerne pas votre établissement"}
+                }
+        }
+
+        // Statut check : seul EN_ATTENTE peut être annulé.
+        if existing.Statut != domain.AccessEnAttente {
+                return &domain.ValidationError{Field: "statut", Message: "seules les demandes en attente peuvent être annulées"}
+        }
+
+        return uc.accessRepo.Delete(ctx, id)
 }
 
 // CheckAccess vérifie si l'ADMIN courant a accès à un établissement.

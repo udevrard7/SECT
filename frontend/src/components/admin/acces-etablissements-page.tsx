@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   KeyRound,
@@ -183,6 +184,7 @@ function getMotifLabel(motif: string) {
 export function AccesEtablissementsPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
+  const router = useRouter()
 
   // ─── Data state (BUGFIX QUERY-MIGRATION-GROUP-A : TanStack Query) ───
   // Le cache survit au démontage → 0 refetch au retour, 0 skeleton, navigation
@@ -534,11 +536,7 @@ export function AccesEtablissementsPage() {
                               variant="ghost"
                               size="sm"
                               className="h-8 text-success-text hover:text-success-text hover:bg-success/10"
-                              onClick={() =>
-                                toast.info('Navigation', {
-                                  description: `Accès aux données de ${record.etablissement?.nom ?? 'cet établissement'} (à venir).`,
-                                })
-                              }
+                              onClick={() => router.push('/etablissements')}
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               Voir l&apos;établissement
