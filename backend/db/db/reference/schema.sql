@@ -1665,8 +1665,10 @@ AS $$
   SELECT current_role_claim() = 'ETUDIANT';
 $$;
 
--- Vrai si l'ADMIN courant a une autorisation d'accès explicite à l'établissement donné.
--- Les autres rôles n'utilisent pas cette fonction (ils sont scoppés par leur propre etablissementId).
+-- Vrai si l'ADMIN courant a une autorisation d'accès EXPLICITE ET ACTIVE à l'établissement
+-- donné (statut=APPROUVE + dans la plage de dates). Les autres rôles n'utilisent pas cette
+-- fonction (ils sont scoppés par leur propre etablissementId).
+-- Alignée sur le repository Go CheckAccess (internal/repository/etablissement_access.go).
 CREATE OR REPLACE FUNCTION public.admin_has_etablissement_access(p_etablissement_id TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql STABLE
@@ -1675,6 +1677,9 @@ AS $$
     SELECT 1 FROM "EtablissementAccess"
     WHERE "adminId" = current_user_id()
       AND "etablissementId" = p_etablissement_id
+      AND "statut" = 'APPROUVE'
+      AND ("dateDebut" IS NULL OR "dateDebut" <= CURRENT_TIMESTAMP)
+      AND ("dateFin" IS NULL OR "dateFin" >= CURRENT_TIMESTAMP)
   );
 $$;
 
