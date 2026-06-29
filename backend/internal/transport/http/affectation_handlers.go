@@ -57,10 +57,25 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 			Email string `json:"email"`
 		} `json:"enseignant,omitempty"`
 		UniteEnseignement *struct {
-			ID     string `json:"id"`
-			Code   string `json:"code"`
-			Nom    string `json:"nom"`
-			Niveau string `json:"niveau"`
+			ID            string  `json:"id"`
+			Code          string  `json:"code"`
+			Nom           string  `json:"nom"`
+			Niveau        string  `json:"niveau"`
+			Niveaux       *string `json:"niveaux,omitempty"`
+			Filiere       *struct {
+				ID   string  `json:"id"`
+				Nom  string  `json:"nom"`
+				Code *string `json:"code,omitempty"`
+			} `json:"filiere,omitempty"`
+			FilieresSuppl []struct {
+				ID        string `json:"id"`
+				FiliereID string `json:"filiereId"`
+				Filiere   struct {
+					ID   string  `json:"id"`
+					Nom  string  `json:"nom"`
+					Code *string `json:"code,omitempty"`
+				} `json:"filiere"`
+			} `json:"filieresSuppl,omitempty"`
 		} `json:"uniteEnseignement,omitempty"`
 	}
 
@@ -116,10 +131,12 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 			       a."groupe", a."volumeHeures", a."anneeUniversitaire", a."statut"::text, a."commentaire",
 			       a."createdAt", a."updatedAt",
 			       u."id", u."name", u."email",
-			       ue."id", ue."code", ue."nom", ue."niveau"
+			       ue."id", ue."code", ue."nom", ue."niveau", ue."niveaux",
+			       f."id", f."nom", f."code"
 			FROM "Affectation" a
 			LEFT JOIN "User" u ON u."id" = a."enseignantId"
 			LEFT JOIN "UniteEnseignement" ue ON ue."id" = a."uniteEnseignementId"
+			LEFT JOIN "Filiere" f ON f."id" = ue."filiereId"
 			%s
 			ORDER BY a."createdAt" DESC
 		`, whereClause)
@@ -132,14 +149,16 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			row := affRow{}
 			var ensID, ensName, ensEmail *string
-			var ueID2, ueCode, ueNom, ueNiveau *string
+			var ueID2, ueCode, ueNom, ueNiveau, ueNiveaux *string
+			var filID, filNom, filCode *string
 			var createdAt, updatedAt time.Time
 			if err := rows.Scan(
 				&row.ID, &row.EnseignantID, &row.UniteEnseignementID, &row.TypeSeance,
 				&row.Groupe, &row.VolumeHeures, &row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
 				&createdAt, &updatedAt,
 				&ensID, &ensName, &ensEmail,
-				&ueID2, &ueCode, &ueNom, &ueNiveau,
+				&ueID2, &ueCode, &ueNom, &ueNiveau, &ueNiveaux,
+				&filID, &filNom, &filCode,
 			); err != nil {
 				return err
 			}
@@ -153,16 +172,112 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
 				}{ID: *ensID, Name: *ensName, Email: derefStr(ensEmail)}
 			}
 			if ueID2 != nil && ueNom != nil {
-				row.UniteEnseignement = &struct {
-					ID     string `json:"id"`
-					Code   string `json:"code"`
-					Nom    string `json:"nom"`
-					Niveau string `json:"niveau"`
-				}{ID: *ueID2, Code: derefStr(ueCode), Nom: *ueNom, Niveau: derefStr(ueNiveau)}
+				ue := &struct {
+					ID            string  `json:"id"`
+					Code          string  `json:"code"`
+					Nom           string  `json:"nom"`
+					Niveau        string  `json:"niveau"`
+					Niveaux       *string `json:"niveaux,omitempty"`
+					Filiere       *struct {
+						ID   string  `json:"id"`
+						Nom  string  `json:"nom"`
+						Code *string `json:"code,omitempty"`
+					} `json:"filiere,omitempty"`
+					FilieresSuppl []struct {
+						ID        string `json:"id"`
+						FiliereID string `json:"filiereId"`
+						Filiere   struct {
+							ID   string  `json:"id"`
+							Nom  string  `json:"nom"`
+							Code *string `json:"code,omitempty"`
+						} `json:"filiere"`
+					} `json:"filieresSuppl,omitempty"`
+				}{
+					ID:      *ueID2,
+					Code:    derefStr(ueCode),
+					Nom:     *ueNom,
+					Niveau:  derefStr(ueNiveau),
+					Niveaux: ueNiveaux,
+				}
+				if filID != nil && filNom != nil {
+					ue.Filiere = &struct {
+						ID   string  `json:"id"`
+						Nom  string  `json:"nom"`
+						Code *string `json:"code,omitempty"`
+					}{ID: *filID, Nom: *filNom, Code: filCode}
+				}
+				row.UniteEnseignement = ue
 			}
 			result = append(result, row)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		// PROG-ACAD-CRITICAL-FIX-1 (BUG #5) : recuperer les filieres
+		// supplementaires (N:N via UniteEnseignementFiliere) pour chaque
+		// UE de la liste. Batch query pour eviter N+1.
+		if len(result) > 0 {
+			ueIDs := make([]string, 0, len(result))
+			seen := make(map[string]bool)
+			for _, r := range result {
+				if r.UniteEnseignement != nil && !seen[r.UniteEnseignement.ID] {
+					ueIDs = append(ueIDs, r.UniteEnseignement.ID)
+					seen[r.UniteEnseignement.ID] = true
+				}
+			}
+			if len(ueIDs) > 0 {
+				placeholders := make([]string, len(ueIDs))
+				args2 := make([]any, len(ueIDs))
+				for i, id := range ueIDs {
+					placeholders[i] = fmt.Sprintf("$%d", i+1)
+					args2[i] = id
+				}
+				query2 := fmt.Sprintf(`
+					SELECT uef."uniteEnseignementId", uef."id", uef."filiereId",
+					       f."id", f."nom", f."code"
+					FROM "UniteEnseignementFiliere" uef
+					JOIN "Filiere" f ON f."id" = uef."filiereId"
+					WHERE uef."uniteEnseignementId" IN (%s)
+					ORDER BY f."nom" ASC
+				`, strings.Join(placeholders, ", "))
+				rows2, err := tx.Query(r.Context(), query2, args2...)
+				if err != nil {
+					return fmt.Errorf("query filieres suppl: %w", err)
+				}
+				defer rows2.Close()
+				type supplItem struct {
+					ID        string `json:"id"`
+					FiliereID string `json:"filiereId"`
+					Filiere   struct {
+						ID   string  `json:"id"`
+						Nom  string  `json:"nom"`
+						Code *string `json:"code,omitempty"`
+					} `json:"filiere"`
+				}
+				supplMap := make(map[string][]supplItem)
+				for rows2.Next() {
+					var ueID, uefID, filID2, filNom2 string
+					var filCode2 *string
+					if err := rows2.Scan(&ueID, &uefID, &filID2, &filNom2, &filCode2); err != nil {
+						return fmt.Errorf("scan filiere suppl: %w", err)
+					}
+					item := supplItem{ID: uefID, FiliereID: filID2}
+					item.Filiere.ID = filID2
+					item.Filiere.Nom = filNom2
+					item.Filiere.Code = filCode2
+					supplMap[ueID] = append(supplMap[ueID], item)
+				}
+				for i := range result {
+					if result[i].UniteEnseignement != nil {
+						if suppl, ok := supplMap[result[i].UniteEnseignement.ID]; ok {
+							result[i].UniteEnseignement.FilieresSuppl = suppl
+						}
+					}
+				}
+			}
+		}
+		return nil
 	})
 
 	// PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
