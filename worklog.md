@@ -9308,6 +9308,7 @@ Stage Summary:
 - **Vérification live complète** : tests authentifiés (admin + responsable créé par wizard) confirment le fonctionnement end-to-end.
 
 ---
+<<<<<<< HEAD
 Task ID: FACTURATION-FIX-STEP-1
 Agent: Z.ai Code (tuteur/assistant)
 Task: Fix module /facturation — F1-F5 (5 bugs : 4 CRITICAL + 1 HIGH).
@@ -9333,3 +9334,21 @@ Stage Summary:
 - **Backend** : nouveau fichier facture_mutation_handlers.go (4 handlers) + router.go (4 routes) + stub_handlers_real2.go (F5 réécriture GET liste).
 - **Aucune migration DB** nécessaire (schéma complet + RLS policies déjà en place).
 - **Module /facturation désormais pleinement fonctionnel** : création/consultation/paiement/annulation de factures, structure complète compatible frontend, garde rôle ADMIN (A4+A5 déjà traités).
+
+---
+Task ID: RAPPORTS-FIX-D1-D2-REDEPLOY
+Agent: Tuteur Z.ai (orchestrateur)
+Task: Re-déclenchement déploiement Vercel pour fix rapports D1+D2
+
+Work Log:
+- Constat : le commit fix(rapports) D1+D2 (a430b0b, pushé 23:22:22) n'a pas
+  déclenché de build Vercel (webhook GitHub manqué — push trop rapproché du
+  commit fix(facturation) 695cb42 pushé 40s avant).
+- Dernier déploiement Vercel READY = 23:21:43 pour le commit facturation.
+- Quota API Vercel dépassé (100 deploys/jour plan free) → impossible de
+  déclencher via API. Solution : commit de doc pour re-déclencher le webhook.
+
+Stage Summary:
+- Ce commit existe uniquement pour re-déclencher le déploiement Vercel du
+  fix rapports D1 (décimales) + D2 (surcharge KPIs) déjà poussé sur main.
+>>>>>>> e80b890 (docs(worklog): re-déclenchement déploiement Vercel pour fix rapports D1+D2)
