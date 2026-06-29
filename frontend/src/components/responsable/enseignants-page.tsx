@@ -437,8 +437,11 @@ export function EnseignantsPage() {
   })
 
   // ─── Stats ───
-  const totalEnseignants = enseignants.length
-  const activeEnseignants = enseignants.filter((e) => e.actif).length
+  // ENSEIGNANTS-FIX-EN7 : toutes les stats basées sur filteredEnseignants pour
+  // cohérence (avant, totalEnseignants/activeEnseignants sur 'enseignants' brut
+  // → incohérent quand filtre filière actif).
+  const totalEnseignants = filteredEnseignants.length
+  const activeEnseignants = filteredEnseignants.filter((e) => e.actif).length
   const withAssignments = filteredEnseignants.filter((e) => (assignmentMap[e.id] || []).length > 0).length
   const totalLevelAssignments = filteredEnseignants.reduce((sum, e) => {
     const teacherAssigns = (assignmentMap[e.id] || []).filter((a) => filiereIds.includes(a.filiereId))
@@ -678,15 +681,18 @@ export function EnseignantsPage() {
           },
         body: JSON.stringify({ actif: !enseignant.actif }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || `Erreur ${res.status}`)
+      }
       toast.success(enseignant.actif ? 'Enseignant archivé' : 'Enseignant réactivé', {
         description: enseignant.actif
           ? `${enseignant.name} est maintenant archivé. Ses données sont préservées, il reste dans l'établissement mais est marqué comme inactif.`
           : `${enseignant.name} est de nouveau actif.`,
       })
       await refreshEnseignants()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de modifier le statut.' })
     }
   }
 
@@ -1032,12 +1038,29 @@ export function EnseignantsPage() {
     setIsBulkProcessing(true)
     try {
       const ids = Array.from(selectedIds)
+      // ENSEIGNANTS-FIX-EN5 : collecter les deletedDependencies pour le delete bulk
+      // + extraire err.error au lieu de 'Erreur' générique.
+      let totalDepsEpreuves = 0
+      let totalDepsDevoirs = 0
+      let totalDepsAffectations = 0
+      let totalDepsEf = 0
       const results = await Promise.allSettled(
         ids.map(async (id) => {
           if (bulkActionDialog === 'delete') {
             const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
-            if (!res.ok) throw new Error('Erreur')
-            return res.json()
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}))
+              throw new Error(err?.error || `Erreur ${res.status}`)
+            }
+            // EN5 : lire deletedDependencies
+            const data = await res.json().catch(() => ({}))
+            const deps = data.deletedDependencies
+            if (deps) {
+              totalDepsEpreuves += deps.epreuves || 0
+              totalDepsDevoirs += deps.devoirs || 0
+              totalDepsAffectations += deps.affectations || 0
+              totalDepsEf += deps.enseignantFilieres || 0
+            }
           } else {
             const actif = bulkActionDialog === 'activate'
             const res = await fetch(`/api/users/${id}`, {
@@ -1045,14 +1068,27 @@ export function EnseignantsPage() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ actif }),
             })
-            if (!res.ok) throw new Error('Erreur')
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}))
+              throw new Error(err?.error || `Erreur ${res.status}`)
+            }
           }
         })
       )
       const succeeded = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected').length
+      // EN5 : inclure les deps dans le toast si delete bulk
+      let depsText = ''
+      if (bulkActionDialog === 'delete' && (totalDepsEpreuves > 0 || totalDepsDevoirs > 0 || totalDepsAffectations > 0 || totalDepsEf > 0)) {
+        const parts: string[] = []
+        if (totalDepsEpreuves > 0) parts.push(`${totalDepsEpreuves} épreuve(s)`)
+        if (totalDepsDevoirs > 0) parts.push(`${totalDepsDevoirs} devoir(s)`)
+        if (totalDepsAffectations > 0) parts.push(`${totalDepsAffectations} affectation(s) UE`)
+        if (totalDepsEf > 0) parts.push(`${totalDepsEf} affectation(s) filière`)
+        depsText = ` Données supprimées : ${parts.join(', ')}.`
+      }
       if (bulkActionDialog === 'delete') {
-        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) supprimé(s) définitivement${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
+        toast.success('Suppression en masse', { description: `${succeeded} enseignant(s) supprimé(s) définitivement${failed > 0 ? `, ${failed} échoué(s)` : ''}.${depsText}` })
       } else if (bulkActionDialog === 'activate') {
         toast.success('Activation en masse', { description: `${succeeded} enseignant(s) activé(s)${failed > 0 ? `, ${failed} échoué(s)` : ''}.` })
       } else {
@@ -1061,8 +1097,8 @@ export function EnseignantsPage() {
       setBulkActionDialog(null)
       setSelectedIds(new Set())
       await refreshEnseignants()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible d\'exécuter l\'action en masse.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible d\'exécuter l\'action en masse.' })
     } finally {
       setIsBulkProcessing(false)
     }
