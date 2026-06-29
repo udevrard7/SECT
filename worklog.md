@@ -9237,3 +9237,37 @@ Stage Summary:
 - Backend compilé et vérifié localement (Go 1.24 installé dans le bac à sable pour l'occasion).
 - Déploiement automatique Vercel (frontend) + Render (backend) déclenché par le push.
 
+
+---
+Task ID: ABONNEMENTS-FIX-STEP-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étape 1 du fix module /abonnements — A1+A2+A4+A5+A6+A7+A8+A9+A10 (9 bugs sur 10).
+
+Work Log:
+- A1 (CRITICAL) : routes POST/PATCH/DELETE /api/abonnements inexistantes → module lecture-seule. Nouveau fichier abonnement_mutation_handlers.go avec 3 handlers (createAbonnement, updateAbonnement, deleteAbonnement). Validation statut enum (ESSAI/ACTIF/SUSPENDU/EXPIRE/RESILIE), montant >= 0, date format YYYY-MM-DD. deleteAbonnement = soft-delete (statut → RESILIE + dateFin = now, conserve historique).
+- A2 (CRITICAL) : routes POST/PATCH /api/plans inexistantes. 2 handlers (createPlan, updatePlan) dans le même fichier. Validation type enum (GRATUIT/ESSENTIEL/PROFESSIONNEL/ENTREPRISE), prix >= 0, limites >= 1.
+- A4 (HIGH) : pas de RequireRole ADMIN. Ajouté sur /abonnements, /plans, /factures (défense en profondeur au-delà RLS).
+- A5 (MEDIUM) : pas de garde frontend. Étendu PAGE_ALLOWED_ROLES avec abonnements + facturation = ['ADMIN'].
+- A6 (HIGH) : abonnementsListReal ne retournait pas referencePaiement, etab.ville, etab.actif, plan.type, plan.prixAnnuel. Ajoutés au SELECT + struct.
+- A7 (HIGH) : plansListReal ne retournait pas _count.abonnements. Subquery ajoutée + struct _count.{abonnements} (style Prisma).
+- A8 (MEDIUM) : facturesListReal ne filtrait pas par etablissementId. Filtre paramètre bindé ajouté.
+- A9 (MEDIUM) : pas de validation champs plan. Validations ajoutées (prix >= 0, nb* >= 1).
+- A10 (LOW) : monthlyRevenue basé sur montantPaye au lieu de plan.prixMensuel. Corrigé frontend.
+- Vérifications live (auth admin) : tous les endpoints testés et fonctionnels :
+  - GET /api/plans → _count.abonnements présent (Gratuit: 1, autres: 0) ✅
+  - GET /api/abonnements → etab.ville, plan.type, referencePaiement présents ✅
+  - POST /api/abonnements → 201 Created ✅
+  - Validation statut invalide → 400 ✅
+  - PATCH /api/abonnements/{id} (suspendre) → 200 ✅
+  - DELETE /api/abonnements/{id} (résilier) → 200 ✅
+  - POST /api/plans → 201 Created ✅
+  - PATCH /api/plans/{id} → 200 ✅
+- Données de test nettoyées (abonnement test supprimé, plan test supprimé, 4 plans + 1 abonnement originaux restaurés).
+
+Stage Summary:
+- **9 bugs traités** sur 10 (A1-A10 sauf A3).
+- **1 commit poussé** : cc4e1e4 (backend + frontend, 6 fichiers, +681/-43 lignes).
+- **Backend** : nouveau fichier abonnement_mutation_handlers.go (5 handlers) + router.go (5 nouvelles routes + RequireRole) + stub_handlers_real.go (A6+A7) + stub_handlers_real2.go (A8).
+- **Frontend** : routes.ts (A5 garde rôle) + abonnements-page.tsx (A10 calcul revenu).
+- **Aucune migration DB** nécessaire (RLS policies déjà en place).
+- **Bug restant** : A3 (CRITICAL — wizard de souscription cassé, champs responsable/plan ignorés par POST /api/etablissements). Nécessite un refactor frontend (3 appels séquentiels : créer étab → créer responsable/invitation → créer abonnement) ou une extension du backend CreateEtablissementInput. À traiter dans une étape dédiée.
