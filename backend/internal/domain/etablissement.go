@@ -128,6 +128,9 @@ type EtablissementRepository interface {
         Create(ctx context.Context, input CreateEtablissementInput) (*Etablissement, error)
         Update(ctx context.Context, id string, input UpdateEtablissementInput) (*Etablissement, error)
         UpdateLogo(ctx context.Context, id string, logoData string) (*Etablissement, error)
+        // ClearLogo met le logo à NULL (suppression). Distinct d'UpdateLogo qui
+        // exige des données valides (data URL base64 non vide).
+        ClearLogo(ctx context.Context, id string) (*Etablissement, error)
         UpdateWatermark(ctx context.Context, id string, cfg WatermarkConfig) (*Etablissement, error)
         GetWatermark(ctx context.Context, id string) (*WatermarkConfig, error)
         Delete(ctx context.Context, id string) error
