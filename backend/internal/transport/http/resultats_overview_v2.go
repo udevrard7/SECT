@@ -1,9 +1,12 @@
 // Package http — rewrite complet de resultatsOverviewReal (RESULTATS-FIX-2).
+// P1-RESULTATS : fix R1 (topQuestions), R3 (DerniereNote), R5 (log erreurs).
+// P2-RESULTATS : fix R4 (moyenne pondérée), R9 (arrondi tauxReussite).
 package http
 
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
@@ -52,20 +55,24 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		Moyenne       float64 `json:"moyenne"`
 		DerniereNote  float64 `json:"derniereNote"`
 	}
+	// P1-R1 : QuestionIndex → QuestionID (string), Enonce depuis q."enonce"
 	type topQuestion struct {
-		EpreuveID    string  `json:"epreuveId"`
-		EpreuveTitre string  `json:"epreuveTitre"`
-		QuestionIndex int    `json:"questionIndex"`
-		Enonce       string  `json:"enonce"`
-		Type         string  `json:"type"`
-		TauxReussite float64 `json:"tauxReussite"`
-		Count        int     `json:"count"`
+		EpreuveID     string  `json:"epreuveId"`
+		EpreuveTitre  string  `json:"epreuveTitre"`
+		QuestionID    string  `json:"questionId"`
+		QuestionIndex int     `json:"questionIndex"`
+		Enonce        string  `json:"enonce"`
+		Type          string  `json:"type"`
+		TauxReussite  float64 `json:"tauxReussite"`
+		Count         int     `json:"count"`
 	}
 
 	epreuves := []overviewEpreuve{}
 	evolution := []evolutionPoint{}
 	studentsAtRisk := []studentAtRisk{}
 	topQuestions := []topQuestion{}
+
+	logger := slog.Default()
 
 	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		var args []any
@@ -80,31 +87,36 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		}
 
 		// 1. Épreuves avec stats complètes
+		// P2-R9 : ROUND(taux, 1) pour éviter 42.857142857%
+		// P2-R13 : NULLIF(e."noteTotal", 0) pour éviter division par zéro
 		rows, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT e."id", e."titre", e."dateDebut"::text, e."dateFin"::text,
 			       e."statut"::text, e."noteTotal",
 			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id") AS nb_sessions,
 			       (SELECT count(*) FROM "SessionPassation" s WHERE s."epreuveId" = e."id"
-				AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL) AS nb_corrigees,
-			       COALESCE((SELECT AVG(s2.score / e."noteTotal" * 20) FROM "SessionPassation" s2
-				WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL), 0) AS moyenne,
-			       COALESCE((SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY s3.score / e."noteTotal" * 20)
-				FROM "SessionPassation" s3
-				WHERE s3."epreuveId" = e."id" AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL), 0) AS mediane,
+			        AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL) AS nb_corrigees,
+			       COALESCE((SELECT AVG(s2.score / NULLIF(e."noteTotal", 0) * 20) FROM "SessionPassation" s2
+			        WHERE s2."epreuveId" = e."id" AND s2.statut IN ('CORRIGEE','RETOURNEE') AND s2.score IS NOT NULL), 0) AS moyenne,
+			       COALESCE((SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY s3.score / NULLIF(e."noteTotal", 0) * 20)
+			        FROM "SessionPassation" s3
+			        WHERE s3."epreuveId" = e."id" AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL), 0) AS mediane,
 			       CASE WHEN (SELECT count(*) FROM "SessionPassation" s4 WHERE s4."epreuveId" = e."id"
-				AND s4.statut IN ('CORRIGEE','RETOURNEE') AND s4.score IS NOT NULL) > 0
-				    THEN (SELECT count(*) FILTER (WHERE s5.score >= e."noteTotal" * 0.5)::float
-				     FROM "SessionPassation" s5 WHERE s5."epreuveId" = e."id"
-				     AND s5.statut IN ('CORRIGEE','RETOURNEE') AND s5.score IS NOT NULL) /
-				     (SELECT count(*) FROM "SessionPassation" s6 WHERE s6."epreuveId" = e."id"
-				     AND s6.statut IN ('CORRIGEE','RETOURNEE') AND s6.score IS NOT NULL) * 100
-				    ELSE 0 END AS taux
+			        AND s4.statut IN ('CORRIGEE','RETOURNEE') AND s4.score IS NOT NULL) > 0
+			            THEN ROUND((SELECT count(*) FILTER (WHERE s5.score >= e."noteTotal" * 0.5)::float
+			             FROM "SessionPassation" s5 WHERE s5."epreuveId" = e."id"
+			             AND s5.statut IN ('CORRIGEE','RETOURNEE') AND s5.score IS NOT NULL) /
+			             (SELECT count(*) FROM "SessionPassation" s6 WHERE s6."epreuveId" = e."id"
+			             AND s6.statut IN ('CORRIGEE','RETOURNEE') AND s6.score IS NOT NULL) * 100, 1)
+			            ELSE 0 END AS taux
 			FROM "Epreuve" e
 			%s
 			ORDER BY e."createdAt" DESC
 			LIMIT 20
 		`, whereE), args...)
-		if err == nil {
+		if err != nil {
+			// P1-R5 : logger l'erreur au lieu de l'avaler
+			logger.Error("resultatsOverview: query 1 (epreuves) failed", "error", err)
+		} else {
 			defer rows.Close()
 			for rows.Next() {
 				ep := overviewEpreuve{}
@@ -125,7 +137,7 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		}
 		rows2, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT to_char(date_trunc('month', s."updatedAt"), 'YYYY-MM') AS mois,
-			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
+			       COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moyenne,
 			       count(*) AS nb_eval
 			FROM "SessionPassation" s
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
@@ -134,7 +146,9 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 			  %s
 			GROUP BY mois ORDER BY mois ASC
 		`, whereE2), args2...)
-		if err == nil {
+		if err != nil {
+			logger.Error("resultatsOverview: query 2 (evolution) failed", "error", err)
+		} else {
 			defer rows2.Close()
 			for rows2.Next() {
 				ev := evolutionPoint{}
@@ -147,20 +161,29 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		}
 
 		// 3. Étudiants en difficulté (moyenne /20 < 8)
+		// P1-R3 : DerniereNote = dernière note chronologique (pas MAX)
+		// Utilise LATERAL pour récupérer la dernière session de l'étudiant
 		rows3, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT u."id", u."name", u."email", count(*) AS nb_exam,
-			       COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moy,
-			       COALESCE(MAX(s.score / e."noteTotal" * 20), 0) AS derniere
+			       COALESCE(AVG(s.score / NULLIF(e."noteTotal", 0) * 20), 0) AS moy,
+			       COALESCE((SELECT s_last.score / NULLIF(e_last."noteTotal", 0) * 20
+			         FROM "SessionPassation" s_last
+			         JOIN "Epreuve" e_last ON e_last."id" = s_last."epreuveId"
+			         WHERE s_last."etudiantId" = u."id"
+			           AND s_last.statut IN ('CORRIGEE','RETOURNEE') AND s_last.score IS NOT NULL
+			         ORDER BY s_last."updatedAt" DESC LIMIT 1), 0) AS derniere
 			FROM "User" u
 			JOIN "SessionPassation" s ON s."etudiantId" = u."id"
 			  AND s.statut IN ('CORRIGEE','RETOURNEE') AND s.score IS NOT NULL
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			WHERE u."role" = 'ETUDIANT' %s
 			GROUP BY u."id", u."name", u."email"
-			HAVING AVG(s.score / e."noteTotal" * 20) < 8
+			HAVING AVG(s.score / NULLIF(e."noteTotal", 0) * 20) < 8
 			ORDER BY moy ASC LIMIT 10
 		`, whereE2), args2...)
-		if err == nil {
+		if err != nil {
+			logger.Error("resultatsOverview: query 3 (studentsAtRisk) failed", "error", err)
+		} else {
 			defer rows3.Close()
 			for rows3.Next() {
 				sr := studentAtRisk{}
@@ -171,31 +194,46 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 			}
 		}
 
-		// 4. Top questions difficiles (via Resultat.detailParQuestion JSON)
+		// 4. Top questions difficiles
+		// P1-R1 : fix 3 bugs :
+		//   (a) q."intitule" → q."enonce" (colonne correcte)
+		//   (b) QuestionIndex int → QuestionID string (q."id" est un UUID)
+		//   (c) Parsing JSONB : detailParQuestion est un ARRAY, pas un objet.
+		//       On utilise jsonb_array_elements pour l'extraire, puis ->> 'questionId'
+		//       pour matcher avec q."id", et ->> 'score' / ->> 'bareme' pour le ratio.
 		rows4, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT e."id" AS epreuve_id, e."titre" AS epreuve_titre,
-			       q."id" AS question_id, q."intitule", q."type"::text,
-			       count(r."id") AS nb_reponses,
-			       COALESCE(avg(
-				 (r."detailParQuestion"::jsonb -> q."id" ->> 'pointsObtenus')::float /
-				 NULLIF((r."detailParQuestion"::jsonb -> q."id" ->> 'pointsMax')::float, 0) * 100
-			       ), 0) AS taux_reussite
+			       q."id" AS question_id, q."enonce", q."type"::text,
+			       count(*) AS nb_reponses,
+			       COALESCE(ROUND(avg(
+			         CASE
+			           WHEN dp->>'bareme' IS NOT NULL AND (dp->>'bareme')::float > 0
+			             THEN COALESCE((dp->>'score')::float, 0) / (dp->>'bareme')::float * 100
+			           WHEN dp->>'pointsMax' IS NOT NULL AND (dp->>'pointsMax')::float > 0
+			             THEN COALESCE((dp->>'pointsObtenus')::float, 0) / (dp->>'pointsMax')::float * 100
+			           ELSE 0
+			         END
+			       ), 1), 0) AS taux_reussite
 			FROM "Resultat" r
 			JOIN "SessionPassation" s ON s."id" = r."sessionId"
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
 			JOIN "Question" q ON q."id" IN (
 			  SELECT je->>'questionId' FROM jsonb_array_elements(e."contenu"::jsonb -> 'questions') je
 			)
+			JOIN LATERAL jsonb_array_elements(r."detailParQuestion"::jsonb) AS dp
+			  ON dp->>'questionId' = q."id"
 			WHERE r."detailParQuestion" IS NOT NULL %s
-			GROUP BY e."id", e."titre", q."id", q."intitule", q."type"
+			GROUP BY e."id", e."titre", q."id", q."enonce", q."type"
 			ORDER BY taux_reussite ASC
 			LIMIT 10
 		`, whereE2), args2...)
-		if err == nil {
+		if err != nil {
+			logger.Error("resultatsOverview: query 4 (topQuestions) failed", "error", err)
+		} else {
 			defer rows4.Close()
 			for rows4.Next() {
 				tq := topQuestion{}
-				if err := rows4.Scan(&tq.EpreuveID, &tq.EpreuveTitre, &tq.QuestionIndex,
+				if err := rows4.Scan(&tq.EpreuveID, &tq.EpreuveTitre, &tq.QuestionID,
 					&tq.Enonce, &tq.Type, &tq.Count, &tq.TauxReussite); err == nil {
 					topQuestions = append(topQuestions, tq)
 				}
@@ -206,20 +244,28 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 	})
 
 	// KPIs scalaires
+	// P2-R4 : moyenne pondérée par le nombre de sessions corrigées
 	totalEpreuves := len(epreuves)
 	totalSessions := 0
 	totalCorrigees := 0
-	var globalMoy float64
-	var globalTaux float64
+	var weightedMoySum float64
+	var weightedTauxSum float64
+	var totalWeight float64
 	for _, ep := range epreuves {
 		totalSessions += ep.NbSessions
 		totalCorrigees += ep.NbCorrigees
-		globalMoy += ep.Moyenne
-		globalTaux += ep.TauxReussite
+		// P2-R4 : pondérer par nbCorrigees (ignore les épreuves sans corrigés)
+		if ep.NbCorrigees > 0 {
+			weightedMoySum += ep.Moyenne * float64(ep.NbCorrigees)
+			weightedTauxSum += ep.TauxReussite * float64(ep.NbCorrigees)
+			totalWeight += float64(ep.NbCorrigees)
+		}
 	}
-	if totalEpreuves > 0 {
-		globalMoy /= float64(totalEpreuves)
-		globalTaux /= float64(totalEpreuves)
+	var globalMoy float64
+	var globalTaux float64
+	if totalWeight > 0 {
+		globalMoy = weightedMoySum / totalWeight
+		globalTaux = weightedTauxSum / totalWeight
 	}
 
 	w.Header().Set("Content-Type", "application/json")
