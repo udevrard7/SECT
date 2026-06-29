@@ -9350,3 +9350,34 @@ Work Log:
 Stage Summary:
 - Ce commit existe uniquement pour re-déclencher le déploiement Vercel du
   fix rapports D1 (décimales) + D2 (surcharge KPIs) déjà poussé sur main.
+
+---
+Task ID: ACCES-ETABLISSEMENTS-FIX-STEP-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix module /acces-etablissements — AE1-AE5 (5 bugs : 1 CRITICAL + 1 MEDIUM + 3 LOW).
+
+Work Log:
+- AE1 (CRITICAL) : route DELETE /api/etablissement-access/{id} inexistante → bouton "Annuler" retournait 405. Implémentation complète en couches :
+  - domain : Delete ajouté à l'interface EtablissementAccessRepository
+  - repository : Delete (hard-delete, bypass RLS, NotFoundError si 0 ligne)
+  - usecase : Delete avec checks ownership (ADMIN: adminId==claims.UserID, RESPONSABLE: etablissementId==claims.EtablissementID) + statut EN_ATTENTE uniquement
+  - handler : deleteAccess
+  - route : r.Delete("/{id}", s.deleteAccess)
+- AE2 (MEDIUM) : pas de garde frontend. Ajouté 'acces-etablissements': ['ADMIN'] dans PAGE_ALLOWED_ROLES.
+- AE3 (LOW) : pas de RequireRole backend. Ajouté RequireRole("ADMIN", "RESPONSABLE") sur le groupe de routes.
+- AE4 (LOW) : IDOR dans List — adminId non forcé pour ADMIN. Maintenant params.AdminID = claims.UserID forcé (cohérent avec Create/E3).
+- AE5 (LOW) : bouton "Voir l'établissement" = placeholder toast. Remplacé par router.push('/etablissements').
+- Vérifications live (auth admin) :
+  - Création demande EN_ATTENTE → 201 Created ✅
+  - DELETE /api/etablissement-access/{id} (annuler) → 200 "demande d'accès annulée" ✅
+  - Vérif : la demande n'existe plus dans la liste ✅
+  - Test annuler demande APPROUVE → 400 "seules les demandes en attente peuvent être annulées" ✅
+- Données de test nettoyées.
+
+Stage Summary:
+- **5 bugs traités** : AE1 (CRITICAL DELETE), AE2 (MEDIUM garde frontend), AE3 (LOW RequireRole), AE4 (LOW IDOR List), AE5 (LOW placeholder).
+- **1 commit poussé** : 2202c4a (7 fichiers, +573/-462 lignes).
+- **Backend** : domain (interface) + repository (Delete) + usecase (Delete + IDOR fix) + handler (deleteAccess) + router (route + RequireRole).
+- **Frontend** : routes.ts (garde rôle) + acces-etablissements-page.tsx (navigation réelle).
+- **Aucune migration DB** nécessaire (RLS policies déjà en place).
+- **Module /acces-etablissements désormais pleinement fonctionnel** : création/consultation/approbation/refus/annulation de demandes d'accès, avec sécurité anti-IDOR + anti-forgery + garde de rôle.
