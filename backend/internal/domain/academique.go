@@ -23,9 +23,30 @@ type Filiere struct {
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
 	// Relations optionnelles
-	Etablissement  *EtablissementRef `json:"etablissement,omitempty"`
-	Responsable    *UserRef          `json:"responsable,omitempty"`
-	CountEtudiants *int              `json:"countEtudiants,omitempty"`
+	Etablissement *EtablissementRef `json:"etablissement,omitempty"`
+	Responsable   *UserRef          `json:"responsable,omitempty"`
+	// BUGFIX (FILIERES-CRITICAL-FIX-1) : _count (style Prisma) peuplé par
+	// List/FindByID via subquery count sur User(filiereId, role=ETUDIANT,
+	// actif=true). Avant c’était countEtudiants *int (top-level, jamais peuplé)
+	// — le frontend lisait _count.etudiants → undefined → 0 étudiants affichés.
+	Count     *FiliereCount     `json:"_count,omitempty"`
+	Etudiants []FiliereEtudiant `json:"etudiants,omitempty"`
+}
+
+// FiliereCount est l’objet imbriqué `_count` (style Prisma) attendu par le
+// frontend pour afficher le nombre d’étudiants d’une filière dans la liste.
+type FiliereCount struct {
+	Etudiants int `json:"etudiants"`
+}
+
+// FiliereEtudiant est une référence étendue à un étudiant inscrit dans une
+// filière (utilisée par Filiere.Etudiants dans FindByID pour le detail dialog).
+type FiliereEtudiant struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	Actif     bool      `json:"actif"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // FiliereListParams pour filtrer les filières.
@@ -63,6 +84,17 @@ type BulkFiliereInput struct {
 	Action string   `json:"action"` // "activate" | "deactivate" | "delete"
 }
 
+// FiliereDependencies résume les dépendances actives d’une filière (pour
+// l’endpoint GET /api/filieres/{id}/dependencies et le check avant soft-delete).
+// CanDelete = (EtudiantsCount == 0 && UEsCount == 0) : on empêche la
+// désactivation d’une filière qui a encore des étudiants actifs ou des UEs.
+type FiliereDependencies struct {
+	EtudiantsCount int  `json:"etudiantsCount"`
+	UEsCount       int  `json:"uesCount"`
+	EpreuvesCount  int  `json:"epreuvesCount"`
+	CanDelete      bool `json:"canDelete"`
+}
+
 // FiliereRepository interface.
 type FiliereRepository interface {
 	FindByID(ctx context.Context, id string) (*Filiere, error)
@@ -72,6 +104,7 @@ type FiliereRepository interface {
 	SoftDelete(ctx context.Context, id string) (*Filiere, error)
 	BulkUpdate(ctx context.Context, ids []string, actif bool, etablissementID string) (int, error)
 	CountDependencies(ctx context.Context, id string) (epreuves, etudiants, ues int, err error)
+	GetFiliereDependencies(ctx context.Context, id string) (*FiliereDependencies, error)
 }
 
 // ============================================================
