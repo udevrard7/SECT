@@ -257,9 +257,15 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
                                 }
                                 supplMap := make(map[string][]supplItem)
                                 for rows2.Next() {
-                                        var ueID, uefID, filID2, filNom2 string
+                                        // AFFECTATIONS-FIX-A1 : la query SELECT 6 colonnes
+                                        // (uef.uniteEnseignementId, uef.id, uef.filiereId, f.id, f.nom, f.code)
+                                        // — il faut 6 destinations, pas 5. Avant ce fix, le Scan
+                                        // n'avait que 5 vars → erreur "number of field descriptions
+                                        // must equal number of destinations, got 6 and 5" → tout
+                                        // listAffectations échouait en 500.
+                                        var ueID, uefID, uefFilID, filID2, filNom2 string
                                         var filCode2 *string
-                                        if err := rows2.Scan(&ueID, &uefID, &filID2, &filNom2, &filCode2); err != nil {
+                                        if err := rows2.Scan(&ueID, &uefID, &uefFilID, &filID2, &filNom2, &filCode2); err != nil {
                                                 return fmt.Errorf("scan filiere suppl: %w", err)
                                         }
                                         item := supplItem{ID: uefID, FiliereID: filID2}
@@ -330,9 +336,14 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
                 writeJSONError(w, http.StatusBadRequest, "enseignantId et uniteEnseignementId requis")
                 return
         }
-        // PROG-ACAD-CRITICAL-FIX-1 (BUG #11) : validation enum typeSeance/statut
+        // AFFECTATIONS-FIX-A2 : validation enum typeSeance/statut alignée sur la DB.
+        // Avant, le handler validait [PROVISOIRE, CONFIRME, ANNULE] mais l'enum DB
+        // StatutAffectation = [PROVISOIRE, VALIDEE, PUBLIEE] → POST {statut:VALIDEE}
+        // était rejeté par le handler (400) alors que c'est une valeur DB valide, et
+        // POST {statut:CONFIRME} passait le handler mais échouait côté DB (invalid
+        // enum value). Désormais on valide les vraies valeurs DB.
         validTypes := map[string]bool{"CM": true, "TD": true, "TP": true}
-        validStatuts := map[string]bool{"PROVISOIRE": true, "CONFIRME": true, "ANNULE": true}
+        validStatuts := map[string]bool{"PROVISOIRE": true, "VALIDEE": true, "PUBLIEE": true}
         if input.TypeSeance == "" {
                 input.TypeSeance = "CM"
         } else if !validTypes[input.TypeSeance] {
@@ -342,7 +353,7 @@ func (s *Server) createAffectation(w http.ResponseWriter, r *http.Request) {
         if input.Statut == "" {
                 input.Statut = "PROVISOIRE"
         } else if !validStatuts[input.Statut] {
-                writeJSONError(w, http.StatusBadRequest, "statut invalide (valeurs acceptées: PROVISOIRE, CONFIRME, ANNULE)")
+                writeJSONError(w, http.StatusBadRequest, "statut invalide (valeurs acceptées: PROVISOIRE, VALIDEE, PUBLIEE)")
                 return
         }
         // PROG-ACAD-CRITICAL-FIX-1 (BUG #12) : au lieu de hardcoder "2024-2025",
