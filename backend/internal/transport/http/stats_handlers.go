@@ -1159,17 +1159,54 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                         ORDER BY moyenne ASC
                         LIMIT 5
                 `, jOn9, wWhere9), jwArgs9...)
+                diff := []topEtudiant{}
                 if err == nil {
                         defer rows7.Close()
-                        diff := []topEtudiant{}
                         for rows7.Next() {
                                 var t topEtudiant
                                 if err := rows7.Scan(&t.ID, &t.Nom, &t.Email, &t.Moyenne, &t.Filiere); err == nil {
                                         diff = append(diff, t)
                                 }
                         }
-                        stats["etudiantsEnDifficulte"] = diff
                 }
+                stats["etudiantsEnDifficulte"] = diff
+
+                // RAPPORTS-FIX-R4 : alertes contextuelles calculées à partir des données
+                // déjà disponibles (pas de nouvelle requête SQL). Avant : champ toujours vide.
+                alertes := []alerteStat{}
+                if nbEns == 0 {
+                        alertes = append(alertes, alerteStat{
+                                Type:        "enseignants",
+                                Titre:       "Aucun enseignant actif",
+                                Description: "Aucun enseignant actif dans votre établissement. Créez des comptes enseignants pour pouvoir créer des évaluations.",
+                                Severity:    "warning",
+                        })
+                }
+                if nbEpreuves == 0 && nbEtu > 0 {
+                        alertes = append(alertes, alerteStat{
+                                Type:        "evaluations",
+                                Titre:       "Aucune évaluation créée",
+                                Description: fmt.Sprintf("%d étudiant(s) inscrit(s) mais aucune épreuve créée. Créez une première épreuve pour démarrer les évaluations.", nbEtu),
+                                Severity:    "warning",
+                        })
+                }
+                if tauxReuss > 0 && tauxReuss < 50 {
+                        alertes = append(alertes, alerteStat{
+                                Type:        "performance",
+                                Titre:       "Taux de réussite faible",
+                                Description: fmt.Sprintf("Le taux de réussite global est de %.1f%% (inférieur à 50%%). Une révision des contenus pédagogiques est recommandée.", tauxReuss),
+                                Severity:    "critical",
+                        })
+                }
+                if len(diff) > 0 {
+                        alertes = append(alertes, alerteStat{
+                                Type:        "etudiants",
+                                Titre:       fmt.Sprintf("%d étudiant(s) en difficulté", len(diff)),
+                                Description: fmt.Sprintf("%d étudiant(s) ont une moyenne inférieure à 10/20. Un accompagnement pédagogique est recommandé.", len(diff)),
+                                Severity:    "warning",
+                        })
+                }
+                stats["alertes"] = alertes
 
                 return nil
         })
