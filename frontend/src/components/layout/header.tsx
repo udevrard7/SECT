@@ -134,10 +134,10 @@ export function AppHeader() {
 
         {/* ─── Horloge (desktop uniquement) ─── */}
         <div className="hidden xl:flex flex-col items-end leading-tight">
-          <span className="text-sm font-mono font-semibold text-sidebar-foreground/80 tabular-nums">
+          <span className="text-base font-mono font-bold text-sidebar-foreground tabular-nums">
             {timeStr}
           </span>
-          <span className="text-[10px] text-sidebar-foreground/40 capitalize">
+          <span className="text-xs text-sidebar-foreground/70 capitalize font-medium">
             {dateStr}
           </span>
         </div>
