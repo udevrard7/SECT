@@ -402,7 +402,7 @@ export function MesEpreuvesPage() {
           </TabsTrigger>
           <TabsTrigger value="resultats" className="gap-1.5">
             <Trophy className="h-4 w-4" />
-            Résultats
+            Mes Copies
             {completedEpreuves.length > 0 && (
               <Badge
                 variant="secondary"
