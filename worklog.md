@@ -7412,3 +7412,418 @@ Stage Summary:
   fixé de facto par le rename countEtudiants → _count ; BUG #7 à #17 restent ouverts
   (pagination, FK 500, dropdowns RESPONSABLE, RLS policy morte, validation code,
   etc. — hors scope de ce fix critique).
+
+
+---
+
+## PROG-ACAD-AUDIT-1 — Audit complet du module `/programme-academique`
+
+**Task ID** : PROG-ACAD-AUDIT-1
+**Type** : RESEARCH-ONLY (aucune modification de fichier, aucun commit)
+**Date** : session en cours
+**Objectif** : Audit exhaustif du module `/programme-academique` (backend Go + frontend Next.js) pour préparer une refonte. Périmètre : gestion des UEs, années académiques, affectations enseignant↔UE, affectations enseignant↔filière, par ADMIN/RESPONSABLE.
+
+### 1. Architecture — fichiers impliqués et data flow
+
+#### Backend (Go, layers `internal/`)
+
+| Fichier | Rôle | Lignes |
+|---|---|---|
+| `backend/internal/domain/academique.go` | Entités `Filiere`, `UniteEnseignement`, `EnseignantFiliere`, `AnneeAcademique`, `Affectation`, `UniteEnseignementFiliere`, refs (`FiliereRef`, `UserRef`, `UERef`, `AffectationRef`), inputs (Create/Update/Bulk), interfaces repository, helper `IsValidNiveau`, enum `ValidNiveaux` (L1/L2/L3/M1/M2/DOCTORAT) | 366 |
+| `backend/internal/domain/user.go` | Définit `EtablissementRef {id, nom}` et `FiliereRef {id, nom, code}` (refs légères partagées) | — |
+| `backend/internal/domain/etablissement_access.go` | Définit `UserRef {id, name, email}` (ref légère utilisateur partagée) | — |
+| `backend/internal/repository/academique.go` | Implémentations SQL `UERepository`, `EnseignantFiliereRepository`, `AnneeAcademiqueRepository` (FindByID/List/Create/Update/SoftDelete) | 775 |
+| `backend/internal/repository/affectation.go` | **DEAD CODE** — `AffectationRepository` complète (List/Create/Update/Delete avec domain.Affectation) — jamais instanciée, jamais appelée | 285 |
+| `backend/internal/repository/filiere.go` | `FiliereRepository` (déjà refonte FILIERES-CRITICAL-FIX-1) — `CountDependencies` est dead code (interne, 0 call site) | 461 |
+| `backend/internal/usecase/academique.go` | UseCases `Filiere` (déjà refondu), `UE`, `EnseignantFiliere`, `AnneeAcademique`. Pas de usecase `Affectation`. | 376 |
+| `backend/internal/transport/http/academique_handlers.go` | Handlers HTTP pour `/api/filieres`, `/api/unites-enseignement`, `/api/enseignant-filieres`, `/api/annees-academiques` | 479 |
+| `backend/internal/transport/http/affectation_handlers.go` | Handlers HTTP inline pour `/api/affectations` (CRUD complet via `appdb.WithTx` + SQL inline + struct `affRow` locale — **contourne le usecase/repository**) | 374 |
+| `backend/internal/transport/http/router.go` (lignes 180-227) | Routes derrière `middleware.RequireAuth` (pas de `RequireRole` au niveau router) | — |
+| `backend/internal/middleware/auth.go` | `RequireAuth`, `RequireRole` (helper non utilisé pour ce module), `MapDomainError` (mapping domaine→HTTP) | 145 |
+| `backend/db/db/reference/schema.sql` (lignes 140-198, 677-688) | Définitions tables `EnseignantFiliere`, `UniteEnseignement`, `UniteEnseignementFiliere`, `Affectation`, `AnneeAcademique` + enums `NiveauEtude` (L1..DOCTORAT), `TypeSeance` (CM/TD/TP), `StatutAffectation` (PROVISOIRE/VALIDEE/PUBLIEE) | — |
+| `backend/db/db/migrations/000007_rls_policies.up.sql` (lignes 165-315) | RLS policies `*_select` (admin_has_etablissement_access OU etablissement=current) + `*_modify_responsable` (is_responsable AND etablissement=current) pour les 5 tables du module | — |
+
+**Sub-entités du module :**
+1. **UniteEnseignement (UE)** — `code`, `nom`, `filiereId` (owner), `niveau` (enum), `niveaux` (JSON array optionnel pour UEs multi-niveaux), `semestre` (1/2/null), `creditsECTS`, `volumeHeuresCM/TD/TP`, `obligatoire`, `actif`. Pas de `deletedAt` (soft-delete via `actif=false`).
+2. **UniteEnseignementFiliere** — table de liaison N:N pour UEs partagées entre filières (owner filière = `UniteEnseignement.filiereId`, partagées = lignes dans cette table). Unique sur `(uniteEnseignementId, filiereId)`.
+3. **Affectation** — lien enseignant↔UE pour une `anneeUniversitaire` (texte, défaut "2024-2025" hardcoded). Unique sur `(enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire)`. `typeSeance` enum CM/TD/TP, `statut` enum PROVISOIRE/VALIDEE/PUBLIEE.
+4. **EnseignantFiliere** — assignation enseignant↔filière+niveau. Unique sur `(enseignantId, filiereId, niveau)`. Pas de tableau de liaison pour enseignant↔filière sans niveau — le niveau est partie de la clé.
+5. **AnneeAcademique** — `libelle`, `dateDebut`, `dateFin`, `etablissementId`, `actif`. Unique sur `(libelle, etablissementId)`. Pas de colonne `anneeUniversitaire` — l'année universitaire des affectations est un TEXT libre.
+6. **FiliereNiveau** — **N'EXISTE PAS** dans le schéma. Le périmètre de la task mentionnait cette entité, mais c'est un concept abstrait : la combinaison (filiereId, niveau) est matérialisée par les UEs (qui ont filiereId + niveau) et les EnseignantFiliere (qui ont filiereId + niveau). Pas de table dédiée.
+
+#### Frontend (Next.js 16, React 19, TanStack Query)
+
+| Fichier | Rôle | Lignes |
+|---|---|---|
+| `frontend/src/components/layout/page-content.tsx` (lignes 38, 90-91, 108-109) | Routing PageId→composant. `/niveaux` et `/unites-enseignement` aliasent vers `ProgrammeAcademiquePage` (avec `defaultView` différent) | — |
+| `frontend/src/components/responsable/programme-academique-page.tsx` | Page principale du module. 2 vues : "Vue d'ensemble" (cards par niveau + matrice Filière×Niveau) et "Gestion des UEs" (tableau filtré). Appelle `/api/filieres`, `/api/unites-enseignement`, `/api/affectations`. | 1530 |
+| `frontend/src/components/responsable/affectations-page.tsx` | Page dédiée aux affectations enseignant↔UE. Vue matricielle (UE × CM/TD/TP), stats teaching load, CRUD affectations. Appelle `/api/affectations`, `/api/filieres`, `/api/unites-enseignement`, `/api/users`. | 1643 |
+| `frontend/src/components/responsable/enseignants-page.tsx` | Page gestion enseignants. Section "Affectations filière+niveau" par enseignant. Appelle `/api/enseignant-filieres` (GET/POST/DELETE) avec format bulk. | 2462 |
+| `frontend/src/components/responsable/niveaux-page.tsx` | **DEAD CODE** — `NiveauxPage` n'est jamais importé (vérifié : seul export, 0 import). La route `/niveaux` utilise `ProgrammeAcademiquePage` à la place. | 1217 |
+| `frontend/src/lib/routes.ts` | PageId→route. Alias documentés : `niveaux`/`unites-enseignement`/`programme-academique` → `/programme-academique` (fragile, voir commentaire lignes 92-107). | — |
+
+**Data flow typique (création d'UE) :**
+1. RESPONSABLE ouvre `/programme-academique` → 3 `useQuery` parallèles (`['programme-filieres', etabId]`, `['programme-ues', etabId]`, `['programme-affectations', etabId]`) avec `staleTime: 60s`, `refetchOnWindowFocus: false`.
+2. Clic "Nouvelle UE" → `handleOpenAdd` → dialog avec auto-suggest code (`UE-${filiere.code}-${niveau}${NN}`).
+3. Submit → POST `/api/unites-enseignement` body `{code, nom, filiereId, niveau, semestre, creditsECTS, volumeHeuresCM/TD/TP, obligatoire, filiereIdsSuppl[]}` → `ueUC.Create` (valide code/nom/filiereId/niveau/semestre) → `UERepository.Create` (RLS OFF, INSERT + insertions `UniteEnseignementFiliere` pour filières partagées) → 201 `{uniteEnseignement: ue}` (bare, sans relations).
+4. `refreshData()` invalide les 3 queryKeys → refetch automatique.
+
+**Data flow création affectation (depuis `/affectations`) :**
+1. Page `/affectations` → 4 `useQuery` parallèles (affectations/filieres/ues/enseignants).
+2. Clic "Nouvelle affectation" → sélection enseignant + UE + types CM/TD/TP (multi-sélection) + volume + groupe + année.
+3. Submit → `Promise.allSettled` sur N POST `/api/affectations` (1 par typeSeance) → handler `createAffectation` (inline, RLS ON via `appdb.WithTx`) → 201 `{affectation: {...}}`.
+4. `refreshAffectations()` invalide `['affectations']`.
+
+### 2. Endpoints table
+
+Tous derrière `middleware.RequireAuth`. Rôle enforcement au niveau usecase (pas au niveau router).
+
+#### `/api/unites-enseignement`
+
+| Méthode | Path | Rôle | Request body | Response shape | RLS | Notes |
+|---|---|---|---|---|---|---|
+| GET | `/` | ADMIN, RESPONSABLE, ENSEIGNANT | Query params: `filiereId, niveau, semestre, actif, etablissementId, enseignantId, search` | `{unitesEnseignement: UE[]}` | ON (`db.WithTx`) | LEFT JOIN Filiere pour peupler `ue.filiere`. `_count` et `affectations` NON peuplés en List (uniquement en FindByID). `etablissementId` param ignoré (BUG #4). |
+| POST | `/` | ADMIN, RESPONSABLE | `{code, nom, filiereId, niveau, description?, filiereIdsSuppl[]?, niveaux?, semestre?, creditsECTS?, volumeHeuresCM/TD/TP?, obligatoire?, actif?}` | 201 `{uniteEnseignement: UE}` (bare, sans relations) | OFF (`SET LOCAL row_security = off`) | Valide `code`, `nom`, `filiereId`, `niveau` (enum), `semestre` (1/2). Gère `filiereIdsSuppl` via INSERT dans `UniteEnseignementFiliere`. |
+| GET | `/{id}` | ADMIN, RESPONSABLE, ENSEIGNANT | — | `{uniteEnseignement: UE}` avec `filiere`, `_count.affectations`, `affectations[]` (avec `enseignant` UserRef peuplé) | ON | Peuplé par 2e query `SELECT FROM Affectation a LEFT JOIN User u` (BUGFIX PROG-ACAD-1). |
+| PATCH | `/{id}` | ADMIN, RESPONSABLE | Partial `UpdateUEInput` | `{uniteEnseignement: UE}` (bare) | OFF | Gère `filiereIdsSuppl` en full-replace (DELETE puis INSERT). |
+| DELETE | `/{id}` | ADMIN, RESPONSABLE | — | `{uniteEnseignement: UE (actif=false), message: "..."}` | OFF | Soft-delete via `actif=false`. **Pas de dependencies dans la response** (BUG #1). |
+
+#### `/api/enseignant-filieres`
+
+| Méthode | Path | Rôle | Request body | Response shape | RLS | Notes |
+|---|---|---|---|---|---|---|
+| GET | `/` | ADMIN, RESPONSABLE, ENSEIGNANT (auto-scoped à ses assignations) | Query: `enseignantId, filiereId, etablissementId` | `{assignments: EnseignantFiliere[]}` avec `filiere` peuplé | ON | LEFT JOIN Filiere (BUGFIX RESP-AUDIT-3). Filtre `etablissementId` via EXISTS subquery (BUGFIX PROG-ACAD-3). **Pas de filtre `niveau`** (BUG #7). `enseignant` NON peuplé (BUG #6). |
+| POST | `/` | ADMIN, RESPONSABLE | **`{enseignantId, filiereId, niveau}`** (single `CreateAssignmentInput`) | 201 `{assignments: [ef]}` (array à 1 élément) | OFF | Valide `enseignantId`, `filiereId`, `niveau` (enum). **Frontend `/enseignants` envoie `{assignments: [...]}` (bulk `CreateAssignmentsInput`) — format inattendu → tous les champs vides → 400 "enseignantId requis"** (BUG #2, CRITIQUE). |
+| DELETE | `/` | ADMIN, RESPONSABLE | `{id?}` OU `{enseignantId, filiereId, niveau}` | `{message: "Affectation supprimée"}` | OFF | DeleteByID ou DeleteByComposite. |
+
+#### `/api/affectations` (enseignant↔UE)
+
+| Méthode | Path | Rôle | Request body | Response shape | RLS | Notes |
+|---|---|---|---|---|---|---|
+| GET | `/` | ADMIN, RESPONSABLE, ENSEIGNANT (auto-scoped à ses affectations via RLS) | Query: `enseignantId, uniteEnseignementId, etablissementId, filiereId, niveau, statut, anneeUniversitaire` | `{affectations: affRow[]}` avec `enseignant {id,name,email}` et `uniteEnseignement {id,code,nom,niveau}` | ON | **Erreurs SQL silentes** (`_ = appdb.WithTx(...)`) — si query fail → `[]` (BUG #3). **`uniteEnseignement` incomplet** : pas de `filiereId`, `filiere`, `filieresSuppl`, `niveaux` attendus par le frontend `affectations-page.tsx` (BUG #5). |
+| POST | `/` | ADMIN, RESPONSABLE | `{enseignantId, uniteEnseignementId, typeSeance?, groupe?, volumeHeures, anneeUniversitaire?, statut?, commentaire?}` | 201 `{affectation: {...}}` | ON | Defaults: `typeSeance=CM`, `statut=PROVISOIRE`, `anneeUniversitaire="2024-2025"` (hardcoded). **Erreurs SQL silentes** — si INSERT fail (unique violation, FK, enum invalide) → 201 avec `{affectation: {id:"", enseignantId:"", ...}}` (BUG #3, CRITIQUE). |
+| PATCH | `/{id}` | ADMIN, RESPONSABLE | Partial `{typeSeance?, groupe?, volumeHeures?, statut?, commentaire?}` | `{affectation: {id, statut}}` | ON | **Response incomplète** : retourne seulement `id` + `statut` (pas les autres champs modifiés). **Erreurs SQL silentes** (BUG #3). |
+| DELETE | `/{id}` | ADMIN, RESPONSABLE | — | `{deleted: bool, id}` | ON | Au moins reflète `deleted` (RowsAffected). Mais erreurs SQL silentes. |
+
+#### `/api/annees-academiques`
+
+| Méthode | Path | Rôle | Request body | Response shape | RLS | Notes |
+|---|---|---|---|---|---|---|
+| GET | `/` | ADMIN, RESPONSABLE, ENSEIGNANT | Query: `etablissementId (requis), actif` | bare `AnneeAcademique[]` (array, pas de wrapper) | ON | RESPONSABLE/ENSEIGNANT : `etablissementId` doit être le sien (check usecase). `CountEpreuves *int` jamais peuplé (champ mort). |
+| POST | `/` | ADMIN, RESPONSABLE | `{libelle, dateDebut (ISO), dateFin (ISO), etablissementId}` | 201 bare `AnneeAcademique` | OFF | Valide format ISO dates. **Pas de check `dateDebut < dateFin`** (BUG #8). **Pas de check overlap** avec années existantes (BUG #8). RESPONSABLE force `etablissementId` au sien. |
+| — | — | — | — | — | — | **Pas d'endpoint GET `/{id}`** (BUG #9). **Pas d'endpoint PATCH `/{id}`** (BUG #9). **Pas d'endpoint DELETE `/{id}`** (BUG #9). |
+
+### 3. Workflow — flux utilisateur
+
+#### Flux A : Créer une UE et la partager entre filières (ADMIN/RESPONSABLE)
+
+1. `/programme-academique` → onglet "Vue d'ensemble" → clic sur cellule matrice "—" (filière × niveau vide) OU bouton "Nouvelle UE".
+2. Dialog s'ouvre avec `filiereId` et `niveau` pré-remplis (si clic matrice) ou vides.
+3. Saisir `code` (auto-suggest disponible), `nom`, `description`, `semestre`, `creditsECTS`, volumes horaires CM/TD/TP, `obligatoire`.
+4. Optionnel : cocher filières partagées (checkboxes) → `filiereIdsSuppl[]`.
+5. Submit → POST `/api/unites-enseignement` → 201 → `refreshData()` → nouvelle UE apparaît dans la matrice et la liste.
+6. L'UE est visible dans `/programme-academique`, `/affectations`, `/epreuves` (selecteur d'UE), `/enseignants` (gestion affectations filière+niveau).
+
+#### Flux B : Affecter un enseignant à une UE (depuis `/affectations`)
+
+1. `/affectations` → bouton "Nouvelle affectation".
+2. Sélectionner enseignant (search), UE (select), types CM/TD/TP (multi-checkbox), volume horaire, groupe, année universitaire, commentaire.
+3. Si multi-types sélectionnés → auto-détermine volume depuis `ue.volumeHeures{CM,TD,TP}`.
+4. Submit → `Promise.allSettled` sur N POST `/api/affectations` (1 par typeSeance).
+5. Toast succès/échec par affectation. `refreshAffectations()`.
+
+#### Flux C : Affecter un enseignant à une filière+niveau (depuis `/enseignants`)
+
+1. `/enseignants` → clic "Affectations" sur une carte enseignant.
+2. Dialog liste les affectations existantes + formulaire d'ajout (filière + niveau).
+3. Submit → POST `/api/enseignant-filieres` body `{assignments: [{enseignantId, filiereId, niveau}]}`.
+4. **Backend décode comme single `CreateAssignmentInput` → tous champs vides → 400 "enseignantId requis"** (BUG #2). Toast warning "Affectations partielles" affiché mais silencieux.
+5. `refreshAssignments()` → re-fetch GET `/api/enseignant-filieres?enseignantId=X` → liste inchangée (l'affectation n'a pas été créée).
+
+#### Flux D : Créer une année académique (depuis `/epreuves`)
+
+1. `/epreuves` (création épreuve) → selecteur "Année académique" → si vide, l'utilisateur doit aller créer l'année via... **il n'y a pas de page dédiée `/annees-academiques`** (BUG #10). L'endpoint POST existe mais n'est appelé par AUCUNE page frontend (vérifié : seul GET est appelé depuis `epreuves-page.tsx` ligne 1246).
+
+#### Flux E : Désactiver une UE (depuis `/programme-academique`)
+
+1. `/programme-academique` → onglet "Gestion des UEs" → icône poubelle sur une ligne UE.
+2. AlertDialog "Êtes-vous sûr de vouloir désactiver l'UE ... ?" — **pas de preview des dépendances** (affectations actives, épreuves liées) (BUG #1).
+3. Confirm → DELETE `/api/unites-enseignement/{id}` → 200 `{uniteEnseignement: ue (actif=false), message}` — **pas de `dependencies` dans la response** (BUG #1).
+4. Toast générique "UE désactivée". `refreshData()`.
+
+### 4. Business rules — validations, contraintes, cascade
+
+#### Validations (usecase layer)
+
+| Champ | Règle | Emplacement |
+|---|---|---|
+| `UE.code` | requis (non vide) | `UEUseCase.Create` ligne 213 |
+| `UE.nom` | requis | `UEUseCase.Create` ligne 216 |
+| `UE.filiereId` | requis | `UEUseCase.Create` ligne 219 |
+| `UE.niveau` | doit être dans `{L1, L2, L3, M1, M2, DOCTORAT}` via `IsValidNiveau` | `UEUseCase.Create` ligne 222, `UEUseCase.Update` ligne 237 |
+| `UE.semestre` | si non-nil, doit être 1 ou 2 | `UEUseCase.Create` ligne 225, `UEUseCase.Update` ligne 240 |
+| `UE.code` | unique par filière (DB constraint `UniteEnseignement_code_filiereId_key`) | DB schema ligne 991, repo check `isUniqueViolation` |
+| `EnseignantFiliere.enseignantId` | requis | `EnseignantFiliereUseCase.Create` ligne 288 |
+| `EnseignantFiliere.filiereId` | requis | `EnseignantFiliereUseCase.Create` ligne 291 |
+| `EnseignantFiliere.niveau` | enum valide | `EnseignantFiliereUseCase.Create` ligne 294 |
+| `EnseignantFiliere` | unique sur `(enseignantId, filiereId, niveau)` (DB constraint) | DB schema ligne 985, repo check `isUniqueViolation` |
+| `AnneeAcademique.libelle/dateDebut/dateFin/etablissementId` | tous requis | `AnneeUseCase.Create` ligne 356 |
+| `AnneeAcademique.dateDebut/dateFin` | format ISO RFC3339 (parsé par `time.Parse`) | `AnneeAcademiqueRepository.Create` ligne 747-753 |
+| `AnneeAcademique` | unique sur `(libelle, etablissementId)` (DB constraint) | DB schema ligne 1147, repo check `isUniqueViolation` |
+| `Affectation.enseignantId/uniteEnseignementId` | requis (handler inline) | `affectation_handlers.go` ligne 196 |
+| `Affectation.typeSeance` | default "CM" si vide — **pas de validation enum** (BUG #11) | `affectation_handlers.go` ligne 200 |
+| `Affectation.statut` | default "PROVISOIRE" si vide — **pas de validation enum** (BUG #11) | `affectation_handlers.go` ligne 203 |
+| `Affectation.anneeUniversitaire` | default "2024-2025" si vide — **hardcoded, stale en 2026** (BUG #12) | `affectation_handlers.go` ligne 206, DB default |
+| `Affectation` | unique sur `(enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire)` (DB constraint) — **pas de check `isUniqueViolation` côté repo** (BUG #11) | DB schema ligne 1003 |
+
+#### Contraintes DB (FKs)
+
+| FK | From → To | ON DELETE |
+|---|---|---|
+| `UniteEnseignement_filiereId_fkey` | UE → Filiere | CASCADE |
+| `UniteEnseignementFiliere_uniteEnseignementId_fkey` | UE-Filiere → UE | CASCADE |
+| `UniteEnseignementFiliere_filiereId_fkey` | UE-Filiere → Filiere | CASCADE |
+| `Affectation_enseignantId_fkey` | Affectation → User | CASCADE |
+| `Affectation_uniteEnseignementId_fkey` | Affectation → UE | CASCADE |
+| `EnseignantFiliere_enseignantId_fkey` | EF → User | CASCADE |
+| `EnseignantFiliere_filiereId_fkey` | EF → Filiere | CASCADE |
+| `AnneeAcademique_etablissementId_fkey` | Annee → Etablissement | CASCADE |
+| `Epreuve_uniteEnseignementId_fkey` | Epreuve → UE | SET NULL |
+| `Document_uniteEnseignementId_fkey` | Document → UE | SET NULL |
+| `Devoir_uniteEnseignementId_fkey` | Devoir → UE | CASCADE |
+| `ValidationUE_uniteEnseignementId_fkey` | ValidationUE → UE | CASCADE |
+
+#### Cascade behavior
+
+- **Hard-delete UE** : CASCADE sur `UniteEnseignementFiliere`, `Affectation`, `Devoir`, `ValidationUE` ; SET NULL sur `Epreuve`, `Document`. Mais l'UE n'est jamais hard-deleted (soft-delete via `actif=false`), donc ces cascades ne se déclenchent jamais.
+- **Soft-delete UE** (`actif=false`) : aucune cascade — les affectations/épreuves/devoirs restent liés à l'UE inactive. L'UE n'apparaît plus dans les listes par défaut (filtre `actif=true` côté frontend), mais les affectations existent toujours et peuvent être consultées via `/api/affectations?uniteEnseignementId=X`.
+
+#### RLS policies (synthèse)
+
+| Table | select | modify (RESPONSABLE) |
+|---|---|---|
+| `UniteEnseignement` | ADMIN (admin_has_etablissement_access via Filiere) OU non-admin dans son établissement | RESPONSABLE dans son établissement (via Filiere) |
+| `UniteEnseignementFiliere` | idem via Filiere | idem |
+| `EnseignantFiliere` | ENSEIGNANT voit ses propres + RESPONSABLE dans son établissement + ETUDIANT dans son établissement + ADMIN via accès | RESPONSABLE dans son établissement |
+| `Affectation` | ENSEIGNANT voit ses propres + non-admin dans son établissement + ADMIN via accès | RESPONSABLE dans son établissement |
+| `AnneeAcademique` | ADMIN (admin_has_etablissement_access) OU non-admin dans son établissement | RESPONSABLE dans son établissement |
+
+#### Soft-delete vs hard-delete
+
+| Entité | Stratégie | Implémentation |
+|---|---|---|
+| UE | Soft-delete (`actif=false`) | `UERepository.SoftDelete` = `Update(UpdateUEInput{Actif: false})`. Pas de `deletedAt`. Liste par défaut `actif=true` côté frontend (param query) — **mais le repo n'applique PAS ce filtre par défaut** (seulement si `params.Actif != nil`). Donc un GET sans `?actif=true` retourne aussi les UEs inactives. |
+| AnneeAcademique | Soft-delete (`actif=false`) mais **pas d'endpoint PATCH/DELETE** → impossible à désactiver via API (BUG #9). |
+| EnseignantFiliere | Hard-delete (DELETE FROM) | `DeleteByID` / `DeleteByComposite` |
+| Affectation | Hard-delete (DELETE FROM) | `deleteAffectation` handler |
+
+### 5. Bugs — liste détaillée
+
+#### BUG #1 (HIGH) — `deleteUE` response ne contient pas `dependencies` (frontend n'a pas de preview dépendances)
+
+- **Fichiers** : `backend/internal/transport/http/academique_handlers.go` lignes 346-364 (handler `deleteUE`) ; `frontend/src/components/responsable/programme-academique-page.tsx` lignes 1197-1212 (AlertDialog de confirmation) + lignes 577-590 (handleDelete).
+- **Description** : Le handler `deleteUE` retourne `{uniteEnseignement, message}` sans `dependencies`. Le frontend affiche un AlertDialog générique "Êtes-vous sûr de vouloir désactiver l'UE ?" sans preview des N affectations actives + M épreuves liées. L'utilisateur désactive à l'aveugle. **Même pattern que filières BUG #2 corrigé dans FILIERES-CRITICAL-FIX-1.**
+- **Sévérité** : HIGH (feature attendue côté frontend, jamais livrée).
+- **Fix suggéré** : Suivre le pattern FILIERES-CRITICAL-FIX-1 :
+  1. Ajouter `UEDependencies{AffectationsCount, EpreuvesCount, QuestionsCount, CanDelete}` au domain.
+  2. Ajouter `UERepository.GetUEDependencies(ctx, id)` avec 3 subqueries scalaires.
+  3. Ajouter `UEUseCase.GetDependencies(ctx, claims, id)` (check role ADMIN/RESPONSABLE + délègue).
+  4. Ajouter handler `getUEDependencies` + route `GET /api/unites-enseignement/{id}/dependencies`.
+  5. Étendre `deleteUE` pour inclure `dependencies` (best-effort) dans la response.
+  6. Frontend : `handleDelete` fetch GET `/{id}/dependencies` avant d'ouvrir l'AlertDialog, affiche les counts, désactive le bouton "Désactiver" si `!canDelete` (par exemple si affectations actives).
+- **Comparaison filières** : BUG identique au pattern filières BUG #2 + #3 corrigés dans FILIERES-CRITICAL-FIX-1.
+
+#### BUG #2 (CRITIQUE) — POST `/api/enseignant-filieres` attend single input, frontend envoie bulk → échec silencieux
+
+- **Fichiers** : `backend/internal/transport/http/academique_handlers.go` lignes 391-411 (handler `createEnseignantFilieres` décode `domain.CreateAssignmentInput` single) ; `frontend/src/components/responsable/enseignants-page.tsx` lignes 575-598 (POST body `{assignments: [...]}`) + lignes 709-723 (idem) + lignes 760-780 (idem).
+- **Description** : Le handler décode le body comme `CreateAssignmentInput {EnseignantID, FiliereID, Niveau}` (single). Le frontend POST `{assignments: [{enseignantId, filiereId, niveau}]}` (bulk, format `CreateAssignmentsInput`). Go's `json.Decoder` ignore les champs inconnus par défaut, donc le décodage réussit mais tous les champs sont vides → `efUC.Create` retourne `ValidationError{enseignantId: "requis"}` → 400. Le frontend `enseignants-page.tsx` ligne 592-597 attrape l'erreur et affiche un `toast.warning('Affectations partielles', ...)` — l'utilisateur pense que l'affectation a été créée alors qu'elle a échoué.
+- **Sévérité** : CRITIQUE (feature silencieusement cassée depuis l'implémentation de la page enseignants).
+- **Fix suggéré** : Soit (a) étendre le handler pour accepter les deux formats (détecter `assignments` array vs single), soit (b) ajouter une route `/api/enseignant-filieres/bulk` dédiée. Recommandé : (a) car le frontend envoie toujours du bulk. Implémentation : décoder comme `CreateAssignmentsInput`, si `len(Assignments) == 0` fallback sur single (backward compat), sinon boucler sur chaque assignment et appeler `efUC.Create`.
+- **Comparaison filières** : Pattern nouveau (pas présent dans filières). Spécifique au module enseignant-filiere.
+
+#### BUG #3 (CRITIQUE) — Handlers `/api/affectations` ignorent les erreurs SQL (`_ = appdb.WithTx`)
+
+- **Fichiers** : `backend/internal/transport/http/affectation_handlers.go` lignes 69, 223, 321, 352 (4 occurrences de `_ = appdb.WithTx(...)`).
+- **Description** : Tous les handlers `/api/affectations` (`listAffectations`, `createAffectation`, `updateAffectation`, `deleteAffectation`) utilisent `_ = appdb.WithTx(...)` qui **jette silencieusement l'erreur** retournée par la transaction. Conséquences :
+  - `listAffectations` : si la query SQL fail (RLS policy block, syntax error, etc.), `result` reste `[]affRow{}` → response `{"affectations": []}` — l'utilisateur voit une liste vide sans explication.
+  - `createAffectation` : si l'INSERT fail (unique violation sur `(enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire)`, FK violation, enum invalide pour `typeSeance`/`statut`, RLS policy block), la response est **201 Created** avec `{affectation: {id: "", enseignantId: "", ...}}` — toutes les champs vides. Le frontend voit un 201, affiche un toast succès, mais aucune affectation n'a été créée.
+  - `updateAffectation` : si l'UPDATE fail, response 200 avec `{affectation: {id: "", statut: ""}}` — vide.
+  - `deleteAffectation` : au moins `deleted` reflète RowsAffected (true si ligne supprimée, false si not found ou erreur), mais les erreurs SQL sont quand même silencieuses.
+- **Sévérité** : CRITIQUE (silent data loss + faux succès — l'utilisateur pense que ses affectations sont créées mais elles ne le sont pas).
+- **Fix suggéré** : Soit (a) propager l'erreur via `if err := appdb.WithTx(...); err != nil { middleware.MapDomainError(w, err); return }`, soit (b) **supprimer les handlers inline et brancher le `AffectationRepository` + créer un `AffectationUseCase`** (le repo `repository/affectation.go` existe déjà et est dead code — BUG #4). Recommandé : (b) pour cohérence avec l'architecture des autres modules.
+- **Comparaison filières** : Pattern nouveau. Les handlers filières utilisent tous `s.filiereUC.X(...)` + `middleware.MapDomainError(w, err)` — jamais d'erreur silencieuse.
+
+#### BUG #4 (HIGH) — `AffectationRepository` complète est DEAD CODE (jamais instanciée, jamais appelée)
+
+- **Fichiers** : `backend/internal/repository/affectation.go` (285 lignes, toute le fichier).
+- **Description** : Le fichier définit `AffectationRepository` (struct), `NewAffectationRepository` (constructor), et 4 méthodes (List, Create, Update, Delete) implémentant `domain.AffectationRepository` (interface qui n'existe PAS dans le domain — vérifié : le domain définit `UERepository`, `EnseignantFiliereRepository`, `AnneeAcademiqueRepository`, `FiliereRepository` mais PAS `AffectationRepository`). Le constructor `NewAffectationRepository` n'est **jamais appelé** (vérifié : 0 call site hors du fichier lui-même). Les handlers `/api/affectations` contournent le repository et écrivent du SQL inline dans `affectation_handlers.go`.
+- **Sévérité** : HIGH (architectural — 285 lignes de code mort qui donnent une fausse impression de cohérence).
+- **Fix suggéré** : Soit (a) supprimer `repository/affectation.go` (code mort), soit (b) **le brancher** : déclarer `domain.AffectationRepository` interface, créer `usecase.AffectationUseCase`, passer le repo au usecase et le usecase au Server, réécrire les 4 handlers de `affectation_handlers.go` pour appeler le usecase (et propager les erreurs via `MapDomainError`). Recommandé : (b) pour aligner avec l'architecture des autres modules et fixer BUG #3 simultanément.
+- **Comparaison filières** : Pattern nouveau. Filieres a toujours eu son repository branché.
+
+#### BUG #5 (HIGH) — `listAffectations` response `uniteEnseignement` incomplet vs type frontend
+
+- **Fichiers** : `backend/internal/transport/http/affectation_handlers.go` lignes 59-64 (struct `affRow.UniteEnseignement` avec seulement `{id, code, nom, niveau}`) ; `frontend/src/components/responsable/affectations-page.tsx` lignes 89-101 (interface `AffectationItem.uniteEnseignement` attend `{id, code, nom, niveau, niveaux, filiere, filieresSuppl}`).
+- **Description** : Le handler inline `/api/affectations` ne SELECT que `ue.id, ue.code, ue.nom, ue.niveau`. Le frontend `affectations-page.tsx` attend aussi `niveaux` (JSON array optionnel pour filtrage matrice multi-niveaux), `filiere {id, nom, code}` (pour matrix filter par filière), et `filieresSuppl [{id, filiereId, filiere}]` (pour UEs partagées). Conséquences observées :
+  - `affectations-page.tsx` ligne 407 : `a.uniteEnseignement.filiere.id === matrixFiliereFilter` → **TypeError: Cannot read 'id' of undefined** dès que l'utilisateur active le filtre matrice "Filière". Crash page.
+  - `affectations-page.tsx` ligne 426 : `JSON.parse(ue.niveaux as string)` — `ue.niveaux` est `undefined`, fallback sur `[]` (via ternaire ligne 426), donc pas de crash mais le filtrage par niveau multi-niveaux ne fonctionne pas (les UEs avec `niveaux = '["L1","L2"]'` sont exclues du filtre "L1" via la matrice affectations, alors qu'elles sont incluses côté UE list).
+  - `a.uniteEnseignement.filieresSuppl?.some(...)` ligne 407 : `filieresSuppl` est `undefined`, optional chaining → `false` — pas de crash mais UEs partagées non prises en compte dans le filtre.
+- **Sévérité** : HIGH (crash sur filtre matrice + filtrage multi-niveau incomplet).
+- **Fix suggéré** : Étendre le SELECT du handler `listAffectations` pour inclure `ue.niveaux, ue.filiereId, f.id, f.nom, f.code` (LEFT JOIN Filiere) + 2e query pour `filieresSuppl` (ou subquery LATERAL/JSON agg). Idéalement, refactor via `AffectationRepository.List` qui pourrait appeler `UERepository.FindByID` pour chaque affectation (N+1) ou faire un batch SELECT. Recommandé : étendre le SELECT inline + subquery pour filieresSuppl (similaire au pattern UE FindByID).
+- **Comparaison filières** : Même pattern que filières BUG #1 (LEFT JOIN manquant) + BUG #4 (type mismatch) corrigés dans FILIERES-CRITICAL-FIX-1.
+
+#### BUG #6 (MEDIUM) — `EnseignantFiliereRepository.List` ne peuple pas `enseignant` (UserRef)
+
+- **Fichiers** : `backend/internal/repository/academique.go` lignes 538-544 (SELECT uniquement `ef.*` + `f.*`, pas de JOIN User) ; `backend/internal/domain/academique.go` ligne 284 (`EnseignantFiliere.Enseignant *UserRef`).
+- **Description** : Le repo `EnseignantFiliereRepository.List` fait un LEFT JOIN Filiere pour peupler `ef.Filiere` (BUGFIX RESP-AUDIT-3) mais **pas de LEFT JOIN User** pour peupler `ef.Enseignant`. Le champ `Enseignant *UserRef` reste `nil` dans la response JSON (omis via `omitempty`). Le frontend `enseignants-page.tsx` ligne 110 déclare `enseignant?: {id, name, email}` (optional), donc pas de crash, mais l'info n'est pas disponible si le frontend veut l'afficher directement depuis la liste des assignments (au lieu de croiser avec `enseignants[]`).
+- **Sévérité** : MEDIUM (info manquante mais contournable côté frontend via join client-side).
+- **Fix suggéré** : Ajouter `LEFT JOIN "User" u ON u."id" = ef."enseignantId"` + select `u.id, u.name, u.email` + peupler `ef.Enseignant = &UserRef{...}` si non-nil. Pattern identique à `UERepository.FindByID` ligne 119-127.
+- **Comparaison filières** : Même pattern que filières BUG #1 (JOIN manquant) — filières a été étendu avec LEFT JOIN User (responsable) dans FILIERES-CRITICAL-FIX-1.
+
+#### BUG #7 (MEDIUM) — `EnseignantFiliereListParams` n'a pas de filtre `niveau`
+
+- **Fichiers** : `backend/internal/domain/academique.go` lignes 288-293 (struct `EnseignantFiliereListParams` a `EnseignantID, FiliereID, EtablissementID` mais pas `Niveau`) ; `backend/internal/transport/http/academique_handlers.go` lignes 377-381 (handler parse 3 query params, pas `niveau`) ; `backend/internal/repository/academique.go` lignes 509-528 (where clauses sur 3 params, pas `niveau`).
+- **Description** : Le frontend `enseignants-page.tsx` filtre les assignments par niveau côté client (après fetch), mais ne peut pas demander au backend `?niveau=L1` pour réduire le payload. Pour un établissement avec 50 enseignants × 6 niveaux × 5 filières = 1500 assignments, tout est renvoyé à chaque fois.
+- **Sévérité** : MEDIUM (performance + manque de flexibilité).
+- **Fix suggéré** : Ajouter `Niveau string` à `EnseignantFiliereListParams`, parser `r.URL.Query().Get("niveau")` dans le handler, ajouter `where = append(where, fmt.Sprintf(`ef."niveau" = $%d`, argIdx))` dans le repo (avec validation enum si fourni).
+- **Comparaison filières** : Pas applicable (filières n'a pas de niveau).
+
+#### BUG #8 (MEDIUM) — `AnneeAcademique` pas de validation `dateDebut < dateFin` ni check overlap
+
+- **Fichiers** : `backend/internal/usecase/academique.go` lignes 350-364 (`AnneeUseCase.Create` — aucune validation date) ; `backend/internal/repository/academique.go` lignes 734-775 (`AnneeAcademiqueRepository.Create` — parse ISO mais pas de check ordre).
+- **Description** : L'utilisateur peut créer une année académique avec `dateDebut > dateFin` (incohérence logique) ou avec des dates qui chevauchent une année existante du même établissement (deux années actives en même temps). Le seul check est l'unique constraint sur `(libelle, etablissementId)` — mais deux libellés différents avec dates chevauchantes passent.
+- **Sévérité** : MEDIUM (data quality — peut causer des ambiguités côté épreuves qui référencent `anneeAcademiqueId`).
+- **Fix suggéré** : Dans `AnneeUseCase.Create`, après parsing des dates, vérifier `dateDebut < dateFin` (sinon `ValidationError{dateFin: "doit être après dateDebut"}`). Pour l'overlap, ajouter une query `SELECT 1 FROM "AnneeAcademique" WHERE "etablissementId" = $1 AND "actif" = true AND ($2, $3) OVERLAPS ("dateDebut", "dateFin")` dans le repo et retourner `ConflictError` si trouvé.
+- **Comparaison filières** : Pas applicable (filières n'a pas de dates).
+
+#### BUG #9 (HIGH) — `AnneeAcademique` CRUD incomplet (pas de GET `/{id}`, PATCH `/{id}`, DELETE `/{id}`)
+
+- **Fichiers** : `backend/internal/transport/http/router.go` lignes 222-227 (uniquement `GET /` et `POST /`) ; `backend/internal/domain/academique.go` lignes 348-352 (interface `AnneeAcademiqueRepository` n'a que `List` et `Create`) ; `backend/internal/usecase/academique.go` lignes 332-364 (usecase n'a que `List` et `Create`).
+- **Description** : Le module AnneeAcademique est en lecture+création seulement. Pas de récupération par ID, pas de mise à jour (activer/désactiver, modifier dates), pas de suppression. Une année créée par erreur ne peut pas être corrigée via API. `AnneeAcademique.actif` existe en DB mais n'est jamais modifiable. Le frontend `epreuves-page.tsx` ligne 1246 ne fait que GET (pour peupler un select), il n'y a **aucune page frontend dédiée à la gestion des années académiques** (BUG #10).
+- **Sévérité** : HIGH (feature manquante — l'utilisateur ne peut pas gérer le cycle de vie d'une année).
+- **Fix suggéré** : Étendre l'interface repo avec `FindByID`, `Update`, `SoftDelete`. Étendre le usecase. Ajouter 3 routes : `GET /{id}`, `PATCH /{id}`, `DELETE /{id}` (soft). Ajouter une page frontend `/annees-academiques` (ou onglet dans `/programme-academique` ou `/configuration`).
+- **Comparaison filières** : Filieres a un CRUD complet + bulk + dependencies + export. AnneeAcademique est le module le moins complet.
+
+#### BUG #10 (HIGH) — Pas de page frontend dédiée à la gestion des `AnneeAcademique`
+
+- **Fichiers** : `frontend/src/lib/routes.ts` (pas de route `/annees-academiques`) ; `frontend/src/components/layout/page-content.tsx` (pas de composant mappé) ; `frontend/src/components/responsable/` (pas de fichier `annees-academique-page.tsx`).
+- **Description** : Le seul appel frontend à `/api/annees-academiques` est dans `epreuves-page.tsx` ligne 1246 (GET pour peupler un select lors de la création d'épreuve). L'endpoint POST existe mais n'est appelé par aucune page frontend. L'utilisateur n'a donc aucun moyen UI de créer, lister, modifier ou désactiver une année académique — il doit passer par un client HTTP direct (curl/Postman) ou par Supabase. C'est une feature totalement absente côté UI.
+- **Sévérité** : HIGH (feature manquante côté UI — bloque le workflow complet).
+- **Fix suggéré** : Créer `frontend/src/components/responsable/annees-academiques-page.tsx` (tableau avec colonnes libelle/dateDebut/dateFin/actif, dialog create/edit, soft-delete). Ajouter la route dans `routes.ts` + `page-content.tsx` + sidebar. Alternative : onglet "Années académiques" dans `/programme-academique` ou `/configuration`.
+- **Comparaison filières** : Filieres a sa page dédiée `/filieres` avec CRUD complet.
+
+#### BUG #11 (MEDIUM) — `Affectation` pas de validation enum `typeSeance`/`statut` + pas de check `isUniqueViolation`
+
+- **Fichiers** : `backend/internal/transport/http/affectation_handlers.go` lignes 200-208 (defaults mais pas de validation enum) ; `backend/internal/repository/affectation.go` lignes 180-182 (Create retourne `fmt.Errorf("insert affectation: %w", err)` sans check `isUniqueViolation`) + lignes 246-250 (Update idem).
+- **Description** : Le handler `createAffectation` ne valide pas que `typeSeance` est dans `{CM, TD, TP}` ni que `statut` est dans `{PROVISOIRE, VALIDEE, PUBLIEE}`. Si le frontend envoie `typeSeance: "QUIZ"`, l'INSERT échoue avec PostgreSQL error 23514 (invalid_enum_value) — mais comme l'erreur est avalée par `_ = appdb.WithTx` (BUG #3), la response est 201 avec données vides. Idem pour `statut`. Par ailleurs, le repo `AffectationRepository.Create/Update` (dead code) ne check pas `isUniqueViolation` sur la contrainte `(enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire)` — une duplicate key retournerait un 500 générique au lieu d'un 409 Conflict.
+- **Sévérité** : MEDIUM (silently ignored invalid data + mauvais status code sur duplicate).
+- **Fix suggéré** : Dans le handler (ou usecase si refactor) : valider `typeSeance` et `statut` contre les enums avant l'INSERT (retourner `ValidationError` si invalide). Dans le repo : wrapper l'erreur avec `isUniqueViolation(err)` → `ConflictError{Message: "cette affectation existe déjà"}`.
+- **Comparaison filières** : Filieres valide ses enums (actif bool, pas d'enum). UEs valident `niveau` et `semestre`. Pattern respecté partout sauf affectations.
+
+#### BUG #12 (LOW) — `anneeUniversitaire` default hardcoded "2024-2025" (stale en 2026)
+
+- **Fichiers** : `backend/internal/transport/http/affectation_handlers.go` ligne 207 (`if input.AnneeUniversitaire == "" { input.AnneeUniversitaire = "2024-2025" }`) ; `backend/db/db/reference/schema.sql` ligne 191 (`"anneeUniversitaire" TEXT NOT NULL DEFAULT '2024-2025'`).
+- **Description** : Le default hardcoded "2024-2025" sera stale dès 2025-2026. Le frontend `affectations-page.tsx` ligne 207 initialise `anneeFilter` à `'2024-2025'` (aussi hardcoded). Les nouvelles affectations créées sans `anneeUniversitaire` explicite seront taguées "2024-2025" même en 2026.
+- **Sévérité** : LOW (data quality — pas de crash, mais données incohérentes).
+- **Fix suggéré** : Soit (a) calculer le default dynamiquement (`time.Now().Year()` + `-` + `(time.Now().Year()+1)` si mois >= septembre, sinon `(year-1)-year`), soit (b) exiger `anneeUniversitaire` dans le payload (supprimer le default), soit (c) lier `Affectation` à `AnneeAcademique` via FK au lieu d'un TEXT libre. Recommandé : (a) + (b) — default dynamique côté backend + champ obligatoire côté frontend (le selecteur d'année côté frontend devrait pull les `AnneeAcademique` existantes au lieu d'un input libre).
+- **Comparaison filières** : Pas applicable (filières n'a pas d'année).
+
+#### BUG #13 (MEDIUM) — `UERepository.List` ignore `params.EtablissementID` (defense-in-depth gap)
+
+- **Fichiers** : `backend/internal/repository/academique.go` lignes 167-274 (where clauses construites pour `FiliereID, EnseignantID, Niveau, Semestre, Actif, Search` — mais **pas pour `EtablissementID`**) ; `backend/internal/domain/academique.go` ligne 221 (`UEListParams.EtablissementID string` déclaré mais jamais lu) ; `backend/internal/transport/http/academique_handlers.go` ligne 267 (handler parse `?etablissementId=X` dans `params.EtablissementID`).
+- **Description** : Le handler parse `etablissementId` depuis la query string et le passe au usecase qui le passe au repo, mais le repo l'ignore. RLS fait le scoping réel (un non-admin ne voit que les UEs de son établissement). Pour un ADMIN avec accès multi-établissements, envoyer `?etablissementId=X` ne filtre PAS — l'admin voit les UEs de TOUS ses établissements. **Même pattern que `EnseignantFiliereRepository.List` BUG #3 corrigé dans PROG-ACAD-1.**
+- **Sévérité** : MEDIUM (admin multi-étab ne peut pas filtrer par établissement — RLS est trop permissive pour ce cas).
+- **Fix suggéré** : Ajouter dans le where : `if params.EtablissementID != "" { where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Filiere" f WHERE f."id" = "UniteEnseignement"."filiereId" AND f."etablissementId" = $%d)`, argIdx)); args = append(args, params.EtablissementID); argIdx++ }`. Pattern identique à `EnseignantFiliereRepository.List` ligne 522-528.
+- **Comparaison filières** : Filieres applique ce filtre (FiliereRepository.List where `etablissementId` direct, car la colonne est sur Filiere). Pour UE, il faut un EXISTS subquery via Filiere.
+
+#### BUG #14 (LOW) — `CountEpreuves` sur `AnneeAcademique` jamais peuplé
+
+- **Fichiers** : `backend/internal/domain/academique.go` ligne 337 (`CountEpreuves *int json:"countEpreuves,omitempty"`) ; `backend/internal/repository/academique.go` lignes 685-732 (List) + 734-775 (Create) — jamais peuplé.
+- **Description** : Le champ `CountEpreuves` est déclaré sur `AnneeAcademique` mais jamais peuplé par le repo. Toujours `nil` dans la response JSON (omis via `omitempty`). Si le frontend voulait afficher "N épreuves liées à cette année", il ne le pourrait pas.
+- **Sévérité** : LOW (champ mort, pas de crash).
+- **Fix suggéré** : Soit (a) supprimer le champ (dead code), soit (b) peupler via subquery `(SELECT count(*) FROM "Epreuve" e WHERE e."anneeAcademiqueId" = "AnneeAcademique"."id" AND e."deletedAt" IS NULL)`. Recommandé : (b) si une page de gestion des années est créée (BUG #10), sinon (a).
+- **Comparaison filières** : Filiere a un champ similaire `NbEtudiants *int` qui est peuplé par `_count.etudiants` (subquery). Pattern respecté côté filières, pas côté années.
+
+#### BUG #15 (LOW) — `niveaux-page.tsx` (1217 lignes) est DEAD CODE
+
+- **Fichiers** : `frontend/src/components/responsable/niveaux-page.tsx` (tout le fichier).
+- **Description** : Le composant `NiveauxPage` n'est jamais importé (vérifié : 0 import hors du fichier lui-même). La route `/niveaux` utilise `ProgrammeAcademiquePage` à la place (voir `page-content.tsx` ligne 108). Le fichier `niveaux-page.tsx` est un vestige d'une ancienne architecture (probablement pré-migration vers `ProgrammeAcademiquePage`).
+- **Sévérité** : LOW (1217 lignes de code mort qui peuvent induire en erreur lors d'une refonte).
+- **Fix suggéré** : Supprimer le fichier.
+- **Comparaison filières** : Pas applicable (filières n'a qu'un seul composant).
+
+#### BUG #16 (LOW) — `deleteEnseignantFilieres` et `deleteAffectation` ne retournent pas de `dependencies`
+
+- **Fichiers** : `backend/internal/transport/http/academique_handlers.go` lignes 413-431 (`deleteEnseignantFilieres` retourne `{message}`) ; `backend/internal/transport/http/affectation_handlers.go` lignes 338-366 (`deleteAffectation` retourne `{deleted, id}`).
+- **Description** : Contrairement à `deleteFiliere` (qui retourne `dependencies` après FILIERES-CRITICAL-FIX-1), `deleteEnseignantFiliere` et `deleteAffectation` ne retournent aucune info de dépendances. Pour `EnseignantFiliere`, c'est acceptable (hard-delete, pas de cascade côté UE — les UEs restent intactes). Pour `Affectation`, c'est acceptable aussi (hard-delete d'un lien enseignant↔UE — pas de cascade). Mais le frontend ne peut pas afficher "N épreuves orphelines" ou "M sessions actives qui référencent cette affectation" (si applicable).
+- **Sévérité** : LOW (pas de cascade critique, info optionnelle).
+- **Fix suggéré** : Optionnel — pas de fix requis pour cette entité.
+- **Comparaison filières** : Filieres retourne dependencies. UE ne le fait pas (BUG #1). Affectation/EnseignantFiliere ne le font pas (acceptable).
+
+### 6. Risks / follow-ups
+
+#### Risques immédiats
+
+1. **Silent data loss sur `/api/affectations`** (BUG #3) : un utilisateur peut créer des affectations, voir un toast succès, et découvrir plus tard que rien n'a été créé. Aucune trace dans les logs (erreurs avalées). Risque élevé de corruption silencieuse du planning pédagogique.
+2. **Échec silencieux des affectations enseignant↔filière** (BUG #2) : un responsable peut passer 10 minutes à configurer les affectations d'un nouvel enseignant, cliquer "Enregistrer", voir un toast "Affectations partielles", et fermer le dialog pensant que c'est OK. L'enseignant n'aura accès à aucune filière.
+3. **Crash page `/affectations` sur filtre matrice** (BUG #5) : si l'utilisateur active le filtre "Filière" dans la vue matricielle, la page crash (TypeError sur `a.uniteEnseignement.filiere.id`).
+4. **Hardcoded "2024-2025"** (BUG #12) : en 2026, toutes les nouvelles affectations seront taguées "2024-2025" par défaut → stats/planning incorrects.
+
+#### Features manquantes
+
+1. **Gestion AnneeAcademique côté UI** (BUG #10) : aucune page frontend pour créer/lister/modifier/désactiver une année académique.
+2. **CRUD AnneeAcademique backend incomplet** (BUG #9) : pas de GET/PATCH/DELETE par ID.
+3. **Pas de pagination** sur `listUEs`, `listAffectations`, `listEnseignantFilieres`, `listAnnees` — pour un établissement avec 200 UEs + 500 affectations, tout est renvoyé en une seule response. Pas de `cursor`/`offset`/`limit`.
+4. **Pas de search** sur `listAnnees`, `listEnseignantFilieres`.
+5. **Pas de filtre `niveau`** sur `listEnseignantFilieres` (BUG #7).
+6. **Pas de dependencies endpoint** pour UE (BUG #1), Affectation, EnseignantFiliere, AnneeAcademique — seul Filiere en a un.
+7. **Pas d'export CSV** pour UEs, Affectations, AnneeAcademique — seul Filiere a `/api/filieres/export`.
+8. **Pas de bulk operations** sur UEs (alors que Filiere a `/api/filieres/bulk`).
+
+#### Incohérences architecturales
+
+1. **Handlers `/api/affectations` inline** (BUG #3 + #4) : contournent l'architecture en couches (repo → usecase → handler). Le repo `AffectationRepository` existe mais est mort. À refondre pour aligner avec les autres modules.
+2. **`niveaux-page.tsx` dead code** (BUG #15) : 1217 lignes inutilisées.
+3. **`CountDependencies` sur FiliereRepository** est dead code (interne, 0 call site — `GetFiliereDependencies` l'a remplacé dans FILIERES-CRITICAL-FIX-1 mais n'a pas été supprimé).
+4. **`CountEpreuves` sur AnneeAcademique** est un champ mort (BUG #14).
+5. **`ValidateAccessForEtablissement` helper** (usecase ligne 367-376) a un `TODO: check EtablissementAccess via repository` pour ADMIN — non implémenté, l'ADMIN passe toujours.
+
+#### Risques de régression
+
+1. **`niveaux` et `unites-enseignement` aliasent vers `ProgrammeAcademiquePage`** : toute modification du composant impacte 3 routes simultanément. Le commentaire dans `routes.ts` (lignes 92-107) documente cette fragilité.
+2. **`AffectationItem.uniteEnseignement` type frontend non-optionnel** sur `filiere` et `filieresSuppl` (affectations-page.tsx ligne 95-100) : si le backend étend sa response, TypeScript bloquera si les champs deviennent optionnels. La refonte backend doit aller de pair avec un alignement des types frontend.
+3. **RLS policies sur `EnseignantFiliere` permettent aux ETUDIANTS de voir toutes les assignations de leur établissement** (policy ligne 264-269). Pas forcément un bug, mais à valider côté RGPD (un étudiant peut-il savoir quels enseignants enseignent en L1 INFO ?).
+
+### 7. Comparaison avec le pattern filières (FILIERES-AUDIT-1 + FILIERES-CRITICAL-FIX-1)
+
+| Pattern | Filières (avant fix) | Filières (après fix) | Programme-académique (actuel) |
+|---|---|---|---|
+| LEFT JOIN Etablissement + User (responsable) dans List/FindByID | ❌ Manquant | ✅ Fix FILIERES-CRITICAL-FIX-1 | UE List: ✅ LEFT JOIN Filiere (BUGFIX ENS-AUDIT-2) ; UE FindByID: ✅ LEFT JOIN Filiere (BUGFIX PROG-ACAD-1) ; EnseignantFiliere List: ✅ LEFT JOIN Filiere (BUGFIX RESP-AUDIT-3) ; **Affectation List: ❌ incomplet** (BUG #5) ; **EnseignantFiliere List: ❌ pas de LEFT JOIN User** (BUG #6) |
+| Subquery `_count.X` peuplé | ❌ `countEtudiants` jamais peuplé | ✅ `_count.etudiants` (subquery) | UE FindByID: ✅ `_count.affectations` (BUGFIX PROG-ACAD-1) ; UE List: ❌ pas de `_count` ; AnneeAcademique: ❌ `countEpreuves` jamais peuplé (BUG #14) |
+| Endpoint `GET /{id}/dependencies` | ❌ N'existait pas | ✅ Fix FILIERES-CRITICAL-FIX-1 | **❌ Manquant pour UE** (BUG #1), Affectation, EnseignantFiliere, AnneeAcademique |
+| `dependencies` dans response DELETE | ❌ Manquant | ✅ Fix FILIERES-CRITICAL-FIX-1 | **❌ Manquant pour UE** (BUG #1), Affectation, EnseignantFiliere |
+| Handler propage erreurs via `MapDomainError` | ✅ Toujours | ✅ | Filieres/UE/EnseignantFiliere/Annee: ✅ ; **Affectation: ❌ `_ = appdb.WithTx` avale les erreurs** (BUG #3) |
+| Architecture en couches (repo → usecase → handler) | ✅ | ✅ | Filieres/UE/EnseignantFiliere/Annee: ✅ ; **Affectation: ❌ handlers inline avec SQL direct, repo mort** (BUG #4) |
+| Validation enum (niveau, typeSeance, statut) | ✅ `actif` bool | ✅ | UE: ✅ `IsValidNiveau` ; EnseignantFiliere: ✅ ; Annee: ❌ pas de validation dates (BUG #8) ; **Affectation: ❌ pas de validation enum typeSeance/statut** (BUG #11) |
+| Check `isUniqueViolation` → 409 Conflict | ✅ | ✅ | UE: ✅ ; EnseignantFiliere: ✅ ; Annee: ✅ ; **Affectation: ❌** (BUG #11) |
+| Soft-delete vs hard-delete cohérent | ✅ Soft (`actif=false`) | ✅ | UE: ✅ Soft ; Annee: ✅ Soft mais pas d'endpoint (BUG #9) ; **EnseignantFiliere: Hard-delete** (cohérent avec la nature de la table) ; **Affectation: Hard-delete** (cohérent) |
+| Pagination | ❌ Manquante | ❌ Toujours manquante (audit FILIERES-AUDIT-1 #7) | ❌ Manquante partout |
+| Search/filtres | ✅ `search`, `actif`, `etablissementId`, `responsableId` | ✅ | UE: ✅ `search`, `filiereId`, `niveau`, `semestre`, `actif`, `enseignantId` (mais `etablissementId` ignoré — BUG #13) ; EnseignantFiliere: ✅ `enseignantId`, `filiereId`, `etablissementId` (mais pas `niveau` — BUG #7) ; Affectation: ✅ 7 filtres ; **Annee: ❌ pas de search** |
+| Export CSV | ✅ `/api/filieres/export` | ✅ | **❌ Manquant partout** (UE, Affectation, Annee, EnseignantFiliere) |
+| Bulk operations | ✅ `/api/filieres/bulk` | ✅ | **❌ Manquant partout** (sauf EnseignantFiliere qui a un format bulk côté frontend mais non supporté côté backend — BUG #2) |
+| Page frontend dédiée | ✅ `/filieres` | ✅ | UE: ✅ `/programme-academique` ; Affectation: ✅ `/affectations` ; EnseignantFiliere: ✅ section dans `/enseignants` ; **AnneeAcademique: ❌ pas de page** (BUG #10) |
+| Dead code identifié | `CountDependencies` (interne) | ✅ Conservé mais mort (documenté) | `niveaux-page.tsx` (1217 lignes) (BUG #15) ; `AffectationRepository` (285 lignes) (BUG #4) ; `CountEpreuves` champ (BUG #14) ; `CountDependencies` sur FiliereRepository (always) |
+
+**Conclusion comparaison** : Le module `/programme-academique` (UE + EnseignantFiliere + AnneeAcademique) suit **déjà** le pattern établi par PROG-ACAD-1 et FILIERES-CRITICAL-FIX-1 pour les entités UE (FindByID peuplé, _count.affectations, LEFT JOIN Filiere) et EnseignantFiliere (LEFT JOIN Filiere, filtre etablissementId). Les bugs restants sont concentrés sur :
+1. **Affectation** : module entier à refondre (handlers inline, erreurs avalées, repo mort, response incomplète) — work item estimé à ~250 lignes Go (déclarer interface + usecase + refaire 4 handlers) + ~30 lignes TS (aligner types frontend).
+2. **UE** : rajouter l'endpoint dependencies + étendre List avec `_count` + filtre `etablissementId` — work item estimé à ~100 lignes Go + ~50 lignes TS.
+3. **AnneeAcademique** : compléter le CRUD backend + créer la page frontend — work item estimé à ~150 lignes Go + ~400 lignes TS (nouvelle page).
+4. **EnseignantFiliere** : fixer le handler POST pour accepter le format bulk + rajouter LEFT JOIN User + filtre niveau — work item estimé à ~50 lignes Go + ~10 lignes TS.
+
+**Priorité recommandée pour une refonte** :
+1. **CRITICAL** : BUG #2 (POST enseignant-filieres bulk cassé) + BUG #3 (erreurs SQL avalées sur affectations) — impact utilisateur quotidien, silent data loss.
+2. **HIGH** : BUG #1 (dependencies endpoint UE) + BUG #5 (response affectation incomplète) + BUG #9/#10 (CRUD AnneeAcademique + page frontend) — features manquantes qui bloquent la gestion complète.
+3. **MEDIUM/LOW** : BUG #4 (repo mort à brancher ou supprimer), BUG #6/#7/#8/#11/#12/#13/#14/#15 — cleanup et robustesse.
+
+Le pattern à appliquer est **déjà documenté et éprouvé** (FILIERES-CRITICAL-FIX-1 + PROG-ACAD-1) : LEFT JOIN + subqueries + populate les refs + exposer `dependencies` + architecture en couches (repo → usecase → handler) + `MapDomainError` pour propager les erreurs. La refonte du module `/programme-academique` peut s'inspirer directement de `repository/filiere.go` + `usecase/academique.go` (FiliereUseCase) + `transport/http/academique_handlers.go` (handlers Filiere) comme templates.
+
