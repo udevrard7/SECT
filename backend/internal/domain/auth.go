@@ -73,6 +73,14 @@ type AuthRepository interface {
         // RevokeRefreshToken marque un refresh token comme révoqué (revokedAt = now).
         RevokeRefreshToken(ctx context.Context, tokenID string) error
 
+        // RevokeRefreshTokenByHashIfActive (U10) : UPDATE atomique qui ne retourne
+        // le token que s'il était encore actif (revokedAt IS NULL). Permet d'éviter
+        // la race condition où deux requêtes concurrentes passent le check
+        // FindRefreshTokenByHash puis révoquent chacune (→ deux nouveaux tokens valides).
+        // Avec cette méthode, seule la première requête gagne ; la deuxième obtient
+        // nil → InvalidTokenError.
+        RevokeRefreshTokenByHashIfActive(ctx context.Context, hash string) (*RefreshToken, error)
+
         // RevokeAllUserRefreshTokens révoque tous les refresh tokens actifs d'un utilisateur.
         RevokeAllUserRefreshTokens(ctx context.Context, userID string) error
 

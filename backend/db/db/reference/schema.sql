@@ -2264,7 +2264,9 @@ CREATE POLICY "User_select" ON "User"
     -- Tout utilisateur se voit lui-même
     "id" = current_user_id()
     -- ETUDIANT : voit aussi les enseignants de ses filières (pour aide)
-    OR (is_etudiant() AND is_enseignant() AND EXISTS (
+    -- U4 fix (migration 000014) : la cible doit être ENSEIGNANT (pas le current user).
+    -- Avant : `is_etudiant() AND is_enseignant()` = toujours FALSE (dead code).
+    OR (is_etudiant() AND "role" = 'ENSEIGNANT' AND EXISTS (
       SELECT 1 FROM "EnseignantFiliere" ef
       JOIN "User" me ON me."id" = current_user_id()
       WHERE ef."enseignantId" = "User"."id"

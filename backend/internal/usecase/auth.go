@@ -170,40 +170,45 @@ type RefreshRequest struct {
 
 // Refresh valide un refresh token et émet un nouveau token pair.
 // L'ancien refresh token est révoqué (rotation).
+//
+// U10 (HIGH) : utilise RevokeRefreshTokenByHashIfActive (UPDATE atomique) au lieu
+// de FindRefreshTokenByHash + RevokeRefreshToken (deux queries séparées). Avant ce
+// fix, deux requêtes concurrentes avec le même refresh token pouvaient toutes les
+// deux passer le check IsValid, puis révoquer chacune → deux nouveaux tokens valides
+// (race condition). Maintenant, seule la première requête gagne (UPDATE affecte 1 row) ;
+// la deuxième obtient nil → InvalidTokenError.
 func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, userAgent string) (*LoginResponse, error) {
         if req.RefreshToken == "" {
                 return nil, &domain.InvalidTokenError{Reason: "empty token"}
         }
 
-        // 1. Hasher le refresh token et le chercher en base
+        // 1. Hasher le refresh token
         hash := jwt.HashRefreshToken(req.RefreshToken)
-        rt, err := uc.authRepo.FindRefreshTokenByHash(ctx, hash)
+
+        // 2. U10 : UPDATE atomique — révoque le token ET le retourne seulement s'il
+        // était encore actif. Évite la race condition.
+        rt, err := uc.authRepo.RevokeRefreshTokenByHashIfActive(ctx, hash)
         if err != nil {
-                if _, ok := err.(*domain.NotFoundError); ok {
-                        return nil, &domain.InvalidTokenError{Reason: "not found"}
-                }
-                return nil, fmt.Errorf("find refresh token: %w", err)
+                return nil, fmt.Errorf("revoke refresh token if active: %w", err)
+        }
+        if rt == nil {
+                return nil, &domain.InvalidTokenError{Reason: "not found, revoked, or already used"}
         }
 
-        // 2. Vérifier qu'il est valide
+        // 3. Vérifier qu'il n'est pas expiré (la méthode IsValid checke expiresAt)
         if !rt.IsValid() {
-                return nil, &domain.InvalidTokenError{Reason: "revoked or expired"}
+                return nil, &domain.InvalidTokenError{Reason: "expired"}
         }
 
-        // 3. Récupérer l'utilisateur
+        // 4. Récupérer l'utilisateur
         user, err := uc.authRepo.GetUserByID(ctx, rt.UserID)
         if err != nil {
                 return nil, fmt.Errorf("get user by id: %w", err)
         }
 
-        // 4. Vérifier actif
+        // 5. Vérifier actif
         if !user.Actif {
                 return nil, &domain.AccountDisabledError{}
-        }
-
-        // 5. Révoquer l'ancien refresh token (rotation)
-        if err := uc.authRepo.RevokeRefreshToken(ctx, rt.ID); err != nil {
-                return nil, fmt.Errorf("revoke old refresh token: %w", err)
         }
 
         // 6. Créer un nouveau refresh token
