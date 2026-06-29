@@ -3,27 +3,30 @@
 /**
  * MesEtudiantsPage — Liste des étudiants de l'enseignant (lecture seule).
  *
- * L'enseignant voit les étudiants correspondant à ses affectations
- * (EnseignantFiliere + Affectation sur UE). Il ne peut ni créer, ni
- * éditer, ni supprimer — uniquement consulter et télécharger le relevé
- * de notes détaillé (PDF par semestre).
- *
- * Fonctionnalités :
- *  - Recherche (nom, email, matricule)
- *  - Filtre par filière + niveau
- *  - Tableau : nom, matricule, filière, niveau, nb épreuves, dernière connexion
- *  - Bouton « Relevé de notes » → téléchargement PDF (par semestre)
+ * MES-ETUDIANTS-REFOUND-1 (refonte) :
+ *  - Aucune liste ne s'affiche au chargement. L'enseignant DOIT choisir
+ *    une filière ET un niveau avant que la liste se charge.
+ *  - Scoping STRICT par UE affectée (côté backend via Affectation +
+ *    UniteEnseignement + UniteEnseignementFiliere). L'enseignant ne voit
+ *    QUE les étudiants dont (filiereId, niveau) matche une de ses UE.
+ *  - Filtres optionnels : semestre + année universitaire (pour la fiche
+ *    de notes téléchargée).
+ *  - 2 boutons globaux de téléchargement : CSV (direct backend) + PDF
+ *    tableau (route Next.js jsPDF+autotable). Remplace l'ancien bouton
+ *    "Relevé" par ligne.
+ *  - Modale de détail par étudiant (EtudiantNotesDialog) affichant
+ *    toutes ses évaluations/notes pour les épreuves de l'enseignant.
  *
  * Identité Savane EdTech : hero ds-kente-pattern, cards border-l-4,
  * tokens oklch, framer-motion, font-mono tabular-nums.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
-  Users, Search, Download, Loader2, GraduationCap, Mail, Clock,
-  FileText, AlertCircle, Filter, BookOpen,
+  Users, Search, Download, Loader2, GraduationCap, Mail,
+  FileText, AlertCircle, BookOpen, Eye, FileSpreadsheet, Filter,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -35,6 +38,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
+import { EtudiantNotesDialog } from './etudiant-notes-dialog'
+
+// ─── Types ───
 
 interface Etudiant {
   id: string
@@ -45,66 +51,127 @@ interface Etudiant {
   filiere: { id: string; nom: string; code: string } | null
   nbEpreuves: number
   derniereConnexion: string | null
+  ues?: { id: string; code: string; nom: string }[]
+}
+
+interface UECtx { id: string; code: string; nom: string; niveau: string; niveaux?: string | null }
+interface FiliereCtx {
+  id: string
+  nom: string
+  code: string
+  niveaux: string[]
+  unitesEnseignement: UECtx[]
 }
 
 const NIVEAU_LABELS: Record<string, string> = {
   L1: 'L1', L2: 'L2', L3: 'L3', M1: 'M1', M2: 'M2', DOCTORAT: 'Doctorat',
 }
 
+// Années universitaires récentes (de -2 à +1)
+function buildAnneesOptions(): string[] {
+  const now = new Date()
+  const year = now.getFullYear()
+  const options: string[] = []
+  for (let i = -2; i <= 1; i++) {
+    const y = year + i
+    options.push(`${y}-${y + 1}`)
+  }
+  return options
+}
+
 export function MesEtudiantsPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')  // P2-M9 : debounced
+
+  // ─── Filtres (filière + niveau OBLIGATOIRES, semestre + année optionnels) ───
   const [filiereFilter, setFiliereFilter] = useState('')
   const [niveauFilter, setNiveauFilter] = useState('')
-  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [semestreFilter, setSemestreFilter] = useState('')
+  const [anneeFilter, setAnneeFilter] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [downloading, setDownloading] = useState<'' | 'csv' | 'pdf'>('')
+  const [selectedEtudiant, setSelectedEtudiant] = useState<Etudiant | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
 
-  // P2-M9 : debounce search 350ms
+  // Debounce recherche 350ms
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 350)
     return () => clearTimeout(t)
   }, [searchInput])
 
-  // BUGFIX (QUERY-CACHE-2) : migration de useEffect+fetch vers TanStack Query.
+  // ─── Query : contexte enseignant (filieres + niveaux pour les selects) ───
+  const contextQuery = useQuery<{ filieres: FiliereCtx[] }>({
+    queryKey: ['enseignant-context', user?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/enseignant/context${user?.id ? `?enseignantId=${user.id}` : ''}`)
+      if (!res.ok) throw new Error('Failed to fetch context')
+      return res.json()
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const filieres = contextQuery.data?.filieres ?? []
+
+  // Niveaux disponibles pour la filière sélectionnée (cascade)
+  const niveauxDisponibles = useMemo(() => {
+    if (!filiereFilter) return []
+    const f = filieres.find((x) => x.id === filiereFilter)
+    return f?.niveaux ?? []
+  }, [filiereFilter, filieres])
+
+  // ─── Query : étudiants (GATE — ne se déclenche que si filière + niveau choisis) ───
   const etudiantsQuery = useQuery<{ etudiants: Etudiant[] }>({
-    queryKey: ['mes-etudiants', user?.id, search, filiereFilter, niveauFilter],
+    queryKey: ['mes-etudiants', user?.id, filiereFilter, niveauFilter, search],
     queryFn: async () => {
       const params = new URLSearchParams()
+      params.set('filiereId', filiereFilter)
+      params.set('niveau', niveauFilter)
       if (search) params.set('search', search)
-      if (filiereFilter) params.set('filiereId', filiereFilter)
-      if (niveauFilter) params.set('niveau', niveauFilter)
       const res = await fetch(`/api/enseignant/etudiants?${params.toString()}`)
-      if (!res.ok) throw new Error('Failed to fetch etudiants')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Failed to fetch etudiants')
+      }
       const data = await res.json()
       return { etudiants: data.etudiants ?? [] }
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!filiereFilter && !!niveauFilter,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
-    placeholderData: (prev) => prev,  // P2-M9 : éviter flash loading
+    placeholderData: (prev) => prev,
   })
 
   const etudiants = etudiantsQuery.data?.etudiants ?? []
   const loading = etudiantsQuery.isLoading
-  const error = etudiantsQuery.error ? 'Impossible de charger vos étudiants.' : null
+  const error = etudiantsQuery.error ? (etudiantsQuery.error as Error).message : null
   const refreshEtudiants = () => queryClient.invalidateQueries({ queryKey: ['mes-etudiants', user?.id] })
 
-  // Listes dérivées pour les filtres (filières et niveaux uniques)
-  const filieres = Array.from(
-    new Map(
-      etudiants
-        .map((e) => e.filiere)
-        .filter((f): f is NonNullable<typeof f> => f !== null)
-        .map((f) => [f.id, f])
-    ).values()
-  )
-  const niveaux = Array.from(new Set(etudiants.map((e) => e.niveau).filter((n): n is string => n !== null)))
+  // Filtres remplis ?
+  const filtersReady = !!filiereFilter && !!niveauFilter
 
-  const handleDownloadReleve = async (etudiantId: string, etudiantName: string) => {
-    setDownloadingId(etudiantId)
+  // ─── Handlers ───
+
+  const handleOpenDetail = (etu: Etudiant) => {
+    setSelectedEtudiant(etu)
+    setDialogOpen(true)
+  }
+
+  const buildDownloadParams = () => {
+    const params = new URLSearchParams()
+    params.set('filiereId', filiereFilter)
+    params.set('niveau', niveauFilter)
+    if (semestreFilter) params.set('semestre', semestreFilter)
+    if (anneeFilter) params.set('anneeUniversitaire', anneeFilter)
+    return params.toString()
+  }
+
+  const handleDownloadCSV = async () => {
+    setDownloading('csv')
     try {
-      const res = await fetch(`/api/etudiants/${etudiantId}/releve-notes`)
+      const res = await fetch(`/api/enseignant/fiche-notes?format=csv&${buildDownloadParams()}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.error ?? 'Échec')
@@ -113,45 +180,41 @@ export function MesEtudiantsPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `releve_notes_${etudiantName.replace(/\s+/g, '_')}.pdf`
+      a.download = `fiche_notes_${filiereFilter}_${niveauFilter}.csv`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('Relevé de notes téléchargé')
+      toast.success('Fiche de notes CSV téléchargée')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Échec du téléchargement')
+      toast.error(err instanceof Error ? err.message : 'Échec du téléchargement CSV')
     } finally {
-      setDownloadingId(null)
+      setDownloading('')
     }
   }
 
-  // ─── Loading ───
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <PulseSkeleton className="h-24 w-full" variant="card" />
-        <PulseSkeleton className="h-12 w-full" variant="card" />
-        <PulseSkeleton className="h-64 w-full" variant="card" />
-      </div>
-    )
+  const handleDownloadPDF = async () => {
+    setDownloading('pdf')
+    try {
+      const res = await fetch(`/api/enseignant/fiche-notes-pdf?${buildDownloadParams()}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Échec')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `fiche_notes_${filiereFilter}_${niveauFilter}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Fiche de notes PDF téléchargée')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec du téléchargement PDF')
+    } finally {
+      setDownloading('')
+    }
   }
 
-  // ─── Error ───
-  if (error) {
-    return (
-      <Card className="border-l-4 border-l-destructive">
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={refreshEtudiants}>
-            Réessayer
-          </Button>
-        </CardContent>
-      </Card>
-    )
-  }
+  // ─── Render ───
 
   return (
     <div className="space-y-6">
@@ -166,11 +229,11 @@ export function MesEtudiantsPage() {
               Mes étudiants
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Étudiants de vos UE et filières affectées — consultation et relevés de notes
+              Étudiants de vos UE affectées — sélectionnez une filière et un niveau pour commencer
             </p>
           </div>
         </div>
-        {etudiants.length > 0 && (
+        {filtersReady && etudiants.length > 0 && (
           <Badge variant="secondary" className="self-start sm:self-auto gap-1.5 bg-primary/10 text-primary-text">
             <GraduationCap className="h-3.5 w-3.5" />
             {etudiants.length} étudiant{etudiants.length > 1 ? 's' : ''}
@@ -178,64 +241,187 @@ export function MesEtudiantsPage() {
         )}
       </div>
 
-      {/* ─── Filtres ─── */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par nom, email ou matricule…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9 h-9 text-sm"
-          />
-        </div>
-        {filieres.length > 1 && (
-          <select
-            value={filiereFilter}
-            onChange={(e) => setFiliereFilter(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">Toutes filières</option>
-            {filieres.map((f) => (
-              <option key={f.id} value={f.id}>{f.code} — {f.nom}</option>
-            ))}
-          </select>
-        )}
-        {niveaux.length > 1 && (
-          <select
-            value={niveauFilter}
-            onChange={(e) => setNiveauFilter(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">Tous niveaux</option>
-            {niveaux.map((n) => (
-              <option key={n} value={n}>{NIVEAU_LABELS[n] ?? n}</option>
-            ))}
-          </select>
-        )}
-      </div>
+      {/* ─── Filtres OBLIGATOIRES (filière + niveau) + optionnels (semestre + année) ─── */}
+      <Card className={filtersReady ? '' : 'border-l-4 border-l-primary'}>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Filter className="h-4 w-4 text-primary-text" />
+            <span>Sélectionnez une filière et un niveau pour afficher vos étudiants</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {/* Filière (obligatoire) */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Filière <span className="text-destructive">*</span>
+              </label>
+              <select
+                value={filiereFilter}
+                onChange={(e) => {
+                  setFiliereFilter(e.target.value)
+                  setNiveauFilter('') // reset niveau cascade
+                }}
+                disabled={contextQuery.isLoading}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              >
+                <option value="">— Choisir —</option>
+                {filieres.map((f) => (
+                  <option key={f.id} value={f.id}>{f.code} — {f.nom}</option>
+                ))}
+              </select>
+            </div>
 
-      {/* ─── Tableau ─── */}
-      {etudiants.length === 0 ? (
+            {/* Niveau (obligatoire, cascade sur filière) */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Niveau <span className="text-destructive">*</span>
+              </label>
+              <select
+                value={niveauFilter}
+                onChange={(e) => setNiveauFilter(e.target.value)}
+                disabled={!filiereFilter || niveauxDisponibles.length === 0}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              >
+                <option value="">— Choisir —</option>
+                {niveauxDisponibles.map((n) => (
+                  <option key={n} value={n}>{NIVEAU_LABELS[n] ?? n}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Semestre (optionnel) */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Semestre <span className="text-muted-foreground/60">(optionnel)</span>
+              </label>
+              <select
+                value={semestreFilter}
+                onChange={(e) => setSemestreFilter(e.target.value)}
+                disabled={!filtersReady}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              >
+                <option value="">Tous semestres</option>
+                <option value="1">Semestre 1</option>
+                <option value="2">Semestre 2</option>
+              </select>
+            </div>
+
+            {/* Année universitaire (optionnelle) */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Année <span className="text-muted-foreground/60">(optionnel)</span>
+              </label>
+              <select
+                value={anneeFilter}
+                onChange={(e) => setAnneeFilter(e.target.value)}
+                disabled={!filtersReady}
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              >
+                <option value="">Toutes années</option>
+                {buildAnneesOptions().map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Recherche (activée seulement si filtres remplis) */}
+          {filtersReady && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher par nom, email ou matricule…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9 h-9 text-sm max-w-md"
+              />
+            </div>
+          )}
+
+          {/* Boutons de téléchargement globaux (activés si liste non vide) */}
+          {filtersReady && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadCSV}
+                disabled={etudiants.length === 0 || downloading !== ''}
+                className="gap-1.5 ds-press"
+              >
+                {downloading === 'csv' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                <span>Fiche CSV</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadPDF}
+                disabled={etudiants.length === 0 || downloading !== ''}
+                className="gap-1.5 ds-press"
+              >
+                {downloading === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                <span>Fiche PDF</span>
+              </Button>
+              {etudiants.length > 0 && (
+                <span className="text-xs text-muted-foreground ml-1">
+                  Fiche de notes : {etudiants.length} étudiant(s) × toutes vos épreuves
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Contenu ─── */}
+      {!filtersReady ? (
+        // État initial : aucun filtre → message invitant à choisir
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
               <Users className="h-10 w-10 text-primary-text" />
             </div>
             <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
-              {search || filiereFilter || niveauFilter ? 'Aucun résultat' : 'Aucun étudiant'}
+              Sélectionnez une filière et un niveau
             </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              {search || filiereFilter || niveauFilter
-                ? 'Aucun étudiant ne correspond à vos filtres.'
-                : "Vous n'avez pas encore d'étudiants affectés. Contactez votre responsable des études pour une affectation sur des UE ou filières."}
+              Pour préserver la confidentialité, la liste de vos étudiants ne s&apos;affiche qu&apos;après choix d&apos;une filière et d&apos;un niveau. Vous ne verrez que les étudiants dont le couple (filière, niveau) correspond à une de vos UE affectées.
+            </p>
+          </CardContent>
+        </Card>
+      ) : loading ? (
+        <div className="space-y-3">
+          <PulseSkeleton className="h-12 w-full" variant="card" />
+          <PulseSkeleton className="h-64 w-full" variant="card" />
+        </div>
+      ) : error ? (
+        <Card className="border-l-4 border-l-destructive">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">Erreur de chargement</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">{error}</p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={refreshEtudiants}>
+              Réessayer
+            </Button>
+          </CardContent>
+        </Card>
+      ) : etudiants.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+              <Users className="h-10 w-10 text-primary-text" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+              {search ? 'Aucun résultat' : 'Aucun étudiant'}
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              {search
+                ? 'Aucun étudiant ne correspond à votre recherche dans cette filière et ce niveau.'
+                : "Aucun étudiant ne correspond à vos UE affectées pour cette filière et ce niveau. Vérifiez vos affectations (page Affectations) ou contactez votre responsable des études."}
             </p>
           </CardContent>
         </Card>
       ) : (
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
-        >
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto scrollbar-thin">
@@ -244,11 +430,10 @@ export function MesEtudiantsPage() {
                     <TableRow className="bg-muted/40">
                       <TableHead className="font-display">Étudiant</TableHead>
                       <TableHead className="font-display">Matricule</TableHead>
-                      <TableHead className="font-display hidden md:table-cell">Filière</TableHead>
-                      <TableHead className="font-display hidden sm:table-cell">Niveau</TableHead>
+                      <TableHead className="font-display hidden md:table-cell">UEs</TableHead>
                       <TableHead className="font-display text-center hidden lg:table-cell">Épreuves</TableHead>
                       <TableHead className="font-display hidden xl:table-cell">Dernière connexion</TableHead>
-                      <TableHead className="font-display text-right">Relevé</TableHead>
+                      <TableHead className="font-display text-right">Détail</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -258,7 +443,8 @@ export function MesEtudiantsPage() {
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.03 }}
-                        className="hover:bg-muted/20 transition-colors"
+                        className="hover:bg-muted/20 transition-colors cursor-pointer"
+                        onClick={() => handleOpenDetail(etu)}
                       >
                         <TableCell>
                           <div className="flex items-center gap-3">
@@ -276,15 +462,23 @@ export function MesEtudiantsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="font-mono text-xs">{etu.matricule ?? '—'}</TableCell>
-                        <TableCell className="hidden md:table-cell text-sm">
-                          {etu.filiere ? (
-                            <span className="truncate">{etu.filiere.code} — {etu.filiere.nom}</span>
-                          ) : '—'}
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">
-                          <Badge variant="outline" className="text-xs">
-                            {etu.niveau ? (NIVEAU_LABELS[etu.niveau] ?? etu.niveau) : '—'}
-                          </Badge>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex flex-wrap gap-1">
+                            {etu.ues && etu.ues.length > 0 ? (
+                              etu.ues.slice(0, 3).map((ue) => (
+                                <Badge key={ue.id} variant="outline" className="text-xs font-mono">
+                                  {ue.code}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                            {etu.ues && etu.ues.length > 3 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{etu.ues.length - 3}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell text-center font-mono tabular-nums text-sm">
                           {etu.nbEpreuves}
@@ -294,18 +488,16 @@ export function MesEtudiantsPage() {
                             ? new Date(etu.derniereConnexion).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
                             : '—'}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleDownloadReleve(etu.id, etu.name)}
-                            disabled={downloadingId === etu.id}
+                            onClick={() => handleOpenDetail(etu)}
                             className="gap-1.5 ds-press"
+                            aria-label={`Voir les notes de ${etu.name}`}
                           >
-                            {downloadingId === etu.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Download className="h-3.5 w-3.5" />}
-                            <span className="hidden sm:inline">Relevé</span>
+                            <Eye className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Voir notes</span>
                           </Button>
                         </TableCell>
                       </motion.tr>
@@ -320,12 +512,19 @@ export function MesEtudiantsPage() {
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mt-4">
             <FileText className="h-3.5 w-3.5 text-primary-text" />
             <span>
-              Le relevé de notes détaillé regroupe les notes par semestre et année académique.
-              Accès en lecture seule — contactez votre responsable pour toute modification.
+              Cliquez sur une ligne pour voir le détail des évaluations et notes de l&apos;étudiant.
+              Vous ne voyez que les étudiants de vos UE affectées — accès en lecture seule.
             </span>
           </div>
         </motion.div>
       )}
+
+      {/* ─── Modale détail notes ─── */}
+      <EtudiantNotesDialog
+        etudiant={selectedEtudiant}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
     </div>
   )
 }

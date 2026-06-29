@@ -475,6 +475,20 @@ func (uc *ResultatUseCase) List(ctx context.Context, claims db.SessionClaims, pa
                 if err != nil {
                         return nil, err
                 }
+                // MES-ETUDIANTS-REFOUND-1 (sécurité) : ListByEtudiant désactive RLS
+                // pour batch-joindre les épreuves. Un ENSEIGNANT ne doit voir QUE
+                // les sessions de ses propres épreuves (epreuve.enseignantId = me).
+                // On filtre donc côté usecase pour ne pas casser l'interface du repo
+                // ni les autres appelants (étudiant, responsable, admin).
+                if role == domain.RoleEnseignant {
+                        filtered := make([]*domain.SessionPassation, 0, len(sessions))
+                        for _, s := range sessions {
+                                if s.Epreuve != nil && s.Epreuve.Enseignant.ID == claims.UserID {
+                                        filtered = append(filtered, s)
+                                }
+                        }
+                        sessions = filtered
+                }
                 return map[string]any{"resultats": sessions}, nil
         }
 
