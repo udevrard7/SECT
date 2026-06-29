@@ -9308,7 +9308,6 @@ Stage Summary:
 - **Vérification live complète** : tests authentifiés (admin + responsable créé par wizard) confirment le fonctionnement end-to-end.
 
 ---
-<<<<<<< HEAD
 Task ID: FACTURATION-FIX-STEP-1
 Agent: Z.ai Code (tuteur/assistant)
 Task: Fix module /facturation — F1-F5 (5 bugs : 4 CRITICAL + 1 HIGH).
@@ -9351,4 +9350,3 @@ Work Log:
 Stage Summary:
 - Ce commit existe uniquement pour re-déclencher le déploiement Vercel du
   fix rapports D1 (décimales) + D2 (surcharge KPIs) déjà poussé sur main.
->>>>>>> e80b890 (docs(worklog): re-déclenchement déploiement Vercel pour fix rapports D1+D2)
