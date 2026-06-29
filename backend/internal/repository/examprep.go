@@ -1045,6 +1045,36 @@ func (r *ExamPrepRepository) CloseHelpThread(ctx context.Context, threadID strin
         return tx.Commit(ctx)
 }
 
+// DeleteHelpThread supprime un fil + ses messages (hard delete cascade).
+func (r *ExamPrepRepository) DeleteHelpThread(ctx context.Context, threadID string) error {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                return fmt.Errorf("disable rls: %w", err)
+        }
+
+        // Supprimer les messages d'abord (pas de FK cascade garantie)
+        _, err = tx.Exec(ctx, `DELETE FROM "HelpMessage" WHERE "threadId" = $1`, threadID)
+        if err != nil {
+                return fmt.Errorf("delete help messages: %w", err)
+        }
+
+        // Supprimer le thread
+        tag, err := tx.Exec(ctx, `DELETE FROM "HelpThread" WHERE "id" = $1`, threadID)
+        if err != nil {
+                return fmt.Errorf("delete help thread: %w", err)
+        }
+        if tag.RowsAffected() == 0 {
+                return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
+        }
+
+        return tx.Commit(ctx)
+}
+
 // ListHelpMessages liste les messages d'un fil.
 func (r *ExamPrepRepository) ListHelpMessages(ctx context.Context, threadID string) ([]*domain.HelpMessage, error) {
         claims, ok := db.ClaimsFromContext(ctx)

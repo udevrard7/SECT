@@ -350,6 +350,7 @@ type ExamPrepRepository interface {
         ListHelpThreads(ctx context.Context, userID string, role string) ([]*HelpThread, error)
         CreateHelpThread(ctx context.Context, etudiantID string, input CreateHelpThreadInput) (*HelpThread, error)
         CloseHelpThread(ctx context.Context, threadID string) error
+        DeleteHelpThread(ctx context.Context, threadID string) error
         ListHelpMessages(ctx context.Context, threadID string) ([]*HelpMessage, error)
         CreateHelpMessage(ctx context.Context, threadID, auteurID, role string, input CreateHelpMessageInput) (*HelpMessage, error)
 

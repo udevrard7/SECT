@@ -373,6 +373,7 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/help", s.listHelpThreads)
                         r.Post("/help", s.createHelpThread)
                         r.Post("/help/{id}/close", s.closeHelpThread)
+                        r.Delete("/help/{id}", s.deleteHelpThread)
                         r.Get("/help/{id}/messages", s.listHelpMessages)
                         r.Post("/help/{id}/messages", s.createHelpMessage)
                 })

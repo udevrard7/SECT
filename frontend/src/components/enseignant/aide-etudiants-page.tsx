@@ -8,6 +8,8 @@
  *   avec filtre par statut (OUVERT / REPONDU / CLOS) et recherche
  * - Vue conversation : GET /api/exam-prep/help/[id]/messages + POST pour répondre
  * - Bouton « Clôturer » → POST /api/exam-prep/help/[id]/close
+ * - Bouton « Supprimer » (uniquement si statut=CLOS) → DELETE /api/exam-prep/help/[id]
+ *   avec dialog de confirmation (action irréversible, cascade HelpMessage).
  *
  * Identité Savane EdTech : hero ds-kente-pattern, cards border-l-4,
  * tokens oklch, framer-motion, font-mono tabular-nums.
@@ -19,7 +21,7 @@ import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   HelpCircle, MessageCircle, ArrowLeft, Send, Loader2, Search,
-  CheckCircle2, Clock, XCircle, FileText, BookOpen, X,
+  CheckCircle2, Clock, XCircle, FileText, BookOpen, X, Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -378,6 +380,28 @@ function ConversationView({
     }
   }
 
+  // P2 : suppression de conversation clôturée
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/exam-prep/help/${thread.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Échec')
+      }
+      toast.success('Conversation supprimée')
+      onBack()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression')
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
   const meta = STATUT_META[thread.statut] ?? STATUT_META.OUVERT
 
   return (
@@ -390,6 +414,18 @@ function ConversationView({
           <Button variant="outline" size="sm" onClick={handleClose} disabled={closing} className="gap-1.5">
             {closing ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             Clôturer
+          </Button>
+        )}
+        {thread.statut === 'CLOS' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmDelete(true)}
+            disabled={deleting}
+            className="gap-1.5 text-destructive hover:text-destructive"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Supprimer
           </Button>
         )}
       </div>
@@ -472,6 +508,32 @@ function ConversationView({
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog confirmation suppression */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmDelete(false)}>
+          <div className="bg-card rounded-xl p-6 max-w-sm mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-base">Supprimer cette conversation ?</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Cette action est irréversible. Tous les messages seront définitivement supprimés.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Annuler</Button>
+              <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting} className="gap-1.5">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Supprimer définitivement
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -333,6 +333,34 @@ func (uc *ExamPrepUseCase) CloseHelpThread(ctx context.Context, claims db.Sessio
         return uc.repo.CloseHelpThread(ctx, threadID)
 }
 
+// DeleteHelpThread supprime un fil clôturé (étudiant: ses propres fils, enseignant: fils de ses documents).
+func (uc *ExamPrepUseCase) DeleteHelpThread(ctx context.Context, claims db.SessionClaims, threadID string) error {
+        if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
+                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+
+        // Récupérer le thread pour vérifier ownership + statut CLOS
+        threads, err := uc.repo.ListHelpThreads(ctx, claims.UserID, claims.Role)
+        if err != nil {
+                return err
+        }
+        var found bool
+        for _, t := range threads {
+                if t.ID == threadID {
+                        found = true
+                        if t.Statut != "CLOS" {
+                                return &domain.ValidationError{Field: "statut", Message: "seuls les fils clôturés peuvent être supprimés"}
+                        }
+                        break
+                }
+        }
+        if !found {
+                return &domain.UnauthorizedError{Message: "accès refusé à ce fil"}
+        }
+
+        return uc.repo.DeleteHelpThread(ctx, threadID)
+}
+
 // ListHelpMessages liste les messages d'un fil.
 func (uc *ExamPrepUseCase) ListHelpMessages(ctx context.Context, claims db.SessionClaims, threadID string) ([]*domain.HelpMessage, error) {
         if claims.Role != string(domain.RoleEtudiant) && claims.Role != string(domain.RoleEnseignant) {
