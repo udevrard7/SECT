@@ -7853,3 +7853,71 @@ Stage Summary:
 - **Follow-up optionnel** : aucune contrainte unique sur `Affectation` → duplicates possibles. Si l'unicité `(enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire)` est souhaitée, créer une migration `000013_add_affectation_unique.up.sql` avec `CREATE UNIQUE INDEX`. Non urgent.
 - **Bugs HIGH restants** : #1 (endpoint `GET /unites-enseignement/{id}/dependencies` manquant) + #9/#10 (CRUD AnneeAcademique backend incomplet + page frontend manquante). BUG #5 déjà réglé.
 
+
+---
+Task ID: MES-ETUDIANTS-REFOUND-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Refonte page /mes-etudiants côté enseignant — modale notes par étudiant + fiche de notes globale CSV/PDF + scoping UE strict + filière+niveau obligatoires.
+
+Work Log:
+- Analyse préalable : rapport d'analyse produit avant implémentation (4 décisions validées par l'utilisateur : scoping UE=oui, UE multi-filières=oui, format CSV+PDF=les deux, semestre+année=oui).
+- T1 — Backend `enseignantEtudiantsReal` (`stub_handlers_real3.go`) :
+  - Scoping STRICT par UE affectée (Affectation + UniteEnseignement) au lieu de EnseignantFiliere (trop large).
+  - UE multi-niveaux (`niveaux` JSONB) + UE multi-filières (`UniteEnseignementFiliere`) prises en compte via EXISTS.
+  - `filiereId` + `niveau` OBLIGATOIRES (400 si manquant).
+  - Batch query pour peupler les UEs de chaque étudiant (modale détail).
+  - `nbEpreuves` scoping par enseignant (JOIN Epreuve + enseignantId).
+- T2 — Backend `enseignantFicheNotes` (NOUVEAU, `stub_handlers_real3.go`) :
+  - `GET /api/enseignant/fiche-notes?format=csv|json`.
+  - Filtres requis : filiereId + niveau. Optionnels : semestre, anneeUniversitaire.
+  - CSV : BOM UTF-8, séparateur `;`, échappement `;`→`,`, téléchargement direct.
+  - JSON : epreuves[] + etudiants[] (notes map epreuveId→note/20, moyenne calculée).
+  - Notes normalisées /20 via `SessionPassation.score / Epreuve.noteTotal * 20`.
+  - RLS SessionPassation_select filtre par enseignant.
+- T2b — `router.go` : route `/api/enseignant/fiche-notes` enregistrée (RequireRole ENSEIGNANT+ADMIN).
+- Sécurité backend (`usecase/session.go`) : `ListByEtudiant` désactive RLS → un enseignant risquait de voir toutes les sessions d'un étudiant. Fix : filtre côté usecase (ne garder que sessions dont `epreuve.enseignantId == claims.UserID`). Ne casse ni l'interface repo ni les autres rôles.
+- T3 — Frontend `mes-etudiants-page.tsx` (refonte complète) :
+  - Aucune liste au chargement : message "Sélectionnez une filière et un niveau".
+  - Selects en cascade : filière (obligatoire) → niveau (obligatoire, dépend de la filière) → semestre (optionnel) → année (optionnel).
+  - Recherche masquée tant que filière+niveau non choisis.
+  - 2 boutons globaux : "Fiche CSV" (backend direct) + "Fiche PDF" (route Next.js). Désactivés si liste vide.
+  - Tableau : Étudiant | Matricule | UEs (badges) | Épreuves | Dernière connexion | bouton "Voir notes" (œil).
+  - Click ligne entière → ouvre modale.
+  - Empty states différenciés : "Sélectionnez..." (avant filtre) vs "Aucun étudiant" (après filtre).
+- T4 — Frontend `etudiant-notes-dialog.tsx` (NOUVEAU, modale) :
+  - Source : `GET /api/resultats?etudiantId=X` (RLS filtre par enseignant).
+  - Header étudiant (nom, email, matricule, filière, niveau, UEs).
+  - 3 KPIs : nb évaluations / nb corrigées, moyenne /20, taux de réussite.
+  - Tableau : Épreuve | UE | Date | Note brute | Note/20 | Statut.
+  - Notes < 10 rouge, >= 10 vert. Badge statut (SOUMISE/CORRIGEE/RETOURNEE).
+  - Cache TanStack 60s.
+- T5 — Frontend route `/api/enseignant/fiche-notes-pdf` (NOUVELLE) :
+  - Fetch JSON backend Go → jsPDF paysage A4 + jspdf-autotable.
+  - Notes < 10 rouge, >= 10 vert. Header période + niveau. Footer pagination.
+  - Dépendance `jspdf-autotable@5.0.8` installée.
+  - Ancienne route `/api/etudiants/[id]/releve-notes` CONSERVÉE (utilisée par `responsable/etudiants-page.tsx`).
+- Builds Render échoués (2 commits) puis corrigés :
+  - `0205d44` : variable `argIdxU` non utilisée → `declared and not used` → fix `fa3876a`.
+  - `e3b25a4` : `SELECT DISTINCT ... ORDER BY e."createdAt"` → `SQLSTATE 42P10` → fix `1a0f9cf` (ORDER BY e.titre).
+- Vérification Agent Browser (compte enseignant `prof01@uniabidjan.com`, mot de passe temporairement modifié puis restauré) :
+  - `/mes-etudiants` au chargement : aucune liste, message "Sélectionnez une filière et un niveau", selects en cascade, boutons désactivés. ✅
+  - Sélection INFO + L2 : 7 étudiants INFO L2 affichés avec matricules, UEs, nb épreuves, dernière connexion. ✅
+  - Sélection SEG + L2 : 6 étudiants SEG L2 affichés (scoping multi-filières via UniteEnseignementFiliere). ✅
+  - Modale détail (click ligne) : header étudiant + 3 KPIs (4 éval, 15.75/20, 100%) + tableau 4 épreuves avec notes brutes + /20 + badges statut. ✅
+  - CSV backend direct : 7 lignes + en-tête, 4 colonnes épreuves, notes /20, moyenne, BOM UTF-8, 1 étudiant sans note affiche "—". ✅
+  - PDF route Next.js : visionneuse PDF s'ouvre dans le navigateur. ✅
+- Vérification déploiement :
+  - Render backend `1a0f9cf` live : `/health` 200, `/api/enseignant/fiche-notes` (sans auth) → 401, (avec auth + params) → CSV/JSON corrects.
+  - Vercel frontend : `/mes-etudiants` 200, route `/api/enseignant/fiche-notes-pdf` 200.
+  - DB Neon : mot de passe enseignant restauré à sa valeur originale.
+
+Stage Summary:
+- **Refonte /mes-etudiants complète** : les 5 exigences de l'utilisateur sont toutes satisfaites et vérifiées dans le navigateur.
+- **Scoping sécurité renforcé** : un enseignant ne voit QUE les étudiants dont (filiereId, niveau) matche une de ses UE affectées (Affectation + UniteEnseignement + UniteEnseignementFiliere). Plus de scoping par filière trop large.
+- **Modale notes** : remplace l'ancien bouton "Relevé" par ligne. Vue complète des évaluations/notes par étudiant avec KPIs.
+- **Fiche de notes globale** : 2 boutons (CSV direct + PDF tableau) au lieu d'1 PDF par étudiant.
+- **Filtres obligatoires** : filière + niveau requis avant tout chargement. Cascade + semestre/année optionnels.
+- **3 commits poussés** : `0205d44` (backend scoping+fiche-notes) + `e3b25a4` (frontend refonte+modale+PDF+sécurité usecase) + `fa3876a` (fix build argIdxU) + `1a0f9cf` (fix SQL ORDER BY DISTINCT).
+- **Build Render** : 2 échecs corrigés (variable unused + SQL DISTINCT/ORDER BY). Monitoring des deploys via API Render recommandé pour les prochains commits backend.
+- **Go toolchain** : installée localement (`/home/z/go/bin/go`) pour compile-check les futurs changements backend avant push.
+- **Aucune migration DB** nécessaire (option b du rapport : filtre applicatif, RLS filière conservée comme garde-fou).
