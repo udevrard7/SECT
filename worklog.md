@@ -9306,3 +9306,30 @@ Stage Summary:
 - **Aucune migration DB** nécessaire (RLS policies et schéma existants suffisants).
 - **Module /abonnements désormais pleinement fonctionnel** : les 10 bugs (A1-A10) sont tous traités. Le wizard de souscription crée en une transaction atomique : établissement + responsable (avec password temporaire ou invitation) + abonnement + accès admin auto-approuvé.
 - **Vérification live complète** : tests authentifiés (admin + responsable créé par wizard) confirment le fonctionnement end-to-end.
+
+---
+Task ID: FACTURATION-FIX-STEP-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix module /facturation — F1-F5 (5 bugs : 4 CRITICAL + 1 HIGH).
+
+Work Log:
+- F5 (HIGH) : facturesListReal retournait une structure minimale (montant au lieu de montantHt/tva/montantTtc, pas de numero/lignes/abonnement/etablissement) incompatible avec le frontend. Réécriture complète : SELECT toutes les colonnes + JOIN Abonnement→Plan + JOIN Etablissement + désérialisation lignes (JSON text → array). Support ?limit= (default 100, max 200).
+- F1 (CRITICAL) : route POST /api/factures inexistante. Nouveau handler createFacture : génération numero auto (FAC-YYYY-NNNNN incrémental), validation (montantHt >= 0, montantTtc >= montantHt, lignes non vides, dateEcheance valide), INSERT avec lignes sérialisées JSON.
+- F2 (CRITICAL) : route GET /api/factures/{id} inexistante. Nouveau handler getFactureByID.
+- F3 (CRITICAL) : route PATCH /api/factures/{id} inexistante. Nouveau handler updateFacture : si statut → PAYEE, set datePaiement = now() automatiquement. Validation statut enum.
+- F4 (CRITICAL) : route DELETE /api/factures/{id} inexistante. Nouveau handler cancelFacture : soft-delete (statut → ANNULEE, conserve historique).
+- Nouveau fichier facture_mutation_handlers.go (4 handlers + helpers scanFactureRow/factureColumns). Routes ajoutées dans router.go.
+- Vérifications live (auth admin) — tous les endpoints testés et fonctionnels :
+  - GET /api/factures → 200, structure complète ✅
+  - POST /api/factures → 201 Created, numero "FAC-2026-00001", lignes présentes ✅
+  - GET /api/factures/{id} → 200, détail complet (numero, statut, montantTtc, lignes, dateEmission) ✅
+  - PATCH /api/factures/{id} (marquer payée) → 200, statut=PAYEE, datePaiement auto, modePaiement=virement ✅
+  - DELETE /api/factures/{id} (annuler) → 200, statut=ANNULEE ✅
+- Données de test nettoyées (facture test supprimée).
+
+Stage Summary:
+- **5 bugs traités** : F1 (CRITICAL POST), F2 (CRITICAL GET/{id}), F3 (CRITICAL PATCH), F4 (CRITICAL DELETE), F5 (HIGH structure GET).
+- **1 commit poussé** : 695cb42 (backend, 3 fichiers, +519/-34 lignes).
+- **Backend** : nouveau fichier facture_mutation_handlers.go (4 handlers) + router.go (4 routes) + stub_handlers_real2.go (F5 réécriture GET liste).
+- **Aucune migration DB** nécessaire (schéma complet + RLS policies déjà en place).
+- **Module /facturation désormais pleinement fonctionnel** : création/consultation/paiement/annulation de factures, structure complète compatible frontend, garde rôle ADMIN (A4+A5 déjà traités).
