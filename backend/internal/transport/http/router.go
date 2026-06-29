@@ -519,19 +519,29 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/admin", s.notificationsAdminReal)
                 })
 
+                // ABONNEMENTS-FIX-A4 : RequireRole("ADMIN") sur toutes les routes
+                // abonnements/plans/factures (SaaS admin only). Avant : RequireAuth seul,
+                // la RLS filtrait mais un ENSEIGNANT/ETUDIANT authentifié pouvait appeler.
                 r.Route("/api/abonnements", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.abonnementsListReal)
+                        // ABONNEMENTS-FIX-A1 : mutations (POST/PATCH/DELETE).
+                        r.Post("/", s.createAbonnement)
+                        r.Patch("/{id}", s.updateAbonnement)
+                        r.Delete("/{id}", s.deleteAbonnement)
                 })
 
                 r.Route("/api/factures", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.facturesListReal)
                 })
 
                 r.Route("/api/plans", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.plansListReal)
+                        // ABONNEMENTS-FIX-A2 : mutations (POST/PATCH).
+                        r.Post("/", s.createPlan)
+                        r.Patch("/{id}", s.updatePlan)
                 })
 
                 r.Route("/api/platform-settings", func(r chi.Router) {

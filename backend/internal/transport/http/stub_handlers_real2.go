@@ -221,13 +221,30 @@ func (s *Server) facturesListReal(w http.ResponseWriter, r *http.Request) {
 
         result := []facture{}
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "etablissementId", "abonnementId", "montant",
-                               "statut"::text, "dateFacture", "datePaiement"
-                        FROM "Facture"
-                        ORDER BY "dateFacture" DESC
-                        LIMIT 100
-                `)
+                // ABONNEMENTS-FIX-A8 : filtre par etablissementId (paramètre bindé).
+                // Avant : handler ignorait ?etablissementId=X → l'ADMIN voyait toutes
+                // les factures sans pouvoir filtrer par établissement.
+                etabID := r.URL.Query().Get("etablissementId")
+                var rows pgx.Rows
+                var err error
+                if etabID != "" {
+                        rows, err = tx.Query(r.Context(), `
+                                SELECT "id", "etablissementId", "abonnementId", "montant",
+                                       "statut"::text, "dateFacture", "datePaiement"
+                                FROM "Facture"
+                                WHERE "etablissementId" = $1
+                                ORDER BY "dateFacture" DESC
+                                LIMIT 100
+                        `, etabID)
+                } else {
+                        rows, err = tx.Query(r.Context(), `
+                                SELECT "id", "etablissementId", "abonnementId", "montant",
+                                       "statut"::text, "dateFacture", "datePaiement"
+                                FROM "Facture"
+                                ORDER BY "dateFacture" DESC
+                                LIMIT 100
+                        `)
+                }
                 if err != nil {
                         return nil // table peut ne pas exister ou colonnes différentes
                 }
