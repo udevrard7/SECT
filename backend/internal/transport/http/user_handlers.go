@@ -1,7 +1,9 @@
 package http
 
 import (
+        "crypto/rand"
         "encoding/json"
+        "math/big"
         "net/http"
         "strconv"
         "strings"
@@ -388,4 +390,118 @@ func boolPtrTrue() *bool {
 // Valide qu'une string n'est pas vide
 func requireNonEmpty(s string) bool {
         return strings.TrimSpace(s) != ""
+}
+
+// resetUserPassword — POST /api/users/{id}/reset-password
+//
+// U5 (CRITICAL) : admin reset le password d'un user.
+// - Reset loginAttempts + lockedUntil (déverrouille le compte)
+// - Set mustChangePwd=true (force changement au prochain login)
+// - Révoque tous les refresh tokens (force re-login)
+// - Audit PASSWORD_RESET
+//
+// Body: {"password": "newPassword"} (min 8 chars). Si password vide, un mot de
+// passe temporaire aléatoire est généré (retourné dans la response).
+//
+// Auth : ADMIN, RESPONSABLE (sur users de son établissement).
+func (s *Server) resetUserPassword(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        role := claims.Role
+        if role != "ADMIN" && role != "RESPONSABLE" {
+                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                return
+        }
+
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        var req struct {
+                Password string `json:"password"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+
+        // Si password vide, générer un mot de passe temporaire aléatoire (8 chars).
+        password := req.Password
+        if password == "" {
+                password = generateRandomPassword(8)
+        }
+
+        tempPassword, err := s.userUC.ResetPassword(r.Context(), claims, id, password)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode(map[string]any{
+                "message":            "mot de passe réinitialisé",
+                "temporaryPassword":  tempPassword,
+                "mustChangePassword": true,
+        })
+}
+
+// unlockUserAccount — POST /api/users/{id}/unlock
+//
+// U5 (CRITICAL) : admin déverrouille un compte sans changer le password.
+// - Reset loginAttempts + lockedUntil
+// - Audit PASSWORD_RESET (method=unlock_only)
+//
+// Auth : ADMIN, RESPONSABLE (sur users de son établissement).
+func (s *Server) unlockUserAccount(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        role := claims.Role
+        if role != "ADMIN" && role != "RESPONSABLE" {
+                writeJSONError(w, http.StatusForbidden, "rôle non autorisé")
+                return
+        }
+
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        if err := s.userUC.UnlockAccount(r.Context(), claims, id); err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode(map[string]any{
+                "message": "compte déverrouillé",
+        })
+}
+
+// generateRandomPassword génère un mot de passe aléatoire alphanumérique (crypto/rand).
+func generateRandomPassword(length int) string {
+        const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+        b := make([]byte, length)
+        for i := range b {
+                n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+                if err != nil {
+                        // fallback déterministe en cas d'erreur crypto (très improbable)
+                        b[i] = charset[i%len(charset)]
+                        continue
+                }
+                b[i] = charset[n.Int64()]
+        }
+        return string(b)
 }
