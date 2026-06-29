@@ -294,6 +294,7 @@ export function AffectationsPage() {
   })
 
   const affectations = affectationsQuery.data?.affectations ?? []
+
   const filieres = useMemo(
     () =>
       (filieresQuery.data?.filieres ?? []).map((f) => ({
@@ -331,6 +332,29 @@ export function AffectationsPage() {
     type: 'validate' | 'publish' | 'delete'
     affectation: AffectationItem
   } | null>(null)
+
+  // AFFECTATIONS-FIX-A12 : query dependencies pour preview suppression.
+  // Se déclenche uniquement quand l'utilisateur ouvre le dialog de suppression
+  // (confirmAction.type === 'delete'). Retourne le nb d'épreuves + sessions
+  // liés au couple (enseignant, UE) de l'affectation ciblée.
+  const deleteDepsQuery = useQuery<{
+    epreuves: number
+    sessions: number
+    canDelete: boolean
+  }>({
+    queryKey: ['affectation-dependencies', confirmAction?.affectation.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/affectations/${confirmAction!.affectation.id}/dependencies`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Failed to fetch dependencies')
+      }
+      return res.json()
+    },
+    enabled: confirmAction?.type === 'delete' && !!confirmAction?.affectation.id,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
   // ─── Add form state ───
   const [addEnseignantId, setAddEnseignantId] = useState('')
@@ -376,8 +400,13 @@ export function AffectationsPage() {
   }, [affectations, enseignantSearch])
 
   // ─── Stats ───
+  // AFFECTATIONS-FIX-A13 : séparé VALIDEE / PUBLIEE pour éviter le label
+  // ambigu "Validées" qui comptait aussi les publiées. Désormais 2 counts
+  // distincts + un count combiné "confirmées" pour la carte.
   const totalAffectations = affectations.length
-  const affectationsValidees = affectations.filter((a) => a.statut === 'VALIDEE' || a.statut === 'PUBLIEE').length
+  const affectationsValidees = affectations.filter((a) => a.statut === 'VALIDEE').length
+  const affectationsPubliees = affectations.filter((a) => a.statut === 'PUBLIEE').length
+  const affectationsConfirmees = affectationsValidees + affectationsPubliees
   const uesWithAffectation = new Set(affectations.map((a) => a.uniteEnseignementId)).size
   const totalUEs = unitesEnseignement.length
   const tauxCouverture = totalUEs > 0 ? Math.round((uesWithAffectation / totalUEs) * 100) : 0
@@ -809,8 +838,12 @@ export function AffectationsPage() {
               <CheckCircle2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Validées</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{affectationsValidees}</p>
+              {/* AFFECTATIONS-FIX-A13 : label précis + sous-détail V/P */}
+              <p className="text-xs text-muted-foreground">Confirmées</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{affectationsConfirmees}</p>
+              <p className="text-xs text-muted-foreground/80">
+                {affectationsValidees} valid. · {affectationsPubliees} publ.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -1589,6 +1622,26 @@ export function AffectationsPage() {
                   <strong>{confirmAction.affectation.enseignant.name}</strong> à{' '}
                   <strong>{confirmAction.affectation.uniteEnseignement.nom}</strong> ({confirmAction.affectation.typeSeance}) ?
                   Cette action est irréversible.
+                  {/* AFFECTATIONS-FIX-A12 : preview des dépendances (épreuves + sessions) */}
+                  {deleteDepsQuery.isLoading ? (
+                    <span className="block mt-2 text-xs text-muted-foreground">Chargement des dépendances…</span>
+                  ) : deleteDepsQuery.error ? (
+                    <span className="block mt-2 text-xs text-muted-foreground">(dépendances indisponibles)</span>
+                  ) : deleteDepsQuery.data && (deleteDepsQuery.data.epreuves > 0 || deleteDepsQuery.data.sessions > 0) ? (
+                    <span className="block mt-3 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning">
+                      <AlertTriangle className="inline h-3.5 w-3.5 mr-1.5" />
+                      Attention : cet enseignant a{' '}
+                      <strong>{deleteDepsQuery.data.epreuves}</strong> épreuve(s)
+                      {deleteDepsQuery.data.sessions > 0 && (
+                        <> et <strong>{deleteDepsQuery.data.sessions}</strong> session(s) étudiant</>
+                      )}{' '}
+                      sur cette UE. La suppression de l&apos;affectation ne supprimera pas ces évaluations, mais l&apos;enseignant ne sera plus officiellement affecté à cette UE.
+                    </span>
+                  ) : deleteDepsQuery.data ? (
+                    <span className="block mt-2 text-xs text-success-text">
+                      ✓ Aucune épreuve ni session liée à cette affectation — suppression sans impact.
+                    </span>
+                  ) : null}
                 </>
               )}
             </AlertDialogDescription>

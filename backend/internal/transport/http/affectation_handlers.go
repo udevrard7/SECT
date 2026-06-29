@@ -615,7 +615,44 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
         }
 
         deleted := false
+        // AFFECTATIONS-FIX-A12 : récupérer les dépendances (épreuves + sessions
+        // sur le même couple enseignant×UE) avant suppression pour les retourner
+        // au frontend (toast informatif). Best-effort comme filieres.
+        var deps map[string]any
         err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                // 1. Récupérer enseignantId + uniteEnseignementId avant delete
+                var enseignantID, ueID string
+                err := tx.QueryRow(r.Context(), `
+                        SELECT "enseignantId", "uniteEnseignementId"
+                        FROM "Affectation" WHERE "id" = $1
+                `, id).Scan(&enseignantID, &ueID)
+                if err != nil {
+                        // not found → on skip les dependencies mais on tente quand
+                        // même le delete (qui retournera deleted=false → 404 via A7)
+                        if !strings.Contains(err.Error(), "no rows in result set") {
+                                return err
+                        }
+                } else {
+                        // 2. Compter les épreuves de cet enseignant sur cette UE
+                        var nbEpreuves int
+                        _ = tx.QueryRow(r.Context(), `
+                                SELECT count(*) FROM "Epreuve"
+                                WHERE "enseignantId" = $1 AND "uniteEnseignementId" = $2
+                                  AND "deletedAt" IS NULL
+                        `, enseignantID, ueID).Scan(&nbEpreuves)
+                        // 3. Compter les sessions sur ces épreuves
+                        var nbSessions int
+                        _ = tx.QueryRow(r.Context(), `
+                                SELECT count(*) FROM "SessionPassation" s
+                                JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                                WHERE e."enseignantId" = $1 AND e."uniteEnseignementId" = $2
+                        `, enseignantID, ueID).Scan(&nbSessions)
+                        deps = map[string]any{
+                                "epreuves": nbEpreuves,
+                                "sessions": nbSessions,
+                        }
+                }
+                // 4. Delete
                 cmd, err := tx.Exec(r.Context(), `DELETE FROM "Affectation" WHERE "id" = $1`, id)
                 if err != nil {
                         return err
@@ -625,14 +662,10 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
         })
 
         // PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
-        // `deleted` reflète RowsAffected (true si ligne supprimée, false si not
-        // found ou erreur) — mais les erreurs SQL étaient quand même silencieuses.
-        // On retourne désormais le code HTTP approprié en cas d'erreur.
         if err != nil {
                 errMsg := err.Error()
                 switch {
                 case strings.Contains(errMsg, "foreign key constraint"):
-                        // Une affectation est référencée par une table enfant (Epreuve, etc.).
                         writeJSONError(w, http.StatusConflict, "Affectation référencée par d'autres entités (suppression impossible)")
                 default:
                         writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la suppression: "+errMsg)
@@ -640,18 +673,82 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // AFFECTATIONS-FIX-A7 : si aucune ligne supprimée, retourner 404 au lieu
-        // de 200 {deleted:false}. Avant, le frontend voyait un 200 et affichait
-        // un toast succès même si l'affectation n'existait pas (déjà supprimée).
+        // AFFECTATIONS-FIX-A7 : si aucune ligne supprimée, retourner 404.
         if !deleted {
                 writeJSONError(w, http.StatusNotFound, "Affectation introuvable (déjà supprimée ou inaccessible)")
                 return
         }
 
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
+        resp := map[string]any{
                 "deleted": deleted,
                 "id":      id,
+        }
+        // AFFECTATIONS-FIX-A12 : inclure les dependencies si elles ont été calculées
+        if deps != nil {
+                resp["dependencies"] = deps
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(resp)
+}
+
+// getAffectationDependencies — GET /api/affectations/{id}/dependencies
+//
+// AFFECTATIONS-FIX-A12 : retourne les comptes d'entités liées au couple
+// (enseignant, UE) de l'affectation — épreuves + sessions. Permet au
+// frontend d'afficher une preview avant confirmation de suppression
+// (pattern identique à /api/filieres/{id}/dependencies et
+// /api/unites-enseignement/{id}/dependencies).
+func (s *Server) getAffectationDependencies(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        var enseignantID, ueID string
+        var nbEpreuves, nbSessions int
+        err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                err := tx.QueryRow(r.Context(), `
+                        SELECT "enseignantId", "uniteEnseignementId"
+                        FROM "Affectation" WHERE "id" = $1
+                `, id).Scan(&enseignantID, &ueID)
+                if err != nil {
+                        return err
+                }
+                _ = tx.QueryRow(r.Context(), `
+                        SELECT count(*) FROM "Epreuve"
+                        WHERE "enseignantId" = $1 AND "uniteEnseignementId" = $2
+                          AND "deletedAt" IS NULL
+                `, enseignantID, ueID).Scan(&nbEpreuves)
+                _ = tx.QueryRow(r.Context(), `
+                        SELECT count(*) FROM "SessionPassation" s
+                        JOIN "Epreuve" e ON e."id" = s."epreuveId"
+                        WHERE e."enseignantId" = $1 AND e."uniteEnseignementId" = $2
+                `, enseignantID, ueID).Scan(&nbSessions)
+                return nil
+        })
+        if err != nil {
+                errMsg := err.Error()
+                if strings.Contains(errMsg, "no rows in result set") {
+                        writeJSONError(w, http.StatusNotFound, "Affectation introuvable")
+                        return
+                }
+                writeJSONError(w, http.StatusInternalServerError, "erreur dependencies: "+errMsg)
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "epreuves":    nbEpreuves,
+                "sessions":    nbSessions,
+                "canDelete":   nbEpreuves == 0, // pas de blocage, juste informatif
+                "enseignantId": enseignantID,
+                "uniteEnseignementId": ueID,
         })
 }
 

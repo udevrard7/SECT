@@ -227,6 +227,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                                 r.Post("/", s.createAffectation)
                                 r.Patch("/{id}", s.updateAffectation)
                                 r.Delete("/{id}", s.deleteAffectation)
+                                // AFFECTATIONS-FIX-A12 : dependencies pour preview suppression
+                                r.Get("/{id}/dependencies", s.getAffectationDependencies)
                         })
                 })
 
