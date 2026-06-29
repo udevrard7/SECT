@@ -273,8 +273,8 @@ func (s *Server) importUsers(w http.ResponseWriter, r *http.Request) {
         }
 
         imported := 0
-        var users []importedUser
-        var errors []importError
+        users := []importedUser{}
+        errors := []importError{}
 
         for i, u := range input.Users {
                 createInput := domain.CreateUserInput{
