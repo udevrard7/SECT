@@ -48,8 +48,8 @@ interface Thread {
 interface Message {
   id: string
   auteurId: string
-  role: string
-  content: string
+  contenu: string
+  content?: string
   createdAt: string
 }
 
@@ -325,7 +325,7 @@ function ConversationView({
       const res = await fetch(`/api/exam-prep/help/${thread.id}/messages`)
       if (!res.ok) throw new Error('Failed to fetch messages')
       const data = await res.json()
-      return { messages: data.thread?.messages ?? [] }
+      return { messages: data.messages ?? [] }
     },
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
@@ -347,7 +347,7 @@ function ConversationView({
       const res = await fetch(`/api/exam-prep/help/${thread.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ contenu: content }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
@@ -438,9 +438,9 @@ function ConversationView({
                           ? 'bg-primary text-primary-foreground rounded-tr-sm'
                           : 'bg-muted rounded-tl-sm'
                       }`}>
-                        <p className="whitespace-pre-wrap">{m.content}</p>
+                        <p className="whitespace-pre-wrap">{m.contenu ?? m.content}</p>
                         <p className={`text-[10px] mt-1 ${isMe ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                          {m.role === 'etudiant' ? 'Étudiant' : 'Professeur'} · {new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          {m.auteurId === thread.etudiantId ? 'Étudiant' : 'Professeur'} · {new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </motion.div>
