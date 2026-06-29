@@ -339,6 +339,32 @@ export function EtudiantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<EtudiantItem | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // ETUDIANTS-FIX-E10 : query dependencies pour preview suppression.
+  // Se déclenche quand l'utilisateur ouvre l'AlertDialog de suppression.
+  // Retourne les comptes (sessions, réponses, soumissions) pour informer
+  // l'utilisateur avant confirmation (pattern filieres/affectations).
+  const deleteDepsQuery = useQuery<{
+    sessions: number
+    reponses: number
+    soumissions: number
+    canDelete: boolean
+    userName?: string
+    userEmail?: string
+  }>({
+    queryKey: ['user-dependencies', deleteTarget?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${deleteTarget!.id}/dependencies`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Failed to fetch dependencies')
+      }
+      return res.json()
+    },
+    enabled: !!deleteTarget?.id,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
   // ─── Bulk selection state ───
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActionDialog, setBulkActionDialog] = useState<'activate' | 'deactivate' | 'delete' | null>(null)
@@ -1995,6 +2021,45 @@ export function EtudiantsPage() {
                 <p>
                   Êtes-vous sûr de vouloir supprimer définitivement <strong>{deleteTarget?.name}</strong> ?
                 </p>
+                {/* ETUDIANTS-FIX-E10 : preview des dépendances (sessions/réponses/soumissions) */}
+                {deleteDepsQuery.isLoading ? (
+                  <div className="rounded-lg border border-muted bg-muted/30 p-3 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Chargement des dépendances…</p>
+                  </div>
+                ) : deleteDepsQuery.error ? (
+                  <div className="rounded-lg border border-muted bg-muted/30 p-3">
+                    <p className="text-sm text-muted-foreground">(dépendances indisponibles)</p>
+                  </div>
+                ) : deleteDepsQuery.data && (deleteDepsQuery.data.sessions > 0 || deleteDepsQuery.data.reponses > 0 || deleteDepsQuery.data.soumissions > 0) ? (
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+                    <p className="text-sm font-semibold text-warning flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4" />
+                      Données associées à cet étudiant
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm text-warning">
+                      {deleteDepsQuery.data.sessions > 0 && (
+                        <li>• <strong>{deleteDepsQuery.data.sessions}</strong> session(s) d&apos;examen</li>
+                      )}
+                      {deleteDepsQuery.data.reponses > 0 && (
+                        <li>• <strong>{deleteDepsQuery.data.reponses}</strong> réponse(s) à des questions</li>
+                      )}
+                      {deleteDepsQuery.data.soumissions > 0 && (
+                        <li>• <strong>{deleteDepsQuery.data.soumissions}</strong> soumission(s) de devoir</li>
+                      )}
+                    </ul>
+                    <p className="mt-2 text-xs text-warning/80">
+                      Toutes ces données seront <strong>définitivement supprimées</strong> en cascade avec l&apos;étudiant.
+                    </p>
+                  </div>
+                ) : deleteDepsQuery.data ? (
+                  <div className="rounded-lg border border-success/30 bg-success/10 p-3">
+                    <p className="text-sm text-success-text flex items-center gap-1.5">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Aucune donnée associée — suppression sans impact.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
                   <p className="text-sm font-semibold text-destructive">
                     ⚠️ Action irréversible

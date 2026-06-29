@@ -269,7 +269,7 @@ func (uc *UserUseCase) Delete(ctx context.Context, claims db.SessionClaims, id s
         // Best-effort : si une query échoue, on continue (la suppression est plus
         // importante que le count). Les tables enfants ont ON DELETE CASCADE donc
         // tout sera supprimé automatiquement.
-        deps := uc.countUserDependencies(ctx, id)
+        deps := uc.CountUserDependencies(ctx, id)
 
         if err := uc.userRepo.Delete(ctx, id); err != nil {
                 return nil, err
@@ -277,11 +277,12 @@ func (uc *UserUseCase) Delete(ctx context.Context, claims db.SessionClaims, id s
         return deps, nil
 }
 
-// countUserDependencies compte les sessions, réponses et soumissions d'un user.
+// CountUserDependencies compte les sessions, réponses et soumissions d'un user.
 // Best-effort : retourne un struct avec des 0 si les queries échouent (la RLS
 // peut bloquer si le user n'est pas dans le même établissement, mais le
 // checkOwnership a déjà validé l'accès avant).
-func (uc *UserUseCase) countUserDependencies(ctx context.Context, userID string) *DeletedDependencies {
+// ETUDIANTS-FIX-E10 : exportée pour être appelée par getUserDependencies handler.
+func (uc *UserUseCase) CountUserDependencies(ctx context.Context, userID string) *DeletedDependencies {
         deps := &DeletedDependencies{}
         // Les compteurs se font via le repo (qui a accès au pool pgx).
         counter, ok := uc.userRepo.(domain.UserDependencyCounter)

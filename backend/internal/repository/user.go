@@ -503,14 +503,20 @@ func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (
         if err := tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "etudiantId" = $1`, userID).Scan(&sessions); err != nil {
                 return 0, 0, 0, fmt.Errorf("count sessions: %w", err)
         }
-        // Réponses (Reponse où etudiantId = userID)
-        if err := tx.QueryRow(ctx, `SELECT count(*) FROM "Reponse" WHERE "etudiantId" = $1`, userID).Scan(&reponses); err != nil {
-                // La table Reponse peut ne pas exister ou avoir un schéma différent — best-effort
+        // ETUDIANTS-FIX-E10 : Réponses — la table Reponse n'a pas de colonne
+        // etudiantId directement, elle référence sessionId (qui elle a etudiantId).
+        // Jointure via SessionPassation. Avant ce fix, la query crashait
+        // systématiquement (column "etudiantId" does not exist) → reponses=0
+        // toujours (best-effort masquait le bug).
+        if err := tx.QueryRow(ctx, `
+                SELECT count(*) FROM "Reponse" r
+                JOIN "SessionPassation" s ON s."id" = r."sessionId"
+                WHERE s."etudiantId" = $1
+        `, userID).Scan(&reponses); err != nil {
                 reponses = 0
         }
         // Soumissions (Soumission où etudiantId = userID)
         if err := tx.QueryRow(ctx, `SELECT count(*) FROM "Soumission" WHERE "etudiantId" = $1`, userID).Scan(&soumissions); err != nil {
-                // Best-effort
                 soumissions = 0
         }
 

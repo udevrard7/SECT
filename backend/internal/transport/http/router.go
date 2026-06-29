@@ -171,6 +171,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                                 r.Post("/import", s.importUsers) // ETUDIANTS-FIX-E2
                                 r.Patch("/{id}", s.updateUser)
                                 r.Delete("/{id}", s.deleteUser)
+                                // ETUDIANTS-FIX-E10 : dependencies pour preview suppression
+                                r.Get("/{id}/dependencies", s.getUserDependencies)
                         })
                 })
 
