@@ -45,7 +45,6 @@ import {
  LayoutGrid,
  List,
 } from'lucide-react'
-import { ClassificationSidebar } from'./classification-sidebar'
 import { EpreuveGroupedView } from'./epreuve-grouped-view'
 import { OrphanEpreuvesAlert } from'./orphan-epreuves-alert'
 import {
@@ -2113,28 +2112,9 @@ function SessionsTab() {
 
  {/* ─── Content: Sidebar + Epreuves ─── */}
  {!isLoading && filteredEpreuves.length > 0 && (
- <div className="flex gap-6">
- {/* Sidebar (desktop only) */}
- {classificationTree.filieres.length > 0 && (
- <div className="hidden lg:block">
- <ClassificationSidebar
- tree={classificationTree}
- onSelect={handleSidebarSelect}
- selectedPath={selectedPath}
- />
- </div>
- )}
-
+ <div>
  {/* Main content */}
- <div className="flex-1 min-w-0">
- {/* Mobile sidebar toggle */}
- <div className="lg:hidden mb-4">
- <ClassificationSidebar
- tree={classificationTree}
- onSelect={handleSidebarSelect}
- selectedPath={selectedPath}
- />
- </div>
+ <div>
 
  {viewMode ==='grouped' ? (
  /* Grouped view */
