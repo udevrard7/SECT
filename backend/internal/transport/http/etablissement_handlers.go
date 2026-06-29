@@ -62,6 +62,11 @@ func (s *Server) getEtablissement(w http.ResponseWriter, r *http.Request) {
 }
 
 // createEtablissement — POST /api/etablissements (ADMIN only)
+//
+// ABONNEMENTS-FIX-A3 : si le body contient responsableEmail + planId, le usecase
+// crée en plus (transaction atomique) un responsable + un abonnement. La réponse
+// est alors enrichie avec responsable.temporaryPassword (mode direct) ou
+// invitation.token/expiresAt (mode invitation) + abonnement.planNom.
 func (s *Server) createEtablissement(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -75,15 +80,35 @@ func (s *Server) createEtablissement(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        etab, err := s.etabUC.Create(r.Context(), claims, input)
+        result, err := s.etabUC.Create(r.Context(), claims, input)
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
         }
 
+        resp := map[string]any{"etablissement": result.Etablissement}
+        // ABONNEMENTS-FIX-A3 : champs wizard (uniquement si wizard a été déclenché).
+        if result.TemporaryPassword != "" {
+                resp["responsable"] = map[string]any{
+                        "temporaryPassword": result.TemporaryPassword,
+                }
+        }
+        if result.InvitationToken != "" {
+                resp["invitation"] = map[string]any{
+                        "token":     result.InvitationToken,
+                        "expiresAt": result.InvitationExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+                }
+        }
+        if result.AbonnementID != "" {
+                resp["abonnement"] = map[string]any{
+                        "id":     result.AbonnementID,
+                        "planNom": result.PlanNom,
+                }
+        }
+
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(map[string]any{"etablissement": etab})
+        json.NewEncoder(w).Encode(resp)
 }
 
 // updateEtablissement — PATCH /api/etablissements/{id}

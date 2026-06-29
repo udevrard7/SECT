@@ -3,10 +3,18 @@ package usecase
 
 import (
         "context"
+        "crypto/rand"
+        "fmt"
         "regexp"
+        "strings"
+        "time"
 
+        "github.com/google/uuid"
+        "github.com/jackc/pgx/v5"
+        "github.com/jackc/pgx/v5/pgxpool"
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
+        "golang.org/x/crypto/bcrypt"
 )
 
 // E15 (MEDIUM) : validateurs pour la config watermark.
@@ -30,14 +38,18 @@ var validWatermarkPatterns = map[string]bool{
 // (bug E1/E6 : sans cette injection, le helper ValidateAccessForEtablissement
 // était dead code et un ADMIN pouvait modifier/supprimer/uploader logo sur
 // n'importe quel établissement sans autorisation EtablissementAccess).
+//
+// ABONNEMENTS-FIX-A3 : pool ajouté pour la transaction atomique du wizard
+// de souscription (étab + responsable + abonnement dans une seule tx).
 type EtablissementUseCase struct {
-        etabRepo  domain.EtablissementRepository
-        accessUC  *AccessUseCase
+        etabRepo domain.EtablissementRepository
+        accessUC *AccessUseCase
+        pool     *pgxpool.Pool
 }
 
 // NewEtablissementUseCase crée un nouveau EtablissementUseCase.
-func NewEtablissementUseCase(etabRepo domain.EtablissementRepository, accessUC *AccessUseCase) *EtablissementUseCase {
-        return &EtablissementUseCase{etabRepo: etabRepo, accessUC: accessUC}
+func NewEtablissementUseCase(etabRepo domain.EtablissementRepository, accessUC *AccessUseCase, pool *pgxpool.Pool) *EtablissementUseCase {
+        return &EtablissementUseCase{etabRepo: etabRepo, accessUC: accessUC, pool: pool}
 }
 
 // List liste les établissements avec tenant scoping.
@@ -61,16 +73,193 @@ func (uc *EtablissementUseCase) GetByID(ctx context.Context, claims db.SessionCl
         return uc.etabRepo.FindByID(ctx, id)
 }
 
+// CreateResult est le retour enrichi du usecase Create (ABONNEMENTS-FIX-A3).
+// Responsable/Invitation/Abonnement ne sont peuplés que si le wizard a fourni
+// les champs correspondants (ResponsableEmail + PlanID).
+type CreateResult struct {
+        Etablissement       *domain.Etablissement
+        TemporaryPassword   string // mode "direct" (vide si mode "invitation")
+        InvitationToken     string // mode "invitation" (vide si mode "direct")
+        InvitationExpiresAt time.Time
+        AbonnementID        string
+        PlanNom             string
+}
+
 // Create crée un établissement (ADMIN only).
-func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateEtablissementInput) (*domain.Etablissement, error) {
+//
+// ABONNEMENTS-FIX-A3 : si input.ResponsableEmail + input.PlanID sont fournis,
+// crée en plus (en une transaction atomique) :
+//   - mode "direct" : un utilisateur RESPONSABLE avec password temporaire
+//   - mode "invitation" : une Invitation avec token (valide 7 jours)
+//   - un Abonnement liant l'établissement au plan
+//
+// Avant ce fix, le frontend envoyait ces champs mais le backend les ignorait
+// (CreateEtablissementInput ne les contenait pas) → seul l'établissement était
+// créé, sans responsable ni abonnement. Le wizard de souscription affichait
+// alors des credentials vides à l'étape 4.
+func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionClaims, input domain.CreateEtablissementInput) (*CreateResult, error) {
         if claims.Role != string(domain.RoleAdmin) {
                 return nil, &domain.UnauthorizedError{Message: "seul un ADMIN peut créer un établissement"}
         }
         if input.Nom == "" {
                 return nil, &domain.ValidationError{Field: "nom", Message: "requis"}
         }
-        return uc.etabRepo.Create(ctx, input)
+
+        // Déterminer si on est en mode wizard (souscription complète) ou simple création.
+        hasWizard := input.ResponsableEmail != nil && *input.ResponsableEmail != "" &&
+                input.PlanID != nil && *input.PlanID != ""
+
+        if !hasWizard {
+                // Création simple (comportement historique) : juste l'établissement.
+                etab, err := uc.etabRepo.Create(ctx, input)
+                if err != nil {
+                        return nil, err
+                }
+                return &CreateResult{Etablissement: etab}, nil
+        }
+
+        // ─── Mode wizard : transaction atomique ───
+        respEmail := strings.ToLower(strings.TrimSpace(*input.ResponsableEmail))
+        if !strings.Contains(respEmail, "@") {
+                return nil, &domain.ValidationError{Field: "responsableEmail", Message: "email invalide"}
+        }
+        respMode := "direct"
+        if input.ResponsableMode != nil && *input.ResponsableMode != "" {
+                respMode = *input.ResponsableMode
+        }
+        if respMode != "direct" && respMode != "invitation" {
+                return nil, &domain.ValidationError{Field: "responsableMode", Message: "doit être 'direct' ou 'invitation'"}
+        }
+        if respMode == "direct" && (input.ResponsableNom == nil || *input.ResponsableNom == "") {
+                return nil, &domain.ValidationError{Field: "responsableNom", Message: "requis en mode direct"}
+        }
+
+        // Valider regexMatricule si fourni (P10 déjà appliqué sur Update, ici aussi).
+        if input.RegexMatricule != nil && *input.RegexMatricule != "" {
+                if _, err := regexp.Compile(*input.RegexMatricule); err != nil {
+                        return nil, &domain.ValidationError{Field: "regexMatricule", Message: "regex invalide: " + err.Error()}
+                }
+        }
+
+        result := &CreateResult{}
+        errTx := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
+                // 1. Créer l'établissement (bypass RLS via CreateInTx qui ne pose pas les claims).
+                // Le repo CreateInTx fait SET LOCAL row_security = off dans sa propre tx,
+                // mais ici on est déjà dans une tx du caller → on doit désactiver RLS manuellement
+                // pour l'INSERT Etablissement (ADMIN doit pouvoir créer sans EtablissementAccess préexistant).
+                if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                        return fmt.Errorf("disable rls: %w", err)
+                }
+                etab, err := uc.etabRepo.CreateInTx(ctx, tx, input)
+                if err != nil {
+                        return err
+                }
+                result.Etablissement = etab
+
+                // 2. Créer le responsable ou l'invitation.
+                if respMode == "direct" {
+                        tempPwd, err := generateRandomPasswordLocal(8)
+                        if err != nil {
+                                return fmt.Errorf("generate password: %w", err)
+                        }
+                        hash, err := bcrypt.GenerateFromPassword([]byte(tempPwd), 10)
+                        if err != nil {
+                                return fmt.Errorf("hash password: %w", err)
+                        }
+                        userID := "user_" + uuid.NewString()
+                        respName := *input.ResponsableNom
+                        if _, err := tx.Exec(ctx, `
+                                INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId",
+                                        "actif", "mustChangePwd", "loginAttempts", "createdAt", "updatedAt")
+                                VALUES ($1, $2, $3, $4, 'RESPONSABLE', $5, true, true, 0, now(), now())
+                        `, userID, respEmail, respName, string(hash), etab.ID); err != nil {
+                                // unique violation (email déjà utilisé)
+                                return &domain.ConflictError{Message: "email responsable déjà utilisé"}
+                        }
+                        // U2 (fix EtablissementAccess) : créer une demande d'accès auto-approuvée
+                        // pour l'ADMIN (sinon l'étab est invisible à l'admin dans la liste filtrée).
+                        accessID := "eacc_" + uuid.NewString()
+                        if _, err := tx.Exec(ctx, `
+                                INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "statut",
+                                        "dateDebut", "dateFin", "approuvePar", "createdAt", "updatedAt")
+                                VALUES ($1, $2, $3, 'APPROUVE', now(), NULL, $2, now(), now())
+                        `, accessID, claims.UserID, etab.ID); err != nil {
+                                return fmt.Errorf("create etablissement access: %w", err)
+                        }
+                        result.TemporaryPassword = tempPwd
+                } else {
+                        // mode "invitation" : générer un token 32 hex.
+                        token, err := generateInvitationToken()
+                        if err != nil {
+                                return fmt.Errorf("generate invitation token: %w", err)
+                        }
+                        expiresAt := time.Now().Add(7 * 24 * time.Hour)
+                        invID := "inv_" + uuid.NewString()
+                        var respName any
+                        if input.ResponsableNom != nil && *input.ResponsableNom != "" {
+                                respName = *input.ResponsableNom
+                        }
+                        if _, err := tx.Exec(ctx, `
+                                INSERT INTO "Invitation" ("id", "token", "email", "role", "name",
+                                        "etablissementId", "expiresAt", "used", "createdById", "createdAt")
+                                VALUES ($1, $2, $3, 'RESPONSABLE', $4, $5, $6, false, $7, now())
+                        `, invID, token, respEmail, respName, etab.ID, expiresAt, claims.UserID); err != nil {
+                                return fmt.Errorf("create invitation: %w", err)
+                        }
+                        result.InvitationToken = token
+                        result.InvitationExpiresAt = expiresAt
+                }
+
+                // 3. Créer l'abonnement (statut ESSAI par défaut, 14 jours période essai).
+                aboID := "abo_" + uuid.NewString()
+                var planNom string
+                if err := tx.QueryRow(ctx, `SELECT "nom" FROM "Plan" WHERE "id" = $1`, *input.PlanID).Scan(&planNom); err != nil {
+                        return &domain.ValidationError{Field: "planId", Message: "plan introuvable"}
+                }
+                // Calculer la date de fin selon la période (annuel = +1 an, mensuel = +1 mois).
+                dateFin := time.Now().Add(30 * 24 * time.Hour) // mensuel par défaut
+                if input.PeriodeFacturation != nil && *input.PeriodeFacturation == "annuel" {
+                        dateFin = time.Now().Add(365 * 24 * time.Hour)
+                }
+                statut := "ESSAI"
+                if _, err := tx.Exec(ctx, `
+                        INSERT INTO "Abonnement" ("id", "etablissementId", "planId", "statut", "dateDebut",
+                                "dateFin", "periodeEssaiJours", "montantPaye", "renouvellementAuto",
+                                "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4::"StatutAbonnement", now(), $5, 14, 0, true, now(), now())
+                `, aboID, etab.ID, *input.PlanID, statut, dateFin); err != nil {
+                        return fmt.Errorf("create abonnement: %w", err)
+                }
+                result.AbonnementID = aboID
+                result.PlanNom = planNom
+
+                return nil
+        })
+
+        if errTx != nil {
+                return nil, errTx
+        }
+        return result, nil
 }
+
+// generateRandomPasswordLocal génère un password aléatoire alphanumérique (8 chars).
+// Duplique usecase/user.go:generateRandomPassword pour éviter une dépendance circulaire
+// (user.go n'est pas importable depuis etablissement.go sans refactor).
+func generateRandomPasswordLocal(n int) (string, error) {
+        const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+        b := make([]byte, n)
+        max := make([]byte, 1)
+        for i := range b {
+                if _, err := rand.Read(max); err != nil {
+                        return "", err
+                }
+                b[i] = charset[int(max[0])%len(charset)]
+        }
+        return string(b), nil
+}
+
+// Note : generateInvitationToken est défini dans invitation.go (même package).
+// Pas besoin de le redéfinir ici.
 
 // Update met à jour un établissement.
 // ADMIN : peut tout modifier (y compris pays, actif) — sous réserve d'avoir un
