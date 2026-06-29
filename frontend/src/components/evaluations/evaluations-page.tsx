@@ -282,6 +282,9 @@ export function EvaluationsPage() {
   const [statutFilter, setStatutFilter] = useState('all')
   const [filiereFilter, setFiliereFilter] = useState('all')
   const [showFilters, setShowFilters] = useState(false)
+  // EVALUATIONS-FIX-EV7 : pagination
+  const [page, setPage] = useState(1)
+  const pageSize = 10
 
   // Detail dialog
   const [detailEpreuve, setDetailEpreuve] = useState<Epreuve | null>(null)
@@ -291,15 +294,15 @@ export function EvaluationsPage() {
   const [dialogMode, setDialogMode] = useState<'details' | 'results'>('details')
 
   // ─── Fetch epreuves (TanStack Query) ───
-  // Migration useEffect+fetch → useQuery. Le cache survit au démontage :
-  // 0 refetch au retour navigation. staleTime 60s. L'API retourne aussi les
-  // filières du responsable (pour le filtre) — dérivées directement de la
-  // query data (au lieu du setState conditionnel original).
-  const epreuvesQuery = useQuery<{ epreuves: Epreuve[]; filieres?: FiliereOption[] }>({
-    queryKey: ['evaluations-epreuves', user?.id, statutFilter, filiereFilter],
+  // EVALUATIONS-FIX-EV7 : pagination via ?page=X&limit=Y. Response inclut
+  // total/totalPages quand pagination active.
+  const epreuvesQuery = useQuery<{ epreuves: Epreuve[]; filieres?: FiliereOption[]; total?: number; totalPages?: number }>({
+    queryKey: ['evaluations-epreuves', user?.id, statutFilter, filiereFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set('responsableId', user!.id)
+      params.set('page', String(page))
+      params.set('limit', String(pageSize))
       if (filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statutFilter !== 'all') params.set('statut', statutFilter)
 
@@ -414,10 +417,16 @@ export function EvaluationsPage() {
 
   const hasActiveFilters = statutFilter !== 'all' || filiereFilter !== 'all' || search.trim() !== ''
 
+  // EVALUATIONS-FIX-EV7 : reset page quand les filtres changent
+  useEffect(() => {
+    setPage(1)
+  }, [statutFilter, filiereFilter, search])
+
   const resetFilters = () => {
     setSearch('')
     setStatutFilter('all')
     setFiliereFilter('all')
+    setPage(1)
   }
 
   return (
@@ -745,6 +754,34 @@ export function EvaluationsPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* ─── EVALUATIONS-FIX-EV7 : Pagination ─── */}
+      {!isLoading && filteredEpreuves.length > 0 && epreuvesQuery.data?.totalPages && epreuvesQuery.data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 py-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || epreuvesQuery.isFetching}
+          >
+            <ChevronDown className="h-4 w-4 rotate-90" />
+            Précédent
+          </Button>
+          <span className="text-sm text-muted-foreground font-mono tabular-nums">
+            Page {page} / {epreuvesQuery.data.totalPages}
+            {epreuvesQuery.data.total !== undefined && ` (${epreuvesQuery.data.total} évaluations)`}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(epreuvesQuery.data?.totalPages ?? 1, p + 1))}
+            disabled={page >= (epreuvesQuery.data?.totalPages ?? 1) || epreuvesQuery.isFetching}
+          >
+            Suivant
+            <ChevronUp className="h-4 w-4 rotate-90" />
+          </Button>
         </div>
       )}
 

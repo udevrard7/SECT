@@ -165,10 +165,13 @@ func NewEpreuveUseCase(epreuveRepo domain.EpreuveRepository) *EpreuveUseCase {
 }
 
 // List liste les épreuves.
-func (uc *EpreuveUseCase) List(ctx context.Context, claims db.SessionClaims, params domain.EpreuveListParams) ([]*domain.Epreuve, error) {
+// EVALUATIONS-FIX-EV7 : List retourne désormais (epreuves, total, error) pour
+// supporter la pagination optionnelle. Si params.Page == 0, total = len(epreuves)
+// (pas de pagination, comportement inchangé).
+func (uc *EpreuveUseCase) List(ctx context.Context, claims db.SessionClaims, params domain.EpreuveListParams) ([]*domain.Epreuve, int, error) {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable && role != domain.RoleEnseignant && role != domain.RoleEtudiant {
-                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+                return nil, 0, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
 
         // Multi-statut: ?statut=TERMINEE,CLOTUREE
@@ -185,7 +188,11 @@ func (uc *EpreuveUseCase) List(ctx context.Context, claims db.SessionClaims, par
                 params.EtudiantID = claims.UserID
         }
 
-        return uc.epreuveRepo.List(ctx, params)
+        epreuves, total, err := uc.epreuveRepo.List(ctx, params)
+        if err != nil {
+                return nil, 0, err
+        }
+        return epreuves, total, nil
 }
 
 // GetByID récupère une épreuve par ID.

@@ -362,12 +362,20 @@ type EpreuveListParams struct {
         SessionExamen       string
         AnneeAcademiqueID   string
         UniteEnseignementID string
+        // EVALUATIONS-FIX-EV7 : pagination optionnelle. Si Page > 0 et Limit > 0,
+        // la query ajoute LIMIT/OFFSET + un count total séparé. Sinon, comportement
+        // inchangé (tous les résultats). Permet à /evaluations de paginer sans
+        // casser les autres appelants (epreuves-page, mes-epreuves, etc.).
+        Page   int // 1-based ; 0 = pas de pagination
+        Limit  int // default 20 si Page > 0
 }
 
 // EpreuveRepository interface.
 type EpreuveRepository interface {
         FindByID(ctx context.Context, id string) (*Epreuve, error)
-        List(ctx context.Context, params EpreuveListParams) ([]*Epreuve, error)
+        // EVALUATIONS-FIX-EV7 : List retourne (epreuves, total, error). total =
+        // len(epreuves) si pas de pagination, sinon count global pour totalPages.
+        List(ctx context.Context, params EpreuveListParams) ([]*Epreuve, int, error)
         Create(ctx context.Context, input CreateEpreuveInput) (*Epreuve, error)
         Update(ctx context.Context, id string, input UpdateEpreuveInput) (*Epreuve, error)
         SoftDelete(ctx context.Context, id string) error
