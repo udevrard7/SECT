@@ -7,10 +7,12 @@
  *  - Alignement strict backend :
  *    • GET  /api/exam-prep/help?documentId=X  → { threads: HelpThread[] }
  *      HelpThread = { id, documentId, etudiantId, enseignantId?, sujet, statut
- *                     ("OUVERT"|"CLOS"), createdAt, updatedAt, etudiant?, document? }
+ *                     ("OUVERT"|"REPONDU"|"CLOS"), createdAt, updatedAt, etudiant?, document? }
  *    • POST /api/exam-prep/help body { documentId, sujet, messageInitial }
  *      → 201 { thread }
  *    • POST /api/exam-prep/help/{id}/close → { message }
+ *    • DELETE /api/exam-prep/help/{id} → { message }
+ *      (uniquement si statut=CLOS — backend valide, hard delete cascade HelpMessage)
  *    • GET  /api/exam-prep/help/{id}/messages → { messages: HelpMessage[] }
  *      HelpMessage = { id, threadId, auteurId, contenu, createdAt }
  *    • POST /api/exam-prep/help/{id}/messages body { contenu } → 201 { message }
@@ -24,7 +26,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   HelpCircle, Plus, Send, Loader2, MessageCircle, ArrowLeft,
-  CheckCircle2, X, AlertCircle, RefreshCw, Lock,
+  CheckCircle2, X, AlertCircle, RefreshCw, Lock, Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,18 +45,27 @@ interface Props {
 interface UserRef { id: string; name: string }
 interface DocumentRef { id: string; nomFichier: string }
 
+type HelpThreadStatut = 'OUVERT' | 'REPONDU' | 'CLOS'
+
 interface HelpThread {
   id: string
   documentId: string
   etudiantId: string
   enseignantId?: string | null
   sujet: string
-  statut: 'OUVERT' | 'CLOS'
+  statut: HelpThreadStatut
   createdAt: string
   updatedAt: string
   etudiant?: UserRef | null
   enseignant?: UserRef | null
   document?: DocumentRef | null
+}
+
+// Métadonnées d'affichage par statut (badge + icône + libellé).
+const STATUT_META: Record<HelpThreadStatut, { label: string; badgeCls: string; icon: typeof Lock }> = {
+  OUVERT:   { label: 'Ouvert',   badgeCls: 'bg-warning/10 text-warning',                       icon: HelpCircle },
+  REPONDU:  { label: 'Répondu',  badgeCls: 'bg-success/15 text-success-text',                  icon: CheckCircle2 },
+  CLOS:     { label: 'Clos',     badgeCls: 'bg-muted text-muted-foreground',                   icon: Lock },
 }
 
 interface HelpMessage {
@@ -260,46 +271,38 @@ export function ExamPrepHelpTab({ documentId, documentName }: Props) {
       ) : (
         <div className="space-y-2">
           <AnimatePresence mode="popLayout">
-            {threads.map((t, i) => (
-              <motion.button
-                key={t.id}
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ delay: i * 0.03, duration: 0.2 }}
-                onClick={() => setSelected(t)}
-                className="w-full text-left rounded-xl border border-border/60 bg-card p-3 hover:shadow-sm hover:border-primary/30 transition-all ds-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                    t.statut === 'CLOS' ? 'bg-muted' : 'bg-warning/10'
-                  }`}>
-                    {t.statut === 'CLOS'
-                      ? <Lock className="h-4 w-4 text-muted-foreground" />
-                      : <HelpCircle className="h-4 w-4 text-warning" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate flex-1">{t.sujet}</p>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] shrink-0 ${
-                          t.statut === 'CLOS'
-                            ? 'bg-muted text-muted-foreground'
-                            : 'bg-warning/10 text-warning'
-                        }`}
-                      >
-                        {t.statut === 'CLOS' ? 'Clos' : 'Ouvert'}
-                      </Badge>
+            {threads.map((t, i) => {
+              const meta = STATUT_META[t.statut] ?? STATUT_META.OUVERT
+              return (
+                <motion.button
+                  key={t.id}
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ delay: i * 0.03, duration: 0.2 }}
+                  onClick={() => setSelected(t)}
+                  className="w-full text-left rounded-xl border border-border/60 bg-card p-3 hover:shadow-sm hover:border-primary/30 transition-all ds-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.badgeCls}`}>
+                      <meta.icon className="h-4 w-4" />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {t.etudiant?.name ?? 'Étudiant'} · {new Date(t.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate flex-1">{t.sujet}</p>
+                        <Badge variant="outline" className={`text-[10px] shrink-0 ${meta.badgeCls}`}>
+                          {meta.label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {t.etudiant?.name ?? 'Étudiant'} · {new Date(t.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </motion.button>
-            ))}
+                </motion.button>
+              )
+            })}
           </AnimatePresence>
         </div>
       )}
@@ -321,6 +324,9 @@ function ConversationView({
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
+  // P2 : suppression de conversation clôturée (DELETE /api/exam-prep/help/{id})
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Charge les messages
@@ -392,6 +398,27 @@ function ConversationView({
     }
   }
 
+  // P2 : suppression de conversation clôturée — hard delete cascade HelpMessage.
+  // Le backend valide ownership (étudiant = ses propres fils) + statut=CLOS.
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/exam-prep/help/${thread.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error ?? 'Échec de la suppression')
+      }
+      toast.success('Conversation supprimée')
+      queryClient.invalidateQueries({ queryKey: ['exam-prep-help', thread.documentId] })
+      onBack()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression')
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
   // Infère le rôle d'un message : étudiant si auteurId === thread.etudiantId,
   // professeur sinon (enseignantId ou autre).
   const inferRole = (auteurId: string): 'etudiant' | 'professeur' => {
@@ -400,6 +427,7 @@ function ConversationView({
   }
 
   const isClosed = thread.statut === 'CLOS'
+  const meta = STATUT_META[thread.statut] ?? STATUT_META.OUVERT
 
   return (
     <div className="space-y-4">
@@ -407,18 +435,32 @@ function ConversationView({
         <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
           <ArrowLeft className="h-4 w-4" /> Retour aux questions
         </Button>
-        {!isClosed && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClose}
-            disabled={closing}
-            className="gap-1.5"
-          >
-            {closing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">Clore le fil</span>
-          </Button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {!isClosed && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClose}
+              disabled={closing}
+              className="gap-1.5"
+            >
+              {closing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">Clore le fil</span>
+            </Button>
+          )}
+          {isClosed && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50"
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">Supprimer</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -430,13 +472,8 @@ function ConversationView({
               <p className="font-semibold text-sm">{thread.sujet}</p>
             </div>
             <div className="flex items-center gap-2 mt-1.5">
-              <Badge
-                variant="outline"
-                className={`text-[10px] ${
-                  isClosed ? 'bg-muted text-muted-foreground' : 'bg-warning/10 text-warning'
-                }`}
-              >
-                {isClosed ? 'Clos' : 'Ouvert'}
+              <Badge variant="outline" className={`text-[10px] ${meta.badgeCls}`}>
+                {meta.label}
               </Badge>
               <span className="text-[10px] text-muted-foreground">
                 {thread.etudiant?.name ?? 'Étudiant'} · {new Date(thread.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -512,6 +549,45 @@ function ConversationView({
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog confirmation suppression (uniquement si statut=CLOS) */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setConfirmDelete(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-help-thread-title"
+        >
+          <div
+            className="bg-card rounded-xl p-6 max-w-sm w-full shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div className="flex-1">
+                <h3 id="delete-help-thread-title" className="font-semibold text-base">
+                  Supprimer cette conversation ?
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Cette action est irréversible. Tous les messages de ce fil seront définitivement supprimés.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+                Annuler
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting} className="gap-1.5">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Supprimer définitivement
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

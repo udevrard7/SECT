@@ -637,6 +637,27 @@ func (s *Server) closeHelpThread(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Fil clos"})
 }
 
+// deleteHelpThread — DELETE /api/exam-prep/help/{id}
+// Supprime un fil clôturé + ses messages (hard delete cascade).
+// Ownership : étudiant = ses propres fils, enseignant = fils de ses documents.
+// Le usecase valide le statut=CLOS avant la suppression effective.
+func (s *Server) deleteHelpThread(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if err := s.examPrepUC.DeleteHelpThread(r.Context(), claims, id); err != nil {
+		middleware.MapDomainError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Fil supprimé"})
+}
+
 // listHelpMessages — GET /api/exam-prep/help/{id}/messages
 func (s *Server) listHelpMessages(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
