@@ -469,6 +469,22 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // AFFECTATIONS-FIX-A5 : validation enum typeSeance/statut sur PATCH.
+        // Avant, le handler acceptait n'importe quelle valeur → l'UPDATE
+        // échouait côté DB (invalid_enum_value) avec un message générique.
+        // Désormais on valide côté handler avec un message guidé, cohérent
+        // avec createAffectation.
+        validTypes := map[string]bool{"CM": true, "TD": true, "TP": true}
+        validStatuts := map[string]bool{"PROVISOIRE": true, "VALIDEE": true, "PUBLIEE": true}
+        if input.TypeSeance != nil && !validTypes[*input.TypeSeance] {
+                writeJSONError(w, http.StatusBadRequest, "typeSeance invalide (valeurs acceptées: CM, TD, TP)")
+                return
+        }
+        if input.Statut != nil && !validStatuts[*input.Statut] {
+                writeJSONError(w, http.StatusBadRequest, "statut invalide (valeurs acceptées: PROVISOIRE, VALIDEE, PUBLIEE)")
+                return
+        }
+
         var setClauses []string
         var args []any
         argIdx := 1

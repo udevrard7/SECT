@@ -213,12 +213,21 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/affectations (enseignant↔UE) — BUGFIX (PROG-ACAD-2)
+                // AFFECTATIONS-FIX-A4 : séparation GET (lecteur = ENSEIGNANT via
+                // RLS auto-scoping, RESPONSABLE, ADMIN) vs mutations (réservées
+                // RESPONSABLE+ADMIN). Avant, RequireAuth seul → un étudiant
+                // authentifié pouvait appeler POST/PATCH/DELETE (la RLS
+                // rejetait l'INSERT/UPDATE, mais on évite le spam + on log
+                // proprement les accès non autorisés).
                 r.Route("/api/affectations", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listAffectations)
-                        r.Post("/", s.createAffectation)
-                        r.Patch("/{id}", s.updateAffectation)
-                        r.Delete("/{id}", s.deleteAffectation)
+                        r.Group(func(r chi.Router) {
+                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+                                r.Post("/", s.createAffectation)
+                                r.Patch("/{id}", s.updateAffectation)
+                                r.Delete("/{id}", s.deleteAffectation)
+                        })
                 })
 
                 // /api/annees-academiques
