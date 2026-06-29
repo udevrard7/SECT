@@ -49,8 +49,37 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
+        // retournées pour alimenter le filtre filière côté frontend. Avant, le
+        // handler retournait seulement {epreuves: [...]} → le frontend attendait
+        // data.filieres → [] → le filtre filière n'était jamais affiché.
+        type filiereOpt struct {
+                ID   string `json:"id"`
+                Nom  string `json:"nom"`
+                Code string `json:"code,omitempty"`
+        }
+        filiereMap := map[string]filiereOpt{}
+        for _, e := range epreuves {
+                if e.Filiere != nil && e.Filiere.ID != "" {
+                        if _, exists := filiereMap[e.Filiere.ID]; !exists {
+                                filiereMap[e.Filiere.ID] = filiereOpt{
+                                        ID:   e.Filiere.ID,
+                                        Nom:  e.Filiere.Nom,
+                                        Code: e.Filiere.Code,
+                                }
+                        }
+                }
+        }
+        filieres := make([]filiereOpt, 0, len(filiereMap))
+        for _, f := range filiereMap {
+                filieres = append(filieres, f)
+        }
+
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{"epreuves": epreuves})
+        json.NewEncoder(w).Encode(map[string]any{
+                "epreuves": epreuves,
+                "filieres": filieres,
+        })
 }
 
 // getEpreuve — GET /api/epreuves/{id}

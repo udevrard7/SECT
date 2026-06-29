@@ -142,22 +142,90 @@ func (r *EpreuveRepository) FindByID(ctx context.Context, id string) (*domain.Ep
                 }
                 // P1-E5 : init Sessions à [] (évite null → crash frontend)
                 ep.Sessions = []domain.SessionRef{}
-                // P1-E5 : compute QuestionCount + TotalPoints depuis contenu
+                // EVALUATIONS-FIX-EV4 : peupler Questions depuis contenu JSON +
+                // compute QuestionCount + TotalPoints. Avant, getEpreuve retournait
+                // questions:[] (non hydraté) → dialog détail vide. Désormais on parse
+                // contenu.questions et on crée des EpreuveQuestion avec QuestionRef.
                 if ep.Contenu != nil && len(ep.Contenu) > 0 {
                         var contenu struct {
                                 Questions []struct {
-                                        Bareme float64 `json:"bareme"`
+                                        ID           string  `json:"id"`
+                                        Type         string  `json:"type"`
+                                        Enonce       string  `json:"enonce"`
+                                        Bareme       float64 `json:"bareme"`
+                                        Difficulte   string  `json:"difficulte"`
+                                        Explication  string  `json:"explication"`
                                 } `json:"questions"`
                         }
                         if json.Unmarshal(ep.Contenu, &contenu) == nil {
                                 qc := len(contenu.Questions)
                                 ep.QuestionCount = &qc
                                 tp := 0.0
-                                for _, q := range contenu.Questions {
+                                eqs := make([]domain.EpreuveQuestion, 0, qc)
+                                for i, q := range contenu.Questions {
                                         tp += q.Bareme
+                                        eqs = append(eqs, domain.EpreuveQuestion{
+                                                ID:         fmt.Sprintf("%s-q%d", ep.ID, i+1),
+                                                EpreuveID:  ep.ID,
+                                                QuestionID: q.ID,
+                                                Bareme:     q.Bareme,
+                                                Ordre:      i + 1,
+                                                Question: &domain.QuestionRef{
+                                                        ID:          q.ID,
+                                                        Type:        domain.TypeQuestion(q.Type),
+                                                        Enonce:      q.Enonce,
+                                                        Difficulte:  domain.Difficulte(q.Difficulte),
+                                                },
+                                        })
                                 }
+                                ep.Questions = eqs
                                 if tp > 0 {
                                         ep.TotalPoints = &tp
+                                }
+                        }
+                }
+                // EVALUATIONS-FIX-EV4 : hydrater les sessions (toutes les
+                // SessionPassation de cette épreuve). Avant, Sessions restait [].
+                sessRows, err := tx.Query(ctx, `
+                        SELECT sp."id", sp."epreuveId", sp."etudiantId", sp."statut", sp."dateDebut", sp."dateFin", sp."score",
+                               u."id", u."name", u."email",
+                               r."id", r."scoreFinal", r."totalPossible", r."detailParQuestion"
+                        FROM "SessionPassation" sp
+                        LEFT JOIN "User" u ON u."id" = sp."etudiantId"
+                        LEFT JOIN "Resultat" r ON r."sessionId" = sp."id"
+                        WHERE sp."epreuveId" = $1
+                        ORDER BY sp."createdAt" DESC
+                `, id)
+                if err == nil {
+                        defer sessRows.Close()
+                        for sessRows.Next() {
+                                sr := domain.SessionRef{}
+                                var epreuveID string
+                                var etuID, etuName, etuEmail *string
+                                var rID *string
+                                var rScoreFinal, rTotalPossible *float64
+                                var rDetail *string
+                                if err := sessRows.Scan(
+                                        &sr.ID, &epreuveID, &sr.EtudiantID, &sr.Statut, &sr.DateDebut, &sr.DateFin, &sr.Score,
+                                        &etuID, &etuName, &etuEmail,
+                                        &rID, &rScoreFinal, &rTotalPossible, &rDetail,
+                                ); err == nil {
+                                        if etuID != nil && etuName != nil {
+                                                sr.Etudiant = &domain.UserRef{
+                                                        ID:    *etuID,
+                                                        Name:  *etuName,
+                                                        Email: derefStr(etuEmail),
+                                                }
+                                        }
+                                        if rID != nil && rScoreFinal != nil {
+                                                sr.Resultat = &domain.ResultatRef{
+                                                        ID:                *rID,
+                                                        ScoreFinal:        *rScoreFinal,
+                                                        TotalPossible:     derefFloat(rTotalPossible),
+                                                        DetailParQuestion: derefStr(rDetail),
+                                                }
+                                        }
+                                        ep.Sessions = append(ep.Sessions, sr)
                                 }
                         }
                 }
@@ -239,6 +307,16 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 if params.EtudiantID != "" {
                         where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "SessionPassation" sp WHERE sp."epreuveId" = "Epreuve"."id" AND sp."etudiantId" = $%d)`, argIdx))
                         args = append(args, params.EtudiantID)
+                        argIdx++
+                }
+                // EVALUATIONS-FIX-EV2 (CRITICAL) : ResponsableID — filtrer par les
+                // filières dont le responsable est le user. Avant, ResponsableID
+                // était passé par handler+usecase mais ignoré par le repo → le
+                // responsable voyait toutes les épreuves de son établissement
+                // (via RLS) au lieu de seulement celles de ses filières.
+                if params.ResponsableID != "" {
+                        where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Filiere" f WHERE f."id" = "Epreuve"."filiereId" AND f."responsableId" = $%d)`, argIdx))
+                        args = append(args, params.ResponsableID)
                         argIdx++
                 }
 
@@ -347,7 +425,12 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 // BUGFIX (EPREUVES-SESSIONS-1): hydrater les sessions aussi pour
                 // l'enseignant (vue /epreuves onglet Sessions) et pas seulement
                 // pour l'étudiant (vue /mes-epreuves).
-                if (params.EtudiantID != "" || params.EnseignantID != "") && len(result) > 0 {
+                // EVALUATIONS-FIX-EV1 (CRITICAL) : hydrater les sessions aussi pour
+                // le responsable (vue /evaluations). Avant, seulement EtudiantID ou
+                // EnseignantID déclenchait l'hydratation → le responsable voyait
+                // sessions:[] pour toutes les épreuves → "Aucun participant" sur
+                // toutes les cartes, stats Alertes=0, dialog Résultats vide.
+                if (params.EtudiantID != "" || params.EnseignantID != "" || params.ResponsableID != "") && len(result) > 0 {
                         epreuveIDs := make([]string, len(result))
                         for i, e := range result {
                                 epreuveIDs[i] = e.ID
