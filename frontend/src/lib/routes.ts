@@ -533,6 +533,8 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // ABONNEMENTS-FIX-A5 : pages SaaS réservées ADMIN.
   abonnements: ['ADMIN'],
   facturation: ['ADMIN'],
+  // ACCES-ETABLISSEMENTS-FIX-AE2 : page réservée ADMIN (gestion des autorisations).
+  'acces-etablissements': ['ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)

@@ -199,13 +199,18 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/etablissement-access
+                // ACCES-ETABLISSEMENTS-FIX-AE3 : RequireRole("ADMIN", "RESPONSABLE") pour
+                // défense en profondeur (le usecase gère les rôles en interne, mais un
+                // ENSEIGNANT/ETUDIANT authentifié ne doit même pas atteindre le usecase).
                 r.Route("/api/etablissement-access", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN", "RESPONSABLE"))
                         r.Get("/", s.listAccess)
                         r.Post("/", s.createAccess)
                         r.Get("/check", s.checkAccess)
                         r.Get("/authorized-etablissements", s.authorizedEtablissements)
                         r.Patch("/{id}", s.updateAccess)
+                        // ACCES-ETABLISSEMENTS-FIX-AE1 : annulation d'une demande EN_ATTENTE.
+                        r.Delete("/{id}", s.deleteAccess)
                 })
 
                 // /api/filieres
