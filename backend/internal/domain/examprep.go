@@ -318,6 +318,12 @@ type ExamPrepRepository interface {
 	GetDocumentContent(ctx context.Context, documentID string) (string, error)
 	// HIGHLIGHT-FLASHCARD-1 — DocumentReader: fetch a single document for the reader modal.
 	GetDocumentForReader(ctx context.Context, documentID string) (*Document, error)
+	// CheckDocumentAccess vérifie qu'un document est accessible à un étudiant
+	// (le document appartient à une UE de sa filière + niveau).
+	// EXAM-PREP-READER-SECURITY-FIX-1 : empêche un étudiant de lire un document
+	// d'une autre filière/niveau en forçant un documentID.
+	// Retourne true si l'accès est autorisé, false sinon (pas d'erreur).
+	CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error)
 
 	// DOC-ANALYZER-2 : méthodes batch pour enrichir la liste de documents
 	// (chapitres + UE + propriétaire). RLS désactivé : métadonnées non

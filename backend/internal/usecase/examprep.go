@@ -157,6 +157,29 @@ func (uc *ExamPrepUseCase) GetDocumentContentForQA(ctx context.Context, claims d
 	if documentID == "" {
 		return "", &domain.ValidationError{Field: "documentId", Message: "requis"}
 	}
+
+	// EXAM-PREP-READER-SECURITY-FIX-1 : un étudiant ne peut consulter le
+	// contenu que des documents de sa filière + niveau.
+	if claims.Role == string(domain.RoleEtudiant) {
+		if claims.FiliereID == "" {
+			return "", &domain.ValidationError{Field: "filiereId", Message: "filière requise"}
+		}
+		niveau, err := uc.repo.GetUserNiveau(ctx, claims.UserID)
+		if err != nil {
+			return "", fmt.Errorf("get user niveau: %w", err)
+		}
+		if niveau == "" {
+			niveau = "L1"
+		}
+		allowed, err := uc.repo.CheckDocumentAccess(ctx, documentID, claims.FiliereID, niveau)
+		if err != nil {
+			return "", fmt.Errorf("check document access: %w", err)
+		}
+		if !allowed {
+			return "", &domain.UnauthorizedError{Message: "vous n'avez pas accès à ce document"}
+		}
+	}
+
 	return uc.repo.GetDocumentContent(ctx, documentID)
 }
 
@@ -169,6 +192,30 @@ func (uc *ExamPrepUseCase) GetDocumentForReader(ctx context.Context, claims db.S
 	if documentID == "" {
 		return nil, &domain.ValidationError{Field: "documentId", Message: "requis"}
 	}
+
+	// EXAM-PREP-READER-SECURITY-FIX-1 : un étudiant ne peut lire que les
+	// documents de sa filière + niveau (uploadés par ses enseignants).
+	// L'enseignant n'est pas restreint (il peut lire ses propres documents).
+	if claims.Role == string(domain.RoleEtudiant) {
+		if claims.FiliereID == "" {
+			return nil, &domain.ValidationError{Field: "filiereId", Message: "filière requise"}
+		}
+		niveau, err := uc.repo.GetUserNiveau(ctx, claims.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("get user niveau: %w", err)
+		}
+		if niveau == "" {
+			niveau = "L1"
+		}
+		allowed, err := uc.repo.CheckDocumentAccess(ctx, documentID, claims.FiliereID, niveau)
+		if err != nil {
+			return nil, fmt.Errorf("check document access: %w", err)
+		}
+		if !allowed {
+			return nil, &domain.UnauthorizedError{Message: "vous n'avez pas accès à ce document"}
+		}
+	}
+
 	return uc.repo.GetDocumentForReader(ctx, documentID)
 }
 
