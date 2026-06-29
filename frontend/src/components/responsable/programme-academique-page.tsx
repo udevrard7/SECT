@@ -68,6 +68,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
+import { AnneesAcademiquesSection } from './annees-academiques-section'
 
 // ─── Types ───
 
@@ -872,6 +873,12 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
               </Card>
             )}
           </div>
+
+          {/* ─── Années académiques ─── */}
+          {/* PROG-ACAD-CRITICAL-FIX-1 (BUG #10) : CRUD complet des années */}
+          {etabId && (
+            <AnneesAcademiquesSection etablissementId={etabId} />
+          )}
         </div>
       )}
 
