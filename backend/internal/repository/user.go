@@ -484,30 +484,31 @@ func isUniqueViolation(err error) bool {
         return strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key")
 }
 
-// CountDependencies compte les sessions, réponses et soumissions d'un user
-// avant suppression (ETUDIANTS-FIX-E4). Best-effort : désactive RLS pour
-// compter même si le user n'est pas dans le même établissement que le caller
-// (le checkOwnership a déjà validé l'accès côté usecase).
-func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (sessions, reponses, soumissions int, err error) {
+// CountDependencies compte les sessions, réponses, soumissions (dép étudiant)
+// + épreuves, devoirs, affectations, enseignantFilieres (dép enseignant) d'un
+// user avant suppression (ETUDIANTS-FIX-E4 + ENSEIGNANTS-FIX-EN3).
+// Best-effort : désactive RLS pour compter même si le user n'est pas dans le
+// même établissement que le caller (le checkOwnership a déjà validé l'accès
+// côté usecase). Les tables enseignant peuvent ne pas exister ou avoir un
+// schéma différent — best-effort (0 si erreur).
+func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (sessions, reponses, soumissions, epreuves, devoirs, affectations, enseignantFilieres int, err error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
-                return 0, 0, 0, fmt.Errorf("begin tx: %w", err)
+                return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
 
         if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return 0, 0, 0, fmt.Errorf("disable rls: %w", err)
+                return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("disable rls: %w", err)
         }
 
-        // Sessions (SessionPassation où etudiantId = userID)
+        // Sessions (SessionPassation où etudiantId = userID) — dép étudiant
         if err := tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "etudiantId" = $1`, userID).Scan(&sessions); err != nil {
-                return 0, 0, 0, fmt.Errorf("count sessions: %w", err)
+                return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("count sessions: %w", err)
         }
         // ETUDIANTS-FIX-E10 : Réponses — la table Reponse n'a pas de colonne
         // etudiantId directement, elle référence sessionId (qui elle a etudiantId).
-        // Jointure via SessionPassation. Avant ce fix, la query crashait
-        // systématiquement (column "etudiantId" does not exist) → reponses=0
-        // toujours (best-effort masquait le bug).
+        // Jointure via SessionPassation.
         if err := tx.QueryRow(ctx, `
                 SELECT count(*) FROM "Reponse" r
                 JOIN "SessionPassation" s ON s."id" = r."sessionId"
@@ -515,13 +516,30 @@ func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (
         `, userID).Scan(&reponses); err != nil {
                 reponses = 0
         }
-        // Soumissions (Soumission où etudiantId = userID)
+        // Soumissions (Soumission où etudiantId = userID) — dép étudiant
         if err := tx.QueryRow(ctx, `SELECT count(*) FROM "Soumission" WHERE "etudiantId" = $1`, userID).Scan(&soumissions); err != nil {
                 soumissions = 0
         }
+        // ENSEIGNANTS-FIX-EN3 : Déps enseignant
+        // Épreuves (Epreuve où enseignantId = userID, non supprimées)
+        if err := tx.QueryRow(ctx, `SELECT count(*) FROM "Epreuve" WHERE "enseignantId" = $1 AND "deletedAt" IS NULL`, userID).Scan(&epreuves); err != nil {
+                epreuves = 0
+        }
+        // Devoirs (Devoir où enseignantId = userID)
+        if err := tx.QueryRow(ctx, `SELECT count(*) FROM "Devoir" WHERE "enseignantId" = $1`, userID).Scan(&devoirs); err != nil {
+                devoirs = 0
+        }
+        // Affectations (Affectation où enseignantId = userID — enseignant↔UE)
+        if err := tx.QueryRow(ctx, `SELECT count(*) FROM "Affectation" WHERE "enseignantId" = $1`, userID).Scan(&affectations); err != nil {
+                affectations = 0
+        }
+        // EnseignantFilieres (EnseignantFiliere où enseignantId = userID — enseignant↔filière+niveau)
+        if err := tx.QueryRow(ctx, `SELECT count(*) FROM "EnseignantFiliere" WHERE "enseignantId" = $1`, userID).Scan(&enseignantFilieres); err != nil {
+                enseignantFilieres = 0
+        }
 
         if err := tx.Commit(ctx); err != nil {
-                return 0, 0, 0, fmt.Errorf("commit: %w", err)
+                return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("commit: %w", err)
         }
-        return sessions, reponses, soumissions, nil
+        return sessions, reponses, soumissions, epreuves, devoirs, affectations, enseignantFilieres, nil
 }

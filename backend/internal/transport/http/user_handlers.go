@@ -254,17 +254,28 @@ func (s *Server) getUserDependencies(w http.ResponseWriter, r *http.Request) {
 
         // Compter les dépendances (best-effort, RLS off)
         deps := s.userUC.CountUserDependencies(r.Context(), id)
-        canDelete := deps.Sessions == 0 && deps.Reponses == 0 && deps.Soumissions == 0
+        // ENSEIGNANTS-FIX-EN3 : canDelete basé sur TOUTES les deps (étudiant +
+        // enseignant). Si l'user a des épreuves/affectations, canDelete=false.
+        canDelete := deps.Sessions == 0 && deps.Reponses == 0 && deps.Soumissions == 0 &&
+                deps.Epreuves == 0 && deps.Devoirs == 0 && deps.Affectations == 0 && deps.EnseignantFilieres == 0
 
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
+                // Déps étudiant
                 "sessions":    deps.Sessions,
                 "reponses":    deps.Reponses,
                 "soumissions": deps.Soumissions,
+                // Déps enseignant (EN3)
+                "epreuves":            deps.Epreuves,
+                "devoirs":             deps.Devoirs,
+                "affectations":        deps.Affectations,
+                "enseignantFilieres":  deps.EnseignantFilieres,
+                // Global
                 "canDelete":   canDelete,
                 "userId":      id,
                 "userName":    user.Name,
                 "userEmail":   user.Email,
+                "userRole":    string(user.Role),
         })
 }
 

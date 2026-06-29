@@ -239,11 +239,20 @@ func (uc *UserUseCase) Update(ctx context.Context, claims db.SessionClaims, id s
 }
 
 // DeletedDependencies contient les comptes d'entités liées à un user avant
-// suppression (pour transparence — ETUDIANTS-FIX-E4).
+// suppression (pour transparence — ETUDIANTS-FIX-E4 + ENSEIGNANTS-FIX-EN3).
+// EN3 : étendu pour inclure les deps pertinentes pour les enseignants
+// (épreuves, devoirs, affectations UE, affectations filière). Le frontend
+// affiche seulement les champs pertinents selon le rôle du user supprimé.
 type DeletedDependencies struct {
-        Sessions   int `json:"sessions"`
-        Reponses   int `json:"reponses"`
+        // Déps étudiant (ETUDIANT)
+        Sessions    int `json:"sessions"`
+        Reponses    int `json:"reponses"`
         Soumissions int `json:"soumissions"`
+        // Déps enseignant (ENSEIGNANT) — EN3
+        Epreuves            int `json:"epreuves"`
+        Devoirs             int `json:"devoirs"`
+        Affectations        int `json:"affectations"`        // Affectation (enseignant↔UE)
+        EnseignantFilieres  int `json:"enseignantFilieres"` // EnseignantFiliere (enseignant↔filière+niveau)
 }
 
 // Delete supprime un utilisateur (hard delete avec cascade).
@@ -277,7 +286,9 @@ func (uc *UserUseCase) Delete(ctx context.Context, claims db.SessionClaims, id s
         return deps, nil
 }
 
-// CountUserDependencies compte les sessions, réponses et soumissions d'un user.
+// CountUserDependencies compte les sessions, réponses, soumissions (dép étudiant)
+// + épreuves, devoirs, affectations, enseignantFilieres (dép enseignant) d'un
+// user avant suppression (ETUDIANTS-FIX-E4 + ENSEIGNANTS-FIX-EN3).
 // Best-effort : retourne un struct avec des 0 si les queries échouent (la RLS
 // peut bloquer si le user n'est pas dans le même établissement, mais le
 // checkOwnership a déjà validé l'accès avant).
@@ -289,10 +300,14 @@ func (uc *UserUseCase) CountUserDependencies(ctx context.Context, userID string)
         if !ok {
                 return deps
         }
-        sessions, reponses, soumissions, _ := counter.CountDependencies(ctx, userID)
+        sessions, reponses, soumissions, epreuves, devoirs, affectations, enseignantFilieres, _ := counter.CountDependencies(ctx, userID)
         deps.Sessions = sessions
         deps.Reponses = reponses
         deps.Soumissions = soumissions
+        deps.Epreuves = epreuves
+        deps.Devoirs = devoirs
+        deps.Affectations = affectations
+        deps.EnseignantFilieres = enseignantFilieres
         return deps
 }
 
