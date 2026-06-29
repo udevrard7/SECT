@@ -7827,3 +7827,29 @@ Tous derrière `middleware.RequireAuth`. Rôle enforcement au niveau usecase (pa
 
 Le pattern à appliquer est **déjà documenté et éprouvé** (FILIERES-CRITICAL-FIX-1 + PROG-ACAD-1) : LEFT JOIN + subqueries + populate les refs + exposer `dependencies` + architecture en couches (repo → usecase → handler) + `MapDomainError` pour propager les erreurs. La refonte du module `/programme-academique` peut s'inspirer directement de `repository/filiere.go` + `usecase/academique.go` (FiliereUseCase) + `transport/http/academique_handlers.go` (handlers Filiere) comme templates.
 
+---
+Task ID: PROG-ACAD-CRITICAL-VERIFY-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Vérifier l'état des 2 bugs CRITICAL (BUG #2 + #3) du module programme-académique après le commit 8234a38 de l'utilisateur.
+
+Work Log:
+- Pull fast-forward `origin/main` → HEAD passé de `6aa5eef` à `8234a38` (`feat(mes-etudiants): P1 — enrichir enseignantEtudiantsReal (M2-M7) + fix build affectation`). Le commit modifie `affectation_handlers.go` (1078 lignes) et `stub_handlers_real3.go` (1261 lignes).
+- Lecture du handler `createEnseignantFilieres` (`academique_handlers.go` lignes 412-494) : **BUG #2 CORRIGÉ**. Le handler décode désormais un body hybride `{assignments: [...], enseignantId, filiereId, niveau}`. Branche bulk (lignes 443-473) : boucle sur `body.Assignments`, appelle `s.efUC.Create(ctx, claims, input)` pour chaque entrée, collecte `created`/`errs`, retourne 201 (tout OK) / 207 MultiStatus (partiel) / 400 (tout échoué) avec `{assignments: [...], errors: [...]}`. Branche single (lignes 477-493) préservée pour rétro-compat.
+- Lecture des 4 handlers `/api/affectations` : **BUG #3 CORRIGÉ**. Tous utilisent `err := appdb.WithTx(...)` (plus aucun `_ = appdb.WithTx`). `listAffectations` (ligne 84) : switch FK→400 / unique→409 / default→500. `createAffectation` (ligne 373) : mapping granulaire (FK enseignantId→400 "Enseignant introuvable", FK ueId→400 "Unité d'enseignement introuvable", unique→409 "existe déjà", enum→400, default→500). `updateAffectation` (ligne 500) et `deleteAffectation` (ligne 558) : même pattern. Validation enum `typeSeance` (CM/TD/TP) et `statut` (PROVISOIRE/CONFIRME/ANNULE) ajoutée (BUG #11). Default `anneeUniversitaire` calculé dynamiquement (BUG #12) au lieu de "2024-2025" hardcodé.
+- Bonus découvert : `listAffectations` SELECT étendu avec `ue.niveaux, f.id, f.nom, f.code` + LEFT JOIN Filiere + batch query `filieresSuppl` (lignes 217+) → **BUG #5 aussi corrigé** dans le même commit.
+- Vérification frontend `enseignants-page.tsx` : aligné avec le nouveau contrat. Lignes 578-584 (POST bulk après création user), 726-730 (POST bulk 1 élément dialog), 596-602 (gestion 207 partial + `errors` array + toast warning "Affectations partielles"). Types `domain.CreateAssignmentInput` (JSON tags `enseignantId/filiereId/niveau`) et signature `efUC.Create(ctx, claims, input)` cohérents.
+- Vérification déploiement production :
+  - Render backend `https://sect-s1pb.onrender.com/health` → 200 `{"service":"sect-api","status":"ok","version":"0.2.0"}`
+  - `/api/enseignant-filieres` (sans auth) → 401 `{"error":"authentication required"}` (route enregistrée, middleware auth actif)
+  - `/api/affectations` (sans auth) → 401 (route enregistrée)
+  - Vercel frontend `https://sect-app.vercel.app/` → 200 ; `/login` → 200
+- Vérification DB Neon (via bun+pg) : `Affectation` = 15 rows, 2 policies RLS (`Affectation_select`, `Affectation_modify_responsable`). `EnseignantFiliere` = 2 rows. ⚠️ **Aucune contrainte unique** sur `Affectation` → le handling 409 Conflict du fix BUG #3 est défensif correct mais ne se déclenchera jamais (duplicates possibles sur `enseignantId/ue/typeSeance/groupe/annee`). Non bloquant — à noter pour un futur schéma migration si besoin d'unicité.
+
+Stage Summary:
+- **BUG #2 (CRITICAL)** : ✅ CORRIGÉ dans commit `8234a38`. Handler `createEnseignantFilieres` accepte bulk `{assignments:[...]}` + single (rétro-compat). Retourne 201/207/400 selon le résultat. Frontend aligné (gestion 207 + `errors`).
+- **BUG #3 (CRITICAL)** : ✅ CORRIGÉ dans commit `8234a38`. Les 4 handlers `/api/affectations` propagent désormais les erreurs SQL via `err := appdb.WithTx` + switch PG error codes (FK/unique/enum/generic). Validation enum + default `anneeUniversitaire` dynamique inclus (BUG #11 + #12 en bonus).
+- **BUG #5 (HIGH)** : ✅ CORRIGÉ en bonus dans le même commit (SELECT étendu `niveaux`/`filiere`/`filieresSuppl`).
+- **Déploiement vérifié** : Render backend healthy + routes enregistrées (401 sans auth), Vercel frontend 200, DB Neon cohérente (15 Affectation + 2 EnseignantFiliere + 2 policies RLS).
+- **Follow-up optionnel** : aucune contrainte unique sur `Affectation` → duplicates possibles. Si l'unicité `(enseignantId, uniteEnseignementId, typeSeance, groupe, anneeUniversitaire)` est souhaitée, créer une migration `000013_add_affectation_unique.up.sql` avec `CREATE UNIQUE INDEX`. Non urgent.
+- **Bugs HIGH restants** : #1 (endpoint `GET /unites-enseignement/{id}/dependencies` manquant) + #9/#10 (CRUD AnneeAcademique backend incomplet + page frontend manquante). BUG #5 déjà réglé.
+
