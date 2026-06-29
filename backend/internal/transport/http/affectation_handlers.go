@@ -111,12 +111,21 @@ func (s *Server) listAffectations(w http.ResponseWriter, r *http.Request) {
                         argIdx++
                 }
                 if filiereID != "" {
-                        where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "UniteEnseignement" ue3 WHERE ue3."id" = a."uniteEnseignementId" AND ue3."filiereId" = $%d)`, argIdx))
+                        // AFFECTATIONS-FIX-A9 : inclure UE multi-filières (N:N via
+                        // UniteEnseignementFiliere). Avant, seul ue."filiereId" était
+                        // checké → une UE partagée INFO+SEG n'était pas retournée
+                        // si on filtrait sur SEG (la filière supplémentaire).
+                        where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "UniteEnseignement" ue3 WHERE ue3."id" = a."uniteEnseignementId" AND (ue3."filiereId" = $%d OR EXISTS (SELECT 1 FROM "UniteEnseignementFiliere" uef3 WHERE uef3."uniteEnseignementId" = ue3."id" AND uef3."filiereId" = $%d)))`, argIdx, argIdx))
                         args = append(args, filiereID)
                         argIdx++
                 }
                 if niveau != "" {
-                        where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "UniteEnseignement" ue4 WHERE ue4."id" = a."uniteEnseignementId" AND ue4."niveau" = $%d)`, argIdx))
+                        // AFFECTATIONS-FIX-A8 : inclure UE multi-niveaux (niveaux JSON).
+                        // Avant, seul ue."niveau" était checké → une UE avec
+                        // niveaux='["L1","L2"]' et niveau="L2" n'était pas retournée
+                        // si on filtrait sur L1. Désormais on check niveau exact OU
+                        // présence dans le JSON array niveaux.
+                        where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "UniteEnseignement" ue4 WHERE ue4."id" = a."uniteEnseignementId" AND (ue4."niveau" = $%d OR ue4."niveaux"::jsonb ? $%d::text))`, argIdx, argIdx))
                         args = append(args, niveau)
                         argIdx++
                 }
@@ -520,16 +529,33 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
         setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
         args = append(args, id)
 
+        // AFFECTATIONS-FIX-A6 : RETURNING étendu à tous les champs modifiables.
+        // Avant, seul {id, statut} était retourné → le frontend devait refetch
+        // la liste complète après chaque update pour mettre à jour sa UI.
+        // Désormais on retourne tous les champs pour MAJ locale sans refetch.
         var row struct {
                 ID                  string
+                EnseignantID        string
+                UniteEnseignementID string
+                TypeSeance          string
+                Groupe              *string
+                VolumeHeures        float64
+                AnneeUniversitaire  string
                 Statut              string
+                Commentaire         *string
         }
         err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
                 return tx.QueryRow(r.Context(), fmt.Sprintf(`
                         UPDATE "Affectation" SET %s WHERE "id" = $%d
-                        RETURNING "id", "statut"::text
+                        RETURNING "id", "enseignantId", "uniteEnseignementId",
+                                  "typeSeance"::text, "groupe", "volumeHeures",
+                                  "anneeUniversitaire", "statut"::text, "commentaire"
                 `, strings.Join(setClauses, ", "), argIdx), args...,
-                ).Scan(&row.ID, &row.Statut)
+                ).Scan(
+                        &row.ID, &row.EnseignantID, &row.UniteEnseignementID,
+                        &row.TypeSeance, &row.Groupe, &row.VolumeHeures,
+                        &row.AnneeUniversitaire, &row.Statut, &row.Commentaire,
+                )
         })
 
         // PROG-ACAD-CRITICAL-FIX-1 : ne plus avaler l'erreur SQL (BUG #3).
@@ -562,8 +588,15 @@ func (s *Server) updateAffectation(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
                 "affectation": map[string]any{
-                        "id":     row.ID,
-                        "statut": row.Statut,
+                        "id":                  row.ID,
+                        "enseignantId":        row.EnseignantID,
+                        "uniteEnseignementId": row.UniteEnseignementID,
+                        "typeSeance":          row.TypeSeance,
+                        "groupe":              row.Groupe,
+                        "volumeHeures":        row.VolumeHeures,
+                        "anneeUniversitaire":  row.AnneeUniversitaire,
+                        "statut":              row.Statut,
+                        "commentaire":         row.Commentaire,
                 },
         })
 }
@@ -604,6 +637,14 @@ func (s *Server) deleteAffectation(w http.ResponseWriter, r *http.Request) {
                 default:
                         writeJSONError(w, http.StatusInternalServerError, "Erreur lors de la suppression: "+errMsg)
                 }
+                return
+        }
+
+        // AFFECTATIONS-FIX-A7 : si aucune ligne supprimée, retourner 404 au lieu
+        // de 200 {deleted:false}. Avant, le frontend voyait un 200 et affichait
+        // un toast succès même si l'affectation n'existait pas (déjà supprimée).
+        if !deleted {
+                writeJSONError(w, http.StatusNotFound, "Affectation introuvable (déjà supprimée ou inaccessible)")
                 return
         }
 
