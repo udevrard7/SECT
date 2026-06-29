@@ -1311,21 +1311,8 @@ func (s *Server) alertesList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// surveillanceStats — GET /api/surveillance/stats
-func (s *Server) surveillanceStats(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims.UserID == "" {
-		writeJSONError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"sessionsActives": 0,
-		"alertes":         0,
-		"suspicious":      []any{},
-	})
-}
+// surveillanceStats — stub supprimé (SURVEILLANCE-FIX-2 S11).
+// Remplacé par surveillanceStatsV2 dans surveillance_handlers_v2.go.
 
 // corbeilleList — GET /api/corbeille
 func (s *Server) corbeilleList(w http.ResponseWriter, r *http.Request) {

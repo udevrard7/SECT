@@ -425,14 +425,20 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/alertes", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.alertesListReal)
+                        // SURVEILLANCE-FIX-2 S7 : route PATCH manquante (marquer lue / résoudre).
+                        r.Patch("/{id}", s.alerteUpdate)
                 })
 
+                // SURVEILLANCE-FIX-2 S13 : RequireRole ENSEIGNANT/ADMIN/RESPONSABLE
+                // (avant : RequireAuth seul → un étudiant pouvait lire les sessions).
                 r.Route("/api/surveillance", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE"))
                         r.Get("/", s.surveillanceListSessions)
                         r.Get("/stats", s.surveillanceStatsV2)
                         // SSE-STREAM-1 : Server-Sent Events pour surveillance temps réel
                         r.Get("/stream", s.surveillanceStream) // SSE endpoint
+                        // SURVEILLANCE-FIX-2 S2 : route POST /{id}/flag manquante.
+                        r.Post("/{id}/flag", s.surveillanceFlagSession)
                 })
 
                 r.Route("/api/corbeille", func(r chi.Router) {

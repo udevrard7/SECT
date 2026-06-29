@@ -100,71 +100,9 @@ func (s *Server) securitySettingsGetReal(w http.ResponseWriter, r *http.Request)
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 2. GET /api/surveillance/stats — SessionPassation (34 rows en DB)
+// 2. GET /api/surveillance/stats — stub supprimé (SURVEILLANCE-FIX-2 S11).
+// Remplacé par surveillanceStatsV2 dans surveillance_handlers_v2.go.
 // ──────────────────────────────────────────────────────────────────────────
-
-func (s *Server) surveillanceStatsReal(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims.UserID == "" {
-		writeJSONError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
-	type suspItem struct {
-		SessionID    string  `json:"sessionId"`
-		EtudiantNom  string  `json:"etudiantNom"`
-		EpreuveTitre string  `json:"epreuveTitre"`
-		Alertes      int     `json:"alertes"`
-		Score        *float64 `json:"score,omitempty"`
-	}
-
-	stats := map[string]any{
-		"sessionsActives": 0,
-		"alertes":         0,
-		"suspicious":      []suspItem{},
-	}
-
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-		var actives, alertes int
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "SessionPassation" WHERE statut = 'EN_COURS'`).Scan(&actives)
-		_ = tx.QueryRow(r.Context(), `SELECT COALESCE(sum("alertes"), 0) FROM "SessionPassation" WHERE "alertes" > 0`).Scan(&alertes)
-		stats["sessionsActives"] = actives
-		stats["alertes"] = alertes
-
-		// Sessions suspectes (alertes > 0)
-		rows, err := tx.Query(r.Context(), `
-			SELECT s."id", u."name", e."titre", s."alertes", s."score"
-			FROM "SessionPassation" s
-			LEFT JOIN "User" u ON u."id" = s."etudiantId"
-			LEFT JOIN "Epreuve" e ON e."id" = s."epreuveId"
-			WHERE s."alertes" > 0
-			ORDER BY s."alertes" DESC
-			LIMIT 20
-		`)
-		if err != nil {
-			return nil
-		}
-		defer rows.Close()
-		susp := []suspItem{}
-		for rows.Next() {
-			si := suspItem{}
-			if err := rows.Scan(&si.SessionID, &si.EtudiantNom, &si.EpreuveTitre, &si.Alertes, &si.Score); err == nil {
-				if si.EtudiantNom == "" {
-					si.EtudiantNom = "—"
-				}
-				if si.EpreuveTitre == "" {
-					si.EpreuveTitre = "—"
-				}
-				susp = append(susp, si)
-			}
-		}
-		stats["suspicious"] = susp
-		return nil
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // 3. GET /api/etudiants — User (ETUDIANT) avec filiere + niveau
