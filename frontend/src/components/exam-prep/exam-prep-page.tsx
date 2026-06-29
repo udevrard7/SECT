@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap, FileText, BookOpen, ArrowLeft, RefreshCw,
   AlertCircle, Eye, Trophy, LayoutGrid, List, Search, X,
+  ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +34,9 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { EntityCard, PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 
@@ -77,11 +81,14 @@ export function ExamPrepPage() {
   const [qaPrefill, setQaPrefill] = useState<string | undefined>(undefined)
 
   // EXAM-PREP-LIST-TOOLBAR : vue Liste/Groupé + recherche + filtres (miroir /epreuves)
-  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+  // Par défaut : mode groupé (accordéons fermés, comme /epreuves Modèle)
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped')
   const [groupBy, setGroupBy] = useState<'ue' | 'enseignant' | 'theme'>('ue')
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filterUEId, setFilterUEId] = useState<string>('')
+  // Accordéons : groupes fermés par défaut (Set vide = tout fermé)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Debounce recherche (300ms) — évite un refiltre à chaque frappe
   useEffect(() => {
@@ -372,52 +379,87 @@ export function ExamPrepPage() {
               </CardContent>
             </Card>
           ) : viewMode === 'grouped' ? (
-            /* ─── Mode groupé : sections par UE/enseignant/thème ─── */
-            <div className="space-y-8">
-              {groupedDocuments.map((group, gi) => (
-                <motion.div
-                  key={group.key}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: gi * 0.05, duration: 0.3 }}
+            /* ─── Mode groupé : accordéons fermés par défaut (miroir /epreuves) ─── */
+            <div className="space-y-3">
+              {/* Controls : count + Tout développer / Tout réduire */}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="gap-1 text-xs bg-primary/10 text-primary-text border-primary/20">
+                  <LayoutGrid className="h-3 w-3" />
+                  {groupedDocuments.length} groupe{groupedDocuments.length > 1 ? 's' : ''}
+                </Badge>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setExpandedGroups(new Set(groupedDocuments.map((g) => g.key)))}
                 >
-                  {/* En-tête de groupe */}
-                  <div className="flex items-center gap-3 mb-4 pb-2 border-b border-border">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      {groupBy === 'ue' ? (
-                        <BookOpen className="h-5 w-5 text-primary-text" />
-                      ) : groupBy === 'enseignant' ? (
-                        <GraduationCap className="h-5 w-5 text-primary-text" />
-                      ) : (
-                        <FileText className="h-5 w-5 text-primary-text" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-display text-base font-semibold tracking-tight truncate">
-                        {group.label}
-                      </h3>
-                      {group.subtitle && (
-                        <p className="text-xs text-muted-foreground truncate">{group.subtitle}</p>
-                      )}
-                    </div>
-                    <Badge variant="secondary" className="bg-primary/10 text-primary-text shrink-0">
-                      {group.docs.length} doc{group.docs.length > 1 ? 's' : ''}
-                    </Badge>
-                  </div>
+                  Tout développer
+                </button>
+                <span className="text-muted-foreground">·</span>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setExpandedGroups(new Set())}
+                >
+                  Tout réduire
+                </button>
+              </div>
 
-                  {/* Cartes du groupe */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {group.docs.map((doc, i) => (
-                      <DocumentEntityCard
-                        key={doc.id}
-                        doc={doc}
-                        onRevision={() => setSelectedId(doc.id)}
-                        onRead={() => setReaderDocumentId(doc.id)}
-                      />
-                    ))}
-                  </div>
-                </motion.div>
-              ))}
+              {/* Groupes accordéon */}
+              <div className="space-y-2">
+                {groupedDocuments.map((group) => {
+                  const isExpanded = expandedGroups.has(group.key)
+                  const GroupIcon = groupBy === 'ue' ? BookOpen : groupBy === 'enseignant' ? GraduationCap : FileText
+                  return (
+                    <Collapsible
+                      key={group.key}
+                      open={isExpanded}
+                      onOpenChange={() => {
+                        setExpandedGroups((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(group.key)) next.delete(group.key)
+                          else next.add(group.key)
+                          return next
+                        })
+                      }}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 ds-press"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                            <GroupIcon className="h-4 w-4 text-primary-text" />
+                          </div>
+                          <span className="truncate flex-1 text-left">{group.label}</span>
+                          {group.subtitle && (
+                            <span className="hidden sm:inline text-xs text-muted-foreground shrink-0">{group.subtitle}</span>
+                          )}
+                          <Badge variant="secondary" className="ml-auto shrink-0 text-[10px] px-1.5 py-0 bg-muted">
+                            {group.docs.length}
+                          </Badge>
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pl-2">
+                          {group.docs.map((doc) => (
+                            <DocumentEntityCard
+                              key={doc.id}
+                              doc={doc}
+                              onRevision={() => setSelectedId(doc.id)}
+                              onRead={() => setReaderDocumentId(doc.id)}
+                            />
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )
+                })}
+              </div>
             </div>
           ) : (
             /* ─── Mode liste : grid de cartes (par défaut) ─── */
