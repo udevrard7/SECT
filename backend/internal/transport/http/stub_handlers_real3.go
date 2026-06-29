@@ -413,10 +413,7 @@ func (s *Server) enseignantFicheNotes(w http.ResponseWriter, r *http.Request) {
                 }
 
                 // 2. Récupérer les étudiants (même scoping UE strict que enseignantEtudiantsReal)
-                var argsU []any
-                argIdxU := 1
-                argsU = append(argsU, enseignantID, filiereID, niveau)
-                argIdxU = 4
+                argsU := []any{enseignantID, filiereID, niveau}
                 uRows, err := tx.Query(r.Context(), fmt.Sprintf(`
                         SELECT DISTINCT u."id", u."name", COALESCE(u."matricule",''), COALESCE(u."email",''),
                                COALESCE(f."nom",'')
