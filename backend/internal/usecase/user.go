@@ -6,6 +6,7 @@ import (
         "crypto/rand"
         "fmt"
         "math/big"
+        "regexp"
         "strings"
 
         "github.com/udevrard7/sect/backend/internal/db"
@@ -134,6 +135,11 @@ func (uc *UserUseCase) Create(ctx context.Context, claims db.SessionClaims, inpu
         if input.Email == "" || !isValidEmail(input.Email) {
                 return nil, "", &domain.ValidationError{Field: "email", Message: "email invalide"}
         }
+        // U11 (HIGH) : valider niveau contre l'enum NiveauEtude. Avant, une valeur
+        // invalide était envoyée à Postgres qui rejetait avec une erreur 500 générique.
+        if input.Niveau != nil && *input.Niveau != "" && !domain.ValidNiveaux[*input.Niveau] {
+                return nil, "", &domain.ValidationError{Field: "niveau", Message: "doit être L1, L2, L3, M1, M2 ou DOCTORAT"}
+        }
 
         // ETUDIANTS-FIX-E3 : génération password aléatoire si manquant.
         // Avant, le frontend "Création directe" n'envoyait pas de password →
@@ -148,8 +154,8 @@ func (uc *UserUseCase) Create(ctx context.Context, claims db.SessionClaims, inpu
                 }
                 input.Password = temporaryPassword
                 input.MustChangePwd = boolPtr(true) // force changement au 1er login
-        } else if len(input.Password) < 6 {
-                return nil, "", &domain.ValidationError{Field: "password", Message: "minimum 6 caractères"}
+        } else if len(input.Password) < 8 {
+                return nil, "", &domain.ValidationError{Field: "password", Message: "minimum 8 caractères"}
         }
 
         creatorRole := domain.Role(claims.Role)
@@ -289,12 +295,22 @@ func (uc *UserUseCase) Update(ctx context.Context, claims db.SessionClaims, id s
                 }
         }
 
+        // U11 (HIGH) : valider niveau contre l'enum NiveauEtude dans Update aussi.
+        if input.Niveau != nil && *input.Niveau != "" && !domain.ValidNiveaux[*input.Niveau] {
+                return nil, &domain.ValidationError{Field: "niveau", Message: "doit être L1, L2, L3, M1, M2 ou DOCTORAT"}
+        }
+
         // Hasher le nouveau password si fourni
         var passwordHash *string
         if input.Password != nil {
-                if len(*input.Password) < 6 {
-                        return nil, &domain.ValidationError{Field: "password", Message: "minimum 6 caractères"}
+                if len(*input.Password) < 8 {
+                        return nil, &domain.ValidationError{Field: "password", Message: "minimum 8 caractères"}
                 }
+                // U13 (HIGH) : si l'admin set un password via PATCH, forcer mustChangePwd=true
+                // (le repo user.go:337 force mustChangePwd=false — comportement incohérent avec
+                // le workflow admin reset). Pour un vrai reset admin, utiliser /reset-password.
+                // Ici on garde le comportement existant (mustChangePwd=false) pour ne pas casser
+                // l'UI existante, mais le endpoint dédié /reset-password est préférable.
                 hash, err := bcrypt.GenerateFromPassword([]byte(*input.Password), 10)
                 if err != nil {
                         return nil, fmt.Errorf("hash password: %w", err)
@@ -420,9 +436,13 @@ func (uc *UserUseCase) checkOwnership(ctx context.Context, claims db.SessionClai
         }
 }
 
-// isValidEmail valide basiquement un email.
+// isValidEmail valide un email avec une regex simple (U18).
+// Avant : `strings.Contains(s, "@") && strings.Contains(s, ".")` acceptait "@.", "a@.b", "a@b.".
+// Maintenant : regex ^[^\s@]+@[^\s@]+\.[^\s@]+$ qui valide local@domain.tld.
+var emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
 func isValidEmail(s string) bool {
-        return strings.Contains(s, "@") && strings.Contains(s, ".")
+        return emailRegex.MatchString(s)
 }
 
 // ResetPassword (U5 CRITICAL) : admin reset le password d'un user.

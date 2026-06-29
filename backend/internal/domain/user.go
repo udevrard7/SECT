@@ -28,6 +28,9 @@ const (
         NiveauDoctorat NiveauEtude = "DOCTORAT"
 )
 
+// Note : ValidNiveaux est défini dans academique.go (déjà existant). U11 l'utilise
+// pour valider input.Niveau côté usecase avant l'INSERT.
+
 // User est l'entité utilisateur centrale.
 type User struct {
         ID                string     `json:"id"`

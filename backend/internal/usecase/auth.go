@@ -280,12 +280,22 @@ type ChangePasswordRequest struct {
 
 // ChangePassword vérifie l'ancien mot de passe et en définit un nouveau.
 // Révoque tous les refresh tokens existants (sécurité — force re-login autres sessions).
+//
+// U13 (HIGH) : validation password — min 8 chars + new ≠ current (empêche de
+// "changer" par le même password, contournant une politique d'expiration).
+// U28 (LOW) : l'erreur "new password too short" retournait fmt.Errorf (non typée)
+// → MapDomainError default → 500. Maintenant ValidationError → 400.
 func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID string, req ChangePasswordRequest, ip string) error {
         if req.CurrentPassword == "" || req.NewPassword == "" {
                 return &domain.InvalidCredentialsError{}
         }
+        // U28 : ValidationError (pas fmt.Errorf) pour avoir un 400 au lieu de 500.
         if len(req.NewPassword) < 8 {
-                return fmt.Errorf("new password too short (min 8 chars)")
+                return &domain.ValidationError{Field: "newPassword", Message: "minimum 8 caractères"}
+        }
+        // U13 : refuser new == current (empêche le contournement de politique d'expiration).
+        if req.NewPassword == req.CurrentPassword {
+                return &domain.ValidationError{Field: "newPassword", Message: "le nouveau mot de passe doit être différent de l'actuel"}
         }
 
         // 1. Récupérer l'utilisateur avec son hash
