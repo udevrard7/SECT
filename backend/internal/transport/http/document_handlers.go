@@ -25,7 +25,7 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 
         docs, err := s.documentUC.List(r.Context(), claims)
         if err != nil {
-                middleware.MapDomainError(w, err)
+                        middleware.MapDomainError(w, err)
                 return
         }
 

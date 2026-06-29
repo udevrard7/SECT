@@ -23,10 +23,10 @@ func NewDocumentRepository(pool *pgxpool.Pool) *DocumentRepository {
         return &DocumentRepository{pool: pool}
 }
 
-const columnsDocument = `"id", "ownerId", "nomFichier", "cheminStockage", "tailleFichier",
-        "typeMime", "statutAnalyse", "themesDetectes", "conceptsCles", "volumeEstime",
-        "contenuTexte", "dateUpload", "createdAt", "updatedAt", "deletedAt",
-        "erreurAnalyse", "resumeAnalyse", "uniteEnseignementId"`
+const columnsDocument = `d."id", d."ownerId", d."nomFichier", d."cheminStockage", d."tailleFichier",
+        d."typeMime", d."statutAnalyse", d."themesDetectes", d."conceptsCles", d."volumeEstime",
+        d."contenuTexte", d."dateUpload", d."createdAt", d."updatedAt", d."deletedAt",
+        d."erreurAnalyse", d."resumeAnalyse", d."uniteEnseignementId"`
 
 func scanDocument(s scanner) (*domain.Document, error) {
         d := &domain.Document{}
@@ -113,10 +113,10 @@ func (r *DocumentRepository) ListByOwner(ctx context.Context, ownerID string) ([
         var result []*domain.Document
         err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
                 // P2-D6 : colonnes sans contenuTexte pour la liste
-                colsList := `"id", "ownerId", "nomFichier", "cheminStockage", "tailleFichier",
-                        "typeMime", "statutAnalyse", "themesDetectes", "conceptsCles", "volumeEstime",
-                        NULL as "contenuTexte", "dateUpload", "createdAt", "updatedAt", "deletedAt",
-                        "erreurAnalyse", "resumeAnalyse", "uniteEnseignementId"`
+                colsList := `d."id", d."ownerId", d."nomFichier", d."cheminStockage", d."tailleFichier",
+                        d."typeMime", d."statutAnalyse", d."themesDetectes", d."conceptsCles", d."volumeEstime",
+                        NULL as "contenuTexte", d."dateUpload", d."createdAt", d."updatedAt", d."deletedAt",
+                        d."erreurAnalyse", d."resumeAnalyse", d."uniteEnseignementId"`
                 query := fmt.Sprintf(`
                         SELECT %s, ue."id", ue."code", ue."nom", COALESCE(ue."niveau"::text, ''), ue."niveaux"
                         FROM "Document" d
