@@ -751,6 +751,17 @@ export function EnseignantsPage() {
       setNewAssignmentFiliereId('')
       setNewAssignmentNiveau('')
       await refreshAssignments()
+      // ENSEIGNANTS-FIX-EN9 : si l'enseignant n'est pas visible avec le filtre
+      // filière actuel (par exemple on a ajouté une affectation filière B
+      // alors que le filtre est sur A), resetter le filtre filière à "all"
+      // pour que l'enseignant réapparaisse dans la liste principale.
+      if (filiereFilter !== 'all' && newAssignmentFiliereId !== filiereFilter) {
+        const stillVisible = (assignmentMap[assignmentEnseignant.id] || [])
+          .some((a) => a.filiereId === filiereFilter)
+        if (!stillVisible) {
+          setFiliereFilter('all')
+        }
+      }
       // Refresh teacher assignments
       const updatedAssigns = await (async () => {
         const params = new URLSearchParams()
