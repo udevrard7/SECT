@@ -244,7 +244,7 @@ export function EtudiantsPage() {
   // etudiants pour refetch automatique. Le filtre niveau reste client-side
   // (l'API ne le supporte pas) — appliqué via useMemo.
   const etudiantsQuery = useQuery<{ users: EtudiantItem[]; total: number }>({
-    queryKey: ['etudiants', etablissementId, searchDebounced, filiereFilter, statusFilter, page],
+    queryKey: ['etudiants', etablissementId, searchDebounced, filiereFilter, statusFilter, niveauFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set('role', 'ETUDIANT')
@@ -256,6 +256,9 @@ export function EtudiantsPage() {
       if (searchDebounced) params.set('search', searchDebounced)
       if (filiereFilter && filiereFilter !== 'all') params.set('filiereId', filiereFilter)
       if (statusFilter && statusFilter !== 'all') params.set('actif', statusFilter === 'actif' ? 'true' : 'false')
+      // ETUDIANTS-FIX-E5 : filtre niveau désormais côté backend (avant ignoré →
+      // pagination + stats incorrectes). Maintenant ?niveau=L2 filtre côté DB.
+      if (niveauFilter && niveauFilter !== 'all') params.set('niveau', niveauFilter)
 
       const res = await fetch(`/api/users?${params.toString()}`, { credentials: 'same-origin' })
       if (!res.ok) throw new Error('Failed to fetch etudiants')
@@ -294,13 +297,10 @@ export function EtudiantsPage() {
     refetchOnWindowFocus: false,
   })
 
-  // Client-side niveau filter (l'API ne le supporte pas encore).
-  const etudiants = useMemo(() => {
-    const users = etudiantsQuery.data?.users ?? []
-    return niveauFilter !== 'all'
-      ? users.filter((u) => u.niveau === niveauFilter)
-      : users
-  }, [etudiantsQuery.data, niveauFilter])
+  // ETUDIANTS-FIX-E5 : le filtre niveau est désormais côté backend (?niveau=).
+  // Plus besoin de filtrer côté client. totalFromApi reflète le vrai total
+  // filtré (ETUDIANTS-FIX-E8 : stats basées sur totalFromApi, pas sur la page).
+  const etudiants = etudiantsQuery.data?.users ?? []
   const totalFromApi = etudiantsQuery.data?.total ?? 0
   const filieres = useMemo(
     () =>
@@ -397,9 +397,13 @@ export function EtudiantsPage() {
   }, [filiereFilter, statusFilter, niveauFilter, searchDebounced])
 
   // ─── Stats ───
+  // ETUDIANTS-FIX-E8 : totalEtudiants utilise le count API (correct, reflète
+  // tous les étudiants filtrés). activeEtudiants/withFiliere sont calculés sur
+  // la page courante (max 20) — indicateur "page courante" affiché si >20.
   const totalEtudiants = totalFromApi
   const activeEtudiants = etudiants.filter((e) => e.actif).length
   const withFiliere = etudiants.filter((e) => e.filiereId).length
+  const statsAreApprox = totalFromApi > etudiants.length // page courante < total
   const pendingInvitations = invitations.filter((inv) => !isExpired(inv.expiresAt)).length
   const expiredInvitations = invitations.filter((inv) => isExpired(inv.expiresAt)).length
 
@@ -671,15 +675,18 @@ export function EtudiantsPage() {
           },
         body: JSON.stringify({ actif: !etudiant.actif }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || `Erreur ${res.status}`)
+      }
       toast.success(etudiant.actif ? 'Étudiant archivé' : 'Étudiant réactivé', {
         description: etudiant.actif
           ? `${etudiant.name} est maintenant archivé. Ses données sont préservées, il reste dans l'établissement mais est marqué comme inactif.`
           : `${etudiant.name} est de nouveau actif.`,
       })
       await refreshEtudiants()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de modifier le statut.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de modifier le statut.' })
     }
   }
 
@@ -696,13 +703,16 @@ export function EtudiantsPage() {
           },
         body: JSON.stringify({ filiereId: null }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || `Erreur ${res.status}`)
+      }
       toast.success('Filière retirée', {
         description: `${target.name} a été retiré de sa filière.`,
       })
       await refreshEtudiants()
-    } catch {
-      toast.error('Erreur', { description: 'Impossible de retirer la filière.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Impossible de retirer la filière.' })
     }
   }
 
@@ -744,33 +754,60 @@ export function EtudiantsPage() {
     if (!bulkActionDialog || selectedIds.size === 0) return
     setIsBulkProcessing(true)
     try {
+      // ETUDIANTS-FIX-E9 : collecter les deletedDependencies pour le delete bulk
+      // (avant, seul le delete single affichait les deps).
+      let totalDepsSessions = 0
+      let totalDepsReponses = 0
+      let totalDepsSoumissions = 0
       const results = await Promise.allSettled(
         Array.from(selectedIds).map(async (id) => {
           if (bulkActionDialog === 'delete') {
             const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
-            if (!res.ok) throw new Error('Erreur')
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}))
+              throw new Error(err?.error || `Erreur ${res.status}`)
+            }
+            // ETUDIANTS-FIX-E9 : lire deletedDependencies
+            const data = await res.json().catch(() => ({}))
+            const deps = data.deletedDependencies
+            if (deps) {
+              totalDepsSessions += deps.sessions || 0
+              totalDepsReponses += deps.reponses || 0
+              totalDepsSoumissions += deps.soumissions || 0
+            }
           } else {
-            const etu = etudiants.find((e) => e.id === id)
             const res = await fetch(`/api/users/${id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ actif: bulkActionDialog === 'activate' }),
             })
-            if (!res.ok) throw new Error('Erreur')
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}))
+              throw new Error(err?.error || `Erreur ${res.status}`)
+            }
           }
         })
       )
       const succeeded = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected').length
       const actionLabels = { activate: 'activé(s)', deactivate: 'désactivé(s) (archivé(s))', delete: 'supprimé(s) définitivement' }
+      // ETUDIANTS-FIX-E9 : inclure les deps dans le toast si delete bulk
+      let depsText = ''
+      if (bulkActionDialog === 'delete' && (totalDepsSessions > 0 || totalDepsReponses > 0 || totalDepsSoumissions > 0)) {
+        const parts: string[] = []
+        if (totalDepsSessions > 0) parts.push(`${totalDepsSessions} session(s)`)
+        if (totalDepsReponses > 0) parts.push(`${totalDepsReponses} réponse(s)`)
+        if (totalDepsSoumissions > 0) parts.push(`${totalDepsSoumissions} soumission(s)`)
+        depsText = ` Données supprimées : ${parts.join(', ')}.`
+      }
       toast.success('Opération terminée', {
-        description: `${succeeded} étudiant(s) ${actionLabels[bulkActionDialog]}${failed > 0 ? `, ${failed} échoué(s)` : ''}.`,
+        description: `${succeeded} étudiant(s) ${actionLabels[bulkActionDialog]}${failed > 0 ? `, ${failed} échoué(s)` : ''}.${depsText}`,
       })
       setSelectedIds(new Set())
       setBulkActionDialog(null)
       await refreshEtudiants()
-    } catch {
-      toast.error('Erreur', { description: 'Une erreur est survenue lors de l\'opération en masse.' })
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue lors de l\'opération en masse.' })
     } finally {
       setIsBulkProcessing(false)
     }
