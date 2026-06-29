@@ -102,11 +102,11 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 			        WHERE s3."epreuveId" = e."id" AND s3.statut IN ('CORRIGEE','RETOURNEE') AND s3.score IS NOT NULL), 0) AS mediane,
 			       CASE WHEN (SELECT count(*) FROM "SessionPassation" s4 WHERE s4."epreuveId" = e."id"
 			        AND s4.statut IN ('CORRIGEE','RETOURNEE') AND s4.score IS NOT NULL) > 0
-			            THEN ROUND((SELECT count(*) FILTER (WHERE s5.score >= e."noteTotal" * 0.5)::float
+			            THEN (SELECT count(*) FILTER (WHERE s5.score >= e."noteTotal" * 0.5)::numeric
 			             FROM "SessionPassation" s5 WHERE s5."epreuveId" = e."id"
 			             AND s5.statut IN ('CORRIGEE','RETOURNEE') AND s5.score IS NOT NULL) /
 			             (SELECT count(*) FROM "SessionPassation" s6 WHERE s6."epreuveId" = e."id"
-			             AND s6.statut IN ('CORRIGEE','RETOURNEE') AND s6.score IS NOT NULL) * 100, 1)
+			             AND s6.statut IN ('CORRIGEE','RETOURNEE') AND s6.score IS NOT NULL) * 100
 			            ELSE 0 END AS taux
 			FROM "Epreuve" e
 			%s
@@ -123,6 +123,7 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 				if err := rows.Scan(&ep.ID, &ep.Titre, &ep.DateDebut, &ep.DateFin,
 					&ep.Statut, &ep.NoteTotal, &ep.NbSessions, &ep.NbCorrigees,
 					&ep.Moyenne, &ep.Mediane, &ep.TauxReussite); err == nil {
+					ep.TauxReussite = float64(int(ep.TauxReussite*10)) / 10
 					epreuves = append(epreuves, ep)
 				}
 			}
@@ -195,17 +196,14 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 		}
 
 		// 4. Top questions difficiles
-		// P1-R1 : fix 3 bugs :
-		//   (a) q."intitule" → q."enonce" (colonne correcte)
-		//   (b) QuestionIndex int → QuestionID string (q."id" est un UUID)
-		//   (c) Parsing JSONB : detailParQuestion est un ARRAY, pas un objet.
-		//       On utilise jsonb_array_elements pour l'extraire, puis ->> 'questionId'
-		//       pour matcher avec q."id", et ->> 'score' / ->> 'bareme' pour le ratio.
+		// P1-R1 : les questions IA sont stockées dans e."contenu" (JSONB) avec
+		// des IDs synthétiques ("q1", "q2"...) — pas dans la table Question.
+		// On joint contenu.questions avec detailParQuestion via l'ID synthétique.
 		rows4, err := tx.Query(r.Context(), fmt.Sprintf(`
 			SELECT e."id" AS epreuve_id, e."titre" AS epreuve_titre,
-			       q."id" AS question_id, q."enonce", q."type"::text,
+			       je->>'id' AS question_id, je->>'enonce' AS enonce, je->>'type' AS type,
 			       count(*) AS nb_reponses,
-			       COALESCE(ROUND(avg(
+			       COALESCE(avg(
 			         CASE
 			           WHEN dp->>'bareme' IS NOT NULL AND (dp->>'bareme')::float > 0
 			             THEN COALESCE((dp->>'score')::float, 0) / (dp->>'bareme')::float * 100
@@ -213,17 +211,15 @@ func (s *Server) resultatsOverviewRealV2(w http.ResponseWriter, r *http.Request)
 			             THEN COALESCE((dp->>'pointsObtenus')::float, 0) / (dp->>'pointsMax')::float * 100
 			           ELSE 0
 			         END
-			       ), 1), 0) AS taux_reussite
+			       ), 0) AS taux_reussite
 			FROM "Resultat" r
 			JOIN "SessionPassation" s ON s."id" = r."sessionId"
 			JOIN "Epreuve" e ON e."id" = s."epreuveId"
-			JOIN "Question" q ON q."id" IN (
-			  SELECT je->>'questionId' FROM jsonb_array_elements(e."contenu"::jsonb -> 'questions') je
-			)
+			JOIN LATERAL jsonb_array_elements(e."contenu"::jsonb -> 'questions') AS je ON true
 			JOIN LATERAL jsonb_array_elements(r."detailParQuestion"::jsonb) AS dp
-			  ON dp->>'questionId' = q."id"
+			  ON dp->>'questionId' = je->>'id'
 			WHERE r."detailParQuestion" IS NOT NULL %s
-			GROUP BY e."id", e."titre", q."id", q."enonce", q."type"
+			GROUP BY e."id", e."titre", je->>'id', je->>'enonce', je->>'type'
 			ORDER BY taux_reussite ASC
 			LIMIT 10
 		`, whereE2), args2...)
