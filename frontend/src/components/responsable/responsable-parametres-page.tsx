@@ -351,10 +351,11 @@ function LogoUpload({
   const handleDelete = async () => {
     setUploading(true)
     try {
-      const res = await fetch(`/api/etablissements/${etablissementId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logo: null }),
+      // PARAMETRES-FIX-P3 : endpoint dédié DELETE /api/etablissements/{id}/logo.
+      // Avant : PATCH {logo: null} était silencieusement ignoré (champ Logo retiré
+      // de UpdateEtablissementInput par le fix E5) → le logo restait en DB.
+      const res = await fetch(`/api/etablissements/${etablissementId}/logo`, {
+        method: 'DELETE',
       })
       if (!res.ok) throw new Error('Erreur')
       onLogoUpdate(null)

@@ -189,6 +189,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Patch("/{id}", s.updateEtablissement)
                         r.Delete("/{id}", s.deleteEtablissement)
                         r.Post("/upload-logo", s.uploadLogo)
+                        // PARAMETRES-FIX-P3 : endpoint dédié pour supprimer le logo.
+                        // Avant : le frontend faisait PATCH {logo: null} mais le champ Logo
+                        // a été retiré de UpdateEtablissementInput (fix E5 sécurité) → le logo
+                        // n'était jamais supprimé (PATCH 200 OK silencieux, UI désynchronisée).
+                        r.Delete("/{id}/logo", s.deleteLogo)
                         r.Get("/{id}/watermark", s.getWatermark)
                         r.Patch("/{id}/watermark", s.updateWatermark)
                 })
