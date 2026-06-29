@@ -130,7 +130,7 @@ func (w *IAWorker) processJob(ctx context.Context, job IAJob) {
 	w.logger.Info("AI generation completed", "epreuveId", job.EpreuveID, "responseLength", len(result))
 
 	// 4. Mettre à jour l'épreuve avec le résultat (statut TERMINE)
-	w.updateEpreuveStatus(ctx, job.EpreuveID, "TERMINE", result, "")
+	w.updateEpreuveStatus(ctx, job.EpreuveID, "TERMINEE", result, "")
 	w.logger.Info("IA job completed successfully", "epreuveId", job.EpreuveID)
 }
 
