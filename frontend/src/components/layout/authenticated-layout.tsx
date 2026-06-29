@@ -91,6 +91,17 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
     return null
   }
 
+  // OPTION-A : /utilisateurs est 100% redondant avec /etudiants + /enseignants
+  // pour le RESPONSABLE (mêmes endpoints /api/users, mêmes actions, mais en moins
+  // complet : pas d'export CSV, ni bulk actions, ni recherche avancée). La page
+  // reste accessible à l'ADMIN (gestion des responsables d'établissements).
+  // Un RESPONSABLE qui tape /utilisateurs directement (bookmark/URL manuelle)
+  // est redirigé vers /etudiants plutôt que /dashboard (plus utile).
+  if (pageId === 'utilisateurs' && user.role === 'RESPONSABLE') {
+    router.replace('/etudiants')
+    return null
+  }
+
   // RAPPORTS-FIX-R5 : garde de rôle — redirige vers /dashboard si le rôle
   // de l'utilisateur n'est pas autorisé à voir cette page. Avant : un
   // ENSEIGNANT/ETUDIANT qui tapait /rapports voyait la page se charger puis
