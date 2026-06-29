@@ -143,6 +143,26 @@ func (uc *EtablissementUseCase) UpdateLogo(ctx context.Context, claims db.Sessio
         return uc.etabRepo.UpdateLogo(ctx, id, logoData)
 }
 
+// ClearLogo supprime le logo (SET logo = NULL). Mêmes règles d'autorisation
+// que UpdateLogo (ADMIN via EtablissementAccess, RESPONSABLE propriétaire).
+// PARAMETRES-FIX-P3b : corrige le bug où deleteLogo appelait UpdateLogo(ctx,
+// claims, id, "") qui était rejeté par la validation "données logo requises".
+func (uc *EtablissementUseCase) ClearLogo(ctx context.Context, claims db.SessionClaims, id string) (*domain.Etablissement, error) {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if role == domain.RoleAdmin {
+                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, id); err != nil {
+                        return nil, err
+                }
+        }
+        if role == domain.RoleResponsable && claims.EtablissementID != id {
+                return nil, &domain.UnauthorizedError{Message: "vous ne pouvez modifier que votre établissement"}
+        }
+        return uc.etabRepo.ClearLogo(ctx, id)
+}
+
 // GetWatermark récupère la config watermark.
 func (uc *EtablissementUseCase) GetWatermark(ctx context.Context, claims db.SessionClaims, id string) (*domain.WatermarkConfig, error) {
         role := domain.Role(claims.Role)

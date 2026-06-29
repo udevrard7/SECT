@@ -9158,3 +9158,51 @@ Stage Summary:
 - **DB** : 1 migration appliquée (000015_security_settings_modify_admin). Neon version 15. 3 policies sur SecuritySettings.
 - **Module /parametres désormais pleinement fonctionnel** : 4 onglets opérationnels (Établissement, Sécurité, Matricule, Whitelist IP), sécurité RLS + checks applicatifs, validations, gestion d'erreur.
 - **Vérification UI complète** en attente (password RESPONSABLE changé depuis les tests précédents — tests API live sans auth confirment le bon déploiement).
+
+---
+Task ID: session-setup-neon
+Agent: Tuteur Z.ai (orchestrateur)
+Task: Reprise du projet SECT — nouvelle session, stack GitHub+Vercel+Render+Neon+R2, clonage et vérification de l'environnement
+
+Work Log:
+- Clonage du dépôt `udevrard7/SECT` vers `/home/z/sect` (branche `main`, HEAD = edc4fe6).
+- Configuration de l'identité git locale : `udevrard7 <ulrichdouh@gmail.com>` (conforme CONTRIBUTING.md).
+- Analyse de l'architecture (README + CONTRIBUTING + render.yaml + vercel.json) :
+  * Frontend Next.js 16 → Vercel (sect-app.vercel.app), `vercel.json` proxifie `/api/*` vers backend Render.
+  * Backend Go 1.24 (chi + pgx) → Render (sect-s1pb.onrender.com), Docker multi-stage, autoDeploy depuis `main`.
+  * DB Neon PostgreSQL 18 (RLS 99 policies, claims de session), migrations golang-migrate (15 migrations versionnées).
+  * Stockage fichiers Cloudflare R2 (bucket `sect-documents`).
+- Vérification connexion Neon (via Bun + pg) : OK, PostgreSQL 18.4, 53 tables, 24 enums, 99 policies RLS.
+- Vérification cohérence migrations : `schema_migrations` indique version 15 (non dirty) = correspond au dossier `backend/db/db/migrations/` (000001 → 000015). Base synchronisée avec le code.
+- Branche `feat/responsable-dashboard-modules` existe en remote (non fusionnée).
+- Aucun outil `go`/`psql`/`migrate` installé dans ce bac à sable ; backend Go non compilable ici, mais connexion DB et édition du code source sont opérationnelles.
+
+Stage Summary:
+- Environnement de travail opérationnel : dépôt cloné, identité git conforme, connexion Neon vérifiée et base synchronisée.
+- Workflow établi : édition code → (migration DB si schéma change) → commit conventional → `git push origin main` → déploiements automatiques Vercel (frontend) + Render (backend).
+- Contrainte bac à sable : pas de compilation Go locale ; les modifications backend seront vérifiées par `go vet`/build côté Render (autoDeploy) — recommandé de pousser des commits atomiques et surveiller les logs Render.
+- Prochaine étape : attendre les directives de l'utilisateur (bugs, fonctionnalités, refactors) pour poursuivre.
+
+---
+Task ID: PARAMETRES-FIX-P3b
+Agent: Tuteur Z.ai (orchestrateur)
+Task: Bug — suppression logo impossible dans /parametres établissement (Responsable)
+
+Work Log:
+- Analyse frontend (LogoUpload.handleDelete) : appel DELETE /api/etablissements/{id}/logo, toast générique "Impossible de supprimer le logo" sur erreur.
+- Analyse backend : handler deleteLogo appelle s.etabUC.UpdateLogo(ctx, claims, id, "").
+- Cause racine identifiée : usecase UpdateLogo contient `if logoData == "" { return ValidationError }` → toute suppression rejetée en 4xx. Incohérence introduite par le fix P3 (endpoint dédié ajouté mais validation du usecase non adaptée).
+- Correction architecture en couches :
+  * domain  : ajout ClearLogo à l'interface EtablissementRepository
+  * repo    : implémentation ClearLogo → SET "logo" = NULL (cohérent avec *string)
+  * usecase : ajout ClearLogo(ctx, claims, id) avec mêmes checks de permissions qu'UpdateLogo
+  * handler : deleteLogo appelle ClearLogo au lieu d'UpdateLogo(...,"")
+  * frontend: handleDelete lit le message d'erreur backend (meilleur debug)
+- Vérifications : go vet ./... OK, go build ./cmd/api OK (binaire 24 Mo), bun run lint OK (0 erreur), 1 rebase (conflit worklog.md résolu, sections conservées).
+
+Stage Summary:
+- Bug P3b CRITICAL corrigé : suppression logo fonctionnelle (DELETE /api/etablissements/{id}/logo → ClearLogo → SET logo = NULL).
+- 1 commit poussé sur main (après rebase sur commit docs worklog remote).
+- Aucune migration DB nécessaire (champ logo déjà nullable).
+- Backend compilé et vérifié localement (Go 1.24 installé dans le bac à sable pour l'occasion).
+- Déploiement automatique Vercel (frontend) + Render (backend) déclenché par le push.
