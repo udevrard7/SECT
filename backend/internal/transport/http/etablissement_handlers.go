@@ -82,22 +82,7 @@ func (s *Server) createEtablissement(w http.ResponseWriter, r *http.Request) {
 
         result, err := s.etabUC.Create(r.Context(), claims, input)
         if err != nil {
-                // A3-DEBUG temporaire : exposer l'erreur pour diagnostic.
                 middleware.MapDomainError(w, err)
-                // Si l'erreur n'est pas un domain error mappé, on retourne 500 avec détail.
-                if domainErr, ok := err.(*domain.UnauthorizedError); ok {
-                        writeJSONError(w, http.StatusForbidden, "[A3-DEBUG] "+domainErr.Error())
-                        return
-                }
-                if domainErr, ok := err.(*domain.ValidationError); ok {
-                        writeJSONError(w, http.StatusBadRequest, "[A3-DEBUG] "+domainErr.Error())
-                        return
-                }
-                if domainErr, ok := err.(*domain.ConflictError); ok {
-                        writeJSONError(w, http.StatusConflict, "[A3-DEBUG] "+domainErr.Error())
-                        return
-                }
-                writeJSONError(w, http.StatusInternalServerError, "[A3-DEBUG] "+err.Error())
                 return
         }
 

@@ -180,9 +180,9 @@ func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionCla
                         // pour l'ADMIN (sinon l'étab est invisible à l'admin dans la liste filtrée).
                         accessID := "eacc_" + uuid.NewString()
                         if _, err := tx.Exec(ctx, `
-                                INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "statut",
+                                INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "motif", "statut",
                                         "dateDebut", "dateFin", "approuvePar", "createdAt", "updatedAt")
-                                VALUES ($1, $2, $3, 'APPROUVE', now(), NULL, $2, now(), now())
+                                VALUES ($1, $2, $3, 'Auto-approuvé (création wizard)', 'APPROUVE', now(), NULL, $2, now(), now())
                         `, accessID, claims.UserID, etab.ID); err != nil {
                                 return fmt.Errorf("create etablissement access: %w", err)
                         }
@@ -237,9 +237,6 @@ func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionCla
         })
 
         if errTx != nil {
-                // A3-DEBUG temporaire : logger l'erreur exacte pour diagnostiquer le 500.
-                // Sera retiré après résolution.
-                fmt.Printf("[A3-DEBUG] wizard tx error: %v (type: %T)\n", errTx, errTx)
                 return nil, errTx
         }
         return result, nil
