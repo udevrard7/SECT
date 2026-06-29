@@ -246,6 +246,46 @@ func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenID string)
         return tx.Commit(ctx)
 }
 
+// RevokeRefreshTokenByHashIfActive (U10) : UPDATE atomique qui révoque le token
+// ET le retourne seulement s'il était encore actif (revokedAt IS NULL).
+// Permet d'éviter la race condition : deux requêtes concurrentes avec le même
+// refresh token → seule la première obtient le token (et le révoque), la deuxième
+// obtient nil (le token est déjà révoqué entre-temps).
+func (r *AuthRepository) RevokeRefreshTokenByHashIfActive(ctx context.Context, hash string) (*domain.RefreshToken, error) {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return nil, fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                return nil, fmt.Errorf("disable rls: %w", err)
+        }
+
+        // UPDATE ... RETURNING atomique : ne retourne une ligne que si revokedAt était NULL.
+        // Si le token n'existe pas ou est déjà révoqué, pgx.ErrNoRows → nil.
+        row := tx.QueryRow(ctx, `
+                UPDATE "RefreshToken"
+                SET "revokedAt" = CURRENT_TIMESTAMP
+                WHERE "tokenHash" = $1 AND "revokedAt" IS NULL
+                RETURNING "id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip"
+        `, hash)
+
+        rt := &domain.RefreshToken{}
+        err = row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return nil, nil // token introuvable ou déjà révoqué
+                }
+                return nil, fmt.Errorf("query refresh token: %w", err)
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return nil, fmt.Errorf("commit: %w", err)
+        }
+        return rt, nil
+}
+
 // RevokeAllUserRefreshTokens révoque tous les refresh tokens actifs d'un user.
 func (r *AuthRepository) RevokeAllUserRefreshTokens(ctx context.Context, userID string) error {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
