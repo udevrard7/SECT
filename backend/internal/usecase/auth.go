@@ -195,8 +195,11 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, req RefreshRequest, ip, user
                 return nil, &domain.InvalidTokenError{Reason: "not found, revoked, or already used"}
         }
 
-        // 3. Vérifier qu'il n'est pas expiré (la méthode IsValid checke expiresAt)
-        if !rt.IsValid() {
+        // 3. Vérifier qu'il n'est pas expiré. Note : on ne check pas IsRevoked()
+        // ici car le token vient d'être révoqué par RevokeRefreshTokenByHashIfActive
+        // (revokedAt est maintenant non-nil). La rotation est le comportement attendu.
+        // Si le token était déjà révoqué avant, rt serait nil (UPDATE n'aurait matché aucune row).
+        if rt.IsExpired() {
                 return nil, &domain.InvalidTokenError{Reason: "expired"}
         }
 
