@@ -530,6 +530,9 @@ export const NAV_CATEGORIES: Record<UserRole, NavCategory[]> = {
 // Cohérent avec les checks backend (ex: /api/stats/responsable = RESPONSABLE+ADMIN).
 export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   rapports: ['RESPONSABLE', 'ADMIN'],
+  // ABONNEMENTS-FIX-A5 : pages SaaS réservées ADMIN.
+  abonnements: ['ADMIN'],
+  facturation: ['ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)

@@ -510,9 +510,12 @@ export function AbonnementsPage() {
   // ─── Stats ───
   const activeAboCount = abonnements.filter((a) => a.statut === 'ACTIF').length
   const trialAboCount = abonnements.filter((a) => a.statut === 'ESSAI').length
+  // ABONNEMENTS-FIX-A10 : revenu mensuel basé sur plan.prixMensuel (récurrent)
+  // au lieu de montantPaye (paiement ponctuel, peut être 0 pour un plan gratuit
+  // ou un montant annuel). Reflète le revenu mensuel réel de l'activité SaaS.
   const monthlyRevenue = abonnements
     .filter((a) => a.statut === 'ACTIF')
-    .reduce((sum, a) => sum + a.montantPaye, 0)
+    .reduce((sum, a) => sum + (a.plan?.prixMensuel ?? 0), 0)
   const retentionRate =
     abonnements.length > 0
       ? Math.round(

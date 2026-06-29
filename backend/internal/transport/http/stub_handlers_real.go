@@ -423,26 +423,31 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
         }
 
         type abonnement struct {
-                ID                 string  `json:"id"`
-                EtablissementID    string  `json:"etablissementId"`
-                PlanID             string  `json:"planId"`
-                Statut             string  `json:"statut"`
-                DateDebut          string  `json:"dateDebut"`
-                DateFin            *string `json:"dateFin,omitempty"`
-                PeriodeEssaiJours  int     `json:"periodeEssaiJours"`
-                ModePaiement       *string `json:"modePaiement,omitempty"`
-                MontantPaye        float64 `json:"montantPaye"`
-                RenouvellementAuto bool    `json:"renouvellementAuto"`
-                Notes              *string `json:"notes,omitempty"`
+                ID                  string  `json:"id"`
+                EtablissementID     string  `json:"etablissementId"`
+                PlanID              string  `json:"planId"`
+                Statut              string  `json:"statut"`
+                DateDebut           string  `json:"dateDebut"`
+                DateFin             *string `json:"dateFin,omitempty"`
+                PeriodeEssaiJours   int     `json:"periodeEssaiJours"`
+                ModePaiement        *string `json:"modePaiement,omitempty"`
+                ReferencePaiement   *string `json:"referencePaiement,omitempty"`
+                MontantPaye         float64 `json:"montantPaye"`
+                RenouvellementAuto  bool    `json:"renouvellementAuto"`
+                Notes               *string `json:"notes,omitempty"`
                 // Relations
                 Etablissement *struct {
-                        ID  string `json:"id"`
-                        Nom string `json:"nom"`
+                        ID    string  `json:"id"`
+                        Nom   string  `json:"nom"`
+                        Ville *string `json:"ville,omitempty"`
+                        Actif *bool   `json:"actif,omitempty"`
                 } `json:"etablissement,omitempty"`
                 Plan *struct {
-                        ID          string  `json:"id"`
-                        Nom         string  `json:"nom"`
-                        PrixMensuel float64 `json:"prixMensuel"`
+                        ID          string   `json:"id"`
+                        Nom         string   `json:"nom"`
+                        Type        string   `json:"type,omitempty"`
+                        PrixMensuel float64  `json:"prixMensuel"`
+                        PrixAnnuel  *float64 `json:"prixAnnuel,omitempty"`
                 } `json:"plan,omitempty"`
         }
 
@@ -451,8 +456,9 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
                 rows, err := tx.Query(r.Context(), `
                         SELECT a."id", a."etablissementId", a."planId", a."statut"::text,
                                a."dateDebut", a."dateFin", a."periodeEssaiJours", a."modePaiement",
-                               a."montantPaye", a."renouvellementAuto", a."notes",
-                               e."id", e."nom", p."id", p."nom", p."prixMensuel"
+                               a."referencePaiement", a."montantPaye", a."renouvellementAuto", a."notes",
+                               e."id", e."nom", e."ville", e."actif",
+                               p."id", p."nom", p."type"::text, p."prixMensuel", p."prixAnnuel"
                         FROM "Abonnement" a
                         LEFT JOIN "Etablissement" e ON e."id" = a."etablissementId"
                         LEFT JOIN "Plan" p ON p."id" = a."planId"
@@ -466,13 +472,16 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
                         a := abonnement{}
                         var dateDebut time.Time
                         var dateFin *time.Time
-                        var etabID, etabNom *string
-                        var planID, planNom *string
+                        var etabID, etabNom, etabVille *string
+                        var etabActif *bool
+                        var planID, planNom, planType *string
                         var planPrix *float64
+                        var planAnnuel *float64
                         if err := rows.Scan(&a.ID, &a.EtablissementID, &a.PlanID, &a.Statut,
                                 &dateDebut, &dateFin, &a.PeriodeEssaiJours, &a.ModePaiement,
-                                &a.MontantPaye, &a.RenouvellementAuto, &a.Notes,
-                                &etabID, &etabNom, &planID, &planNom, &planPrix); err != nil {
+                                &a.ReferencePaiement, &a.MontantPaye, &a.RenouvellementAuto, &a.Notes,
+                                &etabID, &etabNom, &etabVille, &etabActif,
+                                &planID, &planNom, &planType, &planPrix, &planAnnuel); err != nil {
                                 return err
                         }
                         a.DateDebut = dateDebut.UTC().Format(time.RFC3339)
@@ -482,16 +491,24 @@ func (s *Server) abonnementsListReal(w http.ResponseWriter, r *http.Request) {
                         }
                         if etabID != nil && etabNom != nil {
                                 a.Etablissement = &struct {
-                                        ID  string `json:"id"`
-                                        Nom string `json:"nom"`
-                                }{ID: *etabID, Nom: *etabNom}
+                                        ID    string  `json:"id"`
+                                        Nom   string  `json:"nom"`
+                                        Ville *string `json:"ville,omitempty"`
+                                        Actif *bool   `json:"actif,omitempty"`
+                                }{ID: *etabID, Nom: *etabNom, Ville: etabVille, Actif: etabActif}
                         }
                         if planID != nil && planNom != nil && planPrix != nil {
+                                planTypeStr := ""
+                                if planType != nil {
+                                        planTypeStr = *planType
+                                }
                                 a.Plan = &struct {
-                                        ID          string  `json:"id"`
-                                        Nom         string  `json:"nom"`
-                                        PrixMensuel float64 `json:"prixMensuel"`
-                                }{ID: *planID, Nom: *planNom, PrixMensuel: *planPrix}
+                                        ID          string   `json:"id"`
+                                        Nom         string   `json:"nom"`
+                                        Type        string   `json:"type,omitempty"`
+                                        PrixMensuel float64  `json:"prixMensuel"`
+                                        PrixAnnuel  *float64 `json:"prixAnnuel,omitempty"`
+                                }{ID: *planID, Nom: *planNom, Type: planTypeStr, PrixMensuel: *planPrix, PrixAnnuel: planAnnuel}
                         }
                         result = append(result, a)
                 }
@@ -534,6 +551,10 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
                 Support             string   `json:"support"`
                 Description         *string  `json:"description,omitempty"`
                 Actif               bool     `json:"actif"`
+                // ABONNEMENTS-FIX-A7 : _count.abonnements (style Prisma) attendu par le frontend.
+                Count               *struct {
+                        Abonnements int `json:"abonnements"`
+                } `json:"_count,omitempty"`
         }
 
         result := []plan{}
@@ -543,7 +564,8 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
                                "nbEtablissementsMax", "nbFilieresMax", "nbEnseignantsMax",
                                "nbEtudiantsMax", "nbQuestionsMax", "nbEvaluationsMois",
                                "iaGeneration", "iaCorrection", "proctoring", "exportPDF",
-                               "support", "description", "actif"
+                               "support", "description", "actif",
+                               (SELECT count(*) FROM "Abonnement" a WHERE a."planId" = "Plan"."id") AS count_abonnements
                         FROM "Plan"
                         ORDER BY "prixMensuel" ASC
                 `)
@@ -552,14 +574,18 @@ func (s *Server) plansListReal(w http.ResponseWriter, r *http.Request) {
                 }
                 defer rows.Close()
                 for rows.Next() {
-                        p := plan{}
+                                p := plan{}
+                        var nbAbo int
                         if err := rows.Scan(&p.ID, &p.Nom, &p.Type, &p.PrixMensuel, &p.PrixAnnuel,
                                 &p.NbEtablissementsMax, &p.NbFilieresMax, &p.NbEnseignantsMax,
                                 &p.NbEtudiantsMax, &p.NbQuestionsMax, &p.NbEvaluationsMois,
                                 &p.IaGeneration, &p.IaCorrection, &p.Proctoring, &p.ExportPDF,
-                                &p.Support, &p.Description, &p.Actif); err != nil {
+                                &p.Support, &p.Description, &p.Actif, &nbAbo); err != nil {
                                 return err
                         }
+                        p.Count = &struct {
+                                Abonnements int `json:"abonnements"`
+                        }{Abonnements: nbAbo}
                         result = append(result, p)
                 }
                 return rows.Err()
