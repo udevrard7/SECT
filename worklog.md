@@ -8418,3 +8418,36 @@ Stage Summary:
 - **Rollback disponible** : migration down.sql restore la version bugée (à n'utiliser qu'en cas de régression).
 - **Aucun changement de code Go** nécessaire (la fonction est consommée par RLS au niveau DB).
 - Bugs non traités : E1+E6 (CRITICAL backend Go — wire ValidateAccessForEtablissement), E5/E18/E4/E3/E9 (HIGH backend), F2/F3/F4 (HIGH frontend).
+
+---
+Task ID: EVALUATIONS-PAGINATION-FIX-1
+Agent: Z.ai Code (tuteur/assistant)
+Task: Traitement du bug EV7 (pagination liste épreuves) — dernier bug du module /evaluations.
+
+Work Log:
+- EV7 (LOW) — pagination optionnelle backend + frontend :
+  Backend (rétro-compatible — ne casse pas les autres appelants) :
+  - domain/epreuve.go : ajout champs Page/Limit à EpreuveListParams + interface List retourne (epreuves, total, error) au lieu de (epreuves, error).
+  - repository/epreuve.go : si Page > 0 et Limit > 0 : (1) count séparé (SELECT count(*) FROM Epreuve WHERE ...) AVANT la query, (2) ajout LIMIT/OFFSET à la query (summary + full). Si Page == 0, comportement inchangé.
+  - usecase/epreuve.go : List retourne (epreuves, total, error) — simple passe-plat.
+  - transport/http/epreuve_handlers.go : parse ?page=X&limit=Y (optionnel). Si pagination active, response inclut {total, page, limit, totalPages} en plus de {epreuves, filieres}. Sinon, response inchangée.
+  Frontend evaluations-page.tsx :
+  - État page (1) + pageSize (10) + useEffect reset page quand filtres changent.
+  - Query envoie ?page=X&limit=Y. queryKey inclut page pour refetch automatique.
+  - UI pagination (boutons Précédent/Suivant + 'Page X / Y (N évaluations)') affichée seulement si totalPages > 1. Désactivé si isFetching.
+  Rétro-compatibilité :
+  - Les autres appelants de /api/epreuves (epreuves-page, mes-epreuves, use-resultats, use-correction) n'envoient pas ?page → comportement inchangé.
+- Compile-check Go (exit 0) + eslint (0 erreurs) + tsc (0 erreurs) avant push.
+- Commit 421b137 poussé. Render déployé (live).
+
+Vérification API production (Render, commit 421b137 live) :
+- GET /api/epreuves?responsableId=X&page=1&limit=3 → 3 épreuves (sur 5), total:5, totalPages:2, page:1, limit:3 ✅
+- GET /api/epreuves?responsableId=X (sans pagination) → 5 épreuves, pas de total/totalPages (rétro-compat préservée) ✅
+
+Stage Summary:
+- **1 bug traité** : EV7 (pagination optionnelle).
+- **1 commit poussé** : 421b137 (5 fichiers : domain + repository + usecase + handler + frontend).
+- **Module /evaluations 100% complet** : tous les 8 bugs de l'audit initial (EV1-EV8) sont désormais traités (4 corrigés en cd5cab2, 3 résolus automatiquement, 1 corrigé ici).
+- **Rétro-compatibilité préservée** : les 7 autres pages frontend qui appellent /api/epreuves ne sont pas impactées (pas de ?page → pas de pagination).
+- **Aucune migration DB** nécessaire.
+- ⚠️ **Mots de passe** : prof01 + registrar toujours à "Verif2025!" — l'utilisateur doit les changer.
