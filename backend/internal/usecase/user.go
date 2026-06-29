@@ -223,6 +223,20 @@ func boolPtr(v bool) *bool {
 }
 
 // Update met à jour un utilisateur.
+//
+// U2 (HIGH) : validation input.EtablissementID cible pour empêcher le transfert
+// d'un user vers un autre établissement (IDOR). Pour ADMIN, valide l'accès au
+// nouvel étab via ValidateAccessForEtablissement. Pour RESPONSABLE, ignore la
+// valeur client et force à claims.EtablissementID (comme dans Create).
+//
+// U6 (CRITICAL) : interdit la promotion au rôle ADMIN via PATCH. La création
+// d'ADMIN est déjà interdite dans Create, mais Update l'autorisait pour ADMIN.
+// La promotion ADMIN doit passer par un endpoint/script dédié (sécurité).
+//
+// U8 (HIGH) : validation des transitions de rôle via CanCreate. Avant, un
+// RESPONSABLE pouvait demote un autre RESPONSABLE en ETUDIANT, ou promouvoir un
+// ETUDIANT en ENSEIGNANT sans contrainte. Maintenant, CanCreate(claims.Role,
+// *input.Role) doit être true.
 func (uc *UserUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateUserInput) (*domain.User, error) {
         // Récupérer l'utilisateur existant pour ownership check
         existing, err := uc.userRepo.FindByID(ctx, id)
@@ -234,9 +248,45 @@ func (uc *UserUseCase) Update(ctx context.Context, claims db.SessionClaims, id s
                 return nil, err
         }
 
-        // RESPONSABLE ne peut pas définir le rôle ADMIN
-        if input.Role != nil && *input.Role == domain.RoleAdmin && claims.Role != string(domain.RoleAdmin) {
-                return nil, &domain.UnauthorizedError{Message: "seul un ADMIN peut attribuer le rôle ADMIN"}
+        // U6 (CRITICAL) : interdire la promotion au rôle ADMIN via PATCH.
+        // La création d'ADMIN est déjà interdite dans Create ; Update doit être cohérent.
+        if input.Role != nil && *input.Role == domain.RoleAdmin {
+                return nil, &domain.UnauthorizedError{Message: "promotion au rôle ADMIN interdite via PATCH (utiliser un endpoint dédié)"}
+        }
+
+        // U8 (HIGH) : valider les transitions de rôle via CanCreate.
+        // Avant, un RESPONSABLE pouvait demote un autre RESPONSABLE ou changer un
+        // ETUDIANT en ENSEIGNANT sans contrainte. Maintenant, le rôle cible doit être
+        // dans la matrice CanCreate(claims.Role, *input.Role).
+        if input.Role != nil && *input.Role != existing.Role {
+                creatorRole := domain.Role(claims.Role)
+                if !domain.CanCreate(creatorRole, *input.Role) {
+                        return nil, &domain.UnauthorizedError{Message: fmt.Sprintf("rôle %s ne peut pas attribuer le rôle %s", creatorRole, *input.Role)}
+                }
+        }
+
+        // U2 (HIGH) : validation input.EtablissementID cible.
+        // RESPONSABLE : ignore la valeur client, force à claims.EtablissementID (ne peut
+        // pas transférer un user vers un autre étab).
+        // ADMIN : si input.EtablissementID fourni et différent de l'existant, valider
+        // l'accès au nouvel étab via ValidateAccessForEtablissement.
+        if input.EtablissementID != nil {
+                if claims.Role == string(domain.RoleResponsable) {
+                        // RESPONSABLE ne peut pas transférer — force à son étab
+                        ownEtab := claims.EtablissementID
+                        input.EtablissementID = &ownEtab
+                } else if claims.Role == string(domain.RoleAdmin) && *input.EtablissementID != "" {
+                        // ADMIN : valider l'accès au nouvel étab (si différent de l'existant)
+                        existingEtab := ""
+                        if existing.EtablissementID != nil {
+                                existingEtab = *existing.EtablissementID
+                        }
+                        if *input.EtablissementID != existingEtab {
+                                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, *input.EtablissementID); err != nil {
+                                        return nil, err
+                                }
+                        }
+                }
         }
 
         // Hasher le nouveau password si fourni
