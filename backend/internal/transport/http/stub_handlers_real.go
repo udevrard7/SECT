@@ -292,14 +292,49 @@ func (s *Server) alertesListReal(w http.ResponseWriter, r *http.Request) {
                         }
                 }
 
+                // N1 FIX (CRITICAL) : defense-in-depth — RBAC scoping explicite.
+                // Chaque rôle ne voit que ses alertes personnelles + celles scopées
+                // à son périmètre. Empêche la fuite d'alertes d'autres utilisateurs.
+                role := claims.Role
+                var rbacConds []string
                 var args []any
                 argIdx := 1
-                whereClause := ""
-                if lueParam == "false" {
-                        whereClause = fmt.Sprintf(`WHERE a."lue" = false`)
-                } else if lueParam == "true" {
-                        whereClause = fmt.Sprintf(`WHERE a."lue" = true`)
+
+                // Alertes personnelles (toujours visibles par le propriétaire)
+                rbacConds = append(rbacConds, fmt.Sprintf(`a."userId" = $%d`, argIdx))
+                args = append(args, claims.UserID)
+                argIdx++
+
+                // RESPONSABLE : alertes des filières/épreuves de son établissement
+                if role == "RESPONSABLE" && claims.EtablissementID != "" {
+                        rbacConds = append(rbacConds, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Filiere" f WHERE f.id = a."filiereId" AND f."etablissementId" = $%d)`, argIdx))
+                        args = append(args, claims.EtablissementID)
+                        argIdx++
+                        rbacConds = append(rbacConds, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId" WHERE e.id = a."epreuveId" AND f."etablissementId" = $%d)`, argIdx))
+                        args = append(args, claims.EtablissementID)
+                        argIdx++
                 }
+
+                // ENSEIGNANT : alertes des épreuves qu'il enseigne
+                if role == "ENSEIGNANT" {
+                        rbacConds = append(rbacConds, fmt.Sprintf(`EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = a."epreuveId" AND e."enseignantId" = $%d)`, argIdx))
+                        args = append(args, claims.UserID)
+                        argIdx++
+                }
+
+                // ADMIN : alertes système (userId NULL, filiereId NULL, epreuveId NULL)
+                if role == "ADMIN" {
+                        rbacConds = append(rbacConds, `(a."userId" IS NULL AND a."filiereId" IS NULL AND a."epreuveId" IS NULL)`)
+                }
+
+                // Clause WHERE : (RBAC) AND (filtre lue optionnel)
+                whereParts := []string{"(" + strings.Join(rbacConds, " OR ") + ")"}
+                if lueParam == "false" {
+                        whereParts = append(whereParts, `a."lue" = false`)
+                } else if lueParam == "true" {
+                        whereParts = append(whereParts, `a."lue" = true`)
+                }
+                whereClause := "WHERE " + strings.Join(whereParts, " AND ")
 
                 query := fmt.Sprintf(`
                         SELECT a."id", a."titre", a."description", a."severity"::text, a."type"::text,

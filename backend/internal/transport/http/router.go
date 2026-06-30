@@ -499,6 +499,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.alertesListReal)
                         // SURVEILLANCE-FIX-2 S7 : route PATCH manquante (marquer lue / résoudre).
                         r.Patch("/{id}", s.alerteUpdate)
+                        // N5 FIX : batch mark-all-read (1 requête au lieu de N).
+                        r.Post("/mark-all-read", s.alertesMarkAllRead)
                 })
 
                 // SURVEILLANCE-FIX-2 S13 : RequireRole ENSEIGNANT/ADMIN/RESPONSABLE
@@ -526,6 +528,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/notifications", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.notificationsListReal)
+                        // N2 FIX : /me — NotificationAdmin destinées au user courant
+                        // (RLS migration 000018 filtre par destinataireId/destinataireRole).
+                        r.Get("/me", s.notificationsMeList)
+                        r.Patch("/me/{id}", s.notificationsMeMarkRead)
                         // /admin : réservé ADMIN, mutations (POST/PATCH/DELETE).
                         r.With(middleware.RequireRole("ADMIN")).Get("/admin", s.notificationsAdminReal)
                         r.With(middleware.RequireRole("ADMIN")).Post("/admin", s.createNotificationAdmin)
