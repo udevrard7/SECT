@@ -9504,3 +9504,103 @@ Stage Summary:
 - **Frontend** : routes.ts (N7 garde rôle) + notifications-admin-page.tsx (N6+N8 adaptés).
 - **Aucune migration DB** nécessaire (RLS all_admin déjà en place, schéma complet).
 - **Module /notifications désormais pleinement fonctionnel** : broadcast, marquer lu/non lu, suppression individuelle + en masse, mark-all-read, filtres complets, stats avec unreadCount, garde ADMIN.
+
+---
+Task ID: ACCESS-WORKFLOW-UI
+Agent: Z.ai Code (tuteur/assistant)
+Task: Boucler le workflow des demandes d'accès ADMIN ↔ établissement — ajout bouton "Révoquer" côté ADMIN + onglet "Accès ADMIN" côté RESPONSABLE (avec approbation duration-selector, refus commentaire, révocation).
+
+Work Log:
+- **Lecture préalable** : worklog SECT (ONBOARDING-1, CONFIG-FRONTEND-EXTEND, NOTIFICATIONS-FIX, MONITORING-FIX, LOGS-FIX) + agent-ctx/CONFIG-FRONTEND-EXTEND-zai-code.md. Compréhension du workflow établi (backend Go → Render, frontend Next.js → Vercel, DB Neon).
+- **Backend prerequisite** : le usecase `Update()` accepte déjà `statut=REFUSE` et `DureeAccesJours *int` (auto-calc dateFin = now() + duree quand statut=APPROUVE). Le usecase `List` force `params.EtablissementID = claims.EtablissementID` pour RESPONSABLE. La fonction `admin_has_etablissement_access()` auto-révoque silencieusement quand `dateFin < now()`.
+- **Gap identifié** : le repository `List` ne faisait LEFT JOIN que sur `Etablissement` (ADMIN-AUDIT-4), pas sur `User` (admin). La table RESPONSABLE n'aurait affiché que "Admin inconnu" pour chaque demande → UX inacceptable.
+
+Backend (1 fichier, repository/etablissement_access.go) :
+- List : ajout LEFT JOIN "User" u ON u."id" = ea."adminId" + SELECT u."id", u."name", u."email".
+- Scan : 3 nouvelles variables `*string` (adminID, adminName, adminEmail) + garde nil-robuste (admin supprimé → admin=nil).
+- Peuplement de `a.Admin = &domain.UserRef{ID, Name, Email}` quand les 3 colonnes sont non-nil.
+- `go build ./...` ✅ + `go vet ./internal/...` ✅ (0 erreur).
+
+Change 1 — ADMIN /acces-etablissements (frontend/src/components/admin/acces-etablissements-page.tsx) :
+- Import : ajout icône `Ban` (lucide-react).
+- State : `revokeTarget: AccessRecord | null` (cible pour la révocation).
+- Handler `handleRevokeAccess` : PATCH /api/etablissement-access/{id} avec `{statut: "REFUSE", commentaire: "Accès révoqué par l'admin"}` → toast "Accès révoqué" → refreshData().
+- Table "Mes autorisations" — colonne Statut : ajout badge "Expiré" (rouge, AlertCircle) à côté du badge de statut quand `record.statut === 'APPROUVE' && record.dateFin && new Date(record.dateFin) < new Date()`. Wrapper `<div className="flex items-center gap-1.5 flex-wrap">` pour permettre le wrap.
+- Table — colonne Actions : pour `record.statut === 'APPROUVE'`, wrapper les boutons dans `<div className="flex justify-end gap-1">` avec :
+  - Bouton "Voir l'établissement" (ghost, emerald — pré-existant).
+  - Bouton "Révoquer" (ghost, rouge destructif, icône Ban) → setRevokeTarget(record).
+- Nouvel AlertDialog "Révoquer l'accès ?" avec description "Êtes-vous sûr de vouloir révoquer votre accès à {etab.nom} ? ... irréversible et vous perdrez immédiatement l'accès aux données." Bouton "Oui, révoquer" (destructif) → handleRevokeAccess.
+- Bonus : fix d'un pre-existing TypeScript error sur la ligne `<strong>{cancelTarget?.etablissement.nom}</strong>` → `cancelTarget?.etablissement?.nom ?? 'cet établissement'` (le champ etablissement est optional dans AccessRecord).
+
+Change 2 — RESPONSABLE /parametres (frontend/src/components/responsable/responsable-parametres-page.tsx, 1776 → 2335 lignes, +559) :
+- Imports lucide-react : +5 icônes (KeyRound, ShieldCheck, Clock, AlertCircle, Ban).
+- Imports UI : +Dialog/DialogContent/DialogDescription/DialogFooter/DialogHeader/DialogTitle, +AlertDialog/* , +Textarea.
+- Type `AccessRecord` : 13 champs + relations optionnelles `admin?` et `etablissement?` (cohérent avec la sortie backend post-fix).
+- Helpers (hors composant) : `formatAccessDate(dateStr)` → dd/MM/YYYY ou '—' ; `getAccessStatutBadge(statut)` → Badge coloré selon EN_ATTENTE/APPROUVE/REFUSE/EXPIRE (palette emerald/warning/destructive/gray) ; `getAccessMotifLabel(motif)` → labels français (Audit, Support technique, Inspection, Urgence).
+- State : 8 nouveaux useState (approveTarget, refuseTarget, revokeTarget, approveDuree='30', refuseCommentaire, approving, refusing).
+- Query TanStack : `accessRequestsQuery` avec queryKey `['responsable-access-requests', activeEtabId]`, queryFn `GET /api/etablissement-access?etablissementId=${activeEtabId}`, `enabled: !!activeEtabId && activeTab === 'acces-admin'`, staleTime 60s.
+- Stats calculées client-side : `enAttenteCount`, `approuveCount`, `refuseCount` (filtres sur `accessRecords`).
+- Helper `refreshAccessRequests` : invalidateQueries sur la queryKey.
+- 3 handlers : `handleApprove` (PATCH avec `dureeAccesJours: parseInt(approveDuree)` sauf si "0" → Illimité, n'envoie pas le champ), `handleRefuse` (PATCH avec commentaire trim ou défaut "Demande refusée par le responsable"), `handleRevokeAccess` (PATCH avec commentaire "Accès révoqué par le responsable"). Tous invalident `refreshAccessRequests` après succès.
+- TabsList : passage `grid-cols-2 sm:grid-cols-4` → `grid-cols-2 sm:grid-cols-5`. 5e TabsTrigger "acces-admin" avec icône KeyRound + classe `col-span-2 sm:col-span-1` (pleine largeur sur mobile, 1 colonne sur desktop).
+- TabsContent "acces-admin" :
+  - Stats row (4 Cards border-l-primary) : Total demandes (accent.bg100 + accent.text), En attente (warning), Approuvés (success), Refusés (destructive). Toutes en font-mono tabular-nums.
+  - Card "Demandes d'accès ADMIN" avec Badge count.
+  - États : loading (spinner accent.text), empty (KeyRound muted + 2 messages), table.
+  - Table : 6 colonnes (Admin / Motif / Statut / Date début / Date fin / Actions). Cellule Admin = avatar circulaire (initiale accent) + nom + email. Cellule Statut = badge + "Expiré" si dateFin < now(). Scroll vertical max-h-[28rem].
+  - Actions par statut :
+    - EN_ATTENTE : "Approuver" (ghost emerald, CheckCircle2) ouvre Dialog durée + "Refuser" (ghost destructif, XCircle) ouvre Dialog commentaire.
+    - APPROUVE : "Révoquer" (ghost destructif, Ban) ouvre AlertDialog confirmation.
+- Dialog "Approuver" : Select durée (7/30/90/365 jours / Illimité value=0) + texte d'aide dynamique ("Accès illimité" OU "L'accès expirera approximativement le JJ/MM/AAAA"). Bouton Approuver (accent.btn, Loader2 si approving).
+- Dialog "Refuser" : Textarea commentaire + note "Si laissé vide, le commentaire par défaut sera utilisé". Bouton Refuser (destructif, Loader2 si refusing).
+- AlertDialog "Révoquer l'accès" : description avec nom/email de l'admin, bouton "Oui, révoquer" (destructif).
+
+Vérifications :
+- `cd /home/z/my-project/SECT/frontend && bun run lint` → 0 errors, 1 warning pre-existing (certificat-pdf-react.tsx jsx-a11y/alt-text, non lié).
+- `bunx tsc --noEmit | grep -E "acces-etablissements-page|responsable-parametres-page"` → 0 erreur sur les 2 fichiers modifiés (erreurs pré-existantes dans autres fichiers : jspdf, gsap, monaco — non liées).
+- `cd /home/z/my-project/SECT/backend && go build ./...` → 0 erreur.
+- `go vet ./internal/...` → 0 erreur.
+- dev.log : compilation OK ("✓ Compiled in 283ms"), GET / 200 stable, aucun warning/erreur nouveau.
+
+Stage Summary:
+- **3 fichiers modifiés** : backend/internal/repository/etablissement_access.go (+20 lignes List) + frontend acces-etablissements-page.tsx (+78 lignes) + frontend responsable-parametres-page.tsx (+559 lignes).
+- **Backend** : List now LEFT JOINs User (admin) en plus de Etablissement → frontend RESPONSABLE peut afficher admin.name/email dans la table des demandes.
+- **Change 1 (ADMIN)** : bouton "Révoquer" (rouge, Ban) à côté de "Voir l'établissement" pour les accès APPROUVE + AlertDialog de confirmation. Badge "Expiré" (rouge, AlertCircle) quand dateFin < now() sur un accès APPROUVE (auto-révocation backend déjà gérée par admin_has_etablissement_access()).
+- **Change 2 (RESPONSABLE)** : 5e onglet "Accès ADMIN" (icône KeyRound) avec :
+  - 4 stats cards (Total / En attente / Approuvés / Refusés).
+  - Table des demandes (Admin / Motif / Statut / Date début / Date fin / Actions) avec scroll vertical.
+  - Workflow complet : Approuver (Dialog durée 7/30/90/365/Illimité → dureeAccesJours), Refuser (Dialog commentaire), Révoquer (AlertDialog).
+  - queryKey `['responsable-access-requests', activeEtabId]` + `enabled: !!activeEtabId && activeTab === 'acces-admin'` (lazy-load comme les autres tabs).
+- **Invariants préservés** : composants shadcn/ui existants (Card, Button, Badge, Select, Dialog, AlertDialog, Table, Tabs, Input, Label, Textarea, Separator), palette emerald/teal (text-success-text, bg-success/10) — pas d'indigo/blue, code style identique (functional component, useState, useQuery), TanStack Query pattern identique aux autres tabs.
+- **Workflow de bout en bout fonctionnel** : ADMIN crée demande (EN_ATTENTE) → RESPONSABLE voit dans /parametres → Approuve (avec durée) → ADMIN voit APPROUVE dans /acces-etablissements → ADMIN peut Révoquer (ou auto-révocation quand dateFin expire) → RESPONSABLE peut aussi Révoquer depuis /parametres.
+- Prêt pour commit + push (Render auto-déploie le backend, Vercel auto-déploie le frontend).
+
+---
+Task ID: ACCESS-WORKFLOW-OPTION-B
+Agent: Z.ai Code (tuteur/assistant)
+Task: Workflow Option B — RESPONSABLE approuve + durée d'accès + auto-révocation + accès étendu ADMIN.
+
+Work Log:
+- Backend : DureeAccesJours ajouté à UpdateAccessInput. Usecase Update calcule dateFin = now() + duree si fourni + statut=APPROUVE. Auto-révocation via admin_has_etablissement_access() qui vérifie dateFin >= now() (déjà en place, pas de cron nécessaire).
+- Backend : Repository List étendu avec LEFT JOIN User (pour peupler Admin email/name — nécessaire pour l'UI RESPONSABLE).
+- Frontend ADMIN (/acces-etablissements) : bouton "Révoquer" pour accès APPROUVE (PATCH → REFUSE) + badge "Expiré" si dateFin < now().
+- Frontend RESPONSABLE (/parametres) : 5ème onglet "Accès ADMIN" avec table, boutons Approuver (dialog durée 7/30/90/365/Illimité), Refuser (dialog commentaire), Révoquer. 4 stats cards.
+- Vérifications live (workflow complet via API) :
+  1. ADMIN crée demande EN_ATTENTE → 201 Created ✅
+  2. RESPONSABLE approuve avec durée 30j → APPROUVE, dateDebut=30/06, dateFin=30/07 ✅
+  3. hasAccess = true après approbation ✅
+  4. ADMIN voit l'établissement (GET /api/etablissements/{id}) ✅
+  5. ADMIN voit les utilisateurs (GET /api/users?etablissementId=X → 1 user) ✅
+  6. ADMIN révoque (PATCH → REFUSE) → statut=REFUSE ✅
+  7. hasAccess = false après révocation ✅
+  8. Accès étendu : ADMIN avec accès APPROUVE peut accéder à /etablissements, /utilisateurs (RLS filtre par admin_has_etablissement_access) ✅
+- Accès original restauré après tests.
+
+Stage Summary:
+- **Workflow complet Option B implémenté et testé en live** :
+  ADMIN demande → RESPONSABLE approuve (avec durée) → ADMIN voit les données → Auto-révocation quand dateFin expire → RESPONSABLE ou ADMIN peut révoquer.
+- **3 commits poussés** : 8877bd3 (backend DureeAccesJours + repo JOIN) + frontend (bouton Révoquer + onglet Accès ADMIN) + 5acbb97 (rebase).
+- **Backend** : domain (DureeAccesJours) + usecase (calcul dateFin) + repository (LEFT JOIN User).
+- **Frontend** : acces-etablissements-page.tsx (bouton Révoquer + badge Expiré) + responsable-parametres-page.tsx (onglet Accès ADMIN, +559 lignes).
+- **Aucune migration DB** nécessaire (admin_has_etablissement_access vérifie déjà dateFin).
+- **Auto-révocation** : pas de cron nécessaire, la fonction SQL admin_has_etablissement_access() vérifie dateFin >= now() à chaque requête.
