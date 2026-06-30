@@ -8,6 +8,7 @@ import (
         "strings"
         "time"
 
+        "github.com/go-chi/chi/v5"
         "github.com/jackc/pgx/v5"
         appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/middleware"
@@ -1053,5 +1054,170 @@ func (s *Server) enseignantContextReal(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]any{
                 "filieres":  filieres,
                 "etudiants": etudiants,
+        })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// N2 FIX : GET /api/notifications/me — NotificationAdmin destinées au user courant
+// ──────────────────────────────────────────────────────────────────────────
+// Avant : NotificationAdmin n'était accessible qu'aux ADMIN (RequireRole("ADMIN")
+// sur /api/notifications/admin). Une notif créée par l'ADMIN pour un étudiant
+// (destinataireRole=ETUDIANT) était invisible par son destinataire.
+// Maintenant : la RLS (migration 000018) + cet endpoint permettent à chaque
+// utilisateur de voir les notifs qui lui sont destinées (par userId, par rôle,
+// ou broadcast si destinataireId+destinataireRole sont NULL).
+
+func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        type notifMe struct {
+                ID               string  `json:"id"`
+                Type             string  `json:"type"`
+                Titre            string  `json:"titre"`
+                Message          string  `json:"message"`
+                Lu               bool    `json:"lu"`
+                ActionURL        *string `json:"actionUrl,omitempty"`
+                ActionLabel      *string `json:"actionLabel,omitempty"`
+                Priorite         string  `json:"priorite"`
+                Categorie        string  `json:"categorie"`
+                Icone            *string `json:"icone,omitempty"`
+                ExpireLe         *string `json:"expireLe,omitempty"`
+                CreatedAt        string  `json:"createdAt"`
+        }
+
+        result := []notifMe{}
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                luParam := r.URL.Query().Get("lu")
+                limit := 50
+                if l := r.URL.Query().Get("limit"); l != "" {
+                        if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 200 {
+                                limit = n
+                        }
+                }
+
+                whereClause := ""
+                if luParam == "false" {
+                        whereClause = `WHERE "lu" = false`
+                } else if luParam == "true" {
+                        whereClause = `WHERE "lu" = true`
+                }
+
+                query := fmt.Sprintf(`
+                        SELECT "id", "type", "titre", "message", "lu",
+                               "actionUrl", "actionLabel", "priorite", "categorie",
+                               "icone", "expireLe", "createdAt"
+                        FROM "NotificationAdmin"
+                        %s
+                        ORDER BY "createdAt" DESC
+                        LIMIT $1
+                `, whereClause)
+                rows, err := tx.Query(r.Context(), query, limit)
+                if err != nil {
+                        return nil
+                }
+                defer rows.Close()
+                for rows.Next() {
+                        n := notifMe{}
+                        var createdAt time.Time
+                        var expireLe *time.Time
+                        if err := rows.Scan(&n.ID, &n.Type, &n.Titre, &n.Message, &n.Lu,
+                                &n.ActionURL, &n.ActionLabel, &n.Priorite, &n.Categorie,
+                                &n.Icone, &expireLe, &createdAt); err != nil {
+                                return err
+                        }
+                        n.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+                        if expireLe != nil {
+                                s := expireLe.UTC().Format(time.RFC3339)
+                                n.ExpireLe = &s
+                        }
+                        result = append(result, n)
+                }
+                return rows.Err()
+        })
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "notifications": result,
+                "total":         len(result),
+        })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// N5 FIX : POST /api/alertes/mark-all-read — batch mark all as read
+// ──────────────────────────────────────────────────────────────────────────
+// Avant : le frontend faisait Promise.all(N fetches) pour marquer N alertes
+// comme lues → N requêtes HTTP (jusqu'à 20). Maintenant : 1 seule requête
+// batch UPDATE. Defense-in-depth : filtre par userId (en plus de la RLS).
+
+func (s *Server) alertesMarkAllRead(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        var updatedCount int64
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(r.Context(), `
+                        UPDATE "Alerte" SET "lue" = true, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "userId" = $1 AND "lue" = false
+                `, claims.UserID)
+                if err != nil {
+                        return fmt.Errorf("mark all read: %w", err)
+                }
+                updatedCount = tag.RowsAffected()
+                return nil
+        })
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "message": fmt.Sprintf("%d alerte(s) marquée(s) comme lue(s)", updatedCount),
+                "updated": updatedCount,
+        })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// N2 FIX (suite) : PATCH /api/notifications/me/{id} — marquer une notif comme lue
+// ──────────────────────────────────────────────────────────────────────────
+// Permet aux non-ADMIN de marquer leurs NotificationAdmin comme lues.
+// La RLS (migration 000018, policy NotificationAdmin_update_destinataire)
+// garantit qu'un user ne peut modifier que les notifs qui lui sont destinées.
+
+func (s *Server) notificationsMeMarkRead(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        notifID := chi.URLParam(r, "id")
+        if notifID == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+
+        var updated bool
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(r.Context(), `
+                        UPDATE "NotificationAdmin" SET "lu" = true
+                        WHERE "id" = $1
+                `, notifID)
+                if err != nil {
+                        return fmt.Errorf("mark notif read: %w", err)
+                }
+                updated = tag.RowsAffected() > 0
+                return nil
+        })
+
+        if !updated {
+                writeJSONError(w, http.StatusNotFound, "notification non trouvée ou non autorisée")
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "message": "notification marquée comme lue",
         })
 }

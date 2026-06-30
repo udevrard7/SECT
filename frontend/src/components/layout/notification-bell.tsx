@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Bell,
   AlertTriangle,
@@ -8,7 +8,6 @@ import {
   CheckCheck,
   CheckCircle2,
   Eye,
-  Loader2,
   Clock,
   GraduationCap,
   ClipboardList,
@@ -19,8 +18,6 @@ import {
   CreditCard,
   Lock,
   UserCheck,
-  FileText,
-  Settings,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -77,7 +74,11 @@ interface NotificationAdminItem {
   destinataire: { id: string; name: string; email: string; role: string } | null
 }
 
-// Unified notification item for display
+// Unified notification item for display.
+// N2: `source` distingue désormais 3 origines :
+//  - 'alerte'            → /api/alertes (alertes personnelles + scopées, tous rôles)
+//  - 'notification-admin' → /api/notifications/admin (notifs admin globales, ADMIN only)
+//  - 'notification-me'    → /api/notifications/me (NotificationAdmin destinées au user via RLS)
 interface UnifiedNotification {
   id: string
   titre: string
@@ -87,7 +88,7 @@ interface UnifiedNotification {
   lue: boolean
   createdAt: string
   categorie?: string
-  source: 'alerte' | 'notification-admin'
+  source: 'alerte' | 'notification-admin' | 'notification-me'
   filiere?: { id: string; nom: string } | null
   epreuve?: { id: string; titre: string } | null
 }
@@ -109,25 +110,26 @@ function formatRelativeDate(dateStr: string): string {
   return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 }
 
+// N7: tokens sémantiques "Savane EdTech" — JAMAIS de couleurs Tailwind directes.
 function getSeverityIcon(severity: string, size = 'h-4 w-4') {
   switch (severity) {
     case 'CRITICAL':
-      return <AlertTriangle className={`${size} text-red-500`} />
+      return <AlertTriangle className={`${size} text-destructive`} />
     case 'WARNING':
-      return <AlertTriangle className={`${size} text-amber-500`} />
+      return <AlertTriangle className={`${size} text-warning`} />
     case 'INFO':
-      return <Info className={`${size} text-sky-500`} />
+      return <Info className={`${size} text-info`} />
     default:
-      return <Info className={`${size} text-gray-500`} />
+      return <Info className={`${size} text-muted-foreground`} />
   }
 }
 
 function getSeverityBg(severity: string): string {
   switch (severity) {
-    case 'CRITICAL': return 'bg-red-100 dark:bg-red-900/30'
-    case 'WARNING': return 'bg-amber-100 dark:bg-amber-900/30'
-    case 'INFO': return 'bg-sky-100 dark:bg-sky-900/30'
-    default: return 'bg-gray-100 dark:bg-gray-800'
+    case 'CRITICAL': return 'bg-destructive/15'
+    case 'WARNING': return 'bg-warning/15'
+    case 'INFO': return 'bg-info/15'
+    default: return 'bg-muted'
   }
 }
 
@@ -171,77 +173,14 @@ function getPrioriteSeverity(priorite: string): 'CRITICAL' | 'WARNING' | 'INFO' 
   }
 }
 
-// ─── Generate dynamic alerts from stats as fallback ───
-
-function generateDynamicAlerts(stats: Record<string, unknown>): AlerteItem[] {
-  const alerts: AlerteItem[] = []
-  const now = new Date()
-
-  const moyenne = stats.moyenneGenerale as number ?? 0
-  if (moyenne > 0 && moyenne < 10) {
-    alerts.push({
-      id: 'dyn-perf-1',
-      titre: 'Moyenne générale inférieure à 10/20',
-      description: `La moyenne générale est de ${moyenne}/20. Une attention particulière est requise.`,
-      severity: moyenne < 8 ? 'CRITICAL' : 'WARNING',
-      type: 'PERFORMANCE',
-      lue: false, resolu: false, filiereId: null, epreuveId: null, userId: null,
-      createdAt: new Date(now.getTime() - 3600000).toISOString(),
-      updatedAt: new Date(now.getTime() - 3600000).toISOString(),
-      filiere: null, epreuve: null, user: null,
-    })
-  }
-
-  const statsAlertes = stats.alertes as Array<{ type: string; titre: string; description: string; severity: string }> ?? []
-  statsAlertes.forEach((a, i) => {
-    let type: AlerteItem['type'] = 'CUSTOM'
-    if (a.type === 'taux_echec') type = 'PERFORMANCE'
-    else if (a.type === 'corrections') type = 'RAPPEL'
-    else if (a.type === 'fraude') type = 'FRAUDE'
-
-    let severity: AlerteItem['severity'] = 'INFO'
-    if (a.severity === 'critical') severity = 'CRITICAL'
-    else if (a.severity === 'warning') severity = 'WARNING'
-
-    alerts.push({
-      id: `dyn-stats-${i}`, titre: a.titre, description: a.description,
-      severity, type, lue: false, resolu: false,
-      filiereId: null, epreuveId: null, userId: null,
-      createdAt: new Date(now.getTime() - (i + 1) * 7200000).toISOString(),
-      updatedAt: new Date(now.getTime() - (i + 1) * 7200000).toISOString(),
-      filiere: null, epreuve: null, user: null,
-    })
-  })
-
-  const nbEval = stats.nbEvaluations as number ?? 0
-  if (nbEval > 0) {
-    alerts.push({
-      id: 'dyn-rappel-1', titre: 'Évaluations programmées',
-      description: `${nbEval} évaluation(s) sont programmées.`,
-      severity: 'INFO', type: 'RAPPEL', lue: false, resolu: false,
-      filiereId: null, epreuveId: null, userId: null,
-      createdAt: new Date(now.getTime() - 1800000).toISOString(),
-      updatedAt: new Date(now.getTime() - 1800000).toISOString(),
-      filiere: null, epreuve: null, user: null,
-    })
-  }
-
-  alerts.push({
-    id: 'dyn-sys-1', titre: 'Rapport hebdomadaire disponible',
-    description: 'Le rapport statistique de la semaine est prêt.',
-    severity: 'INFO', type: 'SYSTEME', lue: true, resolu: false,
-    filiereId: null, epreuveId: null, userId: null,
-    createdAt: new Date(now.getTime() - 86400000).toISOString(),
-    updatedAt: new Date(now.getTime() - 86400000).toISOString(),
-    filiere: null, epreuve: null, user: null,
-  })
-
-  return alerts
-}
-
 // ─── Convert NotificationAdmin to UnifiedNotification ───
+// N2: le convertisseur est réutilisé pour /admin (source='notification-admin')
+// et /me (source='notification-me').
 
-function notificationAdminToUnified(n: NotificationAdminItem): UnifiedNotification {
+function notificationAdminToUnified(
+  n: NotificationAdminItem,
+  source: 'notification-admin' | 'notification-me' = 'notification-admin',
+): UnifiedNotification {
   return {
     id: n.id,
     titre: n.titre,
@@ -251,7 +190,7 @@ function notificationAdminToUnified(n: NotificationAdminItem): UnifiedNotificati
     lue: n.lu,
     createdAt: n.createdAt,
     categorie: n.categorie,
-    source: 'notification-admin',
+    source,
   }
 }
 
@@ -280,7 +219,6 @@ export function NotificationBell({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isUsingFallback, setIsUsingFallback] = useState(false)
 
   const unreadCount = notifications.filter((n) => !n.lue).length
   const criticalCount = notifications.filter((n) => n.severity === 'CRITICAL').length
@@ -288,75 +226,73 @@ export function NotificationBell({ className }: { className?: string }) {
   // Determine which API to use based on role
   const isAdmin = user?.role === 'ADMIN'
 
+  // N6: ref pour gérer l'interval de polling adaptatif.
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   // ─── Fetch notifications ───
+  // N2: pour TOUS les users (ADMIN et non-ADMIN), on fetch en parallèle :
+  //   1. /api/alertes?lue=false&limit=20  (alertes personnelles + scopées)
+  //   2. /api/notifications/me?lu=false&limit=20 (NotificationAdmin destinées au user via RLS)
+  // Pour ADMIN uniquement, on ajoute :
+  //   3. /api/notifications/admin?lu=false&limit=20 (notifs admin globales)
+  // N3: plus de fallback `generateDynamicAlerts` — si une source retourne 0 résultat,
+  //     on affiche simplement rien pour cette source.
+  // Promise.allSettled pour qu'un échec d'une source ne bloque pas les autres.
   const fetchNotifications = useCallback(async () => {
     if (!user) return
     setIsLoading(true)
     try {
-      if (isAdmin) {
-        // ADMIN: fetch from NotificationAdmin API with RBAC filtering
-        const params = new URLSearchParams({ lu: 'false', limit: '20' })
-        const res = await fetch(`/api/notifications/admin?${params.toString()}`)
-        if (res.ok) {
-          const data = await res.json()
-          const items: NotificationAdminItem[] = data.notifications ?? []
-          if (items.length > 0 || data.total > 0) {
-            setNotifications(items.map(notificationAdminToUnified))
-            setIsUsingFallback(false)
-          } else {
-            setNotifications([])
-            setIsUsingFallback(false)
-          }
-        } else {
-          setNotifications([])
-          setIsUsingFallback(false)
-        }
-      } else {
-        // RESPONSABLE/ENSEIGNANT/ETUDIANT: fetch from Alerte API with RBAC filtering
-        const params = new URLSearchParams({ lue: 'false', limit: '20' })
-        const res = await fetch(`/api/alertes?${params.toString()}`)
-        if (res.ok) {
-          const data = await res.json()
-          const items: AlerteItem[] = data.alertes ?? []
-          if (items.length > 0 || data.total > 0) {
-            setNotifications(items.map(alerteToUnified))
-            setIsUsingFallback(false)
-          } else {
-            await loadFallbackAlerts()
-          }
-        } else {
-          await loadFallbackAlerts()
+      const alertesParams = new URLSearchParams({ lue: 'false', limit: '20' })
+      const meParams = new URLSearchParams({ lu: 'false', limit: '20' })
+      const adminParams = new URLSearchParams({ lu: 'false', limit: '20' })
+
+      const fetchAlertes = async (): Promise<UnifiedNotification[]> => {
+        const res = await fetch(`/api/alertes?${alertesParams.toString()}`)
+        if (!res.ok) return []
+        const data = await res.json()
+        const items: AlerteItem[] = data.alertes ?? []
+        return items.map(alerteToUnified)
+      }
+
+      const fetchMe = async (): Promise<UnifiedNotification[]> => {
+        const res = await fetch(`/api/notifications/me?${meParams.toString()}`)
+        if (!res.ok) return []
+        const data = await res.json()
+        const items: NotificationAdminItem[] = data.notifications ?? []
+        return items.map((n) => notificationAdminToUnified(n, 'notification-me'))
+      }
+
+      const fetchAdmin = async (): Promise<UnifiedNotification[]> => {
+        const res = await fetch(`/api/notifications/admin?${adminParams.toString()}`)
+        if (!res.ok) return []
+        const data = await res.json()
+        const items: NotificationAdminItem[] = data.notifications ?? []
+        return items.map((n) => notificationAdminToUnified(n, 'notification-admin'))
+      }
+
+      const tasks: Promise<UnifiedNotification[]>[] = [fetchAlertes(), fetchMe()]
+      if (isAdmin) tasks.push(fetchAdmin())
+
+      const results = await Promise.allSettled(tasks)
+
+      // Merge + déduplication par id (first occurrence wins) + tri createdAt DESC
+      const merged = new Map<string, UnifiedNotification>()
+      for (const r of results) {
+        if (r.status !== 'fulfilled') continue
+        for (const n of r.value) {
+          if (!merged.has(n.id)) merged.set(n.id, n)
         }
       }
+      const sorted = Array.from(merged.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      setNotifications(sorted)
     } catch {
-      if (!isAdmin) {
-        await loadFallbackAlerts()
-      } else {
-        setNotifications([])
-        setIsUsingFallback(false)
-      }
+      setNotifications([])
     } finally {
       setIsLoading(false)
     }
   }, [user, isAdmin])
-
-  const loadFallbackAlerts = async () => {
-    try {
-      const filiereParam = user?.filiereId || ''
-      const res = await fetch(`/api/stats/responsable${filiereParam ? `?filiereId=${filiereParam}` : ''}`)
-      if (res.ok) {
-        const stats = await res.json()
-        setNotifications(generateDynamicAlerts(stats).map(alerteToUnified))
-        setIsUsingFallback(true)
-      } else {
-        setNotifications([])
-        setIsUsingFallback(true)
-      }
-    } catch {
-      setNotifications([])
-      setIsUsingFallback(true)
-    }
-  }
 
   // Fetch on mount and when popover opens
   useEffect(() => {
@@ -369,18 +305,35 @@ export function NotificationBell({ className }: { className?: string }) {
     }
   }, [open, fetchNotifications])
 
-  // BUGFIX (QUOTA-FIX-1) : polling 60s suspendu quand l'onglet est caché.
-  // Avant : setInterval(fetchNotifications, 60000) tournait en permanence
-  // même quand l'utilisateur avait changé d'onglet → ~1440 req/jour/tab active.
-  // Maintenant : le polling ne s'exécute que si document.visibilityState ===
-  // 'visible' (économie ~70% sur les tabs en arrière-plan).
+  // N6: Polling adaptatif.
+  //  - unreadCount > 0 → 30s  (vérifier souvent s'il y a du nouveau)
+  //  - unreadCount === 0 → 5min (vérifier rarement si tout est lu)
+  // L'interval est recréé quand unreadCount change (via le ref + cleanup).
+  // Le polling ne s'exécute que si l'onglet est visible (économie ~70% tabs cachés).
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    const delay = unreadCount > 0 ? 30000 : 300000
+
+    intervalRef.current = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchNotifications()
       }
-    }, 60000)
-    // Re-fetch quand l'utilisateur revient sur l'onglet (1 seule fois)
+    }, delay)
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [fetchNotifications, unreadCount])
+
+  // Re-fetch quand l'utilisateur revient sur l'onglet (1 seule fois)
+  useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchNotifications()
@@ -388,26 +341,35 @@ export function NotificationBell({ className }: { className?: string }) {
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
-      clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [fetchNotifications])
 
   // ─── Mark single as read ───
+  // N2: route selon la source :
+  //  - 'alerte'            → PATCH /api/alertes/{id}            (body: { action: 'marquer_lu' })
+  //  - 'notification-me'   → PATCH /api/notifications/me/{id}   (body: {})
+  //  - 'notification-admin'→ PATCH /api/notifications/admin/{id}(body: { action: 'marquer_lu' })
   const handleMarkAsRead = async (notification: UnifiedNotification) => {
-    if (isUsingFallback) {
-      setNotifications((prev) => prev.map((n) => n.id === notification.id ? { ...n, lue: true } : n))
-      return
-    }
     try {
-      const apiPath = notification.source === 'notification-admin'
-        ? `/api/notifications/admin/${notification.id}`
-        : `/api/alertes/${notification.id}`
+      let apiPath: string
+      let body: string
+
+      if (notification.source === 'alerte') {
+        apiPath = `/api/alertes/${notification.id}`
+        body = JSON.stringify({ action: 'marquer_lu' })
+      } else if (notification.source === 'notification-me') {
+        apiPath = `/api/notifications/me/${notification.id}`
+        body = JSON.stringify({})
+      } else {
+        apiPath = `/api/notifications/admin/${notification.id}`
+        body = JSON.stringify({ action: 'marquer_lu' })
+      }
 
       const res = await fetch(apiPath, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'marquer_lu' }),
+        body,
       })
 
       if (res.ok) {
@@ -421,36 +383,69 @@ export function NotificationBell({ className }: { className?: string }) {
   }
 
   // ─── Mark all as read ───
+  // N5: batch par source — 1 requête batch pour les alertes + 1 batch pour les
+  // notifs admin (ADMIN) + N PATCH /me/{id} pour les notifs destinées au user.
   const handleMarkAllAsRead = async () => {
     const unreadNotifs = notifications.filter((n) => !n.lue)
     if (unreadNotifs.length === 0) return
 
-    if (isUsingFallback) {
-      setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
-      toast.success('Toutes les notifications marquées comme lues')
-      return
+    const alerteNotifs = unreadNotifs.filter((n) => n.source === 'alerte')
+    const adminNotifs = unreadNotifs.filter((n) => n.source === 'notification-admin')
+    const meNotifs = unreadNotifs.filter((n) => n.source === 'notification-me')
+
+    const tasks: Promise<Response>[] = []
+
+    // 1. Alertes → 1 batch POST /api/alertes/mark-all-read
+    if (alerteNotifs.length > 0) {
+      tasks.push(
+        fetch('/api/alertes/mark-all-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    // 2. NotificationAdmin globales (source=notification-admin) :
+    //    - ADMIN → batch GET /api/notifications/admin?markAllRead=true (existant)
+    //    - non-ADMIN (ne devrait pas arriver, /admin est RBAC) → fallback /me/{id}
+    if (adminNotifs.length > 0) {
+      if (isAdmin) {
+        tasks.push(
+          fetch('/api/notifications/admin?markAllRead=true&lu=false', { method: 'GET' }),
+        )
+      } else {
+        for (const n of adminNotifs) {
+          tasks.push(
+            fetch(`/api/notifications/me/${n.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            }),
+          )
+        }
+      }
+    }
+
+    // 3. NotificationAdmin destinées au user (source=notification-me) → PATCH /me/{id}
+    //    Généralement 1-2 notifs, pas besoin de batch backend.
+    for (const n of meNotifs) {
+      tasks.push(
+        fetch(`/api/notifications/me/${n.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+      )
     }
 
     try {
-      if (isAdmin) {
-        // Use the markAllRead query param for admin notifications
-        const res = await fetch('/api/notifications/admin?markAllRead=true&lu=false', { method: 'GET' })
-        if (res.ok) {
-          setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
-          toast.success('Toutes les notifications marquées comme lues')
-        }
-      } else {
-        await Promise.all(
-          unreadNotifs.map((n) =>
-            fetch(`/api/alertes/${n.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'marquer_lu' }),
-            })
-          )
-        )
+      const results = await Promise.allSettled(tasks)
+      const anyOk = tasks.length === 0 || results.some((r) => r.status === 'fulfilled' && r.value.ok)
+      if (anyOk) {
         setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
         toast.success('Toutes les notifications marquées comme lues')
+      } else {
+        toast.error('Erreur lors de la mise à jour')
       }
     } catch {
       toast.error('Erreur lors de la mise à jour')
@@ -472,16 +467,16 @@ export function NotificationBell({ className }: { className?: string }) {
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className={cn("relative", className)} aria-label="Notifications">
           <Bell className="h-4 w-4" />
-          {/* Unread badge */}
+          {/* Unread badge — N7: tokens sémantiques */}
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground shadow-sm">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
-          {/* Critical pulse indicator */}
+          {/* Critical pulse indicator — N7 */}
           {criticalCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive/60 opacity-75" />
             </span>
           )}
         </Button>
@@ -493,7 +488,7 @@ export function NotificationBell({ className }: { className?: string }) {
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-semibold">Notifications</h4>
             {unreadCount > 0 && (
-              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-destructive/15 text-destructive-foreground">
                 {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
               </Badge>
             )}
@@ -503,7 +498,7 @@ export function NotificationBell({ className }: { className?: string }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                className="h-7 text-xs text-success-text hover:bg-success/10"
                 onClick={handleMarkAllAsRead}
               >
                 <CheckCheck className="h-3.5 w-3.5 mr-1" />
@@ -528,11 +523,11 @@ export function NotificationBell({ className }: { className?: string }) {
           </div>
         )}
 
-        {/* ─── Empty state ─── */}
+        {/* ─── Empty state — N7: tokens success ─── */}
         {!isLoading && notifications.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 px-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+              <CheckCircle2 className="h-6 w-6 text-success-text" />
             </div>
             <p className="mt-3 text-sm font-medium">Aucune notification</p>
             <p className="mt-1 text-xs text-muted-foreground text-center">
@@ -549,7 +544,7 @@ export function NotificationBell({ className }: { className?: string }) {
                 <div
                   key={notification.id}
                   className={`flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50 cursor-pointer ${
-                    !notification.lue ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''
+                    !notification.lue ? 'bg-success/5' : ''
                   }`}
                   onClick={() => {
                     if (!notification.lue) handleMarkAsRead(notification)
@@ -567,7 +562,7 @@ export function NotificationBell({ className }: { className?: string }) {
                         {notification.titre}
                       </p>
                       {!notification.lue && (
-                        <span className="flex-shrink-0 mt-1 h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="flex-shrink-0 mt-1 h-2 w-2 rounded-full bg-success" />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
@@ -609,7 +604,7 @@ export function NotificationBell({ className }: { className?: string }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                className="w-full text-xs text-success-text hover:bg-success/10"
                 onClick={handleViewAll}
               >
                 <Eye className="h-3.5 w-3.5 mr-1.5" />
