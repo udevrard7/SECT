@@ -15,7 +15,10 @@ export async function POST(request: NextRequest) {
 
     const resp = await fetch(`${API_URL}/api/auth/assistance-mode`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: request.headers.get('cookie') || '',  // forward auth cookies
+      },
       body: JSON.stringify(body),
     })
 
