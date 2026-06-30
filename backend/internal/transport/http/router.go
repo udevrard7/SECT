@@ -554,9 +554,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Patch("/{id}", s.updatePlan)
                 })
 
+                // CONFIGURATION-FIX-C4 : RequireRole("ADMIN") + route POST (C2).
                 r.Route("/api/platform-settings", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.platformSettingsReal)
+                        r.Post("/", s.updatePlatformSettings)
                 })
 
                 r.Route("/api/ai-providers", func(r chi.Router) {

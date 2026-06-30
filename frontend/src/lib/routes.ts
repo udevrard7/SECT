@@ -542,6 +542,8 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // MONITORING-FIX-M7 : pages supervision réservées ADMIN.
   monitoring: ['ADMIN'],
   logs: ['ADMIN'],
+  // CONFIG-FRONTEND-EXTEND : page Configuration système réservée ADMIN.
+  configuration: ['ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)
