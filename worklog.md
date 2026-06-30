@@ -9381,3 +9381,34 @@ Stage Summary:
 - **Frontend** : routes.ts (garde rôle) + acces-etablissements-page.tsx (navigation réelle).
 - **Aucune migration DB** nécessaire (RLS policies déjà en place).
 - **Module /acces-etablissements désormais pleinement fonctionnel** : création/consultation/approbation/refus/annulation de demandes d'accès, avec sécurité anti-IDOR + anti-forgery + garde de rôle.
+
+---
+Task ID: MONITORING-FIX-STEP-1-5
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix module /monitoring — M1-M8 (8 bugs : 3 CRITICAL + 2 HIGH + 2 MEDIUM + 1 LOW).
+
+Work Log:
+- M1 (CRITICAL) : monitoringEventsReal utilisait "severity"/"resolved" (colonnes inexistantes en DB) → crash silencieux. Réécriture avec vraies colonnes (severite, statut, details, source, duree, resoluLe, resoluPar, updatedAt).
+- M2 (CRITICAL) : routes POST/PATCH/DELETE inexistantes. 3 nouveaux handlers (createMonitoringEvent, resolveMonitoringEvent, ignoreMonitoringEvent) dans monitoring_mutation_handlers.go.
+- M3 (CRITICAL) : pas de policy RLS modify. Migration 000016 ajoutant MonitoringEvent_modify_admin (FOR ALL, is_admin()).
+- M4 (HIGH) : pas de stats dans la réponse. Ajout activeCount/criticalCount/errorCount (3 count queries sur TOUS les events).
+- M5 (HIGH) : filtres type/severite/statut ignorés. WHERE dynamique avec paramètres bindés.
+- M6 (MEDIUM) : règles d'alerte hardcodées. Disclaimer ajouté sur le tab Alertes.
+- M7 (MEDIUM) : pas de garde rôle. RequireRole("ADMIN") sur monitoring + logs backend. monitoring + logs ajoutés à PAGE_ALLOWED_ROLES frontend.
+- M8 (LOW) : services health fictif. Disclaimer ajouté sur le tab Services.
+- Vérifications live (auth admin) — tous les endpoints testés :
+  - GET /api/monitoring → 200, stats présentes {activeCount:0, criticalCount:0, errorCount:0} ✅
+  - POST /api/monitoring → 201 Created, event créé avec severite/statut/details/source ✅
+  - GET après création → stats peuplées {activeCount:1} ✅
+  - GET avec filtre ?severite=WARNING → 1 event filtré ✅
+  - PATCH /api/monitoring/{id} (résoudre) → 200, statut=RESOLU, resoluLe+resoluPar peuplés ✅
+  - DELETE /api/monitoring/{id} (ignorer) → 200, statut=IGNORE ✅
+- Données de test nettoyées.
+
+Stage Summary:
+- **8 bugs traités** : M1-M8.
+- **1 commit poussé** : 6b5e44b (7 fichiers, +362/-10 lignes).
+- **Backend** : stub_handlers_real2.go (M1+M4+M5 réécriture GET) + monitoring_mutation_handlers.go (M2, 3 handlers) + router.go (M2 routes + M7 RequireRole).
+- **DB** : migration 000016 appliquée (version 16). 3 policies maintenant sur MonitoringEvent (select_admin + insert_system + modify_admin).
+- **Frontend** : routes.ts (M7 garde rôle) + monitoring-page.tsx (M6+M8 disclaimers).
+- **Module /monitoring désormais pleinement fonctionnel** : lecture avec vraies colonnes + stats + filtres, création/résolution/ignorance d'événements, garde ADMIN.
