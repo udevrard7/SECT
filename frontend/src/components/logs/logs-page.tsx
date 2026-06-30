@@ -20,6 +20,9 @@ import {
   LogOut,
   AlertTriangle,
   Loader2,
+  Download,
+  ShieldAlert,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -55,9 +58,14 @@ interface AuditLogItem {
 
 // ─── Utility functions ───
 
+// LOGS-FIX-L5 : étendu à toutes les actions réelles en DB (24 au total).
 function getActionBadge(action: string) {
   switch (action) {
     case 'CREATE':
+    case 'CREATE_EPREUVE':
+    case 'CREATE_USER_DIRECT':
+    case 'CREATE_RESPONSABLE_AUTO':
+    case 'CREATE_ETABLISSEMENT_WITH_ABO':
       return (
         <Badge className="bg-success/15 text-success-text border-success/30 gap-1">
           <PlusCircle className="h-3 w-3" />
@@ -65,6 +73,8 @@ function getActionBadge(action: string) {
         </Badge>
       )
     case 'UPDATE':
+    case 'UPDATE_EPREUVE':
+    case 'UPDATE_LOGO':
       return (
         <Badge className="bg-info/15 text-info border-info/30 gap-1">
           <Edit3 className="h-3 w-3" />
@@ -72,6 +82,8 @@ function getActionBadge(action: string) {
         </Badge>
       )
     case 'DELETE':
+    case 'SOFT_DELETE_EPREUVE':
+    case 'PURGE_CORBEILLE':
       return (
         <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
           <Trash2 className="h-3 w-3" />
@@ -79,6 +91,7 @@ function getActionBadge(action: string) {
         </Badge>
       )
     case 'LOGIN':
+    case 'LOGIN_MATRICULE':
       return (
         <Badge className="bg-warning/15 text-warning border-warning/30 gap-1">
           <LogIn className="h-3 w-3" />
@@ -92,22 +105,98 @@ function getActionBadge(action: string) {
           Déconnexion
         </Badge>
       )
+    case 'LOGIN_FAILED':
+    case 'LOGIN_LOCKED':
+      return (
+        <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          {action === 'LOGIN_LOCKED' ? 'Verrouillé' : 'Échec connexion'}
+        </Badge>
+      )
+    case 'TOKEN_REFRESHED':
+      return (
+        <Badge className="bg-muted text-muted-foreground border-border gap-1">
+          <Clock className="h-3 w-3" />
+          Refresh token
+        </Badge>
+      )
+    case 'CHANGE_PASSWORD':
+    case 'PASSWORD_RESET':
+      return (
+        <Badge className="bg-info/15 text-info border-info/30 gap-1">
+          <Edit3 className="h-3 w-3" />
+          {action === 'PASSWORD_RESET' ? 'Reset password' : 'Chgmt password'}
+        </Badge>
+      )
+    case 'AI_GRADE_RESPONSE':
+    case 'AI_BATCH_GRADE':
+      return (
+        <Badge className="bg-info/15 text-info border-info/30 gap-1">
+          <Activity className="h-3 w-3" />
+          Correction IA
+        </Badge>
+      )
+    case 'FINALIZE_AND_RETURN_CORRECTION':
+      return (
+        <Badge className="bg-info/15 text-info border-info/30 gap-1">
+          <Edit3 className="h-3 w-3" />
+          Retour correction
+        </Badge>
+      )
+    case 'FORCE_SUBMIT_SESSION':
+    case 'AUTO_CLOSE_EPREUVE':
+      return (
+        <Badge className="bg-warning/15 text-warning border-warning/30 gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Auto/Forcé
+        </Badge>
+      )
     default:
       return <Badge variant="outline">{action}</Badge>
   }
 }
 
+// LOGS-FIX-L5 : étendu pour matcher getActionBadge.
 function getActionIcon(action: string) {
   switch (action) {
-    case 'CREATE': return <PlusCircle className="h-5 w-5 text-success-text" />
-    case 'UPDATE': return <Edit3 className="h-5 w-5 text-info" />
-    case 'DELETE': return <Trash2 className="h-5 w-5 text-destructive" />
-    case 'LOGIN': return <LogIn className="h-5 w-5 text-warning" />
-    case 'LOGOUT': return <LogOut className="h-5 w-5 text-muted-foreground" />
+    case 'CREATE':
+    case 'CREATE_EPREUVE':
+    case 'CREATE_USER_DIRECT':
+    case 'CREATE_RESPONSABLE_AUTO':
+    case 'CREATE_ETABLISSEMENT_WITH_ABO':
+      return <PlusCircle className="h-5 w-5 text-success-text" />
+    case 'UPDATE':
+    case 'UPDATE_EPREUVE':
+    case 'UPDATE_LOGO':
+    case 'CHANGE_PASSWORD':
+    case 'PASSWORD_RESET':
+    case 'FINALIZE_AND_RETURN_CORRECTION':
+      return <Edit3 className="h-5 w-5 text-info" />
+    case 'DELETE':
+    case 'SOFT_DELETE_EPREUVE':
+    case 'PURGE_CORBEILLE':
+      return <Trash2 className="h-5 w-5 text-destructive" />
+    case 'LOGIN':
+    case 'LOGIN_MATRICULE':
+      return <LogIn className="h-5 w-5 text-warning" />
+    case 'LOGOUT':
+      return <LogOut className="h-5 w-5 text-muted-foreground" />
+    case 'LOGIN_FAILED':
+    case 'LOGIN_LOCKED':
+      return <AlertTriangle className="h-5 w-5 text-destructive" />
+    case 'TOKEN_REFRESHED':
+      return <Clock className="h-5 w-5 text-muted-foreground" />
+    case 'AI_GRADE_RESPONSE':
+    case 'AI_BATCH_GRADE':
+      return <Activity className="h-5 w-5 text-info" />
+    case 'FORCE_SUBMIT_SESSION':
+    case 'AUTO_CLOSE_EPREUVE':
+      return <AlertTriangle className="h-5 w-5 text-warning" />
     default: return <Activity className="h-5 w-5 text-muted-foreground" />
   }
 }
 
+// LOGS-FIX-L6 : étendu à toutes les entités réelles en DB (10 au total).
 function getEntityLabel(entite: string): string {
   switch (entite) {
     case 'User': return 'Utilisateur'
@@ -117,6 +206,12 @@ function getEntityLabel(entite: string): string {
     case 'Question': return 'Question'
     case 'Document': return 'Document'
     case 'Session': return 'Session'
+    case 'Reponse': return 'Réponse'
+    case 'SessionPassation': return 'Session de passation'
+    case 'Affectation': return 'Affectation'
+    case 'Corbeille': return 'Corbeille'
+    case 'UniteEnseignement': return 'Unité d\'enseignement'
+    case 'SecuritySettings': return 'Paramètres sécurité'
     default: return entite
   }
 }
@@ -171,6 +266,9 @@ export function LogsPage() {
   const [searchEmail, setSearchEmail] = useState('')
   const [page, setPage] = useState(1)
 
+  // LOGS-AMÉLIORATION-A3 : auto-refresh toggle (30s, comme /monitoring).
+  const [autoRefresh, setAutoRefresh] = useState(false)
+
   // ─── Expanded log state ───
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null)
 
@@ -196,6 +294,9 @@ export function LogsPage() {
     },
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
+    // LOGS-AMÉLIORATION-A3 : auto-refresh 30s conditionnel.
+    refetchInterval: autoRefresh ? 30_000 : false,
+    refetchIntervalInBackground: false,
   })
 
   const logs = logsQuery.data?.logs ?? []
@@ -214,6 +315,50 @@ export function LogsPage() {
 
   const totalPages = Math.ceil(total / limit)
 
+  // LOGS-AMÉLIORATION-A1 : stats calculées depuis les logs de la page courante.
+  const loginFailedCount = logs.filter((l) => l.action === 'LOGIN_FAILED' || l.action === 'LOGIN_LOCKED').length
+  const actionCounts: Record<string, number> = {}
+  logs.forEach((l) => { actionCounts[l.action] = (actionCounts[l.action] || 0) + 1 })
+  const topAction = Object.entries(actionCounts).sort((a, b) => b[1] - a[1])[0]
+  const entityCounts: Record<string, number> = {}
+  logs.forEach((l) => { entityCounts[l.entite] = (entityCounts[l.entite] || 0) + 1 })
+  const topEntity = Object.entries(entityCounts).sort((a, b) => b[1] - a[1])[0]
+
+  // LOGS-AMÉLIORATION-A2 : export CSV des logs de la page courante.
+  const handleExportCSV = () => {
+    if (logs.length === 0) {
+      toast.error('Aucune donnée', { description: 'Aucun log à exporter.' })
+      return
+    }
+    const headers = ['Date', 'Action', 'Entité', 'Entité ID', 'Email', 'IP', 'Détails']
+    const rows = logs.map((l) => [
+      formatLogDate(l.createdAt),
+      l.action,
+      l.entite,
+      l.entiteId || '',
+      l.userEmail || '',
+      l.adresseIp || '',
+      l.details || '',
+    ])
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n')
+    const bom = '\uFEFF'
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `logs-audit-${new Date().toISOString().slice(0, 10)}.csv`
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    setTimeout(() => {
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }, 100)
+    toast.success('Export réussi', { description: `${logs.length} entrées exportées en CSV.` })
+  }
+
   // ─── Get initials for avatar ───
   const getInitials = (email: string | null) => {
     if (!email) return '?'
@@ -223,14 +368,26 @@ export function LogsPage() {
   return (
     <div className="space-y-6">
       {/* ─── Header ─── */}
-      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
-        <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
-          <FileText className="h-7 w-7 text-success-text" />
-          Journaux d&apos;Audit
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Consulter les journaux d&apos;activité du système
-        </p>
+      <div className="ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2">
+            <FileText className="h-7 w-7 text-success-text" />
+            Journaux d&apos;Audit
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Consulter les journaux d&apos;activité du système
+          </p>
+        </div>
+        {/* LOGS-AMÉLIORATION-A3 : toggle auto-refresh */}
+        <Button
+          variant={autoRefresh ? 'default' : 'outline'}
+          size="sm"
+          className={autoRefresh ? 'bg-success hover:bg-success/90' : ''}
+          onClick={() => setAutoRefresh((v) => !v)}
+        >
+          <RefreshCw className={`h-4 w-4 mr-1.5 ${autoRefresh ? 'animate-spin' : ''}`} />
+          {autoRefresh ? 'Auto (30s)' : 'Actualiser'}
+        </Button>
       </div>
 
       {/* ─── Toolbar / Filters ─── */}
@@ -261,13 +418,33 @@ export function LogsPage() {
                 <SelectTrigger className="w-full lg:w-[160px]">
                   <SelectValue placeholder="Toutes" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-80">
                   <SelectItem value="all">Toutes les actions</SelectItem>
-                  <SelectItem value="CREATE">Création</SelectItem>
-                  <SelectItem value="UPDATE">Modification</SelectItem>
-                  <SelectItem value="DELETE">Suppression</SelectItem>
+                  {/* LOGS-FIX-L5 : toutes les actions réelles en DB (24) */}
                   <SelectItem value="LOGIN">Connexion</SelectItem>
+                  <SelectItem value="LOGIN_MATRICULE">Connexion (matricule)</SelectItem>
+                  <SelectItem value="LOGIN_FAILED">Échec connexion</SelectItem>
+                  <SelectItem value="LOGIN_LOCKED">Compte verrouillé</SelectItem>
                   <SelectItem value="LOGOUT">Déconnexion</SelectItem>
+                  <SelectItem value="TOKEN_REFRESHED">Refresh token</SelectItem>
+                  <SelectItem value="CREATE">Création</SelectItem>
+                  <SelectItem value="CREATE_EPREUVE">Création épreuve</SelectItem>
+                  <SelectItem value="CREATE_USER_DIRECT">Création utilisateur</SelectItem>
+                  <SelectItem value="CREATE_RESPONSABLE_AUTO">Création responsable (auto)</SelectItem>
+                  <SelectItem value="CREATE_ETABLISSEMENT_WITH_ABO">Création étab + abo</SelectItem>
+                  <SelectItem value="UPDATE">Modification</SelectItem>
+                  <SelectItem value="UPDATE_EPREUVE">Modif épreuve</SelectItem>
+                  <SelectItem value="UPDATE_LOGO">Modif logo</SelectItem>
+                  <SelectItem value="CHANGE_PASSWORD">Changement password</SelectItem>
+                  <SelectItem value="PASSWORD_RESET">Reset password</SelectItem>
+                  <SelectItem value="DELETE">Suppression</SelectItem>
+                  <SelectItem value="SOFT_DELETE_EPREUVE">Suppression épreuve</SelectItem>
+                  <SelectItem value="PURGE_CORBEILLE">Purge corbeille</SelectItem>
+                  <SelectItem value="AI_GRADE_RESPONSE">Correction IA</SelectItem>
+                  <SelectItem value="AI_BATCH_GRADE">Correction IA (batch)</SelectItem>
+                  <SelectItem value="FINALIZE_AND_RETURN_CORRECTION">Retour correction</SelectItem>
+                  <SelectItem value="FORCE_SUBMIT_SESSION">Soumission forcée</SelectItem>
+                  <SelectItem value="AUTO_CLOSE_EPREUVE">Clôture auto épreuve</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -277,8 +454,9 @@ export function LogsPage() {
                 <SelectTrigger className="w-full lg:w-[160px]">
                   <SelectValue placeholder="Toutes" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-80">
                   <SelectItem value="all">Toutes les entités</SelectItem>
+                  {/* LOGS-FIX-L6 : toutes les entités réelles en DB (10) */}
                   <SelectItem value="User">Utilisateur</SelectItem>
                   <SelectItem value="Etablissement">Établissement</SelectItem>
                   <SelectItem value="Filiere">Filière</SelectItem>
@@ -286,6 +464,12 @@ export function LogsPage() {
                   <SelectItem value="Question">Question</SelectItem>
                   <SelectItem value="Document">Document</SelectItem>
                   <SelectItem value="Session">Session</SelectItem>
+                  <SelectItem value="Reponse">Réponse</SelectItem>
+                  <SelectItem value="SessionPassation">Session de passation</SelectItem>
+                  <SelectItem value="Affectation">Affectation</SelectItem>
+                  <SelectItem value="Corbeille">Corbeille</SelectItem>
+                  <SelectItem value="UniteEnseignement">Unité d\'enseignement</SelectItem>
+                  <SelectItem value="SecuritySettings">Paramètres sécurité</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -305,18 +489,60 @@ export function LogsPage() {
         </CardContent>
       </Card>
 
-      {/* ─── Stats summary ─── */}
-      <div className="flex gap-3 flex-wrap">
-        <Badge variant="secondary" className="gap-1 bg-success/10 text-success-text py-1 px-3">
-          <Activity className="h-3 w-3" />
-          <span className="font-mono tabular-nums">{total}</span> entrée{total > 1 ? 's' : ''}
-        </Badge>
-        {actionFilter !== 'all' && (
-          <Badge variant="secondary" className="gap-1 bg-info/10 text-info py-1 px-3">
-            <Filter className="h-3 w-3" />
-            Filtré par: {actionFilter}
-          </Badge>
-        )}
+      {/* ─── LOGS-AMÉLIORATION-A1 : KPI cards ─── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Activity className="h-5 w-5 text-success-text" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total (filtré)</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{total}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Échecs/Verrouillages</p>
+              <p className="text-xl font-bold font-mono tabular-nums">{loginFailedCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
+              <Filter className="h-5 w-5 text-info" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Action principale</p>
+              <p className="text-sm font-bold truncate">{topAction ? `${topAction[0]} (${topAction[1]})` : '—'}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+              <FileText className="h-5 w-5 text-warning" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Entité principale</p>
+              <p className="text-sm font-bold truncate">{topEntity ? `${getEntityLabel(topEntity[0])} (${topEntity[1]})` : '—'}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ─── LOGS-AMÉLIORATION-A2 : Export CSV ─── */}
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={logs.length === 0}>
+          <Download className="h-4 w-4 mr-1.5" />
+          Exporter CSV
+        </Button>
       </div>
 
       {/* ─── Loading state ─── */}
@@ -392,14 +618,22 @@ export function LogsPage() {
                         </span>
                       </div>
 
-                      {/* User info */}
+                      {/* User info — LOGS-AMÉLIORATION-A6 : email cliquable pour filtrer */}
                       <div className="mt-2 flex items-center gap-2">
                         <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-xs font-bold text-success-text font-mono tabular-nums">
                           {getInitials(log.userEmail as string | null)}
                         </div>
-                        <span className="text-sm text-muted-foreground truncate">
-                          {(log.userEmail as string | null) || 'Système'}
-                        </span>
+                        {log.userEmail ? (
+                          <button
+                            className="text-sm text-success-text hover:underline truncate cursor-pointer"
+                            onClick={() => { setSearchEmail(log.userEmail as string); setPage(1); }}
+                            title={`Filtrer par ${log.userEmail}`}
+                          >
+                            {log.userEmail}
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground truncate">Système</span>
+                        )}
                       </div>
 
                       {/* Details preview */}
@@ -449,7 +683,14 @@ export function LogsPage() {
                             </div>
                             {log.adresseIp && (
                               <p className="mt-2 text-xs text-muted-foreground">
-                                Adresse IP : <span className="font-mono">{log.adresseIp}</span>
+                                Adresse IP :{' '}
+                                <button
+                                  className="font-mono text-success-text hover:underline cursor-pointer"
+                                  onClick={() => { setSearchEmail(log.adresseIp as string); setPage(1); }}
+                                  title={`Filtrer par IP ${log.adresseIp}`}
+                                >
+                                  {log.adresseIp}
+                                </button>
                               </p>
                             )}
                             <p className="text-xs text-muted-foreground">
