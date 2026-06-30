@@ -63,6 +63,8 @@ func Auth(signer *jwt.Signer) func(http.Handler) http.Handler {
                                 EtablissementID: claims.EtablissementID,
                                 FiliereID:       claims.FiliereID,
                                 MustChangePwd:   claims.MustChangePwd, // U3
+                                Email:           claims.Email,
+                                Name:            claims.Name,
                         }
 
                         ctx := db.WithClaimsContext(r.Context(), sessionClaims)

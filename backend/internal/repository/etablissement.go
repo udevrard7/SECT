@@ -149,6 +149,7 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
                                 &e.ExempleMatricule, &e.FormatMatricule, &e.RegexMatricule,
                                 &e.CertWatermarkText, &e.CertWatermarkEnabled, &e.CertWatermarkOpacity,
                                 &e.CertWatermarkColor, &e.CertWatermarkPattern,
+                                &e.AnneeAcademiqueCouranteID,
                                 &e.CreatedAt, &e.UpdatedAt,
                                 &countFilieres, &countUsers,
                         )
