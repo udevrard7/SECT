@@ -352,6 +352,44 @@ func (uc *EtablissementUseCase) ClearLogo(ctx context.Context, claims db.Session
         return uc.etabRepo.ClearLogo(ctx, id)
 }
 
+// SetCurrentAnnee définit l'année académique courante d'un établissement.
+// Migration 000017. Règles d'autorisation identiques à ClearLogo :
+// ADMIN via EtablissementAccess, RESPONSABLE propriétaire.
+// Le repo valide en SQL que l'année appartient à l'établissement.
+func (uc *EtablissementUseCase) SetCurrentAnnee(ctx context.Context, claims db.SessionClaims, etablissementID, anneeID string) (*domain.Etablissement, error) {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if role == domain.RoleAdmin {
+                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, etablissementID); err != nil {
+                        return nil, err
+                }
+        }
+        if role == domain.RoleResponsable && claims.EtablissementID != etablissementID {
+                return nil, &domain.UnauthorizedError{Message: "vous ne pouvez modifier que votre établissement"}
+        }
+        return uc.etabRepo.SetCurrentAnnee(ctx, etablissementID, anneeID)
+}
+
+// GetCurrentAnnee récupère l'année académique courante d'un établissement.
+// Retourne (nil, nil) si aucune année courante n'est définie.
+func (uc *EtablissementUseCase) GetCurrentAnnee(ctx context.Context, claims db.SessionClaims, etablissementID string) (*domain.AnneeAcademiqueRef, error) {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if role == domain.RoleAdmin {
+                if err := uc.accessUC.ValidateAccessForEtablissement(ctx, claims, etablissementID); err != nil {
+                        return nil, err
+                }
+        }
+        if role == domain.RoleResponsable && claims.EtablissementID != etablissementID {
+                return nil, &domain.UnauthorizedError{Message: "vous ne pouvez consulter que votre établissement"}
+        }
+        return uc.etabRepo.GetCurrentAnnee(ctx, etablissementID)
+}
+
 // GetWatermark récupère la config watermark.
 func (uc *EtablissementUseCase) GetWatermark(ctx context.Context, claims db.SessionClaims, id string) (*domain.WatermarkConfig, error) {
         role := domain.Role(claims.Role)

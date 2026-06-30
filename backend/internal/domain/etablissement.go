@@ -38,6 +38,15 @@ type Etablissement struct {
         CertWatermarkPattern *string   `json:"certWatermarkPattern,omitempty"`
         CreatedAt            time.Time `json:"createdAt"`
         UpdatedAt            time.Time `json:"updatedAt"`
+        // anneeAcademiqueCouranteId (migration 000017) — FK nullable vers
+        // AnneeAcademique. Désigne l'année académique "en cours" pour cet
+        // établissement. Null si non définie. Permet aux modules /affectations,
+        // /epreuves, /rapports d'avoir un default cohérent au lieu d'une
+        // heuristique date système.
+        AnneeAcademiqueCouranteID *string `json:"anneeAcademiqueCouranteId,omitempty"`
+        // anneeCourante : objet enrichi (libelle + dates) inclus uniquement par
+        // les endpoints detail/GET annee-courante. Non peuplé sur la liste.
+        AnneeCourante *AnneeAcademiqueRef `json:"anneeCourante,omitempty"`
         // Champs optionnels enrichis (selon endpoint)
         Count          *EtablissementCount `json:"_count,omitempty"`
         AdminHasAccess *bool               `json:"adminHasAccess,omitempty"`
@@ -46,6 +55,17 @@ type Etablissement struct {
         // Access inclus uniquement par ListAuthorizedEtablissements (info d'accès
         // admin pour un établissement autorisé). BUGFIX (ADMIN-AUDIT-4b).
         Access *AccessSummary `json:"access,omitempty"`
+}
+
+// AnneeAcademiqueRef est une référence légère à une année académique (pour
+// l'enrichissement de Etablissement). On évite d'importer le type complet
+// AnneeAcademique du domain academique pour limiter le couplage.
+type AnneeAcademiqueRef struct {
+        ID         string    `json:"id"`
+        Libelle    string    `json:"libelle"`
+        DateDebut  time.Time `json:"dateDebut"`
+        DateFin    time.Time `json:"dateFin"`
+        Actif      bool      `json:"actif"`
 }
 
 // EtablissementCount est l'objet imbriqué `_count` (style Prisma) attendu par
@@ -146,6 +166,10 @@ type EtablissementRepository interface {
         // ClearLogo met le logo à NULL (suppression). Distinct d'UpdateLogo qui
         // exige des données valides (data URL base64 non vide).
         ClearLogo(ctx context.Context, id string) (*Etablissement, error)
+        // SetCurrentAnnee définit l'année académique courante (migration 000017).
+        SetCurrentAnnee(ctx context.Context, etablissementID, anneeID string) (*Etablissement, error)
+        // GetCurrentAnnee récupère l'année courante (nil si non définie).
+        GetCurrentAnnee(ctx context.Context, etablissementID string) (*AnneeAcademiqueRef, error)
         UpdateWatermark(ctx context.Context, id string, cfg WatermarkConfig) (*Etablissement, error)
         GetWatermark(ctx context.Context, id string) (*WatermarkConfig, error)
         Delete(ctx context.Context, id string) error

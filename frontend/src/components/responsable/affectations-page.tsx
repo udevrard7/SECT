@@ -192,11 +192,13 @@ const TYPE_STYLES: Record<string, { checked: string; unchecked: string }> = {
   },
 }
 
-// ─── Current academic year (dynamic, AFFECTATIONS-FIX-A10) ───
-// Avant, l'année par défaut était hardcodée '2024-2025' → en 2026, l'utilisateur
-// voyait une valeur obsolète. Désormais on calcule l'année universitaire courante
-// (septembre = rentrée → year-year+1, sinon year-1-year).
-function currentAnneeUniversitaire(): string {
+// ─── Current academic year (dynamic, ANNEE-COURANTE-NIVEAU-2) ───
+// Avant : heuristique date système (septembre = rentrée) — fausse si calendrier
+// custom ou année suivante pas encore créée. Désormais : fetch de l'année
+// courante définie sur l'établissement (migration 000017) via
+// /api/etablissements/{id}/annee-courante. Fallback sur l'heuristique si l'API
+// échoue ou si aucune année courante n'est définie.
+function currentAnneeUniversitaireHeuristic(): string {
   const now = new Date()
   const year = now.getFullYear()
   if (now.getMonth() >= 8) { // septembre (0-indexed, 8 = sept)
@@ -217,7 +219,10 @@ export function AffectationsPage() {
   const [niveauFilter, setNiveauFilter] = useState('all')
   const [enseignantSearch, setEnseignantSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('all')
-  const [anneeFilter, setAnneeFilter] = useState(currentAnneeUniversitaire())
+  // ANNEE-COURANTE-NIVEAU-2 : anneeFilter initialisé vide, puis setté par
+  // useEffect après fetch de l'année courante DB. Fallback heuristique si échec.
+  const [anneeFilter, setAnneeFilter] = useState('')
+  const [anneeFilterInitialized, setAnneeFilterInitialized] = useState(false)
 
   // ─── Matrix filter state ───
   const [matrixFiliereFilter, setMatrixFiliereFilter] = useState('all')
@@ -293,6 +298,56 @@ export function AffectationsPage() {
     refetchOnWindowFocus: false,
   })
 
+  // ANNEE-COURANTE-NIVEAU-2 : fetch des années académiques DB pour peupler le
+  // Select (remplace l'Input texte libre). On récupère aussi l'année courante
+  // définie sur l'établissement pour initialiser le filtre par défaut.
+  const anneesQuery = useQuery<{ annees: Array<{ id: string; libelle: string; actif: boolean }> }>({
+    queryKey: ['affectations-annees', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/annees-academiques?etablissementId=${etabId}`)
+      if (!res.ok) throw new Error('Failed to fetch annees')
+      const data = await res.json()
+      // L'API retourne un array direct (pas wrappé dans {annees:...})
+      const arr = Array.isArray(data) ? data : (data.annees ?? data.anneesAcademiques ?? [])
+      return { annees: arr }
+    },
+    enabled: !!etabId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const anneeCouranteQuery = useQuery<{ anneeCourante: { id: string; libelle: string } | null }>({
+    queryKey: ['annee-courante', etabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${etabId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return res.json()
+    },
+    enabled: !!etabId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const annees = anneesQuery.data?.annees ?? []
+  const anneeCouranteLibelle = anneeCouranteQuery.data?.anneeCourante?.libelle ?? null
+
+  // Initialise anneeFilter une seule fois : année courante DB > fallback heuristique.
+  useEffect(() => {
+    if (anneeFilterInitialized) return
+    // Priorité 1 : année courante définie sur l'établissement
+    if (anneeCouranteLibelle) {
+      setAnneeFilter(anneeCouranteLibelle)
+      setAnneeFilterInitialized(true)
+      return
+    }
+    // Priorité 2 : si la query année courante a fini de charger et est null,
+    // fallback heuristique date système (pour ne pas rester bloqué sans filtre).
+    if (!anneeCouranteQuery.isLoading && anneeCouranteLibelle === null) {
+      setAnneeFilter(currentAnneeUniversitaireHeuristic())
+      setAnneeFilterInitialized(true)
+    }
+  }, [anneeCouranteLibelle, anneeCouranteQuery.isLoading, anneeFilterInitialized])
+
   const affectations = affectationsQuery.data?.affectations ?? []
 
   const filieres = useMemo(
@@ -362,7 +417,7 @@ export function AffectationsPage() {
   const [addTypeSeances, setAddTypeSeances] = useState<Set<string>>(new Set(['CM']))
   const [addGroupe, setAddGroupe] = useState('')
   const [addVolumeHeures, setAddVolumeHeures] = useState('')
-  const [addAnnee, setAddAnnee] = useState(currentAnneeUniversitaire())
+  const [addAnnee, setAddAnnee] = useState('')
   const [addCommentaire, setAddCommentaire] = useState('')
 
   // ─── Edit form state ───
@@ -549,7 +604,7 @@ export function AffectationsPage() {
     setAddTypeSeances(new Set(['CM']))
     setAddGroupe('')
     setAddVolumeHeures('')
-    setAddAnnee(anneeFilter || currentAnneeUniversitaire())
+    setAddAnnee(anneeFilter || currentAnneeUniversitaireHeuristic())
     setAddCommentaire('')
     setAddDialogOpen(true)
   }
@@ -951,12 +1006,28 @@ export function AffectationsPage() {
                 <SelectItem value="PUBLIEE">Publiée</SelectItem>
               </SelectContent>
             </Select>
-            <Input
-              value={anneeFilter}
-              onChange={(e) => setAnneeFilter(e.target.value)}
-              className="w-[140px]"
-              placeholder="Année univ."
-            />
+            {/* ANNEE-COURANTE-NIVEAU-2 : Select bindé sur les années DB
+                (remplace l'Input texte libre). Default = année courante. */}
+            <Select value={anneeFilter} onValueChange={setAnneeFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Année univ." />
+              </SelectTrigger>
+              <SelectContent>
+                {annees.length === 0 && anneeFilter && (
+                  <SelectItem value={anneeFilter}>{anneeFilter}</SelectItem>
+                )}
+                {annees.map((a) => (
+                  <SelectItem key={a.id} value={a.libelle}>
+                    {a.libelle}{a.libelle === anneeCouranteLibelle ? ' · courante' : ''}
+                  </SelectItem>
+                ))}
+                {/* Fallback : si anneeFilter (heuristique) n'est pas dans la DB,
+                    on l'affiche quand même pour ne pas perdre le filtre. */}
+                {anneeFilter && !annees.some((a) => a.libelle === anneeFilter) && (
+                  <SelectItem value={anneeFilter}>{anneeFilter} (hors DB)</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* ─── Loading state ─── */}

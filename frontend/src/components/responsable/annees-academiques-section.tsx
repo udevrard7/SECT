@@ -7,29 +7,46 @@
  * gérer les années académiques (seulement GET list + POST). Maintenant :
  * CRUD complet avec création, modification, désactivation.
  *
+ * ANNEE-COURANTE-FE-1 (Niveau 2) : exploitation des endpoints
+ * `/api/etablissements/{id}/annee-courante` (GET + POST) issus de la
+ * migration DB 000017. Ajouts :
+ *   - Badge « Courante » sur l'année courante de l'établissement (+ ds-glow-gold).
+ *   - Badge période calculé (Passée / Active / À venir) depuis dateDebut/dateFin.
+ *   - Bouton « Définir comme courante » sur chaque année active non courante.
+ *   - Suggestions auto à la création (libellé + dates) basées sur la dernière année.
+ *   - Toast sonner avec action « Définir comme courante ? » après création si
+ *     aucune année courante n'est définie.
+ *   - Toggle « Afficher les années inactives » (cohérent avec /programme-academique).
+ *
  * Endpoints :
  *   GET    /api/annees-academiques?etablissementId=X
  *   POST   /api/annees-academiques
  *   PATCH  /api/annees-academiques/{id}
  *   DELETE /api/annees-academiques/{id} (soft delete: actif=false)
+ *   GET    /api/etablissements/{id}/annee-courante  → { anneeCourante: AnneeAcademiqueRef | null }
+ *   POST   /api/etablissements/{id}/annee-courante  body { anneeId } → { message, etablissement }
  *
- * DS Savane EdTech : cards avec motif kente, StatCard, PulseSkeleton,
- * toasts sonner, animations Framer Motion.
+ * DS Savane EdTech : cards avec motif kente (ds-kente-top), lueur or sur
+ * l'année courante (ds-glow-gold), PulseSkeleton, toasts sonner, animations
+ * Framer Motion. Tokens sémantiques (bg-success/15, text-success-text,
+ * border-info/30…) — jamais de hex brut.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, Plus, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2,
-  RefreshCw, X, CalendarDays,
+  RefreshCw, X, CalendarDays, Star, Power,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 interface AnneeAcademique {
   id: string
@@ -42,15 +59,93 @@ interface AnneeAcademique {
   updatedAt: string
 }
 
+// Référence légère renvoyée par GET /api/etablissements/{id}/annee-courante.
+// Mirroir du domain.AnneeAcademiqueRef côté backend (migration 000017).
+interface AnneeAcademiqueRef {
+  id: string
+  libelle: string
+  dateDebut: string
+  dateFin: string
+  actif: boolean
+}
+
 interface Props {
   etablissementId: string
 }
+
+// ─── Helpers ───
+
+type PeriodeStatut = 'past' | 'active' | 'future'
+
+/** Calcule le statut de période d'une année (Passée/Active/À venir) vs now. */
+function computePeriodeStatut(dateDebut: string, dateFin: string): PeriodeStatut {
+  const now = new Date()
+  const debut = new Date(dateDebut)
+  const fin = new Date(dateFin)
+  if (now > fin) return 'past'
+  if (now < debut) return 'future'
+  return 'active'
+}
+
+/** Badge période (Passée/Active/À venir) — calculé depuis les dates. */
+function PeriodeBadge({ statut }: { statut: PeriodeStatut }) {
+  if (statut === 'past') {
+    return (
+      <Badge className="bg-muted text-muted-foreground text-[10px] shrink-0">
+        Passée
+      </Badge>
+    )
+  }
+  if (statut === 'active') {
+    return (
+      <Badge className="bg-success/15 text-success-text border-success/30 text-[10px] gap-1 shrink-0">
+        <Calendar className="h-3 w-3" aria-hidden="true" />
+        Active
+      </Badge>
+    )
+  }
+  return (
+    <Badge className="bg-info/15 text-info border-info/30 text-[10px] gap-1 shrink-0">
+      <Calendar className="h-3 w-3" aria-hidden="true" />
+      À venir
+    </Badge>
+  )
+}
+
+/**
+ * Calcule les suggestions pour la prochaine année académique, basées sur
+ * l'année existante avec la dateFin la plus récente.
+ *
+ * Ex : si la dernière année est 2025-2026 (dateDebut 2025-09-01),
+ * suggère 2026-2027 avec dateDebut 2026-09-01 et dateFin 2027-08-31.
+ *
+ * Retourne null si la liste est vide ou si les dates sont inexploitables.
+ */
+function computeNextYearSuggestions(
+  annees: AnneeAcademique[]
+): { libelle: string; dateDebut: string; dateFin: string } | null {
+  if (annees.length === 0) return null
+  const sorted = [...annees].sort(
+    (a, b) => new Date(b.dateFin).getTime() - new Date(a.dateFin).getTime()
+  )
+  const mostRecent = sorted[0]
+  const lastYear = new Date(mostRecent.dateDebut).getFullYear()
+  if (Number.isNaN(lastYear)) return null
+  return {
+    libelle: `${lastYear + 1}-${lastYear + 2}`,
+    dateDebut: `${lastYear + 1}-09-01`,
+    dateFin: `${lastYear + 2}-08-31`,
+  }
+}
+
+// ─── Composant principal ───
 
 export function AnneesAcademiquesSection({ etablissementId }: Props) {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [editingAnnee, setEditingAnnee] = useState<AnneeAcademique | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<AnneeAcademique | null>(null)
+  const [showInactive, setShowInactive] = useState(false)
 
   // ─── Liste des années (TanStack Query) ───
   const anneesQuery = useQuery<AnneeAcademique[]>({
@@ -58,7 +153,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     queryFn: async () => {
       const res = await fetch(`/api/annees-academiques?etablissementId=${etablissementId}`)
       if (!res.ok) throw new Error('Failed to fetch annees')
-      return res.json()
+      return (await res.json()) as AnneeAcademique[]
     },
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
@@ -67,66 +162,129 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   const annees = anneesQuery.data ?? []
   const isRefreshing = anneesQuery.isFetching
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+  // ─── Année courante de l'établissement (migration 000017) ───
+  const anneeCouranteQuery = useQuery<{ anneeCourante: AnneeAcademiqueRef | null }>({
+    queryKey: ['annee-courante', etablissementId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissements/${etablissementId}/annee-courante`)
+      if (!res.ok) throw new Error('Failed to fetch annee courante')
+      return (await res.json()) as { anneeCourante: AnneeAcademiqueRef | null }
+    },
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const anneeCouranteId = anneeCouranteQuery.data?.anneeCourante?.id ?? null
+
+  // ─── Suggestions pour la création (prochaine année) ───
+  const suggestions = useMemo(() => computeNextYearSuggestions(annees), [annees])
+
+  // ─── Filtrage des inactives ───
+  const hasInactive = annees.some((a) => !a.actif)
+  const visibleAnnees = showInactive ? annees : annees.filter((a) => a.actif)
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+    queryClient.invalidateQueries({ queryKey: ['annee-courante', etablissementId] })
+  }
+
+  // ─── Mutation : définir l'année courante (POST /annee-courante) ───
+  const setCurrentAnneeMutation = useMutation<void, Error, string>({
+    mutationFn: async (anneeId: string) => {
+      const res = await fetch(`/api/etablissements/${etablissementId}/annee-courante`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anneeId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || 'Échec de la mise à jour')
+      }
+    },
+    onSuccess: () => {
+      toast.success('Année courante mise à jour')
+      queryClient.invalidateQueries({ queryKey: ['annee-courante', etablissementId] })
+      queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
 
   // ─── Mutation : créer ───
-  const createMutation = useMutation({
-    mutationFn: async (input: { libelle: string; dateDebut: string; dateFin: string }) => {
+  const createMutation = useMutation<
+    AnneeAcademique,
+    Error,
+    { libelle: string; dateDebut: string; dateFin: string }
+  >({
+    mutationFn: async (input) => {
       const res = await fetch('/api/annees-academiques', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...input, etablissementId }),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
+        const err = await res.json().catch(() => ({} as { error?: string }))
         throw new Error(err.error || 'Échec de la création')
       }
-      return res.json()
+      return (await res.json()) as AnneeAcademique
     },
-    onSuccess: () => {
-      toast.success('Année académique créée')
+    onSuccess: (data) => {
       setShowForm(false)
-      refresh()
+      queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+      // Proposition auto « Définir comme courante ? » si aucune courante définie.
+      if (anneeCouranteId === null) {
+        toast.success('Année académique créée', {
+          description: 'Voulez-vous la définir comme année courante ?',
+          action: {
+            label: 'Définir',
+            onClick: () => setCurrentAnneeMutation.mutate(data.id),
+          },
+        })
+      } else {
+        toast.success('Année académique créée')
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   })
 
   // ─── Mutation : modifier ───
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, input }: { id: string; input: Partial<{ libelle: string; dateDebut: string; dateFin: string }> }) => {
+  const updateMutation = useMutation<
+    AnneeAcademique,
+    Error,
+    { id: string; input: Partial<{ libelle: string; dateDebut: string; dateFin: string }> }
+  >({
+    mutationFn: async ({ id, input }) => {
       const res = await fetch(`/api/annees-academiques/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
+        const err = await res.json().catch(() => ({} as { error?: string }))
         throw new Error(err.error || 'Échec de la modification')
       }
-      return res.json()
+      return (await res.json()) as AnneeAcademique
     },
     onSuccess: () => {
       toast.success('Année académique modifiée')
       setEditingAnnee(null)
-      refresh()
+      queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
 
   // ─── Mutation : désactiver ───
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutation<{ message?: string }, Error, string>({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/annees-academiques/${id}`, { method: 'DELETE' })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
+        const err = await res.json().catch(() => ({} as { error?: string }))
         throw new Error(err.error || 'Échec de la désactivation')
       }
-      return res.json()
+      return (await res.json().catch(() => ({}))) as { message?: string }
     },
     onSuccess: () => {
       toast.success('Année académique désactivée')
       setConfirmDelete(null)
-      refresh()
+      queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -174,7 +332,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-display text-base font-semibold flex items-center gap-2">
           <CalendarDays className="h-5 w-5 text-primary-text" />
           Années académiques
@@ -182,7 +340,27 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
             {annees.length}
           </Badge>
         </h3>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {/* Toggle « Afficher les années inactives » — cohérent avec
+              /programme-academique. Par défaut masquées pour ne pas polluer
+              la liste avec des années archivées. N'apparaît que s'il existe
+              au moins une année inactive. */}
+          {hasInactive && (
+            <label
+              htmlFor="show-inactive-annees"
+              className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground transition-colors"
+              title="Afficher les années désactivées"
+            >
+              <Switch
+                id="show-inactive-annees"
+                checked={showInactive}
+                onCheckedChange={setShowInactive}
+                aria-label="Afficher les années inactives"
+              />
+              <Power className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden md:inline">Afficher inactives</span>
+            </label>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -191,7 +369,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
             className="gap-1.5"
             aria-label="Actualiser"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
           </Button>
           <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
             <Plus className="h-4 w-4" />
@@ -213,61 +391,132 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
             </p>
           </CardContent>
         </Card>
+      ) : visibleAnnees.length === 0 ? (
+        // Toutes les années sont inactives et le toggle est off.
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+            <Power className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+            <p className="mt-2 text-sm text-muted-foreground">
+              Toutes les années sont désactivées.
+            </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="mt-1 h-auto p-0"
+              onClick={() => setShowInactive(true)}
+            >
+              Afficher les années inactives
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <AnimatePresence mode="popLayout">
-            {annees.map((annee, i) => (
-              <motion.div
-                key={annee.id}
-                layout
-                initial={{ opacity: 0, y: 12, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ delay: i * 0.05, duration: 0.25 }}
-              >
-                <Card className={`h-full ${!annee.actif ? 'opacity-60' : ''}`}>
-                  <CardContent className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{annee.libelle}</p>
-                        <p className="text-xs text-muted-foreground">
+            {visibleAnnees.map((annee, i) => {
+              const isCourante = anneeCouranteId === annee.id
+              const periode = computePeriodeStatut(annee.dateDebut, annee.dateFin)
+              const isSettingCourante =
+                setCurrentAnneeMutation.variables === annee.id &&
+                setCurrentAnneeMutation.isPending
+
+              return (
+                <motion.div
+                  key={annee.id}
+                  layout
+                  initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ delay: i * 0.05, duration: 0.25 }}
+                >
+                  <Card
+                    className={cn(
+                      'h-full ds-kente-top transition-shadow',
+                      !annee.actif && 'opacity-60',
+                      isCourante && 'ds-glow-gold border-success/40'
+                    )}
+                  >
+                    <CardContent className="p-4 space-y-3">
+                      {/* Row 1 : libellé + badge courante */}
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-sm truncate min-w-0">
+                          {annee.libelle}
+                        </p>
+                        {isCourante && (
+                          <Badge
+                            role="status"
+                            className="bg-success/15 text-success-text border-success/30 text-[10px] gap-1 shrink-0"
+                          >
+                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                            Courante
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Row 2 : dates + badge période */}
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground min-w-0 truncate">
                           {new Date(annee.dateDebut).toLocaleDateString('fr-FR')}
                           {' → '}
                           {new Date(annee.dateFin).toLocaleDateString('fr-FR')}
                         </p>
+                        <PeriodeBadge statut={periode} />
                       </div>
-                      <Badge
-                        variant={annee.actif ? 'default' : 'secondary'}
-                        className={`text-[10px] shrink-0 ${annee.actif ? 'bg-success/15 text-success-text' : 'bg-muted'}`}
-                      >
-                        {annee.actif ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 gap-1 text-xs flex-1"
-                        onClick={() => setEditingAnnee(annee)}
-                      >
-                        <Pencil className="h-3 w-3" />
-                        Modifier
-                      </Button>
-                      {annee.actif && (
+
+                      {/* Row 3 : actions */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        {annee.actif && !isCourante && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-7 gap-1 text-xs flex-1 justify-center"
+                            onClick={() => setCurrentAnneeMutation.mutate(annee.id)}
+                            disabled={setCurrentAnneeMutation.isPending}
+                            aria-label={`Définir ${annee.libelle} comme année courante`}
+                          >
+                            {isSettingCourante ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Star className="h-3 w-3" aria-hidden="true" />
+                            )}
+                            <span className="truncate">Définir courante</span>
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 gap-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/5"
-                          onClick={() => setConfirmDelete(annee)}
+                          className={cn(
+                            'h-7 gap-1 text-xs',
+                            !(annee.actif && !isCourante) && 'flex-1 justify-center'
+                          )}
+                          onClick={() => setEditingAnnee(annee)}
+                          aria-label={`Modifier ${annee.libelle}`}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Pencil className="h-3 w-3" aria-hidden="true" />
+                          <span
+                            className={cn(
+                              annee.actif && !isCourante ? 'hidden sm:inline' : 'inline'
+                            )}
+                          >
+                            Modifier
+                          </span>
                         </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+                        {annee.actif && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-xs text-destructive hover:text-destructive hover:bg-destructive/5"
+                            onClick={() => setConfirmDelete(annee)}
+                            aria-label={`Désactiver ${annee.libelle}`}
+                          >
+                            <Trash2 className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )
+            })}
           </AnimatePresence>
         </div>
       )}
@@ -276,6 +525,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       {showForm && (
         <AnneeFormDialog
           title="Nouvelle année académique"
+          suggestions={suggestions}
           onClose={() => setShowForm(false)}
           onSubmit={(input) => createMutation.mutate(input)}
           loading={createMutation.isPending}
@@ -313,22 +563,34 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
 function AnneeFormDialog({
   title,
   initial,
+  suggestions,
   onClose,
   onSubmit,
   loading,
 }: {
   title: string
   initial?: AnneeAcademique
+  /** Suggestions auto (mode création uniquement) : pré-remplit les champs
+   *  avec la prochaine année académique calculée depuis la liste existante. */
+  suggestions?: { libelle: string; dateDebut: string; dateFin: string } | null
   onClose: () => void
   onSubmit: (input: { libelle: string; dateDebut: string; dateFin: string }) => void
   loading: boolean
 }) {
-  const [libelle, setLibelle] = useState(initial?.libelle ?? '')
+  // En mode édition (initial fourni) → on charge les valeurs de l'année.
+  // En mode création (pas d'initial) → on utilise les suggestions si dispo.
+  const [libelle, setLibelle] = useState(
+    initial?.libelle ?? suggestions?.libelle ?? ''
+  )
   const [dateDebut, setDateDebut] = useState(
-    initial ? new Date(initial.dateDebut).toISOString().slice(0, 10) : ''
+    initial
+      ? new Date(initial.dateDebut).toISOString().slice(0, 10)
+      : suggestions?.dateDebut ?? ''
   )
   const [dateFin, setDateFin] = useState(
-    initial ? new Date(initial.dateFin).toISOString().slice(0, 10) : ''
+    initial
+      ? new Date(initial.dateFin).toISOString().slice(0, 10)
+      : suggestions?.dateFin ?? ''
   )
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -350,12 +612,12 @@ function AnneeFormDialog({
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-border p-6"
+        className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-border p-6 ds-kente-top"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-semibold">{title}</h3>
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0" aria-label="Fermer">
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -369,6 +631,11 @@ function AnneeFormDialog({
               className="mt-1"
               autoFocus
             />
+            {!initial && suggestions && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Suggestion basée sur la dernière année. Modifiable librement.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
