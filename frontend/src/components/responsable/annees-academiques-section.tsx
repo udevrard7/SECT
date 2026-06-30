@@ -145,6 +145,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [editingAnnee, setEditingAnnee] = useState<AnneeAcademique | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<AnneeAcademique | null>(null)
+  const [confirmHardDelete, setConfirmHardDelete] = useState<AnneeAcademique | null>(null)
   const [showInactive, setShowInactive] = useState(false)
 
   // ─── Liste des années (TanStack Query) ───
@@ -271,7 +272,7 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
     onError: (err: Error) => toast.error(err.message),
   })
 
-  // ─── Mutation : désactiver ───
+  // ─── Mutation : désactiver (soft delete, réversible) ───
   const deleteMutation = useMutation<{ message?: string }, Error, string>({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/annees-academiques/${id}`, { method: 'DELETE' })
@@ -285,6 +286,28 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
       toast.success('Année académique désactivée')
       setConfirmDelete(null)
       queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  // ─── Mutation : supprimer définitivement (hard delete, irréversible) ───
+  // DELETE /api/annees-academiques/{id}?hard=true → DELETE réel en DB.
+  // Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement.anneeAcademiqueCouranteId
+  // perdront leur référence. Si l'année était l'année courante, elle deviendra NULL.
+  const hardDeleteMutation = useMutation<{ message?: string }, Error, string>({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/annees-academiques/${id}?hard=true`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || 'Échec de la suppression')
+      }
+      return (await res.json().catch(() => ({}))) as { message?: string }
+    },
+    onSuccess: () => {
+      toast.success('Année académique supprimée définitivement')
+      setConfirmHardDelete(null)
+      queryClient.invalidateQueries({ queryKey: ['annees-academiques', etablissementId] })
+      queryClient.invalidateQueries({ queryKey: ['annee-courante', etablissementId] })
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -500,13 +523,27 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
                             Modifier
                           </span>
                         </Button>
-                        {annee.actif && (
+                        {annee.actif ? (
+                          // Année active → bouton « Désactiver » (soft delete, réversible)
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 w-7 p-0 text-xs text-destructive hover:text-destructive hover:bg-destructive/5"
+                            className="h-7 w-7 p-0 text-xs text-warning hover:text-warning hover:bg-warning/5"
                             onClick={() => setConfirmDelete(annee)}
                             aria-label={`Désactiver ${annee.libelle}`}
+                            title="Désactiver (réversible)"
+                          >
+                            <Power className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                        ) : (
+                          // Année déjà désactivée → bouton « Supprimer » (hard delete, irréversible)
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setConfirmHardDelete(annee)}
+                            aria-label={`Supprimer définitivement ${annee.libelle}`}
+                            title="Supprimer définitivement (irréversible)"
                           >
                             <Trash2 className="h-3 w-3" aria-hidden="true" />
                           </Button>
@@ -543,15 +580,29 @@ export function AnneesAcademiquesSection({ etablissementId }: Props) {
         />
       )}
 
-      {/* Dialog : confirmer désactivation */}
+      {/* Dialog : confirmer désactivation (soft delete, réversible) */}
       {confirmDelete && (
         <ConfirmDialog
           title="Désactiver l'année académique ?"
-          message={`« ${confirmDelete.libelle} » sera marquée comme inactive. Vous pourrez la réactiver si besoin.`}
+          message={`« ${confirmDelete.libelle} » sera marquée comme inactive. Vous pourrez la réactiver si besoin via le toggle « Afficher inactives ».`}
           confirmLabel="Désactiver"
+          variant="warning"
           loading={deleteMutation.isPending}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => deleteMutation.mutate(confirmDelete.id)}
+        />
+      )}
+
+      {/* Dialog : confirmer suppression définitive (hard delete, irréversible) */}
+      {confirmHardDelete && (
+        <ConfirmDialog
+          title="Supprimer définitivement l'année académique ?"
+          message={`« ${confirmHardDelete.libelle} » sera supprimée de la base de données. Cette action est IRRÉVERSIBLE. Les épreuves, validations UE et réglages d'année courante liés perdront leur référence.`}
+          confirmLabel="Supprimer définitivement"
+          variant="danger"
+          loading={hardDeleteMutation.isPending}
+          onClose={() => setConfirmHardDelete(null)}
+          onConfirm={() => hardDeleteMutation.mutate(confirmHardDelete.id)}
         />
       )}
     </div>
@@ -678,6 +729,7 @@ function ConfirmDialog({
   title,
   message,
   confirmLabel,
+  variant = 'danger',
   loading,
   onClose,
   onConfirm,
@@ -685,21 +737,26 @@ function ConfirmDialog({
   title: string
   message: string
   confirmLabel: string
+  /** 'danger' = rouge (irréversible), 'warning' = orange (réversible) */
+  variant?: 'danger' | 'warning'
   loading: boolean
   onClose: () => void
   onConfirm: () => void
 }) {
+  const isDanger = variant === 'danger'
+  const iconBg = isDanger ? 'bg-destructive/10' : 'bg-warning/10'
+  const iconColor = isDanger ? 'text-destructive' : 'text-warning'
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-sm bg-card rounded-2xl shadow-2xl border border-border p-6"
+        className={`w-full max-w-sm bg-card rounded-2xl shadow-2xl border p-6 ${isDanger ? 'border-destructive/30' : 'border-warning/30'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-            <AlertCircle className="h-5 w-5 text-destructive" />
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}>
+            <AlertCircle className={`h-5 w-5 ${iconColor}`} aria-hidden="true" />
           </div>
           <div className="min-w-0">
             <h3 className="font-display text-base font-semibold">{title}</h3>

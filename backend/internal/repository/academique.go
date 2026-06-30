@@ -477,6 +477,39 @@ func (r *UERepository) SoftDelete(ctx context.Context, id string) (*domain.Unite
         return r.Update(ctx, id, domain.UpdateUEInput{Actif: boolPtr(false)})
 }
 
+// HardDelete supprime définitivement une UE de la DB (DELETE réel).
+// Les contraintes FK feront :
+//   - CASCADE : Affectation, Devoir, ValidationUE, UniteEnseignementFiliere
+//     (ces entités liées seront supprimées automatiquement)
+//   - SET NULL : Document.uniteEnseignementId, Epreuve.uniteEnseignementId
+//     (l'entité conserve une référence NULL)
+// Bypass RLS (SET LOCAL row_security = off) comme les autres write methods.
+// Retourne NotFoundError si l'UE n'existe pas.
+func (r *UERepository) HardDelete(ctx context.Context, id string) error {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                return fmt.Errorf("disable rls: %w", err)
+        }
+
+        tag, err := tx.Exec(ctx, `DELETE FROM "UniteEnseignement" WHERE "id" = $1`, id)
+        if err != nil {
+                return fmt.Errorf("hard delete ue: %w", err)
+        }
+        if tag.RowsAffected() == 0 {
+                return &domain.NotFoundError{Entity: "UniteEnseignement", ID: id}
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return err
+        }
+        return nil
+}
+
 // GetUEDependencies retourne les comptes d'entités liées à une UE.
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #1) : permet d'avertir l'utilisateur
 // avant de désactiver une UE qui a des épreuves/affectations/documents.
@@ -930,4 +963,34 @@ func (r *AnneeAcademiqueRepository) Update(ctx context.Context, id string, input
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
 func (r *AnneeAcademiqueRepository) SoftDelete(ctx context.Context, id string) (*domain.AnneeAcademique, error) {
         return r.Update(ctx, id, domain.UpdateAnneeInput{Actif: boolPtr(false)})
+}
+
+// HardDelete supprime définitivement une année académique de la DB (DELETE réel).
+// Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement.anneeAcademiqueCouranteId
+// perdront leur référence — pas de cascade bloquante.
+// Bypass RLS (SET LOCAL row_security = off).
+// Retourne NotFoundError si l'année n'existe pas.
+func (r *AnneeAcademiqueRepository) HardDelete(ctx context.Context, id string) error {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                return fmt.Errorf("disable rls: %w", err)
+        }
+
+        tag, err := tx.Exec(ctx, `DELETE FROM "AnneeAcademique" WHERE "id" = $1`, id)
+        if err != nil {
+                return fmt.Errorf("hard delete annee: %w", err)
+        }
+        if tag.RowsAffected() == 0 {
+                return &domain.NotFoundError{Entity: "AnneeAcademique", ID: id}
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return err
+        }
+        return nil
 }

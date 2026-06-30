@@ -343,7 +343,11 @@ func (s *Server) updateUE(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]any{"uniteEnseignement": ue})
 }
 
-// deleteUE — DELETE /api/unites-enseignement/{id} (soft delete)
+// deleteUE — DELETE /api/unites-enseignement/{id}
+// Par défaut : soft delete (actif=false, réversible via toggle "Afficher UE désactivées").
+// Avec ?hard=true : hard delete (DELETE réel, irréversible). Les entités liées
+// en CASCADE (Affectation, Devoir, ValidationUE) seront supprimées automatiquement.
+// Le frontend doit avertir l'utilisateur (via getUEDependencies) avant d'appeler hard.
 func (s *Server) deleteUE(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -351,6 +355,19 @@ func (s *Server) deleteUE(w http.ResponseWriter, r *http.Request) {
                 return
         }
         id := chi.URLParam(r, "id")
+        hard := r.URL.Query().Has("hard") && r.URL.Query().Get("hard") != "false" && r.URL.Query().Get("hard") != "0"
+        if hard {
+                if err := s.ueUC.HardDelete(r.Context(), claims, id); err != nil {
+                        middleware.MapDomainError(w, err)
+                        return
+                }
+                w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(http.StatusOK)
+                json.NewEncoder(w).Encode(map[string]any{
+                        "message": "Unité d'enseignement supprimée définitivement",
+                })
+                return
+        }
         ue, err := s.ueUC.SoftDelete(r.Context(), claims, id)
         if err != nil {
                 middleware.MapDomainError(w, err)
@@ -602,8 +619,10 @@ func (s *Server) updateAnnee(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(a)
 }
 
-// deleteAnnee — DELETE /api/annees-academiques/{id} (soft delete: actif=false)
-// PROG-ACAD-CRITICAL-FIX-1 (BUG #9).
+// deleteAnnee — DELETE /api/annees-academiques/{id}
+// Par défaut : soft delete (actif=false, réversible). Avec ?hard=true :
+// hard delete (DELETE réel, irréversible). Les FKs SET NULL sur Epreuve,
+// ValidationUE, Etablissement.anneeAcademiqueCouranteId perdront leur référence.
 func (s *Server) deleteAnnee(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -611,6 +630,19 @@ func (s *Server) deleteAnnee(w http.ResponseWriter, r *http.Request) {
                 return
         }
         id := chi.URLParam(r, "id")
+        hard := r.URL.Query().Has("hard") && r.URL.Query().Get("hard") != "false" && r.URL.Query().Get("hard") != "0"
+        if hard {
+                if err := s.anneeUC.HardDelete(r.Context(), claims, id); err != nil {
+                        middleware.MapDomainError(w, err)
+                        return
+                }
+                w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(http.StatusOK)
+                json.NewEncoder(w).Encode(map[string]any{
+                        "message": "Année académique supprimée définitivement",
+                })
+                return
+        }
         a, err := s.anneeUC.SoftDelete(r.Context(), claims, id)
         if err != nil {
                 middleware.MapDomainError(w, err)

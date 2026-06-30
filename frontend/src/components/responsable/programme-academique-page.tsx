@@ -346,6 +346,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   const [editingUE, setEditingUE] = useState<UEItem | null>(null)
   const [viewingUE, setViewingUE] = useState<UEItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<UEItem | null>(null)
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<UEItem | null>(null)
 
   // ─── Add form state ───
   const [addCode, setAddCode] = useState('')
@@ -582,7 +583,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
     } finally { setIsSubmitting(false) }
   }
 
-  // ─── Soft delete ───
+  // ─── Soft delete (désactiver, réversible via toggle « Afficher UE désactivées ») ───
 
   const handleDelete = async () => {
     // Capture the target BEFORE the dialog closes and sets deleteTarget to null
@@ -593,6 +594,26 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       const res = await fetch(`/api/unites-enseignement/${target.id}`, { method: 'DELETE' })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la suppression') }
       toast.success('UE désactivée', { description: `${target.nom} a été désactivée avec succès.` })
+      await refreshData()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
+    }
+  }
+
+  // ─── Hard delete (suppression définitive, irréversible) ───
+  // DELETE /api/unites-enseignement/{id}?hard=true → DELETE réel en DB.
+  // Les entités liées en CASCADE (Affectation, Devoir, ValidationUE) seront
+  // supprimées automatiquement. Les FKs SET NULL (Document, Epreuve) perdront
+  // leur référence.
+
+  const handleHardDelete = async () => {
+    const target = hardDeleteTarget
+    setHardDeleteTarget(null)
+    if (!target) return
+    try {
+      const res = await fetch(`/api/unites-enseignement/${target.id}?hard=true`, { method: 'DELETE' })
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la suppression') }
+      toast.success('UE supprimée définitivement', { description: `${target.nom} a été supprimée de la base de données.` })
       await refreshData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
@@ -1037,6 +1058,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                               onToggle={toggleExpand}
                               onEdit={handleOpenEdit}
                               onDelete={setDeleteTarget}
+                              onHardDelete={setHardDeleteTarget}
                               onReactivate={handleReactivate}
                               onViewAffectations={handleViewAffectations}
                               totalHours={totalHours}
@@ -1110,6 +1132,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                             onToggle={toggleExpand}
                             onEdit={handleOpenEdit}
                             onDelete={setDeleteTarget}
+                            onHardDelete={setHardDeleteTarget}
                             onReactivate={handleReactivate}
                             onViewAffectations={handleViewAffectations}
                             totalHours={totalHours}
@@ -1252,19 +1275,37 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
         </DialogContent>
       </Dialog>
 
-      {/* ─── Delete Confirmation ─── */}
+      {/* ─── Delete Confirmation (soft = désactiver, réversible) ─── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="border-warning/30">
           <AlertDialogHeader>
             <AlertDialogTitle>Désactiver l&apos;UE</AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir désactiver l&apos;UE <strong>{deleteTarget?.code} — {deleteTarget?.nom}</strong> ?
-              Elle ne sera pas supprimée définitivement mais ne sera plus visible.
+              Elle ne sera pas supprimée définitivement mais ne sera plus visible. Vous pourrez la réactiver via le toggle « Afficher les UE désactivées ».
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Désactiver</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-warning hover:bg-warning/90 text-warning-foreground">Désactiver</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Hard Delete Confirmation (suppression définitive, irréversible) ─── */}
+      <AlertDialog open={!!hardDeleteTarget} onOpenChange={(open) => { if (!open) setHardDeleteTarget(null) }}>
+        <AlertDialogContent className="border-destructive/40">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Supprimer définitivement l&apos;UE</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir <strong>supprimer définitivement</strong> l&apos;UE <strong>{hardDeleteTarget?.code} — {hardDeleteTarget?.nom}</strong> ?
+              <br /><br />
+              Cette action est <strong className="text-destructive">irréversible</strong>. L&apos;UE sera retirée de la base de données. Les affectations, devoirs et validations liées seront supprimés en cascade. Les épreuves et documents liés perdront leur référence UE.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleHardDelete} className="bg-destructive hover:bg-destructive/90">Supprimer définitivement</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1456,13 +1497,14 @@ function UEForm({
 // ─── UE Table Row Sub-component ───
 
 function UETableRow({
-  ue, isExpanded, onToggle, onEdit, onDelete, onReactivate, onViewAffectations, totalHours, allFilieres,
+  ue, isExpanded, onToggle, onEdit, onDelete, onHardDelete, onReactivate, onViewAffectations, totalHours, allFilieres,
 }: {
   ue: UEItem
   isExpanded: boolean
   onToggle: (ue: UEItem) => void
   onEdit: (ue: UEItem) => void
   onDelete: (ue: UEItem) => void
+  onHardDelete: (ue: UEItem) => void
   onReactivate: (ue: UEItem) => void
   onViewAffectations: (ue: UEItem) => void
   
@@ -1534,9 +1576,17 @@ function UETableRow({
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10" onClick={() => onViewAffectations(ue)}>
               <Eye className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDelete(ue)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {ue.actif ? (
+              // UE active → bouton « Désactiver » (soft delete, réversible)
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-warning hover:text-warning hover:bg-warning/10" onClick={() => onDelete(ue)} title="Désactiver (réversible)" aria-label={`Désactiver ${ue.nom}`}>
+                <Power className="h-4 w-4" />
+              </Button>
+            ) : (
+              // UE déjà désactivée → bouton « Supprimer » (hard delete, irréversible)
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onHardDelete(ue)} title="Supprimer définitivement (irréversible)" aria-label={`Supprimer définitivement ${ue.nom}`}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </TableCell>
       </TableRow>
