@@ -37,6 +37,12 @@ import {
   ImageIcon,
   X,
   ChevronDown,
+  // ACCESS-WORKFLOW-UI : icônes pour l'onglet "Accès ADMIN".
+  KeyRound,
+  ShieldCheck,
+  Clock,
+  AlertCircle,
+  Ban,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -69,6 +75,27 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+// ACCESS-WORKFLOW-UI : Dialog (approuver avec durée / refuser avec commentaire)
+// et AlertDialog (révocation simple) pour le workflow RESPONSABLE.
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { PulseSkeleton } from '@/components/ds'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
@@ -128,6 +155,24 @@ interface IpWhitelistEntry {
 interface EtablissementOption {
   id: string
   nom: string
+}
+
+// ACCESS-WORKFLOW-UI : représentation frontend d'une demande d'accès ADMIN →
+// établissement. Le backend (List) renvoie maintenant admin + etablissement
+// (LEFT JOIN User + Etablissement dans etablissement_access.go).
+interface AccessRecord {
+  id: string
+  adminId: string
+  etablissementId: string
+  motif: string
+  statut: 'EN_ATTENTE' | 'APPROUVE' | 'REFUSE' | 'EXPIRE'
+  dateDebut: string | null
+  dateFin: string | null
+  commentaire: string | null
+  approuvePar: string | null
+  createdAt: string
+  admin?: { id: string; name: string; email: string }
+  etablissement?: { id: string; nom: string }
 }
 
 // ─── Accent color helper ───
@@ -447,6 +492,67 @@ function LogoUpload({
   )
 }
 
+// ─── Access helpers (ACCESS-WORKFLOW-UI) ───
+
+function formatAccessDate(dateStr: string | null) {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+function getAccessStatutBadge(statut: string) {
+  switch (statut) {
+    case 'EN_ATTENTE':
+      return (
+        <Badge className="bg-warning/10 text-warning border-warning/30">
+          <Clock className="h-3 w-3 mr-1" />
+          En attente
+        </Badge>
+      )
+    case 'APPROUVE':
+      return (
+        <Badge className="bg-success/10 text-success-text border-success/30">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Approuvé
+        </Badge>
+      )
+    case 'REFUSE':
+      return (
+        <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+          <XCircle className="h-3 w-3 mr-1" />
+          Refusé
+        </Badge>
+      )
+    case 'EXPIRE':
+      return (
+        <Badge className="bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+          <AlertCircle className="h-3 w-3 mr-1" />
+          Expiré
+        </Badge>
+      )
+    default:
+      return <Badge variant="outline">{statut}</Badge>
+  }
+}
+
+function getAccessMotifLabel(motif: string) {
+  switch (motif) {
+    case 'Audit':
+      return 'Audit'
+    case 'Support technique':
+      return 'Support technique'
+    case 'Inspection':
+      return 'Inspection'
+    case 'Urgence':
+      return 'Urgence'
+    default:
+      return motif
+  }
+}
+
 // ─── Main Component ───
 
 export function ResponsableParametresPage() {
@@ -477,6 +583,18 @@ export function ResponsableParametresPage() {
 
   // Tab tracking
   const [activeTab, setActiveTab] = useState('etablissement')
+
+  // ACCESS-WORKFLOW-UI : état pour les dialogues d'approbation/refus/révocation
+  // des demandes d'accès ADMIN. approveTarget + approveDuree pour le sélecteur
+  // de durée (7/30/90/365 jours ou Illimité) ; refuseTarget + refuseCommentaire
+  // pour le motif de refus ; revokeTarget pour la confirmation de révocation.
+  const [approveTarget, setApproveTarget] = useState<AccessRecord | null>(null)
+  const [refuseTarget, setRefuseTarget] = useState<AccessRecord | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<AccessRecord | null>(null)
+  const [approveDuree, setApproveDuree] = useState('30')
+  const [refuseCommentaire, setRefuseCommentaire] = useState('')
+  const [approving, setApproving] = useState(false)
+  const [refusing, setRefusing] = useState(false)
 
   // BUGFIX QUERY-MIGRATION-GROUP-A : migration de useEffect+fetch+useState
   // vers TanStack Query. Le cache survit au démontage → 0 refetch au retour,
@@ -591,11 +709,44 @@ export function ResponsableParametresPage() {
     }
   }, [ipQuery.error])
 
+  // ACCESS-WORKFLOW-UI : liste des demandes d'accès ADMIN pour l'établissement
+  // actif. Le usecase backend List force params.EtablissementID =
+  // claims.EtablissementID pour RESPONSABLE → ne renvoie que les demandes de
+  // SON établissement. Pour ADMIN, le paramètre etablissementId filtre
+  // explicitement (sinon toutes les demandes confondues seraient renvoyées).
+  const accessRequestsQuery = useQuery<{ accessRecords: AccessRecord[] }>({
+    queryKey: ['responsable-access-requests', activeEtabId],
+    queryFn: async () => {
+      const res = await fetch(`/api/etablissement-access?etablissementId=${activeEtabId}`)
+      if (!res.ok) throw new Error('Erreur réseau')
+      return res.json()
+    },
+    enabled: !!activeEtabId && activeTab === 'acces-admin',
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const accessRecords = accessRequestsQuery.data?.accessRecords ?? []
+  const loadingAccess = accessRequestsQuery.isFetching
+
+  useEffect(() => {
+    if (accessRequestsQuery.error) {
+      toast.error('Erreur', { description: 'Impossible de charger les demandes d\'accès' })
+    }
+  }, [accessRequestsQuery.error])
+
+  // Stats pour le dashboard (total / en attente / approuvés / refusés).
+  const enAttenteCount = accessRecords.filter((r) => r.statut === 'EN_ATTENTE').length
+  const approuveCount = accessRecords.filter((r) => r.statut === 'APPROUVE').length
+  const refuseCount = accessRecords.filter((r) => r.statut === 'REFUSE').length
+
   // Helpers pour invalider le cache après mutation.
   const refreshSecuritySettings = () =>
     queryClient.invalidateQueries({ queryKey: ['responsable-security-settings', activeEtabId] })
   const refreshIpWhitelist = () =>
     queryClient.invalidateQueries({ queryKey: ['responsable-ip-whitelist', activeEtabId] })
+  const refreshAccessRequests = () =>
+    queryClient.invalidateQueries({ queryKey: ['responsable-access-requests', activeEtabId] })
 
   // ─── Save etablissement info ───
 
@@ -803,6 +954,105 @@ export function ResponsableParametresPage() {
     }
   }
 
+  // ─── Approve access request (ACCESS-WORKFLOW-UI) ───
+  // Le backend Update() accepte {statut: APPROUVE, dureeAccesJours: 30} et
+  // auto-calcule dateFin = now() + duree. Pour "Illimité" (dureeAccesJours=0
+  // ou absent), dateFin reste null → pas d'expiration automatique.
+  const handleApprove = async () => {
+    if (!approveTarget) return
+    setApproving(true)
+    try {
+      const body: Record<string, unknown> = { statut: 'APPROUVE' }
+      // dureeAccesJours: 0 = "Illimité" → on n'envoie pas le champ (dateFin=null).
+      if (approveDuree !== '0') {
+        body.dureeAccesJours = parseInt(approveDuree, 10)
+      }
+      const res = await fetch(`/api/etablissement-access/${approveTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de l\'approbation')
+      }
+      toast.success('Accès approuvé', {
+        description: `L'accès a été accordé à ${approveTarget.admin?.name ?? approveTarget.admin?.email ?? 'l\'admin'}.`,
+      })
+      setApproveTarget(null)
+      refreshAccessRequests()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible d\'approuver l\'accès.',
+      })
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  // ─── Refuse access request (ACCESS-WORKFLOW-UI) ───
+  const handleRefuse = async () => {
+    if (!refuseTarget) return
+    setRefusing(true)
+    try {
+      const res = await fetch(`/api/etablissement-access/${refuseTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          statut: 'REFUSE',
+          commentaire: refuseCommentaire.trim() || 'Demande refusée par le responsable',
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors du refus')
+      }
+      toast.success('Accès refusé', {
+        description: `La demande de ${refuseTarget.admin?.name ?? refuseTarget.admin?.email ?? 'l\'admin'} a été refusée.`,
+      })
+      setRefuseTarget(null)
+      setRefuseCommentaire('')
+      refreshAccessRequests()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de refuser l\'accès.',
+      })
+    } finally {
+      setRefusing(false)
+    }
+  }
+
+  // ─── Revoke access (ACCESS-WORKFLOW-UI) ───
+  // Le RESPONSABLE peut révoquer un accès APPROUVE à tout moment. Le backend
+  // Update() accepte statut=REFUSE avec un commentaire, et le check
+  // existing.EtablissementID == claims.EtablissementID autorise l'action.
+  const handleRevokeAccess = async () => {
+    if (!revokeTarget) return
+    try {
+      const res = await fetch(`/api/etablissement-access/${revokeTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          statut: 'REFUSE',
+          commentaire: 'Accès révoqué par le responsable',
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la révocation')
+      }
+      toast.success('Accès révoqué', {
+        description: `L'accès de ${revokeTarget.admin?.name ?? revokeTarget.admin?.email ?? 'l\'admin'} a été révoqué.`,
+      })
+      setRevokeTarget(null)
+      refreshAccessRequests()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de révoquer l\'accès.',
+      })
+    }
+  }
+
   // Helper: update etablissement field while preserving _count
   const updateEtab = (updates: Partial<EtablissementInfo>) => {
     setEtablissement((prev) => prev ? { ...prev, ...updates } : prev)
@@ -980,7 +1230,7 @@ export function ResponsableParametresPage() {
 
         {/* ─── Tabs ─── */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="etablissement" className="gap-1.5">
               <Building2 className="h-4 w-4 hidden sm:block" />
               Établissement
@@ -996,6 +1246,13 @@ export function ResponsableParametresPage() {
             <TabsTrigger value="ip-whitelist" className="gap-1.5">
               <Wifi className="h-4 w-4 hidden sm:block" />
               Whitelist IP
+            </TabsTrigger>
+            {/* ACCESS-WORKFLOW-UI : onglet Accès ADMIN pour RESPONSABLE. */}
+            {/* col-span-2 sm:col-span-1 → pleine largeur sur mobile (5e item seul */}
+            {/* sur sa ligne), 1 colonne sur desktop (row de 5). */}
+            <TabsTrigger value="acces-admin" className="gap-1.5 col-span-2 sm:col-span-1">
+              <KeyRound className="h-4 w-4 hidden sm:block" />
+              Accès ADMIN
             </TabsTrigger>
           </TabsList>
 
@@ -1769,7 +2026,308 @@ export function ResponsableParametresPage() {
               </Card>
             </div>
           </TabsContent>
+
+          {/* ═══════════ Tab: Accès ADMIN (ACCESS-WORKFLOW-UI) ═══════════ */}
+          <TabsContent value="acces-admin">
+            <div className="space-y-6">
+              {/* ─── Stats Row ─── */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Card className="border-l-4 border-l-primary">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${accent.bg100} ${accent.text}`}>
+                      <KeyRound className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total demandes</p>
+                      <p className="text-xl font-bold font-mono tabular-nums">{accessRecords.length}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-primary">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                      <Clock className="h-5 w-5 text-warning" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">En attente</p>
+                      <p className="text-xl font-bold font-mono tabular-nums">{enAttenteCount}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-primary">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                      <CheckCircle2 className="h-5 w-5 text-success-text" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Approuvés</p>
+                      <p className="text-xl font-bold font-mono tabular-nums">{approuveCount}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-primary">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+                      <XCircle className="h-5 w-5 text-destructive" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Refusés</p>
+                      <p className="text-xl font-bold font-mono tabular-nums">{refuseCount}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* ─── Access requests table ─── */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 font-display">
+                    <ShieldCheck className={`h-5 w-5 ${accent.text}`} />
+                    Demandes d&apos;accès ADMIN
+                    <Badge variant="secondary" className="ml-2">{accessRecords.length}</Badge>
+                  </CardTitle>
+                  <CardDescription>
+                    Gérez les demandes d&apos;accès des administrateurs de la plateforme aux données
+                    de votre établissement. Vous pouvez approuver (avec durée), refuser ou révoquer les accès.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loadingAccess ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className={`h-6 w-6 animate-spin ${accent.text}`} />
+                      <span className="ml-2 text-sm text-muted-foreground">Chargement des demandes...</span>
+                    </div>
+                  ) : accessRecords.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <KeyRound className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                      <p className="text-sm text-muted-foreground">
+                        Aucune demande d&apos;accès enregistrée pour votre établissement.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Les demandes envoyées par les administrateurs apparaîtront ici.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="font-display">Admin</TableHead>
+                            <TableHead className="font-display">Motif</TableHead>
+                            <TableHead className="font-display">Statut</TableHead>
+                            <TableHead className="font-display">Date début</TableHead>
+                            <TableHead className="font-display">Date fin</TableHead>
+                            <TableHead className="text-right font-display">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {accessRecords.map((record) => (
+                            <TableRow key={record.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <div className={`flex h-8 w-8 items-center justify-center rounded-full ${accent.bg100} ${accent.text} text-xs font-bold shrink-0`}>
+                                    {(record.admin?.name || record.admin?.email || '?').charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-sm truncate">
+                                      {record.admin?.name ?? 'Admin inconnu'}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {record.admin?.email ?? '—'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">{getAccessMotifLabel(record.motif)}</span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {getAccessStatutBadge(record.statut)}
+                                  {record.statut === 'APPROUVE' && record.dateFin &&
+                                    new Date(record.dateFin) < new Date() && (
+                                      <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+                                        <AlertCircle className="h-3 w-3 mr-1" />
+                                        Expiré
+                                      </Badge>
+                                    )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm">{formatAccessDate(record.dateDebut)}</TableCell>
+                              <TableCell className="text-sm">{formatAccessDate(record.dateFin)}</TableCell>
+                              <TableCell className="text-right">
+                                {record.statut === 'EN_ATTENTE' && (
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-success-text hover:text-success-text hover:bg-success/10"
+                                      onClick={() => {
+                                        setApproveTarget(record)
+                                        setApproveDuree('30')
+                                      }}
+                                    >
+                                      <CheckCircle2 className="h-4 w-4 mr-1" />
+                                      Approuver
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => {
+                                        setRefuseTarget(record)
+                                        setRefuseCommentaire('')
+                                      }}
+                                    >
+                                      <XCircle className="h-4 w-4 mr-1" />
+                                      Refuser
+                                    </Button>
+                                  </div>
+                                )}
+                                {record.statut === 'APPROUVE' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => setRevokeTarget(record)}
+                                  >
+                                    <Ban className="h-4 w-4 mr-1" />
+                                    Révoquer
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
         </Tabs>
+
+        {/* ─── Approve Dialog (ACCESS-WORKFLOW-UI) ─── */}
+        <Dialog open={!!approveTarget} onOpenChange={(open) => { if (!open) setApproveTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Approuver la demande d&apos;accès</DialogTitle>
+              <DialogDescription>
+                Choisissez la durée d&apos;accès pour{' '}
+                <strong>{approveTarget?.admin?.name ?? approveTarget?.admin?.email ?? 'cet admin'}</strong>.
+                À l&apos;expiration, l&apos;accès sera automatiquement révoqué.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="approve-duree">Durée d&apos;accès</Label>
+                <Select value={approveDuree} onValueChange={setApproveDuree}>
+                  <SelectTrigger id="approve-duree">
+                    <SelectValue placeholder="Sélectionner une durée" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">7 jours</SelectItem>
+                    <SelectItem value="30">30 jours</SelectItem>
+                    <SelectItem value="90">90 jours</SelectItem>
+                    <SelectItem value="365">365 jours</SelectItem>
+                    <SelectItem value="0">Illimité</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {approveDuree === '0'
+                    ? 'Accès illimité : aucune date d&apos;expiration ne sera définie.'
+                    : `L&apos;accès expirera approximativement le ${new Date(
+                        Date.now() + parseInt(approveDuree, 10) * 24 * 60 * 60 * 1000
+                      ).toLocaleDateString('fr-FR')}.`}
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setApproveTarget(null)} disabled={approving}>
+                Annuler
+              </Button>
+              <Button className={accent.btn} onClick={handleApprove} disabled={approving}>
+                {approving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                )}
+                Approuver
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Refuse Dialog (ACCESS-WORKFLOW-UI) ─── */}
+        <Dialog open={!!refuseTarget} onOpenChange={(open) => { if (!open) setRefuseTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Refuser la demande d&apos;accès</DialogTitle>
+              <DialogDescription>
+                Indiquez la raison du refus pour{' '}
+                <strong>{refuseTarget?.admin?.name ?? refuseTarget?.admin?.email ?? 'cet admin'}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 py-2">
+              <Label htmlFor="refuse-commentaire">Commentaire</Label>
+              <Textarea
+                id="refuse-commentaire"
+                placeholder="Expliquez la raison du refus..."
+                value={refuseCommentaire}
+                onChange={(e) => setRefuseCommentaire(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Si laissé vide, le commentaire par défaut «&nbsp;Demande refusée par le responsable&nbsp;» sera utilisé.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRefuseTarget(null)} disabled={refusing}>
+                Annuler
+              </Button>
+              <Button
+                className="bg-destructive hover:bg-destructive/90"
+                onClick={handleRefuse}
+                disabled={refusing}
+              >
+                {refusing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4 mr-2" />
+                )}
+                Refuser
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Revoke AlertDialog (ACCESS-WORKFLOW-UI) ─── */}
+        <AlertDialog
+          open={!!revokeTarget}
+          onOpenChange={(open) => { if (!open) setRevokeTarget(null) }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Révoquer l&apos;accès</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir révoquer l&apos;accès de{' '}
+                <strong>{revokeTarget?.admin?.name ?? revokeTarget?.admin?.email ?? 'cet admin'}</strong> ?
+                Cette action est irréversible et l&apos;admin perdra immédiatement l&apos;accès aux
+                données de votre établissement.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90"
+                onClick={handleRevokeAccess}
+              >
+                Oui, révoquer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   )

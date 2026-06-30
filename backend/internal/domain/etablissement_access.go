@@ -53,11 +53,12 @@ type CreateAccessInput struct {
 
 // UpdateAccessInput pour approuver/refuser/révoquer.
 type UpdateAccessInput struct {
-        Statut      AccessStatut `json:"statut"`
-        ApprouvePar *string      `json:"approuvePar,omitempty"`
-        Commentaire *string      `json:"commentaire,omitempty"`
-        DateDebut   *time.Time   `json:"dateDebut,omitempty"`
-        DateFin     *time.Time   `json:"dateFin,omitempty"`
+        Statut          AccessStatut `json:"statut"`
+        ApprouvePar     *string      `json:"approuvePar,omitempty"`
+        Commentaire     *string      `json:"commentaire,omitempty"`
+        DateDebut       *time.Time   `json:"dateDebut,omitempty"`
+        DateFin         *time.Time   `json:"dateFin,omitempty"`
+        DureeAccesJours *int         `json:"dureeAccesJours,omitempty"` // OPTION-B : durée d'accès en jours (7, 30, 90, 365). Si fourni et statut=APPROUVE, dateFin = now() + duree.
 }
 
 // AccessListParams pour filtrer les demandes d'accès.
