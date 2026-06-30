@@ -184,25 +184,26 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/etablissements
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer/modifier/supprimer des
+                // établissements). Les GET restent ouverts à tous les rôles authentifiés
+                // (RLS filtre les lignes visibles).
                 r.Route("/api/etablissements", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listEtablissements)
-                        r.Post("/", s.createEtablissement)
                         r.Get("/{id}", s.getEtablissement)
-                        r.Patch("/{id}", s.updateEtablissement)
-                        r.Delete("/{id}", s.deleteEtablissement)
-                        r.Post("/upload-logo", s.uploadLogo)
-                        // PARAMETRES-FIX-P3 : endpoint dédié pour supprimer le logo.
-                        // Avant : le frontend faisait PATCH {logo: null} mais le champ Logo
-                        // a été retiré de UpdateEtablissementInput (fix E5 sécurité) → le logo
-                        // n'était jamais supprimé (PATCH 200 OK silencieux, UI désynchronisée).
-                        r.Delete("/{id}/logo", s.deleteLogo)
-                        // Migration 000017 : gestion de l'année académique courante.
-                        // GET retourne l'année courante (ou null), POST la définit.
                         r.Get("/{id}/annee-courante", s.getCurrentAnnee)
-                        r.Post("/{id}/annee-courante", s.setCurrentAnnee)
                         r.Get("/{id}/watermark", s.getWatermark)
-                        r.Patch("/{id}/watermark", s.updateWatermark)
+                        // Mutations : ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createEtablissement)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateEtablissement)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteEtablissement)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/upload-logo", s.uploadLogo)
+                        // PARAMETRES-FIX-P3 : endpoint dédié pour supprimer le logo.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}/logo", s.deleteLogo)
+                        // Migration 000017 : gestion de l'année académique courante.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/{id}/annee-courante", s.setCurrentAnnee)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}/watermark", s.updateWatermark)
                 })
 
                 // /api/etablissement-access
@@ -221,30 +222,33 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/filieres
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des filières).
                 r.Route("/api/filieres", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listFilieres)
-                        r.Post("/", s.createFiliere)
-                        r.Patch("/bulk", s.bulkFilieres)
                         r.Get("/export", s.exportFilieres)
-                        // BUGFIX (FILIERES-CRITICAL-FIX-1) : /{id}/dependencies doit être
-                        // déclaré avant /{id} pour éviter toute ambiguïté de routing chi.
                         r.Get("/{id}/dependencies", s.getFiliereDependencies)
                         r.Get("/{id}", s.getFiliere)
-                        r.Patch("/{id}", s.updateFiliere)
-                        r.Delete("/{id}", s.deleteFiliere)
+                        // Mutations : ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createFiliere)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/bulk", s.bulkFilieres)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateFiliere)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteFiliere)
                 })
 
                 // /api/unites-enseignement
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des UE).
                 r.Route("/api/unites-enseignement", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listUEs)
-                        r.Post("/", s.createUE)
-                        // PROG-ACAD-CRITICAL-FIX-1 (BUG #1) : dependencies AVANT /{id} (chi routing)
                         r.Get("/{id}/dependencies", s.getUEDependencies)
                         r.Get("/{id}", s.getUE)
-                        r.Patch("/{id}", s.updateUE)
-                        r.Delete("/{id}", s.deleteUE)
+                        // Mutations : ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createUE)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateUE)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteUE)
                 })
 
                 // /api/enseignant-filieres
@@ -281,14 +285,16 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/annees-academiques
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer des années académiques).
                 r.Route("/api/annees-academiques", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listAnnees)
-                        r.Post("/", s.createAnnee)
-                        // PROG-ACAD-CRITICAL-FIX-1 (BUG #9) : CRUD complet
                         r.Get("/{id}", s.getAnnee)
-                        r.Patch("/{id}", s.updateAnnee)
-                        r.Delete("/{id}", s.deleteAnnee)
+                        // Mutations : ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createAnnee)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateAnnee)
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteAnnee)
                 })
 
                 // E1-INVITATIONS — endpoints authentifiés (RESPONSABLE, ADMIN
@@ -305,22 +311,25 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/epreuves
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des épreuves).
                 r.Route("/api/epreuves", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listEpreuves)
-                        r.Post("/", s.createEpreuve)
                         r.Get("/auto-close", s.epreuveAutoClose) // B4-MES-EPREUVES : clôture auto
                         r.Get("/orphelines", s.listOrphanEpreuves) // P2-E3
                         r.Get("/session-speciale", s.listSessionSpeciale) // P2-E3
-                        r.Post("/session-speciale", s.createSessionSpeciale) // P2-E3
                         r.Get("/{id}", s.getEpreuve)
-                        r.Patch("/{id}", s.updateEpreuve)
-                        // CORBEILLE-FIX C1 : RequireRole sur DELETE epreuves (avant : RequireAuth seul).
-                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteEpreuve)
                         r.Get("/{id}/questions", s.listEpreuveQuestions)
                         r.Get("/{id}/status", s.getEpreuveStatus) // IA-WORKER-1 : polling statut génération IA
+                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.createEpreuve)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/session-speciale", s.createSessionSpeciale)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateEpreuve)
+                        // CORBEILLE-FIX C1 : RequireRole sur DELETE epreuves (avant : RequireAuth seul).
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteEpreuve)
                         // AI-CONNECT-1 : génération IA d'épreuves via le backend AIService.
-                        r.Post("/generate", s.epreuvesGenerate)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/generate", s.epreuvesGenerate)
                 })
 
                 // AI-CONNECT-1 : /api/ai-assistant — chat flottant pédagogique.
@@ -331,16 +340,19 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/questions
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer/modifier des questions).
                 r.Route("/api/questions", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listQuestions)
                         r.Get("/test-zai", s.testZaiConnection)                          // P2-Q3
-                        r.Post("/", s.createQuestion)
+                        r.Get("/{id}", s.getQuestion)
+                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.createQuestion)
                         // CORBEILLE-FIX C1+C2 : RequireRole + BatchSoftDelete (avant : hard delete).
                         r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteQuestions)
-                        r.Get("/{id}", s.getQuestion)
-                        r.Patch("/{id}", s.updateQuestion)
-                        r.Post("/{id}/regenerate", s.regenerateQuestion)                   // P2-Q2
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/{id}", s.updateQuestion)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{id}/regenerate", s.regenerateQuestion) // P2-Q2
                         // CORBEILLE-FIX C1 : RequireRole sur DELETE question (avant : RequireAuth seul).
                         r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteQuestion)
                 })
@@ -367,38 +379,47 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 })
 
                 // /api/documents
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait uploader/supprimer des documents).
                 r.Route("/api/documents", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listDocuments)
-                        r.Post("/", s.uploadDocument)
                         r.Get("/{id}", s.getDocument)
-                        r.Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
-                        r.Delete("/{id}", s.deleteDocument)
                         r.Get("/{id}/download", s.downloadDocument)
-                        r.Post("/{id}/analyze", s.analyzeDocument) // P1-D3
+                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/", s.uploadDocument)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/", s.batchDeleteDocuments) // BUGFIX (CORBEILLE-1): batch delete
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Delete("/{id}", s.deleteDocument)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{id}/analyze", s.analyzeDocument) // P1-D3
                 })
 
                 // /api/certificats (verify est publique, définie plus haut)
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait créer/révoquer des certificats).
                 r.Route("/api/certificats", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listCertificats)
                         r.Get("/watermark-config", s.getWatermarkConfig)       // P3b
-                        r.Patch("/watermark-config", s.updateWatermarkConfig)  // P3b
-                        r.Post("/", s.createCertificat)                        // P3c
                         r.Get("/{id}", s.getCertificat)
-                        r.Post("/{id}/revoquer", s.revokeCertificat)
+                        // Mutations : ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/watermark-config", s.updateWatermarkConfig)  // P3b
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/", s.createCertificat)                        // P3c
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Post("/{id}/revoquer", s.revokeCertificat)
                 })
 
                 // /api/correction
+                // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait corriger/noter des copies).
                 r.Route("/api/correction", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.listCorrectionSessions)
-                        r.Post("/retourner-batch", s.retournerBatch)
-                        r.Post("/{sessionId}/retourner", s.retournerSession)
-                        r.Post("/{sessionId}/ai-grade", s.aiGradeSession)            // IA-CORRECTION-1
-                        r.Patch("/{sessionId}/ai-grade", s.saveGradeOrFinalize)      // P1b-CORRECTION : save grade + finalize
-                        r.Post("/{sessionId}/ai-grade-batch", s.batchAiGrade)        // P1b-CORRECTION : batch IA
-                        r.Patch("/reponses/{reponseId}", s.updateReponse)
+                        // Mutations : ENSEIGNANT + ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/retourner-batch", s.retournerBatch)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{sessionId}/retourner", s.retournerSession)
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{sessionId}/ai-grade", s.aiGradeSession)            // IA-CORRECTION-1
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/{sessionId}/ai-grade", s.saveGradeOrFinalize)      // P1b-CORRECTION : save grade + finalize
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/{sessionId}/ai-grade-batch", s.batchAiGrade)        // P1b-CORRECTION : batch IA
+                        r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Patch("/reponses/{reponseId}", s.updateReponse)
                 })
 
                 // /api/exam-prep
@@ -631,21 +652,25 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.logsListReal)
                 })
 
+                // SECURITY-FIX (audit 2025) : RequireRole ADMIN sur les mutations (avant :
+                // RequireAuth seul → un ETUDIANT pouvait modifier la whitelist IP).
                 r.Route("/api/ip-whitelist", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.ipWhitelistListReal)
-                        // PARAMETRES-FIX-P2 : mutations (POST/PATCH/DELETE) pour la whitelist IP.
-                        r.Post("/", s.createIpWhitelist)
-                        r.Patch("/{id}", s.updateIpWhitelist)
-                        r.Delete("/{id}", s.deleteIpWhitelist)
+                        // Mutations : ADMIN uniquement.
+                        r.With(middleware.RequireRole("ADMIN")).Post("/", s.createIpWhitelist)
+                        r.With(middleware.RequireRole("ADMIN")).Patch("/{id}", s.updateIpWhitelist)
+                        r.With(middleware.RequireRole("ADMIN")).Delete("/{id}", s.deleteIpWhitelist)
                 })
 
+                // SECURITY-FIX (audit 2025) : RequireRole ADMIN+RESPONSABLE sur les mutations
+                // (avant : RequireAuth seul → un ETUDIANT pouvait modifier les paramètres de sécurité).
                 r.Route("/api/security-settings", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.securitySettingsGetReal)
                         r.Get("/etablissement/{id}", s.securitySettingsByEtablissement)    // B5-MES-EPREUVES
-                        // PARAMETRES-FIX-P1+P5 : upsert (UPDATE si existe, INSERT sinon).
-                        r.Patch("/etablissement/{id}", s.updateSecuritySettingsByEtablissement)
+                        // Mutations : ADMIN + RESPONSABLE uniquement.
+                        r.With(middleware.RequireRole("ADMIN", "RESPONSABLE")).Patch("/etablissement/{id}", s.updateSecuritySettingsByEtablissement)
                 })
 
                 r.Route("/api/enseignant", func(r chi.Router) {

@@ -7,6 +7,7 @@ import (
         "strconv"
 
         "github.com/go-chi/chi/v5"
+        "github.com/jackc/pgx/v5"
         "github.com/udevrard7/sect/backend/internal/cache"
         "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
@@ -28,7 +29,10 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
         }
 
         params := domain.SessionListParams{
-                EtudiantID: r.URL.Query().Get("etudiantId"),
+                // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ETUDIANT/ENSEIGNANT
+                // ne peut cibler que son propre ID. Le query param ?etudiantId= est ignoré
+                // pour ces rôles (forcé à claims.UserID).
+                EtudiantID: resolveScopedUserID(r, r.URL.Query().Get("etudiantId")),
                 EpreuveID:  r.URL.Query().Get("epreuveId"),
         }
 
@@ -101,6 +105,13 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) {
 // CACHE-RAM-1 : écrit en RAM (< 1ms) au lieu de Neon (~50-100ms).
 // Le worker goroutine synchronisera vers Neon toutes les 30s, et le
 // handler submitSession force un flush immédiat avant la soumission.
+//
+// VULN-6 (CRITICAL, audit 2025) : avant d'écrire dans le cache, on vérifie
+// que la session appartient bien à claims.UserID. Sans ce check, un étudiant
+// malveillant pouvait forger un SessionID arbitraire et écraser les réponses
+// d'un autre étudiant. La vérification se fait via RLS (SessionPassation_select)
+// en lecture simple — si l'étudiant n'est pas le propriétaire, RLS retourne 0
+// ligne → 404.
 func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -114,10 +125,35 @@ func (s *Server) saveReponse(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        if input.SessionID == "" {
+                writeJSONError(w, http.StatusBadRequest, "sessionId requis")
+                return
+        }
+
+        // VULN-6 : vérifier ownership (session.etudiantId = claims.UserID).
+        // RLS filtre automatiquement : un étudiant ne peut lire que ses propres
+        // sessions (policy SessionPassation_select). Si found=false, la session
+        // n'existe pas OU n'appartient pas à l'utilisateur → 404.
+        var etudiantID string
+        found := false
+        _ = db.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                err := tx.QueryRow(r.Context(),
+                        `SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1`,
+                        input.SessionID).Scan(&etudiantID)
+                if err == nil {
+                        found = true
+                }
+                return err
+        })
+        if !found || etudiantID != claims.UserID {
+                writeJSONError(w, http.StatusNotFound, "session introuvable ou accès refusé")
+                return
+        }
+
         // CACHE-RAM-1 : écrire en RAM (single-question merge).
         // L'input ne contient pas EpreuveID (single-question save), on passe "".
         // Le premier SaveAnswers crée l'entrée ; les suivants mergent les réponses.
-        if s.sessionCache != nil && input.SessionID != "" {
+        if s.sessionCache != nil {
                 reponses := map[string]string{input.QuestionID: input.Contenu}
                 s.sessionCache.SaveAnswers(input.SessionID, "", claims.UserID, reponses)
         }
@@ -178,7 +214,10 @@ func (s *Server) listResultats(w http.ResponseWriter, r *http.Request) {
         }
 
         params := domain.ResultatListParams{
-                EtudiantID: r.URL.Query().Get("etudiantId"),
+                // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ETUDIANT/ENSEIGNANT
+                // ne peut cibler que son propre ID. Le query param ?etudiantId= est ignoré
+                // pour ces rôles (forcé à claims.UserID).
+                EtudiantID: resolveScopedUserID(r, r.URL.Query().Get("etudiantId")),
                 EpreuveID:  r.URL.Query().Get("epreuveId"),
                 Page:       parseIntQueryParam(r.URL.Query().Get("page"), 1),
                 Limit:      parseIntQueryParam(r.URL.Query().Get("limit"), 50),
@@ -202,7 +241,10 @@ func (s *Server) resultatsOverview(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        enseignantID := r.URL.Query().Get("enseignantId")
+        // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ENSEIGNANT ne peut
+        // cibler que son propre ID. Le query param ?enseignantId= est ignoré pour
+        // ce rôle (forcé à claims.UserID).
+        enseignantID := resolveScopedUserID(r, r.URL.Query().Get("enseignantId"))
         overview, err := s.resultatUC.GetOverview(r.Context(), claims, enseignantID)
         if err != nil {
                 middleware.MapDomainError(w, err)

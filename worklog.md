@@ -9727,3 +9727,55 @@ Stage Summary:
 - **Backend 100% fonctionnel** (testé sur Render avec Bearer token).
 - **Frontend déployé** sur Vercel (shims + UI + sidebar adaptative).
 - **Auto-révocation** : l'accès assistance expire quand l'EtablissementAccess expire (dateFin vérifiée par admin_has_etablissement_access()).
+
+---
+Task ID: SECURITY-AUDIT-5FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Audit sécurité — 5 corrections critiques (rôle sect_app, RequireRole, fuite token invitation, spoofing query param, VULN-6 ownership session)
+
+Work Log:
+- **Tâche 1 (CRITICAL) — Rôle DB sect_app sans BYPASSRLS** :
+  - Diagnostic : le backend se connectait à Neon en tant que `neondb_owner` (BYPASSRLS=true) → toutes les policies RLS (105) étaient BYPASSÉES au niveau DB. Un SELECT sans claims retournait 17 users (toutes les lignes).
+  - Création du rôle `sect_app` avec NOBYPASSRLS sur Neon (connexion directe non-poolée).
+  - Grants : CONNECT, USAGE schema, SELECT/INSERT/UPDATE/DELETE sur toutes les tables, USAGE/SELECT sur séquences, EXECUTE sur fonctions.
+  - Fix récursion RLS User_select : la policy originale avait `JOIN "User" me` (auto-référentiel) → récursion infinie sans BYPASSRLS. Création de `current_user_filiere_id()` (SECURITY DEFINER) qui lit le filiereId sans déclencher RLS.
+  - Fix planner inlining : toutes les fonctions helper RLS recréées en `VOLATILE + SECURITY DEFINER + SET search_path = public`. VOLATILE empêche le planner d'évaluer les fonctions à plan-time (où les GUCs app.claims.* ne sont pas posés → policy = false → "One-Time Filter: false").
+  - FORCE RLS sur NotificationPreference (dernière table sans FORCE).
+  - Restauration de 102 policies après un DROP CASCADE accidentel (96 depuis reference/schema.sql + 4 NotificationPreference + 2 NotificationAdmin destinataire).
+  - Migration 000020_create_app_role_fix_rls.up.sql créée et appliquée.
+  - Tests validés : ETUDIANT voit 1 user (lui-même), ADMIN voit 17 users + 1 étab, RESPONSABLE voit 16 users + 1 étab. 54/54 tables OK pour ETUDIANT et ENSEIGNANT.
+  - ⚠️ Bascule Render : NEON_DATABASE_URL doit être mis à jour sur Render avec l'URL sect_app (stocké dans /home/z/sect-tools/sect_app_url.txt).
+
+- **Tâche 2 — RequireRole sur routes de mutation** :
+  - Ajout de RequireRole sur 11 groupes de routes de mutation qui n'avaient que RequireAuth :
+    - Etablissements (ADMIN+RESPONSABLE), Filieres (ADMIN+RESPONSABLE), UE (ADMIN+RESPONSABLE), Annees-academiques (ADMIN+RESPONSABLE)
+    - Epreuves (ENSEIGNANT+ADMIN+RESPONSABLE), Questions (ENSEIGNANT+ADMIN+RESPONSABLE)
+    - Documents (ENSEIGNANT+ADMIN+RESPONSABLE), Certificats (ADMIN+RESPONSABLE)
+    - Correction (ENSEIGNANT+ADMIN+RESPONSABLE), Ip-whitelist (ADMIN), Security-settings (ADMIN+RESPONSABLE)
+  - Les GET restent ouverts à tous les rôles authentifiés (RLS filtre les lignes visibles).
+
+- **Tâche 3 — Retrait token de InvitationRepository.List** :
+  - Le SELECT de List inclut `i."token"` → fuite du secret d'authentification dans la liste.
+  - Retrait de `i."token"` du SELECT et de `&i.Token` du scan. Le champ Token reste vide (zero value) dans la liste.
+  - FindByID et FindByToken retournent toujours le token (nécessaires pour verify/accept).
+
+- **Tâche 4 — Anti-spoofing query params** :
+  - Création du helper `resolveScopedUserID(r, queryParamValue)` dans security_helpers.go.
+  - ETUDIANT/ENSEIGNANT → toujours claims.UserID (query param ignoré).
+  - ADMIN/RESPONSABLE → accepte le query param (RLS filtre par établissement).
+  - Appliqué à 4 handlers critiques : listSessions (?etudiantId=), listResultats (?etudiantId=), resultatsOverview (?enseignantId=), listEpreuves (?enseignantId= + ?etudiantId=).
+
+- **Tâche 5 (VULN-6) — Ownership session avant SaveAnswers** :
+  - Le handler saveReponse (PUT /api/sessions) écrivait dans le cache RAM sans vérifier que la session appartient à claims.UserID.
+  - Un étudiant malveillant pouvait forger un SessionID arbitraire et écraser les réponses d'un autre étudiant.
+  - Ajout d'une vérification d'ownership via RLS (SELECT "etudiantId" FROM "SessionPassation" WHERE "id" = $1). Si found=false ou etudiantID != claims.UserID → 404.
+  - Pattern identique à updateSessionBulk (session_enhanced_handlers.go) qui avait déjà cette vérification.
+
+Stage Summary:
+- **5 corrections de sécurité appliquées** : rôle sect_app (NOBYPASSRLS) + RequireRole sur 11 groupes de routes + retrait token invitation + anti-spoofing query params + VULN-6 ownership session.
+- **1 migration DB** (000020) créée et appliquée sur Neon.
+- **4 fichiers Go modifiés** : router.go, session_handlers.go, epreuve_handlers.go, invitation.go.
+- **1 fichier Go créé** : security_helpers.go (helper resolveScopedUserID).
+- **RLS désormais ENFORCÉ** au niveau DB (sect_app sans BYPASSRLS) — defense-in-depth.
+- **Tests validés** : tous les rôles (ETUDIANT, ENSEIGNANT, RESPONSABLE, ADMIN) voient exactement les données qu'ils doivent voir.
+- ⚠️ **Action requise côté Render** : mettre à jour NEON_DATABASE_URL avec l'URL sect_app (sinon le backend continue d'utiliser neondb_owner avec BYPASSRLS).
