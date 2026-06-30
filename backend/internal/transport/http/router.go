@@ -532,6 +532,11 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         // (RLS migration 000018 filtre par destinataireId/destinataireRole).
                         r.Get("/me", s.notificationsMeList)
                         r.Patch("/me/{id}", s.notificationsMeMarkRead)
+                        // Phase 3 : unified (VIEW), SSE stream, preferences.
+                        r.Get("/unified", s.notificationsUnifiedList)
+                        r.Get("/stream", s.notificationsStream)
+                        r.Get("/preferences", s.notificationsPreferencesGet)
+                        r.Patch("/preferences", s.notificationsPreferencesUpdate)
                         // /admin : réservé ADMIN, mutations (POST/PATCH/DELETE).
                         r.With(middleware.RequireRole("ADMIN")).Get("/admin", s.notificationsAdminReal)
                         r.With(middleware.RequireRole("ADMIN")).Post("/admin", s.createNotificationAdmin)
