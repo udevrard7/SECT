@@ -22,6 +22,7 @@ import {
   LayoutGrid,
   List,
   Share2,
+  Power,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent } from '@/components/ui/card'
@@ -58,6 +59,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { PulseSkeleton } from '@/components/ds'
 import {
   Table,
@@ -243,6 +245,10 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   // ─── View state ───
   const [activeView, setActiveView] = useState<'overview' | 'detail'>(defaultView)
   const [tabNiveau, setTabNiveau] = useState('all')
+  // Toggle "Afficher les UE désactivées" — permet de voir et réactiver les UE
+  // désactivées par erreur (évite l'incident du 2026-06-29 où Génie Logiciel
+  // avait été désactivée accidentellement et n'apparaissait plus dans la liste).
+  const [showInactive, setShowInactive] = useState(false)
 
   // ─── Data state ───
   // `ues` reste un state local car il est muté localement par toggleExpand
@@ -267,11 +273,14 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
   })
 
   const uesQuery = useQuery<{ unitesEnseignement: UEItem[] }>({
-    queryKey: ['programme-ues', etabId],
+    queryKey: ['programme-ues', etabId, showInactive],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (etabId) params.set('etablissementId', etabId)
-      params.set('actif', 'true')
+      // Par défaut, on n'affiche que les UE actives (actif=true). Si le toggle
+      // "Afficher les UE désactivées" est activé, on ne passe pas le paramètre
+      // actif → le backend renvoie toutes les UE (actives + inactives).
+      if (!showInactive) params.set('actif', 'true')
       const res = await fetch(`/api/unites-enseignement?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch UEs')
       return res.json()
@@ -584,6 +593,28 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
       const res = await fetch(`/api/unites-enseignement/${target.id}`, { method: 'DELETE' })
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Erreur lors de la suppression') }
       toast.success('UE désactivée', { description: `${target.nom} a été désactivée avec succès.` })
+      await refreshData()
+    } catch (err) {
+      toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
+    }
+  }
+
+  // ─── Réactivation d'une UE désactivée ───
+  // PATCH /api/unites-enseignement/{id} avec {actif: true}. Permet de retrouver
+  // une UE désactivée par erreur sans passer par l'admin DB.
+
+  const handleReactivate = async (ue: UEItem) => {
+    try {
+      const res = await fetch(`/api/unites-enseignement/${ue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actif: true }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la réactivation')
+      }
+      toast.success('UE réactivée', { description: `${ue.nom} est de nouveau active.` })
       await refreshData()
     } catch (err) {
       toast.error('Erreur', { description: err instanceof Error ? err.message : 'Une erreur est survenue.' })
@@ -917,6 +948,24 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                 <SelectItem value="2">S2</SelectItem>
               </SelectContent>
             </Select>
+            {/* Toggle "Afficher les UE désactivées" — permet de voir les UE
+                désactivées (actif=false) et de les réactiver. Par défaut cachées
+                pour ne pas polluer la liste avec des UE archivées. */}
+            <label
+              htmlFor="show-inactive-ue"
+              className="flex items-center gap-2 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
+              title="Afficher les UE désactivées pour les réactiver"
+            >
+              <Switch
+                id="show-inactive-ue"
+                checked={showInactive}
+                onCheckedChange={setShowInactive}
+                aria-label="Afficher les UE désactivées"
+              />
+              <Power className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Afficher les UE désactivées</span>
+              <span className="sm:hidden">Inactives</span>
+            </label>
           </div>
 
           {/* Niveau Tabs */}
@@ -988,6 +1037,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                               onToggle={toggleExpand}
                               onEdit={handleOpenEdit}
                               onDelete={setDeleteTarget}
+                              onReactivate={handleReactivate}
                               onViewAffectations={handleViewAffectations}
                               totalHours={totalHours}
                               allFilieres={allFilieres}
@@ -1060,6 +1110,7 @@ export function ProgrammeAcademiquePage({ defaultView = 'overview' }: Props = {}
                             onToggle={toggleExpand}
                             onEdit={handleOpenEdit}
                             onDelete={setDeleteTarget}
+                            onReactivate={handleReactivate}
                             onViewAffectations={handleViewAffectations}
                             totalHours={totalHours}
                             allFilieres={allFilieres}
@@ -1405,13 +1456,14 @@ function UEForm({
 // ─── UE Table Row Sub-component ───
 
 function UETableRow({
-  ue, isExpanded, onToggle, onEdit, onDelete, onViewAffectations, totalHours, allFilieres,
+  ue, isExpanded, onToggle, onEdit, onDelete, onReactivate, onViewAffectations, totalHours, allFilieres,
 }: {
   ue: UEItem
   isExpanded: boolean
   onToggle: (ue: UEItem) => void
   onEdit: (ue: UEItem) => void
   onDelete: (ue: UEItem) => void
+  onReactivate: (ue: UEItem) => void
   onViewAffectations: (ue: UEItem) => void
   
   totalHours: number
@@ -1419,11 +1471,18 @@ function UETableRow({
 }) {
   return (
     <>
-      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => onToggle(ue)}>
+      <TableRow className={`cursor-pointer hover:bg-muted/50 ${!ue.actif ? 'opacity-60' : ''}`} onClick={() => onToggle(ue)}>
         <TableCell>
           {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </TableCell>
-        <TableCell className="font-mono tabular-nums text-sm font-medium">{ue.code}</TableCell>
+        <TableCell className="font-mono tabular-nums text-sm font-medium">
+          {ue.code}
+          {!ue.actif && (
+            <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 bg-warning/10 text-warning border-warning/30 align-middle">
+              Désactivée
+            </Badge>
+          )}
+        </TableCell>
         <TableCell className="hidden md:table-cell font-medium">{ue.nom}</TableCell>
         <TableCell className="hidden lg:table-cell text-sm">
           <div className="flex flex-wrap gap-1">
@@ -1464,6 +1523,11 @@ function UETableRow({
         </TableCell>
         <TableCell className="text-right font-mono tabular-nums">
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            {!ue.actif && (
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10" onClick={() => onReactivate(ue)} title="Réactiver l'UE" aria-label={`Réactiver ${ue.nom}`}>
+                <Power className="h-4 w-4" />
+              </Button>
+            )}
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success/10" onClick={() => onEdit(ue)}>
               <Edit3 className="h-4 w-4" />
             </Button>
