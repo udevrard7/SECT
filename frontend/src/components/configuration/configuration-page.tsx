@@ -47,22 +47,52 @@ interface GeneralConfig {
   helpUrl: string
   legalNoticeUrl: string
   privacyPolicyUrl: string
+  // CONFIG-FRONTEND-EXTEND : paramètres de localisation / identité plateforme
+  devise: string
+  paysDefault: string
+  langueDefault: string
+  timezoneDefault: string
+  logoUrl: string
+  maxEtablissements: number
 }
 
 interface SecurityConfig {
   maxUploadSizeMB: number
   allowedFileTypes: string[]
   proctoringEnabled: boolean
+  // CONFIG-FRONTEND-EXTEND : politiques de mot de passe / session / audit
+  passwordMinLength: number
+  passwordRequireSpecial: boolean
+  sessionTimeoutMinutes: number
+  maxConcurrentSessions: number
+  auditLogRetentionDays: number
+  dataExportEnabled: boolean
 }
 
 interface NotificationConfig {
   emailNotifications: boolean
   defaultPlanType: string
+  // CONFIG-FRONTEND-EXTEND : SMTP + types de notifications administrateur
+  smtpHost: string
+  smtpPort: number
+  smtpUser: string
+  smtpFromEmail: string
+  notifNewUserAdmin: boolean
+  notifPaymentAdmin: boolean
+  notifSecurityAlerts: boolean
+  notifExamReminder: boolean
+  pushNotificationsEnabled: boolean
 }
 
 interface IAConfig {
   aiGenerationEnabled: boolean
   aiCorrectionEnabled: boolean
+  // CONFIG-FRONTEND-EXTEND : quotas / paramètres modèles IA
+  aiMaxRequestsPerDay: number
+  aiTemperature: number
+  aiMaxTokens: number
+  aiFailoverEnabled: boolean
+  aiGradingConfidenceThreshold: number
 }
 
 interface AppConfig {
@@ -84,19 +114,49 @@ const DEFAULT_CONFIG: AppConfig = {
     helpUrl: '',
     legalNoticeUrl: '',
     privacyPolicyUrl: '',
+    // CONFIG-FRONTEND-EXTEND
+    devise: 'XOF',
+    paysDefault: "Côte d'Ivoire",
+    langueDefault: 'fr',
+    timezoneDefault: 'Africa/Abidjan',
+    logoUrl: '',
+    maxEtablissements: 1000,
   },
   security: {
     maxUploadSizeMB: 50,
     allowedFileTypes: ['pdf', 'docx', 'txt', 'csv'],
     proctoringEnabled: false,
+    // CONFIG-FRONTEND-EXTEND
+    passwordMinLength: 8,
+    passwordRequireSpecial: true,
+    sessionTimeoutMinutes: 30,
+    maxConcurrentSessions: 3,
+    auditLogRetentionDays: 90,
+    dataExportEnabled: true,
   },
   notifications: {
     emailNotifications: true,
     defaultPlanType: 'GRATUIT',
+    // CONFIG-FRONTEND-EXTEND
+    smtpHost: '',
+    smtpPort: 587,
+    smtpUser: '',
+    smtpFromEmail: '',
+    notifNewUserAdmin: true,
+    notifPaymentAdmin: true,
+    notifSecurityAlerts: true,
+    notifExamReminder: true,
+    pushNotificationsEnabled: true,
   },
   ia: {
     aiGenerationEnabled: true,
     aiCorrectionEnabled: false,
+    // CONFIG-FRONTEND-EXTEND
+    aiMaxRequestsPerDay: 100,
+    aiTemperature: 0.7,
+    aiMaxTokens: 2000,
+    aiFailoverEnabled: true,
+    aiGradingConfidenceThreshold: 0.8,
   },
 }
 
@@ -113,19 +173,51 @@ function mapApiToConfig(apiSettings: Record<string, unknown>): AppConfig {
       helpUrl: (apiSettings.helpUrl as string) ?? DEFAULT_CONFIG.general.helpUrl,
       legalNoticeUrl: (apiSettings.legalNoticeUrl as string) ?? DEFAULT_CONFIG.general.legalNoticeUrl,
       privacyPolicyUrl: (apiSettings.privacyPolicyUrl as string) ?? DEFAULT_CONFIG.general.privacyPolicyUrl,
+      // CONFIG-FRONTEND-EXTEND
+      devise: (apiSettings.devise as string) ?? DEFAULT_CONFIG.general.devise,
+      paysDefault: (apiSettings.paysDefault as string) ?? DEFAULT_CONFIG.general.paysDefault,
+      langueDefault: (apiSettings.langueDefault as string) ?? DEFAULT_CONFIG.general.langueDefault,
+      timezoneDefault: (apiSettings.timezoneDefault as string) ?? DEFAULT_CONFIG.general.timezoneDefault,
+      logoUrl: (apiSettings.logoUrl as string) ?? DEFAULT_CONFIG.general.logoUrl,
+      maxEtablissements: (apiSettings.maxEtablissements as number) ?? DEFAULT_CONFIG.general.maxEtablissements,
     },
     security: {
-      maxUploadSizeMB: (apiSettings.maxUploadSizeMB as number) ?? DEFAULT_CONFIG.security.maxUploadSizeMB,
+      // C3 (CONFIG-FRONTEND-EXTEND) : la DB a été re-seedée avec maxUploadSizeMB,
+      // mais on conserve un fallback sur l'ancien nom maxFileUploadMB pour robustesse.
+      maxUploadSizeMB: (apiSettings.maxUploadSizeMB as number) ?? (apiSettings.maxFileUploadMB as number) ?? DEFAULT_CONFIG.security.maxUploadSizeMB,
       allowedFileTypes: (apiSettings.allowedFileTypes as string[]) ?? DEFAULT_CONFIG.security.allowedFileTypes,
       proctoringEnabled: (apiSettings.proctoringEnabled as boolean) ?? DEFAULT_CONFIG.security.proctoringEnabled,
+      // CONFIG-FRONTEND-EXTEND
+      passwordMinLength: (apiSettings.passwordMinLength as number) ?? DEFAULT_CONFIG.security.passwordMinLength,
+      passwordRequireSpecial: (apiSettings.passwordRequireSpecial as boolean) ?? DEFAULT_CONFIG.security.passwordRequireSpecial,
+      sessionTimeoutMinutes: (apiSettings.sessionTimeoutMinutes as number) ?? DEFAULT_CONFIG.security.sessionTimeoutMinutes,
+      maxConcurrentSessions: (apiSettings.maxConcurrentSessions as number) ?? DEFAULT_CONFIG.security.maxConcurrentSessions,
+      auditLogRetentionDays: (apiSettings.auditLogRetentionDays as number) ?? DEFAULT_CONFIG.security.auditLogRetentionDays,
+      dataExportEnabled: (apiSettings.dataExportEnabled as boolean) ?? DEFAULT_CONFIG.security.dataExportEnabled,
     },
     notifications: {
       emailNotifications: (apiSettings.emailNotifications as boolean) ?? DEFAULT_CONFIG.notifications.emailNotifications,
       defaultPlanType: (apiSettings.defaultPlanType as string) ?? DEFAULT_CONFIG.notifications.defaultPlanType,
+      // CONFIG-FRONTEND-EXTEND
+      smtpHost: (apiSettings.smtpHost as string) ?? DEFAULT_CONFIG.notifications.smtpHost,
+      smtpPort: (apiSettings.smtpPort as number) ?? DEFAULT_CONFIG.notifications.smtpPort,
+      smtpUser: (apiSettings.smtpUser as string) ?? DEFAULT_CONFIG.notifications.smtpUser,
+      smtpFromEmail: (apiSettings.smtpFromEmail as string) ?? DEFAULT_CONFIG.notifications.smtpFromEmail,
+      notifNewUserAdmin: (apiSettings.notifNewUserAdmin as boolean) ?? DEFAULT_CONFIG.notifications.notifNewUserAdmin,
+      notifPaymentAdmin: (apiSettings.notifPaymentAdmin as boolean) ?? DEFAULT_CONFIG.notifications.notifPaymentAdmin,
+      notifSecurityAlerts: (apiSettings.notifSecurityAlerts as boolean) ?? DEFAULT_CONFIG.notifications.notifSecurityAlerts,
+      notifExamReminder: (apiSettings.notifExamReminder as boolean) ?? DEFAULT_CONFIG.notifications.notifExamReminder,
+      pushNotificationsEnabled: (apiSettings.pushNotificationsEnabled as boolean) ?? DEFAULT_CONFIG.notifications.pushNotificationsEnabled,
     },
     ia: {
       aiGenerationEnabled: (apiSettings.aiGenerationEnabled as boolean) ?? DEFAULT_CONFIG.ia.aiGenerationEnabled,
       aiCorrectionEnabled: (apiSettings.aiCorrectionEnabled as boolean) ?? DEFAULT_CONFIG.ia.aiCorrectionEnabled,
+      // CONFIG-FRONTEND-EXTEND
+      aiMaxRequestsPerDay: (apiSettings.aiMaxRequestsPerDay as number) ?? DEFAULT_CONFIG.ia.aiMaxRequestsPerDay,
+      aiTemperature: (apiSettings.aiTemperature as number) ?? DEFAULT_CONFIG.ia.aiTemperature,
+      aiMaxTokens: (apiSettings.aiMaxTokens as number) ?? DEFAULT_CONFIG.ia.aiMaxTokens,
+      aiFailoverEnabled: (apiSettings.aiFailoverEnabled as boolean) ?? DEFAULT_CONFIG.ia.aiFailoverEnabled,
+      aiGradingConfidenceThreshold: (apiSettings.aiGradingConfidenceThreshold as number) ?? DEFAULT_CONFIG.ia.aiGradingConfidenceThreshold,
     },
   }
 }
@@ -429,6 +521,128 @@ export function ConfigurationPage() {
 
               <Separator />
 
+              {/* CONFIG-FRONTEND-EXTEND : localisation / identité plateforme */}
+              <div className="space-y-2">
+                <Label htmlFor="cfg-devise">Devise</Label>
+                <Select
+                  value={config.general.devise}
+                  onValueChange={(val) => setConfig({
+                    ...config,
+                    general: { ...config.general, devise: val },
+                  })}
+                >
+                  <SelectTrigger id="cfg-devise">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="XOF">XOF (Franc CFA)</SelectItem>
+                    <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                    <SelectItem value="USD">USD (Dollar US)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Devise utilisée par défaut pour les abonnements et la facturation
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-pays">Pays par défaut</Label>
+                  <Input
+                    id="cfg-pays"
+                    placeholder="Côte d'Ivoire"
+                    value={config.general.paysDefault}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      general: { ...config.general, paysDefault: e.target.value },
+                    })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-langue">Langue par défaut</Label>
+                  <Select
+                    value={config.general.langueDefault}
+                    onValueChange={(val) => setConfig({
+                      ...config,
+                      general: { ...config.general, langueDefault: val },
+                    })}
+                  >
+                    <SelectTrigger id="cfg-langue">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fr">Français</SelectItem>
+                      <SelectItem value="en">English</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cfg-timezone">Timezone par défaut</Label>
+                <Select
+                  value={config.general.timezoneDefault}
+                  onValueChange={(val) => setConfig({
+                    ...config,
+                    general: { ...config.general, timezoneDefault: val },
+                  })}
+                >
+                  <SelectTrigger id="cfg-timezone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Africa/Abidjan">Africa/Abidjan (GMT+0)</SelectItem>
+                    <SelectItem value="Africa/Accra">Africa/Accra (GMT+0)</SelectItem>
+                    <SelectItem value="Africa/Dakar">Africa/Dakar (GMT+0)</SelectItem>
+                    <SelectItem value="Africa/Bamako">Africa/Bamako (GMT+0)</SelectItem>
+                    <SelectItem value="Africa/Lagos">Africa/Lagos (GMT+1)</SelectItem>
+                    <SelectItem value="Africa/Douala">Africa/Douala (GMT+1)</SelectItem>
+                    <SelectItem value="Africa/Casablanca">Africa/Casablanca (GMT+1)</SelectItem>
+                    <SelectItem value="Europe/Paris">Europe/Paris (GMT+1)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Fuseau horaire par défaut pour les sessions et notifications
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cfg-logo-url">URL du logo</Label>
+                <Input
+                  id="cfg-logo-url"
+                  type="url"
+                  placeholder="https://..."
+                  value={config.general.logoUrl}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    general: { ...config.general, logoUrl: e.target.value },
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  URL publique du logo affiché dans les en-têtes et exports PDF
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cfg-max-etablissements">Nombre maximum d&apos;établissements</Label>
+                <Input
+                  id="cfg-max-etablissements"
+                  type="number"
+                  min={1}
+                  max={100000}
+                  value={config.general.maxEtablissements}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    general: { ...config.general, maxEtablissements: parseInt(e.target.value) || 1000 },
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Limite globale d&apos;établissements activables sur la plateforme
+                </p>
+              </div>
+
+              <Separator />
+
               <div className="flex justify-end">
                 <Button
                   onClick={() => handleSave('general')}
@@ -524,6 +738,117 @@ export function ConfigurationPage() {
                 />
               </div>
 
+              <Separator />
+
+              {/* CONFIG-FRONTEND-EXTEND : politiques de mot de passe / session / audit */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-password-min-length">Mot de passe — longueur minimale</Label>
+                  <Input
+                    id="cfg-password-min-length"
+                    type="number"
+                    min={6}
+                    max={32}
+                    value={config.security.passwordMinLength}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      security: { ...config.security, passwordMinLength: parseInt(e.target.value) || 8 },
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Entre 6 et 32 caractères
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-session-timeout">Timeout de session (minutes)</Label>
+                  <Input
+                    id="cfg-session-timeout"
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={config.security.sessionTimeoutMinutes}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      security: { ...config.security, sessionTimeoutMinutes: parseInt(e.target.value) || 30 },
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Durée d&apos;inactivité avant déconnexion automatique
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-max-sessions">Sessions simultanées max</Label>
+                  <Input
+                    id="cfg-max-sessions"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={config.security.maxConcurrentSessions}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      security: { ...config.security, maxConcurrentSessions: parseInt(e.target.value) || 3 },
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Nombre maximal de sessions actives par utilisateur
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-audit-retention">Rétention des logs d&apos;audit (jours)</Label>
+                  <Input
+                    id="cfg-audit-retention"
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={config.security.auditLogRetentionDays}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      security: { ...config.security, auditLogRetentionDays: parseInt(e.target.value) || 90 },
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Durée de conservation des journaux d&apos;audit avant purge
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-password-special">Caractères spéciaux requis</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Exiger au moins un caractère spécial dans les mots de passe
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-password-special"
+                  checked={config.security.passwordRequireSpecial}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    security: { ...config.security, passwordRequireSpecial: checked },
+                  })}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-data-export">Export des données activé</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Autoriser l&apos;export des données (RGPD / portabilité)
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-data-export"
+                  checked={config.security.dataExportEnabled}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    security: { ...config.security, dataExportEnabled: checked },
+                  })}
+                />
+              </div>
+
               {/* Security summary */}
               <div className="rounded-lg border border-success/30 bg-success/10 p-4">
                 <h4 className="text-sm font-display font-semibold text-success-text mb-2 flex items-center gap-2">
@@ -534,6 +859,12 @@ export function ConfigurationPage() {
                   <li>• Taille max fichiers : {config.security.maxUploadSizeMB} MB</li>
                   <li>• Types autorisés : {config.security.allowedFileTypes.join(', ')}</li>
                   <li>• Proctoring : {config.security.proctoringEnabled ? 'Activé' : 'Désactivé'}</li>
+                  <li>• Longueur min. mot de passe : {config.security.passwordMinLength} caractères</li>
+                  <li>• Caractères spéciaux requis : {config.security.passwordRequireSpecial ? 'Oui' : 'Non'}</li>
+                  <li>• Timeout de session : {config.security.sessionTimeoutMinutes} min</li>
+                  <li>• Sessions simultanées max : {config.security.maxConcurrentSessions}</li>
+                  <li>• Rétention logs d&apos;audit : {config.security.auditLogRetentionDays} jours</li>
+                  <li>• Export des données : {config.security.dataExportEnabled ? 'Activé' : 'Désactivé'}</li>
                 </ul>
               </div>
 
@@ -606,6 +937,177 @@ export function ConfigurationPage() {
                 <p className="text-xs text-muted-foreground">
                   Plan attribué par défaut lors de l&apos;inscription d&apos;un nouvel établissement
                 </p>
+              </div>
+
+              <Separator />
+
+              {/* CONFIG-FRONTEND-EXTEND : Configuration SMTP */}
+              <div className="space-y-4">
+                <div className="space-y-0.5">
+                  <h4 className="text-sm font-display font-semibold text-success-text flex items-center gap-2">
+                    <Bell className="h-4 w-4" />
+                    Configuration SMTP
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Paramètres du serveur de messagerie pour l&apos;envoi des emails transactionnels
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="cfg-smtp-host">SMTP Host</Label>
+                    <Input
+                      id="cfg-smtp-host"
+                      placeholder="smtp.example.com"
+                      value={config.notifications.smtpHost}
+                      onChange={(e) => setConfig({
+                        ...config,
+                        notifications: { ...config.notifications, smtpHost: e.target.value },
+                      })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cfg-smtp-port">SMTP Port</Label>
+                    <Input
+                      id="cfg-smtp-port"
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={config.notifications.smtpPort}
+                      onChange={(e) => setConfig({
+                        ...config,
+                        notifications: { ...config.notifications, smtpPort: parseInt(e.target.value) || 587 },
+                      })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-smtp-user">SMTP User</Label>
+                  <Input
+                    id="cfg-smtp-user"
+                    placeholder="user@example.com"
+                    value={config.notifications.smtpUser}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, smtpUser: e.target.value },
+                    })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-smtp-from">Email expéditeur</Label>
+                  <Input
+                    id="cfg-smtp-from"
+                    type="email"
+                    placeholder="noreply@example.com"
+                    value={config.notifications.smtpFromEmail}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, smtpFromEmail: e.target.value },
+                    })}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* CONFIG-FRONTEND-EXTEND : Types de notifications administrateur */}
+              <div className="space-y-4">
+                <div className="space-y-0.5">
+                  <h4 className="text-sm font-display font-semibold text-success-text flex items-center gap-2">
+                    <Bell className="h-4 w-4" />
+                    Types de notifications
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Sélectionnez les événements qui déclenchent une notification administrateur
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="cfg-notif-new-user">Nouveaux utilisateurs</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Notifier lors de l&apos;inscription d&apos;un nouvel utilisateur
+                    </p>
+                  </div>
+                  <Switch
+                    id="cfg-notif-new-user"
+                    checked={config.notifications.notifNewUserAdmin}
+                    onCheckedChange={(checked) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, notifNewUserAdmin: checked },
+                    })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="cfg-notif-payment">Paiements</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Notifier lors d&apos;un paiement ou d&apos;un abonnement
+                    </p>
+                  </div>
+                  <Switch
+                    id="cfg-notif-payment"
+                    checked={config.notifications.notifPaymentAdmin}
+                    onCheckedChange={(checked) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, notifPaymentAdmin: checked },
+                    })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="cfg-notif-security">Alertes de sécurité</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Notifier en cas d&apos;activité suspecte ou de brèche
+                    </p>
+                  </div>
+                  <Switch
+                    id="cfg-notif-security"
+                    checked={config.notifications.notifSecurityAlerts}
+                    onCheckedChange={(checked) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, notifSecurityAlerts: checked },
+                    })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="cfg-notif-exam">Rappel d&apos;examen</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Envoyer un rappel avant le début d&apos;une session d&apos;examen
+                    </p>
+                  </div>
+                  <Switch
+                    id="cfg-notif-exam"
+                    checked={config.notifications.notifExamReminder}
+                    onCheckedChange={(checked) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, notifExamReminder: checked },
+                    })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="cfg-push-notif">Notifications push</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Activer les notifications push (PWA / navigateur)
+                    </p>
+                  </div>
+                  <Switch
+                    id="cfg-push-notif"
+                    checked={config.notifications.pushNotificationsEnabled}
+                    onCheckedChange={(checked) => setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, pushNotificationsEnabled: checked },
+                    })}
+                  />
+                </div>
               </div>
 
               <Separator />
@@ -699,6 +1201,110 @@ export function ConfigurationPage() {
                 />
               </div>
 
+              <Separator />
+
+              {/* CONFIG-FRONTEND-EXTEND : quotas / paramètres modèles IA */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-ai-max-requests">Requêtes IA max par jour</Label>
+                  <Input
+                    id="cfg-ai-max-requests"
+                    type="number"
+                    min={1}
+                    max={100000}
+                    value={config.ia.aiMaxRequestsPerDay}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      ia: { ...config.ia, aiMaxRequestsPerDay: parseInt(e.target.value) || 100 },
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Plafond quotidien global pour limiter les coûts IA
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-ai-max-tokens">Tokens max par requête</Label>
+                  <Input
+                    id="cfg-ai-max-tokens"
+                    type="number"
+                    min={1}
+                    max={32000}
+                    value={config.ia.aiMaxTokens}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      ia: { ...config.ia, aiMaxTokens: parseInt(e.target.value) || 2000 },
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Limite de tokens par appel IA (coût + latence)
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="cfg-ai-temperature" className="flex items-center gap-1.5">
+                    <Thermometer className="h-4 w-4 text-success-text" />
+                    Température IA
+                  </Label>
+                  <span className="text-sm font-mono tabular-nums text-success-text">
+                    {config.ia.aiTemperature.toFixed(1)}
+                  </span>
+                </div>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={[config.ia.aiTemperature]}
+                  onValueChange={(vals) => setConfig({
+                    ...config,
+                    ia: { ...config.ia, aiTemperature: vals[0] ?? 0.7 },
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Plus la valeur est élevée, plus les réponses sont créatives (0 = déterministe, 1 = maximal)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="cfg-ai-confidence">Seuil de confiance pour la correction</Label>
+                  <span className="text-sm font-mono tabular-nums text-success-text">
+                    {config.ia.aiGradingConfidenceThreshold.toFixed(2)}
+                  </span>
+                </div>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={[config.ia.aiGradingConfidenceThreshold]}
+                  onValueChange={(vals) => setConfig({
+                    ...config,
+                    ia: { ...config.ia, aiGradingConfidenceThreshold: vals[0] ?? 0.8 },
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  En-dessous de ce seuil, la correction IA est marquée &quot;à vérifier&quot;
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cfg-ai-failover">Failover automatique</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Basculer automatiquement vers un fournisseur IA de secours en cas d&apos;échec
+                  </p>
+                </div>
+                <Switch
+                  id="cfg-ai-failover"
+                  checked={config.ia.aiFailoverEnabled}
+                  onCheckedChange={(checked) => setConfig({
+                    ...config,
+                    ia: { ...config.ia, aiFailoverEnabled: checked },
+                  })}
+                />
+              </div>
+
               {/* IA Summary */}
               <div className="rounded-lg border border-success/30 bg-success/10 p-4">
                 <h4 className="text-sm font-display font-semibold text-success-text mb-2 flex items-center gap-2">
@@ -708,6 +1314,11 @@ export function ConfigurationPage() {
                 <ul className="text-sm text-success-text space-y-1">
                   <li>• Génération de questions : {config.ia.aiGenerationEnabled ? 'Activée' : 'Désactivée'}</li>
                   <li>• Correction automatique : {config.ia.aiCorrectionEnabled ? 'Activée' : 'Désactivée'}</li>
+                  <li>• Requêtes max / jour : {config.ia.aiMaxRequestsPerDay}</li>
+                  <li>• Température : {config.ia.aiTemperature.toFixed(1)}</li>
+                  <li>• Tokens max / requête : {config.ia.aiMaxTokens}</li>
+                  <li>• Failover automatique : {config.ia.aiFailoverEnabled ? 'Activé' : 'Désactivé'}</li>
+                  <li>• Seuil de confiance correction : {config.ia.aiGradingConfidenceThreshold.toFixed(2)}</li>
                 </ul>
               </div>
 

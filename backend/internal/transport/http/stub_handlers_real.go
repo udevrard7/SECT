@@ -760,6 +760,10 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
 // 7. GET /api/platform-settings — PlatformSettings (1 row en DB)
 // ──────────────────────────────────────────────────────────────────────────
 
+// platformSettingsReal — GET /api/platform-settings
+// CONFIGURATION-FIX-C1 : avant, ORDER BY updatedAt DESC LIMIT 1 récupérait la
+// ligne la plus récente = "ai_failover_config" (config de failover IA) au lieu
+// de "default" (config plateforme). Fix : WHERE id = 'default'.
 func (s *Server) platformSettingsReal(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok || claims.UserID == "" {
@@ -769,7 +773,7 @@ func (s *Server) platformSettingsReal(w http.ResponseWriter, r *http.Request) {
 
         var settingsJSON *string
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                return tx.QueryRow(r.Context(), `SELECT "settings" FROM "PlatformSettings" ORDER BY "updatedAt" DESC LIMIT 1`).Scan(&settingsJSON)
+                return tx.QueryRow(r.Context(), `SELECT "settings" FROM "PlatformSettings" WHERE "id" = 'default'`).Scan(&settingsJSON)
         })
 
         settings := map[string]any{}
@@ -780,6 +784,70 @@ func (s *Server) platformSettingsReal(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
                 "settings": settings,
+        })
+}
+
+// updatePlatformSettings — POST /api/platform-settings
+// CONFIGURATION-FIX-C2+C5 : avant, la route POST n'existait pas → sauvegarde
+// impossible (405). Implémente un upsert avec MERGE : SELECT les settings
+// existants, fusionne les nouveaux champs (écrase seulement les clés fournies),
+// puis UPDATE la ligne "default".
+func (s *Server) updatePlatformSettings(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        var input map[string]any
+        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+
+        merged := map[string]any{}
+        success := false
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                // 1. SELECT les settings existants (merge base).
+                var existingJSON string
+                _ = tx.QueryRow(r.Context(), `SELECT "settings" FROM "PlatformSettings" WHERE "id" = 'default'`).Scan(&existingJSON)
+                if existingJSON != "" {
+                        _ = json.Unmarshal([]byte(existingJSON), &merged)
+                }
+
+                // 2. MERGE : écraser seulement les clés fournies (C5).
+                for k, v := range input {
+                        merged[k] = v
+                }
+
+                // 3. Sérialiser le merged JSON.
+                mergedBytes, err := json.Marshal(merged)
+                if err != nil {
+                        return fmt.Errorf("marshal settings: %w", err)
+                }
+
+                // 4. UPSERT : UPDATE si existe, INSERT sinon.
+                _, err = tx.Exec(r.Context(), `
+                        INSERT INTO "PlatformSettings" ("id", "settings", "updatedAt")
+                        VALUES ('default', $1, now())
+                        ON CONFLICT ("id") DO UPDATE SET "settings" = $1, "updatedAt" = now()
+                `, string(mergedBytes))
+                if err != nil {
+                        return fmt.Errorf("upsert settings: %w", err)
+                }
+                success = true
+                return nil
+        })
+
+        if !success {
+                writeJSONError(w, http.StatusInternalServerError, "erreur lors de la sauvegarde")
+                return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "settings": merged,
+                "message":  "Configuration sauvegardée",
         })
 }
 
