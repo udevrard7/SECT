@@ -72,6 +72,9 @@ type SessionClaims struct {
         // Avant ce fix, le flag était en DB mais non inclus dans le JWT → un user avec
         // password temporaire pouvait utiliser l'API indéfiniment.
         MustChangePwd bool
+        // ACCESS-ASSISTANCE : Email et Name pour le mode assistance (émission de nouveau JWT).
+        Email string
+        Name  string
 }
 
 // SetClaimsTx pose les claims RLS sur une transaction pgx.

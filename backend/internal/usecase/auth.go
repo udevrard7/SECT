@@ -389,3 +389,37 @@ func strPtr(s string) *string {
 func generateID() string {
         return uuid.NewString()
 }
+
+// IssueNewTokens génère une nouvelle paire de tokens (access + refresh) pour
+// un utilisateur donné. Utilisé par le mode assistance (ASSISTANCE-MODE) pour
+// émettre un nouveau JWT avec un etablissementId différent, sans re-login.
+func (uc *AuthUseCase) IssueNewTokens(ctx context.Context, userID, role, etablissementID, email, name string, mustChangePwd bool) (accessToken, refreshToken string, expiresAt time.Time, err error) {
+        claims := db.SessionClaims{
+                UserID:          userID,
+                Role:            role,
+                EtablissementID: etablissementID,
+                MustChangePwd:   mustChangePwd,
+        }
+
+        accessToken, expiresAt, err = uc.signer.GenerateAccessToken(claims, email, name)
+        if err != nil {
+                return "", "", time.Time{}, fmt.Errorf("generate access token: %w", err)
+        }
+
+        refreshPlaintext, refreshHash, err := jwt.GenerateRefreshToken()
+        if err != nil {
+                return "", "", time.Time{}, fmt.Errorf("generate refresh token: %w", err)
+        }
+
+        rt := &domain.RefreshToken{
+                ID:        generateID(),
+                UserID:    userID,
+                TokenHash: refreshHash,
+                ExpiresAt: time.Now().Add(jwt.RefreshTokenTTL), // refresh expire dans 7 jours
+        }
+        if err := uc.authRepo.CreateRefreshToken(ctx, rt); err != nil {
+                return "", "", time.Time{}, fmt.Errorf("create refresh token: %w", err)
+        }
+
+        return accessToken, refreshPlaintext, expiresAt, nil
+}

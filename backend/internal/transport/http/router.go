@@ -134,6 +134,9 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Post("/api/auth/login", s.login)
                 r.Post("/api/auth/refresh", s.refresh)
                 r.Post("/api/auth/logout", s.logout)
+                // ACCESS-ASSISTANCE : mode assistance ADMIN (accès temporaire aux pages RESPONSABLE).
+                r.With(middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/assistance-mode", s.enterAssistanceMode)
+                r.With(middleware.RequireAuth, middleware.RequireRole("ADMIN")).Post("/api/auth/exit-assistance-mode", s.exitAssistanceMode)
         })
 
         // E1-INVITATIONS — endpoints publics (pas de RequireAuth).
