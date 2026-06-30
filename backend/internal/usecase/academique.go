@@ -253,6 +253,22 @@ func (uc *UEUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims, id
         return uc.ueRepo.SoftDelete(ctx, id)
 }
 
+// HardDelete supprime définitivement une UE (DELETE réel, irréversible).
+// Les entités liées en CASCADE (Affectation, Devoir, ValidationUE,
+// UniteEnseignementFiliere) seront supprimées automatiquement.
+// Idéalement le frontend devrait avertir l'utilisateur via GetDependencies
+// avant d'appeler ce endpoint.
+func (uc *UEUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) error {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if id == "" {
+                return &domain.ValidationError{Field: "id", Message: "requis"}
+        }
+        return uc.ueRepo.HardDelete(ctx, id)
+}
+
 // GetDependencies récupère les dépendances d'une UE (avant suppression).
 // PROG-ACAD-CRITICAL-FIX-1 (BUG #1).
 func (uc *UEUseCase) GetDependencies(ctx context.Context, claims db.SessionClaims, id string) (*domain.UEDependencies, error) {
@@ -423,6 +439,21 @@ func (uc *AnneeUseCase) SoftDelete(ctx context.Context, claims db.SessionClaims,
                 return nil, &domain.ValidationError{Field: "id", Message: "requis"}
         }
         return uc.anneeRepo.SoftDelete(ctx, id)
+}
+
+// HardDelete supprime définitivement une année académique (DELETE réel,
+// irréversible). Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement
+// perdront leur référence. Si l'année supprimée était l'année courante d'un
+// établissement, etab.anneeAcademiqueCouranteId deviendra NULL (ON DELETE SET NULL).
+func (uc *AnneeUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) error {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+        if id == "" {
+                return &domain.ValidationError{Field: "id", Message: "requis"}
+        }
+        return uc.anneeRepo.HardDelete(ctx, id)
 }
 
 // ValidateAccessForEtablissement helper (sera étendu avec EtablissementAccess).
