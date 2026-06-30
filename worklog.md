@@ -9446,3 +9446,36 @@ Stage Summary:
 - **Frontend** : logs-page.tsx (dropdowns étendus + KPI cards + export CSV + auto-refresh + clics d'investigation).
 - **Aucune migration DB** nécessaire.
 - **Module /logs désormais pleinement fonctionnel** : filtres complets (action, entité, dates, recherche IP), pagination réelle avec vrai total, dropdowns exhaustifs (24 actions, 13 entités), KPI dashboard, export CSV, auto-refresh, navigation par clics.
+
+---
+Task ID: CONFIG-FRONTEND-EXTEND
+Agent: Z.ai Code (tuteur/assistant)
+Task: Étendre le frontend de la page Configuration pour exposer TOUS les paramètres plate-forme (backend GET+POST merge + seed DB déjà en place).
+
+Work Log:
+- État initial : `frontend/src/components/configuration/configuration-page.tsx` = 732 lignes, 4 onglets (Général/Sécurité/Notifications/IA), interfaces partielles.
+- Extensions TypeScript (4 interfaces) :
+  - GeneralConfig +6 (devise, paysDefault, langueDefault, timezoneDefault, logoUrl, maxEtablissements)
+  - SecurityConfig +6 (passwordMinLength, passwordRequireSpecial, sessionTimeoutMinutes, maxConcurrentSessions, auditLogRetentionDays, dataExportEnabled)
+  - NotificationConfig +9 (smtpHost, smtpPort, smtpUser, smtpFromEmail, notifNewUserAdmin, notifPaymentAdmin, notifSecurityAlerts, notifExamReminder, pushNotificationsEnabled)
+  - IAConfig +5 (aiMaxRequestsPerDay, aiTemperature, aiMaxTokens, aiFailoverEnabled, aiGradingConfidenceThreshold)
+- DEFAULT_CONFIG : tous les nouveaux champs initialisés avec defaults (XOF, Côte d'Ivoire, fr, Africa/Abidjan, 8/true/30/3/90/true, 587, 100/0.7/2000/true/0.8).
+- mapApiToConfig : lecture de chaque nouveau champ avec `?? DEFAULT_CONFIG…`. C3 fix : `maxUploadSizeMB` lit en priorité `apiSettings.maxUploadSizeMB`, fallback `apiSettings.maxFileUploadMB` (ancien nom DB), fallback DEFAULT_CONFIG.
+- UI Tab Général (après URLs) : Devise (Select XOF/EUR/USD), Pays par défaut (Input), Langue par défaut (Select fr/en), Timezone par défaut (Select 8 timezones africaines + Europe/Paris), Logo URL (Input url), Max établissements (Input number).
+- UI Tab Sécurité (après proctoringEnabled) : Mot de passe longueur min (Input 6-32), Timeout session minutes, Sessions simultanées max, Rétention logs audit jours, Caractères spéciaux requis (Switch), Export des données (Switch). Résumé sécurité étendu 3→9 lignes.
+- UI Tab Notifications (après defaultPlanType) : Section "Configuration SMTP" (Host, Port, User, Email expéditeur) + Section "Types de notifications" (5 switches : Nouveaux utilisateurs, Paiements, Alertes sécurité, Rappel examen, Push).
+- UI Tab IA (après aiCorrectionEnabled) : Requêtes max/jour (Input), Tokens max/requête (Input), Température (Slider 0-1 step 0.1 + icône Thermometer + valeur .toFixed(1)), Seuil confiance correction (Slider 0-1 step 0.05 + .toFixed(2)), Failover automatique (Switch). Résumé IA étendu 2→7 lignes.
+- routes.ts : ajouté `configuration: ['ADMIN']` à PAGE_ALLOWED_ROLES (garde frontend, redirige non-ADMIN vers /dashboard — cohérent avec sidebar ADMIN catégorie "Système").
+- Invariants préservés : `handleSave` inchangé (envoie flat JSON via `mapConfigToApi`), `mapConfigToApi` inchangé (spread 4 tabs), composants shadcn/ui existants, palette emerald/teal (pas d'indigo/blue).
+
+Stage Summary:
+- **2 fichiers modifiés** : `configuration-page.tsx` (732 → 1343 lignes, +611) + `routes.ts` (+2 lignes).
+- **26 nouveaux champs** exposés au total (6 général + 6 sécurité + 9 notifications + 5 IA).
+- **2 sliders** ajoutés (Température, Seuil de confiance) avec affichage tabular-nums.
+- **2 résumés étendus** (Sécurité 3→9 lignes, IA 2→7 lignes).
+- **1 garde de rôle** ajoutée (`configuration: ['ADMIN']`).
+- **C3 fix** : fallback `maxFileUploadMB` conservé pour robustesse cross-seed.
+- **Lint : 0 errors** (1 warning pré-existant dans certificat-pdf-react.tsx, non lié).
+- **TypeScript** : 0 erreur sur les 2 fichiers modifiés (erreurs pré-existantes dans autres fichiers non liés : jspdf, gsap, monaco).
+- **Backend non touché** (déjà déployé avec handler GET+POST merge + seed complet).
+- Prêt pour commit + push (Vercel auto-déploie le frontend).
