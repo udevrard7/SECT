@@ -20,7 +20,8 @@ import (
         "github.com/udevrard7/sect/backend/internal/storage"
         httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
         "github.com/udevrard7/sect/backend/internal/usecase"
-        "github.com/udevrard7/sect/backend/internal/worker"
+        // worker — temporairement désactivé (SECURITY-BASCULE)
+        // _ "github.com/udevrard7/sect/backend/internal/worker"
 )
 
 func main() {
@@ -121,41 +122,37 @@ func main() {
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        // IA-WORKER-1 : démarrer le worker IA asynchrone (goroutine)
-        iaWorker := worker.NewIAWorker(pool, logger)
-        // Graceful shutdown : reprendre les jobs interrompus par un redemarrage
-        iaWorker.RecoverInterruptedJobs(context.Background())
-        iaWorker.Start(context.Background())
 
-        // IA-CORRECTION-1 : worker de correction IA asynchrone
-        correctionWorker := worker.NewCorrectionWorker(pool, logger)
-        correctionWorker.RecoverInterruptedCorrections(context.Background())
-        correctionWorker.Start(context.Background())
+        // TEMPORARY (SECURITY-BASCULE): workers désactivés temporairement.
+        // Les workers font des JOINs sur 4 tables (Devoir, EpreuveQuestion,
+        // GrilleEvaluation, SessionPassation) qui n'ont pas encore de policy
+        // is_system(). Avec sect_app (NOBYPASSRLS), ces JOINs échouent et
+        // font crasher les goroutines → le process entier crash.
+        // Réactivation prévue après ajout des policies manquantes.
+        logger.Warn("workers désactivés temporairement (policies is_system manquantes pour 4 tables)")
 
-        // DOC-ANALYZER-1 : worker d'analyse automatique des documents
-        docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
-        docAnalyzer.RecoverInterruptedAnalyses(context.Background())
-        docAnalyzer.Start(context.Background())
-
-        // EXAM-PREP-CONNECT-1 — Étape 2c : worker de génération de questions
-        // d'entraînement (Practice). Async : le handler POST /api/exam-prep/practice/generate
-        // pousse un job dans worker.PracticeQueue et retourne 202 Accepted.
-        practiceWorker := worker.NewPracticeWorker(pool, logger)
-        practiceWorker.Start(context.Background())
-
-        // P4-DEVOIRS-4 : HomeworkCorrectionWorker (correction IA asynchrone des soumissions de devoirs)
-        homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
-        homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
-        homeworkWorker.Start(context.Background())
-
-        // AUDIO-LEARNING-1 — Mode Audio-Learning : worker de génération de podcasts
-        // de révision (script IA + synthèse TTS optionnelle + upload R2). Async :
-        // le handler POST /api/exam-prep/documents/{id}/audio crée la ligne
-        // DocumentAudio (status=EN_COURS) puis pousse un job dans
-        // worker.AudioGenerationQueue et retourne 202 Accepted.
-        audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
-        audioWorker.RecoverInterruptedAudioJobs(context.Background())
-        audioWorker.Start(context.Background())
+        // iaWorker := worker.NewIAWorker(pool, logger)
+        // iaWorker.RecoverInterruptedJobs(context.Background())
+        // iaWorker.Start(context.Background())
+        //
+        // correctionWorker := worker.NewCorrectionWorker(pool, logger)
+        // correctionWorker.RecoverInterruptedCorrections(context.Background())
+        // correctionWorker.Start(context.Background())
+        //
+        // docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
+        // docAnalyzer.RecoverInterruptedAnalyses(context.Background())
+        // docAnalyzer.Start(context.Background())
+        //
+        // practiceWorker := worker.NewPracticeWorker(pool, logger)
+        // practiceWorker.Start(context.Background())
+        //
+        // homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
+        // homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
+        // homeworkWorker.Start(context.Background())
+        //
+        // audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
+        // audioWorker.RecoverInterruptedAudioJobs(context.Background())
+        // audioWorker.Start(context.Background())
 
         server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
