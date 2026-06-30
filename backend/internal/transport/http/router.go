@@ -194,6 +194,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         // a été retiré de UpdateEtablissementInput (fix E5 sécurité) → le logo
                         // n'était jamais supprimé (PATCH 200 OK silencieux, UI désynchronisée).
                         r.Delete("/{id}/logo", s.deleteLogo)
+                        // Migration 000017 : gestion de l'année académique courante.
+                        // GET retourne l'année courante (ou null), POST la définit.
+                        r.Get("/{id}/annee-courante", s.getCurrentAnnee)
+                        r.Post("/{id}/annee-courante", s.setCurrentAnnee)
                         r.Get("/{id}/watermark", s.getWatermark)
                         r.Patch("/{id}/watermark", s.updateWatermark)
                 })

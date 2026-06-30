@@ -27,7 +27,7 @@ func NewEtablissementRepository(pool *pgxpool.Pool) *EtablissementRepository {
 const columnsEtab = `"id", "nom", "type", "ville", "pays", "adresse", "telephone", "email",
         "siteWeb", "logo", "actif", "exempleMatricule", "formatMatricule", "regexMatricule",
         "certWatermarkText", "certWatermarkEnabled", "certWatermarkOpacity", "certWatermarkColor",
-        "certWatermarkPattern", "createdAt", "updatedAt"`
+        "certWatermarkPattern", "anneeAcademiqueCouranteId", "createdAt", "updatedAt"`
 
 // FindByID récupère un établissement par ID (RLS actif).
 //
@@ -393,6 +393,72 @@ func (r *EtablissementRepository) ClearLogo(ctx context.Context, id string) (*do
         return etab, nil
 }
 
+// SetCurrentAnnee définit l'année académique courante d'un établissement.
+// Migration 000017 : anneeAcademiqueCouranteId FK nullable vers AnneeAcademique.
+// Valide que l'année appartient bien à l'établissement (clause WHERE sur
+// l'existence d'une ligne AnneeAcademique avec id=anneeID ET etablissementId).
+// Bypass RLS comme les autres write methods (SET LOCAL row_security = off).
+func (r *EtablissementRepository) SetCurrentAnnee(ctx context.Context, etablissementID, anneeID string) (*domain.Etablissement, error) {
+        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        if err != nil {
+                return nil, fmt.Errorf("begin tx: %w", err)
+        }
+        defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
+                return nil, fmt.Errorf("disable rls: %w", err)
+        }
+
+        // UPDATE avec clause d'appartenance : 0 ligne affectée si l'année n'existe
+        // pas ou n'appartient pas à l'établissement → NotFoundError ou Unauthorized.
+        row := tx.QueryRow(ctx, `
+                UPDATE "Etablissement" SET "anneeAcademiqueCouranteId" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                WHERE "id" = $1
+                  AND EXISTS (SELECT 1 FROM "AnneeAcademique" a WHERE a."id" = $2 AND a."etablissementId" = $1)
+                RETURNING `+columnsEtab, etablissementID, anneeID)
+
+        etab, err := scanEtablissement(row)
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        // Soit l'établissement n'existe pas, soit l'année ne lui appartient pas.
+                        // On distingue les deux cas pour un message d'erreur clair.
+                        var exists int
+                        _ = tx.QueryRow(ctx, `SELECT 1 FROM "Etablissement" WHERE "id" = $1`, etablissementID).Scan(&exists)
+                        if exists == 0 {
+                                return nil, &domain.NotFoundError{Entity: "Etablissement", ID: etablissementID}
+                        }
+                        return nil, &domain.UnauthorizedError{Message: "l'année académique n'appartient pas à cet établissement"}
+                }
+                return nil, fmt.Errorf("set current annee: %w", err)
+        }
+
+        if err := tx.Commit(ctx); err != nil {
+                return nil, err
+        }
+        return etab, nil
+}
+
+// GetCurrentAnnee récupère l'année académique courante d'un établissement
+// (objet enrichi AnneeAcademiqueRef avec libelle + dates + actif).
+// Retourne (nil, nil) si aucune année courante n'est définie.
+func (r *EtablissementRepository) GetCurrentAnnee(ctx context.Context, etablissementID string) (*domain.AnneeAcademiqueRef, error) {
+        var ref domain.AnneeAcademiqueRef
+        err := r.pool.QueryRow(ctx, `
+                SELECT a."id", a."libelle", a."dateDebut", a."dateFin", a."actif"
+                FROM "Etablissement" e
+                JOIN "AnneeAcademique" a ON a."id" = e."anneeAcademiqueCouranteId"
+                WHERE e."id" = $1`, etablissementID).Scan(
+                &ref.ID, &ref.Libelle, &ref.DateDebut, &ref.DateFin, &ref.Actif,
+        )
+        if err != nil {
+                if err == pgx.ErrNoRows {
+                        return nil, nil
+                }
+                return nil, fmt.Errorf("get current annee: %w", err)
+        }
+        return &ref, nil
+}
+
 // UpdateWatermark met à jour la config watermark.
 func (r *EtablissementRepository) UpdateWatermark(ctx context.Context, id string, cfg domain.WatermarkConfig) (*domain.Etablissement, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -489,6 +555,7 @@ func scanEtablissement(s scanner) (*domain.Etablissement, error) {
                 &e.ExempleMatricule, &e.FormatMatricule, &e.RegexMatricule,
                 &e.CertWatermarkText, &e.CertWatermarkEnabled, &e.CertWatermarkOpacity,
                 &e.CertWatermarkColor, &e.CertWatermarkPattern,
+                &e.AnneeAcademiqueCouranteID,
                 &e.CreatedAt, &e.UpdatedAt,
         )
         if err != nil {

@@ -266,6 +266,70 @@ func (s *Server) deleteLogo(w http.ResponseWriter, r *http.Request) {
         })
 }
 
+// getCurrentAnnee — GET /api/etablissements/{id}/annee-courante
+// Migration 000017 : retourne l'année académique courante de l'établissement
+// (ou null si non définie). Utilisé par /programme-academique et /affectations
+// pour initialiser le filtre/sélecteur d'année par défaut.
+func (s *Server) getCurrentAnnee(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+        annee, err := s.etabUC.GetCurrentAnnee(r.Context(), claims, id)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "anneeCourante": annee, // nil si non définie
+        })
+}
+
+// setCurrentAnnee — POST /api/etablissements/{id}/annee-courante
+// Body: { "anneeId": "..." }. Définit l'année académique courante.
+// Le usecase valide les permissions (ADMIN/RESPONSABLE propriétaire) et le
+// repo valide en SQL que l'année appartient à l'établissement.
+func (s *Server) setCurrentAnnee(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        id := chi.URLParam(r, "id")
+        if id == "" {
+                writeJSONError(w, http.StatusBadRequest, "id requis")
+                return
+        }
+        var body struct {
+                AnneeID string `json:"anneeId"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+        if body.AnneeID == "" {
+                writeJSONError(w, http.StatusBadRequest, "anneeId requis")
+                return
+        }
+        etab, err := s.etabUC.SetCurrentAnnee(r.Context(), claims, id, body.AnneeID)
+        if err != nil {
+                middleware.MapDomainError(w, err)
+                return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "message":       "année courante mise à jour",
+                "etablissement": etab,
+        })
+}
+
 // getWatermark — GET /api/etablissements/{id}/watermark
 func (s *Server) getWatermark(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
