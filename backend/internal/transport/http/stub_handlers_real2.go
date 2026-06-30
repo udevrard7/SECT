@@ -5,6 +5,7 @@ import (
         "encoding/json"
         "fmt"
         "net/http"
+        "strings"
         "time"
 
         "github.com/go-chi/chi/v5"
@@ -405,35 +406,106 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // MONITORING-FIX-M1 : structure complète avec les vraies colonnes DB
+        // (severite, statut, details, source, duree, resoluLe, resoluPar).
+        // Avant : le handler utilisait "severity"/"resolved" (colonnes inexistantes)
+        // → crash silencieux (return nil) → {events:[]} même si la table avait des données.
         type event struct {
                 ID        string  `json:"id"`
                 Type      string  `json:"type"`
-                Severity  string  `json:"severity"`
+                Severite  string  `json:"severite"`
                 Message   string  `json:"message"`
-                Resolved  bool    `json:"resolved"`
+                Details   *string `json:"details,omitempty"`
+                Source    *string `json:"source,omitempty"`
+                Duree     *int    `json:"duree,omitempty"`
+                Statut    string  `json:"statut"`
+                ResoluLe  *string `json:"resoluLe,omitempty"`
+                ResoluPar *string `json:"resoluPar,omitempty"`
                 CreatedAt string  `json:"createdAt"`
+                UpdatedAt string  `json:"updatedAt"`
+        }
+
+        // MONITORING-FIX-M5 : filtres type/severite/statut (paramètres bindés).
+        // Avant : les query params étaient ignorés → la liste affichait tous les events.
+        typeFilter := r.URL.Query().Get("type")
+        severiteFilter := r.URL.Query().Get("severite")
+        statutFilter := r.URL.Query().Get("statut")
+        limit := 100
+        if l := r.URL.Query().Get("limit"); l != "" {
+                if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 500 {
+                        limit = n
+                }
         }
 
         result := []event{}
+        var activeCount, criticalCount, errorCount int
+
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                rows, err := tx.Query(r.Context(), `
-                        SELECT "id", "type"::text, "severity"::text, "message", "resolved", "createdAt"
+                // Construire la clause WHERE dynamique.
+                var whereClauses []string
+                var args []any
+                argIdx := 1
+                if typeFilter != "" {
+                        whereClauses = append(whereClauses, fmt.Sprintf(`"type" = $%d`, argIdx))
+                        args = append(args, typeFilter)
+                        argIdx++
+                }
+                if severiteFilter != "" {
+                        whereClauses = append(whereClauses, fmt.Sprintf(`"severite" = $%d`, argIdx))
+                        args = append(args, severiteFilter)
+                        argIdx++
+                }
+                if statutFilter != "" {
+                        whereClauses = append(whereClauses, fmt.Sprintf(`"statut" = $%d`, argIdx))
+                        args = append(args, statutFilter)
+                        argIdx++
+                }
+                whereClause := ""
+                if len(whereClauses) > 0 {
+                        whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
+                }
+
+                // SELECT avec les vraies colonnes.
+                args = append(args, limit)
+                query := fmt.Sprintf(`
+                        SELECT "id", "type", "severite", "message", "details", "source", "duree",
+                               "statut", "resoluLe", "resoluPar", "createdAt", "updatedAt"
                         FROM "MonitoringEvent"
+                        %s
                         ORDER BY "createdAt" DESC
-                        LIMIT 100
-                `)
+                        LIMIT $%d
+                `, whereClause, argIdx)
+
+                rows, err := tx.Query(r.Context(), query, args...)
                 if err != nil {
                         return nil
                 }
                 defer rows.Close()
                 for rows.Next() {
                         e := event{}
-                        var createdAt time.Time
-                        if err := rows.Scan(&e.ID, &e.Type, &e.Severity, &e.Message, &e.Resolved, &createdAt); err == nil {
+                        var createdAt, updatedAt time.Time
+                        var resoluLe *time.Time
+                        if err := rows.Scan(&e.ID, &e.Type, &e.Severite, &e.Message, &e.Details,
+                                &e.Source, &e.Duree, &e.Statut, &resoluLe, &e.ResoluPar,
+                                &createdAt, &updatedAt); err == nil {
                                 e.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+                                e.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+                                if resoluLe != nil {
+                                        ts := resoluLe.UTC().Format(time.RFC3339)
+                                        e.ResoluLe = &ts
+                                }
                                 result = append(result, e)
                         }
                 }
+
+                // MONITORING-FIX-M4 : calculer les stats (activeCount, criticalCount, errorCount).
+                // Avant : le backend ne retournait pas "stats" → le frontend affichait
+                // toujours {activeCount: 0, criticalCount: 0, errorCount: 0}.
+                // On compte sur TOUS les events (pas seulement les filtrés) pour des stats globales.
+                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF'`).Scan(&activeCount)
+                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF' AND "severite" = 'CRITICAL'`).Scan(&criticalCount)
+                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "MonitoringEvent" WHERE "statut" = 'ACTIF' AND "severite" = 'ERROR'`).Scan(&errorCount)
+
                 return nil
         })
 
@@ -441,6 +513,11 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(map[string]any{
                 "events": result,
                 "total":  len(result),
+                "stats": map[string]int{
+                        "activeCount":   activeCount,
+                        "criticalCount": criticalCount,
+                        "errorCount":    errorCount,
+                },
         })
 }
 

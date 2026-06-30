@@ -539,6 +539,9 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   facturation: ['ADMIN'],
   // ACCES-ETABLISSEMENTS-FIX-AE2 : page réservée ADMIN (gestion des autorisations).
   'acces-etablissements': ['ADMIN'],
+  // MONITORING-FIX-M7 : pages supervision réservées ADMIN.
+  monitoring: ['ADMIN'],
+  logs: ['ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)

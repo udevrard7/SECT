@@ -1150,6 +1150,14 @@ export function MonitoringPage() {
         {/* Tab 2: État des services                                   */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="services" className="space-y-6">
+          {/* MONITORING-FIX-M8 : disclaimer données simulées */}
+          <div className="rounded-lg border border-info/30 bg-info/10 p-3 flex items-start gap-2">
+            <Info className="h-4 w-4 text-info mt-0.5 shrink-0" />
+            <p className="text-xs text-info">
+              Les valeurs de santé des services (uptime, temps de réponse) sont calculées à partir des événements de monitoring actifs.
+              En l'absence d'événements, les valeurs affichées sont des valeurs de référence. Un healthcheck backend réel est prévu.
+            </p>
+          </div>
           {/* Platform Health Score + Summary */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Health Gauge Card */}
@@ -1227,6 +1235,14 @@ export function MonitoringPage() {
         {/* Tab 3: Alertes                                             */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <TabsContent value="alertes" className="space-y-6">
+          {/* MONITORING-FIX-M6 : disclaimer règles non persistées */}
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+            <p className="text-xs text-warning">
+              Les règles d'alerte ci-dessous sont prédéfinies et non persistées. La désactivation d'une règle est temporaire (perdue au rechargement).
+              La persistance des règles d'alerte (table AlertRule + endpoints CRUD) est prévue dans une prochaine version.
+            </p>
+          </div>
           {/* Active Alerts Section */}
           <div>
             <div className="flex items-center justify-between mb-4">
