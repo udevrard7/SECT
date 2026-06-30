@@ -9412,3 +9412,37 @@ Stage Summary:
 - **DB** : migration 000016 appliquée (version 16). 3 policies maintenant sur MonitoringEvent (select_admin + insert_system + modify_admin).
 - **Frontend** : routes.ts (M7 garde rôle) + monitoring-page.tsx (M6+M8 disclaimers).
 - **Module /monitoring désormais pleinement fonctionnel** : lecture avec vraies colonnes + stats + filtres, création/résolution/ignorance d'événements, garde ADMIN.
+
+---
+Task ID: LOGS-FIX-STEP-1-4
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix module /logs — L1-L7 (bugs) + A1-A3+A6 (améliorations).
+
+Work Log:
+- L1 (CRITICAL) : filtres action + entite ignorés. WHERE dynamique avec paramètres bindés.
+- L2 (CRITICAL) : pagination absente. Ajout OFFSET (page-1)*limit.
+- L3 (CRITICAL) : total = len(result). SELECT count(*) séparé avec mêmes filtres.
+- L4 (HIGH) : filtres dateFrom/dateTo ignorés. WHERE createdAt >= / <= avec timestamps inclusifs.
+- L5 (MEDIUM) : dropdown Action 5/24 → étendu à 24 actions. Badges étendus (LOGIN_FAILED, TOKEN_REFRESHED, AI_GRADE_RESPONSE, etc.).
+- L6 (MEDIUM) : dropdown Entité 7/10 → étendu à 13 entités. Labels français (Reponse, SessionPassation, Affectation, Corbeille, etc.).
+- L7 (MEDIUM) : recherche par IP manquante. Search étendu à adresseIp (4 ILIKE).
+- L8 (LOW) : tri configurable — reporté (ORDER BY createdAt DESC par défaut).
+- A1 : KPI cards (total filtré, échecs/verrouillages, action principale, entité principale).
+- A2 : export CSV (bouton + handler client-side, BOM UTF-8).
+- A3 : auto-refresh toggle 30s (refetchInterval conditionnel, comme /monitoring).
+- A6 : clics d'investigation — userEmail et adresseIp cliquables → filtrent automatiquement.
+- Vérifications live (auth admin) :
+  - GET ?action=LOGIN → 501 logs LOGIN uniquement (pas de TOKEN_REFRESHED) ✅
+  - GET ?entite=Epreuve → 73 logs Epreuve uniquement ✅
+  - GET ?page=2&limit=3 → page 2 retourne des logs différents ✅
+  - total: 501 (vrai count, pas len(result)) ✅
+  - GET ?dateFrom=2026-06-30 → 16 logs (filtre date) ✅
+  - GET ?search=3.76 → 11 logs avec IP 3.76.192.1 ✅
+
+Stage Summary:
+- **7 bugs traités** (L1-L7) + **4 améliorations** (A1, A2, A3, A6).
+- **1 commit poussé** : b100bfd (2 fichiers, +365/-54 lignes).
+- **Backend** : stub_handlers_real.go (réécriture complète logsListReal avec filtres + pagination + count).
+- **Frontend** : logs-page.tsx (dropdowns étendus + KPI cards + export CSV + auto-refresh + clics d'investigation).
+- **Aucune migration DB** nécessaire.
+- **Module /logs désormais pleinement fonctionnel** : filtres complets (action, entité, dates, recherche IP), pagination réelle avec vrai total, dropdowns exhaustifs (24 actions, 13 entités), KPI dashboard, export CSV, auto-refresh, navigation par clics.
