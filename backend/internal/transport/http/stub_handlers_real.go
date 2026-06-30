@@ -42,34 +42,102 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
                 CreatedAt string  `json:"createdAt"`
         }
 
+        // LOGS-FIX-L1+L2+L3+L4+L7 : réécriture complète du handler.
+        // Avant : seuls search + limit étaient gérés. Les filtres action/entite/
+        // dateFrom/dateTo/page étaient ignorés, et total = len(result) au lieu du
+        // vrai count. La pagination était absente (pas d'OFFSET).
+        search := r.URL.Query().Get("search")
+        actionFilter := r.URL.Query().Get("action")
+        entiteFilter := r.URL.Query().Get("entite")
+        dateFrom := r.URL.Query().Get("dateFrom")
+        dateTo := r.URL.Query().Get("dateTo")
+
+        limit := 20
+        if l := r.URL.Query().Get("limit"); l != "" {
+                if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 500 {
+                        limit = n
+                }
+        }
+        page := 1
+        if p := r.URL.Query().Get("page"); p != "" {
+                if n, err := parseIntSafe(p); err == nil && n > 0 {
+                        page = n
+                }
+        }
+        offset := (page - 1) * limit
+
+        // Timestamps inclusifs pour les filtres date.
+        var dateFromTs, dateToTs string
+        if dateFrom != "" {
+                dateFromTs = dateFrom + " 00:00:00"
+        }
+        if dateTo != "" {
+                dateToTs = dateTo + " 23:59:59"
+        }
+
+        // Construire la clause WHERE dynamique (partagée par SELECT et COUNT).
+        var whereClauses []string
+        var args []any
+        argIdx := 1
+
+        // L1 : filtre action (égalité exacte).
+        if actionFilter != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"action" = $%d`, argIdx))
+                args = append(args, actionFilter)
+                argIdx++
+        }
+        // L1 : filtre entite (égalité exacte).
+        if entiteFilter != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"entite" = $%d`, argIdx))
+                args = append(args, entiteFilter)
+                argIdx++
+        }
+        // L4 : filtre dateFrom.
+        if dateFromTs != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"createdAt" >= $%d`, argIdx))
+                args = append(args, dateFromTs)
+                argIdx++
+        }
+        // L4 : filtre dateTo.
+        if dateToTs != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"createdAt" <= $%d`, argIdx))
+                args = append(args, dateToTs)
+                argIdx++
+        }
+        // L7 : search étendu à adresseIp (avant : action/entite/userEmail uniquement).
+        // Simple Protocol ne supporte pas les placeholders réutilisés → 4 placeholders distincts.
+        if search != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(
+                        `("action" ILIKE $%d OR "entite" ILIKE $%d OR "userEmail" ILIKE $%d OR "adresseIp" ILIKE $%d)`,
+                        argIdx, argIdx+1, argIdx+2, argIdx+3,
+                ))
+                args = append(args, "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+                argIdx += 4
+        }
+
+        whereClause := ""
+        if len(whereClauses) > 0 {
+                whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
+        }
+
         result := []logEntry{}
+        var totalCount int
+
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                search := r.URL.Query().Get("search")
-                limit := 100
-                if l := r.URL.Query().Get("limit"); l != "" {
-                        if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 500 {
-                                limit = n
-                        }
-                }
+                // L3 : requête COUNT séparée pour le vrai total (pas len(result)).
+                countQuery := fmt.Sprintf(`SELECT count(*) FROM "AuditLog" %s`, whereClause)
+                _ = tx.QueryRow(r.Context(), countQuery, args...).Scan(&totalCount)
 
-                var args []any
-                argIdx := 1
-                whereClause := ""
-                if search != "" {
-                        whereClause = fmt.Sprintf(`WHERE "action" ILIKE $%d OR "entite" ILIKE $%d OR "userEmail" ILIKE $%d`, argIdx, argIdx, argIdx)
-                        args = append(args, "%"+search+"%")
-                        argIdx++
-                }
-
+                // L2 : SELECT avec LIMIT + OFFSET (pagination réelle).
+                args = append(args, limit, offset)
                 query := fmt.Sprintf(`
                         SELECT "id", "userId", "userEmail", "action", "entite", "entiteId",
                                "details", "adresseIp", "createdAt"
                         FROM "AuditLog"
                         %s
                         ORDER BY "createdAt" DESC
-                        LIMIT $%d
-                `, whereClause, argIdx)
-                args = append(args, limit)
+                        LIMIT $%d OFFSET $%d
+                `, whereClause, argIdx, argIdx+1)
 
                 rows, err := tx.Query(r.Context(), query, args...)
                 if err != nil {
@@ -92,7 +160,9 @@ func (s *Server) logsListReal(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
                 "logs":  result,
-                "total": len(result),
+                "total": totalCount,
+                "page":  page,
+                "limit": limit,
         })
 }
 
