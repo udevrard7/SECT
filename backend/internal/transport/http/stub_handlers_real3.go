@@ -1099,12 +1099,31 @@ func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
                         }
                 }
 
-                whereClause := ""
+                // DEFENSE-IN-DEPTH RBAC : neondb_owner a BYPASSRLS=true (défaut Neon),
+                // donc les policies RLS ne filtrent rien. On filtre explicitement par
+                // destinataireId (user courant) OR destinataireRole (rôle du user)
+                // OR broadcast (destinataireId IS NULL AND destinataireRole IS NULL).
+                var whereParts []string
+                var args []any
+                argIdx := 1
+
+                whereParts = append(whereParts, fmt.Sprintf(`"destinataireId" = $%d`, argIdx))
+                args = append(args, claims.UserID)
+                argIdx++
+
+                whereParts = append(whereParts, `("destinataireId" IS NULL AND "destinataireRole" IS NULL)`)
+
+                whereParts = append(whereParts, fmt.Sprintf(`"destinataireRole" = $%d`, argIdx))
+                args = append(args, claims.Role)
+                argIdx++
+
                 if luParam == "false" {
-                        whereClause = `WHERE "lu" = false`
+                        whereParts = append(whereParts, `"lu" = false`)
                 } else if luParam == "true" {
-                        whereClause = `WHERE "lu" = true`
+                        whereParts = append(whereParts, `"lu" = true`)
                 }
+
+                whereClause := "WHERE " + strings.Join(whereParts, " AND ")
 
                 query := fmt.Sprintf(`
                         SELECT "id", "type", "titre", "message", "lu",
@@ -1113,9 +1132,10 @@ func (s *Server) notificationsMeList(w http.ResponseWriter, r *http.Request) {
                         FROM "NotificationAdmin"
                         %s
                         ORDER BY "createdAt" DESC
-                        LIMIT $1
-                `, whereClause)
-                rows, err := tx.Query(r.Context(), query, limit)
+                        LIMIT $%d
+                `, whereClause, argIdx)
+                args = append(args, limit)
+                rows, err := tx.Query(r.Context(), query, args...)
                 if err != nil {
                         return nil
                 }
