@@ -9479,3 +9479,28 @@ Stage Summary:
 - **TypeScript** : 0 erreur sur les 2 fichiers modifiés (erreurs pré-existantes dans autres fichiers non liés : jspdf, gsap, monaco).
 - **Backend non touché** (déjà déployé avec handler GET+POST merge + seed complet).
 - Prêt pour commit + push (Vercel auto-déploie le frontend).
+
+---
+Task ID: NOTIFICATIONS-FIX-STEP-1-4
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix module /notifications — N1-N8 (8 bugs : 3 CRITICAL + 2 HIGH + 2 MEDIUM + 1 LOW).
+
+Work Log:
+- N1 (CRITICAL) : route POST /admin inexistante. Handler createNotificationAdmin (INSERT, validation titre/message, expireLe parser).
+- N2 (CRITICAL) : route PATCH /admin/{id} inexistante. Handler updateNotificationAdmin (UPDATE lu, action marquer_lu/non_lu).
+- N3 (CRITICAL) : route DELETE /admin/{id} inexistante. Handler deleteNotificationAdmin.
+- N4 (HIGH) : filtres type/destinataireRole/categorie ignorés. WHERE dynamique avec paramètres bindés.
+- N5 (HIGH) : pas de unreadCount. Ajout count total + count unread (2 requêtes count séparées).
+- N6 (MEDIUM) : markAllRead ignoré par GET. Nouvel endpoint POST /admin/mark-all-read avec filtres.
+- N7 (MEDIUM) : pas de garde rôle. RequireRole(ADMIN) sur /admin + notifications: [ADMIN] dans PAGE_ALLOWED_ROLES.
+- N8 (LOW) : handleDeleteAllRead faisait N requêtes. Nouvel endpoint DELETE /admin (1 requête, deletedCount retourné).
+- Nouveau fichier notification_mutation_handlers.go (5 handlers). Frontend adapté : handleMarkAllRead → POST, handleDeleteAllRead → DELETE (1 requête).
+- Vérifications live (auth admin) : tous les endpoints testés et fonctionnels (POST 201, PATCH 200, DELETE 200, mark-all-read 200, delete-all-read 200 avec deletedCount, filtres type appliqués, unreadCount peuplé). Données de test nettoyées.
+
+Stage Summary:
+- **8 bugs traités** : N1-N8.
+- **1 commit poussé** : a9fd59c (5 fichiers, +430/-29 lignes).
+- **Backend** : notification_mutation_handlers.go (5 handlers) + stub_handlers_real.go (N4+N5 réécriture GET) + router.go (6 routes + RequireRole).
+- **Frontend** : routes.ts (N7 garde rôle) + notifications-admin-page.tsx (N6+N8 adaptés).
+- **Aucune migration DB** nécessaire (RLS all_admin déjà en place, schéma complet).
+- **Module /notifications désormais pleinement fonctionnel** : broadcast, marquer lu/non lu, suppression individuelle + en masse, mark-all-read, filtres complets, stats avec unreadCount, garde ADMIN.
