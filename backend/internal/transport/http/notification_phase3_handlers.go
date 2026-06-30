@@ -5,6 +5,7 @@ import (
         "encoding/json"
         "fmt"
         "net/http"
+        "strings"
         "time"
 
         "github.com/go-chi/chi/v5"
@@ -82,14 +83,47 @@ func (s *Server) notificationsStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchUnreadCountSSE compte les notifications non lues via la VIEW unifiée.
-// Utilise la RLS (claims posés via WithTx) pour ne compter que les notifs
-// visibles par l'utilisateur courant.
+// DEFENSE-IN-DEPTH RBAC : neondb_owner a BYPASSRLS=true, donc on filtre
+// explicitement par destinataireId/destinataireRole + scope filière/épreuve.
 func (s *Server) fetchUnreadCountSSE(r *http.Request, claims appdb.SessionClaims) int {
         count := 0
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                return tx.QueryRow(r.Context(), `
-                        SELECT count(*) FROM "NotificationUnified" WHERE "lue" = false
-                `).Scan(&count)
+                role := claims.Role
+                var rbacConds []string
+                var args []any
+                argIdx := 1
+
+                rbacConds = append(rbacConds, fmt.Sprintf(`"destinataireId" = $%d`, argIdx))
+                args = append(args, claims.UserID)
+                argIdx++
+
+                rbacConds = append(rbacConds, `("destinataireId" IS NULL AND "destinataireRole" IS NULL)`)
+
+                rbacConds = append(rbacConds, fmt.Sprintf(`"destinataireRole" = $%d`, argIdx))
+                args = append(args, role)
+                argIdx++
+
+                if role == "RESPONSABLE" && claims.EtablissementID != "" {
+                        rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Filiere" f WHERE f.id = "NotificationUnified"."filiereId" AND f."etablissementId" = $%d))`, argIdx))
+                        args = append(args, claims.EtablissementID)
+                        argIdx++
+                        rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId" WHERE e.id = "NotificationUnified"."epreuveId" AND f."etablissementId" = $%d))`, argIdx))
+                        args = append(args, claims.EtablissementID)
+                        argIdx++
+                }
+
+                if role == "ENSEIGNANT" {
+                        rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = "NotificationUnified"."epreuveId" AND e."enseignantId" = $%d))`, argIdx))
+                        args = append(args, claims.UserID)
+                        argIdx++
+                }
+
+                query := fmt.Sprintf(`
+                        SELECT count(*) FROM "NotificationUnified"
+                        WHERE ("lue" = false) AND (%s)
+                `, strings.Join(rbacConds, " OR "))
+
+                return tx.QueryRow(r.Context(), query, args...).Scan(&count)
         })
         return count
 }
@@ -133,12 +167,53 @@ func (s *Server) notificationsUnifiedList(w http.ResponseWriter, r *http.Request
                         }
                 }
 
-                whereClause := ""
-                if luParam == "false" {
-                        whereClause = `WHERE "lue" = false`
-                } else if luParam == "true" {
-                        whereClause = `WHERE "lue" = true`
+                // DEFENSE-IN-DEPTH RBAC : neondb_owner a BYPASSRLS=true (défaut Neon),
+                // donc les policies RLS ne filtrent rien pour le backend. On ajoute un
+                // WHERE explicite par rôle, identique à alertesListReal (N1 fix).
+                role := claims.Role
+                var rbacConds []string
+                var args []any
+                argIdx := 1
+
+                // Notifications personnelles (destinataireId = user courant)
+                rbacConds = append(rbacConds, fmt.Sprintf(`"destinataireId" = $%d`, argIdx))
+                args = append(args, claims.UserID)
+                argIdx++
+
+                // Broadcast global (destinataireId IS NULL AND destinataireRole IS NULL)
+                rbacConds = append(rbacConds, `("destinataireId" IS NULL AND "destinataireRole" IS NULL)`)
+
+                // Broadcast par rôle (destinataireRole = rôle du user)
+                rbacConds = append(rbacConds, fmt.Sprintf(`"destinataireRole" = $%d`, argIdx))
+                args = append(args, role)
+                argIdx++
+
+                // RESPONSABLE : alertes des filières/épreuves de son établissement
+                // (source='alerte' avec filiereId/epreuveId liés à son étab)
+                if role == "RESPONSABLE" && claims.EtablissementID != "" {
+                        rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Filiere" f WHERE f.id = "NotificationUnified"."filiereId" AND f."etablissementId" = $%d))`, argIdx))
+                        args = append(args, claims.EtablissementID)
+                        argIdx++
+                        rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Epreuve" e JOIN "Filiere" f ON f.id = e."filiereId" WHERE e.id = "NotificationUnified"."epreuveId" AND f."etablissementId" = $%d))`, argIdx))
+                        args = append(args, claims.EtablissementID)
+                        argIdx++
                 }
+
+                // ENSEIGNANT : alertes des épreuves qu'il enseigne
+                if role == "ENSEIGNANT" {
+                        rbacConds = append(rbacConds, fmt.Sprintf(`(EXISTS (SELECT 1 FROM "Epreuve" e WHERE e.id = "NotificationUnified"."epreuveId" AND e."enseignantId" = $%d))`, argIdx))
+                        args = append(args, claims.UserID)
+                        argIdx++
+                }
+
+                // Clause WHERE : (RBAC) AND (filtre lue optionnel)
+                whereParts := []string{"(" + strings.Join(rbacConds, " OR ") + ")"}
+                if luParam == "false" {
+                        whereParts = append(whereParts, `"lue" = false`)
+                } else if luParam == "true" {
+                        whereParts = append(whereParts, `"lue" = true`)
+                }
+                whereClause := "WHERE " + strings.Join(whereParts, " AND ")
 
                 query := fmt.Sprintf(`
                         SELECT "id", "source", "titre", "description", "severity", "type", "lue",
@@ -147,10 +222,11 @@ func (s *Server) notificationsUnifiedList(w http.ResponseWriter, r *http.Request
                         FROM "NotificationUnified"
                         %s
                         ORDER BY "createdAt" DESC
-                        LIMIT $1
-                `, whereClause)
+                        LIMIT $%d
+                `, whereClause, argIdx)
+                args = append(args, limit)
 
-                rows, err := tx.Query(r.Context(), query, limit)
+                rows, err := tx.Query(r.Context(), query, args...)
                 if err != nil {
                         return nil
                 }
