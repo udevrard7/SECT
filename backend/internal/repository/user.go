@@ -66,10 +66,6 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, `
                 SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
                        "image", "actif", "mustChangePwd", "matricule", "niveau",
@@ -238,10 +234,6 @@ func (r *UserRepository) Create(ctx context.Context, input domain.CreateUserInpu
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         userID := uuid.NewString()
 
         actif := true
@@ -295,10 +287,6 @@ func (r *UserRepository) Update(ctx context.Context, id string, input domain.Upd
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         var setClauses []string
         var args []any
@@ -395,10 +383,6 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         var exists bool
         err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "User" WHERE "id" = $1)`, id).Scan(&exists)
@@ -497,10 +481,6 @@ func (r *UserRepository) CountDependencies(ctx context.Context, userID string) (
                 return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return 0, 0, 0, 0, 0, 0, 0, fmt.Errorf("disable rls: %w", err)
-        }
 
         // Sessions (SessionPassation où etudiantId = userID) — dép étudiant
         if err := tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "etudiantId" = $1`, userID).Scan(&sessions); err != nil {

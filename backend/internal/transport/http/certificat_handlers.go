@@ -377,7 +377,6 @@ func (s *Server) retournerBatch(w http.ResponseWriter, r *http.Request) {
         })
 }
 
-
 // aiGradeSession — POST /api/correction/{sessionId}/ai-grade
 // IA-CORRECTION-1 : déclenche la correction IA asynchrone pour les QRC/CODE.
 // Renvoie 202 Accepted immédiatement. Le worker traite en arrière-plan.
@@ -397,8 +396,6 @@ func (s *Server) aiGradeSession(w http.ResponseWriter, r *http.Request) {
                 return
         }
         defer tx.Rollback(r.Context())
-
-        tx.Exec(r.Context(), "SET LOCAL row_security = off")
 
         rows, err := tx.Query(r.Context(), `
                 SELECT r."id", r."questionId"

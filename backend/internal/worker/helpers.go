@@ -40,7 +40,7 @@ func getActiveProviderShared(ctx context.Context, dbPool *pgxpool.Pool) (*aiProv
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var p aiProviderConfig
 	err = tx.QueryRow(ctx, `

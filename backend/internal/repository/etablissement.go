@@ -178,10 +178,6 @@ func (r *EtablissementRepository) Create(ctx context.Context, input domain.Creat
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         etab, err := r.CreateInTx(ctx, tx, input)
         if err != nil {
                 return nil, err
@@ -196,7 +192,7 @@ func (r *EtablissementRepository) Create(ctx context.Context, input domain.Creat
 // CreateInTx insère un établissement dans une transaction existante.
 // ABONNEMENTS-FIX-A3 : extrait de Create pour permettre au usecase de faire
 // une transaction atomique (étab + responsable + abonnement). Le caller gère
-// begin/commit/rollback + SET LOCAL row_security = off.
+// begin/commit/rollback et pose les claims JWT via db.WithTx (RLS actif).
 func (r *EtablissementRepository) CreateInTx(ctx context.Context, tx pgx.Tx, input domain.CreateEtablissementInput) (*domain.Etablissement, error) {
         id := uuid.NewString()
         pays := "Côte d'Ivoire"
@@ -238,10 +234,6 @@ func (r *EtablissementRepository) Update(ctx context.Context, id string, input d
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         var setClauses []string
         var args []any
@@ -339,10 +331,6 @@ func (r *EtablissementRepository) UpdateLogo(ctx context.Context, id string, log
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, `
                 UPDATE "Etablissement" SET "logo" = $2, "updatedAt" = CURRENT_TIMESTAMP
                 WHERE "id" = $1 RETURNING `+columnsEtab, id, logoData)
@@ -372,10 +360,6 @@ func (r *EtablissementRepository) ClearLogo(ctx context.Context, id string) (*do
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, `
                 UPDATE "Etablissement" SET "logo" = NULL, "updatedAt" = CURRENT_TIMESTAMP
                 WHERE "id" = $1 RETURNING `+columnsEtab, id)
@@ -398,17 +382,13 @@ func (r *EtablissementRepository) ClearLogo(ctx context.Context, id string) (*do
 // Migration 000017 : anneeAcademiqueCouranteId FK nullable vers AnneeAcademique.
 // Valide que l'année appartient bien à l'établissement (clause WHERE sur
 // l'existence d'une ligne AnneeAcademique avec id=anneeID ET etablissementId).
-// Bypass RLS comme les autres write methods (SET LOCAL row_security = off).
+// RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
 func (r *EtablissementRepository) SetCurrentAnnee(ctx context.Context, etablissementID, anneeID string) (*domain.Etablissement, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         // UPDATE avec clause d'appartenance : 0 ligne affectée si l'année n'existe
         // pas ou n'appartient pas à l'établissement → NotFoundError ou Unauthorized.
@@ -468,10 +448,6 @@ func (r *EtablissementRepository) UpdateWatermark(ctx context.Context, id string
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, `
                 UPDATE "Etablissement"
                 SET "certWatermarkText" = $2, "certWatermarkEnabled" = $3, "certWatermarkOpacity" = $4,
@@ -523,10 +499,6 @@ func (r *EtablissementRepository) Delete(ctx context.Context, id string) error {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         // Vérifier existence
         var exists bool

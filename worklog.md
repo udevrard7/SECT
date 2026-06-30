@@ -9779,3 +9779,147 @@ Stage Summary:
 - **RLS désormais ENFORCÉ** au niveau DB (sect_app sans BYPASSRLS) — defense-in-depth.
 - **Tests validés** : tous les rôles (ETUDIANT, ENSEIGNANT, RESPONSABLE, ADMIN) voient exactement les données qu'ils doivent voir.
 - ⚠️ **Action requise côté Render** : mettre à jour NEON_DATABASE_URL avec l'URL sect_app (sinon le backend continue d'utiliser neondb_owner avec BYPASSRLS).
+
+---
+Task ID: SECT-RLS-CLEANUP
+Agent: general-purpose (subagent)
+Task: Retirer SET LOCAL row_security = off des méthodes authentifiées (préparation bascule sect_app)
+
+Work Log:
+- Lecture préalable : worklog SECT (entrées SECURITY-AUDIT-5FIX + ACCESS-ASSISTANCE-COMPLETE) pour comprendre que le rôle sect_app (NOBYPASSRLS) est créé sur Neon, que les fonctions SECURITY DEFINER (find_invitation_by_token, mark_invitation_used, user_exists_by_email, accept_invitation) sont en place pour les endpoints publics de invitation.go, et que auth.go reste légitimement BYPASS RLS (login/refresh sans claims JWT).
+- Inventaire initial via grep : 84 blocs `if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil { return ...; }` + 1 appel `tx.Exec(r.Context(), "SET LOCAL row_security = off")` (sans gestion d'erreur) dans certificat_handlers.go à retirer. Files à ne PAS toucher confirmées : invitation.go (4 occurrences en commentaires SECURITY-FIX), auth.go (12 blocs + 1 commentaire), workers/* (laissés tranquilles per instructions).
+- Script Python `/home/z/remove_rls.py` créé pour retirer mécaniquement les 2 patterns :
+  - Pattern bloc 3-lignes : `if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {\n\treturn ..., fmt.Errorf("disable rls: %w", err)\n\t}` (regex multiline).
+  - Pattern single-line : `tx.Exec(r.Context(), "SET LOCAL row_security = off")` (sans gestion d'erreur, présent dans certificat_handlers.go).
+- Script Python `/home/z/collapse_blanks.py` créé pour nettoyer les doubles blank lines résiduelles (le retrait du bloc laissait 2 blank lines consécutives entre `defer tx.Rollback(ctx)` et le code suivant → collapsé en 1 blank line via `re.sub(r'\n\n\n+', '\n\n', content)`).
+- 5 commentaires obsolètes mentionnant `SET LOCAL row_security = off` mis à jour manuellement (Edit tool) pour refléter le nouveau comportement (RLS actif, claims JWT via db.WithTx) :
+  - academique.go ligne 480 (HardDelete UE) + ligne 950 (HardDelete AnneeAcademique) : "Bypass RLS (SET LOCAL row_security = off)" → "RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS)."
+  - etablissement.go ligne 196 (CreateInTx) : "begin/commit/rollback + SET LOCAL row_security = off" → "begin/commit/rollback et pose les claims JWT via db.WithTx (RLS actif)."
+  - etablissement.go ligne 389 (SetCurrentAnnee) : "Bypass RLS comme les autres write methods (SET LOCAL row_security = off)" → "RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS)."
+  - usecase/etablissement.go lignes 146-148 (multi-line comment sur CreateInTx) : remplacé le bloc expliquant pourquoi RLS devait être désactivé manuellement par "Les claims ADMIN sont posés via db.WithTx ; la policy RLS Etablissement_insert autorise l'ADMIN à créer sans EtablissementAccess préexistant."
+
+Fichiers modifiés et occurrences retirées (code seulement, hors commentaires nettoyés) :
+- internal/repository/user.go : 5 blocs retirés
+- internal/repository/session.go : 11 blocs retirés
+- internal/repository/etablissement.go : 7 blocs retirés + 2 commentaires mis à jour
+- internal/repository/etablissement_access.go : 5 blocs retirés
+- internal/repository/certificat.go : 7 blocs retirés
+- internal/repository/document.go : 3 blocs retirés
+- internal/repository/epreuve.go : 3 blocs retirés
+- internal/repository/question.go : 4 blocs retirés
+- internal/repository/filiere.go : 3 blocs retirés
+- internal/repository/academique.go : 8 blocs retirés + 2 commentaires mis à jour
+- internal/repository/examprep.go : 27 blocs retirés
+- internal/transport/http/certificat_handlers.go : 1 bloc single-line retiré
+- internal/usecase/etablissement.go : 1 bloc retiré + 1 commentaire multi-lignes mis à jour
+
+TOTAL : 85 occurrences de `SET LOCAL row_security = off` retirées (84 blocs 3-lignes + 1 appel single-line), 5 commentaires obsolètes mis à jour.
+
+Vérifications :
+- `go build ./...` (Go 1.24.0 installé localement sous /home/z/go-sdk) → SUCCÈS, 0 erreur.
+- `go vet ./...` → SUCCÈS, 0 warning.
+- `grep -rn 'SET LOCAL row_security' internal/repository/ internal/transport/http/ internal/usecase/ | grep -v 'invitation.go' | grep -v 'auth.go'` → 0 ligne (les seules occurrences restantes sont dans auth.go (12 blocs + 1 commentaire, endpoints publics login/refresh) et invitation.go (4 commentaires SECURITY-FIX, déjà corrigé via fonctions SECURITY DEFINER)).
+- Aucune logique métier modifiée — uniquement retrait des blocs `SET LOCAL row_security = off` (3 lignes if/return/}) + 1 appel single-line + nettoyage blank lines + 5 mises à jour de commentaires devenus inexacts.
+- `gofmt -l` est non-vide sur tous les fichiers (pré-existant : le codebase utilise 8 espaces au lieu de tabs, ce n'est pas gofmt-clean). Mes modifications ne dégradent pas cet état.
+- Workers (internal/worker/*.go) et internal/ai/service.go NON touchés (per instructions — laissés tranquilles pour minimiser le risque, les workers construisent des claims synthétiques).
+
+Stage Summary:
+- **85 occurrences `SET LOCAL row_security = off` retirées** dans 13 fichiers Go (11 repository + 1 transport/http + 1 usecase) — méthodes authentifiées uniquement (claims JWT posés via db.WithTx, RLS filtre correctement).
+- **5 commentaires obsolètes mis à jour** pour refléter le nouveau comportement (RLS actif au lieu de Bypass RLS).
+- **0 logique métier modifiée** — retrait purement mécanique des blocs if/return/} + nettoyage blank lines.
+- **Build + vet Go 1.24 OK** (Go installé localement sous /home/z/go-sdk car non présent sur le sandbox).
+- **Vérification grep** : 0 ligne restante hors auth.go (endpoints publics login/refresh, légitime) + invitation.go (déjà migré vers fonctions SECURITY DEFINER).
+- **Workers + ai/service.go laissés tranquilles** (per instructions — révision ultérieure possible car claims synthétiques posés via db.WithTx rendent aussi le SET LOCAL redondant).
+- **Prêt pour bascule sect_app** : le backend n'émettra plus `SET LOCAL row_security = off` sur les paths authentifiés, donc le rôle sect_app (NOBYPASSRLS) refusera silencieusement ces commandes sans casser les endpoints authentifiés.
+
+---
+Task ID: SECT-AUTH-SECURITY-DEFINER
+Agent: general-purpose (subagent)
+Task: Réécrire auth.go avec fonctions SECURITY DEFINER (bascule sect_app)
+
+Work Log:
+- Lecture préalable : worklog (entrées SECURITY-AUDIT-5FIX + SECT-RLS-CLEANUP) pour comprendre que 85 occurrences `SET LOCAL row_security = off` ont déjà été retirées des méthodes authentifiées, mais que les 12 méthodes de auth.go étaient conservées légitimement (endpoints publics login/refresh sans claims JWT). La migration 000022 a créé 12 fonctions SECURITY DEFINER pour remplacer ces méthodes.
+- Lecture de la migration `000022_auth_security_definer_functions.up.sql` : confirmé les 12 signatures et l'ordre des colonnes retournées (u_id, u_email, u_name, u_password, u_role, u_etablissement_id, u_filiere_id, u_image, u_actif, u_must_change_pwd, u_niveau, u_login_attempts, u_locked_until, u_derniere_connexion) — ordre identique au scanner `scanAuthUser`. Idem pour `find_refresh_token_by_hash` (rt_id, rt_user_id, rt_token_hash, rt_expires_at, rt_revoked_at, rt_created_at, rt_user_agent, rt_ip) — ordre identique au scan RefreshToken.
+- Vérification `isEmail` : grep confirme qu'il n'est utilisé que dans `repository/auth.go` (FindUserForAuth) et `usecase/auth.go` qui a sa propre définition locale. La suppression de `isEmail` de repository/auth.go n'affecte pas usecase/auth.go.
+
+Réécriture complète de `/home/z/SECT/backend/internal/repository/auth.go` (444 → 234 lignes) — 12 méthodes migrées vers fonctions SECURITY DEFINER :
+
+1. **FindUserForAuth** → `SELECT * FROM find_user_for_auth($1)` + `scanAuthUser` (pgx.ErrNoRows → NotFoundError). Plus de détection email/matricule côté Go (gérée par la fonction SQL via `position('@' in p_identifier)`).
+2. **GetUserByID** → `SELECT * FROM get_user_by_id_auth($1)` + `scanAuthUser`.
+3. **UpdateLoginSuccess** → `SELECT update_login_success($1)` via `r.pool.Exec` (void function).
+4. **IncrementLoginAttempts** → `SELECT increment_login_attempts($1, $2, $3)` via `QueryRow.Scan(&attempts)` avec args (userID, maxAttempts, int(lockDuration.Seconds())).
+5. **CreateRefreshToken** → `SELECT create_refresh_token($1..$6)` via `r.pool.Exec` (void function).
+6. **FindRefreshTokenByHash** → `SELECT * FROM find_refresh_token_by_hash($1)` + scan 8 champs RefreshToken (pgx.ErrNoRows → NotFoundError).
+7. **RevokeRefreshToken** → `SELECT revoke_refresh_token($1)` via `r.pool.Exec` (void function).
+8. **RevokeRefreshTokenByHashIfActive** → `SELECT * FROM revoke_refresh_token_by_hash_if_active($1)` + scan 8 champs. Comportement inchangé : pgx.ErrNoRows → nil, nil (token introuvable ou déjà révoqué).
+9. **RevokeAllUserRefreshTokens** → `SELECT revoke_all_user_refresh_tokens($1)` via `r.pool.Exec` (void function).
+10. **CreateAuditLog** → **NON MODIFIÉ** (a une policy INSERT WITH CHECK(true), pas besoin de bypass RLS, gardé sa transaction explicite avec `tx.Exec`).
+11. **UpdatePassword** → `SELECT update_password($1, $2)` via `r.pool.Exec` (void function).
+12. **ResetPassword** → `SELECT reset_password($1, $2)` via `r.pool.Exec` (void function).
+13. **UnlockAccount** → `SELECT unlock_account($1)` via `r.pool.Exec` (void function).
+
+Nettoyage supplémentaire :
+- Helper `isEmail` supprimé (n'était utilisé que par FindUserForAuth — la fonction SQL gère désormais la détection).
+- Helpers `nullableString` et `scanAuthUser` conservés (utilisés respectivement par CreateAuditLog et par les méthodes User lookup).
+- Commentaire de package ajouté sur `AuthRepository` pour expliquer la stratégie SECURITY DEFINER.
+- Imports inchangés : `context`, `fmt`, `time` (IncrementLoginAttempts lockDuration), `uuid` (CreateAuditLog), `pgx` (pgx.ErrNoRows), `pgxpool`, `domain`.
+
+Vérifications finales :
+- `grep -n 'SET LOCAL row_security' internal/repository/auth.go` → 0 ligne (exit=1). ✅
+- `grep -n 'isEmail' internal/repository/auth.go` → 0 ligne (exit=1). ✅
+- `grep -rn 'SET LOCAL row_security' internal/` → occurrences restantes uniquement dans `internal/ai/service.go`, `internal/repository/invitation.go` (commentaires SECURITY-FIX déjà migrés) et `internal/worker/*.go` — conformes aux exclusions de la mission.
+- `PATH=/home/z/go-sdk/bin:$PATH go build ./...` → SUCCÈS (exit=0, 0 erreur). ✅
+- `PATH=/home/z/go-sdk/bin:$PATH go vet ./...` → SUCCÈS (exit=0, 0 warning). ✅
+
+Stage Summary:
+- **12 méthodes AuthRepository migrées** vers fonctions PostgreSQL SECURITY DEFINER (migration 000022) — `SET LOCAL row_security = off` entièrement éliminé du code d'authentification.
+- **Pattern uniforme** : les fonctions void sont appelées via `r.pool.Exec(ctx, "SELECT fn($...)")`, les fonctions table-retournantes via `r.pool.QueryRow(ctx, "SELECT * FROM fn($...)")` + scan, `increment_login_attempts` (retourne int) via `QueryRow.Scan(&attempts)`.
+- **Transactions supprimées** pour les 12 méthodes migrées (les fonctions SECURITY DEFINER sont atomiques par elles-mêmes) — `CreateAuditLog` garde sa transaction explicite (INSERT simple, pas de fonction SQL).
+- **Helper `isEmail` supprimé** du repository (la fonction SQL `find_user_for_auth` gère la détection email/matricule via `position('@' in p_identifier)`).
+- **Build + vet Go 1.24 OK** — prêt pour bascule sect_app sur Render.
+- **Comportement métier préservé** : la sémantique de chaque méthode est identique (notamment `RevokeRefreshTokenByHashIfActive` qui retourne nil,nil sur ErrNoRows pour gérer la race condition).
+
+---
+Task ID: SECT-WORKERS-CLAIMS
+Agent: general-purpose (subagent)
+Task: Remplacer SET LOCAL row_security=off par claims system-worker dans workers + ai/service.go
+
+Work Log:
+- Lecture préalable : worklog (entrée SECT-AUTH-SECURITY-DEFINER) pour comprendre que les 12 méthodes AuthRepository ont été migrées vers fonctions SECURITY DEFINER et qu'il restait ~25 occurrences `SET LOCAL row_security = off` dans les workers + ai/service.go à migrer vers la pose de claims system-worker (policies RLS `is_system()` créées en DB, validées sur les 8 tables workers : AIProviderConfig, Chapter, Document, DocumentAudio, Epreuve, Reponse, Soumission, Question).
+- Inspection des 8 fichiers cibles + vérification de l'indentation (awk) : 7 fichiers utilisent des tabs (gofmt-compliant pour helpers.go/practice_worker.go/ai/service.go ; les 4 autres — audio_worker/correction_worker/homework_correction_worker/ia_worker — ont une indentation mixte préexistante tabs/spaces déjà signalée par gofmt -l avant modification). doc_analyzer_worker.go utilise 8 spaces partout (pré-existant non-gofmt).
+- **Premier essai via MultiEdit tool** : a fonctionné syntaxiquement (build OK) mais a converti TOUS les tabs en 8-spaces dans 3 fichiers précédemment gofmt-compliant (helpers.go, practice_worker.go, ai/service.go) — diff énorme de 1670 lignes. Revert via `git checkout`.
+- **Second essai via script Python** (`/home/z/SECT/backend/apply_claims_replacements.py`, supprimé après usage) : utilise `open()` en mode texte avec `newline=''` pour préserver exactement les bytes (tabs vs spaces). Applique 2 remplacements globaux + des remplacements de commentaires spécifiques par fichier. Diff final minimal : 37 insertions / 37 suppressions sur 8 fichiers.
+
+Fichiers modifiés (23 occurrences code SET LOCAL + 4 messages d'erreur "disable rls" + 10 commentaires RLS) :
+1. `internal/worker/helpers.go` — 1 occurrence (Pattern 2 : `tx.Exec(ctx, "SET LOCAL...")` → `tx.Exec(ctx, "SELECT set_config(...)")`)
+2. `internal/worker/ia_worker.go` — 3 occurrences (Pattern 2) + 1 commentaire "// Désactiver RLS" → "// Pose les claims system-worker pour RLS"
+3. `internal/worker/correction_worker.go` — 3 occurrences (Pattern 2)
+4. `internal/worker/homework_correction_worker.go` — 3 occurrences (Pattern 2)
+5. `internal/worker/audio_worker.go` — 4 occurrences (2× Pattern 2 + 2× Pattern 1 avec `return fmt.Errorf("disable rls: %w", err)` → `return fmt.Errorf("set system claims: %w", err)`) + 3 commentaires RLS mis à jour
+6. `internal/worker/practice_worker.go` — 2 occurrences (1× Pattern 2 + 1× Pattern 1 avec `return 0, fmt.Errorf(...)`) + 2 commentaires RLS mis à jour
+7. `internal/worker/doc_analyzer_worker.go` — 6 occurrences (Pattern 2, indentation 8-spaces préservée)
+8. `internal/ai/service.go` — 1 occurrence (Pattern 1 avec `return nil, fmt.Errorf(...)`) + 4 commentaires RLS mis à jour (package doc, ChatCompletion doc étape 1, inline comment "RLS off", getActiveProvider doc)
+
+Détail des 2 patterns de remplacement :
+- **Pattern 2** (1-liner ignore erreur) : `tx.Exec(ctx, "SET LOCAL row_security = off")` → `tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")` — 19 occurrences sur 23.
+- **Pattern 1** (3-lignes if-err) : inner string remplacée + `"disable rls: %w"` → `"set system claims: %w"` dans le `fmt.Errorf` — 4 occurrences (audio_worker×2, practice_worker×1, ai/service.go×1).
+
+Commentaires mis à jour (10 au total) :
+- Tous les commentaires mentionnant "SET LOCAL row_security = off" (instruction stricte du cahier des charges) → "claims system-worker posés via set_config(...)" ou similaire.
+- Les commentaires décrivant le mécanisme ("Désactiver RLS", "RLS désactivé", "RLS off") → "Pose les claims system-worker pour RLS" / "Claims system-worker posés pour RLS" / "claims system-worker" (sinon les commentaires auraient été factuellement faux après la modification du code).
+
+Vérifications finales :
+- `grep -rn 'SET LOCAL row_security' internal/worker/ internal/ai/service.go` → 0 ligne (exit=1). ✅
+- `grep -rn 'disable rls' internal/worker/ internal/ai/service.go` → 0 ligne (exit=1). ✅
+- `PATH=/home/z/go-sdk/bin:$PATH go build ./...` → SUCCÈS (exit=0, 0 erreur). ✅
+- `PATH=/home/z/go-sdk/bin:$PATH go vet ./internal/worker/ ./internal/ai/` → SUCCÈS (exit=0, 0 warning). ✅
+- `gofmt -l internal/worker/ internal/ai/service.go` → liste identique à l'état pré-modification (5 fichiers pré-existants non-compliant : audio_worker, correction_worker, doc_analyzer_worker, homework_correction_worker, ia_worker — indentation mixte tabs/spaces ou 8-spaces). Aucune régression gofmt introduite dans helpers.go, practice_worker.go, ai/service.go. ✅
+- `git diff --stat` → 37 insertions / 37 suppressions sur 8 fichiers (diff minimal, indentation préservée). ✅
+
+Stage Summary:
+- **23 occurrences `SET LOCAL row_security = off`** entièrement remplacées par la pose de claims system-worker (`SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)`) dans les 8 fichiers cibles (7 fichiers `internal/worker/*.go` + `internal/ai/service.go`).
+- **4 blocs Pattern 1 (if-err)** : inner SQL string + message d'erreur `"disable rls"` → `"set system claims"` mis à jour (audio_worker.go×2, practice_worker.go×1, ai/service.go×1).
+- **10 commentaires RLS** mis à jour pour refléter le nouveau mécanisme (pose de claims system-worker au lieu de désactivation RLS).
+- **Aucune logique métier modifiée** — seules les commandes SQL de bypass RLS et les commentaires associés ont été touchés. Imports inchangés.
+- **Indentation préservée** : tabs conservés dans les 7 fichiers tab-indented, 8-spaces conservés dans doc_analyzer_worker.go. Aucune régression gofmt.
+- **Build + vet Go 1.24 OK** — workers et ai/service.go prêts pour bascule sect_app (NOBYPASSRLS) : le rôle sect_app refusera `SET LOCAL row_security = off` (plus présent) mais acceptera `SELECT set_config(...)` qui pose les claims nécessaires à l'activation des policies RLS `is_system()`.

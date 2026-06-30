@@ -136,10 +136,6 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         query := fmt.Sprintf(`
                 SELECT %s FROM "Document" d
                 WHERE d."deletedAt" IS NULL
@@ -185,10 +181,6 @@ func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return "", fmt.Errorf("disable rls: %w", err)
-        }
-
         var niveau *string
         err = tx.QueryRow(ctx, `
                 SELECT "niveau" FROM "User" WHERE "id" = $1
@@ -224,10 +216,6 @@ func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID 
                 return "", fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return "", fmt.Errorf("disable rls: %w", err)
-        }
 
         var contenu *string
         err = tx.QueryRow(ctx, `
@@ -267,10 +255,6 @@ func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentI
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`, columnsDocument), documentID)
         d, err := scanDocument(row)
         if err != nil {
@@ -295,10 +279,6 @@ func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID
                 return false, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return false, fmt.Errorf("disable rls: %w", err)
-        }
 
         var exists bool
         err = tx.QueryRow(ctx, `
@@ -339,10 +319,6 @@ func (r *ExamPrepRepository) ListChaptersByDocumentIDs(ctx context.Context, docI
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         placeholders := make([]string, len(docIDs))
         args := make([]any, len(docIDs))
@@ -391,10 +367,6 @@ func (r *ExamPrepRepository) ListUEsByIDs(ctx context.Context, ueIDs []string) (
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         placeholders := make([]string, len(ueIDs))
         args := make([]any, len(ueIDs))
         for i, id := range ueIDs {
@@ -441,10 +413,6 @@ func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []st
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         placeholders := make([]string, len(userIDs))
         args := make([]any, len(userIDs))
         for i, id := range userIDs {
@@ -490,10 +458,6 @@ func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         var where []string
         var args []any
@@ -551,10 +515,6 @@ func (r *ExamPrepRepository) MarkReviewed(ctx context.Context, itemID string, qu
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         // SM-2 simplified: quality 0-5
         // interval = (repetitions+1) * easeFactor days (simplified)
@@ -648,10 +608,6 @@ func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID stri
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
         if err != nil {
                 return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
@@ -692,10 +648,6 @@ func (r *ExamPrepRepository) DeleteStudySession(ctx context.Context, id string) 
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         tag, err := tx.Exec(ctx, `DELETE FROM "StudySession" WHERE "id" = $1`, id)
         if err != nil {
@@ -771,10 +723,6 @@ func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, 
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         id := uuid.NewString()
         row := tx.QueryRow(ctx, `
@@ -987,10 +935,6 @@ func (r *ExamPrepRepository) CreateHelpThread(ctx context.Context, etudiantID st
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         threadID := uuid.NewString()
         row := tx.QueryRow(ctx, `
                 INSERT INTO "HelpThread" ("id", "documentId", "chapterId", "etudiantId", "enseignantId", "sujet", "statut", "passageContext", "createdAt", "updatedAt")
@@ -1030,10 +974,6 @@ func (r *ExamPrepRepository) CloseHelpThread(ctx context.Context, threadID strin
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         tag, err := tx.Exec(ctx, `UPDATE "HelpThread" SET "statut" = 'CLOS', "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
         if err != nil {
                 return fmt.Errorf("close help thread: %w", err)
@@ -1052,10 +992,6 @@ func (r *ExamPrepRepository) DeleteHelpThread(ctx context.Context, threadID stri
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         // Supprimer les messages d'abord (pas de FK cascade garantie)
         _, err = tx.Exec(ctx, `DELETE FROM "HelpMessage" WHERE "threadId" = $1`, threadID)
@@ -1119,10 +1055,6 @@ func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, au
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         // P1-A4 : utiliser le rôle réel (claims.Role) au lieu de hardcoded 'ETUDIANT'
         id := uuid.NewString()
         row := tx.QueryRow(ctx, `
@@ -1166,10 +1098,6 @@ func (r *ExamPrepRepository) CreateFlashcard(ctx context.Context, input domain.C
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         id := uuid.NewString()
         row := tx.QueryRow(ctx, `
@@ -1269,10 +1197,6 @@ func (r *ExamPrepRepository) DeleteFlashcard(ctx context.Context, userID, flashc
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         // 1. Supprimer le ReviewItem associé (s'il existe). La condition
         //    userId + questionId garantit qu'on ne touche que le ReviewItem de CET
         //    utilisateur pour CETTE flashcard.
@@ -1311,10 +1235,6 @@ func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, user
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         var chapArg any
         if chapterID != nil && *chapterID != "" {
                 chapArg = *chapterID
@@ -1335,7 +1255,6 @@ func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, user
         return tx.Commit(ctx)
 }
 
-
 // ============================================================
 // QUESTION BANK — votes collaboratifs + cache (QUESTION-BANK-1)
 // ============================================================
@@ -1354,10 +1273,6 @@ func (r *ExamPrepRepository) VoteQuestion(ctx context.Context, userID, questionI
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         id := uuid.NewString()
         vote := &domain.QuestionVote{
@@ -1412,10 +1327,6 @@ func (r *ExamPrepRepository) RemoveVote(ctx context.Context, userID, questionID 
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         _, err = tx.Exec(ctx, `
                 DELETE FROM "QuestionVote" WHERE "questionId" = $1 AND "userId" = $2
@@ -1595,7 +1506,6 @@ func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, document
         return result, nil
 }
 
-
 // ============================================================
 // DOCUMENT AUDIO (AUDIO-LEARNING-1 — Mode Audio-Learning)
 // ============================================================
@@ -1609,10 +1519,6 @@ func (r *ExamPrepRepository) CreateDocumentAudio(ctx context.Context, input doma
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         id := uuid.NewString()
         audio := &domain.DocumentAudio{
@@ -1648,10 +1554,6 @@ func (r *ExamPrepRepository) UpdateDocumentAudioStatus(ctx context.Context, audi
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         if r2Key != nil && errorMessage != nil {
                 _, err = tx.Exec(ctx, `
@@ -1694,10 +1596,6 @@ func (r *ExamPrepRepository) UpdateDocumentAudioScript(ctx context.Context, audi
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         _, err = tx.Exec(ctx, `
                 UPDATE "DocumentAudio"
                 SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
@@ -1720,10 +1618,6 @@ func (r *ExamPrepRepository) ListDocumentAudio(ctx context.Context, documentID s
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         rows, err := tx.Query(ctx, `
                 SELECT "id", "documentId", "userId", "script", "r2Key",
@@ -1763,10 +1657,6 @@ func (r *ExamPrepRepository) GetDocumentAudio(ctx context.Context, audioID strin
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         a := &domain.DocumentAudio{}
         err = tx.QueryRow(ctx, `

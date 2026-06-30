@@ -156,10 +156,6 @@ func (r *DocumentRepository) Create(ctx context.Context, input domain.CreateDocu
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         id := uuid.NewString()
         statut := input.StatutAnalyse
         if statut == "" {
@@ -198,10 +194,6 @@ func (r *DocumentRepository) SoftDelete(ctx context.Context, id string) error {
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         tag, err := tx.Exec(ctx, `UPDATE "Document" SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NULL`, id)
         if err != nil {
                 return fmt.Errorf("soft delete document: %w", err)
@@ -224,10 +216,6 @@ func (r *DocumentRepository) UpdateAnalysis(ctx context.Context, id string, para
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         _, err = tx.Exec(ctx, `
                 UPDATE "Document"

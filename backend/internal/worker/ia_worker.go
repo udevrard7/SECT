@@ -154,8 +154,8 @@ func (w *IAWorker) getActiveProvider(ctx context.Context) (*aiProviderConfig, er
 	}
 	defer tx.Rollback(ctx)
 
-	// Désactiver RLS (le worker n'a pas de claims HTTP)
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	// Pose les claims system-worker pour RLS (le worker n'a pas de claims HTTP)
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var p aiProviderConfig
 	err = tx.QueryRow(ctx, `
@@ -239,7 +239,7 @@ func (w *IAWorker) updateEpreuveStatus(ctx context.Context, epreuveID, statut, c
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	if contenu != "" {
 		_, err = tx.Exec(ctx, `
@@ -282,7 +282,7 @@ func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	rows, err := tx.Query(ctx, `
 		SELECT "id", "enseignantId", "contenu"

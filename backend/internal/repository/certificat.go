@@ -87,10 +87,6 @@ func (r *CertificatRepository) FindByCode(ctx context.Context, code string) (*do
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Certificat" WHERE "codeVerification" = $1`, columnsCertificat), code)
         c, err := scanCertificat(row)
         if err != nil {
@@ -173,10 +169,6 @@ func (r *CertificatRepository) Create(ctx context.Context, c *domain.Certificat)
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         if c.ID == "" {
                 c.ID = uuid.NewString()
         }
@@ -227,10 +219,6 @@ func (r *CertificatRepository) Revoke(ctx context.Context, id string, raison str
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         tag, err := tx.Exec(ctx, `
                 UPDATE "Certificat" SET "statut" = 'REVOQUE', "dateRevocation" = CURRENT_TIMESTAMP,
                         "raisonRevocation" = $2, "updatedAt" = CURRENT_TIMESTAMP
@@ -274,10 +262,6 @@ func (r *CorrectionRepository) ListSessions(ctx context.Context, params domain.C
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         var where []string
         var args []any
@@ -462,10 +446,6 @@ func (r *CorrectionRepository) UpdateReponse(ctx context.Context, reponseID stri
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         var setClauses []string
         var args []any
         argIdx := 1
@@ -511,10 +491,6 @@ func (r *CorrectionRepository) RetournerSession(ctx context.Context, sessionID s
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         tag, err := tx.Exec(ctx, `
                 UPDATE "SessionPassation" SET "statut" = 'RETOURNEE', "updatedAt" = CURRENT_TIMESTAMP
                 WHERE "id" = $1 AND "statut" IN ('SOUMISE', 'CORRIGEE')
@@ -547,10 +523,6 @@ func (r *CorrectionRepository) RetournerBatch(ctx context.Context, sessionIDs []
                 return 0, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return 0, fmt.Errorf("disable rls: %w", err)
-        }
 
         placeholders := make([]string, len(sessionIDs))
         args := make([]any, len(sessionIDs))

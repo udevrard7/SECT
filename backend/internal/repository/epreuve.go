@@ -571,10 +571,6 @@ func (r *EpreuveRepository) Create(ctx context.Context, input domain.CreateEpreu
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         // Parser les dates
         dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
         if err != nil {
@@ -758,10 +754,6 @@ func (r *EpreuveRepository) Update(ctx context.Context, id string, input domain.
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         // Gérer les actions (state machine) — P1-E6 : validation de transition
         if input.Action != nil {
                 action := *input.Action
@@ -943,10 +935,6 @@ func (r *EpreuveRepository) SoftDelete(ctx context.Context, id string) error {
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         // Vérifier statut (pas EN_COURS)
         var statut string
         err = tx.QueryRow(ctx, `SELECT "statut" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, id).Scan(&statut)
@@ -1066,7 +1054,6 @@ func (r *EpreuveRepository) ListQuestionsForGrading(ctx context.Context, epreuve
         })
         return result, err
 }
-
 
 // nullableStr convertit une string en *string (NULL si vide).
 // strToNullPtr convertit un string en *string (pour nullableStr).

@@ -290,10 +290,6 @@ func (r *UERepository) Create(ctx context.Context, input domain.CreateUEInput) (
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         id := uuid.NewString()
         cm, td, tp := 0, 0, 0
         if input.VolumeHeuresCM != nil {
@@ -362,10 +358,6 @@ func (r *UERepository) Update(ctx context.Context, id string, input domain.Updat
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         var setClauses []string
         var args []any
@@ -483,7 +475,7 @@ func (r *UERepository) SoftDelete(ctx context.Context, id string) (*domain.Unite
 //     (ces entités liées seront supprimées automatiquement)
 //   - SET NULL : Document.uniteEnseignementId, Epreuve.uniteEnseignementId
 //     (l'entité conserve une référence NULL)
-// Bypass RLS (SET LOCAL row_security = off) comme les autres write methods.
+// RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
 // Retourne NotFoundError si l'UE n'existe pas.
 func (r *UERepository) HardDelete(ctx context.Context, id string) error {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -491,10 +483,6 @@ func (r *UERepository) HardDelete(ctx context.Context, id string) error {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         tag, err := tx.Exec(ctx, `DELETE FROM "UniteEnseignement" WHERE "id" = $1`, id)
         if err != nil {
@@ -694,10 +682,6 @@ func (r *EnseignantFiliereRepository) Create(ctx context.Context, input domain.C
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         id := uuid.NewString()
         row := tx.QueryRow(ctx, `
                 INSERT INTO "EnseignantFiliere" ("id", "enseignantId", "filiereId", "niveau", "createdAt", "updatedAt")
@@ -727,10 +711,6 @@ func (r *EnseignantFiliereRepository) DeleteByID(ctx context.Context, id string)
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         tag, err := tx.Exec(ctx, `DELETE FROM "EnseignantFiliere" WHERE "id" = $1`, id)
         if err != nil {
                 return fmt.Errorf("delete ef: %w", err)
@@ -749,10 +729,6 @@ func (r *EnseignantFiliereRepository) DeleteByComposite(ctx context.Context, ens
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         tag, err := tx.Exec(ctx, `DELETE FROM "EnseignantFiliere" WHERE "enseignantId" = $1 AND "filiereId" = $2 AND "niveau" = $3`,
                 enseignantID, filiereID, niveau)
@@ -847,10 +823,6 @@ func (r *AnneeAcademiqueRepository) Create(ctx context.Context, input domain.Cre
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         // Parser les dates ISO
         dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
@@ -968,7 +940,7 @@ func (r *AnneeAcademiqueRepository) SoftDelete(ctx context.Context, id string) (
 // HardDelete supprime définitivement une année académique de la DB (DELETE réel).
 // Les FKs SET NULL sur Epreuve/ValidationUE/Etablissement.anneeAcademiqueCouranteId
 // perdront leur référence — pas de cascade bloquante.
-// Bypass RLS (SET LOCAL row_security = off).
+// RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
 // Retourne NotFoundError si l'année n'existe pas.
 func (r *AnneeAcademiqueRepository) HardDelete(ctx context.Context, id string) error {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -976,10 +948,6 @@ func (r *AnneeAcademiqueRepository) HardDelete(ctx context.Context, id string) e
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         tag, err := tx.Exec(ctx, `DELETE FROM "AnneeAcademique" WHERE "id" = $1`, id)
         if err != nil {
