@@ -57,7 +57,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
-import { NAV_CATEGORIES, PAGE_ROUTES, getPageContext, type PageId } from '@/lib/routes'
+import { NAV_CATEGORIES, PAGE_ROUTES, getPageContext, getEffectiveRole, type PageId } from '@/lib/routes'
 import { useSidebar } from '@/components/ui/sidebar'
 import { SidebarUserCard } from '@/components/layout/sidebar-user-card'
 
@@ -108,8 +108,12 @@ export function AppSidebar() {
   // Utilise getPageContext (part de NAV_CATEGORIES[user.role]) plutôt que
   // ROUTE_TO_PAGE, qui souffre de collisions (ex. /programme-academique est
   // mappé à 3 PageId différents, seul le dernier gagne de manière fragile).
-  const { pageId: currentPageId } = getPageContext(pathname, user.role)
-  const categories = NAV_CATEGORIES[user.role] ?? []
+  // ASSISTANCE-MODE-FRONTEND : en mode assistance (ADMIN + etablissementId),
+  // on utilise le rôle effectif (RESPONSABLE) pour la sidebar → l'ADMIN voit
+  // les pages de l'établissement au lieu des pages ADMIN globales.
+  const effectiveRole = getEffectiveRole(user.role, user.etablissementId)
+  const { pageId: currentPageId } = getPageContext(pathname, user.role, user.etablissementId)
+  const categories = NAV_CATEGORIES[effectiveRole] ?? []
 
   // Handlers de survol — actifs uniquement en mode 'hover' sur desktop.
   // Au survol du rail d'icônes, la sidebar s'étend (setOpen(true)) ; à la

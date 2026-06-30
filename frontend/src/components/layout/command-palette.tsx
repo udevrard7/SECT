@@ -19,7 +19,7 @@ import {
   CommandSeparator,
 } from '@/components/ui/command'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
-import { NAV_CATEGORIES, PAGE_ROUTES, PROFILE_PAGE, type PageId } from '@/lib/routes'
+import { NAV_CATEGORIES, PAGE_ROUTES, PROFILE_PAGE, getEffectiveRole, type PageId } from '@/lib/routes'
 
 // ─── Map nom d'icône (string dans routes.ts) -> composant Lucide ───
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -58,7 +58,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   if (!user) return null
 
-  const categories = NAV_CATEGORIES[user.role] ?? []
+  // ASSISTANCE-MODE-FRONTEND : en mode assistance, l'ADMIN voit les pages
+  // RESPONSABLE dans la command palette (cohérent avec la sidebar).
+  const effectiveRole = getEffectiveRole(user.role, user.etablissementId)
+  const categories = NAV_CATEGORIES[effectiveRole] ?? []
 
   const goTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
@@ -88,7 +91,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           return (
             <CommandGroup
               key={category.id}
-              heading={`${category.label} — ${ROLE_LABELS[user.role]}`}
+              heading={`${category.label} — ${ROLE_LABELS[effectiveRole]}`}
             >
               {category.items.map((item) => {
                 const Icon = ICON_MAP[item.icon] ?? LayoutDashboard

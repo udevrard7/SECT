@@ -3,10 +3,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  ChevronRight, Search, LogOut,
+  ChevronRight, Search, LogOut, LifeBuoy, Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { SidebarControl } from '@/components/layout/sidebar-control'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { CommandPalette } from '@/components/layout/command-palette'
@@ -48,6 +50,12 @@ export function AppHeader() {
   const pathname = usePathname()
   const now = useClock()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // ASSISTANCE-MODE-FRONTEND : l'ADMIN en mode assistance a un etablissementId
+  // non vide (le backend /api/auth/assistance-mode a régénéré les tokens JWT
+  // avec etablissementId positionné). On expose un badge "Mode assistance" +
+  // un bouton "Quitter" pour revenir à la session ADMIN normale.
+  const [exitLoading, setExitLoading] = useState(false)
+  const inAssistanceMode = user?.role === 'ADMIN' && !!user?.etablissementId
 
   // Formatage heure/date (memoized — doit être avant early return)
   const { timeStr, dateStr } = useMemo(() => ({
@@ -74,12 +82,66 @@ export function AppHeader() {
   // Centralise la résolution du PageId canonique, du titre et de la catégorie
   // parente. Évite les collisions de ROUTE_TO_PAGE (plusieurs PageId mappés
   // vers la même route) en partant de NAV_CATEGORIES[user.role].
-  const { pageTitle, parentCategory } = getPageContext(pathname, user.role)
+  // ASSISTANCE-MODE-FRONTEND : en mode assistance, on résout le contexte avec
+  // le rôle EFFECTIF (RESPONSABLE) pour que le fil d'Ariane et le titre
+  // correspondent aux pages réellement accessibles dans la sidebar.
+  const { pageTitle, parentCategory } = getPageContext(
+    pathname,
+    user.role,
+    user.etablissementId,
+  )
 
   // Déconnexion : logout du compte courant puis redirect vers /login.
   const handleLogout = async () => {
     await logout()
     router.push('/login')
+  }
+
+  // ASSISTANCE-MODE-FRONTEND : quitte le mode assistance. Le backend
+  // /api/auth/exit-assistance-mode régénère des tokens JWT avec
+  // etablissementId="" → l'ADMIN retrouve sa session d'origine. On met à jour
+  // l'auth store avec le nouveau user (etablissementId vide) puis on redirige
+  // vers /dashboard (vue ADMIN restaurée).
+  const handleExitAssistanceMode = async () => {
+    setExitLoading(true)
+    try {
+      const res = await fetch('/api/go-auth/exit-assistance-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.user) {
+        throw new Error(data?.error || 'Impossible de quitter le mode assistance')
+      }
+      useAuthStore.setState({
+        user: {
+          id: data.user.id,
+          email: data.user.email ?? '',
+          name: data.user.name ?? '',
+          role: data.user.role,
+          etablissementId: data.user.etablissementId ?? null,
+          filiereId: data.user.filiereId ?? null,
+          etablissement: data.user.etablissement ?? null,
+          filiere: data.user.filiere ?? null,
+          image: data.user.image ?? null,
+          actif: data.user.actif,
+          matricule: data.user.matricule ?? null,
+          mustChangePwd: data.user.mustChangePwd,
+          derniereConnexion: data.user.derniereConnexion ?? null,
+        },
+      })
+      toast.success('Mode assistance désactivé', {
+        description: 'Vous êtes de retour sur votre session ADMIN.',
+      })
+      router.push('/dashboard')
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+      })
+    } finally {
+      setExitLoading(false)
+    }
   }
 
   return (
@@ -144,6 +206,44 @@ export function AppHeader() {
 
         {/* ─── Actions droite ─── */}
         <div className="flex items-center gap-1.5">
+          {/* ASSISTANCE-MODE-FRONTEND : badge + bouton "Quitter" quand l'ADMIN */}
+          {/* est en mode assistance (etablissementId non vide). Le badge amber */}
+          {/* rappelle visuellement que la session est contextuelle à un étab. */}
+          {inAssistanceMode && (
+            <div className="flex items-center gap-1.5 mr-1 pr-1.5 border-r border-sidebar-border/60">
+              <Badge
+                className="hidden sm:flex items-center gap-1 bg-warning/15 text-warning border-warning/40"
+                title="Vous naviguez en tant qu'ADMIN sur les données d'un établissement"
+              >
+                <LifeBuoy className="h-3 w-3" />
+                Mode assistance
+              </Badge>
+              {/* Version compacte (mobile) : icône seule */}
+              <Badge
+                className="sm:hidden bg-warning/15 text-warning border-warning/40 px-1.5"
+                title="Mode assistance"
+              >
+                <LifeBuoy className="h-3 w-3" />
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExitAssistanceMode}
+                disabled={exitLoading}
+                className="h-9 gap-1.5 px-2.5 text-warning hover:text-warning hover:bg-warning/10 rounded-lg"
+                aria-label="Quitter le mode assistance"
+                title="Quitter le mode assistance"
+              >
+                {exitLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+                <span className="hidden md:inline text-xs font-medium">Quitter</span>
+              </Button>
+            </div>
+          )}
+
           {/* Theme toggle */}
           <ThemeToggle />
 
