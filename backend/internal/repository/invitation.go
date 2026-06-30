@@ -196,8 +196,12 @@ func (r *InvitationRepository) List(ctx context.Context, params domain.Invitatio
                         whereClause = "WHERE " + strings.Join(where, " AND ")
                 }
 
+                // SECURITY-FIX (audit 2025) : le champ "token" est retiré du SELECT de List.
+                // Le token est un secret d'authentification (endpoint public /accept) — il ne
+                // doit JAMAIS être exposé dans une liste. FindByID (admin) et FindByToken
+                // (endpoint public) le retournent toujours, mais List ne le fait plus.
                 query := fmt.Sprintf(`
-                        SELECT i."id", i."token", i."email", i."role", i."name", i."etablissementId",
+                        SELECT i."id", i."email", i."role", i."name", i."etablissementId",
                                i."filiereId", i."expiresAt", i."used", i."usedAt", i."createdById", i."createdAt",
                                e."id" AS etab_id, e."nom" AS etab_nom,
                                f."id" AS fil_id, f."nom" AS fil_nom
@@ -222,7 +226,7 @@ func (r *InvitationRepository) List(ctx context.Context, params domain.Invitatio
                                 filID, filNom   *string
                         )
                         if err := rows.Scan(
-                                &i.ID, &i.Token, &i.Email, &i.Role, &i.Name,
+                                &i.ID, &i.Email, &i.Role, &i.Name,
                                 &i.EtablissementID, &i.FiliereID, &i.ExpiresAt, &i.Used,
                                 &i.UsedAt, &i.CreatedByID, &i.CreatedAt,
                                 &etabID, &etabNom,

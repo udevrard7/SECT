@@ -30,8 +30,11 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         statuts := usecase.ParseMultiStatut(r.URL.Query().Get("statut"))
 
         params := domain.EpreuveListParams{
-                EnseignantID:        r.URL.Query().Get("enseignantId"),
-                EtudiantID:          r.URL.Query().Get("etudiantId"),
+                // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ETUDIANT/ENSEIGNANT
+                // ne peut cibler que son propre ID. Les query params ?enseignantId= et
+                // ?etudiantId= sont ignorés pour ces rôles (forcés à claims.UserID).
+                EnseignantID:        resolveScopedUserID(r, r.URL.Query().Get("enseignantId")),
+                EtudiantID:          resolveScopedUserID(r, r.URL.Query().Get("etudiantId")),
                 FiliereID:           r.URL.Query().Get("filiereId"),
                 ResponsableID:       r.URL.Query().Get("responsableId"),
                 Statuts:             statuts,
