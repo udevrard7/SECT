@@ -93,37 +93,21 @@ func (r *InvitationRepository) FindByID(ctx context.Context, id string) (*domain
         return inv, nil
 }
 
-// FindByToken récupère une invitation par token (bypass RLS — endpoint public).
+// FindByToken récupère une invitation par token (endpoint public).
 // Peuple les relations verify (etablissement/filiere/createdBy, clés lowercase)
 // attendues par le frontend accept-invitation-page.tsx (interface InvitationData).
+//
+// SECURITY-FIX (audit 2025, migration 000021) : utilise la fonction SECURITY DEFINER
+// find_invitation_by_token() au lieu de `SET LOCAL row_security = off`. Compatible
+// avec le rôle sect_app (NOBYPASSRLS). La fonction s'exécute en tant que neondb_owner
+// (bypass RLS interne) — le token EST l'authentification (pas de claims JWT).
 func (r *InvitationRepository) FindByToken(ctx context.Context, token string) (*domain.Invitation, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
-        query := `
-                SELECT i."id", i."token", i."email", i."role", i."name", i."etablissementId",
-                       i."filiereId", i."expiresAt", i."used", i."usedAt", i."createdById", i."createdAt",
-                       e."nom" AS etab_nom, e."ville" AS etab_ville,
-                       f."nom" AS fil_nom, f."code" AS fil_code,
-                       u."name" AS creator_name
-                FROM "Invitation" i
-                LEFT JOIN "Etablissement" e ON e."id" = i."etablissementId"
-                LEFT JOIN "Filiere" f ON f."id" = i."filiereId"
-                LEFT JOIN "User" u ON u."id" = i."createdById"
-                WHERE i."token" = $1`
-        row := tx.QueryRow(ctx, query, token)
+        row := r.pool.QueryRow(ctx, `SELECT * FROM find_invitation_by_token($1)`, token)
         i := &domain.Invitation{}
         var (
-                etabNom, etabVille   *string
-                filNom, filCode      *string
-                creatorName          *string
+                etabNom, etabVille *string
+                filNom, filCode   *string
+                creatorName       *string
         )
         if err := row.Scan(
                 &i.ID, &i.Token, &i.Email, &i.Role, &i.Name,
@@ -146,10 +130,6 @@ func (r *InvitationRepository) FindByToken(ctx context.Context, token string) (*
         }
         if creatorName != nil {
                 i.VerifyCreatedBy = &domain.InvitationVerifyCreatedBy{Name: *creatorName}
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
         }
         return i, nil
 }
@@ -380,144 +360,69 @@ func (r *InvitationRepository) Delete(ctx context.Context, id string) error {
 }
 
 // MarkUsed marque une invitation comme utilisée (used=true, usedAt=now).
-// Bypass RLS — appelé par /accept dans la même transaction que la création du User.
+// Utilisée par le endpoint public /accept.
+//
+// SECURITY-FIX (audit 2025, migration 000021) : utilise la fonction SECURITY DEFINER
+// mark_invitation_used() au lieu de `SET LOCAL row_security = off`.
 func (r *InvitationRepository) MarkUsed(ctx context.Context, id string, usedAt time.Time) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        tag, err := tx.Exec(ctx, `UPDATE "Invitation" SET "used" = true, "usedAt" = $1 WHERE "id" = $2`, usedAt, id)
+        var success bool
+        err := r.pool.QueryRow(ctx, `SELECT mark_invitation_used($1, $2)`, id, usedAt).Scan(&success)
         if err != nil {
                 return fmt.Errorf("mark invitation used: %w", err)
         }
-        if tag.RowsAffected() == 0 {
+        if !success {
                 return &domain.NotFoundError{Entity: "Invitation", ID: id}
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return fmt.Errorf("commit: %w", err)
         }
         return nil
 }
 
 // UserExistsByEmail vérifie si un User avec cet email existe déjà.
-// Bypass RLS — appelé par le endpoint public /verify.
+// Utilisée par le endpoint public /verify.
+//
+// SECURITY-FIX (audit 2025, migration 000021) : utilise la fonction SECURITY DEFINER
+// user_exists_by_email() au lieu de `SET LOCAL row_security = off`.
 func (r *InvitationRepository) UserExistsByEmail(ctx context.Context, email string) (bool, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return false, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return false, fmt.Errorf("disable rls: %w", err)
-        }
-
         var exists bool
-        if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "User" WHERE "email" = $1)`, email).Scan(&exists); err != nil {
+        err := r.pool.QueryRow(ctx, `SELECT user_exists_by_email($1)`, email).Scan(&exists)
+        if err != nil {
                 return false, fmt.Errorf("query user exists by email: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return false, fmt.Errorf("commit: %w", err)
         }
         return exists, nil
 }
 
 // AcceptInvitation crée le User + marque l'invitation comme utilisée en une
-// seule transaction atomique (bypass RLS — endpoint public /accept).
+// seule opération atomique (endpoint public /accept).
+//
+// SECURITY-FIX (audit 2025, migration 000021) : utilise la fonction SECURITY DEFINER
+// accept_invitation() au lieu de `SET LOCAL row_security = off`. La fonction gère
+// la génération du matricule (si ETUDIANT + filière), l'INSERT User, et le marquage
+// de l'invitation — le tout atomiquement.
 //
 // Si invitation.Role == ETUDIANT, génère un matricule séquentiel au format
-// FIL/LJ/YY/NNN (ex: "INF/LJ/24/001") en comptant les ETUDIANT déjà inscrits
-// dans la même filière +1. La query de count et l'INSERT User sont dans la
-// même transaction pour éviter la race condition (deux accept simultanés
-// pourraient générer le même matricule — risque acceptable vu la fenêtre
-// étroite ; en pratique les invitations sont à usage unique donc deux
-// accept simultanés avec le même token sont déjà rejetés par MarkUsed).
-//
-// Si role != ETUDIANT, matricule est NULL.
+// FIL/LJ/YY/NNN (ex: "INF/LJ/24/001"). La logique est dans la fonction SQL.
 func (r *InvitationRepository) AcceptInvitation(ctx context.Context, invitation *domain.Invitation, input domain.AcceptInvitationInput) (*domain.User, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        // Normaliser les champs nullable pour la fonction SQL (NULLIF gère le cas "").
+        etabID := ""
+        if invitation.EtablissementID != nil {
+                etabID = *invitation.EtablissementID
+        }
+        filID := ""
+        if invitation.FiliereID != nil {
+                filID = *invitation.FiliereID
+        }
+
+        row := r.pool.QueryRow(ctx, `SELECT * FROM accept_invitation($1, $2, $3, $4, $5, $6, $7)`,
+                invitation.ID, invitation.Email, string(invitation.Role),
+                etabID, filID,
+                input.Password, input.Name)
+
+        user, err := scanUser(row)
         if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
-        userID := uuid.NewString()
-
-        // Générer le matricule si ETUDIANT.
-        var matricule any // nil si non ETUDIANT
-        if invitation.Role == domain.RoleEtudiant && invitation.FiliereID != nil {
-                filID := *invitation.FiliereID
-
-                // 1. Récupérer le code de la filière (fallback "ETU" si vide).
-                var filCode *string
-                if err := tx.QueryRow(ctx, `SELECT "code" FROM "Filiere" WHERE "id" = $1`, filID).Scan(&filCode); err != nil {
-                        if err != pgx.ErrNoRows {
-                                return nil, fmt.Errorf("query filiere code: %w", err)
-                        }
-                }
-                code := "ETU"
-                if filCode != nil && *filCode != "" {
-                        code = *filCode
-                }
-
-                // 2. Compter les ETUDIANT déjà inscrits dans la filière.
-                var count int
-                if err := tx.QueryRow(ctx, `SELECT count(*) FROM "User" WHERE "role" = 'ETUDIANT' AND "filiereId" = $1`, filID).Scan(&count); err != nil {
-                        return nil, fmt.Errorf("count etudiants: %w", err)
-                }
-
-                // 3. Construire le matricule au format FIL/LJ/YY/NNN.
-                year2 := time.Now().Format("06")
-                matricule = fmt.Sprintf("%s/LJ/%s/%03d", code, year2, count+1)
-        }
-
-        // Normaliser email (minuscules).
-        email := strings.ToLower(invitation.Email)
-
-        // Créer le User.
-        userRow := tx.QueryRow(ctx, `
-                INSERT INTO "User" ("id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                                    "image", "actif", "mustChangePwd", "matricule", "niveau",
-                                    "loginAttempts", "lockedUntil", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, true, false, $8, NULL, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "email", "name", "role", "etablissementId", "filiereId",
-                          "image", "actif", "mustChangePwd", "matricule", "niveau",
-                          "derniereConnexion", "createdAt", "updatedAt`,
-                userID, email, input.Name, input.Password, invitation.Role,
-                nullableStrPtr(invitation.EtablissementID), nullableStrPtr(invitation.FiliereID),
-                matricule)
-
-        user, err := scanUser(userRow)
-        if err != nil {
+                // Détecter le unique_violation (email ou matricule déjà utilisé).
                 if isUniqueViolation(err) {
                         return nil, &domain.ConflictError{Message: "email ou matricule déjà utilisé"}
                 }
                 return nil, fmt.Errorf("create user from invitation: %w", err)
-        }
-
-        // Marquer l'invitation comme utilisée.
-        tag, err := tx.Exec(ctx, `UPDATE "Invitation" SET "used" = true, "usedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, invitation.ID)
-        if err != nil {
-                return nil, fmt.Errorf("mark invitation used: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return nil, &domain.NotFoundError{Entity: "Invitation", ID: invitation.ID}
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
         }
         return user, nil
 }

@@ -167,7 +167,7 @@ func (w *PracticeWorker) processJob(ctx context.Context, job PracticeJob) {
 }
 
 // getDocumentContent lit le contenu textuel d'un document depuis la DB.
-// RLS désactivé car le worker n'a pas de claims HTTP.
+// Pose les claims system-worker pour RLS (le worker n'a pas de claims HTTP).
 func (w *PracticeWorker) getDocumentContent(ctx context.Context, documentID string) (string, error) {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -175,7 +175,7 @@ func (w *PracticeWorker) getDocumentContent(ctx context.Context, documentID stri
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var contenu *string
 	err = tx.QueryRow(ctx, `
@@ -335,7 +335,7 @@ func extractPracticeJSON(text string) string {
 }
 
 // insertQuestions insère les questions générées dans la table "Question".
-// RLS désactivé (le worker n'a pas de claims HTTP).
+// Claims system-worker posés pour RLS (le worker n'a pas de claims HTTP).
 // Renvoie le nombre de questions effectivement insérées.
 func (w *PracticeWorker) insertQuestions(ctx context.Context, job PracticeJob, questions []practiceQuestionAI) (int, error) {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
@@ -344,8 +344,8 @@ func (w *PracticeWorker) insertQuestions(ctx context.Context, job PracticeJob, q
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return 0, fmt.Errorf("disable rls: %w", err)
+	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+		return 0, fmt.Errorf("set system claims: %w", err)
 	}
 
 	// documentId nullable si vide ; auteurId = userId de l'étudiant qui a

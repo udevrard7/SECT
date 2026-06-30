@@ -173,10 +173,6 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         id := uuid.NewString()
         row := tx.QueryRow(ctx, `
                 INSERT INTO "EtablissementAccess" ("id", "adminId", "etablissementId", "motif", "statut",
@@ -208,10 +204,6 @@ func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, i
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         var setClauses []string
         var args []any
@@ -266,10 +258,6 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, `
                 SELECT `+columnsAccess+` FROM "EtablissementAccess"
                 WHERE "adminId" = $1 AND "etablissementId" = $2 AND "statut" = 'APPROUVE'
@@ -303,10 +291,6 @@ func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string) e
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         tag, err := tx.Exec(ctx, `DELETE FROM "EtablissementAccess" WHERE "id" = $1`, id)
         if err != nil {
                 return fmt.Errorf("delete access: %w", err)
@@ -334,10 +318,6 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         // Join EtablissementAccess (APPROUVE, dates valides) + Etablissement
         // Colonnes préfixées avec e. pour éviter l'ambiguïté

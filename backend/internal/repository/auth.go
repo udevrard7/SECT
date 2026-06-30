@@ -13,6 +13,17 @@ import (
 )
 
 // AuthRepository implémente domain.AuthRepository avec pgx.
+//
+// Toutes les méthodes d'auth (login/refresh/logout/password) appellent des
+// fonctions PostgreSQL SECURITY DEFINER (migration 000022). Ces fonctions
+// s'exécutent en tant que neondb_owner (bypass RLS interne), ce qui est légitime
+// car :
+//   - login/refresh : l'utilisateur n'est pas encore authentifié (pas de claims
+//     JWT à poser), ou le refresh token EST l'auth ;
+//   - password/unlock : opérations admin post-authentification.
+//
+// Le rôle DB sect_app (NOBYPASSRLS) n'a plus besoin de désactiver RLS en
+// cours de transaction — il appelle juste les fonctions SECURITY DEFINER.
 type AuthRepository struct {
         pool *pgxpool.Pool
 }
@@ -23,36 +34,11 @@ func NewAuthRepository(pool *pgxpool.Pool) *AuthRepository {
 }
 
 // FindUserForAuth récupère un utilisateur par email OU matricule.
-// Détection automatique : si l'identifier contient '@', on cherche par email ;
-// sinon par matricule. Contourne RLS (SET LOCAL row_security = off).
+// La détection email/matricule est gérée côté SQL par find_user_for_auth
+// (fonction SECURITY DEFINER — bypass RLS car l'utilisateur n'est pas encore
+// authentifié).
 func (r *AuthRepository) FindUserForAuth(ctx context.Context, identifier string) (*domain.AuthUser, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
-        // Détection email vs matricule
-        var whereClause string
-        if isEmail(identifier) {
-                whereClause = `"email" = $1`
-        } else {
-                whereClause = `"matricule" = $1`
-        }
-
-        query := fmt.Sprintf(`
-                SELECT "id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                       "image", "actif", "mustChangePwd", "niveau", "loginAttempts", "lockedUntil",
-                       "derniereConnexion"
-                FROM "User"
-                WHERE %s
-        `, whereClause)
-
-        row := tx.QueryRow(ctx, query, identifier)
+        row := r.pool.QueryRow(ctx, `SELECT * FROM find_user_for_auth($1)`, identifier)
         u, err := scanAuthUser(row)
         if err != nil {
                 if err == pgx.ErrNoRows {
@@ -60,33 +46,13 @@ func (r *AuthRepository) FindUserForAuth(ctx context.Context, identifier string)
                 }
                 return nil, fmt.Errorf("query user for auth: %w", err)
         }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
-        }
         return u, nil
 }
 
-// GetUserByID récupère un utilisateur par ID (avec champs auth). Bypass RLS.
+// GetUserByID récupère un utilisateur par ID (avec champs auth).
+// Fonction SECURITY DEFINER get_user_by_id_auth — bypass RLS (lookup post-login).
 func (r *AuthRepository) GetUserByID(ctx context.Context, userID string) (*domain.AuthUser, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
-        row := tx.QueryRow(ctx, `
-                SELECT "id", "email", "name", "password", "role", "etablissementId", "filiereId",
-                       "image", "actif", "mustChangePwd", "niveau", "loginAttempts", "lockedUntil",
-                       "derniereConnexion"
-                FROM "User"
-                WHERE "id" = $1
-        `, userID)
-
+        row := r.pool.QueryRow(ctx, `SELECT * FROM get_user_by_id_auth($1)`, userID)
         u, err := scanAuthUser(row)
         if err != nil {
                 if err == pgx.ErrNoRows {
@@ -94,156 +60,66 @@ func (r *AuthRepository) GetUserByID(ctx context.Context, userID string) (*domai
                 }
                 return nil, fmt.Errorf("query user by id: %w", err)
         }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
-        }
         return u, nil
 }
 
 // UpdateLoginSuccess reset loginAttempts, lockedUntil et pose derniereConnexion = now.
+// Fonction SECURITY DEFINER update_login_success.
 func (r *AuthRepository) UpdateLoginSuccess(ctx context.Context, userID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "User"
-                SET "loginAttempts" = 0, "lockedUntil" = NULL, "derniereConnexion" = CURRENT_TIMESTAMP
-                WHERE "id" = $1
-        `, userID)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx, `SELECT update_login_success($1)`, userID); err != nil {
                 return fmt.Errorf("update login success: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
 // IncrementLoginAttempts incrémente loginAttempts. Si >= maxAttempts, pose lockedUntil.
-// Retourne le nouveau count.
+// Retourne le nouveau count. Fonction SECURITY DEFINER increment_login_attempts.
 func (r *AuthRepository) IncrementLoginAttempts(ctx context.Context, userID string, maxAttempts int, lockDuration time.Duration) (int, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return 0, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return 0, fmt.Errorf("disable rls: %w", err)
-        }
-
-        // Incrémenter + récupérer le nouveau count
         var attempts int
-        err = tx.QueryRow(ctx, `
-                UPDATE "User"
-                SET "loginAttempts" = "loginAttempts" + 1
-                WHERE "id" = $1
-                RETURNING "loginAttempts"
-        `, userID).Scan(&attempts)
+        err := r.pool.QueryRow(ctx,
+                `SELECT increment_login_attempts($1, $2, $3)`,
+                userID, maxAttempts, int(lockDuration.Seconds()),
+        ).Scan(&attempts)
         if err != nil {
                 return 0, fmt.Errorf("increment login attempts: %w", err)
-        }
-
-        // Si seuil atteint, poser lockedUntil
-        if attempts >= maxAttempts {
-                _, err = tx.Exec(ctx, `
-                        UPDATE "User"
-                        SET "lockedUntil" = CURRENT_TIMESTAMP + $1::interval
-                        WHERE "id" = $2
-                `, fmt.Sprintf("%d seconds", int(lockDuration.Seconds())), userID)
-                if err != nil {
-                        return 0, fmt.Errorf("set locked until: %w", err)
-                }
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return 0, fmt.Errorf("commit: %w", err)
         }
         return attempts, nil
 }
 
 // CreateRefreshToken insère un nouveau refresh token en base.
+// Fonction SECURITY DEFINER create_refresh_token.
 func (r *AuthRepository) CreateRefreshToken(ctx context.Context, rt *domain.RefreshToken) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                INSERT INTO "RefreshToken" ("id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip")
-                VALUES ($1, $2, $3, $4, NULL, CURRENT_TIMESTAMP, $5, $6)
-        `, rt.ID, rt.UserID, rt.TokenHash, rt.ExpiresAt, rt.UserAgent, rt.IP)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx,
+                `SELECT create_refresh_token($1, $2, $3, $4, $5, $6)`,
+                rt.ID, rt.UserID, rt.TokenHash, rt.ExpiresAt, rt.UserAgent, rt.IP,
+        ); err != nil {
                 return fmt.Errorf("insert refresh token: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
-// FindRefreshTokenByHash récupère un refresh token par son hash. Bypass RLS.
+// FindRefreshTokenByHash récupère un refresh token par son hash.
+// Fonction SECURITY DEFINER find_refresh_token_by_hash.
 func (r *AuthRepository) FindRefreshTokenByHash(ctx context.Context, hash string) (*domain.RefreshToken, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
-        row := tx.QueryRow(ctx, `
-                SELECT "id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip"
-                FROM "RefreshToken"
-                WHERE "tokenHash" = $1
-        `, hash)
-
+        row := r.pool.QueryRow(ctx, `SELECT * FROM find_refresh_token_by_hash($1)`, hash)
         rt := &domain.RefreshToken{}
-        err = row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
+        err := row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
         if err != nil {
                 if err == pgx.ErrNoRows {
                         return nil, &domain.NotFoundError{Entity: "RefreshToken", ID: hash}
                 }
                 return nil, fmt.Errorf("query refresh token: %w", err)
         }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
-        }
         return rt, nil
 }
 
 // RevokeRefreshToken marque un refresh token comme révoqué.
+// Fonction SECURITY DEFINER revoke_refresh_token.
 func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "RefreshToken" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "id" = $1
-        `, tokenID)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx, `SELECT revoke_refresh_token($1)`, tokenID); err != nil {
                 return fmt.Errorf("revoke refresh token: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
 // RevokeRefreshTokenByHashIfActive (U10) : UPDATE atomique qui révoque le token
@@ -251,66 +127,33 @@ func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenID string)
 // Permet d'éviter la race condition : deux requêtes concurrentes avec le même
 // refresh token → seule la première obtient le token (et le révoque), la deuxième
 // obtient nil (le token est déjà révoqué entre-temps).
+// Fonction SECURITY DEFINER revoke_refresh_token_by_hash_if_active.
 func (r *AuthRepository) RevokeRefreshTokenByHashIfActive(ctx context.Context, hash string) (*domain.RefreshToken, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
-        // UPDATE ... RETURNING atomique : ne retourne une ligne que si revokedAt était NULL.
-        // Si le token n'existe pas ou est déjà révoqué, pgx.ErrNoRows → nil.
-        row := tx.QueryRow(ctx, `
-                UPDATE "RefreshToken"
-                SET "revokedAt" = CURRENT_TIMESTAMP
-                WHERE "tokenHash" = $1 AND "revokedAt" IS NULL
-                RETURNING "id", "userId", "tokenHash", "expiresAt", "revokedAt", "createdAt", "userAgent", "ip"
-        `, hash)
-
+        row := r.pool.QueryRow(ctx, `SELECT * FROM revoke_refresh_token_by_hash_if_active($1)`, hash)
         rt := &domain.RefreshToken{}
-        err = row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
+        err := row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.RevokedAt, &rt.CreatedAt, &rt.UserAgent, &rt.IP)
         if err != nil {
                 if err == pgx.ErrNoRows {
                         return nil, nil // token introuvable ou déjà révoqué
                 }
                 return nil, fmt.Errorf("query refresh token: %w", err)
         }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
-        }
         return rt, nil
 }
 
 // RevokeAllUserRefreshTokens révoque tous les refresh tokens actifs d'un user.
+// Fonction SECURITY DEFINER revoke_all_user_refresh_tokens.
 func (r *AuthRepository) RevokeAllUserRefreshTokens(ctx context.Context, userID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "RefreshToken"
-                SET "revokedAt" = CURRENT_TIMESTAMP
-                WHERE "userId" = $1 AND "revokedAt" IS NULL
-        `, userID)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx, `SELECT revoke_all_user_refresh_tokens($1)`, userID); err != nil {
                 return fmt.Errorf("revoke all user refresh tokens: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
 // CreateAuditLog insère une entrée d'audit. Le champ userId peut être NULL.
+//
+// NB : AuditLog a une policy INSERT WITH CHECK(true) → RLS autorise l'insertion
+// sans bypass. Aucune fonction SECURITY DEFINER nécessaire ici.
 func (r *AuthRepository) CreateAuditLog(ctx context.Context, entry *domain.AuditLogEntry) error {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
@@ -318,7 +161,6 @@ func (r *AuthRepository) CreateAuditLog(ctx context.Context, entry *domain.Audit
         }
         defer tx.Rollback(ctx)
 
-        // AuditLog a une policy INSERT WITH CHECK(true) → pas besoin de bypass RLS
         _, err = tx.Exec(ctx, `
                 INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "createdAt")
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
@@ -335,90 +177,36 @@ func (r *AuthRepository) CreateAuditLog(ctx context.Context, entry *domain.Audit
 }
 
 // UpdatePassword met à jour le hash + reset mustChangePwd + reset attempts.
+// Fonction SECURITY DEFINER update_password.
 func (r *AuthRepository) UpdatePassword(ctx context.Context, userID string, passwordHash string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "User"
-                SET "password" = $2, "mustChangePwd" = false, "loginAttempts" = 0, "lockedUntil" = NULL
-                WHERE "id" = $1
-        `, userID, passwordHash)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx, `SELECT update_password($1, $2)`, userID, passwordHash); err != nil {
                 return fmt.Errorf("update password: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
 // ResetPassword (U5) : reset admin — hash + loginAttempts=0 + lockedUntil=NULL +
 // mustChangePwd=true (force l'user à changer au prochain login). Pour le workflow
 // "admin reset password" : l'admin set un mot de passe temporaire, l'user doit le changer.
+// Fonction SECURITY DEFINER reset_password.
 func (r *AuthRepository) ResetPassword(ctx context.Context, userID string, passwordHash string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "User"
-                SET "password" = $2, "mustChangePwd" = true, "loginAttempts" = 0, "lockedUntil" = NULL
-                WHERE "id" = $1
-        `, userID, passwordHash)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx, `SELECT reset_password($1, $2)`, userID, passwordHash); err != nil {
                 return fmt.Errorf("reset password: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
 // UnlockAccount (U5) : déverrouille un compte sans changer le password.
 // Reset loginAttempts=0 + lockedUntil=NULL. L'user garde son password actuel.
+// Fonction SECURITY DEFINER unlock_account.
 func (r *AuthRepository) UnlockAccount(ctx context.Context, userID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "User"
-                SET "loginAttempts" = 0, "lockedUntil" = NULL
-                WHERE "id" = $1
-        `, userID)
-        if err != nil {
+        if _, err := r.pool.Exec(ctx, `SELECT unlock_account($1)`, userID); err != nil {
                 return fmt.Errorf("unlock account: %w", err)
         }
-
-        return tx.Commit(ctx)
+        return nil
 }
 
 // --- Helpers ---
-
-func isEmail(s string) bool {
-        for _, c := range s {
-                if c == '@' {
-                        return true
-                }
-        }
-        return false
-}
 
 func nullableString(s *string) any {
         if s == nil {
@@ -428,6 +216,8 @@ func nullableString(s *string) any {
 }
 
 // scanAuthUser scan une ligne User avec tous les champs auth.
+// L'ordre des 14 champs correspond aux colonnes retournées par les fonctions
+// SECURITY DEFINER find_user_for_auth et get_user_by_id_auth (migration 000022).
 func scanAuthUser(s scanner) (*domain.AuthUser, error) {
         u := &domain.AuthUser{}
         err := s.Scan(

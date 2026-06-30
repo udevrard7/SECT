@@ -138,10 +138,6 @@ func (r *SessionRepository) FindByEtudiantAndEpreuve(ctx context.Context, etudia
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "SessionPassation" WHERE "etudiantId" = $1 AND "epreuveId" = $2 ORDER BY "createdAt" DESC LIMIT 1`, columnsSession), etudiantID, epreuveID)
         sess, err := scanSession(row)
         if err != nil {
@@ -164,10 +160,6 @@ func (r *SessionRepository) Create(ctx context.Context, etudiantID, epreuveID st
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         id := uuid.NewString()
         now := time.Now()
@@ -205,10 +197,6 @@ func (r *SessionRepository) UpdateStatut(ctx context.Context, id string, statut 
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         _, err = tx.Exec(ctx, `
                 UPDATE "SessionPassation" SET "statut" = $2, "score" = $3, "dateFin" = $4,
                         "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1
@@ -227,10 +215,6 @@ func (r *SessionRepository) SaveReponse(ctx context.Context, sessionID, question
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         var contenuVal any
         if contenu != "" {
@@ -292,10 +276,6 @@ func (r *SessionRepository) UpdateReponseScore(ctx context.Context, reponseID st
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
-
         _, err = tx.Exec(ctx, `UPDATE "Reponse" SET "score" = $2 WHERE "id" = $1`, reponseID, score)
         if err != nil {
                 return fmt.Errorf("update reponse score: %w", err)
@@ -311,10 +291,6 @@ func (r *SessionRepository) AddAlerte(ctx context.Context, sessionID string, pen
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return fmt.Errorf("disable rls: %w", err)
-        }
 
         // Récupérer logEvents actuel + alertes + penalite
         var logEvents []byte
@@ -405,10 +381,6 @@ func (r *ResultatRepository) Upsert(ctx context.Context, res *domain.Resultat) (
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
-
         var detail any
         if len(res.DetailParQuestion) > 0 && string(res.DetailParQuestion) != "null" {
                 detail = []byte(res.DetailParQuestion)
@@ -463,10 +435,6 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID stri
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         // Query 1 : sessions de l'étudiant (SOUMISE/CORRIGEE/RETOURNEE).
         rows, err := tx.Query(ctx, `
@@ -686,10 +654,6 @@ func (r *ResultatRepository) ListByEpreuve(ctx context.Context, epreuveID string
         }
         defer tx.Rollback(ctx)
 
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, 0, fmt.Errorf("disable rls: %w", err)
-        }
-
         // Count total
         var total int
         err = tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "epreuveId" = $1`, epreuveID).Scan(&total)
@@ -817,10 +781,6 @@ func (r *ResultatRepository) GetEtudiantOverview(ctx context.Context, etudiantID
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
-
-        if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                return nil, fmt.Errorf("disable rls: %w", err)
-        }
 
         // Single JOIN query : sessions + resultat + epreuve + enseignant.
         // Un seul placeholder $1 → compatible pgx Simple Protocol.
@@ -1166,7 +1126,6 @@ func (r *ResultatRepository) GetEpreuveNoteTotal(ctx context.Context, epreuveID 
                 return 20.0, nil
         }
         defer tx.Rollback(ctx)
-        tx.Exec(ctx, "SET LOCAL row_security = off")
 
         var noteTotal float64
         err = tx.QueryRow(ctx, `SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, epreuveID).Scan(&noteTotal)

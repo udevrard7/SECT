@@ -139,7 +139,7 @@ func (w *HomeworkCorrectionWorker) getHomeworkData(ctx context.Context, soumissi
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var d homeworkData
 	var contenu, consignes, description, grilleCriteres *string
@@ -270,7 +270,7 @@ func (w *HomeworkCorrectionWorker) updateSoumissionStatusIA(ctx context.Context,
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	_, err = tx.Exec(ctx, `
 		UPDATE "Soumission"
@@ -306,7 +306,7 @@ func (w *HomeworkCorrectionWorker) RecoverInterruptedHomeworkCorrections(ctx con
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	rows, err := tx.Query(ctx, `
 		SELECT s."id", s."devoirId", dv."enseignantId"

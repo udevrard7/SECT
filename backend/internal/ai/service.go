@@ -11,7 +11,7 @@
 //
 // Le provider actif est lu via « SELECT * FROM "AIProviderConfig" WHERE
 // "isActive" = true LIMIT 1 ». La lecture se fait dans une transaction qui
-// désactive RLS (« SET LOCAL row_security = off ») car le worker de fond
+// pose les claims system-worker pour RLS car le worker de fond
 // (goroutine de flush, jobs hors-ligne, etc.) n'a pas de claims HTTP à poser.
 package ai
 
@@ -85,7 +85,7 @@ func NewAIService(dbPool *pgxpool.Pool) *AIService {
 //
 // Étapes :
 //  1. Lire le provider actif : SELECT * FROM "AIProviderConfig" WHERE "isActive" = true LIMIT 1
-//     (transaction avec RLS désactivé — appelable depuis le worker sans claims HTTP)
+//     (transaction avec claims system-worker posés — appelable depuis le worker sans claims HTTP)
 //  2. Construire la requête : POST {baseUrl}/chat/completions
 //     Body: { model, messages, temperature, max_tokens }
 //     Headers: Authorization: Bearer {apiKey}, Content-Type: application/json
@@ -99,7 +99,7 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
 		return nil, fmt.Errorf("messages vides")
 	}
 
-	// 1. Lire le provider actif (RLS off).
+	// 1. Lire le provider actif (claims system-worker).
 	provider, err := s.getActiveProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("lire provider actif: %w", err)
@@ -178,7 +178,7 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
 }
 
 // getActiveProvider lit la ligne AIProviderConfig active (isActive = true).
-// RLS désactivé via « SET LOCAL row_security = off » au début de la
+// Claims system-worker posés via set_config('app.claims.*') au début de la
 // transaction : le worker de fond (goroutine sans claims HTTP) peut ainsi
 // lire la config système.
 func (s *AIService) getActiveProvider(ctx context.Context) (*activeProvider, error) {
@@ -188,8 +188,8 @@ func (s *AIService) getActiveProvider(ctx context.Context) (*activeProvider, err
 	}
 	defer tx.Rollback(ctx) // safe après Commit (no-op)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return nil, fmt.Errorf("disable rls: %w", err)
+	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+		return nil, fmt.Errorf("set system claims: %w", err)
 	}
 
 	const query = `

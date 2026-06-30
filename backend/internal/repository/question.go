@@ -196,10 +196,6 @@ func (r *QuestionRepository) Create(ctx context.Context, input domain.CreateQues
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return nil, fmt.Errorf("disable rls: %w", err)
-	}
-
 	id := uuid.NewString()
 	difficulte := input.Difficulte
 	if difficulte == "" {
@@ -245,10 +241,6 @@ func (r *QuestionRepository) Update(ctx context.Context, id string, input domain
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return nil, fmt.Errorf("disable rls: %w", err)
-	}
 
 	var setClauses []string
 	var args []any
@@ -328,10 +320,6 @@ func (r *QuestionRepository) SoftDelete(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return fmt.Errorf("disable rls: %w", err)
-	}
-
 	tag, err := tx.Exec(ctx, `UPDATE "Question" SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1 AND "deletedAt" IS NULL`, id)
 	if err != nil {
 		return fmt.Errorf("soft delete question: %w", err)
@@ -350,10 +338,6 @@ func (r *QuestionRepository) BatchHardDelete(ctx context.Context, ids []string) 
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return 0, fmt.Errorf("disable rls: %w", err)
-	}
 
 	// Construire IN clause
 	placeholders := make([]string, len(ids))

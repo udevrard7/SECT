@@ -143,13 +143,9 @@ func (uc *EtablissementUseCase) Create(ctx context.Context, claims db.SessionCla
 
         result := &CreateResult{}
         errTx := db.WithTx(ctx, uc.pool, claims, func(tx pgx.Tx) error {
-                // 1. Créer l'établissement (bypass RLS via CreateInTx qui ne pose pas les claims).
-                // Le repo CreateInTx fait SET LOCAL row_security = off dans sa propre tx,
-                // mais ici on est déjà dans une tx du caller → on doit désactiver RLS manuellement
-                // pour l'INSERT Etablissement (ADMIN doit pouvoir créer sans EtablissementAccess préexistant).
-                if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-                        return fmt.Errorf("disable rls: %w", err)
-                }
+                // 1. Créer l'établissement. Les claims ADMIN sont posés via db.WithTx ;
+                // la policy RLS Etablissement_insert autorise l'ADMIN à créer sans
+                // EtablissementAccess préexistant.
                 etab, err := uc.etabRepo.CreateInTx(ctx, tx, input)
                 if err != nil {
                         return err

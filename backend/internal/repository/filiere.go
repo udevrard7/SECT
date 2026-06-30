@@ -230,10 +230,6 @@ func (r *FiliereRepository) Create(ctx context.Context, input domain.CreateFilie
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return nil, fmt.Errorf("disable rls: %w", err)
-	}
-
 	id := uuid.NewString()
 	actif := true
 	if input.Actif != nil {
@@ -270,10 +266,6 @@ func (r *FiliereRepository) Update(ctx context.Context, id string, input domain.
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return nil, fmt.Errorf("disable rls: %w", err)
-	}
 
 	var setClauses []string
 	var args []any
@@ -356,10 +348,6 @@ func (r *FiliereRepository) BulkUpdate(ctx context.Context, ids []string, actif 
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return 0, fmt.Errorf("disable rls: %w", err)
-	}
 
 	// Construire la requête avec IN clause
 	args := []any{actif}

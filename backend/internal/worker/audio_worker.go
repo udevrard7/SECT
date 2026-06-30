@@ -232,7 +232,7 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
 }
 
 // getDocumentContent lit le contenu textuel d'un document depuis la DB.
-// RLS désactivé car le worker n'a pas de claims HTTP.
+// Pose les claims system-worker pour RLS (le worker n'a pas de claims HTTP).
 func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, documentID string) (string, error) {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -240,7 +240,7 @@ func (w *AudioGenerationWorker) getDocumentContent(ctx context.Context, document
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var contenu *string
 	err = tx.QueryRow(ctx, `
@@ -290,7 +290,7 @@ Génère le script du podcast en respectant le format demandé. Concentre-toi su
 }
 
 // updateScript met à jour le script dans la ligne DocumentAudio.
-// RLS désactivé : écriture système (worker).
+// Claims system-worker posés pour RLS : écriture système (worker).
 func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, script string) error {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -298,8 +298,8 @@ func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, scrip
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return fmt.Errorf("disable rls: %w", err)
+	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+		return fmt.Errorf("set system claims: %w", err)
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -315,7 +315,7 @@ func (w *AudioGenerationWorker) updateScript(ctx context.Context, audioID, scrip
 }
 
 // updateStatus met à jour le statut (+ r2Key/errorMessage si non-nil).
-// RLS désactivé : écriture système (worker).
+// Claims system-worker posés pour RLS : écriture système (worker).
 func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string) error {
 	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -323,8 +323,8 @@ func (w *AudioGenerationWorker) updateStatus(ctx context.Context, audioID, statu
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, "SET LOCAL row_security = off"); err != nil {
-		return fmt.Errorf("disable rls: %w", err)
+	if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+		return fmt.Errorf("set system claims: %w", err)
 	}
 
 	if r2Key != nil && errorMessage != nil {
@@ -372,7 +372,7 @@ func (w *AudioGenerationWorker) RecoverInterruptedAudioJobs(ctx context.Context)
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	rows, err := tx.Query(ctx, `
 		SELECT "id", "documentId", "userId"

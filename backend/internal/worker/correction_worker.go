@@ -132,7 +132,7 @@ func (w *CorrectionWorker) getQuestionAndReponse(ctx context.Context, reponseID 
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	var q questionData
 	var r reponseData
@@ -230,7 +230,7 @@ func (w *CorrectionWorker) updateReponseStatusIA(ctx context.Context, reponseID,
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	_, err = tx.Exec(ctx, `
 		UPDATE "Reponse"
@@ -263,7 +263,7 @@ func (w *CorrectionWorker) RecoverInterruptedCorrections(ctx context.Context) {
 	}
 	defer tx.Rollback(ctx)
 
-	tx.Exec(ctx, "SET LOCAL row_security = off")
+	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	// Chercher les réponses QRC/CODE sans noteIA (correction IA en attente)
 	rows, err := tx.Query(ctx, `
