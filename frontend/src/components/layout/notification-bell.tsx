@@ -1,23 +1,22 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Bell,
   AlertTriangle,
-  Info,
+  Shield,
+  Zap,
+  Clock,
+  Settings,
+  ClipboardList,
+  UserCheck,
+  CreditCard,
+  Lock,
+  Sparkles,
   CheckCheck,
   CheckCircle2,
   Eye,
-  Clock,
-  GraduationCap,
-  ClipboardList,
-  Shield,
-  Zap,
   ExternalLink,
-  Sparkles,
-  CreditCard,
-  Lock,
-  UserCheck,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -38,59 +37,27 @@ import { cn } from '@/lib/utils'
 
 // ─── Types ───
 
-interface AlerteItem {
-  id: string
-  titre: string
-  description: string
-  severity: 'CRITICAL' | 'WARNING' | 'INFO'
-  type: 'PERFORMANCE' | 'FRAUDE' | 'SYSTEME' | 'RAPPEL' | 'CUSTOM'
-  lue: boolean
-  resolu: boolean
-  filiereId: string | null
-  epreuveId: string | null
-  userId: string | null
-  createdAt: string
-  updatedAt: string
-  filiere: { id: string; nom: string } | null
-  epreuve: { id: string; titre: string } | null
-  user: { id: string; name: string; email: string } | null
-}
-
-interface NotificationAdminItem {
-  id: string
-  type: string
-  titre: string
-  message: string
-  lu: boolean
-  destinataireId: string | null
-  destinataireRole: string | null
-  actionUrl: string | null
-  actionLabel: string | null
-  priorite: string
-  categorie: string
-  icone: string | null
-  expireLe: string | null
-  createdAt: string
-  destinataire: { id: string; name: string; email: string; role: string } | null
-}
-
-// Unified notification item for display.
-// N2: `source` distingue désormais 3 origines :
-//  - 'alerte'            → /api/alertes (alertes personnelles + scopées, tous rôles)
-//  - 'notification-admin' → /api/notifications/admin (notifs admin globales, ADMIN only)
-//  - 'notification-me'    → /api/notifications/me (NotificationAdmin destinées au user via RLS)
+// Phase 3 : schéma aligné sur l'endpoint unifié /api/notifications/unified.
+// La VIEW SQL backend fait l'UNION des 2 sources (Alerte + NotificationAdmin)
+// et la RLS des tables sous-jacentes s'applique (l'utilisateur ne voit que ses
+// notifs). Les IDs sont préfixés ('a-' pour alerte, 'n-' pour notification-admin)
+// afin d'éviter les collisions entre sources lors du merge côté backend.
 interface UnifiedNotification {
   id: string
+  source: 'alerte' | 'notification-admin'
   titre: string
   description: string
   severity: 'CRITICAL' | 'WARNING' | 'INFO'
   type: string
   lue: boolean
   createdAt: string
-  categorie?: string
-  source: 'alerte' | 'notification-admin' | 'notification-me'
-  filiere?: { id: string; nom: string } | null
-  epreuve?: { id: string; titre: string } | null
+  destinataireId?: string
+  destinataireRole?: string
+  actionUrl?: string | null
+  actionLabel?: string | null
+  categorie?: string | null
+  filiereId?: string | null
+  epreuveId?: string | null
 }
 
 // ─── Utility functions ───
@@ -111,19 +78,6 @@ function formatRelativeDate(dateStr: string): string {
 }
 
 // N7: tokens sémantiques "Savane EdTech" — JAMAIS de couleurs Tailwind directes.
-function getSeverityIcon(severity: string, size = 'h-4 w-4') {
-  switch (severity) {
-    case 'CRITICAL':
-      return <AlertTriangle className={`${size} text-destructive`} />
-    case 'WARNING':
-      return <AlertTriangle className={`${size} text-warning`} />
-    case 'INFO':
-      return <Info className={`${size} text-info`} />
-    default:
-      return <Info className={`${size} text-muted-foreground`} />
-  }
-}
-
 function getSeverityBg(severity: string): string {
   switch (severity) {
     case 'CRITICAL': return 'bg-destructive/15'
@@ -149,66 +103,48 @@ function getTypeLabel(type: string): string {
   }
 }
 
-function getTypeIcon(type: string) {
-  switch (type) {
-    case 'PERFORMANCE': return <Zap className="h-3 w-3" />
-    case 'FRAUDE': return <Shield className="h-3 w-3" />
-    case 'SYSTEME': return <Info className="h-3 w-3" />
-    case 'RAPPEL': return <Clock className="h-3 w-3" />
-    case 'CUSTOM': return <Bell className="h-3 w-3" />
-    case 'ABONNEMENT': return <CreditCard className="h-3 w-3" />
-    case 'SECURITE': return <Lock className="h-3 w-3" />
-    case 'EVALUATION': return <ClipboardList className="h-3 w-3" />
-    case 'COMPTE': return <UserCheck className="h-3 w-3" />
-    case 'BROADCAST': return <Sparkles className="h-3 w-3" />
-    default: return <Bell className="h-3 w-3" />
+// N8 (Phase 3) : fusion severity + type en une seule icône Lucide.
+// La couleur de l'icône suit la severity (tokens Savane EdTech — destructif /
+// warning / info). L'icône du type n'est plus affichée séparément dans les
+// métadonnées : seule la fusion (severity, type) s'affiche dans le cercle.
+function getCategoryIcon(severity: string, type: string) {
+  const colorClass =
+    severity === 'CRITICAL'
+      ? 'text-destructive'
+      : severity === 'WARNING'
+        ? 'text-warning'
+        : 'text-info'
+  const iconClass = `h-4 w-4 ${colorClass}`
+
+  // default → Bell
+  let Icon = Bell
+  if (severity === 'CRITICAL' && type === 'FRAUDE') {
+    Icon = Shield
+  } else if (severity === 'CRITICAL') {
+    Icon = AlertTriangle
+  } else if (severity === 'WARNING' && type === 'PERFORMANCE') {
+    Icon = Zap
+  } else if (severity === 'WARNING' && type === 'RAPPEL') {
+    Icon = Clock
+  } else if (severity === 'WARNING') {
+    Icon = AlertTriangle
+  } else if (severity === 'INFO' && type === 'SYSTEME') {
+    Icon = Settings
+  } else if (severity === 'INFO' && type === 'EVALUATION') {
+    Icon = ClipboardList
+  } else if (severity === 'INFO' && type === 'COMPTE') {
+    Icon = UserCheck
+  } else if (severity === 'INFO' && type === 'ABONNEMENT') {
+    Icon = CreditCard
+  } else if (severity === 'INFO' && type === 'SECURITE') {
+    Icon = Lock
+  } else if (severity === 'INFO' && type === 'BROADCAST') {
+    Icon = Sparkles
   }
-}
+  // INFO + *  → Bell (default)
+  // default   → Bell (default)
 
-function getPrioriteSeverity(priorite: string): 'CRITICAL' | 'WARNING' | 'INFO' {
-  switch (priorite) {
-    case 'URGENTE': return 'CRITICAL'
-    case 'HAUTE': return 'WARNING'
-    default: return 'INFO'
-  }
-}
-
-// ─── Convert NotificationAdmin to UnifiedNotification ───
-// N2: le convertisseur est réutilisé pour /admin (source='notification-admin')
-// et /me (source='notification-me').
-
-function notificationAdminToUnified(
-  n: NotificationAdminItem,
-  source: 'notification-admin' | 'notification-me' = 'notification-admin',
-): UnifiedNotification {
-  return {
-    id: n.id,
-    titre: n.titre,
-    description: n.message,
-    severity: getPrioriteSeverity(n.priorite),
-    type: n.categorie || n.type,
-    lue: n.lu,
-    createdAt: n.createdAt,
-    categorie: n.categorie,
-    source,
-  }
-}
-
-// ─── Convert AlerteItem to UnifiedNotification ───
-
-function alerteToUnified(a: AlerteItem): UnifiedNotification {
-  return {
-    id: a.id,
-    titre: a.titre,
-    description: a.description,
-    severity: a.severity,
-    type: a.type,
-    lue: a.lue,
-    createdAt: a.createdAt,
-    source: 'alerte',
-    filiere: a.filiere,
-    epreuve: a.epreuve,
-  }
+  return <Icon className={iconClass} />
 }
 
 // ─── Main Component ───
@@ -219,80 +155,44 @@ export function NotificationBell({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  // Compteur temps réel poussé par le SSE (null tant qu'aucun message reçu).
+  const [sseUnreadCount, setSseUnreadCount] = useState<number | null>(null)
 
   const unreadCount = notifications.filter((n) => !n.lue).length
   const criticalCount = notifications.filter((n) => n.severity === 'CRITICAL').length
+  // Le badge utilise le max du compteur fetched et du compteur SSE temps réel
+  // pour éviter le clignotement pendant un refetch (le SSE reste stable pendant
+  // que la liste se recharge).
+  const displayUnreadCount = Math.max(unreadCount, sseUnreadCount ?? 0)
 
-  // Determine which API to use based on role
+  // Rôle pour le routage admin (handleViewAll + handleMarkAllAsRead).
+  // L'endpoint unifié gère tous les rôles côté fetch — isAdmin n'est plus
+  // utilisé pour sélectionner des endpoints de lecture.
   const isAdmin = user?.role === 'ADMIN'
 
-  // N6: ref pour gérer l'interval de polling adaptatif.
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
   // ─── Fetch notifications ───
-  // N2: pour TOUS les users (ADMIN et non-ADMIN), on fetch en parallèle :
-  //   1. /api/alertes?lue=false&limit=20  (alertes personnelles + scopées)
-  //   2. /api/notifications/me?lu=false&limit=20 (NotificationAdmin destinées au user via RLS)
-  // Pour ADMIN uniquement, on ajoute :
-  //   3. /api/notifications/admin?lu=false&limit=20 (notifs admin globales)
-  // N3: plus de fallback `generateDynamicAlerts` — si une source retourne 0 résultat,
-  //     on affiche simplement rien pour cette source.
-  // Promise.allSettled pour qu'un échec d'une source ne bloque pas les autres.
+  // Phase 3 : un seul fetch sur l'endpoint unifié. La VIEW SQL fait déjà l'UNION
+  // des sources (Alerte + NotificationAdmin) avec la RLS qui filtre par user.
+  // Les IDs sont préfixés ('a-' / 'n-') pour éviter les collisions.
+  // Plus de Promise.allSettled multi-sources ni de merge Map côté frontend.
   const fetchNotifications = useCallback(async () => {
     if (!user) return
     setIsLoading(true)
     try {
-      const alertesParams = new URLSearchParams({ lue: 'false', limit: '20' })
-      const meParams = new URLSearchParams({ lu: 'false', limit: '20' })
-      const adminParams = new URLSearchParams({ lu: 'false', limit: '20' })
-
-      const fetchAlertes = async (): Promise<UnifiedNotification[]> => {
-        const res = await fetch(`/api/alertes?${alertesParams.toString()}`)
-        if (!res.ok) return []
+      const res = await fetch('/api/notifications/unified?lu=false&limit=20')
+      if (res.ok) {
         const data = await res.json()
-        const items: AlerteItem[] = data.alertes ?? []
-        return items.map(alerteToUnified)
+        const items: UnifiedNotification[] = data.notifications ?? []
+        setNotifications(items)
+      } else {
+        setNotifications([])
       }
-
-      const fetchMe = async (): Promise<UnifiedNotification[]> => {
-        const res = await fetch(`/api/notifications/me?${meParams.toString()}`)
-        if (!res.ok) return []
-        const data = await res.json()
-        const items: NotificationAdminItem[] = data.notifications ?? []
-        return items.map((n) => notificationAdminToUnified(n, 'notification-me'))
-      }
-
-      const fetchAdmin = async (): Promise<UnifiedNotification[]> => {
-        const res = await fetch(`/api/notifications/admin?${adminParams.toString()}`)
-        if (!res.ok) return []
-        const data = await res.json()
-        const items: NotificationAdminItem[] = data.notifications ?? []
-        return items.map((n) => notificationAdminToUnified(n, 'notification-admin'))
-      }
-
-      const tasks: Promise<UnifiedNotification[]>[] = [fetchAlertes(), fetchMe()]
-      if (isAdmin) tasks.push(fetchAdmin())
-
-      const results = await Promise.allSettled(tasks)
-
-      // Merge + déduplication par id (first occurrence wins) + tri createdAt DESC
-      const merged = new Map<string, UnifiedNotification>()
-      for (const r of results) {
-        if (r.status !== 'fulfilled') continue
-        for (const n of r.value) {
-          if (!merged.has(n.id)) merged.set(n.id, n)
-        }
-      }
-      const sorted = Array.from(merged.values()).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      setNotifications(sorted)
     } catch {
       setNotifications([])
     } finally {
       setIsLoading(false)
     }
-  }, [user, isAdmin])
+  }, [user])
 
   // Fetch on mount and when popover opens
   useEffect(() => {
@@ -305,34 +205,44 @@ export function NotificationBell({ className }: { className?: string }) {
     }
   }, [open, fetchNotifications])
 
-  // N6: Polling adaptatif.
-  //  - unreadCount > 0 → 30s  (vérifier souvent s'il y a du nouveau)
-  //  - unreadCount === 0 → 5min (vérifier rarement si tout est lu)
-  // L'interval est recréé quand unreadCount change (via le ref + cleanup).
-  // Le polling ne s'exécute que si l'onglet est visible (économie ~70% tabs cachés).
+  // Phase 3 : SSE EventSource pour le compteur temps réel.
+  // Le backend push le compteur de notifications non lues toutes les 15s +
+  // heartbeat 45s. EventSource se reconnecte automatiquement en cas de
+  // déconnexion (pas de gestion manuelle du retry).
+  // Remplace le polling adaptatif setInterval (30s/5min) de la Phase 2.
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
+    if (!user) return
+    const eventSource = new EventSource('/api/notifications/stream')
+
+    eventSource.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as {
+          data?: { unreadCount?: number }
+        }
+        const serverUnreadCount = parsed.data?.unreadCount
+        if (typeof serverUnreadCount === 'number') {
+          // Met à jour le state local du compteur non lu (temps réel)
+          setSseUnreadCount(serverUnreadCount)
+          // Si le compteur a augmenté, refetch la liste complète
+          if (serverUnreadCount > unreadCount) {
+            fetchNotifications()
+          }
+        }
+      } catch {
+        // ignore parse errors (heartbeats, commentaires SSE)
+      }
     }
 
-    const delay = unreadCount > 0 ? 30000 : 300000
-
-    intervalRef.current = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        fetchNotifications()
-      }
-    }, delay)
+    eventSource.onerror = () => {
+      // EventSource se reconnecte automatiquement, pas besoin de gestion manuelle.
+    }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
+      eventSource.close()
     }
-  }, [fetchNotifications, unreadCount])
+  }, [user, fetchNotifications, unreadCount])
 
-  // Re-fetch quand l'utilisateur revient sur l'onglet (1 seule fois)
+  // Re-fetch quand l'utilisateur revient sur l'onglet (complément au SSE).
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -346,24 +256,21 @@ export function NotificationBell({ className }: { className?: string }) {
   }, [fetchNotifications])
 
   // ─── Mark single as read ───
-  // N2: route selon la source :
-  //  - 'alerte'            → PATCH /api/alertes/{id}            (body: { action: 'marquer_lu' })
-  //  - 'notification-me'   → PATCH /api/notifications/me/{id}   (body: {})
-  //  - 'notification-admin'→ PATCH /api/notifications/admin/{id}(body: { action: 'marquer_lu' })
+  // Phase 3 : route selon le préfixe de l'ID (au lieu de la `source`).
+  //  - 'a-' → PATCH /api/alertes/{id.slice(2)}        body { action: 'marquer_lu' }
+  //  - 'n-' → PATCH /api/notifications/me/{id.slice(2)}  body {}
   const handleMarkAsRead = async (notification: UnifiedNotification) => {
     try {
       let apiPath: string
       let body: string
 
-      if (notification.source === 'alerte') {
-        apiPath = `/api/alertes/${notification.id}`
+      if (notification.id.startsWith('a-')) {
+        apiPath = `/api/alertes/${notification.id.slice(2)}`
         body = JSON.stringify({ action: 'marquer_lu' })
-      } else if (notification.source === 'notification-me') {
-        apiPath = `/api/notifications/me/${notification.id}`
-        body = JSON.stringify({})
       } else {
-        apiPath = `/api/notifications/admin/${notification.id}`
-        body = JSON.stringify({ action: 'marquer_lu' })
+        // 'n-' → notification-admin destinée au user via RLS
+        apiPath = `/api/notifications/me/${notification.id.slice(2)}`
+        body = JSON.stringify({})
       }
 
       const res = await fetch(apiPath, {
@@ -373,7 +280,12 @@ export function NotificationBell({ className }: { className?: string }) {
       })
 
       if (res.ok) {
-        setNotifications((prev) => prev.map((n) => n.id === notification.id ? { ...n, lue: true } : n))
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notification.id ? { ...n, lue: true } : n)),
+        )
+        // Optimistic : décrémenter le compteur SSE pour garder le badge à jour
+        // en attendant le prochain push SSE (~15s).
+        setSseUnreadCount((prev) => Math.max(0, (prev ?? 0) - 1))
       } else {
         toast.error('Impossible de marquer comme lu')
       }
@@ -383,15 +295,18 @@ export function NotificationBell({ className }: { className?: string }) {
   }
 
   // ─── Mark all as read ───
-  // N5: batch par source — 1 requête batch pour les alertes + 1 batch pour les
-  // notifs admin (ADMIN) + N PATCH /me/{id} pour les notifs destinées au user.
+  // Phase 3 : 2 endpoints batch en parallèle + fallback /me/{id} pour les
+  // notifs 'n-' destinées au user (non-ADMIN).
+  //  - Alertes (préfixe 'a-') → 1 batch POST /api/alertes/mark-all-read
+  //  - NotificationAdmin (préfixe 'n-') :
+  //      • ADMIN → 1 batch POST /api/notifications/admin/mark-all-read
+  //      • non-ADMIN → N PATCH /api/notifications/me/{id.slice(2)} (body {})
   const handleMarkAllAsRead = async () => {
     const unreadNotifs = notifications.filter((n) => !n.lue)
     if (unreadNotifs.length === 0) return
 
-    const alerteNotifs = unreadNotifs.filter((n) => n.source === 'alerte')
-    const adminNotifs = unreadNotifs.filter((n) => n.source === 'notification-admin')
-    const meNotifs = unreadNotifs.filter((n) => n.source === 'notification-me')
+    const alerteNotifs = unreadNotifs.filter((n) => n.id.startsWith('a-'))
+    const adminNotifs = unreadNotifs.filter((n) => n.id.startsWith('n-'))
 
     const tasks: Promise<Response>[] = []
 
@@ -405,18 +320,21 @@ export function NotificationBell({ className }: { className?: string }) {
       )
     }
 
-    // 2. NotificationAdmin globales (source=notification-admin) :
-    //    - ADMIN → batch GET /api/notifications/admin?markAllRead=true (existant)
-    //    - non-ADMIN (ne devrait pas arriver, /admin est RBAC) → fallback /me/{id}
+    // 2. NotificationAdmin :
+    //    - ADMIN → 1 batch POST /api/notifications/admin/mark-all-read
+    //    - non-ADMIN → N PATCH /api/notifications/me/{id.slice(2)}
     if (adminNotifs.length > 0) {
       if (isAdmin) {
         tasks.push(
-          fetch('/api/notifications/admin?markAllRead=true&lu=false', { method: 'GET' }),
+          fetch('/api/notifications/admin/mark-all-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }),
         )
       } else {
         for (const n of adminNotifs) {
           tasks.push(
-            fetch(`/api/notifications/me/${n.id}`, {
+            fetch(`/api/notifications/me/${n.id.slice(2)}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({}),
@@ -426,23 +344,15 @@ export function NotificationBell({ className }: { className?: string }) {
       }
     }
 
-    // 3. NotificationAdmin destinées au user (source=notification-me) → PATCH /me/{id}
-    //    Généralement 1-2 notifs, pas besoin de batch backend.
-    for (const n of meNotifs) {
-      tasks.push(
-        fetch(`/api/notifications/me/${n.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        }),
-      )
-    }
-
     try {
       const results = await Promise.allSettled(tasks)
-      const anyOk = tasks.length === 0 || results.some((r) => r.status === 'fulfilled' && r.value.ok)
+      const anyOk =
+        tasks.length === 0 ||
+        results.some((r) => r.status === 'fulfilled' && r.value.ok)
       if (anyOk) {
         setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })))
+        // Optimistic : remettre le compteur SSE à 0 (le prochain push confirmera).
+        setSseUnreadCount(0)
         toast.success('Toutes les notifications marquées comme lues')
       } else {
         toast.error('Erreur lors de la mise à jour')
@@ -467,10 +377,10 @@ export function NotificationBell({ className }: { className?: string }) {
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className={cn("relative", className)} aria-label="Notifications">
           <Bell className="h-4 w-4" />
-          {/* Unread badge — N7: tokens sémantiques */}
-          {unreadCount > 0 && (
+          {/* Unread badge — N7: tokens sémantiques. Phase 3 : max(fetched, SSE). */}
+          {displayUnreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground shadow-sm">
-              {unreadCount > 9 ? '9+' : unreadCount}
+              {displayUnreadCount > 9 ? '9+' : displayUnreadCount}
             </span>
           )}
           {/* Critical pulse indicator — N7 */}
@@ -550,9 +460,9 @@ export function NotificationBell({ className }: { className?: string }) {
                     if (!notification.lue) handleMarkAsRead(notification)
                   }}
                 >
-                  {/* Icon */}
+                  {/* Icon — N8: une seule icône (severity + type fusionnés) */}
                   <div className={`flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg ${getSeverityBg(notification.severity)}`}>
-                    {getSeverityIcon(notification.severity)}
+                    {getCategoryIcon(notification.severity, notification.type)}
                   </div>
 
                   {/* Content */}
@@ -569,22 +479,10 @@ export function NotificationBell({ className }: { className?: string }) {
                       {notification.description}
                     </p>
                     <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        {getTypeIcon(notification.type)}
+                      {/* N8 : label textuel du type uniquement (plus d'icône séparée) */}
+                      <span className="text-[10px] text-muted-foreground">
                         {getTypeLabel(notification.type)}
                       </span>
-                      {notification.filiere && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                          <GraduationCap className="h-2.5 w-2.5" />
-                          {notification.filiere.nom}
-                        </span>
-                      )}
-                      {notification.epreuve && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                          <ClipboardList className="h-2.5 w-2.5" />
-                          {notification.epreuve.titre}
-                        </span>
-                      )}
                       <span className="text-[10px] text-muted-foreground">
                         {formatRelativeDate(notification.createdAt)}
                       </span>
