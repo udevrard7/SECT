@@ -131,6 +131,14 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                 now := time.Now()
                 input.DateDebut = &now
         }
+        // OPTION-B : auto-révocation. Si DureeAccesJours fourni et statut=APPROUVE,
+        // calculer dateFin = now() + duree. La fonction admin_has_etablissement_access()
+        // vérifie déjà dateFin >= now() → l'accès est automatiquement révoqué quand
+        // dateFin expire, sans besoin de job cron.
+        if input.DureeAccesJours != nil && *input.DureeAccesJours > 0 && input.Statut == domain.AccessApprouve {
+                fin := time.Now().Add(time.Duration(*input.DureeAccesJours) * 24 * time.Hour)
+                input.DateFin = &fin
+        }
 
         return uc.accessRepo.Update(ctx, id, input)
 }

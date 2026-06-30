@@ -13,6 +13,7 @@ import {
   Eye,
   RotateCcw,
   X,
+  Ban,
   Loader2,
   Lock,
   MapPin,
@@ -252,6 +253,13 @@ export function AccesEtablissementsPage() {
 
   // ─── Dialog state ───
   const [cancelTarget, setCancelTarget] = useState<AccessRecord | null>(null)
+  // ACCESS-WORKFLOW-UI : cible pour la révocation d'un accès APPROUVE par l'ADMIN.
+  // Le bouton "Révoquer" apparaît à côté de "Voir l'établissement" pour les
+  // enregistrements APPROUVE. La mutation PATCH envoie {statut: REFUSE,
+  // commentaire: "Accès révoqué par l'admin"} → le backend Update() accepte ce
+  // statut (validStatuts contient AccessRefuse) sans vérifier l'ownership côté
+  // ADMIN (le usecase ne fait le check EtablissementID que pour RESPONSABLE).
+  const [revokeTarget, setRevokeTarget] = useState<AccessRecord | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('mes-autorisations')
 
@@ -298,6 +306,39 @@ export function AccesEtablissementsPage() {
     } catch (err) {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'annuler la demande.',
+      })
+    }
+  }
+
+  // ─── Revoke access (ACCESS-WORKFLOW-UI) ───
+  // Permet à l'ADMIN de révoquer un accès qu'il avait précédemment obtenu.
+  // Le backend Update() accepte statut=REFUSE pour un accès APPROUVE et
+  // enregistre le commentaire. L'auto-révocation est aussi gérée côté backend
+  // via admin_has_etablissement_access() qui vérifie dateFin >= now().
+  // Côté frontend on propose une révocation manuelle anticipative.
+  const handleRevokeAccess = async () => {
+    if (!revokeTarget) return
+    try {
+      const res = await fetch(`/api/etablissement-access/${revokeTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          statut: 'REFUSE',
+          commentaire: 'Accès révoqué par l\'admin',
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur lors de la révocation')
+      }
+      toast.success('Accès révoqué', {
+        description: `L'accès à ${revokeTarget.etablissement?.nom ?? 'cet établissement'} a été révoqué.`,
+      })
+      setRevokeTarget(null)
+      await refreshData()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Impossible de révoquer l\'accès.',
       })
     }
   }
@@ -516,7 +557,22 @@ export function AccesEtablissementsPage() {
                         <TableCell>
                           <span className="text-sm">{getMotifLabel(record.motif)}</span>
                         </TableCell>
-                        <TableCell>{getStatutBadge(record.statut)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {getStatutBadge(record.statut)}
+                            {/* ACCESS-WORKFLOW-UI : badge "Expiré" quand dateFin < now(). */}
+                            {/* Le backend admin_has_etablissement_access() auto-révoque */}
+                            {/* silencieusement, mais le cache frontend peut encore */}
+                            {/* montrer APPROUVE → on l'indique visuellement à l'ADMIN. */}
+                            {record.statut === 'APPROUVE' && record.dateFin &&
+                              new Date(record.dateFin) < new Date() && (
+                                <Badge className="bg-destructive/10 text-destructive border-destructive/30">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Expiré
+                                </Badge>
+                              )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm">{formatDate(record.dateDebut)}</TableCell>
                         <TableCell className="text-sm">{formatDate(record.dateFin)}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums">
@@ -532,15 +588,27 @@ export function AccesEtablissementsPage() {
                             </Button>
                           )}
                           {record.statut === 'APPROUVE' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-success-text hover:text-success-text hover:bg-success/10"
-                              onClick={() => router.push('/etablissements')}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Voir l&apos;établissement
-                            </Button>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-success-text hover:text-success-text hover:bg-success/10"
+                                onClick={() => router.push('/etablissements')}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Voir l&apos;établissement
+                              </Button>
+                              {/* ACCESS-WORKFLOW-UI : révocation manuelle par l'ADMIN. */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => setRevokeTarget(record)}
+                              >
+                                <Ban className="h-4 w-4 mr-1" />
+                                Révoquer
+                              </Button>
+                            </div>
                           )}
                           {record.statut === 'EXPIRE' && (
                             <Button
@@ -857,7 +925,7 @@ export function AccesEtablissementsPage() {
             <AlertDialogTitle>Annuler la demande</AlertDialogTitle>
             <AlertDialogDescription>
               Êtes-vous sûr de vouloir annuler votre demande d&apos;accès à{' '}
-              <strong>{cancelTarget?.etablissement.nom}</strong> ? Cette action est irréversible.
+              <strong>{cancelTarget?.etablissement?.nom ?? 'cet établissement'}</strong> ? Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -867,6 +935,35 @@ export function AccesEtablissementsPage() {
               onClick={handleCancelRequest}
             >
               Oui, annuler
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Revoke Confirmation Dialog (ACCESS-WORKFLOW-UI) ─── */}
+      <AlertDialog
+        open={!!revokeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Révoquer l&apos;accès</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir révoquer votre accès à{' '}
+              <strong>{revokeTarget?.etablissement?.nom ?? 'cet établissement'}</strong> ? Cette action
+              est irréversible et vous perdrez immédiatement l&apos;accès aux données de
+              l&apos;établissement.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={handleRevokeAccess}
+            >
+              Oui, révoquer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
