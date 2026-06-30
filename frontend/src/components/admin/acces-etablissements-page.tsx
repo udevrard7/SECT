@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  LifeBuoy,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -262,6 +263,10 @@ export function AccesEtablissementsPage() {
   const [revokeTarget, setRevokeTarget] = useState<AccessRecord | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('mes-autorisations')
+  // ASSISTANCE-MODE-FRONTEND : ID de l'établissement dont l'activation du mode
+  // assistance est en cours. Désactive le bouton correspondant (Loader2) et
+  // empêche les double-clics. Vide = aucune activation en cours.
+  const [assistanceLoadingId, setAssistanceLoadingId] = useState<string | null>(null)
 
   // ─── Form state ───
   const [formEtablissementId, setFormEtablissementId] = useState('')
@@ -340,6 +345,58 @@ export function AccesEtablissementsPage() {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de révoquer l\'accès.',
       })
+    }
+  }
+
+  // ─── Assistance mode (ASSISTANCE-MODE-FRONTEND) ───
+  // Active le "mode assistance" pour un établissement APPROUVE : le backend
+  // /api/auth/assistance-mode émet de nouveaux tokens JWT avec
+  // etablissementId positionné, et renvoie le user mis à jour. On stocke les
+  // nouveaux tokens via le shim Next.js (cookies httpOnly), on met à jour
+  // l'auth store (l'ADMIN "devient" RESPONSABLE pour la nav), puis on
+  // redirige vers /dashboard (vue responsable).
+  const handleAssistanceMode = async (record: AccessRecord) => {
+    if (!record.etablissementId) return
+    setAssistanceLoadingId(record.etablissementId)
+    try {
+      const res = await fetch('/api/go-auth/assistance-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ etablissementId: record.etablissementId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.user) {
+        throw new Error(data?.error || 'Impossible d\'activer le mode assistance')
+      }
+      // Normalisation du user (champs optionnels → null pour éviter les
+      // "undefined" dans la sidebar / header).
+      useAuthStore.setState({
+        user: {
+          id: data.user.id,
+          email: data.user.email ?? '',
+          name: data.user.name ?? '',
+          role: data.user.role,
+          etablissementId: data.user.etablissementId ?? null,
+          filiereId: data.user.filiereId ?? null,
+          etablissement: data.user.etablissement ?? null,
+          filiere: data.user.filiere ?? null,
+          image: data.user.image ?? null,
+          actif: data.user.actif,
+          matricule: data.user.matricule ?? null,
+          mustChangePwd: data.user.mustChangePwd,
+          derniereConnexion: data.user.derniereConnexion ?? null,
+        },
+      })
+      toast.success('Mode assistance activé', {
+        description: `Vous accédez maintenant aux données de ${record.etablissement?.nom ?? 'cet établissement'}.`,
+      })
+      router.push('/dashboard')
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : 'Une erreur est survenue.',
+      })
+    } finally {
+      setAssistanceLoadingId(null)
     }
   }
 
@@ -597,6 +654,24 @@ export function AccesEtablissementsPage() {
                               >
                                 <Eye className="h-4 w-4 mr-1" />
                                 Voir l&apos;établissement
+                              </Button>
+                              {/* ASSISTANCE-MODE-FRONTEND : bascule en mode assistance. */}
+                              {/* L'ADMIN "devient" RESPONSABLE pour cet établissement */}
+                              {/* le temps de la session (tokens JWT régénérés côté backend). */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-warning hover:text-warning hover:bg-warning/10"
+                                disabled={assistanceLoadingId === record.etablissementId}
+                                onClick={() => handleAssistanceMode(record)}
+                                title="Basculer en mode assistance pour cet établissement"
+                              >
+                                {assistanceLoadingId === record.etablissementId ? (
+                                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                ) : (
+                                  <LifeBuoy className="h-4 w-4 mr-1" />
+                                )}
+                                Mode assistance
                               </Button>
                               {/* ACCESS-WORKFLOW-UI : révocation manuelle par l'ADMIN. */}
                               <Button
@@ -891,17 +966,34 @@ export function AccesEtablissementsPage() {
                         </Badge>
                       </div>
 
-                      {/* Access button */}
+                      {/* Access button — ASSISTANCE-MODE-FRONTEND : déclenche le */}
+                      {/* mode assistance pour cet établissement (anciennement */}
+                      {/* placeholder "à venir"). L'ADMIN bascule en vue RESPONSABLE. */}
                       <Button
                         className="w-full bg-success hover:bg-success/90 mt-2"
                         size="sm"
+                        disabled={assistanceLoadingId === etab.id}
                         onClick={() =>
-                          toast.info('Accès aux données', {
-                            description: `Accès aux données de ${etab.nom} (à venir).`,
+                          handleAssistanceMode({
+                            id: etab.access?.id ?? etab.id,
+                            adminId: user?.id ?? '',
+                            etablissementId: etab.id,
+                            motif: etab.access?.motif ?? 'Assistance',
+                            statut: 'APPROUVE',
+                            dateDebut: etab.access?.dateDebut ?? null,
+                            dateFin: etab.access?.dateFin ?? null,
+                            commentaire: etab.access?.commentaire ?? null,
+                            approuvePar: null,
+                            createdAt: etab.access?.createdAt ?? new Date().toISOString(),
+                            etablissement: { id: etab.id, nom: etab.nom, ville: etab.ville, actif: etab.actif },
                           })
                         }
                       >
-                        <Eye className="h-4 w-4 mr-1" />
+                        {assistanceLoadingId === etab.id ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <LifeBuoy className="h-4 w-4 mr-1" />
+                        )}
                         Accéder aux données
                       </Button>
                     </CardContent>

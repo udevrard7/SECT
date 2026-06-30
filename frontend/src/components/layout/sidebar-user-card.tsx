@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  User, Settings, LogOut, Repeat, ChevronsUpDown,
+  User, Settings, LogOut, Repeat, ChevronsUpDown, LifeBuoy,
 } from 'lucide-react'
 
 import {
@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useAuthStore, type UserRole } from '@/stores/auth-store'
 import { useSwitchAccountStore } from '@/stores/switch-account-store'
-import { PAGE_ROUTES, getSettingsPageId, type PageId } from '@/lib/routes'
+import { PAGE_ROUTES, getSettingsPageId, getEffectiveRole, type PageId } from '@/lib/routes'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Administrateur',
@@ -52,6 +52,13 @@ export function SidebarUserCard() {
 
   if (!user) return null
 
+  // ASSISTANCE-MODE-FRONTEND : en mode assistance (ADMIN + etablissementId),
+  // on affiche le libellé "Responsable des études" (rôle effectif) plutôt
+  // que "Administrateur", et le menu "Paramètres" pointe vers /parametres
+  // (au lieu de /configuration) pour rester cohérent avec la sidebar.
+  const inAssistanceMode = user.role === 'ADMIN' && !!user.etablissementId
+  const effectiveRole = getEffectiveRole(user.role, user.etablissementId)
+
   const initials = user.name
     .split(' ')
     .map((n) => n[0])
@@ -59,7 +66,7 @@ export function SidebarUserCard() {
     .toUpperCase()
     .slice(0, 2)
 
-  const settingsPageId = getSettingsPageId(user.role)
+  const settingsPageId = getSettingsPageId(effectiveRole)
 
   const navigateTo = (pageId: PageId) => {
     const route = PAGE_ROUTES[pageId]
@@ -103,8 +110,18 @@ export function SidebarUserCard() {
             <span className="text-sm font-medium truncate leading-tight text-sidebar-foreground">
               {user.name}
             </span>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-primary truncate">
-              {ROLE_LABELS[user.role]}
+            {/* ASSISTANCE-MODE-FRONTEND : libellé du rôle effectif (RESPONSABLE */}
+            {/* en mode assistance) + mini-badge "Mode assistance" en amber. */}
+            <span className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-primary truncate">
+                {ROLE_LABELS[effectiveRole]}
+              </span>
+              {inAssistanceMode && (
+                <span className="inline-flex items-center text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 shrink-0">
+                  <LifeBuoy className="h-2.5 w-2.5 mr-0.5" />
+                  Assistance
+                </span>
+              )}
             </span>
           </div>
 
@@ -130,10 +147,16 @@ export function SidebarUserCard() {
             <p className="text-xs text-sidebar-foreground/60 truncate">{user.email}</p>
           </div>
         </div>
-        <div className="px-3 pb-2 -mt-1 bg-sidebar">
+        <div className="px-3 pb-2 -mt-1 bg-sidebar flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/15 text-primary">
-            {ROLE_LABELS[user.role]}
+            {ROLE_LABELS[effectiveRole]}
           </span>
+          {inAssistanceMode && (
+            <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md bg-warning/15 text-warning border border-warning/30">
+              <LifeBuoy className="h-3 w-3 mr-1" />
+              Mode assistance
+            </span>
+          )}
         </div>
 
         <Separator />

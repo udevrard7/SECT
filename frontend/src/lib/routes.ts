@@ -122,6 +122,25 @@ export interface PageContext {
 }
 
 /**
+ * ASSISTANCE-MODE-FRONTEND : rôle "effectif" pour la résolution de navigation.
+ *
+ * Un ADMIN en mode assistance (etablissementId non vide) voit la navigation
+ * RESPONSABLE dans la sidebar (pages Etablissement, Filières, Étudiants,
+ * Évaluations, Rapports, Paramètres…). On conserve user.role === 'ADMIN'
+ * pour les checks d'accès backend (l'ADMIN garde ses privilèges), mais on
+ * utilise le rôle effectif pour sélectionner les catégories de navigation.
+ *
+ * @returns 'RESPONSABLE' si ADMIN en assistance mode, sinon le rôle d'origine.
+ */
+export function getEffectiveRole(
+  role: UserRole,
+  etablissementId?: string | null,
+): UserRole {
+  if (role === 'ADMIN' && etablissementId) return 'RESPONSABLE'
+  return role
+}
+
+/**
  * Résout le contexte d'affichage d'une page (PageId canonique, titre, catégorie
  * parente) à partir du pathname et du rôle utilisateur.
  *
@@ -131,6 +150,10 @@ export interface PageContext {
  * ne contiennent que les PageId canoniques réellement affichés dans la
  * sidebar.
  *
+ * ASSISTANCE-MODE-FRONTEND : `etablissementId` optionnel — quand l'ADMIN est
+ * en mode assistance, on résout le contexte avec le rôle effectif
+ * (RESPONSABLE) pour rester cohérent avec la sidebar.
+ *
  * Ordre de résolution :
  *  1. Recherche dans les items de navigation du rôle (match sur PAGE_ROUTES).
  *  2. Page de profil (accessible depuis le header, absente de la sidebar).
@@ -138,9 +161,16 @@ export interface PageContext {
  *
  * @example
  *   const { pageId, pageTitle, parentCategory } = getPageContext(pathname, user.role)
+ *   // Assistance mode :
+ *   const ctx = getPageContext(pathname, user.role, user.etablissementId)
  */
-export function getPageContext(pathname: string, role: UserRole): PageContext {
-  const categories = NAV_CATEGORIES[role] ?? []
+export function getPageContext(
+  pathname: string,
+  role: UserRole,
+  etablissementId?: string | null,
+): PageContext {
+  const effectiveRole = getEffectiveRole(role, etablissementId)
+  const categories = NAV_CATEGORIES[effectiveRole] ?? []
 
   // 1. Recherche dans les items de navigation du rôle (PageId canoniques)
   for (const category of categories) {
