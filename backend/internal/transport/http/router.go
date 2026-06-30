@@ -588,13 +588,18 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.With(middleware.RequireRole("ADMIN")).Post("/{id}/test", s.aiProviderTest)
                 })
 
+                // MONITORING-FIX-M7 : RequireRole("ADMIN") sur monitoring + logs.
                 r.Route("/api/monitoring", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.monitoringEventsReal)
+                        // MONITORING-FIX-M2 : mutations (POST/PATCH/DELETE).
+                        r.Post("/", s.createMonitoringEvent)
+                        r.Patch("/{id}", s.resolveMonitoringEvent)
+                        r.Delete("/{id}", s.ignoreMonitoringEvent)
                 })
 
                 r.Route("/api/logs", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
+                        r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.logsListReal)
                 })
 
