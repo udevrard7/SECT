@@ -480,17 +480,22 @@ export function NotificationsAdminPage() {
   }
 
   // ─── Mark all as read ───
+  // NOTIFICATIONS-FIX-N6 : utilise POST /admin/mark-all-read au lieu de GET ?markAllRead.
   const handleMarkAllRead = async () => {
     try {
-      const params = new URLSearchParams({ markAllRead: 'true' })
+      const params = new URLSearchParams()
       if (filterType !== 'all') params.set('type', filterType)
       if (filterRole !== 'all') params.set('destinataireRole', filterRole)
       if (filterCategorie !== 'all') params.set('categorie', filterCategorie)
 
-      const res = await fetch(`/api/notifications/admin?${params.toString()}`)
+      const res = await fetch(`/api/notifications/admin/mark-all-read?${params.toString()}`, {
+        method: 'POST',
+      })
       if (!res.ok) throw new Error('Erreur')
+      const data = await res.json().catch(() => ({}))
+      const updated = data.updatedCount ?? unreadCount
       toast.success('Toutes marquées comme lues', {
-        description: `${unreadCount} notification${unreadCount > 1 ? 's' : ''} mise${unreadCount > 1 ? 's' : ''} à jour.`,
+        description: `${updated} notification${updated > 1 ? 's' : ''} mise${updated > 1 ? 's' : ''} à jour.`,
       })
       await refreshNotifications()
     } catch {
@@ -517,16 +522,16 @@ export function NotificationsAdminPage() {
   }
 
   // ─── Delete all read ───
+  // NOTIFICATIONS-FIX-N8 : utilise DELETE /admin (suppression en masse 1 requête)
+  // au lieu de Promise.all de N requêtes DELETE individuelles.
   const handleDeleteAllRead = async () => {
     try {
-      const readNotifications = notifications.filter((n) => n.lu)
-      await Promise.all(
-        readNotifications.map((n) =>
-          fetch(`/api/notifications/admin/${n.id}`, { method: 'DELETE' })
-        )
-      )
+      const res = await fetch('/api/notifications/admin', { method: 'DELETE' })
+      if (!res.ok) throw new Error('Erreur')
+      const data = await res.json().catch(() => ({}))
+      const deleted = data.deletedCount ?? notifications.filter((n) => n.lu).length
       toast.success('Notifications lues supprimées', {
-        description: `${readNotifications.length} notification${readNotifications.length > 1 ? 's' : ''} supprimée${readNotifications.length > 1 ? 's' : ''}.`,
+        description: `${deleted} notification${deleted > 1 ? 's' : ''} supprimée${deleted > 1 ? 's' : ''}.`,
       })
       setDeleteAllReadOpen(false)
       await refreshNotifications()
