@@ -695,25 +695,62 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
                 CreatedAt        string  `json:"createdAt"`
         }
 
+        // NOTIFICATIONS-FIX-N4 : filtres type/destinataireRole/categorie + lu.
+        luParam := r.URL.Query().Get("lu")
+        typeF := r.URL.Query().Get("type")
+        roleF := r.URL.Query().Get("destinataireRole")
+        categorieF := r.URL.Query().Get("categorie")
+        limit := 50
+        if l := r.URL.Query().Get("limit"); l != "" {
+                if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 200 {
+                        limit = n
+                }
+        }
+
+        // Construire la clause WHERE dynamique.
+        var whereClauses []string
+        var args []any
+        argIdx := 1
+
+        if luParam == "false" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"lu" = $%d`, argIdx))
+                args = append(args, false)
+                argIdx++
+        } else if luParam == "true" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"lu" = $%d`, argIdx))
+                args = append(args, true)
+                argIdx++
+        }
+        if typeF != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"type" = $%d`, argIdx))
+                args = append(args, typeF)
+                argIdx++
+        }
+        if roleF != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"destinataireRole" = $%d`, argIdx))
+                args = append(args, roleF)
+                argIdx++
+        }
+        if categorieF != "" {
+                whereClauses = append(whereClauses, fmt.Sprintf(`"categorie" = $%d`, argIdx))
+                args = append(args, categorieF)
+                argIdx++
+        }
+
+        whereClause := ""
+        if len(whereClauses) > 0 {
+                whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
+        }
+
         result := []notif{}
+        var totalCount, unreadCount int
+
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                luParam := r.URL.Query().Get("lu")
-                limit := 50
-                if l := r.URL.Query().Get("limit"); l != "" {
-                        if n, err := parseIntSafe(l); err == nil && n > 0 && n <= 200 {
-                                limit = n
-                        }
-                }
+                // NOTIFICATIONS-FIX-N5 : count total + count unread (sans filtres lu/type/etc).
+                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "NotificationAdmin"`).Scan(&totalCount)
+                _ = tx.QueryRow(r.Context(), `SELECT count(*) FROM "NotificationAdmin" WHERE "lu" = false`).Scan(&unreadCount)
 
-                var args []any
-                argIdx := 1
-                whereClause := ""
-                if luParam == "false" {
-                        whereClause = `WHERE "lu" = false`
-                } else if luParam == "true" {
-                        whereClause = `WHERE "lu" = true`
-                }
-
+                args = append(args, limit)
                 query := fmt.Sprintf(`
                         SELECT "id", "type", "titre", "message", "destinataireId", "destinataireRole",
                                "lu", "actionUrl", "actionLabel", "priorite", "categorie", "icone",
@@ -723,7 +760,6 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
                         ORDER BY "createdAt" DESC
                         LIMIT $%d
                 `, whereClause, argIdx)
-                args = append(args, limit)
 
                 rows, err := tx.Query(r.Context(), query, args...)
                 if err != nil {
@@ -752,7 +788,8 @@ func (s *Server) notificationsAdminReal(w http.ResponseWriter, r *http.Request) 
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{
                 "notifications": result,
-                "total":         len(result),
+                "total":         totalCount,
+                "unreadCount":   unreadCount,
         })
 }
 

@@ -522,10 +522,18 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Delete("/purge", s.corbeillePurge)
                 })
 
+                // NOTIFICATIONS-FIX-N7 : RequireRole("ADMIN") sur /admin.
                 r.Route("/api/notifications", func(r chi.Router) {
                         r.Use(middleware.RequireAuth)
                         r.Get("/", s.notificationsListReal)
-                        r.Get("/admin", s.notificationsAdminReal)
+                        // /admin : réservé ADMIN, mutations (POST/PATCH/DELETE).
+                        r.With(middleware.RequireRole("ADMIN")).Get("/admin", s.notificationsAdminReal)
+                        r.With(middleware.RequireRole("ADMIN")).Post("/admin", s.createNotificationAdmin)
+                        r.With(middleware.RequireRole("ADMIN")).Post("/admin/mark-all-read", s.markAllReadAdmin)
+                        r.With(middleware.RequireRole("ADMIN")).Patch("/admin/{id}", s.updateNotificationAdmin)
+                        r.With(middleware.RequireRole("ADMIN")).Delete("/admin/{id}", s.deleteNotificationAdmin)
+                        // NOTIFICATIONS-FIX-N8 : suppression en masse des notifications lues.
+                        r.With(middleware.RequireRole("ADMIN")).Delete("/admin", s.deleteAllReadAdmin)
                 })
 
                 // ABONNEMENTS-FIX-A4 : RequireRole("ADMIN") sur toutes les routes

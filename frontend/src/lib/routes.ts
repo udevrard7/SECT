@@ -544,6 +544,8 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   logs: ['ADMIN'],
   // CONFIG-FRONTEND-EXTEND : page Configuration système réservée ADMIN.
   configuration: ['ADMIN'],
+  // NOTIFICATIONS-FIX-N7 : centre de notifications admin réservé ADMIN.
+  notifications: ['ADMIN'],
 }
 
 // Profile page labels (accessible from header, not sidebar)
