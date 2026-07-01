@@ -4,6 +4,7 @@ package http
 import (
         "encoding/json"
         "fmt"
+        "log/slog"
         "net/http"
         "strings"
         "time"
@@ -441,6 +442,23 @@ func (s *Server) monitoringEventsReal(w http.ResponseWriter, r *http.Request) {
         var activeCount, criticalCount, errorCount int
 
         _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                // MONITORING-LAZY-CLEANUP : suppression des événements RESOLU de plus de 24h.
+                // Approche B (lazy cleanup à la lecture) : le nettoyage se déclenche quand un
+                // admin consulte /monitoring. Avantages : pas de cron à maintenir, compatible
+                // Render free tier (le backend peut dormir), DB propre, atomicité garantie
+                // (DELETE + SELECT dans la même transaction → l'admin ne voit jamais les lignes
+                // expirées). L'index partiel (migration 000031) sur (statut, updatedAt) accélère
+                // le DELETE. On log le nombre de lignes supprimées pour audit.
+                if tag, err := tx.Exec(r.Context(), `
+                        DELETE FROM "MonitoringEvent"
+                        WHERE "statut" = 'RESOLU' AND "updatedAt" < NOW() - INTERVAL '24 hours'
+                `); err == nil && tag.RowsAffected() > 0 {
+                        slog.Info("monitoring: cleanup événements RESOLU > 24h",
+                                "deleted", tag.RowsAffected(),
+                                "triggered_by", claims.UserID,
+                        )
+                }
+
                 // Construire la clause WHERE dynamique.
                 var whereClauses []string
                 var args []any
