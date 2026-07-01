@@ -601,6 +601,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
         session={selectedSession}
         epreuveTitre={selectedEpreuve?.titre}
         noteTotal={noteTotal}
+        enonceMap={resultsQuery.data?.enonceMap}
       />
     </div>
   )
