@@ -68,19 +68,16 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // DEBUG: test direct query with LEFT JOINs to isolate the issue
-        var debugWithJoin int
-        var debugWithoutJoin int
-        var debugClaimsCheck string
-        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                // Check claims
-                _ = tx.QueryRow(r.Context(), "SELECT current_setting('app.claims.user_id', true)").Scan(&debugClaimsCheck)
-                // Simple count (no JOINs)
-                _ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" WHERE "deletedAt" IS NULL AND "enseignantId" = '%s'`, claims.UserID)).Scan(&debugWithoutJoin)
-                // Count with LEFT JOINs
-                _ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" WHERE "Epreuve"."deletedAt" IS NULL AND "Epreuve"."enseignantId" = '%s'`, claims.UserID)).Scan(&debugWithJoin)
-                return nil
-        })
+        // DEBUG: if repo returned 0, try direct query to compare
+        var debugDirectCount int
+        var debugRepoClaimsCheck string
+        if len(epreuves) == 0 {
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        _ = tx.QueryRow(r.Context(), "SELECT current_setting('app.claims.user_id', true)").Scan(&debugRepoClaimsCheck)
+                        _ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" WHERE "Epreuve"."deletedAt" IS NULL AND "Epreuve"."enseignantId" = '%s'`, claims.UserID)).Scan(&debugDirectCount)
+                        return nil
+                })
+        }
 
         // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
         // retournées pour alimenter le filtre filière côté frontend. Avant, le
@@ -113,10 +110,10 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 "epreuves": epreuves,
                 "filieres": filieres,
                 "_debug": map[string]any{
-                        "claimsCheck":     debugClaimsCheck,
-                        "countNoJoin":     debugWithoutJoin,
-                        "countWithJoin":   debugWithJoin,
-                        "repoCount":       len(epreuves),
+                        "repoCount":         len(epreuves),
+                        "directCount":       debugDirectCount,
+                        "repoClaimsCheck":   debugRepoClaimsCheck,
+                        "claimsUserID":      claims.UserID,
                 },
         }
         if params.Page > 0 {
