@@ -665,6 +665,7 @@ CREATE TABLE "AIProviderConfig" (
     "isActive" BOOLEAN NOT NULL DEFAULT false,
     "priority" INTEGER NOT NULL DEFAULT 99,
     "extraConfig" TEXT,
+    "capability" TEXT,   -- DASHSCOPE-AUDIO-1 : 'chat' (défaut), 'tts', 'audio', 'transcription'
     "lastTestAt" TIMESTAMP(3),
     "lastTestOk" BOOLEAN,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

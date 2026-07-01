@@ -59,6 +59,7 @@ type activeProvider struct {
         Temperature float64
         MaxTokens   int
         ExtraConfig string
+        Capability  string // DASHSCOPE-AUDIO-1 : 'chat' (défaut), 'tts', 'audio'
 }
 
 // ──────────────────────────────────────────────────────────────────────────
