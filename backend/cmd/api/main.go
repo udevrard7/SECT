@@ -121,38 +121,33 @@ func main() {
 
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
-        // IA-WORKER-1 : démarrer le worker IA asynchrone (goroutine)
+
+        // Workers réactivés (policies is_system ajoutées sur les 12 tables worker).
+        // SECURITY-BASCULE : les workers posent des claims system-worker via
+        // set_config('app.claims.user_id', 'system-worker', true) au lieu de
+        // SET LOCAL row_security = off. Les policies _all_system (is_system())
+        // permettent l'accès full aux 12 tables : AIProviderConfig, Chapter,
+        // Devoir, Document, DocumentAudio, Epreuve, EpreuveQuestion,
+        // GrilleEvaluation, Question, Reponse, SessionPassation, Soumission.
         iaWorker := worker.NewIAWorker(pool, logger)
-        // Graceful shutdown : reprendre les jobs interrompus par un redemarrage
         iaWorker.RecoverInterruptedJobs(context.Background())
         iaWorker.Start(context.Background())
 
-        // IA-CORRECTION-1 : worker de correction IA asynchrone
         correctionWorker := worker.NewCorrectionWorker(pool, logger)
         correctionWorker.RecoverInterruptedCorrections(context.Background())
         correctionWorker.Start(context.Background())
 
-        // DOC-ANALYZER-1 : worker d'analyse automatique des documents
         docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
         docAnalyzer.RecoverInterruptedAnalyses(context.Background())
         docAnalyzer.Start(context.Background())
 
-        // EXAM-PREP-CONNECT-1 — Étape 2c : worker de génération de questions
-        // d'entraînement (Practice). Async : le handler POST /api/exam-prep/practice/generate
-        // pousse un job dans worker.PracticeQueue et retourne 202 Accepted.
         practiceWorker := worker.NewPracticeWorker(pool, logger)
         practiceWorker.Start(context.Background())
 
-        // P4-DEVOIRS-4 : HomeworkCorrectionWorker (correction IA asynchrone des soumissions de devoirs)
         homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
         homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
         homeworkWorker.Start(context.Background())
 
-        // AUDIO-LEARNING-1 — Mode Audio-Learning : worker de génération de podcasts
-        // de révision (script IA + synthèse TTS optionnelle + upload R2). Async :
-        // le handler POST /api/exam-prep/documents/{id}/audio crée la ligne
-        // DocumentAudio (status=EN_COURS) puis pousse un job dans
-        // worker.AudioGenerationQueue et retourne 202 Accepted.
         audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
         audioWorker.RecoverInterruptedAudioJobs(context.Background())
         audioWorker.Start(context.Background())

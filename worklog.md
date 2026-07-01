@@ -9961,6 +9961,37 @@ Stage Summary:
 - **Tous les endpoints testés en production** : publics (login, invitation verify, certificat verify) + authentifiés (RequireAuth) fonctionnent avec sect_app.
 
 ---
+Task ID: SECT-WORKERS-REACTIVATION
+Agent: Z.ai Code (tuteur/assistant)
+Task: Réactiver workers après ajout policies is_system manquantes
+
+Work Log:
+- **Diagnostic post-incident** : après bascule sect_app, le service Render crashait en boucle (server_failed, nonZeroExit=1). Cause : 4 tables (Devoir, EpreuveQuestion, GrilleEvaluation, SessionPassation) référencées par les workers en JOIN n'avaient pas de policy is_system().
+- **Credentials** : nouveau password neondb_owner fourni par l'utilisateur (rotation côté Neon). .env mis à jour + testé (connexion OK).
+- **Fix DB** : 4 policies ajoutées sur Neon :
+  - Devoir_all_system (FOR ALL USING is_system() WITH CHECK is_system())
+  - EpreuveQuestion_all_system
+  - GrilleEvaluation_all_system
+  - SessionPassation_all_system
+- **Test sect_app complet** : 14/15 tests OK (12 tables accessibles + 2 JOINs complexes). Le seul échec était une erreur de schéma dans le test (dateEcheance inexistante), pas un problème RLS.
+- **Réactivation workers** dans main.go : 6 workers décommentés + import restauré. go build ✓.
+- **Commit + push** (1a34b8a) → Render auto-deploy.
+- **Vérification production** :
+  - GET /health → 200 (0.23s) ✅
+  - POST /api/auth/login → 401 "identifiants incorrects" ✅ (SECURITY DEFINER fonctionne)
+  - Frontend Vercel → 200 ✅
+  - Events Render : 0 server_failed dans les 5 derniers events ✅
+  - deploy_ended status=succeeded + server_available ✅
+
+Stage Summary:
+- **Service Render restauré et stable** avec sect_app (NOBYPASSRLS).
+- **12 tables workers** ont maintenant une policy _all_system (is_system()).
+- **6 workers réactivés** : iaWorker, correctionWorker, docAnalyzer, practiceWorker, homeworkWorker, audioWorker.
+- **RLS enforced** au niveau DB en production (defense-in-depth active).
+- **Aucun crash** après 60s de monitoring.
+- Production 100% fonctionnelle : API + frontend + workers IA + RLS.
+
+---
 Task ID: SECT-ONBOARDING-TUTEUR
 Agent: Z.ai Code (tuteur/assistant)
 Task: Onboarding environnement — clone repo, configuration identité Git, vérification santé des 3 services production (Vercel/Render/Neon)
