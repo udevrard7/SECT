@@ -12,6 +12,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/cache"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
+        "github.com/udevrard7/sect/backend/internal/monitoring"
         "github.com/udevrard7/sect/backend/internal/repository"
         "github.com/udevrard7/sect/backend/internal/usecase"
 )
@@ -44,6 +45,9 @@ type Server struct {
         // Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
         // vers Neon toutes les 30s ; le handler submitSession force un flush immédiat.
         sessionCache *cache.SessionCache
+        // Monitoring : Event Recorder + Health Checker (audit monitoring 2025)
+        monRecorder      *monitoring.Recorder
+        monHealthChecker *monitoring.HealthChecker
 }
 
 // NewServer crée et configure le serveur HTTP.
@@ -71,29 +75,33 @@ func NewServer(
         dbPool *pgxpool.Pool,
         corsOrigins []string,
         authMiddleware func(http.Handler) http.Handler,
+        monRecorder *monitoring.Recorder,
+        monHealthChecker *monitoring.HealthChecker,
 ) *Server {
         s := &Server{
-                dbPool:       dbPool,
-                userRepo:     userRepo,
-                userUC:       userUC,
-                authUC:       authUC,
-                etabUC:       etabUC,
-                accessUC:     accessUC,
-                filiereUC:    filiereUC,
-                ueUC:         ueUC,
-                efUC:         efUC,
-                anneeUC:      anneeUC,
-                invitationUC: invitationUC,
-                epreuveUC:    epreuveUC,
-                questionUC:   questionUC,
-                sessionUC:    sessionUC,
-                resultatUC:   resultatUC,
-                documentUC:   documentUC,
-                certificatUC: certificatUC,
-                correctionUC: correctionUC,
-                examPrepUC:   examPrepUC,
-                aiService:    aiService,
-                storage:       storage,
+                dbPool:           dbPool,
+                userRepo:         userRepo,
+                userUC:           userUC,
+                authUC:           authUC,
+                etabUC:           etabUC,
+                accessUC:         accessUC,
+                filiereUC:        filiereUC,
+                ueUC:             ueUC,
+                efUC:             efUC,
+                anneeUC:          anneeUC,
+                invitationUC:     invitationUC,
+                epreuveUC:        epreuveUC,
+                questionUC:       questionUC,
+                sessionUC:        sessionUC,
+                resultatUC:       resultatUC,
+                documentUC:       documentUC,
+                certificatUC:     certificatUC,
+                correctionUC:     correctionUC,
+                examPrepUC:       examPrepUC,
+                aiService:        aiService,
+                storage:          storage,
+                monRecorder:      monRecorder,
+                monHealthChecker: monHealthChecker,
         }
         // CACHE-RAM-1 : initialiser le cache RAM write-behind.
         s.sessionCache = cache.NewSessionCache()
@@ -114,6 +122,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         // chimw.RealIP modifie r.RemoteAddr ce qui peut causer des conflits.
         r.Use(chimw.RequestID)
         r.Use(chimw.Recoverer)
+        // Monitoring middleware : capture erreurs 5xx + panics → MonitoringEvent
+        r.Use(monitoring.Middleware(s.monRecorder, nil))
         r.Use(cors.Handler(cors.Options{
                 AllowedOrigins:   corsOrigins,
                 AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -645,6 +655,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 r.Route("/api/monitoring", func(r chi.Router) {
                         r.Use(middleware.RequireAuth, middleware.RequireRole("ADMIN"))
                         r.Get("/", s.monitoringEventsReal)
+                        // Bug B2 (audit monitoring) : healthcheck réel des services
+                        r.Get("/health", s.monitoringHealthCheck)
                         // MONITORING-FIX-M2 : mutations (POST/PATCH/DELETE).
                         r.Post("/", s.createMonitoringEvent)
                         r.Patch("/{id}", s.resolveMonitoringEvent)
