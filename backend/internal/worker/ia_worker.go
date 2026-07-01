@@ -4,15 +4,15 @@
 //
 // Au lieu d'attendre synchrone que l'IA réponde (40s → timeout Vercel/Render),
 // le handler POST /api/epreuves/generate :
-//   1. Crée l'épreuve en DB avec statut EN_COURS
-//   2. Pousse un IAJob dans GeneratorQueue (channel Go, < 1ms)
-//   3. Retourne immédiatement 202 Accepted
+//  1. Crée l'épreuve en DB avec statut EN_COURS
+//  2. Pousse un IAJob dans GeneratorQueue (channel Go, < 1ms)
+//  3. Retourne immédiatement 202 Accepted
 //
 // Le worker (goroutine) consomme la queue en arrière-plan :
-//   1. Lit le provider actif depuis AIProviderConfig (Neon)
-//   2. Télécharge le document depuis R2
-//   3. Appelle l'API du provider IA (Mistral, Groq, etc.)
-//   4. Écrit le résultat en DB (statut TERMINE)
+//  1. Lit le provider actif depuis AIProviderConfig (Neon)
+//  2. Télécharge le document depuis R2
+//  3. Appelle l'API du provider IA (Mistral, Groq, etc.)
+//  4. Écrit le résultat en DB (statut TERMINE)
 //
 // Si le provider IA ralentit (1 min), l'utilisateur ne voit jamais de 504.
 // Le frontend poll la DB via TanStack Query (refetchInterval 3s).
@@ -20,10 +20,8 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,12 +47,12 @@ type ChatMessage struct {
 
 // GenerateConfig contient la config de génération (nombre questions, types, etc.)
 type GenerateConfig struct {
-	Titre          string                 `json:"titre"`
-	Difficulte     string                 `json:"difficulte"`
-	NombreQuestions int                   `json:"nombreQuestions"`
-	TypesQuestions map[string]int         `json:"typesQuestions"`
-	NoteTotal      float64                `json:"noteTotal"`
-	Extra          map[string]interface{} `json:"extra,omitempty"`
+	Titre           string                 `json:"titre"`
+	Difficulte      string                 `json:"difficulte"`
+	NombreQuestions int                    `json:"nombreQuestions"`
+	TypesQuestions  map[string]int         `json:"typesQuestions"`
+	NoteTotal       float64                `json:"noteTotal"`
+	Extra           map[string]interface{} `json:"extra,omitempty"`
 }
 
 // GeneratorQueue est la file d'attente globale (channel Go buffered).
@@ -63,8 +61,8 @@ var GeneratorQueue = make(chan IAJob, 100)
 
 // IAWorker est le worker qui consomme la queue.
 type IAWorker struct {
-	dbPool  *pgxpool.Pool
-	logger  *slog.Logger
+	dbPool *pgxpool.Pool
+	logger *slog.Logger
 	// aiBaseURL + apiKey sont lus depuis la DB au moment du traitement
 }
 
@@ -119,8 +117,8 @@ func (w *IAWorker) processJob(ctx context.Context, job IAJob) {
 	}
 	w.logger.Info("Using AI provider", "name", provider.Name, "model", provider.Model)
 
-	// 3. Appeler l'API du provider IA
-	result, err := w.callAIProvider(ctx, provider, job.Messages)
+	// 3. Appeler l'API du provider IA (helper partagé helpers.go).
+	result, err := callAIProviderShared(ctx, provider, job.Messages, w.logger)
 	if err != nil {
 		w.logger.Error("AI provider call failed", "error", err, "provider", provider.Name)
 		w.markEpreuveError(ctx, job.EpreuveID, fmt.Sprintf("erreur API IA: %v", err))
@@ -135,100 +133,22 @@ func (w *IAWorker) processJob(ctx context.Context, job IAJob) {
 }
 
 // aiProviderConfig représente la config d'un provider lu depuis la DB.
+// Ce type est partagé entre IAWorker et CorrectionWorker (helpers.go).
 type aiProviderConfig struct {
-	ID           string
-	Name         string
-	Provider     string
-	BaseURL      string
-	APIKey       string
-	Model        string
-	Temperature  float64
-	MaxTokens    int
+	ID          string
+	Name        string
+	Provider    string
+	BaseURL     string
+	APIKey      string
+	Model       string
+	Temperature float64
+	MaxTokens   int
 }
 
-// getActiveProvider lit le provider IA actif depuis AIProviderConfig.
-func (w *IAWorker) getActiveProvider(ctx context.Context) (*aiProviderConfig, error) {
-	tx, err := w.dbPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	// Pose les claims system-worker pour RLS (le worker n'a pas de claims HTTP)
-	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
-
-	var p aiProviderConfig
-	err = tx.QueryRow(ctx, `
-		SELECT "id", "name", "provider", "baseUrl", "apiKey", "model",
-		       COALESCE("temperature", 0.7), COALESCE("maxTokens", 4096)
-		FROM "AIProviderConfig"
-		WHERE "isActive" = true
-		ORDER BY "priority" ASC
-		LIMIT 1
-	`).Scan(&p.ID, &p.Name, &p.Provider, &p.BaseURL, &p.APIKey, &p.Model, &p.Temperature, &p.MaxTokens)
-	if err != nil {
-		return nil, fmt.Errorf("no active AI provider: %w", err)
-	}
-
-	tx.Commit(ctx)
-	return &p, nil
-}
-
-// callAIProvider fait l'appel chat completion vers le provider.
-func (w *IAWorker) callAIProvider(ctx context.Context, provider *aiProviderConfig, messages []ChatMessage) (string, error) {
-	// Construire le body de la requête (format OpenAI-compatible)
-	body := map[string]interface{}{
-		"model":       provider.Model,
-		"messages":    messages,
-		"temperature": provider.Temperature,
-		"max_tokens":  provider.MaxTokens,
-	}
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	// URL de l'endpoint chat/completions
-	url := provider.BaseURL + "/chat/completions"
-	w.logger.Info("Calling AI provider", "url", url, "model", provider.Model)
-
-	// Créer la requête HTTP avec timeout (5 min max pour la génération)
-	httpCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	req, err := newHTTPRequest(httpCtx, "POST", url, bodyJSON, provider.APIKey)
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("AI request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("AI provider returned HTTP %d", resp.StatusCode)
-	}
-
-	// Parser la réponse OpenAI-compatible
-	var aiResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
-		return "", fmt.Errorf("decode AI response: %w", err)
-	}
-
-	if len(aiResp.Choices) == 0 {
-		return "", fmt.Errorf("AI returned no choices")
-	}
-
-	return aiResp.Choices[0].Message.Content, nil
-}
+// Bug #9 (audit ai-providers MEDIUM) : les anciennes méthodes doublons de
+// IAWorker ont été supprimées. `processJob` ci-dessus appelle directement
+// les versions Shared définies dans helpers.go (qui gèrent en plus le
+// extraConfig pour ZAI, bug #2).
 
 // updateEpreuveStatus met à jour le statut de l'épreuve en DB.
 func (w *IAWorker) updateEpreuveStatus(ctx context.Context, epreuveID, statut, contenu, erreur string) {
@@ -243,16 +163,16 @@ func (w *IAWorker) updateEpreuveStatus(ctx context.Context, epreuveID, statut, c
 
 	if contenu != "" {
 		_, err = tx.Exec(ctx, `
-			UPDATE "Epreuve"
-			SET "statut" = $1, "contenu" = $2::jsonb, "updatedAt" = CURRENT_TIMESTAMP
-			WHERE "id" = $3
-		`, statut, contenu, epreuveID)
+                        UPDATE "Epreuve"
+                        SET "statut" = $1, "contenu" = $2::jsonb, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $3
+                `, statut, contenu, epreuveID)
 	} else {
 		_, err = tx.Exec(ctx, `
-			UPDATE "Epreuve"
-			SET "statut" = $1, "updatedAt" = CURRENT_TIMESTAMP
-			WHERE "id" = $2
-		`, statut, epreuveID)
+                        UPDATE "Epreuve"
+                        SET "statut" = $1, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $2
+                `, statut, epreuveID)
 	}
 	if err != nil {
 		w.logger.Error("Failed to update epreuve status", "error", err, "epreuveId", epreuveID)
@@ -267,7 +187,6 @@ func (w *IAWorker) markEpreuveError(ctx context.Context, epreuveID, errorMsg str
 	w.updateEpreuveStatus(ctx, epreuveID, "BROUILLON", "", "")
 	w.logger.Error("IA job failed", "epreuveId", epreuveID, "error", errorMsg)
 }
-
 
 // RecoverInterruptedJobs recherche les epreuves restees bloquees au statut
 // EN_COURS (a cause d'un redemarrage Render) et les reinjecte dans la queue.
@@ -285,12 +204,12 @@ func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
 	tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)")
 
 	rows, err := tx.Query(ctx, `
-		SELECT "id", "enseignantId", "contenu"
-		FROM "Epreuve"
-		WHERE "statut" = 'EN_COURS'
-			AND "deletedAt" IS NULL
-			AND ("contenu" IS NULL OR "contenu" = 'null'::jsonb)
-	`)
+                SELECT "id", "enseignantId", "contenu"
+                FROM "Epreuve"
+                WHERE "statut" = 'EN_COURS'
+                        AND "deletedAt" IS NULL
+                        AND ("contenu" IS NULL OR "contenu" = 'null'::jsonb)
+        `)
 	if err != nil {
 		w.logger.Error("RecoverInterruptedJobs: query failed", "error", err)
 		return
@@ -306,9 +225,9 @@ func (w *IAWorker) RecoverInterruptedJobs(ctx context.Context) {
 		}
 		w.logger.Warn("Recovering interrupted epreuve", "epreuveId", epreuveID, "enseignantId", enseignantID)
 		tx.Exec(ctx, `
-			UPDATE "Epreuve" SET "statut" = 'BROUILLON', "updatedAt" = CURRENT_TIMESTAMP
-			WHERE "id" = $1
-		`, epreuveID)
+                        UPDATE "Epreuve" SET "statut" = 'BROUILLON', "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1
+                `, epreuveID)
 		recovered++
 	}
 

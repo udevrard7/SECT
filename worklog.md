@@ -9990,3 +9990,49 @@ Stage Summary:
 - **RLS enforced** au niveau DB en production (defense-in-depth active).
 - **Aucun crash** après 60s de monitoring.
 - Production 100% fonctionnelle : API + frontend + workers IA + RLS.
+
+---
+Task ID: SECT-AI-PROVIDERS-MEDIUM-FIXES
+Agent: general-purpose (subagent)
+Task: Fix bugs MEDIUM #7 #8 #9 #11 #12 du module ai-providers
+
+Work Log:
+- **Bug #7 — Partial unique index (DB constraint)** :
+  - Créé `backend/db/db/migrations/000025_ai_provider_constraints.up.sql` (+ `.down.sql`) qui pose un PARTIAL UNIQUE INDEX `AIProviderConfig_single_active` sur `((1)) WHERE "isActive" = true`. Garantit au niveau DB qu'au maximum UNE ligne peut être active simultanément (defense-in-depth : même si une race condition contournait le handler `aiProviderActivate`, la DB refuse le 2e `isActive=true`). Idempotent (`IF NOT EXISTS`).
+- **Bug #20 — Bloquer DELETE provider actif** :
+  - Dans `aiProviderDelete` (ai_provider_handlers.go), ajout d'un SELECT `isActive` AVANT le DELETE. Si `isActive=true` → 409 Conflict `"cannot delete active provider — deactivate or activate another first"`. Si provider introuvable → 404 (déplacé depuis l'ancien code de DELETE). Le DELETE effectif reste inchangé.
+- **Bug #8 — Valider les inputs** :
+  - Ajouté helper `validateProviderInput(name, provider, baseURL, apiKey, model string) error` :
+    - `name` non vide
+    - `provider` dans {ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE} (case insensitive via `strings.ToUpper`)
+    - `baseURL` si non vide doit commencer par `http://` ou `https://`
+    - `apiKey` requis pour les providers non-ZAI (ZAI peut stocker apiKey dans extraConfig)
+    - `model` non vide
+  - Appelé dans `aiProviderCreate` après les checks nil existants → 400 Bad Request avec message descriptif si invalide.
+- **Bug #9 — Supprimer le code mort IAWorker.getActiveProvider / callAIProvider** :
+  - Supprimé les 2 méthodes (~80 lignes) de `internal/worker/ia_worker.go`. C'étaient des doublons exacts de `getActiveProviderShared` / `callAIProviderShared` dans `helpers.go` (qui, en plus, gèrent le `extraConfig` pour ZAI — bug #2 CRITICAL).
+  - `processJob` appelait déjà `getActiveProviderShared` (ligne 114) mais utilisait encore `w.callAIProvider` (ligne 123). Remplacé par `callAIProviderShared(ctx, provider, job.Messages, w.logger)`.
+  - Nettoyé imports : `encoding/json` et `time` ne sont plus utilisés dans `ia_worker.go` (les méthodes supprimées étaient les seules consommatrices). `pgx` reste (utilisé par `updateEpreuveStatus` + `RecoverInterruptedJobs`).
+  - Vérifié : `grep -n 'getActiveProvider\b' ia_worker.go` → 0 match. `grep -n 'callAIProvider\b' ia_worker.go` → 0 match.
+- **Bug #11 + #12 — Logger les erreurs silencieuses** :
+  - Ajouté import `"log/slog"` dans `ai_provider_handlers.go`.
+  - Remplacé les 3 occurrences `_ = appdb.WithTx(...)` par `if err := appdb.WithTx(...); err != nil { slog.Error(...) }` :
+    1. `aiProviderTest` (update `lastTestAt`/`lastTestOk`) → log avec `provider_id`
+    2. `aiProviderFailoverStatus` (lecture config + providers + events) → log sans `provider_id` (multi-lignes)
+    3. `aiProviderFailoverHealth` GET (healthcheck simplifié) → log sans `provider_id`
+  - Comportement tolerant conservé (on répond quand même avec les données partielles), mais l'erreur est désormais visible dans les logs Render pour debug. Compteur `_ = appdb.WithTx` : 3 → 0.
+- **Build + format** : `go build ./...` ✓, `go vet ./internal/transport/http/ ./internal/worker/` ✓, `gofmt -w` appliqué sur les 2 fichiers Go modifiés.
+
+Stage Summary:
+- **6 bugs MEDIUM corrigés** sur le module ai-providers (#7, #8, #9, #11, #12, #20) — le bug #20 était groupé avec #7 dans la même tâche.
+- **Defense-in-depth DB** : la contrainte d'unicité `isActive=true` empêche structurellement deux providers actifs, même en cas de bug applicatif ou de race condition.
+- **Validation inputs côté serveur** : ferme la porte aux providers invalides (provider enum, baseUrl non-HTTP, apiKey manquante pour non-ZAI, model vide) qui auraient pu être créés via un client non-officiel.
+- **Code mort supprimé** : ~80 lignes retirées de `ia_worker.go`. Le worker utilise désormais exclusivement les versions Shared (qui gèrent le bug #2 extraConfig).
+- **Observabilité** : 3 erreurs DB précédemment silencieuses sont maintenant loggées via `slog.Error` avec contexte (provider_id quand pertinent). Comportement tolerant conservé.
+- **Fichiers modifiés** :
+  - `backend/db/db/migrations/000025_ai_provider_constraints.up.sql` (NEW)
+  - `backend/db/db/migrations/000025_ai_provider_constraints.down.sql` (NEW)
+  - `backend/internal/transport/http/ai_provider_handlers.go` (modifié)
+  - `backend/internal/worker/ia_worker.go` (modifié)
+- **Vérifications** : `go build ./...` ✓, `go vet` ✓, `gofmt` clean, `grep` checks OK.
+- **Prochaines actions recommandées** : appliquer la migration 000025 sur Neon (production) via le pipeline habituel, puis tester en production : POST /api/ai-providers avec provider invalide (400 attendu), DELETE sur provider actif (409 attendu), vérifier les logs Render en cas d'erreur DB sur /test ou /failover/status.
