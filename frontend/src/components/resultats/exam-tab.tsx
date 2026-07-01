@@ -187,14 +187,14 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
       const kpis: Array<{ label: string; value: string; r: number; g: number; b: number }> = [
         {
           label: 'Moyenne',
-          value: `${stats.moyenne.toFixed(1)}/${noteTotal}`,
+          value: `${(stats.moyenneBrute ?? stats.moyenne).toFixed(1)}/${noteTotal}`,
           r: 132,
           g: 204,
           b: 22,
         },
         {
           label: 'Médiane',
-          value: `${stats.mediane.toFixed(1)}/${noteTotal}`,
+          value: `${(stats.medianeBrute ?? stats.mediane).toFixed(1)}/${noteTotal}`,
           r: 44,
           g: 62,
           b: 80,
@@ -489,19 +489,19 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
             <StatCard
               icon={Target}
               label="Moyenne"
-              value={stats.moyenne.toFixed(1)}
+              value={(stats.moyenneBrute ?? stats.moyenne).toFixed(1)}
               suffix={`/${noteTotal}`}
               accent="success"
-              scoreOn20={(stats.moyenne / noteTotal) * 20}
+              scoreOn20={stats.moyenne}
               index={0}
             />
             <StatCard
               icon={BarChart2}
               label="Médiane"
-              value={stats.mediane.toFixed(1)}
+              value={(stats.medianeBrute ?? stats.mediane).toFixed(1)}
               suffix={`/${noteTotal}`}
               accent="primary"
-              scoreOn20={(stats.mediane / noteTotal) * 20}
+              scoreOn20={stats.mediane}
               index={1}
             />
             <StatCard
