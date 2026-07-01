@@ -10300,3 +10300,50 @@ Stage Summary:
 - **Atomicité garantie** : INSERT AuditLog + DELETE EtablissementAccess dans la même transaction (si l'audit échoue, le delete n'a pas lieu).
 - **Migration 000030 appliquée** sur Neon (neondb_owner), schema_migrations version 30.
 - **Module /acces-etablissements maintenant conforme aux exigences de sécurité** (Option B) + pleinement fonctionnel en production.
+
+---
+Task ID: SECT-MONITORING-BULK-ACTIONS
+Agent: Z.ai Code (tuteur/assistant)
+Task: /monitoring onglet Événements — ajouter sélection et action de masse
+
+Work Log:
+- Backend : nouvel endpoint POST /api/monitoring/bulk {ids, action: 'resoudre'|'ignorer'}.
+  * Handler bulkMonitoringEvents dans monitoring_mutation_handlers.go.
+  * UPDATE ... WHERE id = ANY($1::text[]) AND statut = 'ACTIF' — seuls les ACTIF sont affectés.
+  * Tout en une transaction (atomicité), limité à 100 IDs/req (anti-abus).
+  * resoluPar forcé à claims.Email (anti-forgery, comme resolveMonitoringEvent).
+  * Anti-injection SQL : ANY($1::text[]) au lieu de concaténation.
+  * Route enregistrée dans router.go : r.Post("/bulk", s.bulkMonitoringEvents) sous RequireAuth + RequireRole("ADMIN").
+- Frontend (monitoring-page.tsx, onglet Événements) :
+  * Import Checkbox de shadcn/ui + useMemo (déjà présent).
+  * States bulk : selectedIds (Set<string>), bulkAction, bulkDialogOpen, bulkSubmitting.
+  * selectableEvents = useMemo(() => filteredEvents.filter(e => e.statut === 'ACTIF'), [filteredEvents]).
+    IMPORTANT : déclaré APRÈS filteredEvents pour éviter TDZ (Temporal Dead Zone) — bug 'Cannot access J before initialization' corrigé dans un commit séparé.
+  * toggleSelectAll / toggleSelectOne / clearSelection.
+  * handleBulkAction : POST /api/monitoring/bulk, toast succès détaillé, invalidation cache.
+  * Colonne checkbox dans le header (select-all avec état indéterminé si sélection partielle).
+  * Checkbox par ligne (uniquement pour les ACTIF — sinon span vide).
+  * Toolbar d'action de masse visible quand selectedIds.size > 0 : 'Résoudre (N)', 'Ignorer (N)', 'Annuler la sélection'.
+  * AlertDialog de confirmation avec compte exact + identité admin + protection double-clic (bulkSubmitting).
+- Bug corrigé en cours de route : TDZ 'Cannot access J before initialization' — le bloc useState/useMemo bulk utilisait filteredEvents qui était défini plus bas. Déplacé après filteredEvents.
+
+Tests E2E production (Agent Browser en ADMIN sur Vercel prod) :
+1. Endpoint bulk sans auth → 401 ✅
+2. Endpoint bulk avec IDs vides → 400 "ids requis (au moins 1)" ✅
+3. Endpoint bulk avec action invalide → 400 "action doit être 'resoudre' ou 'ignorer'" ✅
+4. Endpoint bulk avec IDs fake → 200 {updated: 0, total: 2} ✅
+5. Création de 3 événements ACTIF (POST /api/monitoring) → 201 Created ×3 ✅
+6. Tableau affiche 44 rows (41 Résolu + 3 ACTIF) + 4 checkboxes (1 select-all + 3 par ligne) ✅
+7. Clic select-all → toolbar bulk visible "3 événements sélectionnés" ✅
+8. Clic "Résoudre (3)" → AlertDialog "Résoudre 3 événements ?" avec détail + identité admin ✅
+9. Confirmation → toast "Action de masse terminée — 3 événement(s) résolus sur 3 sélectionné(s)" ✅
+10. Résultat : 0 ACTIF restant, 44 RESOLU (les 3 ACTIF transformés en RESOLU) ✅
+11. VLM valide toolbar bleue + colonne checkbox + dialog de confirmation ✅
+
+Stage Summary:
+- **Sélection et action de masse implémentées** sur /monitoring onglet Événements.
+- **Backend** : POST /api/monitoring/bulk (atomic, anti-injection, anti-abus 100 IDs max, anti-forgery resoluPar).
+- **Frontend** : checkboxes (select-all + par ligne, uniquement ACTIF), toolbar d'action, AlertDialog confirmation, protection double-clic, toast détaillé.
+- **Bug TDZ corrigé** en cours de route (Cannot access J before initialization).
+- **3 commits poussés** : feat initial + fix TDZ + worklog.
+- **Tests E2E production réussis** : 11/11 scénarios validés.
