@@ -213,11 +213,35 @@ func (s *Server) listResultats(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing.
+        //
+        // BUGFIX (RESULTATS-LIST-EPREUVE) : l'ancienne implémentation appelait
+        // resolveScopedUserID sur ?etudiantId= pour TOUS les rôles (ETUDIANT +
+        // ENSEIGNANT). Pour un ENSEIGNANT, cela forçait EtudiantID = claims.UserID
+        // même quand le query param était absent → le usecase prenait Branch A
+        // (résultats d'un étudiant = lui-même) au lieu de Branch B (résultats de
+        // l'épreuve avec stats) → le frontend recevait {resultats: [...]} au lieu
+        // de {sessions: [...], stats: {...}} → l'onglet "Par épreuve" était vide.
+        //
+        // Correction :
+        //   - ETUDIANT : force etudiantId = claims.UserID (anti-spoofing, un étudiant
+        //     ne voit que ses propres résultats).
+        //   - ENSEIGNANT : accepte le query param tel quel (vide par défaut). La
+        //     sécurité est déjà assurée côté usecase (session.go:483-491) qui filtre
+        //     pour ne garder que les sessions des épreuves de l'enseignant
+        //     (epreuve.enseignantId == claims.UserID). Ainsi l'enseignant peut
+        //     consulter /api/resultats?epreuveId=X (Branch B, avec stats) ET
+        //     /api/resultats?etudiantId=Y (Branch A, filtrée à ses épreuves).
+        //   - ADMIN/RESPONSABLE : accepte le query param (RLS filtre par établissement).
+        var etudiantID string
+        if claims.Role == "ETUDIANT" {
+                etudiantID = claims.UserID
+        } else {
+                etudiantID = r.URL.Query().Get("etudiantId")
+        }
+
         params := domain.ResultatListParams{
-                // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ETUDIANT/ENSEIGNANT
-                // ne peut cibler que son propre ID. Le query param ?etudiantId= est ignoré
-                // pour ces rôles (forcé à claims.UserID).
-                EtudiantID: resolveScopedUserID(r, r.URL.Query().Get("etudiantId")),
+                EtudiantID: etudiantID,
                 EpreuveID:  r.URL.Query().Get("epreuveId"),
                 Page:       parseIntQueryParam(r.URL.Query().Get("page"), 1),
                 Limit:      parseIntQueryParam(r.URL.Query().Get("limit"), 50),
