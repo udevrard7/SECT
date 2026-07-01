@@ -10097,3 +10097,47 @@ Stage Summary:
 - **Dimensions identiques** (1152x864) → aucun layout shift, aucun changement de code nécessaire (la référence `src="/after-dashboard.png"` dans landing-page.tsx reste valide).
 - **Original sauvegardé** à `/tmp/after-dashboard-original.png` (récupérable si rollback nécessaire).
 - **Workflow respecté** : push GitHub → auto-deploy Vercel frontend (aucune action backend/DB nécessaire).
+
+---
+Task ID: SECT-LANDING-DEMO-ENDPOINT
+Agent: Z.ai Code (tuteur/assistant)
+Task: Réparer la démo interactive du landing page — endpoint /api/landing-demo non implémenté (404)
+
+Work Log:
+- Diagnostic : `POST https://sect-app.vercel.app/api/landing-demo` → `404 {"error":"endpoint non implémenté"}`. Le frontend (`landing-page.tsx` ligne 986) appelle `/api/landing-demo` mais aucune route n'existait côté frontend **ni** côté backend. Le `vercel.json` rewrite `/api/:path*` → Render, mais Render renvoyait aussi 404 car la route n'était pas enregistrée dans le routeur chi.
+- Vérification providers IA en BD Neon (table AIProviderConfig, RLS policies `AIProviderConfig_all_admin` + `AIProviderConfig_all_system`) :
+  * Lecture impossible en autocommit bun+pg car `set_config(...,true)` est transaction-local. Solution : transaction explicite `BEGIN` + claims system-worker/ADMIN (même pattern que `getActiveProvider` Go dans `internal/ai/service.go`).
+  * Provider actif trouvé : **Mistral AI** (provider=OPENAI_COMPATIBLE, baseUrl=`https://api.mistral.ai/v1`, model=`mistral-small-latest`, apiKey len=32, isActive=true, priority=1, extraConfig=null).
+  * Test réel API Mistral : `POST https://api.mistral.ai/v1/chat/completions` → HTTP 200 en 475ms. Provider fonctionnel ✅.
+- Décision d'architecture : implémenter l'endpoint côté **backend Go** (pas frontend) pour respecter la séparation stricte "frontend = UI uniquement, backend = logique métier + DB" documentée dans le README. Le `vercel.json` rewrite déjà `/api/landing-demo` → Render, donc aucune modif frontend nécessaire.
+- Installation Go 1.24 dans le bac à sable (téléchargement officiel go.dev, /home/z/go) pour permettre `go build` + `go vet` locaux — résout la contrainte toolchain notée lors de l'onboarding précédent.
+- Création `backend/internal/transport/http/landing_demo_handlers.go` (227 lignes) :
+  * Handler `(s *Server) landingDemo` — POST public (pas de RequireAuth).
+  * Rate-limit par IP en mémoire (40 req / 10 min / IP, fenêtre glissante, sync.Mutex) — defense-in-depth pour endpoint public + appel IA coûteux.
+  * Validation topic (3-200 chars, trim).
+  * Prompt structurant (system + user) forçant un JSON strict avec EXACTEMENT les champs de l'interface QCM frontend : `{question, options[4], correctIndex 0-3, difficulty Facile|Moyen|Difficile, explanation}`.
+  * Appel `s.aiService.ChatCompletion(ctx, messages)` — réutilise le failover server-side + claims system-worker automatiques (commit 38b221b).
+  * Timeout 30s via `context.WithTimeout` (le AIService a 180s mais la démo landing doit rester réactive).
+  * Extraction tolérante du JSON (`strings.Index("{")` → `strings.LastIndex("}")`).
+  * Validation stricte post-parse : exactement 4 options, correctIndex dans [0,3], question non vide, normalisation difficulty.
+  * Retourne `{qcm, model}`.
+- Enregistrement route dans `router.go` (ligne 157) : `r.Post("/api/landing-demo", s.landingDemo)` dans la section publique (après verifyCertificat, avant le groupe authentifié).
+- Imports corrigés : module path `github.com/udevrard7/sect/backend/internal/{ai,middleware}` (pas `sect/backend/...`).
+- Compilation locale : `go build ./...` → EXIT 0 (0 erreur). `go vet ./internal/transport/http/` → EXIT 0 (0 warning).
+- Tests locaux (binaire `/tmp/sect-api` sur :8080 avec .env sect_app Neon) :
+  * `POST /api/landing-demo {"topic":"La photosynthèse"}` → HTTP 200 en 3.15s, QCM excellent sur la phase lumineuse, model=mistral-small-latest ✅
+  * `POST /api/landing-demo {"topic":"Le droit constitutionnel"}` → HTTP 200, QCM sur la hiérarchie des normes (Kelsen) ✅
+  * `POST {"topic":""}` → HTTP 400 "Sujet trop court (min 3 caractères)" ✅
+  * `POST {"topic":"ab"}` → HTTP 400 "Sujet trop court" ✅
+  * `POST 'not json'` → HTTP 400 "JSON invalide" ✅
+  * `GET /api/landing-demo` → HTTP 405 Method Not Allowed ✅
+- Vérification frontend : `proxy.ts` matcher exclut `/api/*` (lookahead négatif `api`) → `/api/landing-demo` routé par vercel.json rewrite vers Render, pas d'interception middleware. `vercel.json` règle 2 `/api/:path*` → `https://sect-s1pb.onrender.com/api/:path*` capture bien `/api/landing-demo`.
+- Commit + push (identité udevrard7 / ulrichdouh@gmail.com) → Render auto-deploy backend (le frontend Vercel n'a pas besoin de redeploy car aucune modif frontend, le rewrite existant suffit).
+
+Stage Summary:
+- **Démo interactive du landing page réparée** : endpoint `POST /api/landing-demo` implémenté côté backend Go, utilisant le provider IA **Mistral AI actif en BD** (mistral-small-latest) via `AIService.ChatCompletion` (failover + claims system-worker automatiques).
+- **Architecture respectée** : backend = logique métier + DB + appel IA (comme partout ailleurs dans l'app), frontend = UI uniquement (aucune modif frontend, le `vercel.json` rewrite existant proxyfie déjà la route vers Render).
+- **Sécurité** : rate-limit par IP (40/10min), validation topic (3-200 chars), timeout 30s, validation stricte du QCM (4 options, correctIndex 0-3, difficulty normalisée) — ne renvoie jamais un QCM malformé au frontend.
+- **Toolchain résolu** : Go 1.24 installé dans le bac à sable (/home/z/go) → `go build` + `go vet` locaux désormais possibles (résout la contrainte de l'onboarding précédent).
+- **6/6 tests locaux passent** : 2 générations QCM excellentes (photosynthèse, droit constitutionnel) + 4 cas edge (400/405).
+- **0 modif frontend** nécessaire — le `vercel.json` rewrite `/api/:path*` → Render fait le routage automatiquement.

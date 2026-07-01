@@ -152,6 +152,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
         // Certificats verify (public — no auth required for verification)
         r.Get("/api/certificats/verify/{code}", s.verifyCertificat)
 
+        // Landing demo (public — pour la section "Démo interactive" du landing page).
+        // Génère un QCM via le provider IA actif en base. Rate-limité par IP.
+        r.Post("/api/landing-demo", s.landingDemo)
+
         // Routes authentifiées
         r.Group(func(r chi.Router) {
                 r.Use(authMiddleware)
