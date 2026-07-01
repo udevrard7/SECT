@@ -21,6 +21,8 @@ import {
   ExternalLink,
   Plus,
   Zap,
+  Activity,
+  ArrowRight,
 } from 'lucide-react'
 import {
   Card,
@@ -124,6 +126,18 @@ interface AdminStats {
   nbAutorisationsActives: number
   nbAutorisationsEnAttente: number
   etablissementsOverview: EtablissementOverview[]
+
+  // SECT-DASHBOARD-ENRICH : données monitoring
+  monitoringActiveEvents: number
+  monitoringCriticalEvents: number
+  monitoringErrorEvents: number
+  monitoringResolvedToday: number
+
+  // SECT-DASHBOARD-ENRICH : données paiement
+  nbFactures: number
+  nbFacturesPayees: number
+  nbFacturesEnAttente: number
+  revenuTotalFactures: number
 }
 
 interface StatCardProps {
@@ -398,12 +412,6 @@ export function AdminDashboard() {
     }))
   })()
 
-  // Conversion rate: ACTIF / total
-  const totalAbonnements = (stats?.nbAbonnementsActifs ?? 0) + (stats?.nbAbonnementsEssai ?? 0) + (stats?.nbAbonnementsExpires ?? 0)
-  const tauxConversion = totalAbonnements > 0
-    ? (((stats?.nbAbonnementsActifs ?? 0) / totalAbonnements) * 100).toFixed(1)
-    : '0.0'
-
   // Security score (based on proctoring + identity verification coverage)
   // Bug fix: utiliser Math.max(1, ...) pour éviter division par zéro → NaN%
   const totalEtablissements = Math.max(1, stats?.nbEtablissements ?? 0)
@@ -461,18 +469,18 @@ export function AdminDashboard() {
             subtitle={`${stats?.nbAbonnementsEssai ?? 0} en essai`}
           />
           <StatCard
-            title="Taux de conversion"
-            value={`${tauxConversion}%`}
+            title="Revenus factures"
+            value={`${(stats?.revenuTotalFactures ?? 0).toLocaleString('fr-FR')} FCFA`}
             icon={<BarChart3 className="h-5 w-5" />}
             accentColor="#059669"
-            subtitle="ACTIF / Total"
+            subtitle={`${stats?.nbFacturesPayees ?? 0} payées, ${stats?.nbFacturesEnAttente ?? 0} en attente`}
           />
           <StatCard
             title="Santé plateforme"
-            value={`${avgSecurityScore}%`}
+            value={stats?.monitoringActiveEvents ?? 0}
             icon={<HeartPulse className="h-5 w-5" />}
             accentColor="#0d9488"
-            subtitle="Score de sécurité"
+            subtitle={`${stats?.monitoringCriticalEvents ?? 0} critiques, ${stats?.monitoringErrorEvents ?? 0} erreurs`}
           />
           <StatCard
             title="Autorisations actives"
@@ -908,6 +916,37 @@ export function AdminDashboard() {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      {/* ─── 7. Monitoring en temps réel ─── */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            Monitoring en temps réel
+          </h3>
+          <Button variant="ghost" size="sm" onClick={() => router.push('/monitoring')}>
+            Voir tout <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div>
+            <p className="text-2xl font-bold text-primary">{stats?.monitoringActiveEvents ?? 0}</p>
+            <p className="text-xs text-muted-foreground">Événements actifs</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-destructive">{stats?.monitoringCriticalEvents ?? 0}</p>
+            <p className="text-xs text-muted-foreground">Critiques</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-warning">{stats?.monitoringErrorEvents ?? 0}</p>
+            <p className="text-xs text-muted-foreground">Erreurs</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-success">{stats?.monitoringResolvedToday ?? 0}</p>
+            <p className="text-xs text-muted-foreground">Résolus aujourd&apos;hui</p>
+          </div>
+        </div>
       </Card>
 
       {/* ─── Access Request Dialog ─── */}

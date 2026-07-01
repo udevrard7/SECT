@@ -10208,3 +10208,33 @@ Stage Summary:
 - **B-6 (HIGH)** : policy RLS `EtablissementAccess_modify_responsable` (FOR UPDATE) ajoutée. Defense-in-depth : si un futur refactor passe les repos sur db.WithTx, le RESPONSABLE conservera ses capacités d'approbation.
 - **20/20 bugs corrigés** — module acces-etablissements fully fixed (backend Go + frontend React + DB Neon).
 - **Production stable** : backend Render live (commit b101432), frontend Vercel auto-deploy, Neon migration 000026 appliquée.
+
+---
+Task ID: SECT-DASHBOARD-ENRICH
+Agent: Z.ai Code (tuteur/assistant)
+Task: Enrichir le dashboard admin avec données monitoring + paiement
+
+Work Log:
+- **Backend** (`backend/internal/transport/http/stats_handlers.go`, `statsAdmin` ~ligne 581) :
+  * Ajout de 8 nouvelles clés au map `stats` (initialisées à zéro pour tolérance) :
+    - `monitoringActiveEvents`, `monitoringCriticalEvents`, `monitoringErrorEvents`, `monitoringResolvedToday`
+    - `nbFactures`, `nbFacturesPayees`, `nbFacturesEnAttente`, `revenuTotalFactures`
+  * Section 8 (monitoring) : un seul `QueryRow` agrégé avec `count(*) FILTER (WHERE ...)` sur `"MonitoringEvent"` — statut ACTIF + sévérités CRITICAL/ERROR + RESOLU depuis `CURRENT_DATE`.
+  * Section 9 (factures) : un seul `QueryRow` agrégé sur `"Facture"` — count total + count PAYEE + count EN_ATTENTE + `sum("montantTtc") FILTER (WHERE statut='PAYEE')`. Utilisation de `montantTtc` (TTC = revenu réel encaissé, plutôt que `montantHt` HT).
+  * Comportement tolerant conservé : `_ = tx.QueryRow(...)` — si la table/colonne n'existe pas, les valeurs restent à 0.
+  * Toujours dans la transaction `appdb.WithTx` existante (claims RLS posés).
+
+- **Frontend** (`frontend/src/components/dashboard/admin-dashboard.tsx`) :
+  * Imports lucide-react : ajout de `Activity` et `ArrowRight`.
+  * Interface `AdminStats` : ajout des 8 champs monitoring + paiement.
+  * KPI Row : remplacement de la carte "Taux de conversion" par "Revenus factures" (montant total TTC payé + compteurs payées/en attente).
+  * KPI Row : remplacement de la carte "Santé plateforme" (qui affichait `avgSecurityScore%`) par les vraies données monitoring (nombre d'événements actifs + compteurs critiques/erreurs en subtitle).
+  * Suppression des variables devenues inutilisées `tauxConversion` et `totalAbonnements` (auraient déclenché `@typescript-eslint/no-unused-vars`).
+  * Nouvelle section "7. Monitoring en temps réel" ajoutée après la "Platform Health Card" : grille 2×4 (4 KPIs sur 2 colonnes mobile, 4 colonnes desktop) + bouton "Voir tout" qui redirige vers `/monitoring`.
+
+Stage Summary:
+- **Build backend** : `go build ./...` = OK (0 erreur).
+- **Lint frontend** : `bun run lint` = 0 erreur (1 warning préexistant dans `certificat-pdf-react.tsx` non touché).
+- **Dashboard admin enrichi** : le panneau de contrôle présente désormais les vraies données monitoring (événements actifs/critiques/erreurs/résolus aujourd'hui) et les vraies données paiement (revenu total factures payées + compteurs par statut), au lieu de chiffres hardcodés ou dérivés du security score.
+- **Aucune migration DB** nécessaire (tables `MonitoringEvent` et `Facture` déjà existantes depuis migration 000002).
+- **Pas de breaking change API** : les champs ajoutés sont ADDITIFS au JSON existant ; les anciens clients frontend ignorent les nouveaux champs.

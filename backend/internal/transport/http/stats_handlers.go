@@ -641,6 +641,16 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                 "nbAutorisationsActives":   0,
                 "nbAutorisationsEnAttente": 0,
                 "etablissementsOverview":   []etablissementOverview{},
+
+                // SECT-DASHBOARD-ENRICH : données monitoring + paiement.
+                "monitoringActiveEvents":    0,
+                "monitoringCriticalEvents":  0,
+                "monitoringErrorEvents":     0,
+                "monitoringResolvedToday":   0,
+                "nbFactures":                0,
+                "nbFacturesPayees":          0,
+                "nbFacturesEnAttente":       0,
+                "revenuTotalFactures":       float64(0),
         }
 
         err := appdb.WithTx(ctx, s.dbPool, claims, func(tx pgx.Tx) error {
@@ -723,14 +733,14 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                 // 6. Autorisations EtablissementAccess
                 var nbAutActif, nbAutAttente int
                 err := tx.QueryRow(ctx, `
-					SELECT
-						count(*) FILTER (WHERE statut = 'APPROUVE'),
-						count(*) FILTER (WHERE statut = 'EN_ATTENTE')
-					FROM "EtablissementAccess"
-				`).Scan(&nbAutActif, &nbAutAttente)
-			if err != nil {
-				slog.Error("stats: échec requête autorisations EtablissementAccess", "error", err)
-			}
+                                        SELECT
+                                                count(*) FILTER (WHERE statut = 'APPROUVE'),
+                                                count(*) FILTER (WHERE statut = 'EN_ATTENTE')
+                                        FROM "EtablissementAccess"
+                                `).Scan(&nbAutActif, &nbAutAttente)
+                        if err != nil {
+                                slog.Error("stats: échec requête autorisations EtablissementAccess", "error", err)
+                        }
                 stats["nbAutorisationsActives"] = nbAutActif
                 stats["nbAutorisationsEnAttente"] = nbAutAttente
 
@@ -741,6 +751,40 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                 stats["nbEtablissementsProteges"] = 0
                 stats["nbVerificationIdentite"] = 0
 
+                // 8. SECT-DASHBOARD-ENRICH — Données monitoring.
+                // Compte les événements actifs et leur répartition par sévérité,
+                // ainsi que les événements résolus aujourd'hui. Tolérant aux
+                // erreurs (si la table n'existe pas en base, on reste à 0).
+                var monActive, monCritical, monError, monResolvedToday int
+                _ = tx.QueryRow(ctx, `
+                        SELECT
+                                count(*) FILTER (WHERE statut = 'ACTIF'),
+                                count(*) FILTER (WHERE statut = 'ACTIF' AND severite = 'CRITICAL'),
+                                count(*) FILTER (WHERE statut = 'ACTIF' AND severite = 'ERROR'),
+                                count(*) FILTER (WHERE statut = 'RESOLU' AND "resoluLe" >= CURRENT_DATE)
+                        FROM "MonitoringEvent"
+                `).Scan(&monActive, &monCritical, &monError, &monResolvedToday)
+                stats["monitoringActiveEvents"] = monActive
+                stats["monitoringCriticalEvents"] = monCritical
+                stats["monitoringErrorEvents"] = monError
+                stats["monitoringResolvedToday"] = monResolvedToday
+
+                // 9. SECT-DASHBOARD-ENRICH — Données paiement (Facture).
+                // Somme des montants TTC des factures payées = revenu réel encaissé.
+                var nbFact, nbFactPayees, nbFactAttente int
+                var revenuFactures float64
+                _ = tx.QueryRow(ctx, `
+                        SELECT
+                                count(*),
+                                count(*) FILTER (WHERE statut = 'PAYEE'),
+                                count(*) FILTER (WHERE statut = 'EN_ATTENTE'),
+                                COALESCE(sum("montantTtc") FILTER (WHERE statut = 'PAYEE'), 0)
+                        FROM "Facture"
+                `).Scan(&nbFact, &nbFactPayees, &nbFactAttente, &revenuFactures)
+                stats["nbFactures"] = nbFact
+                stats["nbFacturesPayees"] = nbFactPayees
+                stats["nbFacturesEnAttente"] = nbFactAttente
+                stats["revenuTotalFactures"] = revenuFactures
 
                 return nil
         })
