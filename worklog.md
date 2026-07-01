@@ -10378,3 +10378,38 @@ Stage Summary:
 - **Audit** : slog.Info log chaque cleanup (nombre de lignes + admin déclencheur).
 - **Pas de cron** : compatible Render free tier (le backend peut dormir, le cleanup se fait à la prochaine consultation).
 - **DB propre** : les lignes sont physiquement supprimées (pas de soft-delete, pas d'accumulation).
+
+---
+Task ID: SECT-MONITORING-REFONTE-SAVANE
+Agent: frontend-styling-expert (subagent) + Z.ai Code (tuteur/assistant)
+Task: Refonte moderne du module /monitoring — identité Savane EdTech
+
+Work Log:
+- Exploration complète de l'identité Savane EdTech : design-system.md, globals.css (tokens oklch), composants DS (StatCard, ProgressRing, EntityCard, GlassModal, PulseSkeleton), pattern header canonique de filieres-page.tsx (ds-kente-pattern + ds-kente-strip + wrapper edge-to-edge + icône pastille bg-primary/10 + Sparkles text-gold + font-display).
+- Refonte frontend monitoring-page.tsx (1824 → 1690 lignes) par subagent frontend-styling-expert :
+  1. Header canonique Savane (pattern filieres : ds-kente-pattern + ds-kente-strip + bg-card + wrapper -mx-4 -mt-4 + icône Activity en pastille bg-primary/10 + Sparkles doré + font-display).
+  2. KPI StatCards avec composant DS (remplace Card border-l-4 bruts) — 4 cards accents success/warning/danger/secondary + .ds-kente-top auto.
+  3. ProgressRing pour uptime global (remplace HealthGauge hex codé dur) — accent dynamique success/warning.
+  4. EntityCard pour les services (bande ds-kente-strip auto + badge statut).
+  5. Table moderne : en-têtes uppercase tracking-wider, hover bg-accent/50, lignes sélectionnées bg-primary/5.
+  6. Statut IGNORE corrigé : text-gray-* → tokens DS (muted/border).
+  7. Empty state avec ds-kente-watermark.
+  8. GlassModal pour dialog résolution (remplace Dialog shadcn).
+  9. Boutons CTA avec ds-shimmer.
+- Nettoyage : suppression HealthGauge (70 lignes hex codés dur) + code mort + imports inutiles.
+- Corrections types : ServiceHealth.icon → LucideIcon, cast status backend.
+- Aucun appel API modifié (6 endpoints intacts), aucune logique métier touchée, toutes fonctionnalités conservées (filtres, bulk, onglets, toasts).
+- Lint : 0 erreur. tsc : 0 erreur sur monitoring-page.tsx.
+
+Tests production (Agent Browser en ADMIN sur Vercel prod) :
+- Onglet Événements : header kente ✅, bande tricolore ✅, 4 KPI StatCards avec bord tricolore ✅, tableau moderne ✅, palette africaine ✅, 0 erreur console ✅.
+- VLM valide les 5 points du cahier (header kente, titre avec Sparkles doré, 4 KPI cards, tableau uppercase, palette africaine).
+- Responsive mobile (375px) : pas de débordement, KPI cards 2 par ligne, aucun élément tronqué ✅.
+
+Stage Summary:
+- **Refonte /monitoring terminée** — identité Savane EdTech pleinement appliquée.
+- **5 composants DS utilisés** : StatCard (×4), ProgressRing, EntityCard, GlassModal, PulseSkeleton.
+- **Pattern kente** : ds-kente-pattern (header), ds-kente-strip (bande tricolore), ds-kente-top (KPI cards), ds-kente-watermark (empty state), ds-shimmer (boutons CTA).
+- **Palette africaine** : vert lime (primary/success), terre cuite (secondary), bleu nuit (sidebar), or (gold/Sparkles).
+- **0 régression** : tous les endpoints backend intacts, toutes les fonctionnalités conservées.
+- **Validation VLM** : 5/5 points du cahier validés sur onglet Événements + responsive mobile validé.
