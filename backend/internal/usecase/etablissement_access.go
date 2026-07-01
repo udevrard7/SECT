@@ -91,13 +91,19 @@ func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, in
 //   systématiquement (pour ADMIN et RESPONSABLE) et vérifie
 //   existing.AdminID != claims.UserID pour le rôle ADMIN.
 // - B-8 (HIGH) : validation des transitions de statut (EN_ATTENTE→APPROUVE/REFUSE,
-//   APPROUVE→REFUSE/EXPIRE). REFUSE/EXPIRE/ANNULE sont terminaux. Verrou optimiste
-//   via repo.Update(ctx, id, existing.Statut, input) — deux PATCH concurrents ne
-//   peuvent pas tous deux réussir.
+//   APPROUVE→REFUSE/EXPIRE). Verrou optimiste via repo.Update(ctx, id, existing.Statut, input).
 // - B-10 (MEDIUM) : DureeAccesJours doit être dans {7, 30, 90, 365}.
 // - E4 (HIGH) : approuvePar est TOUJOURS forcé à claims.UserID (anti-forgery audit).
 // - E9 (MEDIUM) : DateFin > DateDebut si les deux fournis, auto-set DateDebut=now()
 //   si statut=APPROUVE et DateDebut nil.
+//
+// OPTION B (sécurité) : si input.Statut == REFUSE, la ligne est HARD-DELETED de
+// la table EtablissementAccess au lieu d'être conservée avec statut=REFUSE.
+// - Révocation (APPROUVE → REFUSE) : hard-delete AVEC audit trail dans AuditLog
+//   (qui avait accès, quand, révoqué par qui, raison).
+// - Refus initial (EN_ATTENTE → REFUSE) : hard-delete SANS audit (pas d'accès effectif).
+// L'admin peut recréer une demande pour le même établissement après hard-delete
+// (l'index partiel 000026 ne contraint que EN_ATTENTE/APPROUVE).
 //
 // RESPONSABLE : ne peut agir que sur les demandes de SON établissement.
 func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateAccessInput) (*domain.EtablissementAccess, error) {
@@ -146,9 +152,8 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
         // Transitions valides :
         //   EN_ATTENTE → APPROUVE | REFUSE  (approbation/refus initial)
         //   APPROUVE   → REFUSE | EXPIRE    (révocation/expiration)
-        //   REFUSE     → (terminal)
+        //   REFUSE     → (terminal — hard-deleted, Option B)
         //   EXPIRE     → (terminal)
-        //   ANNULE     → (terminal)
         validTransitions := map[domain.AccessStatut]map[domain.AccessStatut]bool{
                 domain.AccessEnAttente: {domain.AccessApprouve: true, domain.AccessRefuse: true},
                 domain.AccessApprouve:  {domain.AccessRefuse: true, domain.AccessExpire: true},
@@ -157,7 +162,7 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
         if !ok || !allowedTargets[input.Statut] {
                 return nil, &domain.ValidationError{
                         Field:   "statut",
-                        Message: fmt.Sprintf("transition invalide : %s → %s (statuts terminaux : REFUSE, EXPIRE, ANNULE)", existing.Statut, input.Statut),
+                        Message: fmt.Sprintf("transition invalide : %s → %s (statuts terminaux : REFUSE, EXPIRE)", existing.Statut, input.Statut),
                 }
         }
 
@@ -192,26 +197,89 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                 input.DateFin = &fin
         }
 
+        // OPTION B (sécurité) : si le statut cible est REFUSE, on hard-delete la ligne
+        // au lieu de la garder en DB. Les lignes REFUSE ne sont jamais conservées.
+        // - Si existing.Statut == APPROUVE (révocation) → hard-delete AVEC audit trail
+        //   dans AuditLog (qui avait accès, quand, révoqué par qui, raison).
+        // - Si existing.Statut == EN_ATTENTE (refus initial) → hard-delete SANS audit
+        //   car la demande n'a jamais donné lieu à un accès effectif.
+        if input.Statut == domain.AccessRefuse {
+                var auditEntry *domain.AccessAuditEntry
+                if existing.Statut == domain.AccessApprouve {
+                        // Révocation d'un accès effectif → audit trail obligatoire.
+                        action := domain.AuditActionAccessRevoked
+                        if existing.AdminID == claims.UserID {
+                                action = domain.AuditActionAccessRevokedSelf
+                        }
+                        accessID := existing.ID
+                        auditEntry = &domain.AccessAuditEntry{
+                                ActorUserID: &claims.UserID,
+                                Action:      action,
+                                AccessID:    &accessID,
+                                DetailsJSON: fmt.Sprintf(`{"adminId":"%s","etablissementId":"%s","motif":"%s","dateDebut":"%s","dateFin":"%s","raison":"%s","revokedBy":"%s","revokedAt":"%s"}`,
+                                        existing.AdminID, existing.EtablissementID, existing.Motif,
+                                        formatTimePtr(existing.DateDebut), formatTimePtr(existing.DateFin),
+                                        nilStrSafe(input.Commentaire, "non précisée"),
+                                        claims.UserID, time.Now().Format(time.RFC3339)),
+                        }
+                }
+                // Hard-delete la ligne (avec ou sans audit selon le cas).
+                if err := uc.accessRepo.Delete(ctx, id, auditEntry); err != nil {
+                        return nil, err
+                }
+                // Retourner une représentation "fantôme" de la demande supprimée pour l'UI.
+                // Le frontend n'utilise que statut + commentaire pour afficher le toast.
+                commentaire := ""
+                if input.Commentaire != nil {
+                        commentaire = *input.Commentaire
+                }
+                return &domain.EtablissementAccess{
+                        ID:              id,
+                        AdminID:         existing.AdminID,
+                        EtablissementID: existing.EtablissementID,
+                        Motif:           existing.Motif,
+                        Statut:          domain.AccessRefuse,
+                        ApprouvePar:     &claims.UserID,
+                        Commentaire:     &commentaire,
+                        UpdatedAt:       time.Now(),
+                }, nil
+        }
+
         // B-8 : verrou optimiste — passe existing.Statut au repo qui ajoute
         // WHERE statut = expectedStatut dans le UPDATE. Si la ligne a changé entre
         // le FindByID et l'Update (race condition), RowsAffected=0 → ConflictError.
         return uc.accessRepo.Update(ctx, id, existing.Statut, input)
 }
 
-// Delete annule une demande d'accès EN_ATTENTE (soft-delete).
+// formatTimePtr formate un *time.Time en ISO 3339 ou "(nil)" si nil.
+// Helper pour AuditEntry.DetailsJSON.
+func formatTimePtr(t *time.Time) string {
+        if t == nil {
+                return "(null)"
+        }
+        return t.Format(time.RFC3339)
+}
+
+// nilStrSafe retourne la string pointée ou fallback si nil.
+func nilStrSafe(s *string, fallback string) string {
+        if s == nil {
+                return fallback
+        }
+        return *s
+}
+
+// Delete annule une demande d'accès EN_ATTENTE (hard-delete, Option B sécurité).
 // ACCES-ETABLISSEMENTS-FIX-AE1 : avant, la route DELETE n'existait pas.
 //
-// B-11 (MEDIUM) : soft-delete via statut=ANNULE (avant : hard-delete sans audit
-// trail). La ligne reste en DB avec statut=ANNULE pour l'historique. L'index
-// unique partiel (migration 000026) exclut ANNULE → l'admin peut recréer une
-// demande pour le même établissement après annulation.
+// OPTION B (sécurité) : les demandes annulées sont HARD-DELETED de la table
+// EtablissementAccess. Aucun audit trail n'est conservé pour les annulations
+// car la demande n'a jamais donné lieu à un accès effectif (statut EN_ATTENTE).
+// L'audit trail est réservé aux RÉVOCATIONS (cf. Update avec APPROUVE → REFUSE).
 //
 // Règles métier :
 // - ADMIN : ne peut annuler que SES propres demandes (adminId == claims.UserID).
-// - RESPONSABLE : la demande doit concerner son établissement (peut annuler
-//   les demandes EN_ATTENTE d'autres admins ciblant son établissement — le
-//   soft-delete conserve l'audit trail, l'admin voit sa demande comme ANNULE).
-// - La demande doit être en statut EN_ATTENTE.
+// - RESPONSABLE : la demande doit concerner son établissement.
+// - La demande doit être en statut EN_ATTENTE (sinon ValidationError).
 func (uc *AccessUseCase) Delete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable {
@@ -242,19 +310,10 @@ func (uc *AccessUseCase) Delete(ctx context.Context, claims db.SessionClaims, id
                 return &domain.ValidationError{Field: "statut", Message: "seules les demandes en attente peuvent être annulées"}
         }
 
-        // B-11 : soft-delete via Update avec statut=ANNULE. Conserve l'audit trail
-        // (qui a annulé, quand) et permet à l'admin de voir sa demande comme ANNULE.
-        commentaire := "Demande annulée par l'admin"
-        if role == domain.RoleResponsable {
-                commentaire = "Demande annulée par le responsable"
-        }
-        input := domain.UpdateAccessInput{
-                Statut:      domain.AccessAnnule,
-                Commentaire: &commentaire,
-        }
-        // B-8 : verrou optimiste (existing.Statut = EN_ATTENTE, vérifié ci-dessus).
-        _, err = uc.accessRepo.Update(ctx, id, existing.Statut, input)
-        return err
+        // Option B : hard-delete sans audit (demande sans accès effectif).
+        // L'index partiel (migration 000026) exclut déjà EN_ATTENTE de la contrainte
+        // unique → l'admin peut recréer une demande pour le même établissement.
+        return uc.accessRepo.Delete(ctx, id, nil)
 }
 
 // CheckAccess vérifie si l'ADMIN courant a accès à un établissement.

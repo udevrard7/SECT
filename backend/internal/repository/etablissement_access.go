@@ -306,13 +306,22 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
 }
 
 // Delete supprime une demande d'accès par son ID (hard-delete).
-// ACCES-ETABLISSEMENTS-FIX-AE1 : utilisé pour annuler une demande EN_ATTENTE.
-// Le usecase vérifie l'ownership (adminId == claims.UserID) et le statut
-// (EN_ATTENTE uniquement) avant d'appeler cette méthode.
+//
+// OPTION B (sécurité) : les demandes annulées (EN_ATTENTE) ou révoquées/refusées
+// (REFUSE) sont HARD-DELETED de la table EtablissementAccess pour minimiser la
+// surface d'attaque et respecter le principe de minimisation des données.
+//
+// AUDIT TRAIL : si auditEntry est non-nil, une entrée est insérée dans la table
+// AuditLog DANS LA MÊME TRANSACTION que le DELETE (atomicité garantie). Utilisé
+// pour les RÉVOCATIONS (APPROUVE → REFUSE) afin de conserver la trace
+// "qui avait accès, quand, révoqué par qui, pour quelle raison". Les annulations
+// (EN_ATTENTE → hard-delete) et refus (EN_ATTENTE → REFUSE → hard-delete) ne
+// sont pas loggées car elles ne concernent que des demandes sans accès effectif.
+//
 // ACCESS-RLS-FIX : pose les claims system-worker pour activer la policy modify_admin (is_system()).
-// Note : B-11 — le usecase Delete utilise désormais Update(statut=ANNULE) au lieu de hard-delete.
-// Cette méthode est conservée pour compat mais n'est plus appelée par le usecase.
-func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string) error {
+// La table AuditLog a une policy INSERT WITH CHECK(true) → l'insertion est autorisée
+// sans bypass RLS supplémentaire.
+func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string, auditEntry *domain.AccessAuditEntry) error {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
@@ -321,6 +330,22 @@ func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string) e
 
         if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
                 return fmt.Errorf("set system claims: %w", err)
+        }
+
+        // Option B : insérer l'audit trail AVANT le hard-delete (même transaction).
+        // Si l'INSERT échoue, le DELETE n'aura pas lieu → atomicité garantie.
+        if auditEntry != nil {
+                auditID := uuid.NewString()
+                if _, err := tx.Exec(ctx, `
+                        INSERT INTO "AuditLog" ("id", "userId", "userEmail", "action", "entite", "entiteId", "details", "adresseIp", "createdAt")
+                        VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+                `,
+                        auditID, nullableStrPtr(auditEntry.ActorUserID),
+                        auditEntry.Action, "EtablissementAccess", nullableStrPtr(auditEntry.AccessID),
+                        auditEntry.DetailsJSON, auditEntry.ActorIP,
+                ); err != nil {
+                        return fmt.Errorf("insert audit log: %w", err)
+                }
         }
 
         tag, err := tx.Exec(ctx, `DELETE FROM "EtablissementAccess" WHERE "id" = $1`, id)

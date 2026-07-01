@@ -161,13 +161,6 @@ function getStatutBadge(statut: string) {
           Expiré
         </Badge>
       )
-    case 'ANNULE':
-      return (
-        <Badge className="bg-zinc-500/15 text-zinc-400 border-zinc-500/30">
-          <Ban className="h-3 w-3 mr-1" />
-          Annulé
-        </Badge>
-      )
     default:
       return <Badge variant="outline">{statut}</Badge>
   }
