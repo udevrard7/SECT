@@ -2,6 +2,7 @@ package http
 
 import (
         "encoding/json"
+        "fmt"
         "net/http"
         "strconv"
         "time"
@@ -117,6 +118,24 @@ func (s *Server) deleteFiliere(w http.ResponseWriter, r *http.Request) {
                 return
         }
         id := chi.URLParam(r, "id")
+
+        // DELETE ?hard=true → suppression définitive (hard delete).
+        // DELETE (sans query param) → suppression logique (soft delete = actif=false).
+        if r.URL.Query().Get("hard") == "true" {
+                nom, err := s.filiereUC.HardDelete(r.Context(), claims, id)
+                if err != nil {
+                        middleware.MapDomainError(w, err)
+                        return
+                }
+                w.Header().Set("Content-Type", "application/json")
+                json.NewEncoder(w).Encode(map[string]any{
+                        "message": fmt.Sprintf("Filière « %s » supprimée définitivement", nom),
+                        "hardDelete": true,
+                })
+                return
+        }
+
+        // Soft delete (comportement par défaut, rétro-compatible)
         existing, updated, err := s.filiereUC.SoftDelete(r.Context(), claims, id)
         if err != nil {
                 middleware.MapDomainError(w, err)

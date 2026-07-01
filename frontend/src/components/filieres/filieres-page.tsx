@@ -511,25 +511,41 @@ export function FilieresPage() {
   }
 
   // ─── Delete ───
+  // Le bouton "Supprimer" fait un HARD DELETE (DELETE ?hard=true) si canDelete=true
+  // (pas d'étudiants/UEs actifs). Sinon, il fait un soft-delete (actif=false) avec
+  // un warning. Le bouton "Désactiver" (handleToggleActive) fait juste un toggle.
   const handleDelete = async () => {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      // DELETE /api/filieres/{id} → { message, filiere, dependencies }
-      const res = await fetch(`/api/filieres/${deleteTarget.id}`, {
-        method: 'DELETE',
-      })
+      const canHardDelete = deleteDependencies?.canDelete === true
+      // DELETE ?hard=true → hard delete (DELETE réel en DB)
+      // DELETE (sans param) → soft delete (actif=false)
+      const url = canHardDelete
+        ? `/api/filieres/${deleteTarget.id}?hard=true`
+        : `/api/filieres/${deleteTarget.id}`
+
+      const res = await fetch(url, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur lors de la suppression')
       }
       const data = await res.json()
-      const deps = data.dependencies
-      toast.success('Filière supprimée', {
-        description: deps
-          ? `${deleteTarget.nom} a été désactivée (${deps.etudiantsCount} étudiant(s), ${deps.epreuvesCount} épreuve(s), ${deps.uesCount} UE(s) affecté(s)).`
-          : `${deleteTarget.nom} a été désactivée.`,
-      })
+
+      if (data.hardDelete) {
+        // Hard delete réussi
+        toast.success('Filière supprimée définitivement', {
+          description: data.message || `${deleteTarget.nom} a été supprimée de la base.`,
+        })
+      } else {
+        // Soft delete (désactivation)
+        const deps = data.dependencies
+        toast.success('Filière désactivée', {
+          description: deps
+            ? `${deleteTarget.nom} a été désactivée (${deps.etudiantsCount} étudiant(s), ${deps.epreuvesCount} épreuve(s), ${deps.uesCount} UE(s) affecté(s)). Suppression définitive impossible : dépendances actives.`
+            : `${deleteTarget.nom} a été désactivée.`,
+        })
+      }
       setDeleteTarget(null)
       setDeleteDependencies(null)
       refreshFilieres()
@@ -1416,7 +1432,9 @@ export function FilieresPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 font-display tracking-tight">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Supprimer la filière
+              {deleteDependencies?.canDelete
+                ? 'Supprimer définitivement'
+                : 'Désactiver la filière'}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
@@ -1424,10 +1442,34 @@ export function FilieresPage() {
                   Êtes-vous sûr de vouloir supprimer{' '}
                   <strong>{deleteTarget?.nom}</strong> ?
                 </p>
-                <p className="text-warning">
-                  Cette action désactivera la filière (suppression logique).
-                  Les données associées ne seront pas perdues.
-                </p>
+
+                {/* Explication du type d'action */}
+                {deleteDependencies?.canDelete ? (
+                  <div className="rounded-lg bg-destructive/10 p-3 text-sm border border-destructive/20">
+                    <p className="text-destructive font-medium flex items-center gap-2">
+                      <Trash2 className="h-4 w-4" />
+                      Suppression DÉFINITIVE
+                    </p>
+                    <p className="text-destructive/80 mt-1">
+                      La filière sera <strong>supprimée de la base de données</strong>.
+                      Cette action est <strong>irréversible</strong>.
+                      Les épreuves associées seront archivées (soft-delete).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-warning/10 p-3 text-sm border border-warning/20">
+                    <p className="text-warning font-medium flex items-center gap-2">
+                      <PowerOff className="h-4 w-4" />
+                      Désactivation (suppression logique)
+                    </p>
+                    <p className="text-warning/80 mt-1">
+                      La filière sera <strong>désactivée</strong> (actif=false) mais
+                      <strong> pas supprimée</strong>. Pour la supprimer définitivement,
+                      transférez ou désactivez d'abord les étudiants et UEs liés.
+                    </p>
+                  </div>
+                )}
+
                 {deleteDependencies &&
                   (deleteDependencies.etudiantsCount > 0 ||
                     deleteDependencies.epreuvesCount > 0 ||
@@ -1465,18 +1507,6 @@ export function FilieresPage() {
                       )}
                     </div>
                   )}
-                {deleteDependencies && !deleteDependencies.canDelete && (
-                  <p className="text-destructive text-sm">
-                    Suppression impossible : dépendances actives. Veuillez
-                    d&lsquo;abord transférer ou désactiver les étudiants et UEs
-                    liés.
-                  </p>
-                )}
-                {deleteDependencies && deleteDependencies.canDelete && (
-                  <p className="text-primary-text text-sm">
-                    Suppression possible : aucune dépendance active.
-                  </p>
-                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1485,17 +1515,20 @@ export function FilieresPage() {
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={handleDelete}
-              disabled={
-                isDeleting ||
-                (deleteDependencies ? !deleteDependencies.canDelete : false)
+              className={
+                deleteDependencies?.canDelete
+                  ? 'bg-destructive hover:bg-destructive/90'
+                  : 'bg-warning hover:bg-warning/90'
               }
+              onClick={handleDelete}
+              disabled={isDeleting}
             >
               {isDeleting && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
-              Supprimer
+              {deleteDependencies?.canDelete
+                ? 'Supprimer définitivement'
+                : 'Désactiver'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

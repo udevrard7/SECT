@@ -114,6 +114,51 @@ func (uc *FiliereUseCase) SoftDelete(ctx context.Context, claims db.SessionClaim
         return existing, updated, nil
 }
 
+// HardDelete supprime DÉFINITIVEMENT une filière (DELETE réel en DB).
+//
+// Safety checks :
+//  1. Rôle ADMIN ou RESPONSABLE.
+//  2. Ownership (RESPONSABLE doit être responsable ou même établissement).
+//  3. canDelete == true (pas d'étudiants actifs, pas d'UEs actives). Sinon
+//     retourne ValidationError pour empêcher la suppression de données liées.
+//
+// Retourne le nom de la filière supprimée (pour le toast frontend).
+func (uc *FiliereUseCase) HardDelete(ctx context.Context, claims db.SessionClaims, id string) (string, error) {
+        role := domain.Role(claims.Role)
+        if role != domain.RoleAdmin && role != domain.RoleResponsable {
+                return "", &domain.UnauthorizedError{Message: "rôle non autorisé"}
+        }
+
+        existing, err := uc.filiereRepo.FindByID(ctx, id)
+        if err != nil {
+                return "", err
+        }
+
+        if role == domain.RoleResponsable {
+                if (existing.ResponsableID == nil || *existing.ResponsableID != claims.UserID) &&
+                        existing.EtablissementID != claims.EtablissementID {
+                        return "", &domain.UnauthorizedError{Message: "vous n'êtes pas responsable de cette filière"}
+                }
+        }
+
+        // Safety check : empêcher le hard-delete si dépendances actives.
+        deps, err := uc.filiereRepo.GetFiliereDependencies(ctx, id)
+        if err != nil {
+                return "", fmt.Errorf("vérifier dépendances: %w", err)
+        }
+        if !deps.CanDelete {
+                return "", &domain.ValidationError{
+                        Field:   "filiere",
+                        Message: fmt.Sprintf("suppression impossible : %d étudiant(s) et %d UE(s) actifs. Désactivez-la d'abord.", deps.EtudiantsCount, deps.UEsCount),
+                }
+        }
+
+        if err := uc.filiereRepo.HardDelete(ctx, id); err != nil {
+                return "", err
+        }
+        return existing.Nom, nil
+}
+
 // GetDependencies récupère les dépendances actives d'une filière (pour
 // l'endpoint GET /api/filieres/{id}/dependencies). Le frontend l'utilise dans
 // handleOpenDelete pour afficher la preview « N étudiants, M UEs » et bloquer

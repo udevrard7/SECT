@@ -102,6 +102,9 @@ type FiliereRepository interface {
         Create(ctx context.Context, input CreateFiliereInput) (*Filiere, error)
         Update(ctx context.Context, id string, input UpdateFiliereInput) (*Filiere, error)
         SoftDelete(ctx context.Context, id string) (*Filiere, error)
+        // HardDelete supprime définitivement la filière (DELETE réel).
+        // À n'appeler QUE si GetDependencies confirme canDelete=true.
+        HardDelete(ctx context.Context, id string) error
         BulkUpdate(ctx context.Context, ids []string, actif bool, etablissementID string) (int, error)
         CountDependencies(ctx context.Context, id string) (epreuves, etudiants, ues int, err error)
         GetFiliereDependencies(ctx context.Context, id string) (*FiliereDependencies, error)

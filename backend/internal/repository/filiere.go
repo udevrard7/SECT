@@ -344,6 +344,38 @@ func (r *FiliereRepository) SoftDelete(ctx context.Context, id string) (*domain.
         return r.Update(ctx, id, domain.UpdateFiliereInput{Actif: boolPtr(false)})
 }
 
+// HardDelete supprime définitivement une filière de la DB (hard delete).
+// À n'appeler QUE si GetDependencies a confirmé canDelete=true (pas d'étudiants
+// actifs, pas d'UEs actives). Les épreuves associées ne sont pas supprimées ici
+// car elles sont soft-deleted (deletedAt) et laissent des orphelins — acceptable
+// pour un hard-delete de filière (les épreuves ne sont plus accessibles).
+//
+// Retourne nil si la filière n'existe pas ( RowsAffected == 0 → NotFoundError).
+func (r *FiliereRepository) HardDelete(ctx context.Context, id string) error {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
+        }
+
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // D'abord soft-delete les épreuves associées (pour ne pas casser les FK
+                // si Epreuve.filiereId a ON DELETE RESTRICT). Les épreuves sont déjà
+                // soft-deleted en pratique (canDelete ne les compte pas), mais on
+                // sécurise au cas où.
+                _, _ = tx.Exec(ctx, `UPDATE "Epreuve" SET "deletedAt" = CURRENT_TIMESTAMP WHERE "filiereId" = $1 AND "deletedAt" IS NULL`, id)
+
+                // Hard-delete la filière
+                tag, err := tx.Exec(ctx, `DELETE FROM "Filiere" WHERE "id" = $1`, id)
+                if err != nil {
+                        return fmt.Errorf("hard delete filiere: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "Filiere", ID: id}
+                }
+                return nil
+        })
+}
+
 // BulkUpdate met à jour le statut actif de plusieurs filières.
 // etablissementID non-vide → filtre supplémentaire (pour RESPONSABLE).
 func (r *FiliereRepository) BulkUpdate(ctx context.Context, ids []string, actif bool, etablissementID string) (int, error) {
