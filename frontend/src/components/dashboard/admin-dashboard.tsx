@@ -268,7 +268,8 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Erreur réseau')
       return (await res.json()) as AdminStats
     },
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 30 * 1000, // 30 secondes
+    refetchInterval: 30 * 1000, // auto-refresh toutes les 30s
     enabled: !!user?.id,
   })
 
@@ -284,7 +285,8 @@ export function AdminDashboard() {
       const data = await res.json()
       return (data.accessRecords || []) as AccessRecord[]
     },
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 30 * 1000, // 30 secondes
+    refetchInterval: 30 * 1000, // auto-refresh toutes les 30s
     enabled: !!user?.id,
   })
 
@@ -366,8 +368,9 @@ export function AdminDashboard() {
       setRequestDateFin('')
       setRequestCommentaire('')
       setSelectedEtablissement(null)
-      // Invalidate access query → TanStack refetches in background
+      // Invalidate queries → TanStack refetches in background
       queryClient.invalidateQueries({ queryKey: ['etablissement-access', user.id] })
+      queryClient.invalidateQueries({ queryKey: ['admin-stats', user.id] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la demande')
     } finally {
@@ -402,7 +405,8 @@ export function AdminDashboard() {
     : '0.0'
 
   // Security score (based on proctoring + identity verification coverage)
-  const totalEtablissements = stats?.nbEtablissements ?? 1
+  // Bug fix: utiliser Math.max(1, ...) pour éviter division par zéro → NaN%
+  const totalEtablissements = Math.max(1, stats?.nbEtablissements ?? 0)
   const securityRatio = ((stats?.nbEtablissementsProteges ?? 0) / totalEtablissements) * 100
   const avgSecurityScore = Math.min(100, Math.round(securityRatio * 0.6 + (stats?.nbVerificationIdentite ?? 0) / totalEtablissements * 100 * 0.4))
 
