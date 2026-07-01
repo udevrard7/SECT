@@ -832,8 +832,6 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                 }
                 slog.Info("stats: etablissementsOverview query result", "rowCount", rowCount, "appendedCount", len(overviews), "adminId", escapedAdminID)
                 stats["etablissementsOverview"] = overviews
-                stats["_debug_rowCount"] = rowCount
-                stats["_debug_appendedCount"] = len(overviews)
         }
         if q2err != nil {
                 stats["_debug_q2err"] = q2err.Error()
