@@ -91,16 +91,20 @@ export function ComparisonRadarChart({
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
+              {/* BUGFIX (LAYOUT-RADAR-1) : margins augmentées (20 au lieu de 10)
+                  pour laisser de l'espace aux labels QCU/QCM/QRC/CODE autour du radar.
+                  Avant, les labels se superposaient aux dots du radar sur petit conteneur. */}
+              <RadarChart data={data} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
                 <PolarGrid
                   gridType="polygon"
                   stroke="hsl(var(--muted))"
                   strokeWidth={1}
                 />
+                {/* tick fontSize 11 (au lieu de 12) pour réduire l'encombrement */}
                 <PolarAngleAxis
                   dataKey="subject"
                   stroke="hsl(var(--muted-foreground))"
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11, fontWeight: 500 }}
                   tickLine={false}
                 />
                 <PolarRadiusAxis
@@ -127,15 +131,16 @@ export function ComparisonRadarChart({
                     )
                   }}
                 />
-                {/* Ligne de référence à la moyenne globale */}
+                {/* Ligne de référence à la moyenne globale.
+                    dot r=3 (au lieu de 4) pour réduire la superposition avec les labels. */}
                 <Radar
                   name="Moyenne"
                   dataKey="value"
                   stroke="hsl(var(--chart-1))"
                   fill="hsl(var(--chart-1) / 0.2)"
                   fillOpacity={0.6}
-                  dot={{ r: 4, fill: 'hsl(var(--chart-1))' }}
-                  activeDot={{ r: 6, fill: 'hsl(var(--chart-1))' }}
+                  dot={{ r: 3, fill: 'hsl(var(--chart-1))' }}
+                  activeDot={{ r: 5, fill: 'hsl(var(--chart-1))' }}
                 />
                 {/* Ligne de référence (10/20) */}
                 <PolarRadiusAxis
@@ -150,12 +155,16 @@ export function ComparisonRadarChart({
             </ResponsiveContainer>
           )}
         </div>
-        {/* Légende personnalisée */}
-        <div className="mt-4 flex flex-wrap gap-4">
+        {/* Légende personnalisée
+            BUGFIX (LAYOUT-RADAR-1) : flex-wrap + justify-center + gap-x-4 gap-y-2
+            (au lieu de ml-auto sur la moyenne) pour éviter que la moyenne se
+            superpose aux autres items sur petit conteneur. Chaque item a
+            whitespace-nowrap pour ne pas se casser. */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
           {data.map((item, index) => (
-            <div key={`radar-legend-${index}`} className="flex items-center gap-2">
+            <div key={`radar-legend-${index}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
               <div
-                className="h-3 w-3 rounded-full border-2 border-current"
+                className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-current"
                 style={{ backgroundColor: RADAR_COLORS.primary }}
               />
               <span className="text-xs text-muted-foreground">
@@ -163,8 +172,8 @@ export function ComparisonRadarChart({
               </span>
             </div>
           ))}
-          <div className="flex items-center gap-2 ml-auto">
-            <div className="h-3 w-3 rounded-full bg-success/20 border border-success-text" />
+          <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+            <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-success/20 border border-success-text" />
             <span className="text-xs text-muted-foreground">
               Moyenne: <span className="font-semibold text-success-text">{globalAverage.toFixed(1)}/20</span>
             </span>
