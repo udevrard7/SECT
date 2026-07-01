@@ -39,6 +39,8 @@ import {
   TrendingUp,
   HeartPulse,
   ShieldCheck,
+  AudioLines, // KOKORO-TTS-1 : icône TTS pour HuggingFace
+  Mic,        // DASHSCOPE-AUDIO-1 : icône audio pour DashScope
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -141,6 +143,28 @@ const PROVIDER_META: Record<AIProviderType, {
     borderClass: 'border-info/30',
     gradientClass: 'from-info via-info to-success',
   },
+  // DASHSCOPE-AUDIO-1 : Alibaba Bailian / Model Studio — TTS natif (qwen3-tts-flash)
+  DASHSCOPE: {
+    label: 'DashScope',
+    description: 'Alibaba Bailian — TTS (qwen3-tts-flash)',
+    icon: Mic,
+    color: '#e11d48',
+    bgClass: 'bg-rose-500/10',
+    textClass: 'text-rose-600 dark:text-rose-400',
+    borderClass: 'border-rose-500/30',
+    gradientClass: 'from-rose-500 via-rose-500 to-pink-500',
+  },
+  // KOKORO-TTS-1 : Hugging Face Space Gradio — TTS (Kokoro-82M)
+  HUGGINGFACE: {
+    label: 'Hugging Face',
+    description: 'Spaces Gradio — TTS (Kokoro-82M)',
+    icon: AudioLines,
+    color: '#d97706',
+    bgClass: 'bg-amber-500/10',
+    textClass: 'text-amber-600 dark:text-amber-400',
+    borderClass: 'border-amber-500/30',
+    gradientClass: 'from-amber-500 via-amber-500 to-orange-500',
+  },
 }
 
 const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
@@ -160,6 +184,10 @@ const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
   ],
   ANTHROPIC: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307', 'claude-3-5-haiku-20241022'],
   GOOGLE: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-lite'],
+  // DASHSCOPE-AUDIO-1 : modèles TTS DashScope (capability='tts')
+  DASHSCOPE: ['qwen3-tts-flash', 'qwen3-tts-instruct-flash', 'qwen-tts-2025-05-22', 'cosyvoice-v1'],
+  // KOKORO-TTS-1 : modèle Kokoro-82M (Space Gradio, capability='tts')
+  HUGGINGFACE: ['hexgrad/Kokoro-82M'],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
@@ -168,6 +196,10 @@ const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
   OPENAI_COMPATIBLE: 'https://api.groq.com/openai/v1',
   ANTHROPIC: 'https://api.anthropic.com/v1',
   GOOGLE: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  // DASHSCOPE-AUDIO-1 : host racine du MaaS DashScope
+  DASHSCOPE: 'https://dashscope.aliyuncs.com',
+  // KOKORO-TTS-1 : Space Gradio Pendrokar/Kokoro-TTS (host public)
+  HUGGINGFACE: 'https://pendrokar-kokoro-tts.hf.space',
 }
 
 // ─── Failover types ───
@@ -240,6 +272,8 @@ interface ProviderFormData {
   chatId: string
   userId: string
   token: string
+  // KOKORO-TTS-1 : capability du provider (chat / tts / audio)
+  capability: 'chat' | 'tts' | 'audio' | 'transcription'
 }
 
 const EMPTY_FORM: ProviderFormData = {
@@ -253,6 +287,7 @@ const EMPTY_FORM: ProviderFormData = {
   chatId: '',
   userId: '',
   token: '',
+  capability: 'chat',
 }
 
 // ─── Main Component ───
@@ -434,6 +469,8 @@ export function AIProvidersPage() {
           temperature: formData.temperature,
           maxTokens: formData.maxTokens,
           extraConfig: Object.keys(extraConfig).length > 0 ? extraConfig : undefined,
+          // KOKORO-TTS-1 : envoyer la capability (chat / tts / audio)
+          capability: formData.capability,
         }),
       })
 
@@ -479,6 +516,8 @@ export function AIProvidersPage() {
           temperature: formData.temperature,
           maxTokens: formData.maxTokens,
           extraConfig: Object.keys(extraConfig).length > 0 ? extraConfig : undefined,
+          // KOKORO-TTS-1 : envoyer la capability (chat / tts / audio)
+          capability: formData.capability,
         }),
       })
 
@@ -641,6 +680,8 @@ export function AIProvidersPage() {
         chatId: '',
         userId: '',
         token: '',
+        // KOKORO-TTS-1 : charger la capability existante (défaut 'chat')
+        capability: (full.capability as ProviderFormData['capability']) || 'chat',
       })
     } catch {
       setFormData({
@@ -654,6 +695,7 @@ export function AIProvidersPage() {
         chatId: '',
         userId: '',
         token: '',
+        capability: (provider.capability as ProviderFormData['capability']) || 'chat',
       })
     }
     setShowEditDialog(true)
@@ -965,6 +1007,22 @@ export function AIProvidersPage() {
                             <Badge variant="outline" className="text-[10px] shrink-0">
                               {meta.label}
                             </Badge>
+                            {/* KOKORO-TTS-1 : badge capability (chat / tts / audio) */}
+                            {provider.capability && (
+                              <Badge
+                                className={`text-[10px] shrink-0 gap-1 ${
+                                  provider.capability === 'tts'
+                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                    : provider.capability === 'audio'
+                                      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                                      : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {provider.capability === 'tts' && <AudioLines className="h-2.5 w-2.5" />}
+                                {provider.capability === 'audio' && <Mic className="h-2.5 w-2.5" />}
+                                {provider.capability.toUpperCase()}
+                              </Badge>
+                            )}
                             <Badge variant="secondary" className="text-[10px] font-mono tabular-nums shrink-0">
                               {provider.model || '—'}
                             </Badge>
@@ -1839,6 +1897,49 @@ function ProviderForm({
             className="flex-1"
           />
         </div>
+      </div>
+
+      {/* KOKORO-TTS-1 : Capability (chat / tts / audio / transcription) */}
+      <div className="space-y-2">
+        <Label htmlFor="provider-capability">Capacité</Label>
+        <Select
+          value={formData.capability}
+          onValueChange={(val) => setFormData({ ...formData, capability: val as ProviderFormData['capability'] })}
+        >
+          <SelectTrigger id="provider-capability" className="w-full">
+            <SelectValue placeholder="Sélectionner une capacité" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="chat">
+              <div className="flex items-center gap-2">
+                <Brain className="h-3.5 w-3.5 text-info" />
+                <span>Chat (LLM textuel)</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="tts">
+              <div className="flex items-center gap-2">
+                <AudioLines className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>TTS (synthèse vocale)</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="audio">
+              <div className="flex items-center gap-2">
+                <Mic className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                <span>Audio (LLM multimodal)</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="transcription">
+              <div className="flex items-center gap-2">
+                <AudioLines className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Transcription (speech-to-text)</span>
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Détermine l&apos;usage du provider : <strong>chat</strong> pour les scripts/évaluations,{' '}
+          <strong>tts</strong> pour la synthèse audio des podcasts /exam-prep.
+        </p>
       </div>
 
       {/* Temperature */}

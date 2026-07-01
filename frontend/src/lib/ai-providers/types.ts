@@ -3,7 +3,14 @@
  * All AI providers must implement the AIProvider interface.
  */
 
-export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE'
+export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'DASHSCOPE' | 'HUGGINGFACE'
+
+// DASHSCOPE-AUDIO-1 / KOKORO-TTS-1 : capacité d'un provider IA.
+// - 'chat' : LLM textuel (génération de script, Q&A, etc.) — providers Mistral, ZAI, etc.
+// - 'tts' : synthèse vocale (text → audio) — providers HuggingFace Kokoro, DashScope qwen3-tts.
+// - 'audio' : LLM audio multimodal (réservé évolution future).
+// - 'transcription' : speech-to-text (réservé évolution future).
+export type AIProviderCapability = 'chat' | 'tts' | 'audio' | 'transcription'
 
 export interface AIProviderConfig {
   id: string
@@ -81,9 +88,11 @@ export interface AIProviderInfo {
   maxTokens?: number | null
   isActive: boolean
   hasApiKey: boolean
+  priority?: number
+  extraConfig?: string | null
+  capability?: AIProviderCapability | null // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1
   lastTestAt?: string | null
   lastTestOk?: boolean | null
-  priority?: number
   createdAt: string
   updatedAt: string
 }

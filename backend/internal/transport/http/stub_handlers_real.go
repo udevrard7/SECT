@@ -189,6 +189,7 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
                 IsActive    bool    `json:"isActive"`
                 Priority    int     `json:"priority"`
                 ExtraConfig *string `json:"extraConfig,omitempty"`
+                Capability  *string `json:"capability,omitempty"` // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1
                 LastTestAt  *string `json:"lastTestAt,omitempty"`
                 LastTestOk  *bool   `json:"lastTestOk,omitempty"`
                 CreatedAt   string  `json:"createdAt"`
@@ -200,7 +201,8 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
                 rows, err := tx.Query(r.Context(), `
                         SELECT "id", "name", "provider", "baseUrl", "apiKey", "model",
                                "temperature", "maxTokens", "isActive", "priority",
-                               "extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"
+                               "extraConfig", "capability",
+                               "lastTestAt", "lastTestOk", "createdAt", "updatedAt"
                         FROM "AIProviderConfig"
                         ORDER BY "priority" ASC
                 `)
@@ -215,7 +217,8 @@ func (s *Server) aiProvidersListReal(w http.ResponseWriter, r *http.Request) {
                         var createdAt, updatedAt time.Time
                         if err := rows.Scan(&p.ID, &p.Name, &p.Provider, &p.BaseURL, &apiKey, &p.Model,
                                 &p.Temperature, &p.MaxTokens, &p.IsActive, &p.Priority,
-                                &p.ExtraConfig, &lastTestAt, &p.LastTestOk, &createdAt, &updatedAt); err != nil {
+                                &p.ExtraConfig, &p.Capability,
+                                &lastTestAt, &p.LastTestOk, &createdAt, &updatedAt); err != nil {
                                 return err
                         }
                         // Sécurité : ne jamais retourner l'apiKey brut dans la liste.
