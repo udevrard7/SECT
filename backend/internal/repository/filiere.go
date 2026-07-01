@@ -378,41 +378,47 @@ func (r *FiliereRepository) HardDelete(ctx context.Context, id string) error {
 
 // BulkUpdate met à jour le statut actif de plusieurs filières.
 // etablissementID non-vide → filtre supplémentaire (pour RESPONSABLE).
+//
+// Bug fix (audit filières 2025) : utilise db.WithTx pour poser les claims RLS.
+// Avant, BeginTx manuel sans claims → UPDATE bloqué par Filiere_modify_responsable.
 func (r *FiliereRepository) BulkUpdate(ctx context.Context, ids []string, actif bool, etablissementID string) (int, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return 0, fmt.Errorf("no RLS claims in context")
+        }
+
+        var rowsAffected int
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Construire la requête avec IN clause
+                args := []any{actif}
+                argIdx := 2
+                placeholders := make([]string, len(ids))
+                for i, id := range ids {
+                        placeholders[i] = fmt.Sprintf("$%d", argIdx)
+                        args = append(args, id)
+                        argIdx++
+                }
+
+                whereExtra := ""
+                if etablissementID != "" {
+                        whereExtra = fmt.Sprintf(` AND "etablissementId" = $%d`, argIdx)
+                        args = append(args, etablissementID)
+                }
+
+                query := fmt.Sprintf(`UPDATE "Filiere" SET "actif" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" IN (%s)%s`,
+                        strings.Join(placeholders, ","), whereExtra)
+
+                tag, err := tx.Exec(ctx, query, args...)
+                if err != nil {
+                        return fmt.Errorf("bulk update filieres: %w", err)
+                }
+                rowsAffected = int(tag.RowsAffected())
+                return nil
+        })
         if err != nil {
-                return 0, fmt.Errorf("begin tx: %w", err)
+                return 0, err
         }
-        defer tx.Rollback(ctx)
-
-        // Construire la requête avec IN clause
-        args := []any{actif}
-        argIdx := 2
-        placeholders := make([]string, len(ids))
-        for i, id := range ids {
-                placeholders[i] = fmt.Sprintf("$%d", argIdx)
-                args = append(args, id)
-                argIdx++
-        }
-
-        whereExtra := ""
-        if etablissementID != "" {
-                whereExtra = fmt.Sprintf(` AND "etablissementId" = $%d`, argIdx)
-                args = append(args, etablissementID)
-        }
-
-        query := fmt.Sprintf(`UPDATE "Filiere" SET "actif" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" IN (%s)%s`,
-                strings.Join(placeholders, ","), whereExtra)
-
-        tag, err := tx.Exec(ctx, query, args...)
-        if err != nil {
-                return 0, fmt.Errorf("bulk update filieres: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return 0, fmt.Errorf("commit: %w", err)
-        }
-        return int(tag.RowsAffected()), nil
+        return rowsAffected, nil
 }
 
 // CountDependencies compte les dépendances d'une filière (pour info avant soft-delete).
