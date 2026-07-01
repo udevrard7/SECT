@@ -260,14 +260,15 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 // filiereId) → ambiguous column reference → HTTP 500.
                 where = append(where, `"Epreuve"."deletedAt" IS NULL`)
 
-                // BUGFIX (CRITICAL) : pgx QueryExecModeSimpleProtocol ne gère pas
-                // correctement les paramètres $1 avec queries complexes (LEFT JOINs +
-                // 43 colonnes). Inline les valeurs (safe : CUIDs alphanumériques).
                 if params.EnseignantID != "" {
-                        where = append(where, fmt.Sprintf(`"Epreuve"."enseignantId" = '%s'`, params.EnseignantID))
+                        where = append(where, fmt.Sprintf(`"Epreuve"."enseignantId" = $%d`, argIdx))
+                        args = append(args, params.EnseignantID)
+                        argIdx++
                 }
                 if params.FiliereID != "" {
-                        where = append(where, fmt.Sprintf(`"Epreuve"."filiereId" = '%s'`, params.FiliereID))
+                        where = append(where, fmt.Sprintf(`"Epreuve"."filiereId" = $%d`, argIdx))
+                        args = append(args, params.FiliereID)
+                        argIdx++
                 }
                 if len(params.Statuts) > 0 {
                         placeholders := make([]string, len(params.Statuts))
@@ -343,12 +344,6 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 }
 
                 var query string
-
-                // DEBUG: test simple count to see if it's the LEFT JOINs causing the issue
-                var debugSimple int
-                _ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" %s`, whereClause), args...).Scan(&debugSimple)
-                fmt.Printf("DEBUG epreuve repo: simple count=%d, args=%v, where=%s\n", debugSimple, args, whereClause)
-
                 if params.Select == "summary" {
                         // Format léger pour les dropdowns
                         query = fmt.Sprintf(`SELECT "id", "titre", "dateDebut", "dateFin", "statut", "noteTotal" FROM "Epreuve" %s ORDER BY "dateDebut" DESC%s`, whereClause, paginationSuffix)
@@ -379,17 +374,9 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                         // Filiere. Corrige l'affichage du nom/code UE dans les cartes /epreuves
                         // et rend la duplication robuste.
                         query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" %s ORDER BY "Epreuve"."dateDebut" DESC%s`, columnsEpreuveQualified, whereClause, paginationSuffix)
-                        // BUGFIX: si args est vide, ne pas passer args... (pgx Simple Protocol
-                        // peut comporter différemment avec args nil vs aucun args)
-                        var rows pgx.Rows
-                        var qerr error
-                        if len(args) > 0 {
-                                rows, qerr = tx.Query(ctx, query, args...)
-                        } else {
-                                rows, qerr = tx.Query(ctx, query)
-                        }
-                        if qerr != nil {
-                                return fmt.Errorf("query epreuves: %w", qerr)
+                        rows, err := tx.Query(ctx, query, args...)
+                        if err != nil {
+                                return fmt.Errorf("query epreuves: %w", err)
                         }
                         defer rows.Close()
                         for rows.Next() {

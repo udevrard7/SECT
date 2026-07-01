@@ -2,14 +2,11 @@ package http
 
 import (
         "encoding/json"
-        "fmt"
         "io"
         "net/http"
         "strconv"
 
         "github.com/go-chi/chi/v5"
-        "github.com/jackc/pgx/v5"
-        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/usecase"
@@ -68,17 +65,6 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // DEBUG: if repo returned 0, try direct query to compare
-        var debugDirectCount int
-        var debugRepoClaimsCheck string
-        if len(epreuves) == 0 {
-                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                        _ = tx.QueryRow(r.Context(), "SELECT current_setting('app.claims.user_id', true)").Scan(&debugRepoClaimsCheck)
-                        _ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" WHERE "Epreuve"."deletedAt" IS NULL AND "Epreuve"."enseignantId" = '%s'`, claims.UserID)).Scan(&debugDirectCount)
-                        return nil
-                })
-        }
-
         // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
         // retournées pour alimenter le filtre filière côté frontend. Avant, le
         // handler retournait seulement {epreuves: [...]} → le frontend attendait
@@ -109,12 +95,6 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
-                "_debug": map[string]any{
-                        "repoCount":         len(epreuves),
-                        "directCount":       debugDirectCount,
-                        "repoClaimsCheck":   debugRepoClaimsCheck,
-                        "claimsUserID":      claims.UserID,
-                },
         }
         if params.Page > 0 {
                 totalPages := 1
