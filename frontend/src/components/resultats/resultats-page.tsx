@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ds/badge-card' // Utilisation du Badge DS unifié
+import { Badge } from '@/components/ds/badge' // Utilisation du Badge DS unifié
 import {
   Tabs,
   TabsContent,
