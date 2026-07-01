@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
@@ -43,6 +43,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
 import { PulseSkeleton } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -622,6 +623,80 @@ export function MonitoringPage() {
   const [resolveNotes, setResolveNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // ─── Bulk selection state ───
+  // Sélection multiple pour action de masse (résoudre/ignorer plusieurs événements).
+  // Seuls les événements ACTIF sont sélectionnables (les RESOLU/IGNORE ne peuvent plus
+  // changer de statut). La sélection est réinitialisée à chaque refetch car les
+  // événements traités disparaissent de la liste filtrée.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkAction, setBulkAction] = useState<'resoudre' | 'ignorer' | null>(null)
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
+
+  // Événements ACTIF sélectionnables parmi les événements filtrés.
+  const selectableEvents = useMemo(
+    () => filteredEvents.filter((e) => e.statut === 'ACTIF'),
+    [filteredEvents]
+  )
+  const allSelectableSelected =
+    selectableEvents.length > 0 && selectableEvents.every((e) => selectedIds.has(e.id))
+  const someSelectableSelected = selectableEvents.some((e) => selectedIds.has(e.id))
+
+  const toggleSelectAll = () => {
+    if (allSelectableSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(selectableEvents.map((e) => e.id)))
+    }
+  }
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  // ─── Bulk action handler ───
+  // Appelle POST /api/monitoring/bulk { ids, action } puis invalide le cache.
+  const handleBulkAction = async () => {
+    if (!bulkAction || selectedIds.size === 0) return
+    setBulkSubmitting(true)
+    try {
+      const res = await fetch('/api/monitoring/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: [...selectedIds],
+          action: bulkAction,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Erreur lors de l'action de masse")
+      }
+      const data = await res.json()
+      const actionLabel = bulkAction === 'resoudre' ? 'résolus' : 'ignorés'
+      toast.success('Action de masse terminée', {
+        description: `${data.updated} événement(s) ${actionLabel} sur ${data.total} sélectionné(s).`,
+      })
+      setBulkDialogOpen(false)
+      setBulkAction(null)
+      clearSelection()
+      await refreshData()
+    } catch (err) {
+      toast.error('Erreur', {
+        description: err instanceof Error ? err.message : "Impossible d'effectuer l'action de masse.",
+      })
+    } finally {
+      setBulkSubmitting(false)
+    }
+  }
+
   // ─── Alert rules state ───
   const [alertRules, setAlertRules] = useState<AlertRule[]>([
     { id: '1', name: 'Temps de réponse API', metric: 'api_response_time', threshold: 2000, current: 145, enabled: true, severite: 'WARNING' },
@@ -1106,6 +1181,58 @@ export function MonitoringPage() {
             </div>
           )}
 
+          {/* Bulk action toolbar — visible uniquement quand au moins 1 événement est sélectionné */}
+          {selectedIds.size > 0 && !isLoading && (
+            <div className="flex flex-col gap-3 rounded-lg border border-info/30 bg-info/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/15">
+                  <CheckCircle2 className="h-4 w-4 text-info" />
+                </span>
+                <span className="font-medium">
+                  {selectedIds.size} événement{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
+                </span>
+                <span className="text-muted-foreground">— action de masse</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-success/40 text-success-text hover:bg-success/10 hover:text-success-text"
+                  disabled={bulkSubmitting}
+                  onClick={() => {
+                    setBulkAction('resoudre')
+                    setBulkDialogOpen(true)
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Résoudre ({selectedIds.size})
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+                  disabled={bulkSubmitting}
+                  onClick={() => {
+                    setBulkAction('ignorer')
+                    setBulkDialogOpen(true)
+                  }}
+                >
+                  <Ban className="h-4 w-4" />
+                  Ignorer ({selectedIds.size})
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={bulkSubmitting}
+                  onClick={clearSelection}
+                >
+                  Annuler la sélection
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Events Table */}
           {!isLoading && filteredEvents.length > 0 && (
             <div className="rounded-lg border overflow-hidden">
@@ -1113,6 +1240,22 @@ export function MonitoringPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[40px] font-display">
+                        <Checkbox
+                          checked={
+                            selectableEvents.length === 0
+                              ? false
+                              : allSelectableSelected
+                              ? true
+                              : someSelectableSelected
+                              ? 'indeterminate'
+                              : false
+                          }
+                          onCheckedChange={toggleSelectAll}
+                          aria-label="Sélectionner tous les événements actifs"
+                          disabled={selectableEvents.length === 0}
+                        />
+                      </TableHead>
                       <TableHead className="w-[100px] font-display">Type</TableHead>
                       <TableHead className="w-[120px] font-display">Sévérité</TableHead>
                       <TableHead className="font-display">Message</TableHead>
@@ -1125,7 +1268,22 @@ export function MonitoringPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredEvents.map((event) => (
-                      <TableRow key={event.id} className="group">
+                      <TableRow
+                        key={event.id}
+                        className="group"
+                        data-selected={selectedIds.has(event.id)}
+                      >
+                        <TableCell>
+                          {event.statut === 'ACTIF' ? (
+                            <Checkbox
+                              checked={selectedIds.has(event.id)}
+                              onCheckedChange={() => toggleSelectOne(event.id)}
+                              aria-label={`Sélectionner l'événement ${event.message.slice(0, 40)}`}
+                            />
+                          ) : (
+                            <span className="block w-[16px]" />
+                          )}
+                        </TableCell>
                         <TableCell>
                           <TypeBadge type={event.type} />
                         </TableCell>
@@ -1595,6 +1753,67 @@ export function MonitoringPage() {
               className="bg-warning hover:bg-warning/90"
             >
               Escalader au niveau critique
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk action confirmation dialog — action de masse sur plusieurs événements */}
+      <AlertDialog
+        open={bulkDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBulkDialogOpen(false)
+            setBulkAction(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              {bulkAction === 'resoudre' ? (
+                <>
+                  <CheckCircle2 className="h-5 w-5 text-success-text" />
+                  Résoudre {selectedIds.size} événement{selectedIds.size > 1 ? 's' : ''} ?
+                </>
+              ) : (
+                <>
+                  <Ban className="h-5 w-5 text-warning" />
+                  Ignorer {selectedIds.size} événement{selectedIds.size > 1 ? 's' : ''}?
+                </>
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkAction === 'resoudre'
+                ? `Cette action marquera ${selectedIds.size} événement(s) comme résolu(s) d'un seul coup. Les événements seront marqués avec votre identité (${user?.email ?? 'admin'}).`
+                : `Cette action marquera ${selectedIds.size} événement(s) comme ignoré(s). Ils resteront en base mais seront masqués des alertes actives.`}
+              <br />
+              <span className="text-xs text-muted-foreground mt-1 block">
+                Seuls les événements ACTIF seront affectés ({selectableEvents.length} sélectionnables).
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkSubmitting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                bulkAction === 'resoudre'
+                  ? 'bg-success hover:bg-success/90 text-success-text'
+                  : 'bg-warning hover:bg-warning/90'
+              }
+              disabled={bulkSubmitting}
+              onClick={handleBulkAction}
+            >
+              {bulkSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Traitement…
+                </>
+              ) : bulkAction === 'resoudre' ? (
+                `Oui, résoudre ${selectedIds.size} événement(s)`
+              ) : (
+                `Oui, ignorer ${selectedIds.size} événement(s)`
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

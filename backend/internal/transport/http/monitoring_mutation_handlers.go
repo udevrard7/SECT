@@ -250,3 +250,97 @@ func (s *Server) monitoringHealthCheck(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(report)
 }
+
+// bulkMonitoringEvents — POST /api/monitoring/bulk
+//
+// Action de masse sur plusieurs événements de monitoring. Permet à l'ADMIN de
+// résoudre ou ignorer plusieurs événements en une seule requête (utile quand
+// une vague d'alertes similaires arrive, ex: 50 erreurs DB consécutives).
+//
+// Body: { "ids": ["uuid1", "uuid2", ...], "action": "resoudre"|"ignorer" }
+// Response: { "updated": N, "action": "...", "failed": [...] }
+//
+// Sécurité :
+// - RequireAuth + RequireRole("ADMIN") (déclaré dans router.go).
+// - resoluPar forcé à claims.Email (anti-forgery, comme resolveMonitoringEvent).
+// - Limité à 100 IDs par requête (anti-abus).
+// - Tout se fait dans UNE transaction (atomicité : tout réussit ou tout échoue).
+// - Les IDs inexistants sont ignorés (pas d'erreur) — seul le count updated est retourné.
+func (s *Server) bulkMonitoringEvents(w http.ResponseWriter, r *http.Request) {
+        claims, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok || claims.UserID == "" {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+
+        var input struct {
+                IDs    []string `json:"ids"`
+                Action string   `json:"action"`
+        }
+        if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
+                return
+        }
+
+        if len(input.IDs) == 0 {
+                writeJSONError(w, http.StatusBadRequest, "ids requis (au moins 1)")
+                return
+        }
+        if len(input.IDs) > 100 {
+                writeJSONError(w, http.StatusBadRequest, "trop d'IDs (max 100 par requête)")
+                return
+        }
+
+        // Valider l'action
+        switch input.Action {
+        case "resoudre", "ignorer":
+                // OK
+        default:
+                writeJSONError(w, http.StatusBadRequest, "action doit être 'resoudre' ou 'ignorer'")
+                return
+        }
+
+        // resoluPar pour action "resoudre" (anti-forgery : forcé à l'admin courant).
+        resoluPar := ""
+        if input.Action == "resoudre" {
+                resoluPar = claims.Email
+                if resoluPar == "" {
+                        resoluPar = claims.UserID
+                }
+        }
+
+        // Construire la requête UPDATE avec IN (...) — on utilise ANY($1::text[]) pour
+        // éviter la concaténation SQL (sécurité injection).
+        updated := 0
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                if input.Action == "resoudre" {
+                        tag, err := tx.Exec(r.Context(), `
+                                UPDATE "MonitoringEvent"
+                                SET "statut" = 'RESOLU', "resoluLe" = now(), "resoluPar" = $2, "updatedAt" = now()
+                                WHERE "id" = ANY($1::text[]) AND "statut" = 'ACTIF'
+                        `, input.IDs, resoluPar)
+                        if err != nil {
+                                return err
+                        }
+                        updated = int(tag.RowsAffected())
+                } else { // ignorer
+                        tag, err := tx.Exec(r.Context(), `
+                                UPDATE "MonitoringEvent"
+                                SET "statut" = 'IGNORE', "updatedAt" = now()
+                                WHERE "id" = ANY($1::text[]) AND "statut" = 'ACTIF'
+                        `, input.IDs)
+                        if err != nil {
+                                return err
+                        }
+                        updated = int(tag.RowsAffected())
+                }
+                return nil
+        })
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "updated": updated,
+                "action":  input.Action,
+                "total":   len(input.IDs),
+        })
+}

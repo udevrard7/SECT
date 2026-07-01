@@ -659,6 +659,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/health", s.monitoringHealthCheck)
                         // MONITORING-FIX-M2 : mutations (POST/PATCH/DELETE).
                         r.Post("/", s.createMonitoringEvent)
+                        // Action de masse : résoudre/ignorer plusieurs événements en une requête.
+                        r.Post("/bulk", s.bulkMonitoringEvents)
                         r.Patch("/{id}", s.resolveMonitoringEvent)
                         r.Delete("/{id}", s.ignoreMonitoringEvent)
                 })
