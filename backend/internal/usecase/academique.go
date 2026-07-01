@@ -3,7 +3,6 @@ package usecase
 
 import (
         "context"
-        "fmt"
         "time"
 
         "github.com/udevrard7/sect/backend/internal/db"
@@ -499,16 +498,4 @@ func (uc *AnneeUseCase) HardDelete(ctx context.Context, claims db.SessionClaims,
                 return &domain.ValidationError{Field: "id", Message: "requis"}
         }
         return uc.anneeRepo.HardDelete(ctx, id)
-}
-
-// ValidateAccessForEtablissement helper (sera étendu avec EtablissementAccess).
-func ValidateAccessForEtablissement(claims db.SessionClaims, etablissementID string) error {
-        if claims.Role == "ADMIN" {
-                // TODO: check EtablissementAccess via repository
-                return nil
-        }
-        if claims.EtablissementID != etablissementID {
-                return fmt.Errorf("hors de votre établissement")
-        }
-        return nil
 }

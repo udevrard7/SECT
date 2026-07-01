@@ -106,8 +106,8 @@ interface AccessRecord {
   approuvePar: string | null
   commentaire: string | null
   createdAt: string
-  admin: { id: string; name: string; email: string }
-  etablissement: { id: string; nom: string; ville: string | null; actif: boolean }
+  admin?: { id: string; name: string; email: string }
+  etablissement?: { id: string; nom: string; ville: string | null; actif: boolean }
 }
 
 interface AdminStats {
@@ -274,7 +274,7 @@ export function AdminDashboard() {
 
   // Fetch access records (admin's EtablissementAccess demands)
   const accessQuery = useQuery({
-    queryKey: ['admin-access', user?.id],
+    queryKey: ['etablissement-access', user?.id],
     queryFn: async () => {
       // Guard: 'enabled: !!user?.id' garantit user non-null à l'exécution,
       // mais le closure callback n'hérite pas du narrowing TypeScript.
@@ -367,7 +367,7 @@ export function AdminDashboard() {
       setRequestCommentaire('')
       setSelectedEtablissement(null)
       // Invalidate access query → TanStack refetches in background
-      queryClient.invalidateQueries({ queryKey: ['admin-access', user.id] })
+      queryClient.invalidateQueries({ queryKey: ['etablissement-access', user.id] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la demande')
     } finally {
@@ -924,10 +924,10 @@ export function AdminDashboard() {
                   <SelectValue placeholder="Sélectionnez un motif" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="audit">Audit</SelectItem>
-                  <SelectItem value="support">Support technique</SelectItem>
-                  <SelectItem value="inspection">Inspection</SelectItem>
-                  <SelectItem value="urgent">Intervention urgente</SelectItem>
+                  <SelectItem value="Audit">Audit</SelectItem>
+                  <SelectItem value="Support technique">Support technique</SelectItem>
+                  <SelectItem value="Inspection">Inspection</SelectItem>
+                  <SelectItem value="Urgence">Intervention urgente</SelectItem>
                 </SelectContent>
               </Select>
             </div>

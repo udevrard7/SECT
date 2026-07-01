@@ -14,6 +14,7 @@ const (
         AccessApprouve  AccessStatut = "APPROUVE"
         AccessRefuse    AccessStatut = "REFUSE"
         AccessExpire    AccessStatut = "EXPIRE"
+        AccessAnnule    AccessStatut = "ANNULE" // B-11 : soft-delete (annulation d'une demande EN_ATTENTE) — conserve l'audit trail
 )
 
 // EtablissementAccess représente une autorisation d'accès ADMIN → établissement.
@@ -73,8 +74,13 @@ type EtablissementAccessRepository interface {
         FindByID(ctx context.Context, id string) (*EtablissementAccess, error)
         List(ctx context.Context, params AccessListParams) ([]*EtablissementAccess, error)
         Create(ctx context.Context, input CreateAccessInput) (*EtablissementAccess, error)
-        Update(ctx context.Context, id string, input UpdateAccessInput) (*EtablissementAccess, error)
+        // Update modifie une demande. B-8 : expectedStatut sert de verrou optimiste
+        // (WHERE statut = expectedStatut dans le UPDATE) pour empêcher les race conditions
+        // (double approbation, transition concurrente).
+        Update(ctx context.Context, id string, expectedStatut AccessStatut, input UpdateAccessInput) (*EtablissementAccess, error)
         // ACCES-ETABLISSEMENTS-FIX-AE1 : suppression d'une demande d'accès (annulation).
+        // B-11 : conservé pour compat, mais le usecase Delete utilise désormais Update avec
+        // statut=ANNULE (soft-delete) pour garder l'audit trail.
         Delete(ctx context.Context, id string) error
         // CheckAccess vérifie si un admin a un accès APPROUVE valide pour un établissement.
         CheckAccess(ctx context.Context, adminID, etablissementID string) (*EtablissementAccess, error)

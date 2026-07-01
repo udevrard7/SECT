@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -161,6 +161,13 @@ function getStatutBadge(statut: string) {
           Expiré
         </Badge>
       )
+    case 'ANNULE':
+      return (
+        <Badge className="bg-zinc-500/15 text-zinc-400 border-zinc-500/30">
+          <Ban className="h-3 w-3 mr-1" />
+          Annulé
+        </Badge>
+      )
     default:
       return <Badge variant="outline">{statut}</Badge>
   }
@@ -243,6 +250,22 @@ export function AccesEtablissementsPage() {
   const isLoading =
     accessQuery.isLoading || authorizedQuery.isLoading || etablissementsQuery.isLoading
 
+  // BUGFIX B-9 : toasts one-shot sur erreur de fetch. Les useEffect ne se
+  // redéclenchent que sur transition false→true de isError (tableau de dep
+  // à un seul booléen), donc pas de spam de toasts au re-render.
+  useEffect(() => {
+    if (accessQuery.isError)
+      toast.error('Erreur', { description: 'Impossible de charger vos demandes d\'accès.' })
+  }, [accessQuery.isError])
+  useEffect(() => {
+    if (authorizedQuery.isError)
+      toast.error('Erreur', { description: 'Impossible de charger vos établissements autorisés.' })
+  }, [authorizedQuery.isError])
+  useEffect(() => {
+    if (etablissementsQuery.isError)
+      toast.error('Erreur', { description: 'Impossible de charger la liste des établissements.' })
+  }, [etablissementsQuery.isError])
+
   // Helper pour invalider le cache après mutation (create/delete).
   const refreshData = async () => {
     await Promise.all([
@@ -262,6 +285,12 @@ export function AccesEtablissementsPage() {
   // ADMIN (le usecase ne fait le check EtablissementID que pour RESPONSABLE).
   const [revokeTarget, setRevokeTarget] = useState<AccessRecord | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // BUGFIX B-7 : protection anti double-clic sur les boutons "Annuler" et
+  // "Révoquer" des AlertDialogs. Désactive l'AlertDialogAction pendant la
+  // mutation pour éviter les requêtes dupliquées (et donc les 404/409 sur le
+  // DELETE/PATCH d'un ID déjà traité).
+  const [cancelling, setCancelling] = useState(false)
+  const [revoking, setRevoking] = useState(false)
   const [activeTab, setActiveTab] = useState('mes-autorisations')
   // ASSISTANCE-MODE-FRONTEND : ID de l'établissement dont l'activation du mode
   // assistance est en cours. Désactive le bouton correspondant (Loader2) et
@@ -295,6 +324,7 @@ export function AccesEtablissementsPage() {
   // ─── Cancel access request ───
   const handleCancelRequest = async () => {
     if (!cancelTarget) return
+    setCancelling(true)
     try {
       const res = await fetch(`/api/etablissement-access/${cancelTarget.id}`, {
         method: 'DELETE',
@@ -312,6 +342,8 @@ export function AccesEtablissementsPage() {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible d\'annuler la demande.',
       })
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -323,6 +355,7 @@ export function AccesEtablissementsPage() {
   // Côté frontend on propose une révocation manuelle anticipative.
   const handleRevokeAccess = async () => {
     if (!revokeTarget) return
+    setRevoking(true)
     try {
       const res = await fetch(`/api/etablissement-access/${revokeTarget.id}`, {
         method: 'PATCH',
@@ -345,6 +378,8 @@ export function AccesEtablissementsPage() {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de révoquer l\'accès.',
       })
+    } finally {
+      setRevoking(false)
     }
   }
 
@@ -1025,6 +1060,7 @@ export function AccesEtablissementsPage() {
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleCancelRequest}
+              disabled={cancelling}
             >
               Oui, annuler
             </AlertDialogAction>
@@ -1054,6 +1090,7 @@ export function AccesEtablissementsPage() {
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleRevokeAccess}
+              disabled={revoking}
             >
               Oui, révoquer
             </AlertDialogAction>
