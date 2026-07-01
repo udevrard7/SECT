@@ -80,6 +80,13 @@ interface ResultatParMatiere {
   nbParticipants: number
 }
 
+interface ResultatParFiliere {
+  filiere: string
+  moyenne: number
+  tauxReussite: number
+  nbParticipants: number
+}
+
 interface EtudiantParFiliere {
   filiere: string
   count: number
@@ -121,6 +128,7 @@ interface StatsData {
   moyenneGenerale: number
   repartitionNotes: RepartitionNote[]
   resultatsParMatiere: ResultatParMatiere[]
+  resultatsParFiliere: ResultatParFiliere[]
   etudiantsParFiliere: EtudiantParFiliere[]
   evolutionMoyennes: EvolutionMoyenne[]
   topEnseignants: TopEnseignant[]
@@ -468,6 +476,7 @@ export function ResponsableDashboard() {
         moyenneGenerale: raw.moyenneGenerale ?? 0,
         repartitionNotes: raw.repartitionNotes ?? [],
         resultatsParMatiere: raw.resultatsParMatiere ?? [],
+        resultatsParFiliere: raw.resultatsParFiliere ?? [],
         etudiantsParFiliere: raw.etudiantsParFiliere ?? [],
         evolutionMoyennes: raw.evolutionMoyennes ?? [],
         topEnseignants: raw.topEnseignants ?? [],
@@ -732,21 +741,21 @@ export function ResponsableDashboard() {
             </motion.div>
           </div>
 
-          {/* Resultats par matière */}
-          {data.resultatsParMatiere.length > 0 && (
+          {/* Resultats par filière */}
+          {data.resultatsParFiliere.length > 0 && (
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 font-display tracking-tight">
                     <BookOpen className="h-5 w-5 text-warning" />
-                    Résultats par matière
+                    Résultats par filière
                   </CardTitle>
                   <CardDescription>Classement par moyenne décroissante</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {data.resultatsParMatiere.slice(0, 6).map((matiere, index) => {
-                      const scoreColor = getScoreColor(matiere.moyenne)
+                    {data.resultatsParFiliere.slice(0, 6).map((filiere, index) => {
+                      const scoreColor = getScoreColor(filiere.moyenne)
                       return (
                         <div key={index} className="flex items-center">
                           <div
@@ -756,24 +765,24 @@ export function ResponsableDashboard() {
                               color: scoreColor,
                             }}
                           >
-                            {matiere.moyenne.toFixed(1)}
+                            {filiere.moyenne.toFixed(1)}
                           </div>
-                          <div className="ml-4 flex-grow">
-                            <p className="font-semibold truncate">{matiere.titre}</p>
+                          <div className="ml-4 flex-grow min-w-0">
+                            <p className="font-semibold truncate">{filiere.filiere}</p>
                             <p className="text-sm text-muted-foreground">
-                              {matiere.enseignant} · <span className="font-mono tabular-nums tracking-tight">{matiere.nbParticipants}</span> participant{matiere.nbParticipants !== 1 ? 's' : ''}
+                              <span className="font-mono tabular-nums tracking-tight">{filiere.nbParticipants}</span> participant{filiere.nbParticipants !== 1 ? 's' : ''}
                             </p>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right shrink-0 ml-2">
                             <Badge
                               variant="outline"
                               className="text-[10px] font-mono tabular-nums tracking-tight"
                               style={{
-                                borderColor: `${getTauxColor(matiere.tauxReussite)}`,
-                                color: getTauxColor(matiere.tauxReussite),
+                                borderColor: `${getTauxColor(filiere.tauxReussite)}`,
+                                color: getTauxColor(filiere.tauxReussite),
                               }}
                             >
-                              {matiere.tauxReussite}% réussite
+                              {filiere.tauxReussite}% réussite
                             </Badge>
                           </div>
                         </div>
@@ -839,7 +848,7 @@ export function ResponsableDashboard() {
                     {data.topEtudiants.slice(0, 5).map((etu, index) => {
                       const scoreColor = getScoreColor(etu.moyenne)
                       return (
-                        <div key={index} className="flex items-center">
+                        <div key={index} className="flex items-center gap-3">
                           <div
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-[10px] font-mono tabular-nums tracking-tight"
                             style={{
@@ -849,11 +858,11 @@ export function ResponsableDashboard() {
                           >
                             {etu.moyenne.toFixed(1)}
                           </div>
-                          <div className="ml-3 flex-grow">
-                            <p className="font-medium text-sm truncate">{etu.nom}</p>
-                            <p className="text-xs text-muted-foreground">{etu.filiere}</p>
+                          <div className="flex-grow min-w-0">
+                            <p className="font-medium text-sm truncate overflow-hidden text-ellipsis whitespace-nowrap" title={etu.nom}>{etu.nom}</p>
+                            <p className="text-xs text-muted-foreground truncate overflow-hidden text-ellipsis whitespace-nowrap" title={etu.filiere}>{etu.filiere}</p>
                           </div>
-                          {index === 0 && <Trophy className="h-4 w-4 text-warning" />}
+                          {index === 0 && <Trophy className="h-4 w-4 text-warning shrink-0" />}
                         </div>
                       )
                     })}
