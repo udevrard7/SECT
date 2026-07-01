@@ -646,109 +646,123 @@ func (r *ResultatRepository) ListByEtudiant(ctx context.Context, etudiantID stri
         return result, nil
 }
 
-// ListByEpreuve liste les sessions d'une épreuve avec stats (bypass RLS).
+// ListByEpreuve liste les sessions d'une épreuve avec stats.
+//
+// BUGFIX (RESULTATS-RLS-1) : l'ancienne implémentation ouvrait une transaction
+// avec r.pool.BeginTx SANS poser les claims RLS (SetClaimsTx). Or RLS est activé
+// sur SessionPassation avec la policy SessionPassation_select qui exige
+// (is_enseignant() AND epreuve_owned_by_me(epreuveId)). Sans claims, is_enseignant()
+// retourne false → RLS bloque toutes les lignes → 0 session retournée même si
+// l'overview affiche 7 copies corrigées pour la même épreuve.
+//
+// Correction : on extrait les claims du context (posés par le middleware Auth)
+// et on utilise db.WithTx qui pose app.claims.* sur la transaction avant les
+// queries. RLS filtre alors correctement : l'enseignant voit les sessions de
+// ses propres épreuves.
 func (r *ResultatRepository) ListByEpreuve(ctx context.Context, epreuveID string, page, limit int) ([]*domain.SessionPassation, int, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, 0, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, 0, fmt.Errorf("ListByEpreuve: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        // Count total
         var total int
-        err = tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "epreuveId" = $1`, epreuveID).Scan(&total)
-        if err != nil {
-                return nil, 0, fmt.Errorf("count sessions: %w", err)
-        }
-
-        // BUGFIX (RESULTATS-TABS-1) : LEFT JOIN User + Filiere pour peupler
-        // etudiant:{id, name, email, filiere} attendu par le frontend.
-        // P1-R2 : LEFT JOIN Resultat pour peupler resultat:{id, scoreFinal, detailParQuestion, dateCorrection, dateRetour}
-        query := fmt.Sprintf(`
-                SELECT s."id", s."etudiantId", s."epreuveId", s."statut"::text,
-                       s."dateDebut", s."dateFin", s."score", s."logEvents",
-                       s."alertes", s."createdAt", s."updatedAt",
-                       s."propositionMappings", s."penalite",
-                       u."id", u."name", u."email", f."nom",
-                       r."id", r."scoreFinal", r."detailParQuestion", r."dateCorrection", r."dateRetour"
-                FROM "SessionPassation" s
-                LEFT JOIN "User" u ON u."id" = s."etudiantId"
-                LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
-                LEFT JOIN "Resultat" r ON r."sessionId" = s."id"
-                WHERE s."epreuveId" = $1
-                ORDER BY s."score" DESC NULLS LAST
-        `)
-        var args []any = []any{epreuveID}
-        if page > 0 && limit > 0 {
-                offset := (page - 1) * limit
-                query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-                args = append(args, limit, offset)
-        }
-
-        rows, err := tx.Query(ctx, query, args...)
-        if err != nil {
-                return nil, 0, fmt.Errorf("query sessions by epreuve: %w", err)
-        }
-        defer rows.Close()
-
         var result []*domain.SessionPassation
-        for rows.Next() {
-                s := &domain.SessionPassation{}
-                var statut string
-                var etuID, etuName, etuEmail *string
-                var filiereNom *string
-                // P1-R2 : champs Resultat
-                var rID *string
-                var rScoreFinal *float64
-                var rDetailParQuestion []byte
-                var rDateCorrection, rDateRetour *time.Time
-                if err := rows.Scan(
-                        &s.ID, &s.EtudiantID, &s.EpreuveID, &statut,
-                        &s.DateDebut, &s.DateFin, &s.Score, &s.LogEvents,
-                        &s.Alertes, &s.CreatedAt, &s.UpdatedAt,
-                        &s.PropositionMappings, &s.Penalite,
-                        &etuID, &etuName, &etuEmail, &filiereNom,
-                        &rID, &rScoreFinal, &rDetailParQuestion, &rDateCorrection, &rDateRetour,
-                ); err != nil {
-                        return nil, 0, fmt.Errorf("scan session: %w", err)
+
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Count total
+                err := tx.QueryRow(ctx, `SELECT count(*) FROM "SessionPassation" WHERE "epreuveId" = $1`, epreuveID).Scan(&total)
+                if err != nil {
+                        return fmt.Errorf("count sessions: %w", err)
                 }
-                s.Statut = domain.StatutSession(statut)
-                if etuID != nil && etuName != nil {
-                        s.Etudiant = &struct {
-                                ID      string  `json:"id"`
-                                Name    string  `json:"name"`
-                                Email   string  `json:"email"`
-                                Filiere *string `json:"filiere,omitempty"`
-                        }{
-                                ID:      *etuID,
-                                Name:    *etuName,
-                                Email:   derefStr(etuEmail),
-                                Filiere: filiereNom,
-                        }
+
+                // BUGFIX (RESULTATS-TABS-1) : LEFT JOIN User + Filiere pour peupler
+                // etudiant:{id, name, email, filiere} attendu par le frontend.
+                // P1-R2 : LEFT JOIN Resultat pour peupler resultat:{id, scoreFinal, detailParQuestion, dateCorrection, dateRetour}
+                query := fmt.Sprintf(`
+                        SELECT s."id", s."etudiantId", s."epreuveId", s."statut"::text,
+                               s."dateDebut", s."dateFin", s."score", s."logEvents",
+                               s."alertes", s."createdAt", s."updatedAt",
+                               s."propositionMappings", s."penalite",
+                               u."id", u."name", u."email", f."nom",
+                               r."id", r."scoreFinal", r."detailParQuestion", r."dateCorrection", r."dateRetour"
+                        FROM "SessionPassation" s
+                        LEFT JOIN "User" u ON u."id" = s."etudiantId"
+                        LEFT JOIN "Filiere" f ON f."id" = u."filiereId"
+                        LEFT JOIN "Resultat" r ON r."sessionId" = s."id"
+                        WHERE s."epreuveId" = $1
+                        ORDER BY s."score" DESC NULLS LAST
+                `)
+                var args []any = []any{epreuveID}
+                if page > 0 && limit > 0 {
+                        offset := (page - 1) * limit
+                        query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+                        args = append(args, limit, offset)
                 }
-                // P1-R2 : hydrater Resultat si le LEFT JOIN a matché
-                if rID != nil && rScoreFinal != nil {
-                        detail := json.RawMessage(rDetailParQuestion)
-                        if len(detail) == 0 || string(detail) == "null" {
-                                detail = nil
-                        }
-                        s.Resultat = &domain.Resultat{
-                                ID:                *rID,
-                                SessionID:         s.ID,
-                                ScoreFinal:        *rScoreFinal,
-                                DetailParQuestion: detail,
-                                DateCorrection:    rDateCorrection,
-                                DateRetour:        rDateRetour,
-                        }
+
+                rows, err := tx.Query(ctx, query, args...)
+                if err != nil {
+                        return fmt.Errorf("query sessions by epreuve: %w", err)
                 }
-                result = append(result, s)
+                defer rows.Close()
+
+                for rows.Next() {
+                        s := &domain.SessionPassation{}
+                        var statut string
+                        var etuID, etuName, etuEmail *string
+                        var filiereNom *string
+                        // P1-R2 : champs Resultat
+                        var rID *string
+                        var rScoreFinal *float64
+                        var rDetailParQuestion []byte
+                        var rDateCorrection, rDateRetour *time.Time
+                        if err := rows.Scan(
+                                &s.ID, &s.EtudiantID, &s.EpreuveID, &statut,
+                                &s.DateDebut, &s.DateFin, &s.Score, &s.LogEvents,
+                                &s.Alertes, &s.CreatedAt, &s.UpdatedAt,
+                                &s.PropositionMappings, &s.Penalite,
+                                &etuID, &etuName, &etuEmail, &filiereNom,
+                                &rID, &rScoreFinal, &rDetailParQuestion, &rDateCorrection, &rDateRetour,
+                        ); err != nil {
+                                return fmt.Errorf("scan session: %w", err)
+                        }
+                        s.Statut = domain.StatutSession(statut)
+                        if etuID != nil && etuName != nil {
+                                s.Etudiant = &struct {
+                                        ID      string  `json:"id"`
+                                        Name    string  `json:"name"`
+                                        Email   string  `json:"email"`
+                                        Filiere *string `json:"filiere,omitempty"`
+                                }{
+                                        ID:      *etuID,
+                                        Name:    *etuName,
+                                        Email:   derefStr(etuEmail),
+                                        Filiere: filiereNom,
+                                }
+                        }
+                        // P1-R2 : hydrater Resultat si le LEFT JOIN a matché
+                        if rID != nil && rScoreFinal != nil {
+                                detail := json.RawMessage(rDetailParQuestion)
+                                if len(detail) == 0 || string(detail) == "null" {
+                                        detail = nil
+                                }
+                                s.Resultat = &domain.Resultat{
+                                        ID:                *rID,
+                                        SessionID:         s.ID,
+                                        ScoreFinal:        *rScoreFinal,
+                                        DetailParQuestion: detail,
+                                        DateCorrection:    rDateCorrection,
+                                        DateRetour:        rDateRetour,
+                                }
+                        }
+                        result = append(result, s)
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, 0, err
         }
         if result == nil {
                 result = []*domain.SessionPassation{}
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, 0, fmt.Errorf("commit: %w", err)
         }
         return result, total, nil
 }
