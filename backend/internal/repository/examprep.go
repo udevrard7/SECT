@@ -122,49 +122,50 @@ func (r *ExamPrepRepository) GetDashboard(ctx context.Context, userID string, do
 // ============================================================
 
 // ListStudentDocuments liste les documents accessibles à l'étudiant (via filière+niveau).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS (fix 2026-07) : les claims RLS sont maintenant
+// posés via db.WithTx (pattern GetDashboard). La policy Document_select
+// (migration 000034) a une branche is_etudiant() qui laisse passer les
+// documents dont l'UE appartient à la filière de l'étudiant. Le scoping
+// strict filière + niveau est ASSURÉ EN OUTRE par la clause WHERE ci-dessous
+// (défense en profondeur : RLS + SQL).
 func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, filiereID, niveau string) ([]*domain.Document, error) {
-        // EXAM-PREP-RLS-FIX-1 : RLS désactivé car la politique Document_select
-        // n'autorise que l'owner (ownerId = current_user_id()). Les étudiants ne
-        // sont jamais owners des documents → RLS bloquait TOUS les documents.
-        // Le scoping filière+niveau est déjà assuré par la clause WHERE ci-dessous
-        // (ue."filiereId" = $1 AND ue."niveau" = $2), ce qui est la bonne frontière
-        // de sécurité : un étudiant ne voit QUE les documents des UE de sa filière
-        // et de son niveau. Pattern identique à GetDocumentContent, ListChaptersByDocumentIDs.
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
-
-        query := fmt.Sprintf(`
-                SELECT %s FROM "Document" d
-                WHERE d."deletedAt" IS NULL
-                  AND d."uniteEnseignementId" IN (
-                    SELECT ue."id" FROM "UniteEnseignement" ue
-                    WHERE ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)
-                  )
-                ORDER BY d."dateUpload" DESC
-        `, columnsDocument)
-        rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
-        if err != nil {
-                return nil, fmt.Errorf("query student documents: %w", err)
-        }
-        defer rows.Close()
 
         var result []*domain.Document
-        for rows.Next() {
-                d, err := scanDocument(rows)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                query := fmt.Sprintf(`
+                        SELECT %s FROM "Document" d
+                        WHERE d."deletedAt" IS NULL
+                          AND d."uniteEnseignementId" IN (
+                            SELECT ue."id" FROM "UniteEnseignement" ue
+                            WHERE ue."filiereId" = $1 AND (ue."niveau" = $2 OR ue."niveaux" LIKE $3)
+                          )
+                        ORDER BY d."dateUpload" DESC
+                `, columnsDocument)
+                rows, err := tx.Query(ctx, query, filiereID, niveau, "%\""+niveau+"\"%")
                 if err != nil {
-                        return nil, fmt.Errorf("scan document: %w", err)
+                        return fmt.Errorf("query student documents: %w", err)
                 }
-                result = append(result, d)
+                defer rows.Close()
+
+                for rows.Next() {
+                        d, err := scanDocument(rows)
+                        if err != nil {
+                                return fmt.Errorf("scan document: %w", err)
+                        }
+                        result = append(result, d)
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         if result == nil {
                 result = []*domain.Document{}
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
         }
         return result, nil
 }
@@ -172,29 +173,31 @@ func (r *ExamPrepRepository) ListStudentDocuments(ctx context.Context, userID, f
 // GetUserNiveau récupère le niveau d'un utilisateur depuis la table User.
 // EXAM-PREP-NIVEAU-FIX-1 : le JWT SessionClaims n'a pas de champ Niveau,
 // on le récupère depuis la DB. Retourne "" si l'utilisateur n'existe pas
-// ou si la colonne "niveau" est NULL. RLS désactivé : lecture système
-// (métadonnée non sensible, userID provient des claims authentifiés).
+// ou si la colonne "niveau" est NULL.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx (la policy
+// User_select exige current_user_id() = User.id pour les étudiants).
 func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (string, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return "", fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return "", fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         var niveau *string
-        err = tx.QueryRow(ctx, `
-                SELECT "niveau" FROM "User" WHERE "id" = $1
-        `, userID).Scan(&niveau)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        tx.Commit(ctx)
-                        return "", nil
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                err := tx.QueryRow(ctx, `
+                        SELECT "niveau" FROM "User" WHERE "id" = $1
+                `, userID).Scan(&niveau)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return nil // pas d'erreur : niveau vide
+                        }
+                        return fmt.Errorf("query user niveau: %w", err)
                 }
-                return "", fmt.Errorf("query user niveau: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return "", fmt.Errorf("commit: %w", err)
+                return nil
+        })
+        if err != nil {
+                return "", err
         }
         if niveau == nil {
                 return "", nil
@@ -206,31 +209,32 @@ func (r *ExamPrepRepository) GetUserNiveau(ctx context.Context, userID string) (
 // EXAM-PREP-CONNECT-1 — Étape 3 : utilisé par le Q&A RAG pour construire
 // le prompt avec le contexte du document.
 //
-// RLS désactivé (best-effort : le scoping strict filière+niveau est assuré
-// par ListStudentDocuments côté usecase ; ici on trust le documentID passé
-// par un utilisateur déjà authentifié). Si le document n'existe pas ou est
-// supprimé, retourne une chaîne vide sans erreur.
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Le scoping
+// strict filière+niveau est assuré côté usecase via CheckDocumentAccess
+// (appelé avant cette méthode pour les étudiants) + RLS Document_select.
+// Si le document n'existe pas ou est supprimé, retourne une chaîne vide.
 func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID string) (string, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return "", fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return "", fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         var contenu *string
-        err = tx.QueryRow(ctx, `
-                SELECT "contenuTexte" FROM "Document"
-                WHERE "id" = $1 AND "deletedAt" IS NULL
-        `, documentID).Scan(&contenu)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return "", nil
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                err := tx.QueryRow(ctx, `
+                        SELECT "contenuTexte" FROM "Document"
+                        WHERE "id" = $1 AND "deletedAt" IS NULL
+                `, documentID).Scan(&contenu)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return nil // pas d'erreur : contenu vide
+                        }
+                        return fmt.Errorf("query document content: %w", err)
                 }
-                return "", fmt.Errorf("query document content: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return "", fmt.Errorf("commit: %w", err)
+                return nil
+        })
+        if err != nil {
+                return "", err
         }
 
         if contenu == nil {
@@ -245,57 +249,60 @@ func (r *ExamPrepRepository) GetDocumentContent(ctx context.Context, documentID 
 }
 
 // GetDocumentForReader récupère un document complet (avec contenuTexte) pour
-// le lecteur modal (HIGHLIGHT-FLASHCARD-1). RLS désactivé : le scoping strict
-// filière+niveau est assuré côté usecase via ListStudentDocuments ; ici on trust
-// le documentID passé par un utilisateur déjà authentifié.
+// le lecteur modal (HIGHLIGHT-FLASHCARD-1).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Le scoping
+// strict filière+niveau est assuré côté usecase via CheckDocumentAccess
+// (appelé avant pour les étudiants) + RLS Document_select.
 func (r *ExamPrepRepository) GetDocumentForReader(ctx context.Context, documentID string) (*domain.Document, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
-        row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`, columnsDocument), documentID)
-        d, err := scanDocument(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "Document", ID: documentID}
+        var d *domain.Document
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Document" d WHERE d."id" = $1 AND d."deletedAt" IS NULL`, columnsDocument), documentID)
+                doc, err := scanDocument(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "Document", ID: documentID}
+                        }
+                        return fmt.Errorf("query document for reader: %w", err)
                 }
-                return nil, fmt.Errorf("query document for reader: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                d = doc
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return d, nil
 }
 
 // CheckDocumentAccess vérifie qu'un document appartient à une UE de la
-// filière + niveau de l'étudiant. RLS désactivé (lecture système).
-// EXAM-PREP-READER-SECURITY-FIX-1.
+// filière + niveau de l'étudiant. EXAM-PREP-READER-SECURITY-FIX-1.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID, filiereID, niveau string) (bool, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return false, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return false, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         var exists bool
-        err = tx.QueryRow(ctx, `
-                SELECT EXISTS(
-                        SELECT 1 FROM "Document" d
-                        JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
-                        WHERE d."id" = $1 AND d."deletedAt" IS NULL
-                                AND ue."filiereId" = $2
-                                AND (ue."niveau" = $3 OR ue."niveaux" LIKE $4)
-                )
-        `, documentID, filiereID, niveau, "%\""+niveau+"\"%").Scan(&exists)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `
+                        SELECT EXISTS(
+                                SELECT 1 FROM "Document" d
+                                JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+                                WHERE d."id" = $1 AND d."deletedAt" IS NULL
+                                        AND ue."filiereId" = $2
+                                        AND (ue."niveau" = $3 OR ue."niveaux" LIKE $4)
+                        )
+                `, documentID, filiereID, niveau, "%\""+niveau+"\"%").Scan(&exists)
+        })
         if err != nil {
                 return false, fmt.Errorf("check document access: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return false, fmt.Errorf("commit: %w", err)
         }
         return exists, nil
 }
@@ -305,20 +312,21 @@ func (r *ExamPrepRepository) CheckDocumentAccess(ctx context.Context, documentID
 // ============================================================
 
 // ListChaptersByDocumentIDs retourne les chapitres groupés par documentId.
-// RLS désactivé (les chapitres sont des métadonnées non sensibles ; la
-// liste de documents est déjà student-scoped via ListStudentDocuments).
 // Ordre : "ordre" ASC. Retourne une map vide (non-nil) si docIDs est vide.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx (la policy
+// Chapter_select a maintenant une branche is_etudiant() via la filière de
+// l'UE du document parent — migration 000034).
 func (r *ExamPrepRepository) ListChaptersByDocumentIDs(ctx context.Context, docIDs []string) (map[string][]*domain.Chapter, error) {
         result := make(map[string][]*domain.Chapter)
         if len(docIDs) == 0 {
                 return result, nil
         }
 
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         placeholders := make([]string, len(docIDs))
         args := make([]any, len(docIDs))
@@ -333,39 +341,43 @@ func (r *ExamPrepRepository) ListChaptersByDocumentIDs(ctx context.Context, docI
                 ORDER BY "ordre" ASC
         `, strings.Join(placeholders, ", "))
 
-        rows, err := tx.Query(ctx, query, args...)
-        if err != nil {
-                return nil, fmt.Errorf("query chapters: %w", err)
-        }
-        defer rows.Close()
-
-        for rows.Next() {
-                ch := &domain.Chapter{}
-                if err := rows.Scan(&ch.ID, &ch.DocumentID, &ch.Titre, &ch.Ordre, &ch.Sujets, &ch.CreatedAt); err != nil {
-                        return nil, fmt.Errorf("scan chapter: %w", err)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                rows, err := tx.Query(ctx, query, args...)
+                if err != nil {
+                        return fmt.Errorf("query chapters: %w", err)
                 }
-                result[ch.DocumentID] = append(result[ch.DocumentID], ch)
-        }
+                defer rows.Close()
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                for rows.Next() {
+                        ch := &domain.Chapter{}
+                        if err := rows.Scan(&ch.ID, &ch.DocumentID, &ch.Titre, &ch.Ordre, &ch.Sujets, &ch.CreatedAt); err != nil {
+                                return fmt.Errorf("scan chapter: %w", err)
+                        }
+                        result[ch.DocumentID] = append(result[ch.DocumentID], ch)
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return result, nil
 }
 
 // ListUEsByIDs retourne les unités d'enseignement par ID (batch).
-// RLS désactivé. Seuls id/code/nom/creditsECTS sont lus.
+// Seuls id/code/nom/creditsECTS sont lus.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx (la policy
+// UniteEnseignement_select a déjà une branche is_etudiant() depuis 000024).
 func (r *ExamPrepRepository) ListUEsByIDs(ctx context.Context, ueIDs []string) (map[string]*domain.UniteEnseignement, error) {
         result := make(map[string]*domain.UniteEnseignement)
         if len(ueIDs) == 0 {
                 return result, nil
         }
 
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         placeholders := make([]string, len(ueIDs))
         args := make([]any, len(ueIDs))
@@ -379,39 +391,45 @@ func (r *ExamPrepRepository) ListUEsByIDs(ctx context.Context, ueIDs []string) (
                 WHERE "id" IN (%s)
         `, strings.Join(placeholders, ", "))
 
-        rows, err := tx.Query(ctx, query, args...)
-        if err != nil {
-                return nil, fmt.Errorf("query UEs: %w", err)
-        }
-        defer rows.Close()
-
-        for rows.Next() {
-                ue := &domain.UniteEnseignement{}
-                if err := rows.Scan(&ue.ID, &ue.Code, &ue.Nom, &ue.CreditsECTS); err != nil {
-                        return nil, fmt.Errorf("scan UE: %w", err)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                rows, err := tx.Query(ctx, query, args...)
+                if err != nil {
+                        return fmt.Errorf("query UEs: %w", err)
                 }
-                result[ue.ID] = ue
-        }
+                defer rows.Close()
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                for rows.Next() {
+                        ue := &domain.UniteEnseignement{}
+                        if err := rows.Scan(&ue.ID, &ue.Code, &ue.Nom, &ue.CreditsECTS); err != nil {
+                                return fmt.Errorf("scan UE: %w", err)
+                        }
+                        result[ue.ID] = ue
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return result, nil
 }
 
 // ListUserRefsByIDs retourne des références utilisateurs par ID (batch).
-// RLS désactivé. Seuls id/name/email sont lus.
+// Seuls id/name/email sont lus (métadonnées de propriétaire de document).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. La policy
+// User_select (000024) restreint les étudiants aux enseignants de leur
+// filière — ce qui est exactement le périmètre attendu pour afficher le
+// nom du propriétaire d'un document consulté par l'étudiant.
 func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []string) (map[string]*domain.UserRef, error) {
         result := make(map[string]*domain.UserRef)
         if len(userIDs) == 0 {
                 return result, nil
         }
 
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         placeholders := make([]string, len(userIDs))
         args := make([]any, len(userIDs))
@@ -425,22 +443,24 @@ func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []st
                 WHERE "id" IN (%s)
         `, strings.Join(placeholders, ", "))
 
-        rows, err := tx.Query(ctx, query, args...)
-        if err != nil {
-                return nil, fmt.Errorf("query users: %w", err)
-        }
-        defer rows.Close()
-
-        for rows.Next() {
-                u := &domain.UserRef{}
-                if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
-                        return nil, fmt.Errorf("scan user: %w", err)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                rows, err := tx.Query(ctx, query, args...)
+                if err != nil {
+                        return fmt.Errorf("query users: %w", err)
                 }
-                result[u.ID] = u
-        }
+                defer rows.Close()
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                for rows.Next() {
+                        u := &domain.UserRef{}
+                        if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+                                return fmt.Errorf("scan user: %w", err)
+                        }
+                        result[u.ID] = u
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return result, nil
 }
