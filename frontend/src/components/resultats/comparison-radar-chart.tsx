@@ -90,7 +90,12 @@ export function ComparisonRadarChart({
   // pouvoir être rendu avec OU sans Card.
   const chartInner = (
     <>
-      <div className="h-full w-full" style={{ minHeight: height }}>
+      {/* BUGFIX (LAYOUT-RADAR-3) : utiliser la hauteur explicite (style height)
+          au lieu de h-full, car le parent n'a pas toujours de hauteur définie
+          (notamment quand withCard={false} et pas de wrapper h-64).
+          h-full = 100% du parent → 0px si parent est auto-height → chart invisible.
+          style={{ height }} garantit une hauteur fixe au ResponsiveContainer. */}
+      <div className="w-full" style={{ height }}>
         {isEmpty ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             <p>Aucune donnée disponible pour la comparaison</p>
