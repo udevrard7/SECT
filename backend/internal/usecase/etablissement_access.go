@@ -129,10 +129,16 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                         return nil, &domain.UnauthorizedError{Message: "cette demande ne concerne pas votre établissement"}
                 }
         } else if role == domain.RoleAdmin {
-                // B-2 (CRITICAL) : un ADMIN ne peut pas approuver/refuser SA PROPRE demande.
-                // Le workflow de validation par RESPONSABLE doit être respecté.
-                if existing.AdminID == claims.UserID {
-                        return nil, &domain.UnauthorizedError{Message: "vous ne pouvez pas approuver ou refuser votre propre demande d'accès"}
+                // B-2 (CRITICAL) : un ADMIN ne peut pas approuver SA PROPRE demande
+                // (auto-approbation = escalation de privilèges). Le workflow de validation
+                // par RESPONSABLE doit être respecté.
+                //
+                // EXCEPTION (B-2-refine) : l'ADMIN peut RÉVOQUER son propre accès
+                // (APPROUVE → REFUSE). C'est un cas d'usage légitime (un ADMIN veut
+                // renoncer volontairement à un accès). La transition APPROUVE→REFUSE
+                // par le propriétaire est donc autorisée.
+                if existing.AdminID == claims.UserID && input.Statut == domain.AccessApprouve {
+                        return nil, &domain.UnauthorizedError{Message: "vous ne pouvez pas approuver votre propre demande d'accès — un responsable doit la valider"}
                 }
         }
 
