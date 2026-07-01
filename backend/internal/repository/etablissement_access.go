@@ -165,13 +165,18 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
         return result, nil
 }
 
-// Create crée une demande d'accès (bypass RLS — peut être créé par ADMIN ou RESPONSABLE).
+// Create crée une demande d'accès.
+// ACCESS-RLS-FIX : pose les claims system-worker pour activer la policy modify_admin (is_system()).
 func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain.CreateAccessInput) (*domain.EtablissementAccess, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                return nil, fmt.Errorf("set system claims: %w", err)
+        }
 
         id := uuid.NewString()
         row := tx.QueryRow(ctx, `
@@ -201,13 +206,18 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
 // B-8 (HIGH) : verrou optimiste — la clause WHERE inclut `statut = expectedStatut`.
 // Si la ligne a changé de statut entre le FindByID (usecase) et l'Update
 // (race condition : deux RESPONSABLEs approuvent simultanément), RowsAffected=0
-// → ConflictError "concurrent modification". Bypass RLS (BeginTx sans claims).
+// → ConflictError "concurrent modification".
+// ACCESS-RLS-FIX : pose les claims system-worker pour activer la policy modify_admin (is_system()).
 func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, expectedStatut domain.AccessStatut, input domain.UpdateAccessInput) (*domain.EtablissementAccess, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                return nil, fmt.Errorf("set system claims: %w", err)
+        }
 
         var setClauses []string
         var args []any
@@ -298,13 +308,20 @@ func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID
 // Delete supprime une demande d'accès par son ID (hard-delete).
 // ACCES-ETABLISSEMENTS-FIX-AE1 : utilisé pour annuler une demande EN_ATTENTE.
 // Le usecase vérifie l'ownership (adminId == claims.UserID) et le statut
-// (EN_ATTENTE uniquement) avant d'appeler cette méthode. Bypass RLS.
+// (EN_ATTENTE uniquement) avant d'appeler cette méthode.
+// ACCESS-RLS-FIX : pose les claims system-worker pour activer la policy modify_admin (is_system()).
+// Note : B-11 — le usecase Delete utilise désormais Update(statut=ANNULE) au lieu de hard-delete.
+// Cette méthode est conservée pour compat mais n'est plus appelée par le usecase.
 func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string) error {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                return fmt.Errorf("set system claims: %w", err)
+        }
 
         tag, err := tx.Exec(ctx, `DELETE FROM "EtablissementAccess" WHERE "id" = $1`, id)
         if err != nil {
