@@ -82,34 +82,85 @@ export function passThreshold(noteTotal: number = 20): number {
   return noteTotal / 2
 }
 
-// ─── Couleurs (basées sur l'échelle /20 normalisée) ───
+// ─── Couleurs (échelle alignée sur StatCard : ≥16 or, ≥10 succès, <10 danger) ───
+// Toutes les fonctions de couleur utilisent EXCLUSIVEMENT des tokens sémantiques
+// du Design System Savane EdTech (jamais de hex brut), pour un support natif
+// du dark mode et une cohérence visuelle parfaite.
 
 /**
  * Retourne la classe de couleur texte selon le score normalisé /20.
- * Vert ≥ 10, ambre ≥ 8, rouge < 8.
+ * Or ≥ 16, vert (success) ≥ 10, rouge (destructive) < 10.
  */
 export function getScoreColor(scoreOn20: number): string {
-  if (scoreOn20 >= 10) return 'text-emerald-700 dark:text-emerald-400'
-  if (scoreOn20 >= 8) return 'text-amber-700 dark:text-amber-400'
-  return 'text-red-700 dark:text-red-400'
+  if (scoreOn20 >= 16) return 'text-gold'
+  if (scoreOn20 >= 10) return 'text-success-text'
+  return 'text-destructive'
 }
 
+/** Retourne les classes fond/texte/bordure selon le score normalisé /20. */
 export function getScoreBg(scoreOn20: number): string {
-  if (scoreOn20 >= 10) return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800'
-  if (scoreOn20 >= 8) return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
-  return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800'
+  if (scoreOn20 >= 16) return 'bg-gold/15 text-gold border-gold/30'
+  if (scoreOn20 >= 10) return 'bg-success/15 text-success-text border-success/30'
+  return 'bg-destructive/15 text-destructive border-destructive/30'
 }
 
+/**
+ * Retourne une chaîne `var(--token)` pour fond inline (HTML) ou stroke SVG.
+ * Or ≥ 16, vert (primary) ≥ 10, rouge (destructive) < 10.
+ *
+ * NOTE : pour Recharts (Cell fill / Area stroke), préférez `useChartColors()`
+ * qui résout la valeur réelle (computed style) car les attributs de présentation
+ * SVG ne supportent pas `var(--token)`.
+ */
 export function getBarColor(scoreOn20: number): string {
-  if (scoreOn20 >= 10) return '#10b981'
-  if (scoreOn20 >= 8) return '#f59e0b'
-  return '#ef4444'
+  if (scoreOn20 >= 16) return 'var(--gold)'
+  if (scoreOn20 >= 10) return 'var(--primary)'
+  return 'var(--destructive)'
 }
 
+/**
+ * Retourne une chaîne `var(--token)` pour le taux de réussite (0-100).
+ * Vert (primary) ≥ 70, ambre (warning) ≥ 40, rouge (destructive) < 40.
+ */
 export function getSuccessRateColor(rate: number): string {
-  if (rate >= 70) return '#10b981'
-  if (rate >= 40) return '#f59e0b'
-  return '#ef4444'
+  if (rate >= 70) return 'var(--primary)'
+  if (rate >= 40) return 'var(--warning)'
+  return 'var(--destructive)'
+}
+
+// ─── Styles des types de questions (DS Badge variants) ───
+
+/** Variants de Badge DS disponibles (synchronisés avec @/components/ds/badge). */
+export type QuestionTypeBadgeVariant =
+  | 'default'
+  | 'primary'
+  | 'secondary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'info'
+  | 'gold'
+  | 'bronze'
+  | 'silver'
+
+/**
+ * Map des types de questions vers les variants DS Badge.
+ * Palette africaine : QCU=info (bleu nuit), QCM=warning (soleil),
+ * QRC=success (vert lime), TRS=secondary (terre cuite), CODE=danger,
+ * REFLEXION=gold (or).
+ */
+export const QUESTION_TYPE_STYLES: Record<string, QuestionTypeBadgeVariant> = {
+  QCU: 'info',
+  QCM: 'warning',
+  QRC: 'success',
+  TRS: 'secondary',
+  CODE: 'danger',
+  REFLEXION: 'gold',
+}
+
+/** Renvoie le variant DS Badge pour un type de question (défaut: secondary). */
+export function getQuestionTypeBadgeVariant(type: string): QuestionTypeBadgeVariant {
+  return QUESTION_TYPE_STYLES[type] ?? 'secondary'
 }
 
 // ─── Distribution des notes ───
@@ -190,6 +241,61 @@ export function buildQuestionSuccess(sessions: SessionResult[]): QuestionSuccess
       type: data.type,
       enonce: data.enonce,
     }))
+}
+
+// ─── Performance par type de question (pour le radar chart) ───
+
+/**
+ * Calcule la moyenne /20 par type de question à partir des sessions.
+ *
+ * Gère les DEUX schémas de `detailParQuestion` (voir backend Task 1-a §3.4) :
+ *   - Schéma A (grading flow) : { bareme, score }
+ *   - Schéma B (initial IA)   : { pointsMax, pointsObtenus }
+ *
+ * La moyenne est normalisée sur /20 pour permettre la comparaison croisée.
+ */
+export function buildPerformanceByType(
+  sessions: SessionResult[]
+): Array<{ subject: string; value: number; fullMark: number }> {
+  if (sessions.length === 0) return []
+
+  // Accumule (sommeNormalisé20, count) par type
+  const map = new Map<string, { sum: number; count: number }>()
+
+  sessions.forEach((s) => {
+    const details = s.resultat?.detailParQuestion
+    if (!details || !Array.isArray(details)) return
+    details.forEach((q) => {
+      const type = q.type
+      if (!type) return
+
+      // Détermine points obtenus et points max selon le schéma
+      const pointsMax =
+        (q as { pointsMax?: number }).pointsMax ??
+        (q as { bareme?: number }).bareme ??
+        0
+      const pointsObtenus =
+        (q as { pointsObtenus?: number | null }).pointsObtenus ??
+        (q as { score?: number | null }).score ??
+        null
+
+      if (pointsMax <= 0 || pointsObtenus === null || pointsObtenus === undefined) return
+
+      const normalized20 = (pointsObtenus / pointsMax) * 20
+      const entry = map.get(type) ?? { sum: 0, count: 0 }
+      entry.sum += normalized20
+      entry.count += 1
+      map.set(type, entry)
+    })
+  })
+
+  return Array.from(map.entries())
+    .map(([type, { sum, count }]) => ({
+      subject: type,
+      value: count > 0 ? Math.round((sum / count) * 10) / 10 : 0,
+      fullMark: 20,
+    }))
+    .sort((a, b) => b.value - a.value)
 }
 
 // ─── Export CSV (côté client, pour la vue filtrée) ───

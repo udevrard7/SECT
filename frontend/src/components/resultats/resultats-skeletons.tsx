@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────
 // Skeletons de chargement pour la page Résultats & Analyses
+// (PulseSkeleton DS + motifs Kente subtils).
 // ─────────────────────────────────────────────────────────────
 
 'use client'
@@ -11,7 +12,7 @@ export function KpiSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {Array.from({ length: 4 }).map((_, i) => (
-        <Card key={i} className="overflow-hidden">
+        <Card key={i} className="ds-kente-top overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <PulseSkeleton className="h-10 w-10 shrink-0 rounded-lg" variant="card" />
@@ -29,13 +30,13 @@ export function KpiSkeleton() {
 
 export function ChartSkeleton() {
   return (
-    <Card>
+    <Card className="ds-kente-top">
       <CardHeader className="pb-2">
         <PulseSkeleton className="h-5 w-48" />
         <PulseSkeleton className="mt-1 h-3 w-32" />
       </CardHeader>
       <CardContent className="pt-0">
-        <PulseSkeleton className="h-64 w-full rounded-md" />
+        <PulseSkeleton className="h-64 w-full rounded-md" variant="card" />
       </CardContent>
     </Card>
   )
@@ -43,7 +44,7 @@ export function ChartSkeleton() {
 
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <Card>
+    <Card className="ds-kente-top">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="space-y-2">

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// Barre de filtres pour le tableau de résultats
+// Barre de filtres pour le tableau de résultats (refonte DS Badge).
 // ─────────────────────────────────────────────────────────────
 
 'use client'
@@ -7,7 +7,7 @@
 import { Search, X, Filter } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ds/badge'
 import {
   Select,
   SelectContent,
@@ -54,6 +54,7 @@ export function ResultsToolbar({
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
           className="pl-8"
+          aria-label="Rechercher un étudiant par nom, email ou filière"
         />
         {filters.search && (
           <button
@@ -72,7 +73,7 @@ export function ResultsToolbar({
           value={filters.statut}
           onValueChange={(v) => onFiltersChange({ ...filters, statut: v as ResultatFilters['statut'] })}
         >
-          <SelectTrigger className="h-9 w-[140px]">
+          <SelectTrigger className="h-9 w-[140px]" aria-label="Filtrer par statut">
             <SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
@@ -88,7 +89,7 @@ export function ResultsToolbar({
           value={filters.scoreRange}
           onValueChange={(v) => onFiltersChange({ ...filters, scoreRange: v as ResultatFilters['scoreRange'] })}
         >
-          <SelectTrigger className="h-9 w-[150px]">
+          <SelectTrigger className="h-9 w-[150px]" aria-label="Filtrer par score">
             <SelectValue placeholder="Score" />
           </SelectTrigger>
           <SelectContent>
@@ -101,7 +102,7 @@ export function ResultsToolbar({
 
         {/* Badge compteur */}
         {hasActiveFilters && (
-          <Badge variant="secondary" className="gap-1">
+          <Badge variant="info" size="md" className="gap-1 tabular-nums">
             <Filter className="h-3 w-3" />
             {filtered}/{total}
           </Badge>

@@ -1,6 +1,8 @@
-// [35m══════════════════════════════════════════════════════════════════════════════
-// Vue "Par épreuve"  résultats détaillés d'une épreuve avec identité Savane EdTech
-// [35m══════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// Vue "Par épreuve" — résultats détaillés d'une épreuve (refonte Savane EdTech).
+// Sélecteur d'épreuve + refresh + export CSV/JSON/PDF (endpoint backend réel).
+// Charts : Distribution + Radar (performance par type, données réelles) + Taux par question.
+// ─────────────────────────────────────────────────────────────
 
 'use client'
 
@@ -13,6 +15,7 @@ import {
   Download,
   FileJson,
   FileSpreadsheet,
+  FileText,
   Loader2,
   BarChart2,
   RefreshCw,
@@ -39,12 +42,12 @@ import { useEpreuvesTerminees, useExamResults } from '@/hooks/use-resultats'
 import {
   buildDistribution,
   buildQuestionSuccess,
+  buildPerformanceByType,
   sessionsToCSV,
   sessionsToJSON,
   formatDateFR,
 } from '@/lib/resultats-utils'
 import { StatCard } from '@/components/ds'
-import { Badge } from '@/components/ds/badge'
 import { ChartCard, DistributionChart, QuestionSuccessChart } from './resultats-charts'
 import { ComparisonRadarChart } from './comparison-radar-chart'
 import { ResultsTable } from './results-table'
@@ -57,9 +60,9 @@ interface ExamTabProps {
 }
 
 /**
- * ExamTab  Onglet "Par épreuve" pour analyser les résultats d'une épreuve spécifique.
+ * ExamTab — Onglet "Par épreuve" pour analyser les résultats d'une épreuve spécifique.
  *
- * @param enseignantId  ID de l'enseignant pour filtrer les épreuves.
+ * @param enseignantId — ID de l'enseignant pour filtrer les épreuves.
  */
 export function ExamTab({ enseignantId }: ExamTabProps) {
   const [selectedEpreuveId, setSelectedEpreuveId] = useState<string>('')
@@ -67,7 +70,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
   const [activeQuestionIdx, setActiveQuestionIdx] = useState<number | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<SessionResult | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   // Queries
   const epreuvesQuery = useEpreuvesTerminees(enseignantId)
@@ -93,24 +96,9 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
     [sessions]
   )
 
-  // Données pour le graphique radar (simulées pour l'instant)
-  // À terme, ces données devraient venir de l'API backend
-  const radarData = useMemo(() => {
-    if (!sessions.length) return []
-    // Extraire les types de questions uniques depuis les sessions
-    const questionTypes = new Set<string>()
-    sessions.forEach((session) => {
-      session.resultat?.detailParQuestion?.forEach((q: any) => {
-        if (q.type) questionTypes.add(q.type)
-      })
-    })
-    // Générer des données simulées pour chaque type
-    return Array.from(questionTypes).map((type) => ({
-      subject: type,
-      value: Math.floor(Math.random() * 10) + 8, // Note entre 8 et 18
-      fullMark: 20,
-    }))
-  }, [sessions])
+  // Données RÉELLES pour le graphique radar (performance par type de question).
+  // Gère les deux schémas de detailParQuestion (bareme/score ET pointsMax/pointsObtenus).
+  const radarData = useMemo(() => buildPerformanceByType(sessions), [sessions])
 
   // Handlers
   const handleViewDetail = (session: SessionResult) => {
@@ -126,37 +114,49 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
     setActiveQuestionIdx((prev) => (prev === q.index ? null : q.index))
   }
 
-  const handleExport = async (format: 'csv' | 'json') => {
+  const safeFilename = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50)
+
+  // Export CSV / JSON (côté client)
+  const handleTextExport = (format: 'csv' | 'json') => {
     if (!selectedEpreuveId || sessions.length === 0) return
+    const title = selectedEpreuve?.titre ?? 'epreuve'
     if (format === 'csv') {
-      sessionsToCSV(sessions, noteTotal, selectedEpreuve?.titre ?? 'epreuve')
+      sessionsToCSV(sessions, noteTotal, title)
       toast.success('Export CSV réussi', { description: `${sessions.length} copies exportées` })
       return
     }
-    if (format === 'json') {
-      sessionsToJSON(sessions, stats as Record<string, unknown> | null, selectedEpreuve?.titre ?? 'epreuve')
-      toast.success('Export JSON réussi', { description: `${sessions.length} copies exportées` })
-      return
-    }
-    // PDF via l'API
-    setIsExporting(true)
+    sessionsToJSON(sessions, stats as Record<string, unknown> | null, title)
+    toast.success('Export JSON réussi', { description: `${sessions.length} copies exportées` })
+  }
+
+  // Export PDF (backend endpoint — la SEULE route d'export PDF existante)
+  const handlePdfExport = async () => {
+    if (!selectedEpreuveId) return
+    setIsExportingPdf(true)
     try {
       const res = await fetch(`/api/epreuves/${selectedEpreuveId}/export?format=pdf`)
-      if (!res.ok) throw new Error('Export PDF échoué')
+      if (!res.ok) {
+        throw new Error(`Export PDF échoué (${res.status})`)
+      }
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `resultats_${(selectedEpreuve?.titre ?? 'epreuve').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50)}.pdf`
+      a.download = `resultats_${safeFilename(selectedEpreuve?.titre ?? 'epreuve')}.pdf`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-      toast.success('Export PDF réussi')
-    } catch {
-      toast.error("Erreur d'export PDF", { description: 'Le format PDF nécessite une route dédiée.' })
+      toast.success('Export PDF réussi', {
+        description: selectedEpreuve?.titre ?? 'Épreuve',
+      })
+    } catch (err) {
+      console.error('[ExamTab] PDF export failed', err)
+      toast.error("Erreur d'export PDF", {
+        description: "Le serveur n'a pas pu générer le PDF. Réessayez ultérieurement.",
+      })
     } finally {
-      setIsExporting(false)
+      setIsExportingPdf(false)
     }
   }
 
@@ -168,7 +168,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex-1">
-              <label className="mb-1.5 block text-sm font-medium">
+              <label className="mb-1.5 block text-sm font-medium" htmlFor="epreuve-select">
                 Sélectionnez une épreuve terminée
               </label>
               <Select
@@ -179,7 +179,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                   setActiveQuestionIdx(null)
                 }}
               >
-                <SelectTrigger className="w-full sm:max-w-md">
+                <SelectTrigger id="epreuve-select" className="w-full sm:max-w-md">
                   <SelectValue placeholder="Choisir une épreuve..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,7 +199,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                       <SelectItem key={ep.id} value={ep.id}>
                         <span className="flex items-center gap-2">
                           <span className="truncate">{ep.titre}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                             ({formatDateFR(ep.dateDebut)})
                           </span>
                         </span>
@@ -218,7 +218,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                     size="sm"
                     onClick={() => resultsQuery.refetch()}
                     disabled={resultsQuery.isFetching}
-                    aria-label="Rafraîchir"
+                    aria-label="Rafraîchir les résultats de l'épreuve"
                   >
                     <RefreshCw className={`h-4 w-4 ${resultsQuery.isFetching ? 'animate-spin' : ''}`} />
                   </Button>
@@ -228,20 +228,27 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                         variant="outline"
                         size="sm"
                         disabled={sessions.length === 0}
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        className="border-primary/30 bg-primary/5 text-primary-text hover:bg-primary/10 hover:text-primary-text"
                       >
                         <Download className="h-4 w-4" />
                         <span className="hidden sm:inline">Exporter</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleExport('csv')}>
-                        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                      <DropdownMenuItem onClick={() => handleTextExport('csv')}>
+                        <FileSpreadsheet className="h-4 w-4 text-primary-text" />
                         Exporter CSV
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleExport('json')}>
-                        <FileJson className="h-4 w-4 text-teal-600" />
+                      <DropdownMenuItem onClick={() => handleTextExport('json')}>
+                        <FileJson className="h-4 w-4 text-secondary" />
                         Exporter JSON
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handlePdfExport}
+                        disabled={isExportingPdf}
+                      >
+                        <FileText className="h-4 w-4 text-gold" />
+                        {isExportingPdf ? 'Génération...' : 'Exporter PDF'}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -252,14 +259,14 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
 
           {/* Indicateur de filtre actif (tranche) */}
           {activeScoreBin && (
-            <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 dark:border-emerald-900 dark:bg-emerald-950/30">
-              <AlertCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5">
+              <AlertCircle className="h-3.5 w-3.5 text-primary-text" />
+              <span className="text-xs text-primary-text">
                 Filtre actif : tranche {activeScoreBin}
               </span>
               <button
                 onClick={() => setActiveScoreBin(null)}
-                className="ml-auto text-xs text-emerald-700 underline hover:text-emerald-800 dark:text-emerald-400"
+                className="ml-auto text-xs text-primary-text underline hover:text-primary-text/80"
               >
                 Retirer le filtre
               </button>
@@ -270,11 +277,13 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
 
       {/* États : vide / chargement / erreur / contenu */}
       {!selectedEpreuveId ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <BarChart3 className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+        <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+            <BarChart3 className="h-10 w-10 text-primary-text" />
           </div>
-          <h3 className="mt-4 text-lg font-display font-semibold tracking-tight">Sélectionnez une épreuve pour voir les résultats</h3>
+          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+            Sélectionnez une épreuve pour voir les résultats
+          </h3>
           <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
             Choisissez une épreuve terminée ou clôturée dans le sélecteur ci-dessus pour afficher ses résultats détaillés.
           </p>
@@ -289,18 +298,20 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
           <TableSkeleton />
         </>
       ) : resultsQuery.isError ? (
-        <Card className="ds-kente-top border-l-4 border-l-red-500">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <AlertCircle className="h-10 w-10 text-red-500" />
-            <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
-            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+        <Card className="ds-kente-top border-l-4 border-l-destructive">
+          <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <p className="text-sm font-medium">Erreur de chargement</p>
+            <p className="max-w-xs text-sm text-muted-foreground">
               Impossible de charger les résultats de cette épreuve.
             </p>
             <Button
               variant="outline"
               size="sm"
               onClick={() => resultsQuery.refetch()}
-              className="mt-4 border-destructive/30 text-destructive hover:bg-destructive/5"
+              className="border-primary/30 text-primary-text hover:bg-primary/5"
             >
               <RefreshCw className="h-4 w-4" />
               Réessayer
@@ -308,11 +319,13 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
           </CardContent>
         </Card>
       ) : sessions.length === 0 && stats ? (
-        <Card className="ds-kente-top border-l-4 border-l-amber-500">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Users className="h-10 w-10 text-amber-500" />
-            <p className="mt-3 text-sm font-medium">Aucune copie soumise</p>
-            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+        <Card className="ds-kente-watermark border-l-4 border-l-warning">
+          <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/10">
+              <Users className="h-7 w-7 text-warning" />
+            </div>
+            <p className="text-sm font-medium">Aucune copie soumise</p>
+            <p className="max-w-xs text-sm text-muted-foreground">
               Cette épreuve n&apos;a pas encore de copie soumise ou corrigée.
             </p>
           </CardContent>
@@ -357,12 +370,12 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
             />
           </div>
 
-          {/* Graphiques : Distribution + Radar + Taux de réussite par question */}
+          {/* Graphiques : Distribution + Radar (performance par type) */}
           <div className="grid gap-6 lg:grid-cols-2">
             <ChartCard
               title="Distribution des notes"
               description="Cliquez sur une barre pour filtrer le tableau"
-              icon={<BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+              icon={<BarChart3 className="h-4 w-4 text-primary-text" />}
             >
               <div className="h-64">
                 <DistributionChart
@@ -375,11 +388,11 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               </div>
             </ChartCard>
 
-            {/* Graphique radar pour comparer les types de questions */}
+            {/* Graphique radar : performance par type de question (données réelles) */}
             {radarData.length > 0 ? (
               <ChartCard
                 title="Performance par type de question"
-                description="Comparaison des moyennes par type"
+                description="Moyenne /20 calculée par type (gère les 2 schémas de notation)"
                 icon={<Radar className="h-4 w-4 text-gold" />}
               >
                 <div className="h-64">
@@ -409,7 +422,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
             <ChartCard
               title="Taux de réussite par question"
               description="Cliquez pour mettre en évidence une question"
-              icon={<Target className="h-4 w-4 text-teal-600 dark:text-teal-400" />}
+              icon={<Target className="h-4 w-4 text-secondary" />}
             >
               <div className="h-64">
                 <QuestionSuccessChart

@@ -1,5 +1,8 @@
 // ─────────────────────────────────────────────────────────────
-// Tableau des résultats étudiants (avec tri, pagination, mobile)
+// Tableau des résultats étudiants (avec tri, pagination, mobile).
+// BUGFIX (RESULTATS-PAGINATION) : le filtre par tranche (activeScoreBin)
+// est désormais appliqué DANS le memo `filteredSessions` (avant pagination)
+// pour que totalPages et la liste paginée soient cohérents.
 // ─────────────────────────────────────────────────────────────
 
 'use client'
@@ -17,7 +20,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ds/badge'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -36,10 +39,8 @@ import {
 } from '@/components/ui/select'
 import {
   getScoreColor,
-  getScoreBg,
   getBarColor,
   scoreToPercentage,
-  formatDateShortFR,
 } from '@/lib/resultats-utils'
 import { ResultsToolbar } from './results-toolbar'
 import type { SessionResult, ResultatFilters, SortOrder } from '@/types/resultats'
@@ -53,6 +54,17 @@ interface ResultsTableProps {
 }
 
 const PAGE_SIZE = 10
+
+// Map des tranches (cohérent avec buildDistribution dans resultats-utils.ts)
+const SCORE_BINS: Record<string, [number, number]> = {
+  '0-4': [0, 4],
+  '4-8': [4, 8],
+  '8-10': [8, 10],
+  '10-12': [10, 12],
+  '12-14': [12, 14],
+  '14-16': [14, 16],
+  '16-20': [16, 20.01],
+}
 
 export function ResultsTable({
   sessions,
@@ -76,7 +88,20 @@ export function ResultsTable({
     setPage(1)
   }
 
-  // Filtrage
+  // ─── Réinitialiser la page quand la tranche (activeScoreBin) change ───
+  // Pattern "derived state reset" recommandé par React docs (pas d'effet,
+  // pas de setState-in-effect). On compare le previous props et on appelle
+  // setPage pendant le rendu si nécessaire.
+  // Cf. https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const effectiveScoreBin = activeScoreBin ?? null
+  const [prevScoreBin, setPrevScoreBin] = useState<string | null>(effectiveScoreBin)
+  if (prevScoreBin !== effectiveScoreBin) {
+    setPrevScoreBin(effectiveScoreBin)
+    setPage(1)
+  }
+
+  // ─── Filtrage (search + statut + scoreRange + activeScoreBin) ───
+  // BUGFIX : activeScoreBin est appliqué ICI (avant pagination), pas après.
   const filteredSessions = useMemo(() => {
     return sessions.filter((s) => {
       // Recherche texte
@@ -90,16 +115,23 @@ export function ResultsTable({
       }
       // Filtre statut
       if (filters.statut !== 'all' && s.statut !== filters.statut) return false
-      // Filtre score
+      // Filtre score (range)
       if (filters.scoreRange !== 'all' && s.score !== null) {
         const pct = scoreToPercentage(s.score, noteTotal)
         if (filters.scoreRange === 'success' && pct < 50) return false
         if (filters.scoreRange === 'fail' && pct >= 50) return false
         if (filters.scoreRange === 'at-risk' && pct >= 40) return false
       }
+      // Filtre tranche (clic sur le chart)
+      if (effectiveScoreBin) {
+        if (s.score === null) return false
+        const norm = (s.score / noteTotal) * 20
+        const range = SCORE_BINS[effectiveScoreBin]
+        if (range && !(norm >= range[0] && norm < range[1])) return false
+      }
       return true
     })
-  }, [sessions, filters, noteTotal])
+  }, [sessions, filters, noteTotal, effectiveScoreBin])
 
   // Tri
   const sortedSessions = useMemo(() => {
@@ -110,7 +142,7 @@ export function ResultsTable({
     })
   }, [filteredSessions, sortOrder])
 
-  // Pagination
+  // Pagination (cohérente avec le filtre)
   const totalPages = Math.max(1, Math.ceil(sortedSessions.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
   const paginatedSessions = sortedSessions.slice(
@@ -118,40 +150,38 @@ export function ResultsTable({
     currentPage * PAGE_SIZE
   )
 
-  const scoreBinMatch = (s: SessionResult): boolean => {
-    if (!activeScoreBin) return true
-    if (s.score === null) return false
-    const norm = (s.score / noteTotal) * 20
-    const bins: Record<string, [number, number]> = {
-      '0-4': [0, 4],
-      '4-8': [4, 8],
-      '8-10': [8, 10],
-      '10-12': [10, 12],
-      '12-14': [12, 14],
-      '14-16': [14, 16],
-      '16-20': [16, 20.01],
-    }
-    const range = bins[activeScoreBin]
-    if (!range) return true
-    return norm >= range[0] && norm < range[1]
+  const renderRow = (session: SessionResult, index: number) => {
+    const score = session.score ?? 0
+    const pct = scoreToPercentage(score, noteTotal)
+    const scoreOn20 = (score / noteTotal) * 20
+    const isCorrected = session.statut === 'CORRIGEE' || session.statut === 'RETOURNEE'
+    const hasAlerts = session.alertes > 0
+    const rank = (currentPage - 1) * PAGE_SIZE + index + 1
+    const rankBadge =
+      rank === 1
+        ? 'bg-gold text-gold-foreground'
+        : rank === 2
+          ? 'bg-silver text-silver-foreground'
+          : rank === 3
+            ? 'bg-bronze text-bronze-foreground'
+            : 'bg-muted text-muted-foreground'
+    return { session, score, pct, scoreOn20, isCorrected, hasAlerts, rank, rankBadge }
   }
 
   return (
-    <Card>
+    <Card className="ds-kente-top">
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Award className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <Award className="h-4 w-4 text-primary-text" />
               Résultats par étudiant
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="tabular-nums">
               {sortedSessions.length} copie{sortedSessions.length > 1 ? 's' : ''}
               {examTitle && ` · ${examTitle}`}
-              {activeScoreBin && (
-                <span className="ml-1 text-emerald-600 dark:text-emerald-400">
-                  · tranche {activeScoreBin}
-                </span>
+              {effectiveScoreBin && (
+                <span className="ml-1 text-primary-text">· tranche {effectiveScoreBin}</span>
               )}
             </CardDescription>
           </div>
@@ -160,6 +190,7 @@ export function ResultsTable({
             size="sm"
             onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
             className="text-muted-foreground"
+            aria-label="Inverser l'ordre de tri"
           >
             <ArrowUpDown className="h-4 w-4" />
             {sortOrder === 'desc' ? 'Meilleur en premier' : 'Moins bon en premier'}
@@ -178,8 +209,10 @@ export function ResultsTable({
       </CardHeader>
       <CardContent className="pt-0">
         {sortedSessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Users className="h-10 w-10 text-muted-foreground/50" />
+          <div className="ds-kente-watermark flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Users className="h-6 w-6 text-muted-foreground" />
+            </div>
             <p className="mt-3 text-sm text-muted-foreground">
               {sessions.length === 0
                 ? 'Aucune copie soumise pour cette épreuve'
@@ -203,156 +236,134 @@ export function ResultsTable({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedSessions
-                    .filter(scoreBinMatch)
-                    .map((session, index) => {
-                      const score = session.score ?? 0
-                      const pct = scoreToPercentage(score, noteTotal)
-                      const scoreOn20 = (score / noteTotal) * 20
-                      const isCorrected = session.statut === 'CORRIGEE' || session.statut === 'RETOURNEE'
-                      const hasAlerts = session.alertes > 0
-                      const rank = (currentPage - 1) * PAGE_SIZE + index + 1
-
-                      return (
-                        <TableRow
-                          key={session.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => onViewDetail(session)}
-                        >
-                          <TableCell className="text-center font-bold text-muted-foreground">
-                            {rank <= 3 ? (
-                              <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${
-                                rank === 1 ? 'bg-amber-500' : rank === 2 ? 'bg-slate-400' : 'bg-orange-700'
-                              }`}>
-                                {rank}
-                              </span>
-                            ) : (
-                              rank
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{(session.etudiant?.name ?? '—')}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {(session.etudiant?.email ?? '')}
-                                {session.etudiant?.filiere && ` · ${session.etudiant?.filiere}`}
-                              </p>
+                  {paginatedSessions.map((session, index) => {
+                    const r = renderRow(session, index)
+                    return (
+                      <TableRow
+                        key={session.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => onViewDetail(session)}
+                      >
+                        <TableCell className="text-center">
+                          <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-bold tabular-nums ${r.rankBadge}`}>
+                            {r.rank}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{(session.etudiant?.name ?? '—')}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(session.etudiant?.email ?? '')}
+                              {session.etudiant?.filiere && ` · ${session.etudiant?.filiere}`}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="default" className={`font-bold tabular-nums ${r.scoreOn20 >= 16 ? 'border-gold/40 bg-gold/15 text-gold' : r.scoreOn20 >= 10 ? 'border-success/30 bg-success/10 text-success-text' : 'border-destructive/30 bg-destructive/10 text-destructive'}`}>
+                            {r.score.toFixed(1)}/{noteTotal}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${Math.min(100, r.pct)}%`,
+                                  backgroundColor: getBarColor(r.scoreOn20),
+                                }}
+                              />
                             </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="outline" className={`font-bold ${getScoreBg(scoreOn20)}`}>
-                              {score.toFixed(1)}/{noteTotal}
+                            <span className={`text-sm font-medium tabular-nums ${getScoreColor(r.scoreOn20)}`}>
+                              {r.pct}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {r.isCorrected ? (
+                            <Badge variant="success" size="sm">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Corrigé
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
-                                <div
-                                  className="h-full rounded-full transition-all"
-                                  style={{
-                                    width: `${Math.min(100, pct)}%`,
-                                    backgroundColor: getBarColor(scoreOn20),
-                                  }}
-                                />
-                              </div>
-                              <span className={`text-sm font-medium ${getScoreColor(scoreOn20)}`}>
-                                {pct}%
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {isCorrected ? (
-                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Corrigé
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
-                                <Clock className="h-3 w-3" />
-                                En attente
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {hasAlerts ? (
-                              <Badge className="bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800">
-                                <AlertTriangle className="h-3 w-3" />
-                                {session.alertes}
-                              </Badge>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onViewDetail(session)
-                              }}
-                              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                              aria-label={`Voir le détail de ${(session.etudiant?.name ?? '—')}`}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
+                          ) : (
+                            <Badge variant="warning" size="sm">
+                              <Clock className="h-3 w-3" />
+                              En attente
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {r.hasAlerts ? (
+                            <Badge variant="danger" size="sm" className="tabular-nums">
+                              <AlertTriangle className="h-3 w-3" />
+                              {session.alertes}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onViewDetail(session)
+                            }}
+                            className="text-primary-text hover:bg-primary/5"
+                            aria-label={`Voir le détail de ${(session.etudiant?.name ?? '—')}`}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
 
             {/* Vue mobile : cards */}
             <div className="space-y-2 md:hidden">
-              {paginatedSessions
-                .filter(scoreBinMatch)
-                .map((session, index) => {
-                  const score = session.score ?? 0
-                  const pct = scoreToPercentage(score, noteTotal)
-                  const scoreOn20 = (score / noteTotal) * 20
-                  const isCorrected = session.statut === 'CORRIGEE' || session.statut === 'RETOURNEE'
-                  const hasAlerts = session.alertes > 0
-                  const rank = (currentPage - 1) * PAGE_SIZE + index + 1
-
-                  return (
-                    <button
-                      key={session.id}
-                      onClick={() => onViewDetail(session)}
-                      className="flex w-full items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50"
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold">
-                        {rank}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{(session.etudiant?.name ?? '—')}</p>
-                        <div className="mt-1 flex items-center gap-2">
-                          <Badge variant="outline" className={`text-xs ${getScoreBg(scoreOn20)}`}>
-                            {score.toFixed(1)}/{noteTotal}
-                          </Badge>
-                          {isCorrected ? (
-                            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                          ) : (
-                            <Clock className="h-3 w-3 text-amber-600" />
-                          )}
-                          {hasAlerts && (
-                            <AlertTriangle className="h-3 w-3 text-red-500" />
-                          )}
-                        </div>
+              {paginatedSessions.map((session, index) => {
+                const r = renderRow(session, index)
+                return (
+                  <button
+                    key={session.id}
+                    onClick={() => onViewDetail(session)}
+                    className="flex w-full items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums ${r.rankBadge}`}>
+                      {r.rank}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{(session.etudiant?.name ?? '—')}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Badge variant="default" size="sm" className={`tabular-nums ${r.scoreOn20 >= 16 ? 'border-gold/40 bg-gold/15 text-gold' : r.scoreOn20 >= 10 ? 'border-success/30 bg-success/10 text-success-text' : 'border-destructive/30 bg-destructive/10 text-destructive'}`}>
+                          {r.score.toFixed(1)}/{noteTotal}
+                        </Badge>
+                        {r.isCorrected ? (
+                          <CheckCircle2 className="h-3 w-3 text-success-text" />
+                        ) : (
+                          <Clock className="h-3 w-3 text-warning" />
+                        )}
+                        {r.hasAlerts && (
+                          <AlertTriangle className="h-3 w-3 text-destructive" />
+                        )}
                       </div>
-                      <span className={`text-sm font-bold ${getScoreColor(scoreOn20)}`}>
-                        {pct}%
-                      </span>
-                    </button>
-                  )
-                })}
+                    </div>
+                    <span className={`text-sm font-bold tabular-nums ${getScoreColor(r.scoreOn20)}`}>
+                      {r.pct}%
+                    </span>
+                  </button>
+                )
+              })}
             </div>
 
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-4 flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground tabular-nums">
                   Page {currentPage} sur {totalPages} · {sortedSessions.length} copie(s)
                 </p>
                 <div className="flex items-center gap-1">
@@ -369,7 +380,7 @@ export function ResultsTable({
                     value={String(currentPage)}
                     onValueChange={(v) => setPage(Number(v))}
                   >
-                    <SelectTrigger className="h-8 w-20">
+                    <SelectTrigger className="h-8 w-20" aria-label="Sélectionner une page">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
