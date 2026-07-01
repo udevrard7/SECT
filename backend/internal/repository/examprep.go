@@ -470,14 +470,15 @@ func (r *ExamPrepRepository) ListUserRefsByIDs(ctx context.Context, userIDs []st
 // ============================================================
 
 // ListReviewItems liste les items de révision (dus si DueOnly).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Le scoping
+// userId est déjà en SQL WHERE clause, mais la pose des claims reste
+// obligatoire (RLS FORCED sur ReviewItem sous le rôle sect_app NOBYPASSRLS).
 func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.ReviewListParams) ([]*domain.ReviewItem, error) {
-        // REVIEW-FIX-1 : RLS désactivé (scoping userId déjà en SQL WHERE clause).
-        // Pattern identique à ListStudentDocuments, GetDocumentContent.
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         var where []string
         var args []any
@@ -502,74 +503,79 @@ func (r *ExamPrepRepository) ListReviewItems(ctx context.Context, params domain.
                 FROM "ReviewItem" WHERE %s ORDER BY "nextReviewAt" ASC
         `, strings.Join(where, " AND "))
 
-        rows, err := tx.Query(ctx, query, args...)
-        if err != nil {
-                return nil, fmt.Errorf("query review items: %w", err)
-        }
-        defer rows.Close()
-
         var result []*domain.ReviewItem
-        for rows.Next() {
-                item := &domain.ReviewItem{}
-                if err := rows.Scan(&item.ID, &item.UserID, &item.ChapterID, &item.QuestionID,
-                        &item.Interval, &item.EaseFactor, &item.NextReviewAt, &item.LastReviewAt,
-                        &item.Repetitions, &item.CreatedAt, &item.UpdatedAt); err != nil {
-                        return nil, fmt.Errorf("scan review item: %w", err)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                rows, err := tx.Query(ctx, query, args...)
+                if err != nil {
+                        return fmt.Errorf("query review items: %w", err)
                 }
-                result = append(result, item)
+                defer rows.Close()
+
+                for rows.Next() {
+                        item := &domain.ReviewItem{}
+                        if err := rows.Scan(&item.ID, &item.UserID, &item.ChapterID, &item.QuestionID,
+                                &item.Interval, &item.EaseFactor, &item.NextReviewAt, &item.LastReviewAt,
+                                &item.Repetitions, &item.CreatedAt, &item.UpdatedAt); err != nil {
+                                return fmt.Errorf("scan review item: %w", err)
+                        }
+                        result = append(result, item)
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         if result == nil {
                 result = []*domain.ReviewItem{}
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
         }
         return result, nil
 }
 
 // MarkReviewed marque un item comme révisé (SM-2 simplified).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. SELECT + UPDATE
+// dans la même tx ; NotFoundError propagé depuis la closure si l'item n'existe pas.
 func (r *ExamPrepRepository) MarkReviewed(ctx context.Context, itemID string, quality int) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
-        // SM-2 simplified: quality 0-5
-        // interval = (repetitions+1) * easeFactor days (simplified)
-        // easeFactor = max(1.3, easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
-        var interval, repetitions int
-        var easeFactor float64
-        err = tx.QueryRow(ctx, `SELECT "interval", "repetitions", "easeFactor" FROM "ReviewItem" WHERE "id" = $1`, itemID).Scan(&interval, &repetitions, &easeFactor)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return &domain.NotFoundError{Entity: "ReviewItem", ID: itemID}
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // SM-2 simplified: quality 0-5
+                // interval = (repetitions+1) * easeFactor days (simplified)
+                // easeFactor = max(1.3, easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
+                var interval, repetitions int
+                var easeFactor float64
+                err := tx.QueryRow(ctx, `SELECT "interval", "repetitions", "easeFactor" FROM "ReviewItem" WHERE "id" = $1`, itemID).Scan(&interval, &repetitions, &easeFactor)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "ReviewItem", ID: itemID}
+                        }
+                        return fmt.Errorf("get review item: %w", err)
                 }
-                return fmt.Errorf("get review item: %w", err)
-        }
 
-        newEase := easeFactor + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
-        if newEase < 1.3 {
-                newEase = 1.3
-        }
-        newRepetitions := repetitions + 1
-        newInterval := int(float64(newRepetitions) * newEase)
-        if newInterval < 1 {
-                newInterval = 1
-        }
+                newEase := easeFactor + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+                if newEase < 1.3 {
+                        newEase = 1.3
+                }
+                newRepetitions := repetitions + 1
+                newInterval := int(float64(newRepetitions) * newEase)
+                if newInterval < 1 {
+                        newInterval = 1
+                }
 
-        _, err = tx.Exec(ctx, `
-                UPDATE "ReviewItem" SET "interval" = $2, "easeFactor" = $3, "repetitions" = $4,
-                        "nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
-                        "lastReviewedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1
-        `, itemID, newInterval, newEase, newRepetitions)
-        if err != nil {
-                return fmt.Errorf("update review item: %w", err)
-        }
-
-        return tx.Commit(ctx)
+                _, err = tx.Exec(ctx, `
+                        UPDATE "ReviewItem" SET "interval" = $2, "easeFactor" = $3, "repetitions" = $4,
+                                "nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
+                                "lastReviewedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1
+                `, itemID, newInterval, newEase, newRepetitions)
+                if err != nil {
+                        return fmt.Errorf("update review item: %w", err)
+                }
+                return nil
+        })
 }
 
 // ============================================================
@@ -621,63 +627,70 @@ func (r *ExamPrepRepository) ListStudySessions(ctx context.Context, userID strin
 }
 
 // CreateStudySession crée une session de révision.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. La validation
+// du format date reste hors closure (échec avant d'ouvrir la tx).
 func (r *ExamPrepRepository) CreateStudySession(ctx context.Context, userID string, input domain.CreateStudySessionInput) (*domain.StudySession, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         dateDebut, err := time.Parse(time.RFC3339, input.DateDebut)
         if err != nil {
                 return nil, &domain.ValidationError{Field: "dateDebut", Message: "format ISO invalide"}
         }
 
-        id := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "StudySession" ("id", "userId", "documentId", "chapterIds", "titre",
-                        "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, NULL, $4, $5, 0, 'PLANIFIEE', false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "userId", "documentId", "chapterIds", "titre",
-                        "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
-        `, id, userID, nullableStrPtr(input.DocumentID), input.Type, dateDebut)
+        var s *domain.StudySession
+        err = db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                id := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "StudySession" ("id", "userId", "documentId", "chapterIds", "titre",
+                                "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, NULL, $4, $5, 0, 'PLANIFIEE', false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "id", "userId", "documentId", "chapterIds", "titre",
+                                "dateDebut", "dureeMin", "statut", "rappelEnvoye", "createdAt", "updatedAt"
+                `, id, userID, nullableStrPtr(input.DocumentID), input.Type, dateDebut)
 
-        s := &domain.StudySession{}
-        var chapterIds, titre *string
-        var dureeMin *int
-        var rappelEnvoye *bool
-        err = row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
-                &s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt)
-        if titre != nil {
-                s.Type = *titre
-        }
+                s = &domain.StudySession{}
+                var chapterIds, titre *string
+                var dureeMin *int
+                var rappelEnvoye *bool
+                if err := row.Scan(&s.ID, &s.UserID, &s.DocumentID, &chapterIds, &titre,
+                        &s.DateDebut, &dureeMin, &s.Statut, &rappelEnvoye, &s.CreatedAt, &s.UpdatedAt); err != nil {
+                        return fmt.Errorf("create study session: %w", err)
+                }
+                if titre != nil {
+                        s.Type = *titre
+                }
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("create study session: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return s, nil
 }
 
 // DeleteStudySession supprime une session.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. NotFoundError
+// propagé depuis la closure si RowsAffected == 0.
 func (r *ExamPrepRepository) DeleteStudySession(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `DELETE FROM "StudySession" WHERE "id" = $1`, id)
-        if err != nil {
-                return fmt.Errorf("delete study session: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "StudySession", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `DELETE FROM "StudySession" WHERE "id" = $1`, id)
+                if err != nil {
+                        return fmt.Errorf("delete study session: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "StudySession", ID: id}
+                }
+                return nil
+        })
 }
 
 // ============================================================
@@ -737,103 +750,109 @@ func (r *ExamPrepRepository) ListPracticeAttempts(ctx context.Context, userID, d
 // On évite le fmt.Sprintf avec %d dans le SQL (error-prone avec pgx en mode
 // SimpleProtocol). À la place : on SELECT les valeurs actuelles, on calcule
 // le nouvel état SM-2 en Go, puis on UPDATE ou INSERT selon le cas.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. L'INSERT
+// PracticeAttempt + SELECT/INSERT/UPDATE ReviewItem restent dans la même
+// tx ; les erreurs best-effort du SRS sont avalées (comportement préservé).
 func (r *ExamPrepRepository) SubmitPractice(ctx context.Context, userID string, input domain.SubmitPracticeInput) (*domain.PracticeAttempt, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
+        var p *domain.PracticeAttempt
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                id := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "PracticeAttempt" ("id", "userId", "questionId", "documentId", "chapterId",
+                                "score", "correct", "dureeSec", "createdAt")
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+                        RETURNING "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt"
+                `, id, userID, input.QuestionID, nullableStrPtr(input.DocumentID), nullableStrPtr(input.ChapterID),
+                        input.Score, input.Correct, nullableIntPtr(input.DureeSec))
+
+                attempt := &domain.PracticeAttempt{}
+                if err := row.Scan(&attempt.ID, &attempt.UserID, &attempt.QuestionID, &attempt.DocumentID, &attempt.ChapterID,
+                        &attempt.Score, &attempt.Correct, &attempt.DureeSec, &attempt.CreatedAt); err != nil {
+                        return fmt.Errorf("create practice attempt: %w", err)
+                }
+                p = attempt
+
+                // ── SRS automatique : upsert ReviewItem ────────────────────────────────
+                // Conversion du score (0..1) en qualité SM-2 (0..5).
+                quality := computeSM2Quality(input.Score, input.Correct)
+
+                var chapID any
+                if input.ChapterID != nil && *input.ChapterID != "" {
+                        chapID = *input.ChapterID
+                }
+
+                // Lire l'état courant du ReviewItem pour ce couple (userId, questionId).
+                var (
+                        existingID   string
+                        existingEase float64
+                        existingReps int
+                )
+                err := tx.QueryRow(ctx, `
+                        SELECT "id", "easeFactor", "repetitions"
+                        FROM "ReviewItem"
+                        WHERE "userId" = $1 AND "questionId" = $2
+                `, userID, input.QuestionID).Scan(&existingID, &existingEase, &existingReps)
+
+                if err == pgx.ErrNoRows {
+                        // Premier review sur cette question → INSERT.
+                        // Initialise easeFactor=2.5, repetitions=1, interval calculé SM-2.
+                        newEase := 2.5 + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+                        if newEase < 1.3 {
+                                newEase = 1.3
+                        }
+                        newReps := 1
+                        newInterval := int(float64(newReps) * newEase)
+                        if newInterval < 1 {
+                                newInterval = 1
+                        }
+                        reviewID := uuid.NewString()
+                        if _, err := tx.Exec(ctx, `
+                                INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
+                                        "interval", "easeFactor", "repetitions", "nextReviewAt",
+                                        "lastReviewedAt", "createdAt", "updatedAt")
+                                VALUES ($1, $2, $3, $4, $5, $6, $7,
+                                        CURRENT_TIMESTAMP + ($5 || ' days')::interval,
+                                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        `, reviewID, userID, chapID, input.QuestionID, newInterval, newEase, newReps); err != nil {
+                                // Non-fatal : on log via fmt.Errorf mais on ne fait pas échouer SubmitPractice.
+                                // L'attempt a déjà été inséré ; le SRS est best-effort.
+                                // On continue vers le commit.
+                        }
+                } else if err == nil {
+                        // ReviewItem existe déjà → appliquer SM-2 puis UPDATE.
+                        newEase := existingEase + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
+                        if newEase < 1.3 {
+                                newEase = 1.3
+                        }
+                        newReps := existingReps + 1
+                        newInterval := int(float64(newReps) * newEase)
+                        if newInterval < 1 {
+                                newInterval = 1
+                        }
+                        if _, err := tx.Exec(ctx, `
+                                UPDATE "ReviewItem" SET
+                                        "interval" = $2,
+                                        "easeFactor" = $3,
+                                        "repetitions" = $4,
+                                        "nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
+                                        "lastReviewedAt" = CURRENT_TIMESTAMP,
+                                        "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $1
+                        `, existingID, newInterval, newEase, newReps); err != nil {
+                                // Non-fatal : best-effort, on continue.
+                        }
+                }
+                // ── Fin SRS ────────────────────────────────────────────────────────────
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        id := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "PracticeAttempt" ("id", "userId", "questionId", "documentId", "chapterId",
-                        "score", "correct", "dureeSec", "createdAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
-                RETURNING "id", "userId", "questionId", "documentId", "chapterId", "score", "correct", "dureeSec", "createdAt"
-        `, id, userID, input.QuestionID, nullableStrPtr(input.DocumentID), nullableStrPtr(input.ChapterID),
-                input.Score, input.Correct, nullableIntPtr(input.DureeSec))
-
-        p := &domain.PracticeAttempt{}
-        err = row.Scan(&p.ID, &p.UserID, &p.QuestionID, &p.DocumentID, &p.ChapterID,
-                &p.Score, &p.Correct, &p.DureeSec, &p.CreatedAt)
-        if err != nil {
-                return nil, fmt.Errorf("create practice attempt: %w", err)
-        }
-
-        // ── SRS automatique : upsert ReviewItem ────────────────────────────────
-        // Conversion du score (0..1) en qualité SM-2 (0..5).
-        quality := computeSM2Quality(input.Score, input.Correct)
-
-        var chapID any
-        if input.ChapterID != nil && *input.ChapterID != "" {
-                chapID = *input.ChapterID
-        }
-
-        // Lire l'état courant du ReviewItem pour ce couple (userId, questionId).
-        var (
-                existingID   string
-                existingEase float64
-                existingReps int
-        )
-        err = tx.QueryRow(ctx, `
-                SELECT "id", "easeFactor", "repetitions"
-                FROM "ReviewItem"
-                WHERE "userId" = $1 AND "questionId" = $2
-        `, userID, input.QuestionID).Scan(&existingID, &existingEase, &existingReps)
-
-        if err == pgx.ErrNoRows {
-                // Premier review sur cette question → INSERT.
-                // Initialise easeFactor=2.5, repetitions=1, interval calculé SM-2.
-                newEase := 2.5 + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
-                if newEase < 1.3 {
-                        newEase = 1.3
-                }
-                newReps := 1
-                newInterval := int(float64(newReps) * newEase)
-                if newInterval < 1 {
-                        newInterval = 1
-                }
-                reviewID := uuid.NewString()
-                if _, err := tx.Exec(ctx, `
-                        INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
-                                "interval", "easeFactor", "repetitions", "nextReviewAt",
-                                "lastReviewedAt", "createdAt", "updatedAt")
-                        VALUES ($1, $2, $3, $4, $5, $6, $7,
-                                CURRENT_TIMESTAMP + ($5 || ' days')::interval,
-                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                `, reviewID, userID, chapID, input.QuestionID, newInterval, newEase, newReps); err != nil {
-                        // Non-fatal : on log via fmt.Errorf mais on ne fait pas échouer SubmitPractice.
-                        // L'attempt a déjà été inséré ; le SRS est best-effort.
-                        // On continue vers le commit.
-                }
-        } else if err == nil {
-                // ReviewItem existe déjà → appliquer SM-2 puis UPDATE.
-                newEase := existingEase + (0.1 - float64(5-quality)*(0.08+float64(5-quality)*0.02))
-                if newEase < 1.3 {
-                        newEase = 1.3
-                }
-                newReps := existingReps + 1
-                newInterval := int(float64(newReps) * newEase)
-                if newInterval < 1 {
-                        newInterval = 1
-                }
-                if _, err := tx.Exec(ctx, `
-                        UPDATE "ReviewItem" SET
-                                "interval" = $2,
-                                "easeFactor" = $3,
-                                "repetitions" = $4,
-                                "nextReviewAt" = CURRENT_TIMESTAMP + ($2 || ' days')::interval,
-                                "lastReviewedAt" = CURRENT_TIMESTAMP,
-                                "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $1
-                `, existingID, newInterval, newEase, newReps); err != nil {
-                        // Non-fatal : best-effort, on continue.
-                }
-        }
-        // ── Fin SRS ────────────────────────────────────────────────────────────
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return p, nil
 }
@@ -948,87 +967,97 @@ func (r *ExamPrepRepository) ListHelpThreads(ctx context.Context, userID string,
 }
 
 // CreateHelpThread crée un fil d'aide.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. INSERT HelpThread
+// + INSERT HelpMessage (si message initial) dans la même tx.
 func (r *ExamPrepRepository) CreateHelpThread(ctx context.Context, etudiantID string, input domain.CreateHelpThreadInput) (*domain.HelpThread, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        threadID := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "HelpThread" ("id", "documentId", "chapterId", "etudiantId", "enseignantId", "sujet", "statut", "passageContext", "createdAt", "updatedAt")
-                VALUES ($1, $2, NULL, $3, NULL, $4, 'OUVERT', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
-        `, threadID, input.DocumentID, etudiantID, input.Sujet)
-
-        t := &domain.HelpThread{}
-        err = row.Scan(&t.ID, &t.DocumentID, &t.EtudiantID, &t.EnseignantID, &t.Sujet, &t.Statut, &t.CreatedAt, &t.UpdatedAt)
-        if err != nil {
-                return nil, fmt.Errorf("create help thread: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
 
-        // Créer le message initial si fourni
-        if input.MessageInitial != "" {
-                msgID := uuid.NewString()
-                _, err = tx.Exec(ctx, `
-                        INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
-                        VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
-                `, msgID, threadID, etudiantID, input.MessageInitial)
-                if err != nil {
-                        return nil, fmt.Errorf("create help message: %w", err)
+        var t *domain.HelpThread
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                threadID := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "HelpThread" ("id", "documentId", "chapterId", "etudiantId", "enseignantId", "sujet", "statut", "passageContext", "createdAt", "updatedAt")
+                        VALUES ($1, $2, NULL, $3, NULL, $4, 'OUVERT', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "id", "documentId", "etudiantId", "enseignantId", "sujet", "statut", "createdAt", "updatedAt"
+                `, threadID, input.DocumentID, etudiantID, input.Sujet)
+
+                th := &domain.HelpThread{}
+                if err := row.Scan(&th.ID, &th.DocumentID, &th.EtudiantID, &th.EnseignantID, &th.Sujet, &th.Statut, &th.CreatedAt, &th.UpdatedAt); err != nil {
+                        return fmt.Errorf("create help thread: %w", err)
                 }
-        }
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                // Créer le message initial si fourni
+                if input.MessageInitial != "" {
+                        msgID := uuid.NewString()
+                        if _, err := tx.Exec(ctx, `
+                                INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
+                                VALUES ($1, $2, $3, 'ETUDIANT', $4, CURRENT_TIMESTAMP)
+                        `, msgID, threadID, etudiantID, input.MessageInitial); err != nil {
+                                return fmt.Errorf("create help message: %w", err)
+                        }
+                }
+                t = th
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return t, nil
 }
 
 // CloseHelpThread ferme un fil d'aide.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. NotFoundError
+// propagé depuis la closure si RowsAffected == 0.
 func (r *ExamPrepRepository) CloseHelpThread(ctx context.Context, threadID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `UPDATE "HelpThread" SET "statut" = 'CLOS', "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
-        if err != nil {
-                return fmt.Errorf("close help thread: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `UPDATE "HelpThread" SET "statut" = 'CLOS', "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
+                if err != nil {
+                        return fmt.Errorf("close help thread: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
+                }
+                return nil
+        })
 }
 
 // DeleteHelpThread supprime un fil + ses messages (hard delete cascade).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. DELETE HelpMessage
+// + DELETE HelpThread dans la même tx ; NotFoundError propagé si le thread
+// n'existait pas.
 func (r *ExamPrepRepository) DeleteHelpThread(ctx context.Context, threadID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        // Supprimer les messages d'abord (pas de FK cascade garantie)
-        _, err = tx.Exec(ctx, `DELETE FROM "HelpMessage" WHERE "threadId" = $1`, threadID)
-        if err != nil {
-                return fmt.Errorf("delete help messages: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        // Supprimer le thread
-        tag, err := tx.Exec(ctx, `DELETE FROM "HelpThread" WHERE "id" = $1`, threadID)
-        if err != nil {
-                return fmt.Errorf("delete help thread: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
-        }
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Supprimer les messages d'abord (pas de FK cascade garantie)
+                if _, err := tx.Exec(ctx, `DELETE FROM "HelpMessage" WHERE "threadId" = $1`, threadID); err != nil {
+                        return fmt.Errorf("delete help messages: %w", err)
+                }
 
-        return tx.Commit(ctx)
+                // Supprimer le thread
+                tag, err := tx.Exec(ctx, `DELETE FROM "HelpThread" WHERE "id" = $1`, threadID)
+                if err != nil {
+                        return fmt.Errorf("delete help thread: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "HelpThread", ID: threadID}
+                }
+                return nil
+        })
 }
 
 // ListHelpMessages liste les messages d'un fil.
@@ -1068,36 +1097,41 @@ func (r *ExamPrepRepository) ListHelpMessages(ctx context.Context, threadID stri
 }
 
 // CreateHelpMessage ajoute un message à un fil.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. INSERT HelpMessage
+// + UPDATE HelpThread (best-effort, erreurs avalées) dans la même tx.
 func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, auteurID, role string, input domain.CreateHelpMessageInput) (*domain.HelpMessage, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
+        var m *domain.HelpMessage
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // P1-A4 : utiliser le rôle réel (claims.Role) au lieu de hardcoded 'ETUDIANT'
+                id := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
+                        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+                        RETURNING "id", "threadId", "auteurId", "content", "createdAt"
+                `, id, threadID, auteurID, role, input.Contenu)
+
+                msg := &domain.HelpMessage{}
+                if err := row.Scan(&msg.ID, &msg.ThreadID, &msg.AuteurID, &msg.Contenu, &msg.CreatedAt); err != nil {
+                        return fmt.Errorf("create help message: %w", err)
+                }
+
+                // P1-A8 : si l'enseignant répond, passer le thread à REPONDU
+                if role == "ENSEIGNANT" {
+                        _, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP, "statut" = 'REPONDU' WHERE "id" = $1`, threadID)
+                } else {
+                        _, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
+                }
+                m = msg
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        // P1-A4 : utiliser le rôle réel (claims.Role) au lieu de hardcoded 'ETUDIANT'
-        id := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "HelpMessage" ("id", "threadId", "auteurId", "role", "content", "createdAt")
-                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-                RETURNING "id", "threadId", "auteurId", "content", "createdAt"
-        `, id, threadID, auteurID, role, input.Contenu)
-
-        m := &domain.HelpMessage{}
-        err = row.Scan(&m.ID, &m.ThreadID, &m.AuteurID, &m.Contenu, &m.CreatedAt)
-        if err != nil {
-                return nil, fmt.Errorf("create help message: %w", err)
-        }
-
-        // P1-A8 : si l'enseignant répond, passer le thread à REPONDU
-        if role == "ENSEIGNANT" {
-                _, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP, "statut" = 'REPONDU' WHERE "id" = $1`, threadID)
-        } else {
-                _, _ = tx.Exec(ctx, `UPDATE "HelpThread" SET "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $1`, threadID)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return m, nil
 }
@@ -1107,35 +1141,40 @@ func (r *ExamPrepRepository) CreateHelpMessage(ctx context.Context, threadID, au
 // ============================================================
 
 // CreateFlashcard insère une nouvelle Flashcard dans la table "Flashcard".
-// RLS désactivé : écriture système déclenchée par l'étudiant
-// (la table Flashcard n'a pas de politique RLS étudiant).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx (la table
+// Flashcard n'a pas de politique RLS étudiant — la pose des claims reste
+// obligatoire pour les tables liées Chapter/Document jointes via FK).
 //
 // HIGHLIGHT-FLASHCARD-1 : la table Flashcard n'a pas de colonne userId.
 // L'appartenance est dérivée via ReviewItem (cf. CreateFlashcardReviewItem).
 func (r *ExamPrepRepository) CreateFlashcard(ctx context.Context, input domain.CreateFlashcardInput) (*domain.Flashcard, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
+        }
+
+        var f *domain.Flashcard
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                id := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "Flashcard" ("id", "chapterId", "documentId", "recto", "verso", "createdAt")
+                        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+                        RETURNING "id", "chapterId", "documentId", "recto", "verso", "createdAt"
+                `, id, nullableStrPtr(input.ChapterID), nullableStrPtr(input.DocumentID), input.Recto, input.Verso)
+
+                card := &domain.Flashcard{}
+                var chapterID, documentID *string
+                if err := row.Scan(&card.ID, &chapterID, &documentID, &card.Recto, &card.Verso, &card.CreatedAt); err != nil {
+                        return fmt.Errorf("create flashcard: %w", err)
+                }
+                card.ChapterID = chapterID
+                card.DocumentID = documentID
+                f = card
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        id := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "Flashcard" ("id", "chapterId", "documentId", "recto", "verso", "createdAt")
-                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-                RETURNING "id", "chapterId", "documentId", "recto", "verso", "createdAt"
-        `, id, nullableStrPtr(input.ChapterID), nullableStrPtr(input.DocumentID), input.Recto, input.Verso)
-
-        f := &domain.Flashcard{}
-        var chapterID, documentID *string
-        if err := row.Scan(&f.ID, &chapterID, &documentID, &f.Recto, &f.Verso, &f.CreatedAt); err != nil {
-                return nil, fmt.Errorf("create flashcard: %w", err)
-        }
-        f.ChapterID = chapterID
-        f.DocumentID = documentID
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return f, nil
 }
@@ -1209,32 +1248,34 @@ func (r *ExamPrepRepository) ListFlashcards(ctx context.Context, userID, documen
 // → cascade manuelle), puis la Flashcard. Si la flashcard n'existe pas ou
 // n'appartient pas à l'utilisateur, on retourne NotFoundError.
 //
-// RLS off : la table Flashcard n'a pas de politique RLS étudiant.
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. DELETE ReviewItem
+// (best-effort) + DELETE Flashcard dans la même tx ; NotFoundError propagé
+// si RowsAffected == 0.
 func (r *ExamPrepRepository) DeleteFlashcard(ctx context.Context, userID, flashcardID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        // 1. Supprimer le ReviewItem associé (s'il existe). La condition
-        //    userId + questionId garantit qu'on ne touche que le ReviewItem de CET
-        //    utilisateur pour CETTE flashcard.
-        _, _ = tx.Exec(ctx, `
-                DELETE FROM "ReviewItem" WHERE "userId" = $1 AND "questionId" = $2
-        `, userID, flashcardID)
-
-        // 2. Supprimer la Flashcard. Si RowsAffected == 0, elle n'existe pas
-        //    (ou a déjà été supprimée) → NotFoundError.
-        tag, err := tx.Exec(ctx, `DELETE FROM "Flashcard" WHERE "id" = $1`, flashcardID)
-        if err != nil {
-                return fmt.Errorf("delete flashcard: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "Flashcard", ID: flashcardID}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // 1. Supprimer le ReviewItem associé (s'il existe). La condition
+                //    userId + questionId garantit qu'on ne touche que le ReviewItem de CET
+                //    utilisateur pour CETTE flashcard.
+                _, _ = tx.Exec(ctx, `
+                        DELETE FROM "ReviewItem" WHERE "userId" = $1 AND "questionId" = $2
+                `, userID, flashcardID)
+
+                // 2. Supprimer la Flashcard. Si RowsAffected == 0, elle n'existe pas
+                //    (ou a déjà été supprimée) → NotFoundError.
+                tag, err := tx.Exec(ctx, `DELETE FROM "Flashcard" WHERE "id" = $1`, flashcardID)
+                if err != nil {
+                        return fmt.Errorf("delete flashcard: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "Flashcard", ID: flashcardID}
+                }
+                return nil
+        })
 }
 
 // CreateFlashcardReviewItem insère un ReviewItem pour une flashcard fraîchement
@@ -1247,32 +1288,32 @@ func (r *ExamPrepRepository) DeleteFlashcard(ctx context.Context, userID, flashc
 // marquer la flashcard comme révisée via /api/exam-prep/review (MarkReviewed)
 // qui appliquera la formule SM-2 sur le premier review.
 //
-// RLS off : écriture système.
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, userID, flashcardID string, chapterID *string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        var chapArg any
-        if chapterID != nil && *chapterID != "" {
-                chapArg = *chapterID
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        reviewID := uuid.NewString()
-        _, err = tx.Exec(ctx, `
-                INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
-                        "interval", "easeFactor", "repetitions", "nextReviewAt",
-                        "lastReviewedAt", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, 0, 2.5, 0,
-                        CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `, reviewID, userID, chapArg, flashcardID)
-        if err != nil {
-                return fmt.Errorf("create flashcard review item: %w", err)
-        }
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var chapArg any
+                if chapterID != nil && *chapterID != "" {
+                        chapArg = *chapterID
+                }
 
-        return tx.Commit(ctx)
+                reviewID := uuid.NewString()
+                _, err := tx.Exec(ctx, `
+                        INSERT INTO "ReviewItem" ("id", "userId", "chapterId", "questionId",
+                                "interval", "easeFactor", "repetitions", "nextReviewAt",
+                                "lastReviewedAt", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, 0, 2.5, 0,
+                                CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                `, reviewID, userID, chapArg, flashcardID)
+                if err != nil {
+                        return fmt.Errorf("create flashcard review item: %w", err)
+                }
+                return nil
+        })
 }
 
 // ============================================================
@@ -1283,16 +1324,15 @@ func (r *ExamPrepRepository) CreateFlashcardReviewItem(ctx context.Context, user
 // Stratégie : tente un INSERT ; si la contrainte UNIQUE("questionId","userId")
 // est violée (SQLSTATE 23505), on UPDATE la valeur existante.
 //
-// RLS désactivé : écriture système (un étudiant peut voter sur n'importe quelle
-// question validée de la banque — le scoping filière est assuré par le fait
-// que l'étudiant n'accède qu'aux documents de sa filière côté frontend, et
-// le backend trust le questionID passé par un utilisateur authentifié).
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Le scoping
+// filière est assuré côté frontend (l'étudiant n'accède qu'aux documents de
+// sa filière) ; le backend trust le questionID passé par un utilisateur
+// authentifié.
 func (r *ExamPrepRepository) VoteQuestion(ctx context.Context, userID, questionID string, value int) (*domain.QuestionVote, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         id := uuid.NewString()
         vote := &domain.QuestionVote{
@@ -1301,61 +1341,62 @@ func (r *ExamPrepRepository) VoteQuestion(ctx context.Context, userID, questionI
                 UserID:     userID,
                 Value:      value,
         }
-        // Tentative d'INSERT. Si l'utilisateur a déjà voté → 23505 → on bascule en UPDATE.
-        err = tx.QueryRow(ctx, `
-                INSERT INTO "QuestionVote" ("id", "questionId", "userId", "value", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "id", "questionId", "userId", "value", "createdAt", "updatedAt"
-        `, id, questionID, userID, value).Scan(
-                &vote.ID, &vote.QuestionID, &vote.UserID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt,
-        )
-        if err == nil {
-                if err := tx.Commit(ctx); err != nil {
-                        return nil, fmt.Errorf("commit: %w", err)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Tentative d'INSERT. Si l'utilisateur a déjà voté → 23505 → on bascule en UPDATE.
+                err := tx.QueryRow(ctx, `
+                        INSERT INTO "QuestionVote" ("id", "questionId", "userId", "value", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "id", "questionId", "userId", "value", "createdAt", "updatedAt"
+                `, id, questionID, userID, value).Scan(
+                        &vote.ID, &vote.QuestionID, &vote.UserID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt,
+                )
+                if err == nil {
+                        return nil
                 }
-                return vote, nil
-        }
 
-        // INSERT a échoué. Si ce n'est PAS une violation de contrainte unique → propager.
-        if !isUniqueViolation(err) {
-                return nil, fmt.Errorf("insert question vote: %w", err)
-        }
+                // INSERT a échoué. Si ce n'est PAS une violation de contrainte unique → propager.
+                if !isUniqueViolation(err) {
+                        return fmt.Errorf("insert question vote: %w", err)
+                }
 
-        // 23505 → l'utilisateur a déjà voté → UPDATE de la valeur existante.
-        // On réutilise la variable `vote` déclarée plus haut (QuestionID/UserID
-        // déjà positionnés) ; le UPDATE RETURNING rescanne ID/Value/timestamps.
-        err = tx.QueryRow(ctx, `
-                UPDATE "QuestionVote" SET "value" = $3, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "questionId" = $1 AND "userId" = $2
-                RETURNING "id", "value", "createdAt", "updatedAt"
-        `, questionID, userID, value).Scan(&vote.ID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt)
+                // 23505 → l'utilisateur a déjà voté → UPDATE de la valeur existante.
+                // On réutilise la variable `vote` déclarée plus haut (QuestionID/UserID
+                // déjà positionnés) ; le UPDATE RETURNING rescanne ID/Value/timestamps.
+                err = tx.QueryRow(ctx, `
+                        UPDATE "QuestionVote" SET "value" = $3, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "questionId" = $1 AND "userId" = $2
+                        RETURNING "id", "value", "createdAt", "updatedAt"
+                `, questionID, userID, value).Scan(&vote.ID, &vote.Value, &vote.CreatedAt, &vote.UpdatedAt)
+                if err != nil {
+                        return fmt.Errorf("update question vote: %w", err)
+                }
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("update question vote: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return vote, nil
 }
 
 // RemoveVote supprime le vote d'un utilisateur sur une question (un-vote).
-// RLS off. No-op (pas d'erreur) si le vote n'existait pas.
+// No-op (pas d'erreur) si le vote n'existait pas.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) RemoveVote(ctx context.Context, userID, questionID string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        _, err = tx.Exec(ctx, `
-                DELETE FROM "QuestionVote" WHERE "questionId" = $1 AND "userId" = $2
-        `, questionID, userID)
-        if err != nil {
-                return fmt.Errorf("delete question vote: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                _, err := tx.Exec(ctx, `
+                        DELETE FROM "QuestionVote" WHERE "questionId" = $1 AND "userId" = $2
+                `, questionID, userID)
+                if err != nil {
+                        return fmt.Errorf("delete question vote: %w", err)
+                }
+                return nil
+        })
 }
 
 // ListQuestionBank liste les questions validées d'un document avec les stats
@@ -1532,13 +1573,15 @@ func (r *ExamPrepRepository) ListExistingQuestions(ctx context.Context, document
 
 // CreateDocumentAudio insère une nouvelle ligne DocumentAudio avec le statut
 // EN_COURS et un script vide (le worker le remplira après génération IA).
-// RLS désactivé : écriture système (le worker/handler n'a pas de claims HTTP).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Même si
+// l'appelant est un worker sans claims HTTP, le usecase/handler doit poser
+// les claims dans le ctx avant d'appeler cette méthode (sinon erreur explicite).
 func (r *ExamPrepRepository) CreateDocumentAudio(ctx context.Context, input domain.CreateDocumentAudioInput) (*domain.DocumentAudio, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         id := uuid.NewString()
         audio := &domain.DocumentAudio{
@@ -1549,149 +1592,166 @@ func (r *ExamPrepRepository) CreateDocumentAudio(ctx context.Context, input doma
                 Status:     "EN_COURS",
         }
 
-        err = tx.QueryRow(ctx, `
-                INSERT INTO "DocumentAudio" ("id", "documentId", "userId", "script",
-                        "r2Key", "durationSec", "status", "errorMessage",
-                        "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, NULL, NULL, $5, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING "createdAt", "updatedAt"
-        `, id, input.DocumentID, input.UserID, input.Script, "EN_COURS").Scan(&audio.CreatedAt, &audio.UpdatedAt)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                if err := tx.QueryRow(ctx, `
+                        INSERT INTO "DocumentAudio" ("id", "documentId", "userId", "script",
+                                "r2Key", "durationSec", "status", "errorMessage",
+                                "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, NULL, NULL, $5, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING "createdAt", "updatedAt"
+                `, id, input.DocumentID, input.UserID, input.Script, "EN_COURS").Scan(&audio.CreatedAt, &audio.UpdatedAt); err != nil {
+                        return fmt.Errorf("insert document audio: %w", err)
+                }
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("insert document audio: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return audio, nil
 }
 
 // UpdateDocumentAudioStatus met à jour le statut d'un audio (+ r2Key et/ou
-// errorMessage si non-nil). RLS désactivé : écriture système (worker).
+// errorMessage si non-nil).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. La pose des
+// claims reste obligatoire même pour un appel worker — le caller doit les
+// injecter dans le ctx.
 func (r *ExamPrepRepository) UpdateDocumentAudioStatus(ctx context.Context, audioID, status string, r2Key *string, errorMessage *string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if r2Key != nil && errorMessage != nil {
-                _, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "r2Key" = $2, "errorMessage" = $3, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $4
-                `, status, *r2Key, *errorMessage, audioID)
-        } else if r2Key != nil {
-                _, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "r2Key" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $3
-                `, status, *r2Key, audioID)
-        } else if errorMessage != nil {
-                _, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "errorMessage" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $3
-                `, status, *errorMessage, audioID)
-        } else {
-                _, err = tx.Exec(ctx, `
-                        UPDATE "DocumentAudio"
-                        SET "status" = $1, "updatedAt" = CURRENT_TIMESTAMP
-                        WHERE "id" = $2
-                `, status, audioID)
-        }
-        if err != nil {
-                return fmt.Errorf("update document audio status: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var err error
+                if r2Key != nil && errorMessage != nil {
+                        _, err = tx.Exec(ctx, `
+                                UPDATE "DocumentAudio"
+                                SET "status" = $1, "r2Key" = $2, "errorMessage" = $3, "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $4
+                        `, status, *r2Key, *errorMessage, audioID)
+                } else if r2Key != nil {
+                        _, err = tx.Exec(ctx, `
+                                UPDATE "DocumentAudio"
+                                SET "status" = $1, "r2Key" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $3
+                        `, status, *r2Key, audioID)
+                } else if errorMessage != nil {
+                        _, err = tx.Exec(ctx, `
+                                UPDATE "DocumentAudio"
+                                SET "status" = $1, "errorMessage" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $3
+                        `, status, *errorMessage, audioID)
+                } else {
+                        _, err = tx.Exec(ctx, `
+                                UPDATE "DocumentAudio"
+                                SET "status" = $1, "updatedAt" = CURRENT_TIMESTAMP
+                                WHERE "id" = $2
+                        `, status, audioID)
+                }
+                if err != nil {
+                        return fmt.Errorf("update document audio status: %w", err)
+                }
+                return nil
+        })
 }
 
 // UpdateDocumentAudioScript met à jour uniquement le script d'un audio
-// (avant la synthèse TTS). RLS désactivé : écriture système (worker).
+// (avant la synthèse TTS).
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) UpdateDocumentAudioScript(ctx context.Context, audioID, script string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        _, err = tx.Exec(ctx, `
-                UPDATE "DocumentAudio"
-                SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $2
-        `, script, audioID)
-        if err != nil {
-                return fmt.Errorf("update document audio script: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                _, err := tx.Exec(ctx, `
+                        UPDATE "DocumentAudio"
+                        SET "script" = $1, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $2
+                `, script, audioID)
+                if err != nil {
+                        return fmt.Errorf("update document audio script: %w", err)
+                }
+                return nil
+        })
 }
 
 // ListDocumentAudio liste tous les audios d'un document, ordonnés par
-// createdAt DESC. RLS désactivé : lecture système (les audios sont
-// partagés entre étudiants d'une même filière — comme les questions de
-// la banque collaborative).
+// createdAt DESC. Les audios sont partagés entre étudiants d'une même
+// filière — comme les questions de la banque collaborative.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx.
 func (r *ExamPrepRepository) ListDocumentAudio(ctx context.Context, documentID string) ([]*domain.DocumentAudio, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
-
-        rows, err := tx.Query(ctx, `
-                SELECT "id", "documentId", "userId", "script", "r2Key",
-                       "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
-                FROM "DocumentAudio"
-                WHERE "documentId" = $1
-                ORDER BY "createdAt" DESC
-        `, documentID)
-        if err != nil {
-                return nil, fmt.Errorf("query document audio: %w", err)
-        }
-        defer rows.Close()
 
         var result []*domain.DocumentAudio
-        for rows.Next() {
-                a := &domain.DocumentAudio{}
-                if err := rows.Scan(
-                        &a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
-                        &a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
-                ); err != nil {
-                        return nil, fmt.Errorf("scan document audio: %w", err)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                rows, err := tx.Query(ctx, `
+                        SELECT "id", "documentId", "userId", "script", "r2Key",
+                               "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
+                        FROM "DocumentAudio"
+                        WHERE "documentId" = $1
+                        ORDER BY "createdAt" DESC
+                `, documentID)
+                if err != nil {
+                        return fmt.Errorf("query document audio: %w", err)
                 }
-                result = append(result, a)
+                defer rows.Close()
+
+                for rows.Next() {
+                        a := &domain.DocumentAudio{}
+                        if err := rows.Scan(
+                                &a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
+                                &a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
+                        ); err != nil {
+                                return fmt.Errorf("scan document audio: %w", err)
+                        }
+                        result = append(result, a)
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         if result == nil {
                 result = []*domain.DocumentAudio{}
         }
-
-        tx.Commit(ctx)
         return result, nil
 }
 
-// GetDocumentAudio récupère un audio par son ID. RLS désactivé : lecture système.
+// GetDocumentAudio récupère un audio par son ID.
+//
+// EXAM-PREP-STUDENT-DOCS-RLS : claims RLS posés via db.WithTx. Si l'audio
+// n'existe pas, retourne une erreur wrappée (comportement original préservé).
 func (r *ExamPrepRepository) GetDocumentAudio(ctx context.Context, audioID string) (*domain.DocumentAudio, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
         a := &domain.DocumentAudio{}
-        err = tx.QueryRow(ctx, `
-                SELECT "id", "documentId", "userId", "script", "r2Key",
-                       "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
-                FROM "DocumentAudio"
-                WHERE "id" = $1
-        `, audioID).Scan(
-                &a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
-                &a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
-        )
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                if err := tx.QueryRow(ctx, `
+                        SELECT "id", "documentId", "userId", "script", "r2Key",
+                               "durationSec", "status", "errorMessage", "createdAt", "updatedAt"
+                        FROM "DocumentAudio"
+                        WHERE "id" = $1
+                `, audioID).Scan(
+                        &a.ID, &a.DocumentID, &a.UserID, &a.Script, &a.R2Key,
+                        &a.DurationSec, &a.Status, &a.ErrorMessage, &a.CreatedAt, &a.UpdatedAt,
+                ); err != nil {
+                        return fmt.Errorf("get document audio: %w", err)
+                }
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("get document audio: %w", err)
+                return nil, err
         }
-
-        tx.Commit(ctx)
         return a, nil
 }
