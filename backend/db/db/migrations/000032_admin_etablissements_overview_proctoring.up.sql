@@ -30,7 +30,7 @@ RETURNS TABLE(
     plan_nom text,
     nb_users bigint,
     nb_filieres bigint,
-    admin_has_access bigint,
+    admin_has_access boolean,
     proctoring_actif boolean,
     resp_id text,
     resp_name text,
@@ -52,7 +52,7 @@ AS $function$
          ORDER BY a."dateDebut" DESC LIMIT 1),
         (SELECT count(*) FROM "User" u WHERE u."etablissementId" = e.id),
         (SELECT count(*) FROM "Filiere" f WHERE f."etablissementId" = e.id),
-        (SELECT count(*) FROM "EtablissementAccess" ea
+        (SELECT count(*) > 0 FROM "EtablissementAccess" ea
          WHERE ea."etablissementId" = e.id
            AND ea."adminId" = p_admin_id
            AND ea.statut = 'APPROUVE'),
