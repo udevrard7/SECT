@@ -10033,40 +10033,67 @@ Stage Summary:
 - **Commit + push** → Vercel auto-deploy → re-test images en production.
 
 ---
-Task ID: SECT-FILIERES-REFONTE-SAVANE
-Agent: frontend-styling-expert (subagent)
-Task: Refonte module /filieres avec identité Savane EdTech
+Task ID: SECT-ONBOARDING-TUTEUR-2
+Agent: Z.ai Code (tuteur/assistant)
+Task: Ré-onboarding environnement — re-clone repo, re-configuration identité Git, vérification santé des 3 services production (Vercel/Render/Neon) et état technique courant
 
 Work Log:
-- Refonte complète de `frontend/src/components/filieres/filieres-page.tsx` (1423 → 1750 lignes). Fichier unique conservé (pas de sous-composants séparés).
-- **Types alignés sur le backend** : ajout de `responsableId: string | null` et `updatedAt: string` à l'interface `FiliereItem`. Extraction de l'interface `DeleteDependencies` (etudiantsCount/uesCount/epreuvesCount/canDelete).
-- **Source de vérité `_count.etudiants`** : utilisée partout (stats, card view, table view, detail). `nbEtudiants` (statique/prévisionnel) affiché uniquement comme info secondaire "X prévus".
-- **Bulk PATCH response** : `data.updated` affiché dans le toast (peut différer de `selectedIds.size`). Pattern `actionLabels[bulkActionDialog]` conservé.
-- **`canDelete` handling** : bouton de confirmation désactivé si `!deleteDependencies.canDelete`. Warning affiché avec dépendances (etudiants/epreuves/ues). Endpoint dédié `GET /api/filieres/{id}/dependencies` appelé à l'ouverture du dialog.
-- **Export CSV** : `GET /api/filieres/export` avec mêmes query params que la liste (search/etablissementId/actif/responsableId). Download via blob + URL.createObjectURL.
-- **Validation frontend** : `formNom.trim()` obligatoire avant soumission (toast.error si vide). `formEtablissementId` obligatoire aussi.
-- **Identité Savane EdTech appliquée** :
-  - Bande kente tricolore (`ds-kente-strip`) en haut du header (vert lime / terre cuite / or).
-  - Motif kente subtil (`ds-kente-pattern`) sur le fond du header, du formulaire create/edit, et du dialog de détails.
-  - Watermark kente (`ds-kente-watermark`) sur l'empty state.
-  - Bordure kente (`ds-kente-top`) sur les cards de loading et la table.
-  - Palette : `text-primary-text` (vert foncé WCAG AA), `bg-primary/10`, `text-secondary`, `text-gold`, `text-warning`, `text-info`, `text-destructive`.
-  - Icônes Lucide africaines/éducation : `GraduationCap` (filière), `Leaf` (actives = croissance/savane), `Sparkles` (or, auto-code), `Users`, `Building2`, `UserCheck`, `BookOpen`, `AlertTriangle`.
-- **Composants DS utilisés** :
-  - `StatCard` : 4 cartes (Total filières / Actives / Inactives / Étudiants) avec `loading={isLoading}` (skeleton intégré via prop), accents `primary`/`success`/`warning`/`info`, stagger d'animation Framer Motion.
-  - `EntityCard` : vue card par filière avec thumbnail `GraduationCap` (gradient `from-primary/10 to-secondary/10`), badge Actif/Inactif, children custom (checkbox, responsable, étudiants, description, actions).
-  - `PulseSkeleton` : états de chargement card view (skeleton aspect-video + body) et table view.
-  - `GlassModal` : dialog Create/Edit (size `lg`, footer avec boutons Annuler/Créer, body avec `ds-kente-pattern`).
-  - `AlertDialog` : dialogs Delete et Bulk (confirmations destructives — plus approprié que GlassModal).
-  - `Dialog` : dialog Detail (size `sm:max-w-3xl` — GlassModal plafonne à `max-w-2xl`, trop étroit pour la liste étudiants).
-- **Layout** : header edge-to-edge (`-mx-4 -mt-4 sm:-mx-6`) avec kente strip + pattern, stats grid responsive (`grid-cols-2 lg:grid-cols-4`), toolbar flex-wrap mobile-first, card view `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`, footer avec count + "Savane EdTech" branding.
-- **Responsive & accessibilité** : grilles adaptatives, labels `aria-label` sur tous les boutons icône (Voir/Modifier/Supprimer/Toggle), `focus-visible:ring` via DS, contraste WCAG AA (`text-primary-text` = vert foncé 7:1 sur blanc), boutons avec texte hidden sur mobile (`hidden sm:inline`).
-- **Lint** : `bun run lint` → 0 erreur, 0 warning sur le fichier refondu (1 warning préexistant dans `certificat-pdf-react.tsx`, non lié).
-- **TypeScript** : `bunx tsc --noEmit` → 0 erreur dans `filieres-page.tsx` (erreurs préexistantes dans autres fichiers : mes-epreuves-page, profil-page, programme-academique-page, badges-carousel, use-api — non liées à cette refonte).
+- Re-clone du dépôt GitHub `udevrard7/SECT` vers `/home/z/SECT` (branche `main`, HEAD = e9fa460). Branche distante `feat/responsable-dashboard-modules` également présente (stale : 18 commits propres, 705 commits de retard sur main, dernière activité 2026-06-04).
+- Configuration identité Git (globale + effective sur le repo) : `user.name=udevrard7`, `user.email=ulrichdouh@gmail.com`. Authentification remote via credential store (`~/.git-credentials` chmod 600, credential.helper=store) — remote URL propre sans token embarqué.
+- Lecture README.md + render.yaml + go.mod + frontend/package.json + vercel.json + Makefile + eslint.config.mjs : architecture confirmée (frontend Next.js 16 → Vercel, backend Go 1.24 clean arch → Render, PostgreSQL 18 Neon avec RLS, R2 pour fichiers).
+- Lecture worklog (entrées récentes : SECT-AUTH-SECURITY-DEFINER, SECT-WORKERS-CLAIMS, SECT-RLS-BASCULE-RENDER, SECT-WORKERS-REACTIVATION, SECT-LANDING-IMAGES-FIX).
+- Audit commits récents vs worklog : 3 commits plus récents que la dernière entrée worklog (SECT-LANDING-IMAGES-FIX = b9d3bcc) :
+  * `e40dd0b` (01:04) security(rls-refactor) : migrations 000023 + 000024 (16 fonctions helper SECURITY DEFINER + réécriture 41 policies anti-récursion) — PAS d'entrée worklog dédiée.
+  * `38b221b` (01:51) fix(ai-providers) : 9 bugs (3 CRITICAL + 1 HIGH + 5 MEDIUM) — ZAI extraConfig, failover server-side avec audit trail, test ZAI réel, suppression failover-provider.ts cassé.
+  * `e9fa460` (01:53) merge : résolution conflit worklog.
+- Toolchain bac à sable vérifié : **Go NON installé**, **psql NON installé**, **golang-migrate NON installé**, bun 1.3.14 ✓, node v24 ✓, docker NON installé. Conséquence identique à l'onboarding précédent : backend Go édité ici mais compilé/déployé via Render CI/CD (auto-deploy au push) ; migrations Neon appliquées via `bun`+`pg`.
+- Création `backend/.env` (chmod 600, gitignored via `.env*`) avec NEON_DATABASE_URL (rôle sect_app fourni par l'utilisateur — identique au rôle production Render, NOBYPASSRLS).
+- Santé production :
+  * **Vercel** (frontend) : `https://sect-app.vercel.app/` → HTTP 200 (1.47s, 18 KB) ✅
+  * **Render** (backend) : `https://sect-s1pb.onrender.com/health` → HTTP 200 (0.66s, déjà chaud) ✅
+  * **Neon** (DB) via `bun`+`pg` avec sect_app → OK ✅. PostgreSQL 18.4, `current_user=sect_app`, `row_security=on`, `rolbypassrls=false` (RLS enforced confirmé). 54 tables, 24 enums, 110 policies RLS, 25 migrations appliquées (cohérent avec fichiers 000001→000025).
+- Workflow ré-établi : modifications locales → `git commit` (identité udevrard7) → `git push origin main` → Vercel (frontend) + Render (backend) auto-deploy → synchronisation Neon via `bun`+`pg` pour les migrations.
 
 Stage Summary:
-- **Module `/filieres` refondu** avec identité "Savane EdTech" : palette africaine (vert lime / terre cuite / or / bleu nuit) + motif kente subtil sur header, cards, dialogs et empty state.
-- **Composants DS intégrés** : `StatCard` (4 stats avec loading skeleton), `EntityCard` (vue card avec thumbnail GraduationCap + badge), `PulseSkeleton` (états de chargement), `GlassModal` (dialog create/edit). `AlertDialog` et `Dialog` conservés pour confirmations destructives et detail large.
-- **Backend matché 100%** : types `responsableId` + `updatedAt` ajoutés, `_count.etudiants` source de vérité, `updated` count du bulk affiché, `canDelete` désactive le bouton de confirmation, endpoint `/dependencies` appelé, tous les CRUD/bulk/export/dependencies fonctionnels.
-- **Fichier unique** : 1750 lignes, pas de sous-composants séparés, hooks existants conservés (`useQuery`, `useQueryClient`, `useState`, `useMemo`, `useEffect`), `fetch()` pur (pas de lib HTTP).
-- **Lint clean** : 0 erreur / 0 warning sur le fichier. TypeScript clean sur le fichier.
+- **Environnement opérationnel** : repo cloné à `/home/z/SECT`, identité Git `udevrard7 / ulrichdouh@gmail.com` configurée, 3 services production verts (Vercel ✅, Render ✅, Neon ✅ RLS enforced).
+- **DB à jour** : 25 migrations appliquées (dernière = 000025_ai_provider_constraints), 110 policies RLS actives, rôle sect_app sans BYPASSRLS.
+- **État technique récent** (au-delà du worklog) : rls-refactor (migrations 23+24 anti-récursion) + ai-providers fix (9 bugs dont failover server-side) déjà en production.
+- **Contrainte toolchain** : Go/psql/migrate absents → backend compilé via Render CI/CD, migrations via `bun`+`pg`. Pas de build local Go possible.
+- **Branche stale** : `feat/responsable-dashboard-modules` (18 commits, 705 de retard) — probablement abandonnée, à confirmer avec l'utilisateur.
+- **En attente** : directive utilisateur sur la prochaine tâche (bug, feature, audit, migration, etc.).
+
+---
+Task ID: SECT-LANDING-IMAGE2-UPGRADE
+Agent: Z.ai Code (tuteur/assistant)
+Task: Améliorer l'image 2 du landing page (after-dashboard.png, section "Après SECT") tout en gardant le même contexte
+
+Work Log:
+- Identification des 2 images du landing via `frontend/src/components/landing/landing-page.tsx` (function SolutionSection, lignes 721-799) :
+  * Image 1 = `before-grading.png` ("Avant" — enseignant épuisé devant piles de copies, badge rouge) — non concernée par cette tâche.
+  * Image 2 = `after-dashboard.png` ("Après SECT" — enseignant détendu devant dashboard, badge violet, bordure violet + glow) — À AMÉLIORER.
+- Dimensions originales vérifiées : 1152x864 (ratio 4:3 paysage), JPEG avec extension .png (le navigateur se base sur le magic bytes).
+- Analyse VLM des 2 images (glm-4.6v) : contexte image 2 = homme jeune africain (peau noire, cheveux crépus, barbe courte) souriant, mains sur clavier, bureau moderne minimaliste, écran avec dashboard analytics (graphiques bleu/rose/violet), plante verte, carnet, fenêtre lumière naturelle. Style illustration 3D photoréaliste, ambiance lumineuse positive.
+- Sauvegarde original : `cp after-dashboard.png /tmp/after-dashboard-original.png` (récupérable si besoin).
+- Génération image améliorée via `z-ai image` (skill image-generation, SDK z-ai-web-dev-sdk) avec prompt détaillé :
+  * Même sujet (jeune enseignant africain souriant, costume navy, mains détendues sur clavier).
+  * Dashboard SECT plus détaillé et reconnaissable : donut chart, line chart, KPI cards (87%/94%/91%), bar chart, en accents violet/indigo/émeraude sur UI navy — cohérent avec le thème de la section "Après SECT".
+  * Bureau light oak, plante verte pot blanc (gauche), notebook + tasse de café fumante (droite).
+  * Lumière cinématique : fenêtre gauche (lumière chaude dorée) + glow violet écran + rim light sur le visage/épaule.
+  * Fond navy gradient (#0D1B30) avec glow violet ambient — cohérent avec le bg-[#0D1B30] de la SolutionSection.
+  * Rendu 3D raffiné : ombres douces, réflexions écran, texture tissu, depth of field.
+  * Size : 1152x864 (identique à l'original pour drop-in replacement sans layout shift).
+- Validation visuelle VLM (comparaison original vs nouvelle, glm-4.6v) :
+  * (A) Contexte conservé ✅ : enseignant détendu/souriant + dashboard + ambiance moderne positive.
+  * (B) Améliorations ✅ : netteté supérieure, intégration thème violet renforcée, dashboard plus varié/lisible (donut, lignes, barres, KPI), composition plus vivante (café, plante, livres).
+  * (C) Défauts mineurs : visage légèrement "lissé" (inhérent génération IA), mains moins dynamiques, arrière-plan moins détaillé — acceptables pour un landing.
+  * (D) Verdict VLM : **prête à remplacer l'originale**.
+- Remplacement : `mv after-dashboard-new.png after-dashboard.png` (107 KB vs 104 KB original — taille équivalente, pas d'impact perf).
+- Commit + push (identité udevrard7 / ulrichdouh@gmail.com) → Vercel auto-deploy frontend.
+
+Stage Summary:
+- **Image 2 du landing page améliorée** : rendu 3D plus raffiné, dashboard SECT détaillé (donut + KPI + line + bar charts en violet/indigo), cohérence chromatique renforcée avec le thème de la section "Après SECT" (navy + violet), ambiance lumineuse cinématique, composition plus vivante (café + plante + notebook).
+- **Contexte préservé** : enseignant africain détendu/souriant devant dashboard, bureau moderne, ambiance positive — validé par VLM.
+- **Image 1 (`before-grading.png`) intacte** — seule l'image 2 a été remplacée comme demandé.
+- **Dimensions identiques** (1152x864) → aucun layout shift, aucun changement de code nécessaire (la référence `src="/after-dashboard.png"` dans landing-page.tsx reste valide).
+- **Original sauvegardé** à `/tmp/after-dashboard-original.png` (récupérable si rollback nécessaire).
+- **Workflow respecté** : push GitHub → auto-deploy Vercel frontend (aucune action backend/DB nécessaire).
