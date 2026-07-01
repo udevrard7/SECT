@@ -114,6 +114,13 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
+                "_debug": map[string]any{
+                        "claimsUID":     claims.UserID,
+                        "claimsRole":    claims.Role,
+                        "debugGUC":      debugUID,
+                        "debugCount":    debugCount,
+                        "repoCount":     len(epreuves),
+                },
         }
         if params.Page > 0 {
                 totalPages := 1
