@@ -2,11 +2,14 @@ package http
 
 import (
         "encoding/json"
+        "fmt"
         "io"
         "net/http"
         "strconv"
 
         "github.com/go-chi/chi/v5"
+        "github.com/jackc/pgx/v5"
+        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/usecase"
@@ -65,6 +68,20 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // DEBUG: test direct query with LEFT JOINs to isolate the issue
+        var debugWithJoin int
+        var debugWithoutJoin int
+        var debugClaimsCheck string
+        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                // Check claims
+                _ = tx.QueryRow(r.Context(), "SELECT current_setting('app.claims.user_id', true)").Scan(&debugClaimsCheck)
+                // Simple count (no JOINs)
+                _ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" WHERE "deletedAt" IS NULL AND "enseignantId" = '%s'`, claims.UserID)).Scan(&debugWithoutJoin)
+                // Count with LEFT JOINs
+                _ = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" WHERE "Epreuve"."deletedAt" IS NULL AND "Epreuve"."enseignantId" = '%s'`, claims.UserID)).Scan(&debugWithJoin)
+                return nil
+        })
+
         // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
         // retournées pour alimenter le filtre filière côté frontend. Avant, le
         // handler retournait seulement {epreuves: [...]} → le frontend attendait
@@ -95,6 +112,12 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
+                "_debug": map[string]any{
+                        "claimsCheck":     debugClaimsCheck,
+                        "countNoJoin":     debugWithoutJoin,
+                        "countWithJoin":   debugWithJoin,
+                        "repoCount":       len(epreuves),
+                },
         }
         if params.Page > 0 {
                 totalPages := 1
