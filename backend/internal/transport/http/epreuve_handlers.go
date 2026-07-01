@@ -3,7 +3,6 @@ package http
 import (
         "encoding/json"
         "io"
-        "log/slog"
         "net/http"
         "strconv"
 
@@ -62,25 +61,9 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
 
         epreuves, total, err := s.epreuveUC.List(r.Context(), claims, params)
         if err != nil {
-                // Debug: include error in response temporarily
-                w.Header().Set("Content-Type", "application/json")
-                w.WriteHeader(http.StatusInternalServerError)
-                json.NewEncoder(w).Encode(map[string]any{
-                        "error":      err.Error(),
-                        "debug":      true,
-                        "claimsUID":  claims.UserID,
-                        "claimsRole": claims.Role,
-                        "ensId":      params.EnseignantID,
-                })
+                middleware.MapDomainError(w, err)
                 return
         }
-        slog.Info("listEpreuves result",
-                "count", len(epreuves),
-                "total", total,
-                "claims.UserID", claims.UserID,
-                "claims.Role", claims.Role,
-                "params.EnseignantID", params.EnseignantID,
-        )
 
         // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
         // retournées pour alimenter le filtre filière côté frontend. Avant, le
@@ -110,15 +93,8 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
 
         // EVALUATIONS-FIX-EV7 : inclure total/totalPages si pagination active.
         resp := map[string]any{
-                "epreuves":  epreuves,
-                "filieres":  filieres,
-                "_debug":    map[string]any{
-                        "claimsUID":  claims.UserID,
-                        "claimsRole": claims.Role,
-                        "ensId":      params.EnseignantID,
-                        "count":      len(epreuves),
-                        "total":      total,
-                },
+                "epreuves": epreuves,
+                "filieres": filieres,
         }
         if params.Page > 0 {
                 totalPages := 1
