@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -151,8 +152,8 @@ func scanProviderWithKey(row pgx.Row) (aiProviderJSON, error) {
 // scanProviderWithoutKey scan une ligne AIProviderConfig sans l'apiKey
 // (pour la liste publique et les mutations POST/PATCH/DELETE).
 const providerColumnsWithKey = `"id", "name", "provider", "baseUrl", "apiKey", "model",
-	"temperature", "maxTokens", "isActive", "priority",
-	"extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"`
+        "temperature", "maxTokens", "isActive", "priority",
+        "extraConfig", "lastTestAt", "lastTestOk", "createdAt", "updatedAt"`
 
 // requireAdminClaims vérifie que la requête est authentifiée en tant qu'ADMIN.
 // Retourne (claims, true) si OK, sinon écrit une erreur et retourne (zero, false).
@@ -216,6 +217,41 @@ func fetchProviderModels(provider, baseURL, apiKey string) ([]string, error) {
 	return models, nil
 }
 
+// validateProviderInput valide les champs reçus par POST/PATCH /api/ai-providers.
+// Retourne nil si valide, ou une erreur descriptive (bug #8 — audit ai-providers MEDIUM).
+//
+// Règles :
+//   - name non vide
+//   - provider dans {ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE} (case insensitive)
+//   - baseURL : si non vide, doit commencer par http:// ou https://
+//   - apiKey requis (non vide) pour les providers non-ZAI
+//     (ZAI peut stocker l'apiKey dans extraConfig ; les autres non)
+//   - model non vide
+func validateProviderInput(name, provider, baseURL, apiKey, model string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("name requis")
+	}
+	upper := strings.ToUpper(strings.TrimSpace(provider))
+	switch upper {
+	case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE":
+		// OK
+	default:
+		return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE)", provider)
+	}
+	if baseURL != "" {
+		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+			return fmt.Errorf("baseUrl doit commencer par http:// ou https://")
+		}
+	}
+	if upper != "ZAI" && strings.TrimSpace(apiKey) == "" {
+		return fmt.Errorf("apiKey requis pour le provider %s", upper)
+	}
+	if strings.TrimSpace(model) == "" {
+		return fmt.Errorf("model requis")
+	}
+	return nil
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // 1. POST /api/ai-providers — Create
 // ──────────────────────────────────────────────────────────────────────────
@@ -242,6 +278,22 @@ func (s *Server) aiProviderCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bug #8 : valider les inputs avant l'INSERT.
+	var baseURL, apiKey, model string
+	if in.BaseURL != nil {
+		baseURL = *in.BaseURL
+	}
+	if in.APIKey != nil {
+		apiKey = *in.APIKey
+	}
+	if in.Model != nil {
+		model = *in.Model
+	}
+	if err := validateProviderInput(*in.Name, *in.Provider, baseURL, apiKey, model); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	temperature := 0.7
 	if in.Temperature != nil {
 		temperature = *in.Temperature
@@ -265,12 +317,12 @@ func (s *Server) aiProviderCreate(w http.ResponseWriter, r *http.Request) {
 		priority := maxPriority + 1
 
 		row := tx.QueryRow(r.Context(), `
-			INSERT INTO "AIProviderConfig"
-				("id", "name", "provider", "baseUrl", "apiKey", "model",
-				 "temperature", "maxTokens", "isActive", "priority",
-				 "extraConfig", "createdAt", "updatedAt")
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10, NOW(), NOW())
-			RETURNING `+providerColumnsWithKey,
+                        INSERT INTO "AIProviderConfig"
+                                ("id", "name", "provider", "baseUrl", "apiKey", "model",
+                                 "temperature", "maxTokens", "isActive", "priority",
+                                 "extraConfig", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10, NOW(), NOW())
+                        RETURNING `+providerColumnsWithKey,
 			id, strings.TrimSpace(*in.Name), strings.TrimSpace(*in.Provider),
 			in.BaseURL, in.APIKey, in.Model,
 			temperature, maxTokens, priority, extraConfig,
@@ -314,8 +366,8 @@ func (s *Server) aiProviderGet(w http.ResponseWriter, r *http.Request) {
 	var provider aiProviderJSON
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), `
-			SELECT `+providerColumnsWithKey+`
-			FROM "AIProviderConfig" WHERE "id" = $1`, id)
+                        SELECT `+providerColumnsWithKey+`
+                        FROM "AIProviderConfig" WHERE "id" = $1`, id)
 		p, err := scanProviderWithKey(row)
 		if err != nil {
 			return err
@@ -435,6 +487,10 @@ func (s *Server) aiProviderUpdate(w http.ResponseWriter, r *http.Request) {
 // ──────────────────────────────────────────────────────────────────────────
 
 // aiProviderDelete supprime un provider de la DB.
+// Bug #20 : refuse de supprimer un provider actuellement actif (sinon
+// l'application se retrouve sans provider IA). L'admin doit d'abord
+// activer un autre provider (POST /api/ai-providers/activate) ou désactiver
+// celui-ci via PATCH { isActive: false } (si jamais le front l'expose).
 func (s *Server) aiProviderDelete(w http.ResponseWriter, r *http.Request) {
 	claims, ok := s.requireAdminClaims(w, r)
 	if !ok {
@@ -447,8 +503,30 @@ func (s *Server) aiProviderDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var deletedID string
+	// Bug #20 : lire isActive AVANT de tenter le DELETE pour pouvoir
+	// renvoyer un 409 Conflict clair (plutôt qu'une erreur 500 générique).
+	var isActive bool
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+		return tx.QueryRow(r.Context(),
+			`SELECT "isActive" FROM "AIProviderConfig" WHERE "id" = $1`, id,
+		).Scan(&isActive)
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeJSONError(w, http.StatusNotFound, "provider introuvable")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "erreur DB: "+err.Error())
+		return
+	}
+	if isActive {
+		writeJSONError(w, http.StatusConflict,
+			"cannot delete active provider — deactivate or activate another first")
+		return
+	}
+
+	var deletedID string
+	err = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(r.Context(), `DELETE FROM "AIProviderConfig" WHERE "id" = $1`, id)
 		if err != nil {
 			return err
@@ -509,7 +587,7 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
 		// Active celui-ci et récupère son nom.
 		err := tx.QueryRow(r.Context(),
 			`UPDATE "AIProviderConfig" SET "isActive" = true, "updatedAt" = NOW()
-			 WHERE "id" = $1 RETURNING "name"`, body.ProviderID,
+                         WHERE "id" = $1 RETURNING "name"`, body.ProviderID,
 		).Scan(&activatedName)
 		if err != nil {
 			return err
@@ -550,14 +628,14 @@ func (s *Server) aiProviderTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Lire le provider (avec apiKey pour faire l'appel test).
+	// 1. Lire le provider (avec apiKey + extraConfig pour faire l'appel test).
 	var provider, baseURL, apiKey, model string
-	var providerType string
+	var providerType, extraConfig string
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), `
-			SELECT "id", "name", "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", ''), COALESCE("model", '')
-			FROM "AIProviderConfig" WHERE "id" = $1`, id)
-		return row.Scan(&id, &provider, &providerType, &baseURL, &apiKey, &model)
+                        SELECT "id", "name", "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", ''), COALESCE("model", ''), COALESCE("extraConfig", '')
+                        FROM "AIProviderConfig" WHERE "id" = $1`, id)
+		return row.Scan(&id, &provider, &providerType, &baseURL, &apiKey, &model, &extraConfig)
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -568,16 +646,51 @@ func (s *Server) aiProviderTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bug #2 : fusionner extraConfig (ZAI stocke apiKey dans extraConfig).
+	if extraConfig != "" {
+		var ec struct {
+			APIKey  string `json:"apiKey"`
+			BaseURL string `json:"baseUrl"`
+		}
+		if jsonErr := json.Unmarshal([]byte(extraConfig), &ec); jsonErr == nil {
+			if apiKey == "" && ec.APIKey != "" {
+				apiKey = ec.APIKey
+			}
+			if baseURL == "" && ec.BaseURL != "" {
+				baseURL = ec.BaseURL
+			}
+		}
+	}
+
 	// 2. Tester la connexion (HTTP externe, hors transaction).
+	// Bug #4 (HIGH) : ZAI n'avait qu'un test simulé → faux succès. Maintenant
+	// on fait un mini chat completion réel pour valider apiKey + baseUrl + model.
 	success := true
 	message := "Connexion réussie"
-	if providerType == "ZAI" {
-		// ZAI : pas d'endpoint /models public — on simule un succès.
-		message = "Z-AI : test simulé (SDK natif, pas d'endpoint /models)"
-	} else if baseURL == "" {
+	if baseURL == "" {
 		success = false
-		message = "baseUrl non configuré"
+		message = "baseUrl non configuré (vérifiez extraConfig pour ZAI)"
+	} else if apiKey == "" {
+		success = false
+		message = "apiKey non configurée (vérifiez extraConfig pour ZAI)"
+	} else if providerType == "ZAI" || providerType == "OPENAI" || providerType == "OPENAI_COMPATIBLE" {
+		// Mini chat completion réel : valide apiKey + baseUrl + model en une requête.
+		if err := testChatCompletion(baseURL, apiKey, model); err != nil {
+			success = false
+			message = "Échec : " + err.Error()
+		} else {
+			message = provider + " : chat completion de test réussi (model=" + model + ")"
+		}
+	} else if providerType == "ANTHROPIC" {
+		// Anthropic : endpoint /messages au lieu de /chat/completions.
+		if err := testAnthropicChat(baseURL, apiKey, model); err != nil {
+			success = false
+			message = "Échec : " + err.Error()
+		} else {
+			message = provider + " : chat completion de test réussi (model=" + model + ")"
+		}
 	} else {
+		// Autres providers : fallback sur GET /models.
 		if _, err := fetchProviderModels(providerType, baseURL, apiKey); err != nil {
 			success = false
 			message = "Échec : " + err.Error()
@@ -585,12 +698,16 @@ func (s *Server) aiProviderTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Mettre à jour lastTestAt / lastTestOk dans la DB.
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	// Bug #11 : on garde le comportement tolerant (on répond quand même
+	// succès/échec du test) MAIS on log l'erreur DB pour debug.
+	if err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		_, err := tx.Exec(r.Context(),
 			`UPDATE "AIProviderConfig" SET "lastTestAt" = NOW(), "lastTestOk" = $2, "updatedAt" = NOW() WHERE "id" = $1`,
 			id, success)
 		return err
-	})
+	}); err != nil {
+		slog.Error("DB error in aiProviderTest", "error", err, "provider_id", id)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -620,8 +737,8 @@ func (s *Server) aiProviderModels(w http.ResponseWriter, r *http.Request) {
 	var providerType, baseURL, apiKey string
 	err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		row := tx.QueryRow(r.Context(), `
-			SELECT "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", '')
-			FROM "AIProviderConfig" WHERE "id" = $1`, providerID)
+                        SELECT "provider", COALESCE("baseUrl", ''), COALESCE("apiKey", '')
+                        FROM "AIProviderConfig" WHERE "id" = $1`, providerID)
 		return row.Scan(&providerType, &baseURL, &apiKey)
 	})
 	if err != nil {
@@ -714,7 +831,9 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 	totalFailovers := 0
 	last24hEvents := 0
 
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	// Bug #11 : on garde le comportement tolerant (on répond toujours
+	// avec ce qu'on a pu lire) MAIS on log l'erreur DB pour debug.
+	if err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		// 1. Lire la config failover depuis PlatformSettings(id='ai_failover_config').
 		var cfgJSON *string
 		_ = tx.QueryRow(r.Context(),
@@ -726,9 +845,9 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 
 		// 2. Lister tous les providers.
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "name", "provider", "model", "isActive", "priority",
-			       "lastTestAt", "lastTestOk"
-			FROM "AIProviderConfig" ORDER BY "priority" ASC`)
+                        SELECT "id", "name", "provider", "model", "isActive", "priority",
+                               "lastTestAt", "lastTestOk"
+                        FROM "AIProviderConfig" ORDER BY "priority" ASC`)
 		if err != nil {
 			return err
 		}
@@ -789,11 +908,11 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 
 		// 4. Récupérer les 20 derniers événements.
 		evRows, err := tx.Query(r.Context(), `
-			SELECT "id", "eventType", "fromProvider", "toProvider",
-			       "reason", "errorDetails", "resolved", "createdAt"
-			FROM "AIFailoverEvent"
-			ORDER BY "createdAt" DESC
-			LIMIT 20`)
+                        SELECT "id", "eventType", "fromProvider", "toProvider",
+                               "reason", "errorDetails", "resolved", "createdAt"
+                        FROM "AIFailoverEvent"
+                        ORDER BY "createdAt" DESC
+                        LIMIT 20`)
 		if err != nil {
 			return err
 		}
@@ -809,7 +928,9 @@ func (s *Server) aiProviderFailoverStatus(w http.ResponseWriter, r *http.Request
 			recentEvents = append(recentEvents, e)
 		}
 		return evRows.Err()
-	})
+	}); err != nil {
+		slog.Error("DB error in aiProviderFailoverStatus", "error", err)
+	}
 
 	// Calcule le summary.
 	summary := failoverSummaryJSON{
@@ -899,9 +1020,9 @@ func (s *Server) aiProviderFailoverConfig(w http.ResponseWriter, r *http.Request
 			return err
 		}
 		_, err = tx.Exec(r.Context(), `
-			INSERT INTO "PlatformSettings" ("id", "settings", "updatedAt")
-			VALUES ('ai_failover_config', $1, NOW())
-			ON CONFLICT ("id") DO UPDATE SET "settings" = EXCLUDED."settings", "updatedAt" = NOW()`,
+                        INSERT INTO "PlatformSettings" ("id", "settings", "updatedAt")
+                        VALUES ('ai_failover_config', $1, NOW())
+                        ON CONFLICT ("id") DO UPDATE SET "settings" = EXCLUDED."settings", "updatedAt" = NOW()`,
 			string(settingsBytes))
 		return err
 	})
@@ -1016,9 +1137,11 @@ func (s *Server) aiProviderFailoverHealth(w http.ResponseWriter, r *http.Request
 	}
 	providers := []providerHealth{}
 	allHealthy := true
-	_ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+	// Bug #11 : on garde le comportement tolerant (on répond toujours
+	// avec ce qu'on a pu lire, même vide) MAIS on log l'erreur DB pour debug.
+	if err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
 		rows, err := tx.Query(r.Context(), `
-			SELECT "id", "name", "lastTestOk" FROM "AIProviderConfig" ORDER BY "priority" ASC`)
+                        SELECT "id", "name", "lastTestOk" FROM "AIProviderConfig" ORDER BY "priority" ASC`)
 		if err != nil {
 			return err
 		}
@@ -1037,11 +1160,91 @@ func (s *Server) aiProviderFailoverHealth(w http.ResponseWriter, r *http.Request
 			providers = append(providers, p)
 		}
 		return rows.Err()
-	})
+	}); err != nil {
+		slog.Error("DB error in aiProviderFailoverHealth", "error", err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"healthy":   allHealthy,
 		"providers": providers,
 	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helpers de test de connexion IA (bug #4)
+// ──────────────────────────────────────────────────────────────────────────
+
+// testChatCompletion fait un mini chat completion réel vers un provider
+// OpenAI-compatible (ZAI, OpenAI, Mistral, Groq, OpenRouter…).
+// Valide apiKey + baseUrl + model en une seule requête HTTP.
+// Timeout 15s pour ne pas bloquer l'UI admin.
+func testChatCompletion(baseURL, apiKey, model string) error {
+	body := map[string]interface{}{
+		"model":       model,
+		"messages":    []map[string]string{{"role": "user", "content": "ping"}},
+		"max_tokens":  5, // minimal pour réduire le coût
+		"temperature": 0,
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyJSON)))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// testAnthropicChat fait un mini chat completion vers l'API Anthropic.
+// Anthropic utilise /v1/messages avec headers x-api-key + anthropic-version.
+func testAnthropicChat(baseURL, apiKey, model string) error {
+	body := map[string]interface{}{
+		"model":      model,
+		"max_tokens": 5,
+		"messages":   []map[string]string{{"role": "user", "content": "ping"}},
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := strings.TrimRight(baseURL, "/") + "/messages"
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyJSON)))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }
