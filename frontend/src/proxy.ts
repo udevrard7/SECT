@@ -40,7 +40,18 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Exclut du middleware : api, assets statiques, fonts, public.
+  // Exclut du middleware : api, assets Next, favicon, fonts, et TOUS les
+  // fichiers statiques servis depuis /public (images, sw.js, manifest, etc.).
+  //
+  // IMPORTANT : les fichiers de /public/ sont servis SANS le préfixe
+  // /public/ (ex. /public/before-grading.png → /before-grading.png). Exclure
+  // "public" dans le lookahead ne fait donc RIEN — le middleware s'exécutait
+  // sur chaque asset et redirigeait les visiteurs non authentifiés du landing
+  // page vers /login?error=SessionExpired (bug images landing + sw.js +
+  // manifest.json + robots.txt). On exclut donc les extensions statiques.
+  //
   // /api/* est routé par vercel.json (rewrites CDN) → 0 Function Invocation.
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|fonts|public).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|fonts|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|bmp|avif|css|js|woff|woff2|ttf|otf|eot|txt|xml|json|map|webmanifest|manifest)).*)',
+  ],
 }
