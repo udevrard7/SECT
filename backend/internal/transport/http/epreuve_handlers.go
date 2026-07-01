@@ -3,13 +3,10 @@ package http
 import (
         "encoding/json"
         "io"
-        "log/slog"
         "net/http"
         "strconv"
 
         "github.com/go-chi/chi/v5"
-        "github.com/jackc/pgx/v5"
-        appdb "github.com/udevrard7/sect/backend/internal/db"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
         "github.com/udevrard7/sect/backend/internal/usecase"
@@ -68,22 +65,6 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        // DEBUG: test direct query to verify claims are set
-        var debugUID string
-        var debugCount int
-        _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                _ = tx.QueryRow(r.Context(), "SELECT current_setting('app.claims.user_id', true)").Scan(&debugUID)
-                _ = tx.QueryRow(r.Context(), `SELECT count(*)::int FROM "Epreuve" WHERE "deletedAt" IS NULL`).Scan(&debugCount)
-                return nil
-        })
-        slog.Info("DEBUG listEpreuves",
-                "claimsUID", claims.UserID,
-                "claimsRole", claims.Role,
-                "debugUID_from_GUC", debugUID,
-                "debugCount_direct", debugCount,
-                "repoCount", len(epreuves),
-        )
-
         // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
         // retournées pour alimenter le filtre filière côté frontend. Avant, le
         // handler retournait seulement {epreuves: [...]} → le frontend attendait
@@ -114,13 +95,6 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
-                "_debug": map[string]any{
-                        "claimsUID":     claims.UserID,
-                        "claimsRole":    claims.Role,
-                        "debugGUC":      debugUID,
-                        "debugCount":    debugCount,
-                        "repoCount":     len(epreuves),
-                },
         }
         if params.Page > 0 {
                 totalPages := 1
