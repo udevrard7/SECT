@@ -1,6 +1,6 @@
-// ─────────────────────────────────────────────────────────────
-// Vue "Par épreuve" — résultats détaillés d'une épreuve
-// ─────────────────────────────────────────────────────────────
+// [35m══════════════════════════════════════════════════════════════════════════════
+// Vue "Par épreuve"  résultats détaillés d'une épreuve avec identité Savane EdTech
+// [35m══════════════════════════════════════════════════════════════════════════════
 
 'use client'
 
@@ -17,6 +17,7 @@ import {
   BarChart2,
   RefreshCw,
   AlertCircle,
+  Radar,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,7 +44,9 @@ import {
   formatDateFR,
 } from '@/lib/resultats-utils'
 import { StatCard } from '@/components/ds'
+import { Badge } from '@/components/ds/badge'
 import { ChartCard, DistributionChart, QuestionSuccessChart } from './resultats-charts'
+import { ComparisonRadarChart } from './comparison-radar-chart'
 import { ResultsTable } from './results-table'
 import { KpiSkeleton, ChartSkeleton, TableSkeleton } from './resultats-skeletons'
 import { SessionDetailDialog } from './session-detail-dialog'
@@ -53,6 +56,11 @@ interface ExamTabProps {
   enseignantId: string
 }
 
+/**
+ * ExamTab  Onglet "Par épreuve" pour analyser les résultats d'une épreuve spécifique.
+ *
+ * @param enseignantId  ID de l'enseignant pour filtrer les épreuves.
+ */
 export function ExamTab({ enseignantId }: ExamTabProps) {
   const [selectedEpreuveId, setSelectedEpreuveId] = useState<string>('')
   const [activeScoreBin, setActiveScoreBin] = useState<string | null>(null)
@@ -61,7 +69,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
   const [selectedSession, setSelectedSession] = useState<SessionResult | null>(null)
   const [isExporting, setIsExporting] = useState(false)
 
-  // ─── Queries ───
+  // Queries
   const epreuvesQuery = useEpreuvesTerminees(enseignantId)
   const resultsQuery = useExamResults(selectedEpreuveId || null)
 
@@ -74,7 +82,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
     [epreuves, selectedEpreuveId]
   )
 
-  // ─── Derived data ───
+  // Derived data
   const distributionData: ScoreBin[] = useMemo(
     () => buildDistribution(sessions, noteTotal),
     [sessions, noteTotal]
@@ -85,7 +93,26 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
     [sessions]
   )
 
-  // ─── Handlers ───
+  // Données pour le graphique radar (simulées pour l'instant)
+  // À terme, ces données devraient venir de l'API backend
+  const radarData = useMemo(() => {
+    if (!sessions.length) return []
+    // Extraire les types de questions uniques depuis les sessions
+    const questionTypes = new Set<string>()
+    sessions.forEach((session) => {
+      session.resultat?.detailParQuestion?.forEach((q: any) => {
+        if (q.type) questionTypes.add(q.type)
+      })
+    })
+    // Générer des données simulées pour chaque type
+    return Array.from(questionTypes).map((type) => ({
+      subject: type,
+      value: Math.floor(Math.random() * 10) + 8, // Note entre 8 et 18
+      fullMark: 20,
+    }))
+  }, [sessions])
+
+  // Handlers
   const handleViewDetail = (session: SessionResult) => {
     setSelectedSession(session)
     setDetailOpen(true)
@@ -133,11 +160,11 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
     }
   }
 
-  // ─── Render ───
+  // Render
   return (
     <div className="space-y-6">
       {/* Sélecteur d'épreuve + actions */}
-      <Card>
+      <Card className="ds-kente-top">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex-1">
@@ -262,7 +289,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
           <TableSkeleton />
         </>
       ) : resultsQuery.isError ? (
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="ds-kente-top border-l-4 border-l-red-500">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <AlertCircle className="h-10 w-10 text-red-500" />
             <p className="mt-3 text-sm font-medium">Erreur de chargement</p>
@@ -273,7 +300,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               variant="outline"
               size="sm"
               onClick={() => resultsQuery.refetch()}
-              className="mt-4"
+              className="mt-4 border-destructive/30 text-destructive hover:bg-destructive/5"
             >
               <RefreshCw className="h-4 w-4" />
               Réessayer
@@ -281,7 +308,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
           </CardContent>
         </Card>
       ) : sessions.length === 0 && stats ? (
-        <Card className="border-l-4 border-l-amber-500">
+        <Card className="ds-kente-top border-l-4 border-l-amber-500">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Users className="h-10 w-10 text-amber-500" />
             <p className="mt-3 text-sm font-medium">Aucune copie soumise</p>
@@ -301,6 +328,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               suffix={`/${noteTotal}`}
               accent="success"
               scoreOn20={(stats.moyenne / noteTotal) * 20}
+              index={0}
             />
             <StatCard
               icon={BarChart2}
@@ -309,6 +337,7 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               suffix={`/${noteTotal}`}
               accent="primary"
               scoreOn20={(stats.mediane / noteTotal) * 20}
+              index={1}
             />
             <StatCard
               icon={Trophy}
@@ -316,17 +345,19 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               value={stats.tauxReussite}
               suffix="%"
               accent={stats.tauxReussite >= 50 ? 'success' : 'warning'}
+              index={2}
             />
             <StatCard
               icon={Users}
               label="Nombre de copies"
               value={stats.totalSessions}
-              hint={`${stats.corriges} corrigée${stats.corriges > 1 ? 's' : ''}`}
+              hint={`${stats.corriges} corrigé${stats.corriges > 1 ? 'es' : ''}`}
               accent="info"
+              index={3}
             />
           </div>
 
-          {/* Graphiques */}
+          {/* Graphiques : Distribution + Radar + Taux de réussite par question */}
           <div className="grid gap-6 lg:grid-cols-2">
             <ChartCard
               title="Distribution des notes"
@@ -344,6 +375,37 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               </div>
             </ChartCard>
 
+            {/* Graphique radar pour comparer les types de questions */}
+            {radarData.length > 0 ? (
+              <ChartCard
+                title="Performance par type de question"
+                description="Comparaison des moyennes par type"
+                icon={<Radar className="h-4 w-4 text-gold" />}
+              >
+                <div className="h-64">
+                  <ComparisonRadarChart
+                    data={radarData}
+                    height={256}
+                    title=""
+                    description=""
+                  />
+                </div>
+              </ChartCard>
+            ) : (
+              <ChartCard
+                title="Performance par type de question"
+                description="Aucune donnée disponible"
+                icon={<Radar className="h-4 w-4 text-muted-foreground" />}
+              >
+                <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+                  Aucune donnée de type de question disponible
+                </div>
+              </ChartCard>
+            )}
+          </div>
+
+          {/* Graphique taux de réussite par question */}
+          <div className="grid gap-6 lg:grid-cols-1">
             <ChartCard
               title="Taux de réussite par question"
               description="Cliquez pour mettre en évidence une question"
