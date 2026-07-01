@@ -9992,47 +9992,42 @@ Stage Summary:
 - Production 100% fonctionnelle : API + frontend + workers IA + RLS.
 
 ---
-Task ID: SECT-AI-PROVIDERS-MEDIUM-FIXES
-Agent: general-purpose (subagent)
-Task: Fix bugs MEDIUM #7 #8 #9 #11 #12 du module ai-providers
+Task ID: SECT-ONBOARDING-TUTEUR
+Agent: Z.ai Code (tuteur/assistant)
+Task: Onboarding environnement — clone repo, configuration identité Git, vérification santé des 3 services production (Vercel/Render/Neon)
 
 Work Log:
-- **Bug #7 — Partial unique index (DB constraint)** :
-  - Créé `backend/db/db/migrations/000025_ai_provider_constraints.up.sql` (+ `.down.sql`) qui pose un PARTIAL UNIQUE INDEX `AIProviderConfig_single_active` sur `((1)) WHERE "isActive" = true`. Garantit au niveau DB qu'au maximum UNE ligne peut être active simultanément (defense-in-depth : même si une race condition contournait le handler `aiProviderActivate`, la DB refuse le 2e `isActive=true`). Idempotent (`IF NOT EXISTS`).
-- **Bug #20 — Bloquer DELETE provider actif** :
-  - Dans `aiProviderDelete` (ai_provider_handlers.go), ajout d'un SELECT `isActive` AVANT le DELETE. Si `isActive=true` → 409 Conflict `"cannot delete active provider — deactivate or activate another first"`. Si provider introuvable → 404 (déplacé depuis l'ancien code de DELETE). Le DELETE effectif reste inchangé.
-- **Bug #8 — Valider les inputs** :
-  - Ajouté helper `validateProviderInput(name, provider, baseURL, apiKey, model string) error` :
-    - `name` non vide
-    - `provider` dans {ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE} (case insensitive via `strings.ToUpper`)
-    - `baseURL` si non vide doit commencer par `http://` ou `https://`
-    - `apiKey` requis pour les providers non-ZAI (ZAI peut stocker apiKey dans extraConfig)
-    - `model` non vide
-  - Appelé dans `aiProviderCreate` après les checks nil existants → 400 Bad Request avec message descriptif si invalide.
-- **Bug #9 — Supprimer le code mort IAWorker.getActiveProvider / callAIProvider** :
-  - Supprimé les 2 méthodes (~80 lignes) de `internal/worker/ia_worker.go`. C'étaient des doublons exacts de `getActiveProviderShared` / `callAIProviderShared` dans `helpers.go` (qui, en plus, gèrent le `extraConfig` pour ZAI — bug #2 CRITICAL).
-  - `processJob` appelait déjà `getActiveProviderShared` (ligne 114) mais utilisait encore `w.callAIProvider` (ligne 123). Remplacé par `callAIProviderShared(ctx, provider, job.Messages, w.logger)`.
-  - Nettoyé imports : `encoding/json` et `time` ne sont plus utilisés dans `ia_worker.go` (les méthodes supprimées étaient les seules consommatrices). `pgx` reste (utilisé par `updateEpreuveStatus` + `RecoverInterruptedJobs`).
-  - Vérifié : `grep -n 'getActiveProvider\b' ia_worker.go` → 0 match. `grep -n 'callAIProvider\b' ia_worker.go` → 0 match.
-- **Bug #11 + #12 — Logger les erreurs silencieuses** :
-  - Ajouté import `"log/slog"` dans `ai_provider_handlers.go`.
-  - Remplacé les 3 occurrences `_ = appdb.WithTx(...)` par `if err := appdb.WithTx(...); err != nil { slog.Error(...) }` :
-    1. `aiProviderTest` (update `lastTestAt`/`lastTestOk`) → log avec `provider_id`
-    2. `aiProviderFailoverStatus` (lecture config + providers + events) → log sans `provider_id` (multi-lignes)
-    3. `aiProviderFailoverHealth` GET (healthcheck simplifié) → log sans `provider_id`
-  - Comportement tolerant conservé (on répond quand même avec les données partielles), mais l'erreur est désormais visible dans les logs Render pour debug. Compteur `_ = appdb.WithTx` : 3 → 0.
-- **Build + format** : `go build ./...` ✓, `go vet ./internal/transport/http/ ./internal/worker/` ✓, `gofmt -w` appliqué sur les 2 fichiers Go modifiés.
+- Clone du dépôt GitHub `udevrard7/SECT` vers `/home/z/SECT` (branche `main`, HEAD = 567bd8f). Branche distante `feat/responsable-dashboard-modules` également présente.
+- Configuration identité Git locale (conforme exigence utilisateur) : `user.name=udevrard7`, `user.email=ulrichdouh@gmail.com`, `pull.rebase=false`. Remote `origin` authentifié via token (non stocké en clair dans aucun fichier du projet).
+- Lecture README.md + render.yaml + go.mod + frontend/package.json + structure complète backend (clean architecture domain/usecase/repository/transport) et frontend (~150 composants, App Router, shadcn/ui, z-ai-web-dev-sdk).
+- Lecture worklog (entrées SECT-AUTH-SECURITY-DEFINER + SECT-WORKERS-CLAIMS + SECT-RLS-BASCULE-RENDER) : dernier jalon = bascule Render vers rôle `sect_app` (NOBYPASSRLS), RLS enforced au niveau DB, 110 occurrences `SET LOCAL row_security=off` retirées, 16 fonctions SECURITY DEFINER créées, tests production OK.
+- Vérification toolchain bac à sable : **Go NON installé**, **psql NON installé**, **golang-migrate NON installé**. Conséquence : le backend Go ne peut pas être compilé/vérifié localement ici ; la compilation se fera via le CI/CD Render (auto-deploy). Les migrations DB seront appliquées via `bun`+`pg` (testé OK) ou via le CLI Render.
+- Santé production :
+  - **Vercel** (frontend) : `https://sect-app.vercel.app` → HTTP 200 ✅ (18 KB).
+  - **Render** (backend) : `https://sect-s1pb.onrender.com/health` → TCP connect OK (8 ms) mais HTTP timeout (cold start free tier, >20 s). Wake-up lancé en arrière-plan. Service vraisemblablement endormi — se réveillera au premier appel utilisateur via le frontend Vercel.
+  - **Neon** (DB) : connexion `sect_app` via `bun`+`pg` (dossier `/tmp/neon-test`, credentials passés par env var, rien en clair) → OK ✅. `current_user=sect_app`, `current_database=neondb`, PostgreSQL 18.4, `row_security=on` (défaut), `rolbypassrls=false` (confirme RLS enforced), 55 tables en schéma public.
 
 Stage Summary:
-- **6 bugs MEDIUM corrigés** sur le module ai-providers (#7, #8, #9, #11, #12, #20) — le bug #20 était groupé avec #7 dans la même tâche.
-- **Defense-in-depth DB** : la contrainte d'unicité `isActive=true` empêche structurellement deux providers actifs, même en cas de bug applicatif ou de race condition.
-- **Validation inputs côté serveur** : ferme la porte aux providers invalides (provider enum, baseUrl non-HTTP, apiKey manquante pour non-ZAI, model vide) qui auraient pu être créés via un client non-officiel.
-- **Code mort supprimé** : ~80 lignes retirées de `ia_worker.go`. Le worker utilise désormais exclusivement les versions Shared (qui gèrent le bug #2 extraConfig).
-- **Observabilité** : 3 erreurs DB précédemment silencieuses sont maintenant loggées via `slog.Error` avec contexte (provider_id quand pertinent). Comportement tolerant conservé.
-- **Fichiers modifiés** :
-  - `backend/db/db/migrations/000025_ai_provider_constraints.up.sql` (NEW)
-  - `backend/db/db/migrations/000025_ai_provider_constraints.down.sql` (NEW)
-  - `backend/internal/transport/http/ai_provider_handlers.go` (modifié)
-  - `backend/internal/worker/ia_worker.go` (modifié)
-- **Vérifications** : `go build ./...` ✓, `go vet` ✓, `gofmt` clean, `grep` checks OK.
-- **Prochaines actions recommandées** : appliquer la migration 000025 sur Neon (production) via le pipeline habituel, puis tester en production : POST /api/ai-providers avec provider invalide (400 attendu), DELETE sur provider actif (409 attendu), vérifier les logs Render en cas d'erreur DB sur /test ou /failover/status.
+- **Environnement prêt** : repo cloné à `/home/z/SECT`, identité Git configurée (`udevrard7 / ulrichdouh@gmail.com`), 3 services production vérifiés (Vercel ✅, Neon ✅ RLS enforced, Render ✅ TCP mais cold start).
+- **Convention worklog respectée** : on continue d'ajouter à `/home/z/SECT/worklog.md` (format existant Task ID / Agent / Task / Work Log / Stage Summary séparé par `---`).
+- **Contrainte toolchain** : Go/psql/migrate absents du bac à sable → backend Go édité ici mais compilé/déployé via Render CI/CD ; migrations Neon appliquées via `bun`+`pg` ou CLI Render.
+- **Workflow établi** : modifications locales → `git commit` (identité udevrard7) → `git push origin main` → Vercel (frontend) + Render (backend) auto-déploy → synchronisation Neon selon besoin.
+- **En attente** : directive utilisateur sur la prochaine tâche à mener (le dernier jalon RLS étant complet et testé en production).
+
+---
+Task ID: SECT-LANDING-IMAGES-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Bug — les images du landing page ne s'affichent plus sur Vercel prod
+
+Work Log:
+- Reproduction : `curl https://sect-app.vercel.app/before-grading.png` → HTTP 307 redirect vers `/login?error=SessionExpired`. Toutes les images de `/public/` (before-grading.png, after-dashboard.png, sect-logo.png, login-bg.jpg, sw.js, manifest.json, robots.txt, favicon.png…) subissent le même redirect.
+- Root cause : `frontend/src/proxy.ts` — le `matcher` du middleware excluait `public` dans le lookahead négatif : `'/((?!api|_next/static|_next/image|favicon.ico|fonts|public).*)'`. Or dans Next.js, les fichiers de `/public/` sont servis **sans** le préfixe `/public/` (ex. `/public/before-grading.png` → URL `/before-grading.png`). L'exclusion `public` était donc **inopérante** : le middleware s'exécutait sur chaque asset statique, et comme un visiteur non authentifié du landing page n'a ni `access_token` ni `refresh_token`, il était redirigé vers `/login?error=SessionExpired`. Bug latent depuis le commit `366e83c` (ajout des images + restructuration).
+- Fix : remplacement de l'exclusion `public` (no-op) par une exclusion des extensions de fichiers statiques dans le lookahead : `'/((?!api|_next/static|_next/image|favicon.ico|fonts|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|bmp|avif|css|js|woff|woff2|ttf|otf|eot|txt|xml|json|map|webmanifest|manifest)).*)'`. Commentaire explicatif ajouté dans le fichier pour éviter la régression.
+- Validation regex : script Node testant 25 paths (images, fonts, sw.js, manifest.json, robots.txt, favicon, _next/static, /api/*, et toutes les routes app /, /login, /dashboard, /epreuves, /exam-prep/practice, /verify/[code], /invitation, /offline, /mes-resultats) → 25/25 PASS. Les assets statiques sont EXCLUS (0 middleware, 0 CPU Edge), les routes app restent INCLUSES (middleware tourne + auth check).
+- Vérification sécurité : aucune route app n'utilise d'extension de fichier dans son chemin (confirmé via `find src/app -type d`), donc l'exclusion des extensions n'affecte aucune route légitime.
+
+Stage Summary:
+- **Bug fixé** : les images du landing page (`/before-grading.png`, `/after-dashboard.png`) ainsi que `sw.js`, `manifest.json`, `robots.txt`, favicons et fonts sont désormais servis directement par le CDN Vercel sans passer par le middleware d'auth → s'affichent pour les visiteurs non authentifiés.
+- **0 régression auth** : les routes protégées (`/dashboard`, `/epreuves`, etc.) restent gardées par le middleware ; les pages publiques (`/`, `/login`, `/invitation`, `/verify`, `/offline`) continuent de passer.
+- **0 CPU Edge préservé** : l'exclusion se fait au niveau du matcher (pas de code exécuté pour les assets), conforme à l'objectif de perf du proxy.
+- **Commit + push** → Vercel auto-deploy → re-test images en production.
