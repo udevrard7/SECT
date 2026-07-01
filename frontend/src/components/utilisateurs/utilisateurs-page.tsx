@@ -860,10 +860,6 @@ export function UtilisateursPage() {
               Importer
             </Button>
           )}
-          <Button variant="outline" className="border-success/30 text-success-text  hover:bg-success/10 " onClick={handleOpenInvite}>
-            <Mail className="h-4 w-4" />
-            {isAdmin ? 'Inviter un responsable' : 'Inviter'}
-          </Button>
           <Button className="" onClick={handleOpenCreate}>
             <UserPlus className="h-4 w-4" />
             {isAdmin ? 'Nouveau responsable' : 'Nouvel utilisateur'}
