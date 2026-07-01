@@ -15,6 +15,9 @@ import (
         "github.com/udevrard7/sect/backend/internal/domain"
 )
 
+// DebugEpreuveList stores debug info from the last List call
+var DebugEpreuveList = map[string]any{}
+
 // EpreuveRepository implémente domain.EpreuveRepository.
 type EpreuveRepository struct {
         pool *pgxpool.Pool
@@ -344,6 +347,14 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 }
 
                 var query string
+
+                // DEBUG: store count from inside the repo's transaction
+                var debugCount int
+                _ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" %s`, whereClause), args...).Scan(&debugCount)
+                DebugEpreuveList["repoCount"] = debugCount
+                DebugEpreuveList["whereClause"] = whereClause
+                DebugEpreuveList["argsLen"] = len(args)
+
                 if params.Select == "summary" {
                         // Format léger pour les dropdowns
                         query = fmt.Sprintf(`SELECT "id", "titre", "dateDebut", "dateFin", "statut", "noteTotal" FROM "Epreuve" %s ORDER BY "dateDebut" DESC%s`, whereClause, paginationSuffix)
