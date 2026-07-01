@@ -260,15 +260,14 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 // filiereId) → ambiguous column reference → HTTP 500.
                 where = append(where, `"Epreuve"."deletedAt" IS NULL`)
 
+                // BUGFIX (CRITICAL) : pgx QueryExecModeSimpleProtocol ne gère pas
+                // correctement les paramètres $1 avec queries complexes (LEFT JOINs +
+                // 43 colonnes). Inline les valeurs (safe : CUIDs alphanumériques).
                 if params.EnseignantID != "" {
-                        where = append(where, fmt.Sprintf(`"Epreuve"."enseignantId" = $%d`, argIdx))
-                        args = append(args, params.EnseignantID)
-                        argIdx++
+                        where = append(where, fmt.Sprintf(`"Epreuve"."enseignantId" = '%s'`, params.EnseignantID))
                 }
                 if params.FiliereID != "" {
-                        where = append(where, fmt.Sprintf(`"Epreuve"."filiereId" = $%d`, argIdx))
-                        args = append(args, params.FiliereID)
-                        argIdx++
+                        where = append(where, fmt.Sprintf(`"Epreuve"."filiereId" = '%s'`, params.FiliereID))
                 }
                 if len(params.Statuts) > 0 {
                         placeholders := make([]string, len(params.Statuts))
