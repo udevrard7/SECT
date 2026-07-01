@@ -189,14 +189,20 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
         audioBytes, ttsErr := callTTSProviderShared(ctx, ttsProvider, script, w.logger)
         if ttsErr != nil {
                 // TTS indisponible pour ce provider → on marque PRET avec script seul.
-                // Le frontend affichera le script dans un <details> collapsible avec
-                // une note "Audio non disponible pour ce provider".
+                // KOKORO-TTS-1 (debug) : on stocke l'erreur TTS dans errorMessage pour
+                // pouvoir diagnostiquer via l'API (GET /audio/{id} retourne errorMessage).
+                // Le frontend affiche le script dans un <details> collapsible.
+                ttsErrStr := ttsErr.Error()
+                if len(ttsErrStr) > 500 {
+                        ttsErrStr = ttsErrStr[:500]
+                }
                 w.logger.Warn("TTS not available for provider, keeping script only (graceful fallback)",
-                        "provider", provider.Name,
+                        "provider", ttsProvider.Name,
+                        "providerType", ttsProvider.Provider,
                         "audioId", job.AudioID,
-                        "ttsError", ttsErr,
+                        "ttsError", ttsErrStr,
                 )
-                if err := w.updateStatus(ctx, job.AudioID, "PRET", nil, nil); err != nil {
+                if err := w.updateStatus(ctx, job.AudioID, "PRET", nil, &ttsErrStr); err != nil {
                         w.logger.Error("Failed to mark audio as PRET (script only)",
                                 "error", err, "audioId", job.AudioID)
                 }
