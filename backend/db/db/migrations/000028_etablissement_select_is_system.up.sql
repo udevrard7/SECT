@@ -1,20 +1,25 @@
--- Migration 000028 — Fix ListAuthorizedEtablissements : Etablissement_select accepte is_system()
+-- Migration 000028 — Fix Etablissement_select : is_system() + ADMIN voit tout
 --
--- CONTEXTE : suite au fix 000027, EtablissementAccess_select accepte is_system(), mais
--- ListAuthorizedEtablissements fait un JOIN sur Etablissement qui a sa propre policy
--- Etablissement_select. Cette policy n'accepte que is_admin() (avec admin_has_etablissement_access)
--- ou (NOT is_admin() AND own etab). Avec claims system-worker, is_admin() retourne NULL →
--- le JOIN retourne 0 ligne.
+-- CONTEXTE : après la bascule sect_app (NOBYPASSRLS), la policy Etablissement_select
+-- exigeait (is_admin() AND admin_has_etablissement_access(id)). Or admin_has_etablissement_access
+-- vérifie un accès APPROUVE valide. Un ADMIN sans accès APPROUVE ne voyait AUCUN établissement
+-- → impossible de lister les établissements pour en demander l'accès (bug E2E découvert
+-- sur /acces-etablissements → "Aucun établissement disponible").
 --
--- FIX : ajouter OR is_system() à Etablissement_select pour permettre au backend de
--- lire les établissements lors des vérifications système (ListAuthorizedEtablissements,
--- et tout autre JOIN futur sur Etablissement depuis un contexte system-worker).
+-- FIX :
+-- 1. Un ADMIN (propriétaire PaaS) voit TOUS les établissements (is_admin() sans condition
+--    d'accès). La restriction d'accès aux DONNÉES reste assurée par les policies RLS des
+--    tables métier (User, Filiere, Epreuve…) via admin_has_etablissement_access().
+-- 2. is_system() permet au backend de lire les établissements pour les vérifications
+--    système (ListAuthorizedEtablissements, etc.).
+-- 3. (NOT is_admin()) AND own etab : un RESPONSABLE/ENSEIGNANT/ÉTUDIANT voit son établissement.
+-- 4. TO public : la policy s'applique à sect_app (pas seulement neondb_owner).
 
 DROP POLICY IF EXISTS "Etablissement_select" ON "Etablissement";
 CREATE POLICY "Etablissement_select" ON "Etablissement"
     FOR SELECT TO public
     USING (
         is_system()
-        OR (is_admin() AND admin_has_etablissement_access(id))
+        OR is_admin()
         OR ((NOT is_admin()) AND (id = current_etablissement_id()))
     );
