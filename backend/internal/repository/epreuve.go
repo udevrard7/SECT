@@ -379,9 +379,17 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                         // Filiere. Corrige l'affichage du nom/code UE dans les cartes /epreuves
                         // et rend la duplication robuste.
                         query = fmt.Sprintf(`SELECT %s, u."id", u."name", u."email", f."id", f."nom", f."code", ue."id", ue."nom", ue."code", ue."niveau" FROM "Epreuve" LEFT JOIN "User" u ON u."id" = "Epreuve"."enseignantId" LEFT JOIN "Filiere" f ON f."id" = "Epreuve"."filiereId" LEFT JOIN "UniteEnseignement" ue ON ue."id" = "Epreuve"."uniteEnseignementId" %s ORDER BY "Epreuve"."dateDebut" DESC%s`, columnsEpreuveQualified, whereClause, paginationSuffix)
-                        rows, err := tx.Query(ctx, query, args...)
-                        if err != nil {
-                                return fmt.Errorf("query epreuves: %w", err)
+                        // BUGFIX: si args est vide, ne pas passer args... (pgx Simple Protocol
+                        // peut comporter différemment avec args nil vs aucun args)
+                        var rows pgx.Rows
+                        var qerr error
+                        if len(args) > 0 {
+                                rows, qerr = tx.Query(ctx, query, args...)
+                        } else {
+                                rows, qerr = tx.Query(ctx, query)
+                        }
+                        if qerr != nil {
+                                return fmt.Errorf("query epreuves: %w", qerr)
                         }
                         defer rows.Close()
                         for rows.Next() {
