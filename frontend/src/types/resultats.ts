@@ -18,7 +18,9 @@ export interface ExamStats {
   totalSessions: number
   soumis: number
   corriges: number
+  /** Moyenne normalisée sur /20 (pour comparaison cross-exam) */
   moyenne: number
+  /** Médiane normalisée sur /20 */
   mediane: number
   min: number
   max: number
@@ -26,6 +28,10 @@ export interface ExamStats {
   noteTotal?: number
   moyennePct?: number
   medianePct?: number
+  /** Moyenne brute (sur le barème d'origine, ex: /60) — pour affichage contextuel */
+  moyenneBrute?: number
+  /** Médiane brute (sur le barème d'origine) */
+  medianeBrute?: number
 }
 
 /** Détail par question stocké dans Resultat.detailParQuestion */
