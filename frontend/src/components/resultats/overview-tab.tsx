@@ -147,7 +147,10 @@ export function OverviewTab({ data }: OverviewTabProps) {
             ) : (
               <ScrollArea className="max-h-[400px]">
                 <div className="space-y-2 pr-2">
-                  {topQuestions.map((q, idx) => (
+                  {topQuestions.map((q, idx) => {
+                    // Format tauxReussite: max 1 décimale, éviter nombres trop longs
+                    const tauxFmt = Math.round(q.tauxReussite * 10) / 10
+                    return (
                     <div
                       key={`${q.epreuveId}-${q.questionIndex}`}
                       className="rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50"
@@ -155,38 +158,39 @@ export function OverviewTab({ data }: OverviewTabProps) {
                       <div className="flex items-start gap-3">
                         <div
                           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                          style={{ backgroundColor: getBarColor((q.tauxReussite / 100) * 20) }}
+                          style={{ backgroundColor: getBarColor((tauxFmt / 100) * 20) }}
                         >
                           {idx + 1}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px]">
+                            <Badge variant="outline" className="text-[10px] shrink-0">
                               {q.type}
                             </Badge>
-                            <span className="truncate text-xs text-muted-foreground">
+                            <span className="truncate text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                               {q.epreuveTitre}
                             </span>
                           </div>
-                          <p className="mt-1 line-clamp-2 text-sm">{q.enonce}</p>
+                          <p className="mt-1 line-clamp-2 text-sm break-words overflow-hidden">{q.enonce}</p>
                           <div className="mt-2 flex items-center gap-2">
-                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                               <div
                                 className="h-full rounded-full"
                                 style={{
-                                  width: `${q.tauxReussite}%`,
-                                  backgroundColor: getBarColor((q.tauxReussite / 100) * 20),
+                                  width: `${tauxFmt}%`,
+                                  backgroundColor: getBarColor((tauxFmt / 100) * 20),
                                 }}
                               />
                             </div>
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              {q.tauxReussite}% · {q.count} rep.
+                            <span className="shrink-0 text-xs font-semibold font-mono tabular-nums text-muted-foreground">
+                              {tauxFmt}% · {q.count} rep.
                             </span>
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </ScrollArea>
             )}
@@ -252,7 +256,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
                               : 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
                           }
                         >
-                          {e.tauxReussite}%
+                          {Math.round(e.tauxReussite * 10) / 10}%
                         </Badge>
                       </td>
                     </tr>
