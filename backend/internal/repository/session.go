@@ -1131,18 +1131,25 @@ func sortPerfByType(p []domain.PerformanceParType) {
         }
 }
 
-// GetEpreuveNoteTotal récupère le noteTotal d'une épreuve (SCORES-NORM-2).
-// P2-R7 : GetEpreuveNoteTotal utilise maintenant une tx avec RLS off
-// (au lieu de pool.QueryRow direct qui était bloqué par RLS sans claims).
+// GetEpreuveNoteTotal récupère le noteTotal d'une épreuve.
+//
+// BUGFIX (RESULTATS-RLS-2) : l'ancienne implémentation ouvrait une transaction
+// SANS poser les claims RLS (commentaire "RLS off" était faux). Or RLS est activé
+// sur Epreuve → la query retournait 0 ligne → err → fallback à 20.0 → les scores
+// affichaient "/20" au lieu de "/60" dans l'onglet "Par épreuve".
+//
+// Correction : utilise db.WithTx avec les claims extraits du context (posés par
+// le middleware Auth). RLS permet alors à l'enseignant de lire ses propres épreuves.
 func (r *ResultatRepository) GetEpreuveNoteTotal(ctx context.Context, epreuveID string) (float64, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return 20.0, nil
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return 20.0, nil // pas de claims → fallback (ne devrait pas arriver)
         }
-        defer tx.Rollback(ctx)
 
         var noteTotal float64
-        err = tx.QueryRow(ctx, `SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, epreuveID).Scan(&noteTotal)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `SELECT "noteTotal" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, epreuveID).Scan(&noteTotal)
+        })
         if err != nil {
                 return 20.0, nil // fallback à 20 si non trouvé
         }
