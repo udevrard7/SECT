@@ -343,6 +343,12 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                 }
 
                 var query string
+
+                // DEBUG: test simple count to see if it's the LEFT JOINs causing the issue
+                var debugSimple int
+                _ = tx.QueryRow(ctx, fmt.Sprintf(`SELECT count(*)::int FROM "Epreuve" %s`, whereClause), args...).Scan(&debugSimple)
+                fmt.Printf("DEBUG epreuve repo: simple count=%d, args=%v, where=%s\n", debugSimple, args, whereClause)
+
                 if params.Select == "summary" {
                         // Format léger pour les dropdowns
                         query = fmt.Sprintf(`SELECT "id", "titre", "dateDebut", "dateFin", "statut", "noteTotal" FROM "Epreuve" %s ORDER BY "dateDebut" DESC%s`, whereClause, paginationSuffix)
