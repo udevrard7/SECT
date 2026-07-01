@@ -28,11 +28,12 @@ import {
   Settings2,
   Zap,
   HeartPulse,
-  Timer,
   ToggleLeft,
   ToggleRight,
   MessageSquare,
   ChevronDown,
+  Sparkles,
+  type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -44,16 +45,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
-import { PulseSkeleton } from '@/components/ds'
+import { StatCard, ProgressRing, EntityCard, PulseSkeleton, GlassModal } from '@/components/ds'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -112,7 +105,7 @@ interface ServiceHealth {
   uptime: number
   avgResponseTime: number
   lastIncident: string | null
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
 }
 
 // Bug B2 (audit monitoring 2025) : types pour le healthcheck backend réel
@@ -227,12 +220,12 @@ const STATUS_CONFIG: Record<MonitoringEvent['statut'], { label: string; color: s
   },
   IGNORE: {
     label: 'Ignoré',
-    color: 'text-gray-600',
-    bg: 'bg-gray-100',
-    border: 'border-gray-200',
-    darkBg: 'dark:bg-gray-800',
-    darkColor: 'dark:text-gray-400',
-    darkBorder: 'dark:border-gray-700',
+    color: 'text-muted-foreground',
+    bg: 'bg-muted',
+    border: 'border-border',
+    darkBg: 'dark:bg-muted/80',
+    darkColor: 'dark:text-muted-foreground',
+    darkBorder: 'dark:border-border',
   },
 }
 
@@ -303,76 +296,7 @@ function getTimeAgo(dateStr: string): string {
   return `Il y a ${diffDays}j`
 }
 
-// ─── Circular Health Gauge Component ───
-
-function HealthGauge({ score, size = 180 }: { score: number; size?: number }) {
-  const strokeWidth = 12
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const progress = (score / 100) * circumference
-  const center = size / 2
-
-  const getColor = (s: number) => {
-    if (s >= 80) return { stroke: '#10b981', text: 'text-success-text', label: 'Excellent' }
-    if (s >= 60) return { stroke: '#f59e0b', text: 'text-warning', label: 'Correct' }
-    if (s >= 40) return { stroke: '#f97316', text: 'text-warning', label: 'Dégradé' }
-    return { stroke: '#ef4444', text: 'text-destructive', label: 'Critique' }
-  }
-
-  const colorConfig = getColor(score)
-
-  return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width={size} height={size} className="transform -rotate-90">
-        {/* Background circle */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={strokeWidth}
-          className="text-muted/30"
-        />
-        {/* Progress circle */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={colorConfig.stroke}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference - progress}
-          strokeLinecap="round"
-          className="transition-all duration-1000 ease-out"
-        />
-        {/* Glow effect */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={colorConfig.stroke}
-          strokeWidth={strokeWidth + 4}
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference - progress}
-          strokeLinecap="round"
-          opacity="0.15"
-          className="transition-all duration-1000 ease-out"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-4xl font-bold ${colorConfig.text} font-mono tabular-nums`}>{score}
-        </span>
-        <span className="text-xs text-muted-foreground mt-0.5">/ 100</span>
-        <span className={`text-xs font-medium mt-1 ${colorConfig.text}`}>
-          {colorConfig.label}
-        </span>
-      </div>
-    </div>
-  )
-}
+// ─── HealthGauge supprimé : remplacé par ProgressRing (Design System Savane) ───
 
 // ─── Severity Badge ───
 
@@ -419,54 +343,40 @@ function StatutBadge({ statut }: { statut: MonitoringEvent['statut'] }) {
 
 // ─── Service Health Card ───
 
-function ServiceHealthCard({ service }: { service: ServiceHealth }) {
+function ServiceHealthCard({ service, index = 0 }: { service: ServiceHealth; index?: number }) {
   const statusConfig = SERVICE_STATUS_CONFIG[service.status]
-  const Icon = service.icon
+  const statusVariant: 'success' | 'warning' | 'danger' =
+    service.status === 'OPERATIONNEL' ? 'success' : service.status === 'DEGRADE' ? 'warning' : 'danger'
 
   return (
-    <Card className={`${statusConfig.borderColor} ${statusConfig.darkBorderColor} transition-shadow hover:shadow-md`}>
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${statusConfig.bgColor} ${statusConfig.darkBgColor}`}>
-              <Icon className={`h-4.5 w-4.5 ${statusConfig.textColor} ${statusConfig.darkTextColor}`} />
-            </div>
-            <div>
-              <h4 className="text-sm font-semibold leading-tight">{service.name}</h4>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className={`h-2 w-2 rounded-full ${statusConfig.dotColor} ${service.status === 'DEGRADE' ? 'animate-pulse' : ''}`} />
-                <span className={`text-xs font-medium ${statusConfig.textColor} ${statusConfig.darkTextColor}`}>
-                  {statusConfig.label}
-                </span>
-              </div>
-            </div>
-          </div>
+    <EntityCard
+      title={service.name}
+      subtitle={TYPE_LABELS[service.type]}
+      thumbnailIcon={service.icon}
+      badge={{ label: statusConfig.label, variant: statusVariant }}
+      index={index}
+    >
+      <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <p className="text-muted-foreground mb-0.5">Uptime</p>
+          <p className={`font-semibold font-mono tabular-nums ${service.uptime >= 99 ? 'text-success-text' : service.uptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
+            {service.uptime.toFixed(2)}%
+          </p>
         </div>
-
-        <Separator className="my-3" />
-
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <p className="text-muted-foreground mb-0.5">Uptime</p>
-            <p className={`font-semibold ${service.uptime >= 99 ? 'text-success-text' : service.uptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
-              {service.uptime.toFixed(2)}%
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-foreground mb-0.5">Temps rép. moyen</p>
-            <p className={`font-semibold ${service.avgResponseTime <= 200 ? 'text-success-text' : service.avgResponseTime <= 500 ? 'text-warning' : 'text-destructive'}`}>
-              {service.avgResponseTime}ms
-            </p>
-          </div>
-          <div className="col-span-2">
-            <p className="text-muted-foreground mb-0.5">Dernier incident</p>
-            <p className="font-medium text-xs">
-              {service.lastIncident ? getTimeAgo(service.lastIncident) : 'Aucun incident'}
-            </p>
-          </div>
+        <div>
+          <p className="text-muted-foreground mb-0.5">Temps rép. moyen</p>
+          <p className={`font-semibold font-mono tabular-nums ${service.avgResponseTime <= 200 ? 'text-success-text' : service.avgResponseTime <= 500 ? 'text-warning' : 'text-destructive'}`}>
+            {service.avgResponseTime}ms
+          </p>
         </div>
-      </CardContent>
-    </Card>
+        <div className="col-span-2">
+          <p className="text-muted-foreground mb-0.5">Dernier incident</p>
+          <p className="font-medium text-xs">
+            {service.lastIncident ? getTimeAgo(service.lastIncident) : 'Aucun incident'}
+          </p>
+        </div>
+      </div>
+    </EntityCard>
   )
 }
 
@@ -538,7 +448,7 @@ function AlertCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs gap-1 border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-900"
+                className="h-7 text-xs gap-1 border-border text-muted-foreground hover:bg-muted"
                 onClick={() => onIgnore(event)}
               >
                 <Ban className="h-3 w-3" />
@@ -742,12 +652,6 @@ export function MonitoringPage() {
       ? Math.max(0, 100 - (activeCriticalEvents.length * 5 + activeErrorEvents.length * 2))
       : 0
 
-  const avgResponseTime = healthData
-    ? Math.round(healthData.services.reduce((sum: number, s: ServiceStatus) => sum + s.latency, 0) / Math.max(1, healthData.services.length))
-    : events.length > 0
-      ? Math.round(events.filter((e) => e.duree !== null).reduce((sum, e) => sum + (e.duree ?? 0), 0) / Math.max(1, events.filter((e) => e.duree !== null).length))
-      : 0
-
   // ─── Computed: service health from real backend healthcheck ───
   const computeServiceHealth = useCallback((): ServiceHealth[] => {
     // Bug B2 fix : utilise les vraies données du backend si disponibles
@@ -764,7 +668,7 @@ export function MonitoringPage() {
         return {
           name: s.name,
           type: s.name.includes('Base') ? 'DATABASE' : s.name.includes('Auth') ? 'AUTH' : s.name.includes('éval') ? 'EVALUATION' : s.name.includes('Paiement') ? 'PAYMENT' : s.name.includes('Proctoring') ? 'SYSTEM' : 'API',
-          status: s.status,
+          status: s.status as ServiceHealth['status'],
           uptime: parseFloat(s.uptime) || 0,
           avgResponseTime: s.latency,
           lastIncident: s.lastError ? s.lastCheck : null,
@@ -819,16 +723,6 @@ export function MonitoringPage() {
   }, [events])
 
   const serviceHealths = computeServiceHealth()
-
-  // ─── Computed: platform health score ───
-  const platformHealthScore = Math.round(
-    serviceHealths.reduce((acc, s) => {
-      let score = s.uptime
-      if (s.status === 'DEGRADE') score = Math.min(score, 75)
-      if (s.status === 'INDISPONIBLE') score = Math.min(score, 30)
-      return acc + score
-    }, 0) / serviceHealths.length
-  )
 
   // ─── Computed: active alerts (sorted by priority) ───
   const priorityOrder: Record<MonitoringEvent['severite'], number> = { CRITICAL: 0, ERROR: 1, WARNING: 2, INFO: 3 }
@@ -946,116 +840,93 @@ export function MonitoringPage() {
 
   return (
     <div className="space-y-6">
-      {/* ─── Header ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ds-kente-pattern -mx-4 -mt-4 rounded-lg px-4 py-4 sm:-mx-6 sm:px-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2 font-display">
-            <Activity className="h-7 w-7 text-success-text" />
-            Monitoring & Santé Plateforme
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Surveillance en temps réel des services et événements système
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Switch
-              id="auto-refresh"
-              checked={autoRefresh}
-              onCheckedChange={setAutoRefresh}
-              className="data-[state=checked]:bg-success"
-            />
-            <Label htmlFor="auto-refresh" className="text-xs text-muted-foreground cursor-pointer">
-              Auto-refresh 30s
-            </Label>
+      {/* ═══ Header avec bande kente + motif savane ═══ */}
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6">
+        <div className="ds-kente-pattern border-b border-border bg-card">
+          <div className="ds-kente-strip" aria-hidden="true" />
+          <div className="px-4 py-5 sm:px-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2.5">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary-text">
+                    <Activity className="h-6 w-6" />
+                  </span>
+                  Monitoring plateforme
+                  <Sparkles className="h-4 w-4 text-gold" aria-hidden="true" />
+                </h1>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  Surveillance en temps réel des services et événements système
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch
+                    id="auto-refresh"
+                    checked={autoRefresh}
+                    onCheckedChange={setAutoRefresh}
+                    className="data-[state=checked]:bg-success"
+                  />
+                  <Label htmlFor="auto-refresh" className="text-xs text-muted-foreground cursor-pointer">
+                    Auto-refresh 30s
+                  </Label>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => { void handleManualRefresh() }}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                  Actualiser
+                </Button>
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  Dernière màj : {lastRefresh.toLocaleTimeString('fr-FR')}
+                </span>
+              </div>
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => { void handleManualRefresh() }}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
-            Dernière màj : {lastRefresh.toLocaleTimeString('fr-FR')}
-          </span>
         </div>
       </div>
 
-      {/* ─── Health Status Cards ─── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Uptime Card */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <HeartPulse className="h-5 w-5 text-success-text" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Uptime</p>
-              <div className="flex items-center gap-2">
-                <p className="text-xl font-bold font-mono tabular-nums">{uptimePercentage.toFixed(2)}%</p>
-                <span className={`h-2.5 w-2.5 rounded-full ${uptimePercentage >= 99 ? 'bg-success' : uptimePercentage >= 95 ? 'bg-warning' : 'bg-destructive'}`} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Response Time Card */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-              <Timer className="h-5 w-5 text-success-text" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Temps de réponse moyen</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{avgResponseTime}
-                <span className="text-sm font-normal text-muted-foreground ml-0.5">ms</span>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Active Errors Card */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-              <XCircle className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Erreurs actives</p>
-              <div className="flex items-center gap-2">
-                <p className="text-xl font-bold font-mono tabular-nums">{stats.errorCount + stats.criticalCount}</p>
-                <div className="flex gap-1 text-[10px]">
-                  {stats.criticalCount > 0 && (
-                    <Badge className="bg-secondary/10 text-secondary border-secondary/30 text-[10px] px-1 py-0 h-4">
-                      {stats.criticalCount} critique{stats.criticalCount > 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                  {stats.errorCount > 0 && (
-                    <Badge className="bg-destructive/10 text-destructive border-destructive/30 text-[10px] px-1 py-0 h-4">
-                      {stats.errorCount} erreur{stats.errorCount > 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Critical Events Card */}
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/10">
-              <AlertOctagon className="h-5 w-5 text-secondary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Événements critiques</p>
-              <p className="text-xl font-bold font-mono tabular-nums">{stats.criticalCount}</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ═══ KPI StatCards (Design System Savane) ═══ */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Services opérationnels"
+          value={healthData?.healthyCount ?? 0}
+          suffix={`/ ${healthData?.totalCount ?? 6}`}
+          icon={HeartPulse}
+          accent="success"
+          loading={healthQuery.isLoading}
+          index={0}
+          hint={`${healthData?.healthyCount ?? 0} sur ${healthData?.totalCount ?? 6} services OK`}
+        />
+        <StatCard
+          label="Événements actifs"
+          value={stats.activeCount}
+          icon={Activity}
+          accent="warning"
+          loading={isLoading}
+          index={1}
+          hint="Nécessitent attention"
+        />
+        <StatCard
+          label="Critiques"
+          value={stats.criticalCount}
+          icon={AlertOctagon}
+          accent="danger"
+          loading={isLoading}
+          index={2}
+          hint="Action urgente requise"
+        />
+        <StatCard
+          label="Erreurs"
+          value={stats.errorCount}
+          icon={XCircle}
+          accent="secondary"
+          loading={isLoading}
+          index={3}
+          hint="Erreurs actives"
+        />
       </div>
 
       {/* ─── Main Tabs ─── */}
@@ -1154,7 +1025,7 @@ export function MonitoringPage() {
 
           {/* Empty state */}
           {!isLoading && filteredEvents.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
+            <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-xl border border-dashed py-16 relative overflow-hidden">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
                 <Activity className="h-10 w-10 text-success-text" />
               </div>
@@ -1240,7 +1111,7 @@ export function MonitoringPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[40px] font-display">
+                      <TableHead className="w-[40px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
                         <Checkbox
                           checked={
                             selectableEvents.length === 0
@@ -1256,21 +1127,21 @@ export function MonitoringPage() {
                           disabled={selectableEvents.length === 0}
                         />
                       </TableHead>
-                      <TableHead className="w-[100px] font-display">Type</TableHead>
-                      <TableHead className="w-[120px] font-display">Sévérité</TableHead>
-                      <TableHead className="font-display">Message</TableHead>
-                      <TableHead className="w-[110px] font-display">Source</TableHead>
-                      <TableHead className="w-[90px] font-display">Durée</TableHead>
-                      <TableHead className="w-[90px] font-display">Statut</TableHead>
-                      <TableHead className="w-[130px] font-display">Créé le</TableHead>
-                      <TableHead className="w-[100px] text-right font-display">Actions</TableHead>
+                      <TableHead className="w-[100px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Type</TableHead>
+                      <TableHead className="w-[120px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Sévérité</TableHead>
+                      <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Message</TableHead>
+                      <TableHead className="w-[110px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Source</TableHead>
+                      <TableHead className="w-[90px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Durée</TableHead>
+                      <TableHead className="w-[90px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Statut</TableHead>
+                      <TableHead className="w-[130px] text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Créé le</TableHead>
+                      <TableHead className="w-[100px] text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredEvents.map((event) => (
                       <TableRow
                         key={event.id}
-                        className="group"
+                        className={`group hover:bg-accent/50 transition-colors ${selectedIds.has(event.id) ? 'bg-primary/5' : ''}`}
                         data-selected={selectedIds.has(event.id)}
                       >
                         <TableCell>
@@ -1332,7 +1203,7 @@ export function MonitoringPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-900"
+                                  className="h-8 w-8 p-0 text-muted-foreground hover:bg-muted"
                                   onClick={() => setIgnoreTarget(event)}
                                   title="Ignorer"
                                 >
@@ -1350,7 +1221,7 @@ export function MonitoringPage() {
                               </span>
                             )}
                             {event.statut === 'IGNORE' && (
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Ban className="h-3 w-3" />
                                 Ignoré
                               </span>
@@ -1382,7 +1253,7 @@ export function MonitoringPage() {
           {/* Platform Health Score + Summary */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Health Gauge Card */}
-            <Card className="lg:col-span-1">
+            <Card className="lg:col-span-1 ds-kente-top">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-lg font-display">
                   <HeartPulse className="h-5 w-5 text-success-text" />
@@ -1398,7 +1269,14 @@ export function MonitoringPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-success-text" />
                   </div>
                 ) : (
-                  <HealthGauge score={platformHealthScore} size={180} />
+                  <ProgressRing
+                    value={uptimePercentage}
+                    size={180}
+                    strokeWidth={14}
+                    accent={healthData && healthData.healthyCount === healthData.totalCount ? 'success' : 'warning'}
+                    sublabel={`${healthData?.healthyCount ?? 0}/${healthData?.totalCount ?? 6} services`}
+                    showPercent
+                  />
                 )}
                 <div className="mt-4 grid grid-cols-3 gap-4 w-full text-center">
                   <div>
@@ -1443,8 +1321,8 @@ export function MonitoringPage() {
                     </Card>
                   ))
                 ) : (
-                  serviceHealths.map((service) => (
-                    <ServiceHealthCard key={service.type} service={service} />
+                  serviceHealths.map((service, i) => (
+                    <ServiceHealthCard key={service.type} service={service} index={i} />
                   ))
                 )}
               </div>
@@ -1595,56 +1473,17 @@ export function MonitoringPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ─── Resolve Event Dialog ─── */}
-      <Dialog
+      {/* ─── Resolve Event Dialog (GlassModal DS) ─── */}
+      <GlassModal
         open={!!resolveTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setResolveTarget(null)
-            setResolveNotes('')
-          }
+        onClose={() => {
+          setResolveTarget(null)
+          setResolveNotes('')
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success-text" />
-              Résoudre l&apos;événement
-            </DialogTitle>
-            <DialogDescription>
-              Marquer cet événement comme résolu et ajouter des notes si nécessaire.
-            </DialogDescription>
-          </DialogHeader>
-
-          {resolveTarget && (
-            <div className="space-y-4">
-              {/* Event summary */}
-              <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <TypeBadge type={resolveTarget.type} />
-                  <SeverityBadge severite={resolveTarget.severite} />
-                </div>
-                <p className="text-sm">{resolveTarget.message}</p>
-                {resolveTarget.source && (
-                  <p className="text-xs text-muted-foreground">Source : {resolveTarget.source}</p>
-                )}
-              </div>
-
-              {/* Resolution notes */}
-              <div className="space-y-2">
-                <Label htmlFor="resolve-notes">Notes de résolution (optionnel)</Label>
-                <Textarea
-                  id="resolve-notes"
-                  placeholder="Décrivez la résolution ou les actions entreprises..."
-                  value={resolveNotes}
-                  onChange={(e) => setResolveNotes(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 sm:gap-0">
+        title="Résoudre l'événement"
+        description="Marquer cet événement comme résolu et ajouter des notes si nécessaire."
+        footer={
+          <>
             <Button
               variant="outline"
               onClick={() => {
@@ -1655,7 +1494,7 @@ export function MonitoringPage() {
               Annuler
             </Button>
             <Button
-              className="bg-success hover:bg-success/90"
+              className="bg-success hover:bg-success/90 text-success-text ds-shimmer"
               onClick={handleResolve}
               disabled={isSubmitting}
             >
@@ -1671,9 +1510,37 @@ export function MonitoringPage() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        {resolveTarget && (
+          <div className="space-y-4">
+            {/* Event summary */}
+            <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+              <div className="flex items-center gap-2">
+                <TypeBadge type={resolveTarget.type} />
+                <SeverityBadge severite={resolveTarget.severite} />
+              </div>
+              <p className="text-sm">{resolveTarget.message}</p>
+              {resolveTarget.source && (
+                <p className="text-xs text-muted-foreground">Source : {resolveTarget.source}</p>
+              )}
+            </div>
+
+            {/* Resolution notes */}
+            <div className="space-y-2">
+              <Label htmlFor="resolve-notes">Notes de résolution (optionnel)</Label>
+              <Textarea
+                id="resolve-notes"
+                placeholder="Décrivez la résolution ou les actions entreprises..."
+                value={resolveNotes}
+                onChange={(e) => setResolveNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+        )}
+      </GlassModal>
 
       {/* ─── Ignore Event Confirmation ─── */}
       <AlertDialog
@@ -1685,7 +1552,7 @@ export function MonitoringPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <Ban className="h-5 w-5 text-gray-500" />
+              <Ban className="h-5 w-5 text-muted-foreground" />
               Ignorer l&apos;événement
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -1705,7 +1572,7 @@ export function MonitoringPage() {
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleIgnore}
-              className="bg-gray-600 hover:bg-gray-700"
+              className="bg-muted hover:bg-muted/80 ds-shimmer"
             >
               Ignorer
             </AlertDialogAction>
@@ -1750,7 +1617,7 @@ export function MonitoringPage() {
                 if (escalateTarget) handleEscalate(escalateTarget)
                 setEscalateTarget(null)
               }}
-              className="bg-warning hover:bg-warning/90"
+              className="bg-warning hover:bg-warning/90 ds-shimmer"
             >
               Escalader au niveau critique
             </AlertDialogAction>
@@ -1798,8 +1665,8 @@ export function MonitoringPage() {
             <AlertDialogAction
               className={
                 bulkAction === 'resoudre'
-                  ? 'bg-success hover:bg-success/90 text-success-text'
-                  : 'bg-warning hover:bg-warning/90'
+                  ? 'bg-success hover:bg-success/90 text-success-text ds-shimmer'
+                  : 'bg-warning hover:bg-warning/90 ds-shimmer'
               }
               disabled={bulkSubmitting}
               onClick={handleBulkAction}
