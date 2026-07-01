@@ -10031,3 +10031,42 @@ Stage Summary:
 - **0 régression auth** : les routes protégées (`/dashboard`, `/epreuves`, etc.) restent gardées par le middleware ; les pages publiques (`/`, `/login`, `/invitation`, `/verify`, `/offline`) continuent de passer.
 - **0 CPU Edge préservé** : l'exclusion se fait au niveau du matcher (pas de code exécuté pour les assets), conforme à l'objectif de perf du proxy.
 - **Commit + push** → Vercel auto-deploy → re-test images en production.
+
+---
+Task ID: SECT-FILIERES-REFONTE-SAVANE
+Agent: frontend-styling-expert (subagent)
+Task: Refonte module /filieres avec identité Savane EdTech
+
+Work Log:
+- Refonte complète de `frontend/src/components/filieres/filieres-page.tsx` (1423 → 1750 lignes). Fichier unique conservé (pas de sous-composants séparés).
+- **Types alignés sur le backend** : ajout de `responsableId: string | null` et `updatedAt: string` à l'interface `FiliereItem`. Extraction de l'interface `DeleteDependencies` (etudiantsCount/uesCount/epreuvesCount/canDelete).
+- **Source de vérité `_count.etudiants`** : utilisée partout (stats, card view, table view, detail). `nbEtudiants` (statique/prévisionnel) affiché uniquement comme info secondaire "X prévus".
+- **Bulk PATCH response** : `data.updated` affiché dans le toast (peut différer de `selectedIds.size`). Pattern `actionLabels[bulkActionDialog]` conservé.
+- **`canDelete` handling** : bouton de confirmation désactivé si `!deleteDependencies.canDelete`. Warning affiché avec dépendances (etudiants/epreuves/ues). Endpoint dédié `GET /api/filieres/{id}/dependencies` appelé à l'ouverture du dialog.
+- **Export CSV** : `GET /api/filieres/export` avec mêmes query params que la liste (search/etablissementId/actif/responsableId). Download via blob + URL.createObjectURL.
+- **Validation frontend** : `formNom.trim()` obligatoire avant soumission (toast.error si vide). `formEtablissementId` obligatoire aussi.
+- **Identité Savane EdTech appliquée** :
+  - Bande kente tricolore (`ds-kente-strip`) en haut du header (vert lime / terre cuite / or).
+  - Motif kente subtil (`ds-kente-pattern`) sur le fond du header, du formulaire create/edit, et du dialog de détails.
+  - Watermark kente (`ds-kente-watermark`) sur l'empty state.
+  - Bordure kente (`ds-kente-top`) sur les cards de loading et la table.
+  - Palette : `text-primary-text` (vert foncé WCAG AA), `bg-primary/10`, `text-secondary`, `text-gold`, `text-warning`, `text-info`, `text-destructive`.
+  - Icônes Lucide africaines/éducation : `GraduationCap` (filière), `Leaf` (actives = croissance/savane), `Sparkles` (or, auto-code), `Users`, `Building2`, `UserCheck`, `BookOpen`, `AlertTriangle`.
+- **Composants DS utilisés** :
+  - `StatCard` : 4 cartes (Total filières / Actives / Inactives / Étudiants) avec `loading={isLoading}` (skeleton intégré via prop), accents `primary`/`success`/`warning`/`info`, stagger d'animation Framer Motion.
+  - `EntityCard` : vue card par filière avec thumbnail `GraduationCap` (gradient `from-primary/10 to-secondary/10`), badge Actif/Inactif, children custom (checkbox, responsable, étudiants, description, actions).
+  - `PulseSkeleton` : états de chargement card view (skeleton aspect-video + body) et table view.
+  - `GlassModal` : dialog Create/Edit (size `lg`, footer avec boutons Annuler/Créer, body avec `ds-kente-pattern`).
+  - `AlertDialog` : dialogs Delete et Bulk (confirmations destructives — plus approprié que GlassModal).
+  - `Dialog` : dialog Detail (size `sm:max-w-3xl` — GlassModal plafonne à `max-w-2xl`, trop étroit pour la liste étudiants).
+- **Layout** : header edge-to-edge (`-mx-4 -mt-4 sm:-mx-6`) avec kente strip + pattern, stats grid responsive (`grid-cols-2 lg:grid-cols-4`), toolbar flex-wrap mobile-first, card view `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`, footer avec count + "Savane EdTech" branding.
+- **Responsive & accessibilité** : grilles adaptatives, labels `aria-label` sur tous les boutons icône (Voir/Modifier/Supprimer/Toggle), `focus-visible:ring` via DS, contraste WCAG AA (`text-primary-text` = vert foncé 7:1 sur blanc), boutons avec texte hidden sur mobile (`hidden sm:inline`).
+- **Lint** : `bun run lint` → 0 erreur, 0 warning sur le fichier refondu (1 warning préexistant dans `certificat-pdf-react.tsx`, non lié).
+- **TypeScript** : `bunx tsc --noEmit` → 0 erreur dans `filieres-page.tsx` (erreurs préexistantes dans autres fichiers : mes-epreuves-page, profil-page, programme-academique-page, badges-carousel, use-api — non liées à cette refonte).
+
+Stage Summary:
+- **Module `/filieres` refondu** avec identité "Savane EdTech" : palette africaine (vert lime / terre cuite / or / bleu nuit) + motif kente subtil sur header, cards, dialogs et empty state.
+- **Composants DS intégrés** : `StatCard` (4 stats avec loading skeleton), `EntityCard` (vue card avec thumbnail GraduationCap + badge), `PulseSkeleton` (états de chargement), `GlassModal` (dialog create/edit). `AlertDialog` et `Dialog` conservés pour confirmations destructives et detail large.
+- **Backend matché 100%** : types `responsableId` + `updatedAt` ajoutés, `_count.etudiants` source de vérité, `updated` count du bulk affiché, `canDelete` désactive le bouton de confirmation, endpoint `/dependencies` appelé, tous les CRUD/bulk/export/dependencies fonctionnels.
+- **Fichier unique** : 1750 lignes, pas de sous-composants séparés, hooks existants conservés (`useQuery`, `useQueryClient`, `useState`, `useMemo`, `useEffect`), `fetch()` pur (pas de lib HTTP).
+- **Lint clean** : 0 erreur / 0 warning sur le fichier. TypeScript clean sur le fichier.
