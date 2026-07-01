@@ -203,7 +203,9 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 return
         }
 
-        // 8. TTS succès → upload MP3 sur R2.
+        // 8. TTS succès → upload audio sur R2.
+        // KOKORO-TTS-1 : le format dépend du provider (WAV pour HuggingFace/Kokoro,
+        // MP3 pour DashScope/OpenAI). ttsAudioFormat() retourne l'extension + content-type.
         if w.storage == nil {
                 w.logger.Warn("R2 storage not configured, keeping script only",
                         "audioId", job.AudioID,
@@ -212,15 +214,16 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
                 return
         }
 
-        r2Key := fmt.Sprintf("audio/%s.mp3", job.AudioID)
+        audioExt, audioContentType := ttsAudioFormat(ttsProvider)
+        r2Key := fmt.Sprintf("audio/%s%s", job.AudioID, audioExt)
         _, err = w.storage.Upload(ctx, domain.StorageObject{
                 Key:         r2Key,
                 Content:     audioBytes,
-                ContentType: "audio/mpeg",
+                ContentType: audioContentType,
                 ContentLength: int64(len(audioBytes)),
         })
         if err != nil {
-                w.logger.Warn("Failed to upload MP3 to R2, keeping script only",
+                w.logger.Warn("Failed to upload audio to R2, keeping script only",
                         "error", err,
                         "audioId", job.AudioID,
                 )

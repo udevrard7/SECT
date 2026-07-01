@@ -199,11 +199,16 @@ func callAIProviderShared(ctx context.Context, provider *aiProviderConfig, messa
 
 // callTTSProviderShared tente une synthèse audio (TTS) via l'endpoint OpenAI-
 // compatible /audio/speech du provider IA actif. Retourne les bytes audio
-// (MP3) ou une erreur si le provider ne supporte pas le TTS.
+// (MP3 ou WAV selon le provider) ou une erreur si le provider ne supporte
+// pas le TTS.
 //
 // DASHSCOPE-AUDIO-1 : si provider.Provider == "DASHSCOPE", dispatch vers
 // callDashScopeTTS qui utilise l'API native /api/v1/services/audio/tts
 // (format de requête/réponse différent de /audio/speech).
+//
+// KOKORO-TTS-1 : si provider.Provider == "HUGGINGFACE", dispatch vers
+// callHuggingFaceTTS qui utilise le protocole Gradio 4 (POST + SSE + file
+// download). Le Space Pendrokar/Kokoro-TTS retourne du WAV (24kHz 16-bit).
 //
 // AUDIO-LEARNING-1 : le TTS est OPTIONNEL. Si le provider ne supporte pas
 // /audio/speech (ex: Mistral, Groq chat-only, OpenRouter sans modèle TTS),
@@ -220,6 +225,11 @@ func callAIProviderShared(ctx context.Context, provider *aiProviderConfig, messa
 func callTTSProviderShared(ctx context.Context, provider *aiProviderConfig, text string, logger *slog.Logger) ([]byte, error) {
         if len(text) == 0 {
                 return nil, fmt.Errorf("empty text")
+        }
+
+        // KOKORO-TTS-1 : dispatch Hugging Face (Gradio / Space Kokoro).
+        if strings.EqualFold(provider.Provider, "HUGGINGFACE") {
+                return callHuggingFaceTTS(ctx, provider, text, logger)
         }
 
         // DASHSCOPE-AUDIO-1 : dispatch selon le type de provider.
