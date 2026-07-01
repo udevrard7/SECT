@@ -181,25 +181,33 @@ export function OverviewTab({ data }: OverviewTabProps) {
                     return (
                       <div
                         key={`${q.epreuveId}-${q.questionIndex}`}
-                        className="rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50"
+                        className="overflow-hidden rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50"
                       >
-                        <div className="flex items-start gap-3">
+                        {/* BUGFIX (LAYOUT-OVERFLOW-1) : overflow-hidden sur la carte
+                            pour empêcher le texte de déborder vers la droite.
+                            gap-2.5 (au lieu de gap-3) pour gagner de l'espace horizontal
+                            sur tablette/mobile où le bug de superposition apparaissait. */}
+                        <div className="flex items-start gap-2.5">
                           <div
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white tabular-nums"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white tabular-nums sm:h-9 sm:w-9"
                             style={{ backgroundColor: getBarColor((tauxFmt / 100) * 20) }}
                           >
                             {idx + 1}
                           </div>
-                          <div className="min-w-0 flex-1">
+                          {/* min-w-0 + overflow-hidden : garantit que le contenu
+                              ne dépasse jamais la largeur disponible du flex item. */}
+                          <div className="min-w-0 flex-1 overflow-hidden">
                             <div className="flex items-center gap-2">
-                              <Badge variant="secondary" size="sm">
+                              <Badge variant="secondary" size="sm" className="shrink-0">
                                 {q.type}
                               </Badge>
                               <span className="truncate text-xs text-muted-foreground">
                                 {q.epreuveTitre}
                               </span>
                             </div>
-                            <p className="mt-1 line-clamp-2 break-words text-sm">{q.enonce}</p>
+                            {/* line-clamp-3 (au lieu de 2) pour les énoncés longs
+                                (certains font 200+ caractères). break-words + hyphens-auto. */}
+                            <p className="mt-1 line-clamp-3 break-words text-sm leading-relaxed hyphens-auto">{q.enonce}</p>
                             <div className="mt-2 flex items-center gap-2">
                               <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                                 <div
