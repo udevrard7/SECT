@@ -553,12 +553,15 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                 description="Moyenne /20 calculée par type (gère les 2 schémas de notation)"
                 icon={<Radar className="h-4 w-4 text-gold" />}
               >
+                {/* BUGFIX (LAYOUT-RADAR-2) : withCard={false} car le ChartCard
+                    parent fournit déjà la Card. Avant, ComparisonRadarChart rendait
+                    sa propre Card en plus → double Card empilée → superposition
+                    visuelle (titre/description/légende dupliqués). */}
                 <div className="h-64">
                   <ComparisonRadarChart
                     data={radarData}
                     height={256}
-                    title=""
-                    description=""
+                    withCard={false}
                   />
                 </div>
               </ChartCard>
