@@ -566,15 +566,17 @@ export function ChartCard({ title, description, icon, action, className, childre
   return (
     <Card className={className}>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
+        {/* BUGFIX (LAYOUT-OVERFLOW-2) : min-w-0 sur le conteneur flex + overflow-hidden
+            pour empêcher le titre/description de déborder horizontalement sur petit écran. */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <CardTitle className="flex items-center gap-2 text-base">
-              {icon}
-              {title}
+              {icon && <span className="shrink-0">{icon}</span>}
+              <span className="truncate">{title}</span>
             </CardTitle>
-            {description && <CardDescription className="mt-1">{description}</CardDescription>}
+            {description && <CardDescription className="mt-1 line-clamp-2 break-words">{description}</CardDescription>}
           </div>
-          {action}
+          {action && <div className="shrink-0">{action}</div>}
         </div>
       </CardHeader>
       <CardContent className="pt-0">{children}</CardContent>
