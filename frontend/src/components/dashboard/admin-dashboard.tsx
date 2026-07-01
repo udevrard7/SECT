@@ -1,7 +1,6 @@
 'use client'
 
-import { getGreeting } from '@/lib/micro-copy'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
 import {
@@ -9,18 +8,15 @@ import {
   CreditCard,
   TrendingUp,
   BarChart3,
-  Lock,
+  Sparkles,
+  LayoutDashboard,
   HeartPulse,
-  Eye,
   Shield,
-  CheckCircle2,
   Users,
   BookOpen,
   KeyRound,
   Loader2,
   ExternalLink,
-  Plus,
-  Zap,
   Activity,
   ArrowRight,
 } from 'lucide-react'
@@ -33,9 +29,8 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { PulseSkeleton, StatCardSkeletonGrid } from '@/components/ds'
+import { StatCard, ProgressRing, PulseSkeleton } from '@/components/ds'
 import {
   Dialog,
   DialogContent,
@@ -140,14 +135,6 @@ interface AdminStats {
   revenuTotalFactures: number
 }
 
-interface StatCardProps {
-  title: string
-  value: number | string
-  icon: React.ReactNode
-  accentColor: string
-  subtitle?: string
-}
-
 // ─── Constants ───
 
 const PLAN_COLORS: Record<string, string> = {
@@ -171,34 +158,6 @@ const STATUT_BG: Record<string, string> = {
   SUSPENDU: 'bg-destructive/15 text-destructive',
   EXPIRE: 'bg-muted text-muted-foreground',
   RESILIE: 'bg-destructive/25 text-destructive',
-}
-
-// ─── StatCard ───
-
-function StatCard({ title, value, icon, accentColor, subtitle }: StatCardProps) {
-  return (
-    <Card className="relative overflow-hidden border-l-4 border-l-primary">
-      <div
-        className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
-        style={{ backgroundColor: 'var(--primary)' }}
-      />
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardDescription className="text-sm font-medium">{title}</CardDescription>
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-lg"
-          style={{ backgroundColor: `${accentColor}18` }}
-        >
-          <div style={{ color: accentColor }}>{icon}</div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="text-2xl font-bold font-mono tabular-nums tracking-tight">{value}</div>
-        {subtitle && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
-        )}
-      </CardContent>
-    </Card>
-  )
 }
 
 // ─── Custom Pie Label ───
@@ -332,6 +291,24 @@ export function AdminDashboard() {
   const badges = badgesQuery.data?.badges ?? []
   const loading = statsQuery.isLoading
 
+  // Composite platform health score [0-100] — fusion unique des dimensions
+  // sécurité + activité (anciennement Score de sécurité = Score de santé plateforme).
+  const platformHealthScore = useMemo(() => {
+    if (!stats) return 0
+    let score = 100
+    // -5 par événement critique actif
+    score -= (stats.monitoringCriticalEvents ?? 0) * 5
+    // -2 par événement erreur actif
+    score -= (stats.monitoringErrorEvents ?? 0) * 2
+    // -10 si aucun établissement avec proctoring activé
+    if ((stats.nbEtablissementsProteges ?? 0) === 0) score -= 10
+    // -10 si aucune vérification d'identité
+    if ((stats.nbVerificationIdentite ?? 0) === 0) score -= 10
+    // -1 par autorisation en attente (backlog admin)
+    score -= (stats.nbAutorisationsEnAttente ?? 0) * 1
+    return Math.max(0, Math.min(100, score))
+  }, [stats])
+
   // Toast on stats fetch error (one-shot per error transition)
   useEffect(() => {
     if (statsQuery.isError) toast.error('Impossible de charger les statistiques')
@@ -412,90 +389,160 @@ export function AdminDashboard() {
     }))
   })()
 
-  // Security score (based on proctoring + identity verification coverage)
-  // Bug fix: utiliser Math.max(1, ...) pour éviter division par zéro → NaN%
-  const totalEtablissements = Math.max(1, stats?.nbEtablissements ?? 0)
-  const securityRatio = ((stats?.nbEtablissementsProteges ?? 0) / totalEtablissements) * 100
-  const avgSecurityScore = Math.min(100, Math.round(securityRatio * 0.6 + (stats?.nbVerificationIdentite ?? 0) / totalEtablissements * 100 * 0.4))
-
   // Navigation helper
   const router = useRouter()
 
   return (
     <div className="space-y-6">
-      {/* ─── 1. Welcome Section ─── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 ds-kente-pattern rounded-lg px-4 py-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl">
-            {getGreeting()}, {user?.name ?? 'Administrateur'}
-          </h1>
-          <Badge
-            className="w-fit bg-success text-success-foreground hover:bg-success/90"
-          >
-            Propriétaire SaaS
-          </Badge>
+      {/* ═══ Header Savane canonique (pattern filières) ═══ */}
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6">
+        <div className="ds-kente-pattern border-b border-border bg-card">
+          <div className="ds-kente-strip" aria-hidden="true" />
+          <div className="px-4 py-5 sm:px-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-display font-bold tracking-tight md:text-3xl flex items-center gap-2.5">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary-text">
+                    <LayoutDashboard className="h-6 w-6" />
+                  </span>
+                  Tableau de bord
+                  <Sparkles className="h-4 w-4 text-gold" aria-hidden="true" />
+                </h1>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  Vue d&apos;ensemble de la santé et de l&apos;activité de votre plateforme
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+                    queryClient.invalidateQueries({ queryKey: ['etablissement-access'] })
+                    queryClient.invalidateQueries({ queryKey: ['admin-badges'] })
+                  }}
+                  disabled={loading}
+                  aria-label="Rafraîchir les données du tableau de bord"
+                >
+                  <Activity className={`h-4 w-4 ${loading ? 'animate-pulse' : ''}`} />
+                  <span className="hidden sm:inline">Rafraîchir</span>
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
-        <Lock className="h-4 w-4 text-warning" />
-        <p className="text-sm text-warning">
-          🔒 Accès aux données des établissements soumis à autorisation explicite
-        </p>
-      </div>
 
-      {/* ─── 2. KPI Row (6 cards) ─── */}
-      {loading ? (
-        <StatCardSkeletonGrid count={6} />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {/* ═══ Layout asymétrique : 5 KPIs (gauche, 2/3) + Score santé (droite, 1/3) ═══ */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Colonne gauche : 5 KPI cards épurées avec StatCard DS */}
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <StatCard
-            title="Revenus mensuels"
-            value={`${(stats?.revenuMensuel ?? 0).toLocaleString('fr-FR')} FCFA`}
-            icon={<TrendingUp className="h-5 w-5" />}
-            accentColor="#10b981"
-            subtitle={`${(stats?.revenuAnnuel ?? 0).toLocaleString('fr-FR')} FCFA / an`}
-          />
-          <StatCard
-            title="Établissements actifs"
+            label="Établissements actifs"
             value={stats?.nbEtablissements ?? 0}
-            icon={<Building2 className="h-5 w-5" />}
-            accentColor="#f59e0b"
+            icon={Building2}
+            accent="primary"
+            loading={loading}
+            index={0}
+            hint={`${stats?.nbAbonnementsActifs ?? 0} abonnements actifs`}
           />
           <StatCard
-            title="Abonnements actifs"
-            value={stats?.nbAbonnementsActifs ?? 0}
-            icon={<CreditCard className="h-5 w-5" />}
-            accentColor="#14b8a6"
-            subtitle={`${stats?.nbAbonnementsEssai ?? 0} en essai`}
+            label="Revenus (FCFA)"
+            value={(stats?.revenuTotalFactures ?? 0).toLocaleString('fr-FR')}
+            icon={BarChart3}
+            accent="success"
+            loading={loading}
+            index={1}
+            hint={`${stats?.nbFacturesPayees ?? 0} factures payées`}
           />
           <StatCard
-            title="Revenus factures"
-            value={`${(stats?.revenuTotalFactures ?? 0).toLocaleString('fr-FR')} FCFA`}
-            icon={<BarChart3 className="h-5 w-5" />}
-            accentColor="#059669"
-            subtitle={`${stats?.nbFacturesPayees ?? 0} payées, ${stats?.nbFacturesEnAttente ?? 0} en attente`}
+            label="Abonnements essai"
+            value={stats?.nbAbonnementsEssai ?? 0}
+            icon={CreditCard}
+            accent="warning"
+            loading={loading}
+            index={2}
+            hint="Conversions à relancer"
           />
           <StatCard
-            title="Santé plateforme"
+            label="Événements actifs"
             value={stats?.monitoringActiveEvents ?? 0}
-            icon={<HeartPulse className="h-5 w-5" />}
-            accentColor="#0d9488"
-            subtitle={`${stats?.monitoringCriticalEvents ?? 0} critiques, ${stats?.monitoringErrorEvents ?? 0} erreurs`}
+            icon={Activity}
+            accent="danger"
+            loading={loading}
+            index={3}
+            hint={`${stats?.monitoringCriticalEvents ?? 0} critiques, ${stats?.monitoringErrorEvents ?? 0} erreurs`}
           />
           <StatCard
-            title="Autorisations actives"
-            value={stats?.nbAutorisationsActives ?? 0}
-            icon={<KeyRound className="h-5 w-5" />}
-            accentColor="#dc2626"
-            subtitle={`${stats?.nbAutorisationsEnAttente ?? 0} en attente`}
+            label="Autorisations en attente"
+            value={stats?.nbAutorisationsEnAttente ?? 0}
+            icon={KeyRound}
+            accent="secondary"
+            loading={loading}
+            index={4}
+            hint={`${stats?.nbAutorisationsActives ?? 0} actives`}
           />
         </div>
-      )}
 
-      {/* ─── Mes Succès (Badges) ─── */}
+        {/* Colonne droite : Santé plateforme (score unique fusionné) */}
+        <Card className="lg:col-span-1 ds-kente-top flex flex-col">
+          <CardHeader>
+            <CardTitle className="font-display tracking-tight flex items-center gap-2">
+              <HeartPulse className="h-5 w-5 text-success-text" />
+              Santé plateforme
+            </CardTitle>
+            <CardDescription>Score de sécurité global</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col items-center justify-center py-6">
+            {loading ? (
+              <PulseSkeleton className="h-40 w-40" variant="circle" />
+            ) : (
+              <>
+                <ProgressRing
+                  value={platformHealthScore}
+                  size={180}
+                  strokeWidth={14}
+                  accent={
+                    platformHealthScore >= 80
+                      ? 'success'
+                      : platformHealthScore >= 50
+                        ? 'warning'
+                        : 'danger'
+                  }
+                  showPercent
+                  sublabel={`${stats?.monitoringActiveEvents ?? 0} événements actifs`}
+                />
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    {platformHealthScore >= 80
+                      ? '✓ Plateforme en bonne santé'
+                      : platformHealthScore >= 50
+                        ? '⚠ Attention requise'
+                        : '⚠ Action urgente requise'}
+                  </p>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ═══ Section : Succès & badges ═══ */}
+      <div className="flex items-center gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
+          Succès & badges
+        </h2>
+        <div className="flex-1 h-px bg-border" />
+      </div>
       <BadgesCarousel badges={badges} />
 
-      {/* ─── 3. Revenue Chart + Plan Distribution (2-column) ─── */}
+      {/* ═══ Section : Activité commerciale ═══ */}
+      <div className="flex items-center gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
+          Activité commerciale
+        </h2>
+        <div className="flex-1 h-px bg-border" />
+      </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Revenue Trend */}
         <Card>
@@ -512,7 +559,7 @@ export function AdminDashboard() {
                 <PulseSkeleton className="h-56 w-full" />
               </div>
             ) : revenueTrendData.length === 0 ? (
-              <div className="flex h-72 flex-col items-center justify-center text-muted-foreground ds-kente-pattern rounded-lg">
+              <div className="flex h-72 flex-col items-center justify-center text-muted-foreground ds-kente-watermark rounded-lg">
                 <TrendingUp className="mb-2 h-10 w-10 opacity-30" />
                 <p className="text-sm">Aucune donnée de revenu disponible</p>
               </div>
@@ -564,7 +611,7 @@ export function AdminDashboard() {
                 <PulseSkeleton className="h-48 w-48" variant="circle" />
               </div>
             ) : planData.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center text-muted-foreground ds-kente-pattern rounded-lg">
+              <div className="flex h-64 flex-col items-center justify-center text-muted-foreground ds-kente-watermark rounded-lg">
                 <CreditCard className="mb-2 h-10 w-10 opacity-30" />
                 <p className="text-sm">Aucun abonnement enregistré</p>
               </div>
@@ -609,7 +656,13 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      {/* ─── 4. Établissements Overview (Card-based) ─── */}
+      {/* ═══ Section : Établissements ═══ */}
+      <div className="flex items-center gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-display">
+          Établissements
+        </h2>
+        <div className="flex-1 h-px bg-border" />
+      </div>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-display tracking-tight">
@@ -635,7 +688,7 @@ export function AdminDashboard() {
               ))}
             </div>
           ) : !stats?.etablissementsOverview || stats.etablissementsOverview.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center text-muted-foreground ds-kente-pattern rounded-lg">
+            <div className="flex h-48 flex-col items-center justify-center text-muted-foreground ds-kente-watermark rounded-lg">
               <Building2 className="mb-2 h-10 w-10 opacity-30" />
               <p className="text-sm">Aucun établissement enregistré</p>
             </div>
@@ -721,8 +774,7 @@ export function AdminDashboard() {
                         ) : (
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
+                            className="h-7 text-xs ds-shimmer"
                             disabled={accessRecords.some(
                               r => r.etablissementId === etab.id && r.statut === 'EN_ATTENTE'
                             )}
@@ -749,176 +801,7 @@ export function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* ─── 5. Quick Actions ─── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-            <Zap className="h-5 w-5 text-warning" />
-            Actions rapides
-          </CardTitle>
-          <CardDescription>Accès directs aux fonctionnalités clés</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Button
-              variant="outline"
-              className="h-auto flex-col gap-2 py-4 ds-lift"
-              onClick={() => router.push('/abonnements')}
-            >
-              <Plus className="h-5 w-5 text-warning" />
-              <span className="text-sm font-medium">Nouvelle souscription</span>
-              <span className="text-xs text-muted-foreground">Créer un établissement avec abonnement</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto flex-col gap-2 py-4 ds-lift"
-              onClick={() => router.push('/utilisateurs')}
-            >
-              <Users className="h-5 w-5 text-primary-text" />
-              <span className="text-sm font-medium">Voir les responsables</span>
-              <span className="text-xs text-muted-foreground">Gérer les comptes responsables</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto flex-col gap-2 py-4 ds-lift"
-              onClick={() => router.push('/acces-etablissements')}
-            >
-              <KeyRound className="h-5 w-5 text-destructive" />
-              <span className="text-sm font-medium">Accès & autorisations</span>
-              <span className="text-xs text-muted-foreground">Gérer les autorisations d&apos;accès</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ─── 6. Platform Health Card ─── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-display tracking-tight">
-            <HeartPulse className="h-5 w-5 text-destructive" />
-            Santé de la plateforme
-          </CardTitle>
-          <CardDescription>Indicateurs de sécurité et d&apos;activité globale</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <PulseSkeleton className="h-4 w-32" />
-                  <PulseSkeleton className="h-6 w-16" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              {/* Left column - metrics */}
-              <div className="space-y-4">
-                {/* Active establishments vs total */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
-                      <Building2 className="h-4 w-4 text-success-text" />
-                    </div>
-                    <span className="text-sm">Établissements actifs</span>
-                  </div>
-                  <Badge variant="outline" className="bg-success/10 text-success-text font-mono tabular-nums tracking-tight">
-                    {stats?.nbAbonnementsActifs ?? 0} / {stats?.nbEtablissements ?? 0}
-                  </Badge>
-                </div>
-                <Separator />
-
-                {/* Proctoring enabled */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10">
-                      <Shield className="h-4 w-4 text-destructive" />
-                    </div>
-                    <span className="text-sm">Proctoring activé</span>
-                  </div>
-                  <Badge variant="outline" className="bg-destructive/10 text-destructive font-mono tabular-nums tracking-tight">
-                    {stats?.nbEtablissementsProteges ?? 0}
-                  </Badge>
-                </div>
-                <Separator />
-
-                {/* Identity verification */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                      <Eye className="h-4 w-4 text-primary-text" />
-                    </div>
-                    <span className="text-sm">Vérification d&apos;identité</span>
-                  </div>
-                  <Badge variant="outline" className="bg-primary/10 text-primary-text font-mono tabular-nums tracking-tight">
-                    {stats?.nbVerificationIdentite ?? 0}
-                  </Badge>
-                </div>
-                <Separator />
-
-                {/* Average security score */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
-                      <Lock className="h-4 w-4 text-warning" />
-                    </div>
-                    <span className="text-sm">Score de sécurité moyen</span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={`font-mono tabular-nums tracking-tight ${
-                      avgSecurityScore >= 70
-                        ? 'bg-success/10 text-success-text'
-                        : avgSecurityScore >= 40
-                          ? 'bg-warning/10 text-warning'
-                          : 'bg-destructive/10 text-destructive'
-                    }`}
-                  >
-                    {avgSecurityScore}%
-                  </Badge>
-                </div>
-                <Separator />
-
-                {/* Trial accounts */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
-                      <CheckCircle2 className="h-4 w-4 text-warning" />
-                    </div>
-                    <span className="text-sm">En période d&apos;essai</span>
-                  </div>
-                  <Badge variant="outline" className="bg-warning/10 text-warning font-mono tabular-nums tracking-tight">
-                    {stats?.nbAbonnementsEssai ?? 0}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Right column - visual score */}
-              <div className="flex flex-col items-center justify-center rounded-xl border bg-gradient-to-br from-success/10 to-primary/10 p-6">
-                <p className="mb-2 text-sm font-medium uppercase tracking-wider text-success-text">
-                  Santé plateforme
-                </p>
-                <div className="flex items-end gap-1">
-                  <span
-                    className="text-5xl font-bold leading-none font-mono tabular-nums tracking-tight"
-                    style={{ color: '#10b981' }}
-                  >
-                    {avgSecurityScore}
-                  </span>
-                  <span className="mb-1 text-2xl font-semibold text-success-text">
-                    %
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-success-text/80">
-                  Score de sécurité global
-                </p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ─── 7. Monitoring en temps réel ─── */}
+      {/* ═══ Section : Monitoring temps réel (compact) ═══ */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold flex items-center gap-2">
@@ -1016,6 +899,7 @@ export function AdminDashboard() {
             <Button
               onClick={handleRequestAccess}
               disabled={submitting || !requestMotif}
+              className="ds-shimmer"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Envoyer la demande
