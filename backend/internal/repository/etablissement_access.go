@@ -258,13 +258,20 @@ func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, e
 }
 
 // CheckAccess vérifie si un admin a un accès APPROUVE valide.
-// Bypass RLS (vérification système).
+// ACCESS-RLS-FIX : pose les claims system-worker au début de la transaction pour
+// activer la policy EtablissementAccess_select (is_system()). Sans cela, avec le rôle
+// sect_app (NOBYPASSRLS, RLS forced), is_admin() retourne NULL → aucune ligne visible.
 func (r *EtablissementAccessRepository) CheckAccess(ctx context.Context, adminID, etablissementID string) (*domain.EtablissementAccess, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // Pose les claims system-worker pour activer la policy RLS is_system().
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                return nil, fmt.Errorf("set system claims: %w", err)
+        }
 
         row := tx.QueryRow(ctx, `
                 SELECT `+columnsAccess+` FROM "EtablissementAccess"
@@ -315,6 +322,10 @@ func (r *EtablissementAccessRepository) Delete(ctx context.Context, id string) e
 
 // ListAuthorizedEtablissements retourne les établissements autorisés pour un admin.
 //
+// ACCESS-RLS-FIX : pose les claims system-worker au début de la transaction pour
+// activer la policy EtablissementAccess_select (is_system()). Sans cela, avec le rôle
+// sect_app (NOBYPASSRLS, RLS forced), is_admin() retourne NULL → aucune ligne visible.
+//
 // BUGFIX (ADMIN-AUDIT-4b) : sélectionne aussi les colonnes d'accès (a.id,
 // a.motif, a.dateDebut, a.dateFin, a.commentaire, a.createdAt) et peupler
 // `etab.Access` pour que le frontend puisse afficher `etab.access.dateFin`
@@ -326,6 +337,11 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
                 return nil, fmt.Errorf("begin tx: %w", err)
         }
         defer tx.Rollback(ctx)
+
+        // Pose les claims system-worker pour activer la policy RLS is_system().
+        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
+                return nil, fmt.Errorf("set system claims: %w", err)
+        }
 
         // Join EtablissementAccess (APPROUVE, dates valides) + Etablissement
         // Colonnes préfixées avec e. pour éviter l'ambiguïté
