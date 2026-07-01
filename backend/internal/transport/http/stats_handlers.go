@@ -812,6 +812,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                                 &o.ID, &o.Nom, &o.Ville, &o.Type, &o.Actif,
                                 &o.AbonnementStatut, &o.PlanNom,
                                 &o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
+                                &o.ProctoringActif,
                                 &respID, &respName, &respEmail, &respActif,
                         ); err == nil {
                                 if respID != nil && respName != nil && respEmail != nil && respActif != nil {

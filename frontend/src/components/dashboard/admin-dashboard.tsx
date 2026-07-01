@@ -801,37 +801,6 @@ export function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* ═══ Section : Monitoring temps réel (compact) ═══ */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            Monitoring en temps réel
-          </h3>
-          <Button variant="ghost" size="sm" onClick={() => router.push('/monitoring')}>
-            Voir tout <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <p className="text-2xl font-bold text-primary">{stats?.monitoringActiveEvents ?? 0}</p>
-            <p className="text-xs text-muted-foreground">Événements actifs</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-destructive">{stats?.monitoringCriticalEvents ?? 0}</p>
-            <p className="text-xs text-muted-foreground">Critiques</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-warning">{stats?.monitoringErrorEvents ?? 0}</p>
-            <p className="text-xs text-muted-foreground">Erreurs</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-success">{stats?.monitoringResolvedToday ?? 0}</p>
-            <p className="text-xs text-muted-foreground">Résolus aujourd&apos;hui</p>
-          </div>
-        </div>
-      </Card>
-
       {/* ─── Access Request Dialog ─── */}
       <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>
         <DialogContent className="sm:max-w-md">
