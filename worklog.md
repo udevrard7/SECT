@@ -10181,3 +10181,30 @@ Stage Summary:
 - **Migration DB 000026** créée (index partiel + policy RLS) — ⚠️ NON APPLIQUÉE, en attente credentials neondb_owner.
 - **Compilation** : go build + go vet + bun lint = 0 erreur.
 - **Sécurité renforcée** : anti-auto-approbation (B-2), verrou optimiste (B-8), soft-delete avec audit (B-11), validation enum durée (B-10), validation dates Create (B-13), filtre établissement actif (B-12), JSON escaping sécurisé (B-17).
+
+---
+Task ID: SECT-ACCESS-MIGRATION-APPLIED
+Agent: Z.ai Code (tuteur/assistant)
+Task: Appliquer la migration DB 000026 sur Neon (B-5 index partiel + B-6 policy RLS RESPONSABLE)
+
+Work Log:
+- Credentials `neondb_owner` fournis par l'utilisateur (rolbypassrls=true, peut faire du DDL).
+- Application de la migration `000026_etablissement_access_index_rls.up.sql` via `bun`+`pg` en une transaction :
+  * B-5 : DROP ancien index unique global `EtablissementAccess_adminId_etablissementId_key` → CREATE UNIQUE INDEX PARTIEL `EtablissementAccess_adminId_etablissementId_active_key` WHERE statut IN ('EN_ATTENTE', 'APPROUVE').
+  * B-6 : CREATE POLICY `EtablissementAccess_modify_responsable` FOR UPDATE TO neondb_owner USING (is_responsable() AND "etablissementId" = current_etablissement_id()) WITH CHECK (idem).
+- `schema_migrations` mis à jour : version=26, dirty=false.
+- Vérifications structurelles post-migration :
+  * Ancien index global supprimé (present=0) ✅
+  * Nouvel index partiel en place (present=1, définition exacte confirmée) ✅
+  * Policy RESPONSABLE présente (present=1) ✅
+  * RLS toujours activé + forced ✅
+  * 3 policies au total : modify_admin (ALL), modify_responsable (UPDATE), select (SELECT) ✅
+- Vérification sect_app (rôle production) : lecture toujours fonctionnelle avec claims ADMIN (1 ligne APPROUVE visible) ✅
+- Test B-5 via EXPLAIN : l'index partiel couvre uniquement EN_ATTENTE/APPROUVE — ANNULE/REFUSE/EXPIRE exclus de la contrainte unique → l'admin peut recréer une demande pour le même établissement après annulation/refus/expiration.
+
+Stage Summary:
+- **Migration 000026 appliquée en production Neon** ✅ — tous les 20 bugs du module acces-etablissements sont désormais CORRIGÉS (code + DB).
+- **B-5 (HIGH)** : index unique global → index partiel. Permet la re-demande après annulation/refus/expiration (avant, bloqué par l'index global).
+- **B-6 (HIGH)** : policy RLS `EtablissementAccess_modify_responsable` (FOR UPDATE) ajoutée. Defense-in-depth : si un futur refactor passe les repos sur db.WithTx, le RESPONSABLE conservera ses capacités d'approbation.
+- **20/20 bugs corrigés** — module acces-etablissements fully fixed (backend Go + frontend React + DB Neon).
+- **Production stable** : backend Render live (commit b101432), frontend Vercel auto-deploy, Neon migration 000026 appliquée.
