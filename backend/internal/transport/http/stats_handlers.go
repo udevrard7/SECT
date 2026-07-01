@@ -804,7 +804,9 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
         if q2err == nil {
                 defer rowsEtab2.Close()
                 overviews := []etablissementOverview{}
+                rowCount := 0
                 for rowsEtab2.Next() {
+                        rowCount++
                         var o etablissementOverview
                         var respID, respName, respEmail *string
                         var respActif *bool
@@ -828,6 +830,7 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                         }
                         overviews = append(overviews, o)
                 }
+                slog.Info("stats: etablissementsOverview query result", "rowCount", rowCount, "appendedCount", len(overviews), "adminId", escapedAdminID)
                 stats["etablissementsOverview"] = overviews
         }
         if q2err != nil {
