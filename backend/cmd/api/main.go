@@ -20,8 +20,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/storage"
         httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
         "github.com/udevrard7/sect/backend/internal/usecase"
-        // worker — temporairement désactivé (SECURITY-BASCULE)
-        // _ "github.com/udevrard7/sect/backend/internal/worker"
+        "github.com/udevrard7/sect/backend/internal/worker"
 )
 
 func main() {
@@ -123,36 +122,35 @@ func main() {
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
 
-        // TEMPORARY (SECURITY-BASCULE): workers désactivés temporairement.
-        // Les workers font des JOINs sur 4 tables (Devoir, EpreuveQuestion,
-        // GrilleEvaluation, SessionPassation) qui n'ont pas encore de policy
-        // is_system(). Avec sect_app (NOBYPASSRLS), ces JOINs échouent et
-        // font crasher les goroutines → le process entier crash.
-        // Réactivation prévue après ajout des policies manquantes.
-        logger.Warn("workers désactivés temporairement (policies is_system manquantes pour 4 tables)")
+        // Workers réactivés (policies is_system ajoutées sur les 12 tables worker).
+        // SECURITY-BASCULE : les workers posent des claims system-worker via
+        // set_config('app.claims.user_id', 'system-worker', true) au lieu de
+        // SET LOCAL row_security = off. Les policies _all_system (is_system())
+        // permettent l'accès full aux 12 tables : AIProviderConfig, Chapter,
+        // Devoir, Document, DocumentAudio, Epreuve, EpreuveQuestion,
+        // GrilleEvaluation, Question, Reponse, SessionPassation, Soumission.
+        iaWorker := worker.NewIAWorker(pool, logger)
+        iaWorker.RecoverInterruptedJobs(context.Background())
+        iaWorker.Start(context.Background())
 
-        // iaWorker := worker.NewIAWorker(pool, logger)
-        // iaWorker.RecoverInterruptedJobs(context.Background())
-        // iaWorker.Start(context.Background())
-        //
-        // correctionWorker := worker.NewCorrectionWorker(pool, logger)
-        // correctionWorker.RecoverInterruptedCorrections(context.Background())
-        // correctionWorker.Start(context.Background())
-        //
-        // docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
-        // docAnalyzer.RecoverInterruptedAnalyses(context.Background())
-        // docAnalyzer.Start(context.Background())
-        //
-        // practiceWorker := worker.NewPracticeWorker(pool, logger)
-        // practiceWorker.Start(context.Background())
-        //
-        // homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
-        // homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
-        // homeworkWorker.Start(context.Background())
-        //
-        // audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
-        // audioWorker.RecoverInterruptedAudioJobs(context.Background())
-        // audioWorker.Start(context.Background())
+        correctionWorker := worker.NewCorrectionWorker(pool, logger)
+        correctionWorker.RecoverInterruptedCorrections(context.Background())
+        correctionWorker.Start(context.Background())
+
+        docAnalyzer := worker.NewDocumentAnalyzerWorker(pool, logger)
+        docAnalyzer.RecoverInterruptedAnalyses(context.Background())
+        docAnalyzer.Start(context.Background())
+
+        practiceWorker := worker.NewPracticeWorker(pool, logger)
+        practiceWorker.Start(context.Background())
+
+        homeworkWorker := worker.NewHomeworkCorrectionWorker(pool, logger)
+        homeworkWorker.RecoverInterruptedHomeworkCorrections(context.Background())
+        homeworkWorker.Start(context.Background())
+
+        audioWorker := worker.NewAudioGenerationWorker(pool, storageClient, logger)
+        audioWorker.RecoverInterruptedAudioJobs(context.Background())
+        audioWorker.Start(context.Background())
 
         server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware)
 
