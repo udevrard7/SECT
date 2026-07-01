@@ -814,17 +814,19 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
                                 &o.NbUsers, &o.NbFilieres, &o.AdminHasAccess,
                                 &o.ProctoringActif,
                                 &respID, &respName, &respEmail, &respActif,
-                        ); err == nil {
-                                if respID != nil && respName != nil && respEmail != nil && respActif != nil {
-                                        o.Responsable = &responsableRef{
-                                                ID:    *respID,
-                                                Name:  *respName,
-                                                Email: *respEmail,
-                                                Actif: *respActif,
-                                        }
-                                }
-                                overviews = append(overviews, o)
+                        ); err != nil {
+                                slog.Error("stats: scan etablissementOverview failed", "error", err, "etab_id", o.ID)
+                                continue
                         }
+                        if respID != nil && respName != nil && respEmail != nil && respActif != nil {
+                                o.Responsable = &responsableRef{
+                                        ID:    *respID,
+                                        Name:  *respName,
+                                        Email: *respEmail,
+                                        Actif: *respActif,
+                                }
+                        }
+                        overviews = append(overviews, o)
                 }
                 stats["etablissementsOverview"] = overviews
         }
