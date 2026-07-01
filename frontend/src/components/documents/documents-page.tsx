@@ -1131,9 +1131,20 @@ export function DocumentsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Associez ces documents à une UE pour les retrouver facilement.
-                  </p>
+                  {selectedUEId === '__none__' ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 p-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                      <FileWarning className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                        <span className="font-semibold">Sans UE associée, ce document sera invisible à vos étudiants.</span>{' '}
+                        Les étudiants accèdent aux supports via l&apos;espace <span className="font-medium">Exam-prep</span>,
+                        qui filtre par filière et niveau de l&apos;UE. Associez une UE pour rendre ce document accessible.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Associez ces documents à une UE pour les retrouver facilement et les rendre accessibles à vos étudiants.
+                    </p>
+                  )}
                 </div>
 
                 {/* Drag-and-drop zone */}

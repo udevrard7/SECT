@@ -41,8 +41,13 @@ func (uc *ExamPrepUseCase) ListDocuments(ctx context.Context, claims db.SessionC
         if claims.Role != string(domain.RoleEtudiant) {
                 return nil, &domain.UnauthorizedError{Message: "réservé aux étudiants"}
         }
+        // EXAM-PREP-STUDENT-DOCS-RLS : avant on retournait silencieusement [] quand
+        // l'étudiant n'avait pas de filière → le frontend affichait "Aucun support
+        // de cours disponible" sans explication, et l'étudiant pensait que ses profs
+        // n'avaient rien uploadé. On lève maintenant une erreur explicite (403) avec
+        // un message orientant l'étudiant vers son responsable d'établissement.
         if claims.FiliereID == "" {
-                return []*domain.Document{}, nil
+                return nil, &domain.UnauthorizedError{Message: "aucune filière associée à votre compte — contactez votre responsable d'établissement pour configurer votre filière"}
         }
         // EXAM-PREP-NIVEAU-FIX-1 : récupérer le niveau réel de l'étudiant depuis la DB
         // (le JWT SessionClaims n'a pas de champ Niveau). Si introuvable, fallback "L1".

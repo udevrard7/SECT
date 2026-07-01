@@ -2168,7 +2168,9 @@ CREATE POLICY "EpreuveDocument_modify_enseignant" ON "EpreuveDocument"
       AND e."enseignantId" = current_user_id()
   ));
 
--- Document (possédé par ownerId — tout rôle peut posséder des documents)
+-- Document (possédé par ownerId — tout rôle peut posséder des documents).
+-- EXAM-PREP-STUDENT-DOCS-RLS : branche is_etudiant() ajoutée (migration 000034)
+-- pour que les étudiants voient les documents des UE de leur filière.
 CREATE POLICY "Document_select" ON "Document"
   FOR SELECT TO neondb_owner
   USING (
@@ -2181,19 +2183,33 @@ CREATE POLICY "Document_select" ON "Document"
       SELECT 1 FROM "User" u WHERE u."id" = "Document"."ownerId"
         AND admin_has_etablissement_access(u."etablissementId")
     ))
+    OR (is_etudiant() AND EXISTS (
+      SELECT 1 FROM "UniteEnseignement" ue
+      WHERE ue."id" = "Document"."uniteEnseignementId"
+        AND ue."filiereId" = current_user_filiere_id()
+    ))
   );
 CREATE POLICY "Document_modify_owner" ON "Document"
   FOR ALL TO neondb_owner
   USING ("ownerId" = current_user_id())
   WITH CHECK ("ownerId" = current_user_id());
 
--- Chapter (via document ownership)
+-- Chapter (via document ownership, OU étudiant dont la filière correspond à l'UE du document)
+-- EXAM-PREP-STUDENT-DOCS-RLS : branche is_etudiant() ajoutée (migration 000034)
 CREATE POLICY "Chapter_select" ON "Chapter"
   FOR SELECT TO neondb_owner
-  USING (EXISTS (
-    SELECT 1 FROM "Document" d WHERE d."id" = "Chapter"."documentId"
-      AND d."ownerId" = current_user_id()
-  ));
+  USING (
+    EXISTS (
+      SELECT 1 FROM "Document" d WHERE d."id" = "Chapter"."documentId"
+        AND d."ownerId" = current_user_id()
+    )
+    OR (is_etudiant() AND EXISTS (
+      SELECT 1 FROM "Document" d
+      JOIN "UniteEnseignement" ue ON ue."id" = d."uniteEnseignementId"
+      WHERE d."id" = "Chapter"."documentId"
+        AND ue."filiereId" = current_user_filiere_id()
+    ))
+  );
 CREATE POLICY "Chapter_modify_owner" ON "Chapter"
   FOR ALL TO neondb_owner
   USING (EXISTS (
