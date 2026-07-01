@@ -9,6 +9,7 @@ import (
         "github.com/go-chi/chi/v5"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
+        "github.com/udevrard7/sect/backend/internal/repository"
         "github.com/udevrard7/sect/backend/internal/usecase"
 )
 
@@ -95,6 +96,7 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
+                "_debug":   repository.DebugEpreuveList,
         }
         if params.Page > 0 {
                 totalPages := 1
