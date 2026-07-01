@@ -46,6 +46,8 @@ import {
   sessionsToCSV,
   sessionsToJSON,
   formatDateFR,
+  formatDateShortFR,
+  scoreToPercentage,
 } from '@/lib/resultats-utils'
 import { StatCard } from '@/components/ds'
 import { ChartCard, DistributionChart, QuestionSuccessChart } from './resultats-charts'
@@ -53,6 +55,7 @@ import { ComparisonRadarChart } from './comparison-radar-chart'
 import { ResultsTable } from './results-table'
 import { KpiSkeleton, ChartSkeleton, TableSkeleton } from './resultats-skeletons'
 import { SessionDetailDialog } from './session-detail-dialog'
+import { SavaneIllustration } from './savane-illustration'
 import type { SessionResult, ScoreBin, QuestionSuccess } from '@/types/resultats'
 
 interface ExamTabProps {
@@ -129,31 +132,164 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
     toast.success('Export JSON réussi', { description: `${sessions.length} copies exportées` })
   }
 
-  // Export PDF (backend endpoint — la SEULE route d'export PDF existante)
+  // Export PDF — 100% côté client (jsPDF + autotable), même pattern que ResultatsPDFExport.
+  // BUGFIX (B1) : l'ancienne implémentation appelait `/api/epreuves/{id}/export?format=pdf`
+  // qui n'existe PAS côté backend (route jamais déclarée dans router.go → 404 systématique).
+  // On génère désormais un PDF entièrement côté client avec les données déjà disponibles
+  // (sessions + stats + noteTotal). Bandeau Kente tricolore, KPIs, tableau des sessions.
   const handlePdfExport = async () => {
-    if (!selectedEpreuveId) return
+    if (!selectedEpreuveId || sessions.length === 0 || !stats) return
     setIsExportingPdf(true)
     try {
-      const res = await fetch(`/api/epreuves/${selectedEpreuveId}/export?format=pdf`)
-      if (!res.ok) {
-        throw new Error(`Export PDF échoué (${res.status})`)
-      }
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `resultats_${safeFilename(selectedEpreuve?.titre ?? 'epreuve')}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      toast.success('Export PDF réussi', {
-        description: selectedEpreuve?.titre ?? 'Épreuve',
+      const [{ default: jsPDF }, autoTableMod] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ])
+      const autoTable = (autoTableMod.default ?? autoTableMod) as (
+        doc: unknown,
+        options: unknown
+      ) => void
+
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const now = new Date()
+      const titre = selectedEpreuve?.titre ?? 'Épreuve'
+
+      // ─── Bandeau Kente (vert lime / terre cuite / or) ───
+      const stripeHeight = 6
+      const w = pageWidth / 3
+      doc.setFillColor(132, 204, 22) // vert lime (--primary)
+      doc.rect(0, 0, w, stripeHeight, 'F')
+      doc.setFillColor(194, 65, 12) // terre cuite (--secondary)
+      doc.rect(w, 0, w, stripeHeight, 'F')
+      doc.setFillColor(212, 160, 23) // or (--gold)
+      doc.rect(2 * w, 0, w, stripeHeight, 'F')
+
+      // ─── Titre + date d'édition ───
+      doc.setTextColor(44, 62, 80) // bleu nuit (--info)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(18)
+      doc.text(`Résultats — ${titre.length > 60 ? titre.slice(0, 57) + '...' : titre}`, 40, 48)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      doc.setTextColor(107, 114, 128)
+      doc.text(
+        `Édité le ${formatDateShortFR(now)} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        40,
+        64
+      )
+
+      // ─── KPIs (4 cartes avec bordure colorée par accent) ───
+      const kpiY = 88
+      const cardW = (pageWidth - 80 - 30) / 4
+      const cardH = 60
+      const kpis: Array<{ label: string; value: string; r: number; g: number; b: number }> = [
+        {
+          label: 'Moyenne',
+          value: `${stats.moyenne.toFixed(1)}/${noteTotal}`,
+          r: 132,
+          g: 204,
+          b: 22,
+        },
+        {
+          label: 'Médiane',
+          value: `${stats.mediane.toFixed(1)}/${noteTotal}`,
+          r: 44,
+          g: 62,
+          b: 80,
+        },
+        {
+          label: 'Taux de réussite',
+          value: `${stats.tauxReussite.toFixed(1)}%`,
+          r: 212,
+          g: 160,
+          b: 23,
+        },
+        {
+          label: 'Copies',
+          value: String(stats.totalSessions),
+          r: 194,
+          g: 65,
+          b: 12,
+        },
+      ]
+      kpis.forEach((kpi, i) => {
+        const x = 40 + i * (cardW + 10)
+        doc.setFillColor(245, 247, 250)
+        doc.roundedRect(x, kpiY, cardW, cardH, 4, 4, 'F')
+        doc.setDrawColor(kpi.r, kpi.g, kpi.b)
+        doc.setLineWidth(2)
+        doc.line(x, kpiY, x, kpiY + cardH)
+        doc.setTextColor(107, 114, 128)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.text(kpi.label.toUpperCase(), x + 8, kpiY + 16)
+        doc.setTextColor(kpi.r, kpi.g, kpi.b)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(15)
+        doc.text(kpi.value, x + 8, kpiY + 42)
       })
+
+      // ─── Tableau des sessions ───
+      let cursorY = kpiY + cardH + 24
+      doc.setTextColor(44, 62, 80)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(13)
+      doc.text('Détail des copies', 40, cursorY)
+      cursorY += 6
+
+      const body = sessions.map((s, i) => {
+        const score = s.score ?? 0
+        const pct = scoreToPercentage(score, noteTotal)
+        const statut = s.statut ?? '—'
+        const alertes = s.alertes ?? 0
+        const alerteTxt = alertes > 0 ? `${alertes} alerte${alertes > 1 ? 's' : ''}` : '—'
+        return [
+          String(i + 1),
+          s.etudiant.name.length > 32 ? s.etudiant.name.slice(0, 29) + '...' : s.etudiant.name,
+          s.etudiant.email.length > 40 ? s.etudiant.email.slice(0, 37) + '...' : s.etudiant.email,
+          `${score.toFixed(2)}/${noteTotal}`,
+          `${pct}%`,
+          statut,
+          alerteTxt,
+        ]
+      })
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['#', 'Étudiant', 'Email', 'Score', 'Pct', 'Statut', 'Alertes']],
+        body: body.length > 0 ? body : [['—', 'Aucune copie', '', '', '', '', '']],
+        theme: 'striped',
+        headStyles: { fillColor: [132, 204, 22], textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 9, textColor: [44, 62, 80] },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+        margin: { left: 40, right: 40 },
+        styles: { cellPadding: 5 },
+      })
+
+      // ─── Pied de page sur chaque page ───
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        const h = doc.internal.pageSize.getHeight()
+        doc.setDrawColor(224, 224, 224)
+        doc.setLineWidth(0.5)
+        doc.line(40, h - 30, pageWidth - 40, h - 30)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(107, 114, 128)
+        doc.text('SECT — Savane EdTech', 40, h - 18)
+        doc.text(`Page ${i} / ${pageCount}`, pageWidth - 40, h - 18, { align: 'right' })
+      }
+
+      const filename = `resultats_${safeFilename(titre)}.pdf`
+      doc.save(filename)
+      toast.success('Export PDF réussi', { description: filename })
     } catch (err) {
       console.error('[ExamTab] PDF export failed', err)
       toast.error("Erreur d'export PDF", {
-        description: "Le serveur n'a pas pu générer le PDF. Réessayez ultérieurement.",
+        description: 'Impossible de générer le PDF. Réessayez ou contactez l\'administrateur.',
       })
     } finally {
       setIsExportingPdf(false)
@@ -188,6 +324,14 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Chargement...
+                      </span>
+                    </SelectItem>
+                  ) : epreuvesQuery.isError ? (
+                    // B6 : on distingue l'erreur du vide pour ne pas tromper l'utilisateur.
+                    <SelectItem value="_error" disabled>
+                      <span className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        Erreur de chargement
                       </span>
                     </SelectItem>
                   ) : epreuves.length === 0 ? (
@@ -277,16 +421,24 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
 
       {/* États : vide / chargement / erreur / contenu */}
       {!selectedEpreuveId ? (
-        <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
-            <BarChart3 className="h-10 w-10 text-primary-text" />
+        <div className="ds-kente-watermark relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed py-16 text-center">
+          {/* Illustration baobab subtile en watermark (B10) */}
+          <SavaneIllustration
+            variant="baobab"
+            size={140}
+            className="pointer-events-none absolute -right-2 -bottom-2 text-primary"
+          />
+          <div className="relative z-10 flex flex-col items-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+              <BarChart3 className="h-10 w-10 text-primary-text" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
+              Sélectionnez une épreuve pour voir les résultats
+            </h3>
+            <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+              Choisissez une épreuve terminée ou clôturée dans le sélecteur ci-dessus pour afficher ses résultats détaillés.
+            </p>
           </div>
-          <h3 className="mt-4 font-display text-lg font-semibold tracking-tight">
-            Sélectionnez une épreuve pour voir les résultats
-          </h3>
-          <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-            Choisissez une épreuve terminée ou clôturée dans le sélecteur ci-dessus pour afficher ses résultats détaillés.
-          </p>
         </div>
       ) : resultsQuery.isLoading ? (
         <>
@@ -370,8 +522,14 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
             />
           </div>
 
-          {/* Graphiques : Distribution + Radar (performance par type) */}
-          <div className="grid gap-6 lg:grid-cols-2">
+          {/* Graphiques : Distribution (+ Radar si des données par type existent, B7). */}
+          {/* B7 : si radarData est vide, on NE génère pas le ChartCard dédié (gain de
+              place visuelle) et la distribution prend toute la largeur (lg:grid-cols-1). */}
+          <div
+            className={
+              radarData.length > 0 ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6 lg:grid-cols-1'
+            }
+          >
             <ChartCard
               title="Distribution des notes"
               description="Cliquez sur une barre pour filtrer le tableau"
@@ -388,8 +546,8 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
               </div>
             </ChartCard>
 
-            {/* Graphique radar : performance par type de question (données réelles) */}
-            {radarData.length > 0 ? (
+            {/* Graphique radar : performance par type de question (données réelles). */}
+            {radarData.length > 0 && (
               <ChartCard
                 title="Performance par type de question"
                 description="Moyenne /20 calculée par type (gère les 2 schémas de notation)"
@@ -402,16 +560,6 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                     title=""
                     description=""
                   />
-                </div>
-              </ChartCard>
-            ) : (
-              <ChartCard
-                title="Performance par type de question"
-                description="Aucune donnée disponible"
-                icon={<Radar className="h-4 w-4 text-muted-foreground" />}
-              >
-                <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-                  Aucune donnée de type de question disponible
                 </div>
               </ChartCard>
             )}

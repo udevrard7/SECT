@@ -14,6 +14,7 @@ import { Badge } from '@/components/ds/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { StudentDetailDialog } from './student-detail-dialog'
+import { SavaneIllustration } from './savane-illustration'
 import type { StudentAtRisk } from '@/types/resultats'
 
 interface StudentsAtRiskListProps {
@@ -44,14 +45,22 @@ export function StudentsAtRiskList({ students }: StudentsAtRiskListProps) {
           <CardDescription>Aucun étudiant en difficulté détecté</CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-              <TrendingDown className="h-6 w-6 text-success-text" />
+          <div className="ds-kente-watermark relative flex flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed py-10 text-center">
+            {/* Illustration baobab subtile en watermark (B10) */}
+            <SavaneIllustration
+              variant="baobab"
+              size={120}
+              className="pointer-events-none absolute -right-2 -bottom-2 text-success"
+            />
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+                <TrendingDown className="h-6 w-6 text-success-text" />
+              </div>
+              <p className="mt-3 text-sm font-medium">Tous vos étudiants s&apos;en sortent bien</p>
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                Aucun étudiant n&apos;a une moyenne inférieure à 8/20 sur l&apos;ensemble de vos épreuves.
+              </p>
             </div>
-            <p className="mt-3 text-sm font-medium">Tous vos étudiants s&apos;en sortent bien</p>
-            <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-              Aucun étudiant n&apos;a une moyenne inférieure à 8/20 sur l&apos;ensemble de vos épreuves.
-            </p>
           </div>
         </CardContent>
       </Card>

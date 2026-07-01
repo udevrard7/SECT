@@ -15,7 +15,6 @@ import {
   GraduationCap,
   BarChart3,
   Calendar,
-  GitCompare,
   BookOpen,
   AlertTriangle,
   CheckCircle2,
@@ -39,6 +38,7 @@ import {
   formatDateShortFR,
 } from '@/lib/resultats-utils'
 import type { OverviewResponse } from '@/types/resultats'
+import { SavaneIllustration } from './savane-illustration'
 
 interface OverviewTabProps {
   data: OverviewResponse
@@ -159,11 +159,19 @@ export function OverviewTab({ data }: OverviewTabProps) {
           </CardHeader>
           <CardContent className="pt-0">
             {topQuestions.length === 0 ? (
-              <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                  <Target className="h-6 w-6 text-muted-foreground" />
+              <div className="ds-kente-watermark relative flex flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed py-10 text-center">
+                {/* Illustration adinkra subtile en watermark (B10) */}
+                <SavaneIllustration
+                  variant="adinkra"
+                  size={110}
+                  className="pointer-events-none absolute -right-2 -bottom-2 text-destructive"
+                />
+                <div className="relative z-10 flex flex-col items-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                    <Target className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="mt-3 text-sm text-muted-foreground">Aucune donnée disponible</p>
                 </div>
-                <p className="mt-3 text-sm text-muted-foreground">Aucune donnée disponible</p>
               </div>
             ) : (
               <ScrollArea className="max-h-[400px]">
@@ -239,14 +247,22 @@ export function OverviewTab({ data }: OverviewTabProps) {
           </CardHeader>
           <CardContent className="pt-0">
             {atRiskPreview.length === 0 ? (
-              <div className="ds-kente-watermark flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-                  <CheckCircle2 className="h-6 w-6 text-success-text" />
+              <div className="ds-kente-watermark relative flex flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed py-10 text-center">
+                {/* Illustration baobab subtile en watermark (B10) */}
+                <SavaneIllustration
+                  variant="baobab"
+                  size={120}
+                  className="pointer-events-none absolute -right-2 -bottom-2 text-success"
+                />
+                <div className="relative z-10 flex flex-col items-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+                    <CheckCircle2 className="h-6 w-6 text-success-text" />
+                  </div>
+                  <p className="mt-3 text-sm font-medium">Tous vos étudiants s&apos;en sortent bien</p>
+                  <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                    Aucun étudiant n&apos;a une moyenne inférieure à 8/20.
+                  </p>
                 </div>
-                <p className="mt-3 text-sm font-medium">Tous vos étudiants s&apos;en sortent bien</p>
-                <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                  Aucun étudiant n&apos;a une moyenne inférieure à 8/20.
-                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -289,7 +305,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
       {/* Liste détaillée des épreuves avec style Kente */}
       <Card className="ds-kente-top">
         <CardHeader className="pb-2">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base font-display tracking-tight">
                 <TrendingUp className="h-4 w-4 text-primary-text" />
@@ -299,19 +315,38 @@ export function OverviewTab({ data }: OverviewTabProps) {
                 {data.epreuves.length} épreuve{data.epreuves.length > 1 ? 's' : ''} terminée{data.epreuves.length > 1 ? 's' : ''}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <GitCompare className="h-3.5 w-3.5" />
-              Moyenne médiane réussite
+            {/* B4 : légende claire avec 3 pastilles colorées (≥16 or, ≥10 vert, <10 rouge) */}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-gold" />
+                Moy. ≥16
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-primary" />
+                Moy. ≥10
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-destructive" />
+                Moy. &lt;10
+              </span>
             </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
           {epreuves.length === 0 ? (
-            <div className="ds-kente-watermark flex flex-col items-center justify-center py-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <BookOpen className="h-6 w-6 text-muted-foreground" />
+            <div className="ds-kente-watermark relative flex flex-col items-center justify-center overflow-hidden py-12 text-center">
+              {/* Illustration baobab subtile en watermark (B10) */}
+              <SavaneIllustration
+                variant="baobab"
+                size={130}
+                className="pointer-events-none absolute -right-2 -bottom-2 text-primary"
+              />
+              <div className="relative z-10 flex flex-col items-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <BookOpen className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground">Aucune épreuve terminée disponible</p>
               </div>
-              <p className="mt-3 text-sm text-muted-foreground">Aucune épreuve terminée disponible</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -383,7 +418,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
         <ChartCard
           title="Comparaison par épreuve"
           description="Moyenne /20 de vos 8 épreuves les plus récentes"
-          icon={<GitCompare className="h-4 w-4 text-secondary" />}
+          icon={<BarChart3 className="h-4 w-4 text-secondary" />}
         >
           <div className="h-72">
             <ComparisonChart data={comparisonData} height={288} accent="secondary" />
