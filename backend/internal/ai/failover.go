@@ -135,7 +135,7 @@ func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*activ
                 SELECT "id", "name", "provider",
                        COALESCE("baseUrl", ''), COALESCE("apiKey", ''), COALESCE("model", ''),
                        COALESCE("temperature", 0.7), COALESCE("maxTokens", 4096),
-                       COALESCE("extraConfig", '')
+                       COALESCE("extraConfig", ''), COALESCE("capability", 'chat')
                 FROM "AIProviderConfig"
                 WHERE "isActive" = true
                 ORDER BY "priority" ASC, "createdAt" ASC
@@ -148,10 +148,11 @@ func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*activ
         var providers []*activeProvider
         for rows.Next() {
                 p := &activeProvider{}
+                // DASHSCOPE-AUDIO-1 : scan aussi la colonne capability (NULL → 'chat').
                 if err := rows.Scan(
                         &p.ID, &p.Name, &p.Provider,
                         &p.BaseURL, &p.APIKey, &p.Model,
-                        &p.Temperature, &p.MaxTokens, &p.ExtraConfig,
+                        &p.Temperature, &p.MaxTokens, &p.ExtraConfig, &p.Capability,
                 ); err != nil {
                         return nil, fmt.Errorf("scan provider: %w", err)
                 }
