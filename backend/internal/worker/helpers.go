@@ -232,6 +232,11 @@ func callTTSProviderShared(ctx context.Context, provider *aiProviderConfig, text
                 return callHuggingFaceTTS(ctx, provider, text, logger)
         }
 
+        // NEUPHONIC-TTS-1 : dispatch Neuphonic NeuTTS (voice cloning FR natif).
+        if strings.EqualFold(provider.Provider, "NEUPHONIC") {
+                return callNeuphonicTTS(ctx, provider, text, logger)
+        }
+
         // DASHSCOPE-AUDIO-1 : dispatch selon le type de provider.
         // DashScope utilise l'API native /api/v1/services/audio/tts (pas /audio/speech).
         if strings.EqualFold(provider.Provider, "DASHSCOPE") {

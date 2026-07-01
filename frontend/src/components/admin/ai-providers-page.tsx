@@ -165,6 +165,17 @@ const PROVIDER_META: Record<AIProviderType, {
     borderClass: 'border-amber-500/30',
     gradientClass: 'from-amber-500 via-amber-500 to-orange-500',
   },
+  // NEUPHONIC-TTS-1 : Neuphonic NeuTTS Nano French — voix FR native (voice cloning)
+  NEUPHONIC: {
+    label: 'Neuphonic',
+    description: 'NeuTTS Nano French — voix FR native',
+    icon: Mic,
+    color: '#7c3aed',
+    bgClass: 'bg-violet-500/10',
+    textClass: 'text-violet-600 dark:text-violet-400',
+    borderClass: 'border-violet-500/30',
+    gradientClass: 'from-violet-500 via-violet-500 to-purple-500',
+  },
 }
 
 const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
@@ -188,6 +199,8 @@ const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
   DASHSCOPE: ['qwen3-tts-flash', 'qwen3-tts-instruct-flash', 'qwen-tts-2025-05-22', 'cosyvoice-v1'],
   // KOKORO-TTS-1 : modèle Kokoro-82M (Space Gradio, capability='tts')
   HUGGINGFACE: ['hexgrad/Kokoro-82M'],
+  // NEUPHONIC-TTS-1 : modèle NeuTTS Nano French (voice cloning FR)
+  NEUPHONIC: ['neuphonic/neutts-nano-french', 'neuphonic/neutts-nano-french-q4-gguf', 'neuphonic/neutts-nano-french-q8-gguf'],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
@@ -200,6 +213,8 @@ const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
   DASHSCOPE: 'https://dashscope.aliyuncs.com',
   // KOKORO-TTS-1 : Space Gradio Pendrokar/Kokoro-TTS (host public)
   HUGGINGFACE: 'https://pendrokar-kokoro-tts.hf.space',
+  // NEUPHONIC-TTS-1 : Space Gradio officiel neuphonic/neutts-nano-multilingual-collection
+  NEUPHONIC: 'https://neuphonic-neutts-nano-multilingual-collection.hf.space',
 }
 
 // ─── Failover types ───

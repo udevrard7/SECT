@@ -242,10 +242,10 @@ func validateProviderInput(name, provider, baseURL, apiKey, model string) error 
         }
         upper := strings.ToUpper(strings.TrimSpace(provider))
         switch upper {
-        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "DASHSCOPE", "HUGGINGFACE":
-                // OK (DASHSCOPE-AUDIO-1 : Alibaba Bailian ; HUGGINGFACE : Kokoro-82M via Space Gradio)
+        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "DASHSCOPE", "HUGGINGFACE", "NEUPHONIC":
+                // OK (DASHSCOPE : Alibaba Bailian ; HUGGINGFACE : Kokoro-82M ; NEUPHONIC : NeuTTS Nano French)
         default:
-                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, DASHSCOPE, HUGGINGFACE)", provider)
+                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, DASHSCOPE, HUGGINGFACE, NEUPHONIC)", provider)
         }
         if baseURL != "" {
                 if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
