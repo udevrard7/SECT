@@ -16,6 +16,7 @@ import (
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/jwt"
         "github.com/udevrard7/sect/backend/internal/middleware"
+        "github.com/udevrard7/sect/backend/internal/monitoring"
         "github.com/udevrard7/sect/backend/internal/repository"
         "github.com/udevrard7/sect/backend/internal/storage"
         httptransport "github.com/udevrard7/sect/backend/internal/transport/http"
@@ -47,6 +48,15 @@ func main() {
         }
         defer pool.Close()
         logger.Info("connected to Neon Postgres")
+
+        // 2b. Monitoring : Event Recorder (async) + Health Checker
+        // Bug B1+B2 (audit monitoring 2025) : table MonitoringEvent était vide,
+        // services hardcodés. Le recorder capture erreurs 5xx/panics, le health
+        // checker fait de vrais checks DB/API/AI.
+        monRecorder := monitoring.NewRecorder(pool, logger)
+        defer monRecorder.Shutdown()
+        monHealthChecker := monitoring.NewHealthChecker(pool)
+        logger.Info("monitoring recorder + health checker initialized")
 
         // 3. Initialiser repositories + usecases
         userRepo := repository.NewUserRepository(pool)
@@ -152,7 +162,7 @@ func main() {
         audioWorker.RecoverInterruptedAudioJobs(context.Background())
         audioWorker.Start(context.Background())
 
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker)
 
         // CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
         // toutes les 30s en une série d'appels SaveReponse (un par question).
