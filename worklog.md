@@ -10413,3 +10413,34 @@ Stage Summary:
 - **Palette africaine** : vert lime (primary/success), terre cuite (secondary), bleu nuit (sidebar), or (gold/Sparkles).
 - **0 régression** : tous les endpoints backend intacts, toutes les fonctionnalités conservées.
 - **Validation VLM** : 5/5 points du cahier validés sur onglet Événements + responsive mobile validé.
+
+---
+Task ID: SECT-DASHBOARD-ADMIN-REFONTE
+Agent: frontend-styling-expert (subagent) + Z.ai Code (tuteur/assistant)
+Task: Refonte dashboard admin — layout asymétrique + score santé plateforme fusionné
+
+Work Log:
+- Inspiration utilisateur (maquette opod.png) : layout asymétrique 2 colonnes (5 KPIs gauche + gauge score global droite), épuré, sans surcharge.
+- Décision clé : fusionner "Score de sécurité global" et "Santé plateforme" en UN SEUL score (platformHealthScore, useMemo).
+- Refonte admin-dashboard.tsx (1038 → 922 lignes, -116 lignes) par subagent frontend-styling-expert :
+  1. Header canonique Savane (pattern filieres : ds-kente-pattern + ds-kente-strip + bg-card + wrapper edge-to-edge + LayoutDashboard pastille bg-primary/10 + Sparkles text-gold + font-display).
+  2. Layout asymétrique 2 colonnes (grid 3) : gauche lg:col-span-2 (5 StatCards DS en sm:grid-cols-2), droite lg:col-span-1 (Card Santé plateforme avec ProgressRing).
+  3. 5 KPI StatCards DS (remplace custom border-l-4) : Établissements actifs (primary), Revenus FCFA (success), Abonnements essai (warning), Événements actifs (danger), Autorisations en attente (secondary).
+  4. Carte Santé plateforme avec ProgressRing (size=180, strokeWidth=14, accent dynamique success/warning/danger selon score).
+  5. platformHealthScore (useMemo, placé après stats pour éviter TDZ) : base 100, -5/critique, -2/erreur, -10 si pas proctoring, -10 si pas vérif identité, -1/autorisation en attente, borne [0,100].
+  6. Sections inférieures compactées : suppression Platform Health Card (125 lignes, redondant) + Quick Actions (42 lignes, nav redondante sidebar). 3 headers de section overline (Succès, Activité commerciale, Établissements).
+  7. 3 empty states avec ds-kente-watermark, boutons CTA avec ds-shimmer.
+- Nettoyage : suppression composant StatCard custom (border-l-4) + imports inutiles (getGreeting, Separator, Lock, Eye, etc.).
+- Aucun appel API modifié (statsQuery, accessQuery, badgesQuery intacts), interface AdminStats conservée.
+
+Tests production (Agent Browser en ADMIN sur Vercel prod) :
+- Desktop : header kente ✅, layout asymétrique 2 colonnes ✅, KPI cards gauche ✅, ProgressRing 80% droite ✅, palette africaine ✅, pas de surcharge ✅, 0 erreur console ✅.
+- Mobile (375px) : layout 1 colonne ✅, KPI empilés ✅, pas de débordement ✅.
+
+Stage Summary:
+- **Dashboard admin refondu** : épuré, asymétrique, moderne, sans surcharge de KPIs.
+- **Score fusionné** : "Score de sécurité global" = "Santé plateforme" en un seul ProgressRing (platformHealthScore composite).
+- **5 KPIs + 1 score** (au lieu de 5 StatCards + Platform Health Card séparée avant).
+- **Identité Savane EdTech** : header kente canonique, StatCard DS, ProgressRing DS, ds-kente-watermark, ds-shimmer.
+- **-116 lignes** (code plus propre, suppression redondances).
+- **Validation VLM** : 6/6 points validés desktop + responsive mobile validé.
