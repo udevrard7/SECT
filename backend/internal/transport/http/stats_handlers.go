@@ -874,6 +874,12 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 TauxReussite   float64 `json:"tauxReussite"`
                 NbParticipants int     `json:"nbParticipants"`
         }
+        type resultatParFiliere struct {
+                Filiere        string  `json:"filiere"`
+                Moyenne        float64 `json:"moyenne"`
+                TauxReussite   float64 `json:"tauxReussite"`
+                NbParticipants int     `json:"nbParticipants"`
+        }
         type etudiantParFiliere struct {
                 Filiere string `json:"filiere"`
                 Count   int    `json:"count"`
@@ -911,6 +917,7 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                 "moyenneGenerale":       0,
                 "repartitionNotes":      []repartitionNote{},
                 "resultatsParMatiere":   []resultatParMatiere{},
+                "resultatsParFiliere":   []resultatParFiliere{},
                 "etudiantsParFiliere":   []etudiantParFiliere{},
                 "evolutionMoyennes":     []evolutionMoyenne{},
                 "topEnseignants":        []topEnseignant{},
@@ -1092,6 +1099,42 @@ func (s *Server) statsResponsable(w http.ResponseWriter, r *http.Request) {
                                 }
                         }
                         stats["resultatsParMatiere"] = mat
+                }
+
+                // 4b. Résultats par filière (moyenne + taux de réussite par filière)
+                var fClauses4b []string
+                var fArgs4b []any
+                appendFiltre(&fClauses4b, &fArgs4b, 1, `f."id"`, "=", filiereID)
+                fAnd4b := ""
+                if len(fClauses4b) > 0 {
+                        fAnd4b = "AND " + strings.Join(fClauses4b, " AND ")
+                }
+                rowsFil, err := tx.Query(ctx, fmt.Sprintf(`
+                        SELECT COALESCE(f.nom, 'Sans filière') AS filiere_nom,
+                               COALESCE(AVG(s.score / e."noteTotal" * 20), 0) AS moyenne,
+                               CASE WHEN count(s.id) > 0
+                                    THEN (count(s.id) FILTER (WHERE s.score >= e."noteTotal" * 0.5))::float / count(s.id) * 100
+                                    ELSE 0 END AS taux_reussite,
+                               count(s.id) AS nb_participants
+                        FROM "Filiere" f
+                        LEFT JOIN "Epreuve" e ON e."filiereId" = f.id AND e."deletedAt" IS NULL
+                        LEFT JOIN "SessionPassation" s ON s."epreuveId" = e.id
+                          AND s.statut IN ('CORRIGEE', 'RETOURNEE') AND s.score IS NOT NULL
+                        WHERE f."actif" = true %s
+                        GROUP BY f.nom
+                        ORDER BY moyenne DESC
+                        LIMIT 10
+                `, fAnd4b), fArgs4b...)
+                if err == nil {
+                        defer rowsFil.Close()
+                        fil := []resultatParFiliere{}
+                        for rowsFil.Next() {
+                                var r resultatParFiliere
+                                if err := rowsFil.Scan(&r.Filiere, &r.Moyenne, &r.TauxReussite, &r.NbParticipants); err == nil {
+                                        fil = append(fil, r)
+                                }
+                        }
+                        stats["resultatsParFiliere"] = fil
                 }
 
                 // 5. Étudiants par filière
