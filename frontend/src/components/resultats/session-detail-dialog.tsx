@@ -200,26 +200,28 @@ export function SessionDetailDialog({
 
             <Separator />
 
-            {/* Synthèse rapide */}
+            {/* Synthèse rapide
+                BUGFIX (LAYOUT-DIALOG-KPI-1) : overflow-hidden sur chaque carte,
+                text-xl sm:text-2xl pour réduire sur mobile, truncate sur le label. */}
             {hasDetails && (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg border border-success/20 bg-success/5 p-3 text-center">
-                  <p className="font-mono text-2xl font-bold tabular-nums text-success-text">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                <div className="overflow-hidden rounded-lg border border-success/20 bg-success/5 p-2 text-center sm:p-3">
+                  <p className="font-mono text-xl font-bold tabular-nums text-success-text sm:text-2xl">
                     {details!.filter((q) => q.correct === true).length}
                   </p>
-                  <p className="text-xs text-muted-foreground">Correctes</p>
+                  <p className="truncate text-xs text-muted-foreground">Correctes</p>
                 </div>
-                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-center">
-                  <p className="font-mono text-2xl font-bold tabular-nums text-destructive">
+                <div className="overflow-hidden rounded-lg border border-destructive/20 bg-destructive/5 p-2 text-center sm:p-3">
+                  <p className="font-mono text-xl font-bold tabular-nums text-destructive sm:text-2xl">
                     {details!.filter((q) => q.correct === false).length}
                   </p>
-                  <p className="text-xs text-muted-foreground">Incorrectes</p>
+                  <p className="truncate text-xs text-muted-foreground">Incorrectes</p>
                 </div>
-                <div className="rounded-lg border border-warning/20 bg-warning/5 p-3 text-center">
-                  <p className="font-mono text-2xl font-bold tabular-nums text-warning">
+                <div className="overflow-hidden rounded-lg border border-warning/20 bg-warning/5 p-2 text-center sm:p-3">
+                  <p className="font-mono text-xl font-bold tabular-nums text-warning sm:text-2xl">
                     {details!.filter((q) => q.correct === null && q.pointsObtenus === null).length}
                   </p>
-                  <p className="text-xs text-muted-foreground">En attente</p>
+                  <p className="truncate text-xs text-muted-foreground">En attente</p>
                 </div>
               </div>
             )}
