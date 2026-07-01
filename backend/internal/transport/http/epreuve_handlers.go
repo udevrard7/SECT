@@ -9,7 +9,6 @@ import (
         "github.com/go-chi/chi/v5"
         "github.com/udevrard7/sect/backend/internal/domain"
         "github.com/udevrard7/sect/backend/internal/middleware"
-        "github.com/udevrard7/sect/backend/internal/repository"
         "github.com/udevrard7/sect/backend/internal/usecase"
 )
 
@@ -31,11 +30,14 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         statuts := usecase.ParseMultiStatut(r.URL.Query().Get("statut"))
 
         params := domain.EpreuveListParams{
-                // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing — un ETUDIANT/ENSEIGNANT
-                // ne peut cibler que son propre ID. Les query params ?enseignantId= et
-                // ?etudiantId= sont ignorés pour ces rôles (forcés à claims.UserID).
-                EnseignantID:        resolveScopedUserID(r, r.URL.Query().Get("enseignantId")),
-                EtudiantID:          resolveScopedUserID(r, r.URL.Query().Get("etudiantId")),
+                // SECURITY-FIX (audit 2025, tâche 4) : anti-spoofing.
+                // Le usecase force déjà EnseignantID pour ENSEIGNANT et
+                // EtudiantID pour ETUDIANT. On ne passe QUE le query param
+                // (le usecase l'écrasera si nécessaire). Ne PAS utiliser
+                // resolveScopedUserID pour les deux champs — sinon l'enseignant
+                // se retrouve avec un filtre etudiantId = son ID → 0 résultat.
+                EnseignantID:        r.URL.Query().Get("enseignantId"),
+                EtudiantID:          r.URL.Query().Get("etudiantId"),
                 FiliereID:           r.URL.Query().Get("filiereId"),
                 ResponsableID:       r.URL.Query().Get("responsableId"),
                 Statuts:             statuts,
@@ -96,7 +98,6 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
         resp := map[string]any{
                 "epreuves": epreuves,
                 "filieres": filieres,
-                "_debug":   repository.DebugEpreuveList,
         }
         if params.Page > 0 {
                 totalPages := 1
