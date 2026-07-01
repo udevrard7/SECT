@@ -25,12 +25,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ds/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ScoreDisplay } from './score-display'
-import { formatDateTimeFR } from '@/lib/resultats-utils'
+import { formatDateTimeFR, getQuestionTypeBadgeVariant } from '@/lib/resultats-utils'
 import type { StudentSession } from '@/types/resultats'
 
 interface MonResultatDialogProps {
@@ -39,15 +39,9 @@ interface MonResultatDialogProps {
   session: StudentSession | null
 }
 
-const QUESTION_TYPE_STYLES: Record<string, string> = {
-  QCU: 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-800',
-  QCM: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
-  QRC: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
-  TRS: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800',
-  CODE: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800',
-  REFLEXION: 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-800',
-}
-
+// NOTE : QUESTION_TYPE_STYLES est désormais centralisé dans
+// `@/lib/resultats-utils` et exposé via `getQuestionTypeBadgeVariant`.
+// On conserve juste la liste des types manuels (QRC/TRS/REFLEXION).
 const MANUAL_TYPES = ['QRC', 'TRS', 'REFLEXION']
 
 export function MonResultatDialog({ open, onOpenChange, session }: MonResultatDialogProps) {
@@ -210,8 +204,9 @@ export function MonResultatDialog({ open, onOpenChange, session }: MonResultatDi
                             <div className="min-w-0 flex-1 space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
                                 <Badge
-                                  variant="outline"
-                                  className={`px-1.5 py-0 text-[10px] ${QUESTION_TYPE_STYLES[q.type] ?? QUESTION_TYPE_STYLES.QRC}`}
+                                  variant={getQuestionTypeBadgeVariant(q.type)}
+                                  size="sm"
+                                  className="text-[10px]"
                                 >
                                   {q.type}
                                 </Badge>

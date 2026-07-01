@@ -1,10 +1,13 @@
 // ─────────────────────────────────────────────────────────────
 // Composants de charts partagés pour les Résultats & Analyses
+// Identité Savane EdTech : palette africaine via tokens CSS
+// (jamais de hex brut — résolution via getComputedStyle pour Recharts).
 // ─────────────────────────────────────────────────────────────
 
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTheme } from 'next-themes'
 import {
   BarChart,
   Bar,
@@ -17,10 +20,92 @@ import {
   AreaChart,
   Area,
   ReferenceLine,
+  PieChart,
+  Pie,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { getBarColor, getSuccessRateColor } from '@/lib/resultats-utils'
 import type { ScoreBin, QuestionSuccess, EvolutionPoint } from '@/types/resultats'
+
+// ─── Résolution des tokens CSS en valeurs réelles (dark mode safe) ───
+// Recharts ne supporte pas `var(--token)` pour les attributs de présentation
+// SVG (fill, stroke, stop-color). On lit donc la valeur calculée via
+// getComputedStyle et on se ré-abonne aux changements de thème via next-themes.
+
+interface ChartColors {
+  primary: string
+  secondary: string
+  gold: string
+  warning: string
+  destructive: string
+  info: string
+  muted: string
+  background: string
+}
+
+const FALLBACK_COLORS: ChartColors = {
+  primary: '#84CC16',
+  secondary: '#C2410C',
+  gold: '#D4A017',
+  warning: '#F5A623',
+  destructive: '#D0021B',
+  info: '#2C3E50',
+  muted: '#E0E0E0',
+  background: '#FFFFFF',
+}
+
+function resolveColors(): ChartColors {
+  if (typeof window === 'undefined') return FALLBACK_COLORS
+  const root = document.documentElement
+  const get = (name: string, fallback: string) => {
+    const v = getComputedStyle(root).getPropertyValue(name).trim()
+    return v || fallback
+  }
+  return {
+    primary: get('--primary', FALLBACK_COLORS.primary),
+    secondary: get('--secondary', FALLBACK_COLORS.secondary),
+    gold: get('--gold', FALLBACK_COLORS.gold),
+    warning: get('--warning', FALLBACK_COLORS.warning),
+    destructive: get('--destructive', FALLBACK_COLORS.destructive),
+    info: get('--info', FALLBACK_COLORS.info),
+    muted: get('--border', FALLBACK_COLORS.muted),
+    background: get('--background', FALLBACK_COLORS.background),
+  }
+}
+
+/**
+ * useChartColors — résout les tokens CSS en valeurs RGB/hex réelles.
+ * Recalcule au montage et à chaque changement de thème next-themes.
+ *
+ * NOTE : la lecture de getComputedStyle est impossible côté serveur (SSR),
+ * donc on initialise avec des valeurs de fallback puis on relit après
+ * l'hydration. C'est le pattern standard pour les hooks dépendant du DOM
+ * côté client (cf. theme-toggle.tsx dans la même codebase).
+ */
+export function useChartColors(): ChartColors {
+  const { resolvedTheme } = useTheme()
+  const [colors, setColors] = useState<ChartColors>(FALLBACK_COLORS)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture DOM côté client après hydration (getComputedStyle indisponible en SSR)
+    setColors(resolveColors())
+  }, [resolvedTheme])
+
+  return colors
+}
+
+// ─── Helpers de couleurs 3-tier (utilisant valeurs résolues) ───
+
+export function getBarColorResolved(scoreOn20: number, c: ChartColors): string {
+  if (scoreOn20 >= 16) return c.gold
+  if (scoreOn20 >= 10) return c.primary
+  return c.destructive
+}
+
+export function getSuccessRateColorResolved(rate: number, c: ChartColors): string {
+  if (rate >= 70) return c.primary
+  if (rate >= 40) return c.warning
+  return c.destructive
+}
 
 // ─── Tooltip personnalisé réutilisable ───
 
@@ -37,7 +122,7 @@ export function ChartTooltip({ active, payload, label, suffix = '', labelFormatt
   return (
     <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
       <p className="text-sm font-medium">{labelFormatter ? labelFormatter(label ?? '') : label}</p>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground tabular-nums">
         {payload[0].value}
         {suffix}
       </p>
@@ -52,7 +137,7 @@ export function SuccessRateTooltip({ active, payload, label }: TooltipProps) {
     <div className="max-w-xs rounded-lg border bg-background px-3 py-2 shadow-md">
       <p className="text-sm font-medium">{label}</p>
       <p className="text-sm text-muted-foreground">
-        Taux de réussite : <span className="font-semibold text-foreground">{payload[0].value}%</span>
+        Taux de réussite : <span className="font-semibold text-foreground tabular-nums">{payload[0].value}%</span>
       </p>
       {data?.type && (
         <p className="mt-1 text-xs text-muted-foreground">Type : {data.type}</p>
@@ -79,10 +164,12 @@ interface DistributionChartProps {
 export function DistributionChart({
   data,
   height = 280,
-  noteTotal = 20,
+  noteTotal: _noteTotal = 20,
   onBarClick,
   activeBin,
 }: DistributionChartProps) {
+  const colors = useChartColors()
+
   return (
     <div className="h-full w-full" style={{ minHeight: height }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -108,13 +195,13 @@ export function DistributionChart({
           />
           <ReferenceLine
             x="10-12"
-            stroke="#10b981"
+            stroke={colors.primary}
             strokeDasharray="4 4"
             strokeWidth={1.5}
             label={{
               value: 'Reçu',
               position: 'top',
-              fill: '#10b981',
+              fill: colors.primary,
               fontSize: 10,
             }}
           />
@@ -127,7 +214,7 @@ export function DistributionChart({
             {data.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={getBarColor(entry.midpoint)}
+                fill={getBarColorResolved(entry.midpoint, colors)}
                 opacity={activeBin && activeBin !== entry.name ? 0.3 : 1}
                 className="transition-opacity"
               />
@@ -154,6 +241,8 @@ export function QuestionSuccessChart({
   onBarClick,
   activeIndex,
 }: QuestionSuccessChartProps) {
+  const colors = useChartColors()
+
   if (data.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground" style={{ minHeight: height }}>
@@ -195,7 +284,7 @@ export function QuestionSuccessChart({
             {data.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={getSuccessRateColor(entry.taux)}
+                fill={getSuccessRateColorResolved(entry.taux, colors)}
                 opacity={activeIndex !== null && activeIndex !== undefined && activeIndex !== index ? 0.3 : 1}
                 className="transition-opacity"
               />
@@ -215,6 +304,7 @@ interface EvolutionChartProps {
 }
 
 export function EvolutionChart({ data, height = 280 }: EvolutionChartProps) {
+  const colors = useChartColors()
   const chartData = useMemo(() => data, [data])
 
   if (chartData.length === 0) {
@@ -225,14 +315,16 @@ export function EvolutionChart({ data, height = 280 }: EvolutionChartProps) {
     )
   }
 
+  const gradId = `evolutionGrad-${colors.primary.replace(/[^a-z0-9]/gi, '')}`
+
   return (
     <div className="h-full w-full" style={{ minHeight: height }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
           <defs>
-            <linearGradient id="evolutionGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-              <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={colors.primary} stopOpacity={0.35} />
+              <stop offset="95%" stopColor={colors.primary} stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted/60" vertical={false} />
@@ -252,7 +344,7 @@ export function EvolutionChart({ data, height = 280 }: EvolutionChartProps) {
             tickFormatter={(v: number) => `${v}`}
           />
           <Tooltip
-            cursor={{ stroke: '#10b981', strokeWidth: 1, strokeDasharray: '4 4' }}
+            cursor={{ stroke: colors.primary, strokeWidth: 1, strokeDasharray: '4 4' }}
             content={({ active, payload, label }) => {
               if (!active || !payload || !payload.length) return null
               const point = payload[0]?.payload as EvolutionPoint | undefined
@@ -260,24 +352,24 @@ export function EvolutionChart({ data, height = 280 }: EvolutionChartProps) {
                 <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
                   <p className="text-sm font-medium">{label}</p>
                   <p className="text-sm text-muted-foreground">
-                    Moyenne : <span className="font-semibold text-foreground">{(payload[0].value as number)?.toFixed(1)}/20</span>
+                    Moyenne : <span className="font-semibold text-foreground tabular-nums">{(payload[0].value as number)?.toFixed(1)}/20</span>
                   </p>
                   {point && (
-                    <p className="text-xs text-muted-foreground">{point.count} évaluation(s)</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">{point.count} évaluation(s)</p>
                   )}
                 </div>
               )
             }}
           />
-          <ReferenceLine y={10} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1} />
+          <ReferenceLine y={10} stroke={colors.primary} strokeDasharray="4 4" strokeWidth={1} />
           <Area
             type="monotone"
             dataKey="moyenne"
-            stroke="#10b981"
+            stroke={colors.primary}
             strokeWidth={2.5}
-            fill="url(#evolutionGrad)"
-            dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
+            fill={`url(#${gradId})`}
+            dot={{ r: 3, fill: colors.primary, strokeWidth: 0 }}
+            activeDot={{ r: 5, fill: colors.primary, stroke: colors.background, strokeWidth: 2 }}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -296,10 +388,25 @@ interface ComparisonBar {
 interface ComparisonChartProps {
   data: ComparisonBar[]
   height?: number
+  /** Accent sémantique DS (utilisé si `color` n'est pas fourni). */
+  accent?: 'primary' | 'secondary' | 'gold' | 'info'
+  /**
+   * Couleur explicite (legacy) — conservée pour rétro-compatibilité avec
+   * les consommateurs externes (ex. enseignant-dashboard). À éviter dans
+   * le module resultats : préférez `accent`.
+   */
   color?: string
 }
 
-export function ComparisonChart({ data, height = 280, color = '#14b8a6' }: ComparisonChartProps) {
+export function ComparisonChart({
+  data,
+  height = 280,
+  accent = 'secondary',
+  color,
+}: ComparisonChartProps) {
+  const colors = useChartColors()
+  const accentColor = color ?? colors[accent]
+
   if (data.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground" style={{ minHeight: height }}>
@@ -343,19 +450,103 @@ export function ComparisonChart({ data, height = 280, color = '#14b8a6' }: Compa
                 <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
                   <p className="max-w-[200px] truncate text-sm font-medium">{label}</p>
                   <p className="text-sm text-muted-foreground">
-                    Moyenne : <span className="font-semibold text-foreground">{(payload[0].value as number)?.toFixed(1)}/20</span>
+                    Moyenne : <span className="font-semibold text-foreground tabular-nums">{(payload[0].value as number)?.toFixed(1)}/20</span>
                   </p>
                   {point?.count !== undefined && (
-                    <p className="text-xs text-muted-foreground">{point.count} copie(s)</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">{point.count} copie(s)</p>
                   )}
                 </div>
               )
             }}
           />
-          <ReferenceLine x={10} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1} />
-          <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={color} barSize={22} />
+          <ReferenceLine x={10} stroke={colors.primary} strokeDasharray="4 4" strokeWidth={1} />
+          <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={accentColor} barSize={22} />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ─── Donut "Taux de correction" (remplace le pie chart simulé) ───
+
+interface CorrectionDonutProps {
+  total: number
+  corrigees: number
+  height?: number
+}
+
+export function CorrectionDonutChart({ total, corrigees, height = 220 }: CorrectionDonutProps) {
+  const colors = useChartColors()
+  const pending = Math.max(0, total - corrigees)
+  const rate = total > 0 ? Math.round((corrigees / total) * 100) : 0
+
+  const data = useMemo(
+    () => [
+      { name: 'Corrigées', value: corrigees, color: colors.primary },
+      { name: 'En attente', value: pending, color: colors.muted },
+    ],
+    [corrigees, pending, colors.primary, colors.muted]
+  )
+
+  if (total === 0) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground" style={{ minHeight: height }}>
+        Aucune copie à corriger
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3" style={{ minHeight: height }}>
+      <div className="relative w-full" style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={80}
+              paddingAngle={2}
+              dataKey="value"
+              nameKey="name"
+              stroke={colors.background}
+              strokeWidth={2}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const entry = payload[0].payload as { name: string; value: number }
+                return (
+                  <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
+                    <p className="text-sm font-medium">{entry.name}</p>
+                    <p className="text-sm text-muted-foreground tabular-nums">{entry.value} copie(s)</p>
+                  </div>
+                )
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        {/* Légende centrale */}
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <p className="font-mono text-3xl font-bold tabular-nums text-success-text">{rate}%</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">corrigées</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-4 text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-primary" />
+          <span className="text-muted-foreground tabular-nums">Corrigées ({corrigees})</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+          <span className="text-muted-foreground tabular-nums">En attente ({pending})</span>
+        </div>
+      </div>
     </div>
   )
 }
