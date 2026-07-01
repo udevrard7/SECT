@@ -146,10 +146,13 @@ func callHuggingFaceTTS(ctx context.Context, provider *aiProviderConfig, text st
         }
 
         // Lire le flux SSE ligne par ligne jusqu'à "event: complete" ou "event: error".
-        // Format SSE :
-        //   event: complete\n
-        //   data: [{"path":"...","url":"..."}]\n
-        //   \n
+        // Format SSE Gradio :
+        //   event: heartbeat\ndata: null\n\n   (keep-alive, à IGNORER)
+        //   event: complete\ndata: [{"path":"...","url":"..."}]\n\n
+        //   event: error\ndata: null\n\n
+        //
+        // KOKORO-TTS-1 fix : le scanner doit continuer à lire après un heartbeat
+        // (ne pas breaker sur le premier event). On ne break QUE sur complete/error.
         scanner := bufio.NewScanner(sseResp.Body)
         scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // max 1MB par ligne
 
@@ -159,11 +162,13 @@ func callHuggingFaceTTS(ctx context.Context, provider *aiProviderConfig, text st
                 line := scanner.Text()
                 if strings.HasPrefix(line, "event: ") {
                         eventType = strings.TrimPrefix(line, "event: ")
+                        dataLine = "" // reset data pour le nouvel event
                 } else if strings.HasPrefix(line, "data: ") {
                         dataLine = strings.TrimPrefix(line, "data: ")
                 }
                 // Une ligne vide marque la fin d'un event SSE.
-                if line == "" && eventType != "" {
+                // On ne sort que si l'event est "complete" ou "error" (pas "heartbeat").
+                if line == "" && (eventType == "complete" || eventType == "error") {
                         break
                 }
         }
