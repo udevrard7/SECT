@@ -1158,3 +1158,30 @@ func (r *ResultatRepository) GetEpreuveNoteTotal(ctx context.Context, epreuveID 
         }
         return noteTotal, nil
 }
+
+// GetEpreuveContenuQuestions récupère le contenu JSON de l'épreuve
+// (contenu.questions : [{id, type, enonce, bareme, propositions, reponseCorrecte}]).
+//
+// Utilisé pour enrichir le detailParQuestion avec les énoncés réels des questions
+// (le detailParQuestion en DB ne contient que questionId/type/bareme/score, pas
+// l'énoncé). Le frontend utilise ce map pour afficher l'énoncé dans le dialog
+// de détail d'une session.
+//
+// BUGFIX (RESULTATS-ENONCE-1) : avant, le dialog "Détail du résultat" affichait
+// "Question 1", "Question 2"... au lieu de l'énoncé réel car le backend ne
+// fournissait pas le contenu de l'épreuve.
+func (r *ResultatRepository) GetEpreuveContenuQuestions(ctx context.Context, epreuveID string) (json.RawMessage, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("GetEpreuveContenuQuestions: claims manquants")
+        }
+
+        var contenu []byte
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                return tx.QueryRow(ctx, `SELECT "contenu" FROM "Epreuve" WHERE "id" = $1 AND "deletedAt" IS NULL`, epreuveID).Scan(&contenu)
+        })
+        if err != nil {
+                return nil, err
+        }
+        return json.RawMessage(contenu), nil
+}

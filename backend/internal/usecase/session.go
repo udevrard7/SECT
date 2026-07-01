@@ -510,9 +510,17 @@ func (uc *ResultatUseCase) List(ctx context.Context, claims db.SessionClaims, pa
                 // Calculer les stats
                 stats := uc.computeStats(ctx, sessions)
 
+                // BUGFIX (RESULTATS-ENONCE-1) : récupérer contenu.questions de
+                // l'épreuve pour construire enonceMap (questionId → enonce).
+                // Le frontend l'utilise pour afficher l'énoncé réel dans le dialog
+                // de détail d'une session (le detailParQuestion en DB ne contient
+                // que questionId/type/bareme/score, pas l'énoncé).
+                enonceMap := uc.buildEnonceMap(ctx, params.EpreuveID)
+
                 return map[string]any{
-                        "sessions": sessions,
-                        "stats":    stats,
+                        "sessions":  sessions,
+                        "stats":     stats,
+                        "enonceMap": enonceMap,
                         "pagination": map[string]int{
                                 "page":       page,
                                 "limit":      limit,
@@ -659,6 +667,43 @@ func (uc *ResultatUseCase) computeStats(ctx context.Context, sessions []*domain.
                 "moyenneBrute":  roundTo2Decimals(moyenne),
                 "medianeBrute":  roundTo2Decimals(mediane),
         }
+}
+
+// buildEnonceMap récupère contenu.questions de l'épreuve et construit un map
+// {questionId → enonce} consommable par le frontend pour afficher l'énoncé
+// réel de chaque question dans le dialog de détail d'une session.
+//
+// BUGFIX (RESULTATS-ENONCE-1) : detailParQuestion en DB ne contient pas
+// l'énoncé (seulement questionId/type/bareme/score). On enrichit donc la
+// réponse API avec ce map.
+//
+// Retourne un map vide (et non une erreur) si l'épreuve ou son contenu est
+// introuvable — l'affichage frontend fallback sur "Question N".
+func (uc *ResultatUseCase) buildEnonceMap(ctx context.Context, epreuveID string) map[string]string {
+        enonceMap := map[string]string{}
+        if epreuveID == "" {
+                return enonceMap
+        }
+        contenu, err := uc.resultatRepo.GetEpreuveContenuQuestions(ctx, epreuveID)
+        if err != nil || len(contenu) == 0 {
+                return enonceMap
+        }
+        // Parser le JSON {questions: [{id, enonce, ...}]}
+        var payload struct {
+                Questions []struct {
+                        ID     string `json:"id"`
+                        Enonce string `json:"enonce"`
+                } `json:"questions"`
+        }
+        if err := json.Unmarshal(contenu, &payload); err != nil {
+                return enonceMap
+        }
+        for _, q := range payload.Questions {
+                if q.ID != "" && q.Enonce != "" {
+                        enonceMap[q.ID] = q.Enonce
+                }
+        }
+        return enonceMap
 }
 
 // --- Helpers ---

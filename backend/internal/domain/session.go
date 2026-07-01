@@ -234,6 +234,9 @@ type ResultatRepository interface {
 	GetEtudiantOverview(ctx context.Context, etudiantID string) (*EtudiantOverviewResult, error)
 	// BUGFIX (SCORES-NORM-2): récupère le noteTotal d'une épreuve
 	GetEpreuveNoteTotal(ctx context.Context, epreuveID string) (float64, error)
+	// BUGFIX (RESULTATS-ENONCE-1): récupère contenu.questions pour enrichir
+	// le detailParQuestion avec les énoncés réels.
+	GetEpreuveContenuQuestions(ctx context.Context, epreuveID string) (json.RawMessage, error)
 }
 
 // OverviewResult pour GET /api/resultats/overview.

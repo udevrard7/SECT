@@ -3,7 +3,7 @@
 // Tous les calculs respectent noteTotal (échelle dynamique)
 // ─────────────────────────────────────────────────────────────
 
-import type { ScoreBin, QuestionSuccess, SessionResult, QuestionDetail } from '@/types/resultats'
+import type { ScoreBin, QuestionSuccess, SessionResult, QuestionDetail, RawQuestionDetail } from '@/types/resultats'
 
 // ─── Formatage des dates ───
 
@@ -206,6 +206,74 @@ export function buildDistribution(
   return bins
 }
 
+// ─── Normalisation du detailParQuestion (schéma DB → frontend) ───
+
+/**
+ * Normalise un tableau de détails par question depuis le format BRUT DB
+ * (schéma A : {questionId, type, bareme, score, repondu, noteIA}) vers le
+ * format frontend unifié (schéma B : {index, type, enonce, pointsMax,
+ * pointsObtenus, correct, reponseEtudiant, reponseAttendue, commentaire}).
+ *
+ * Gère aussi le cas où detailParQuestion est déjà au format frontend (schéma B)
+ * — détecté via la présence du champ `pointsMax`.
+ *
+ * Un `enonceMap` optionnel (Map<questionId, enonce>) permet d'enrichir
+ * l'énoncé depuis Epreuve.contenu.questions lorsque le backend le fournit.
+ *
+ * @example
+ * ```ts
+ * const raw = session.resultat?.detailParQuestion
+ * const details = normalizeQuestionDetails(raw, enonceMap)
+ * // → QuestionDetail[] prêt à afficher dans SessionDetailDialog
+ * ```
+ */
+export function normalizeQuestionDetails(
+  raw: RawQuestionDetail[] | null | undefined,
+  enonceMap?: Map<string, string>
+): QuestionDetail[] {
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return []
+
+  return raw.map((q, idx) => {
+    // Cas 1 : déjà au format frontend (schéma B avec pointsMax)
+    if (typeof q.pointsMax === 'number') {
+      const questionId = q.questionId ?? ''
+      return {
+        index: typeof q.index === 'number' ? q.index : idx + 1,
+        type: String(q.type || ''),
+        enonce: q.enonce || enonceMap?.get(questionId) || `Question ${idx + 1}`,
+        pointsMax: q.pointsMax,
+        pointsObtenus: typeof q.pointsObtenus === 'number' ? q.pointsObtenus : null,
+        correct: typeof q.correct === 'boolean' ? q.correct : null,
+        reponseEtudiant: q.reponseEtudiant ?? null,
+        reponseAttendue: q.reponseAttendue ?? null,
+        commentaire: q.commentaire ?? null,
+        noteIA: q.noteIA ?? null,
+      }
+    }
+
+    // Cas 2 : format DB brut (schéma A avec bareme/score)
+    const bareme = typeof q.bareme === 'number' ? q.bareme : 1
+    const score = typeof q.score === 'number' ? q.score : null
+    const isGraded = score !== null
+    const questionId = q.questionId ?? ''
+    // Heuristique "correct" : score >= 50% du barème (cohérent avec mon-resultat-dialog)
+    const correct = isGraded ? (score as number) >= bareme * 0.5 : null
+
+    return {
+      index: idx + 1,
+      type: String(q.type || ''),
+      enonce: q.enonce || enonceMap?.get(questionId) || `Question ${idx + 1}`,
+      pointsMax: bareme,
+      pointsObtenus: score,
+      correct,
+      reponseEtudiant: q.reponseEtudiant ?? null,
+      reponseAttendue: q.reponseAttendue ?? null,
+      commentaire: q.commentaire ?? null,
+      noteIA: q.noteIA ?? null,
+    }
+  })
+}
+
 // ─── Taux de réussite par question ───
 
 export function buildQuestionSuccess(sessions: SessionResult[]): QuestionSuccess[] {
@@ -214,9 +282,12 @@ export function buildQuestionSuccess(sessions: SessionResult[]): QuestionSuccess
   const questionMap = new Map<number, { total: number; correct: number; enonce: string; type: string }>()
 
   sessions.forEach((s) => {
-    const details = s.resultat?.detailParQuestion
-    if (!details || !Array.isArray(details)) return
-    details.forEach((q: QuestionDetail) => {
+    // BUGFIX (DETAIL-NORM-1) : normaliser le format BRUT DB (schéma A) avant
+    // d'itérer. Avant, on castait directement en QuestionDetail, ce qui donnait
+    // q.index = undefined (Map key NaN) et q.correct = undefined → chart vide.
+    const details = normalizeQuestionDetails(s.resultat?.detailParQuestion)
+    if (details.length === 0) return
+    details.forEach((q) => {
       const idx = q.index
       if (!questionMap.has(idx)) {
         questionMap.set(idx, {

@@ -35,6 +35,7 @@ import {
   formatDateFR,
   formatDateTimeFR,
   getQuestionTypeBadgeVariant,
+  normalizeQuestionDetails,
 } from '@/lib/resultats-utils'
 import { useChartColors } from './resultats-charts'
 import type { SessionResult } from '@/types/resultats'
@@ -45,6 +46,9 @@ interface SessionDetailDialogProps {
   session: SessionResult | null
   epreuveTitre?: string
   noteTotal?: number
+  /** Map {questionId → enonce} depuis Epreuve.contenu.questions.
+   *  Permet d'afficher l'énoncé réel de chaque question (RESULTATS-ENONCE-1). */
+  enonceMap?: Record<string, string>
 }
 
 export function SessionDetailDialog({
@@ -53,6 +57,7 @@ export function SessionDetailDialog({
   session,
   epreuveTitre,
   noteTotal = 20,
+  enonceMap,
 }: SessionDetailDialogProps) {
   const colors = useChartColors()
 
@@ -62,8 +67,14 @@ export function SessionDetailDialog({
   const pct = scoreToPercentage(score, noteTotal)
   const scoreOn20 = (score / noteTotal) * 20
   const isCorrected = session.statut === 'CORRIGEE' || session.statut === 'RETOURNEE'
-  const details = session.resultat?.detailParQuestion
-  const hasDetails = Array.isArray(details) && details.length > 0
+  // BUGFIX (DETAIL-NORM-2) : normaliser le format BRUT DB (schéma A : bareme/
+  // score/questionId) vers le format frontend (schéma B : pointsMax/
+  // pointsObtenus/correct). Avant, le dialog affichait '0/0 point' car q.pointsMax
+  // était undefined (le champ DB est 'bareme').
+  // BUGFIX (RESULTATS-ENONCE-1) : enrichir avec enonceMap pour afficher l'énoncé réel.
+  const enonceMapObj = enonceMap ? new Map(Object.entries(enonceMap)) : undefined
+  const details = normalizeQuestionDetails(session.resultat?.detailParQuestion, enonceMapObj)
+  const hasDetails = details.length > 0
 
   const ringColor = scoreOn20 >= 16 ? colors.gold : scoreOn20 >= 10 ? colors.primary : colors.destructive
 

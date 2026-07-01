@@ -34,7 +34,7 @@ export interface ExamStats {
   medianeBrute?: number
 }
 
-/** Détail par question stocké dans Resultat.detailParQuestion */
+/** Détail par question stocké dans Resultat.detailParQuestion (format normalisé frontend) */
 export interface QuestionDetail {
   index: number
   type: string
@@ -44,6 +44,30 @@ export interface QuestionDetail {
   correct: boolean | null
   reponseEtudiant: string | null
   reponseAttendue: string | null
+  commentaire?: string | null
+  noteIA?: number | null
+}
+
+/**
+ * Format BRUT tel que stocké en DB (schéma A) — résultat de correction IA.
+ * Le backend renvoie detailParQuestion en JSON brut sans normalisation.
+ * Voir lib/resultats-utils.ts:normalizeQuestionDetails() pour la conversion.
+ */
+export interface RawQuestionDetail {
+  questionId?: string
+  type?: string
+  bareme?: number
+  score?: number | null
+  repondu?: boolean
+  noteIA?: number | null
+  // Champs potentiellement présents si detailParQuestion déjà au format frontend (schéma B)
+  index?: number
+  enonce?: string
+  pointsMax?: number
+  pointsObtenus?: number | null
+  correct?: boolean | null
+  reponseEtudiant?: string | null
+  reponseAttendue?: string | null
   commentaire?: string | null
 }
 
@@ -66,7 +90,7 @@ export interface SessionResult {
   resultat: {
     id: string
     scoreFinal: number
-    detailParQuestion: QuestionDetail[] | null
+    detailParQuestion: RawQuestionDetail[] | null
     dateCorrection: string | null
     dateRetour?: string | null
     commentaires?: string | null
@@ -78,6 +102,9 @@ export interface ExamResultsResponse {
   sessions: SessionResult[]
   stats: ExamStats
   noteTotal?: number
+  /** Map {questionId → enonce} depuis Epreuve.contenu.questions (RESULTATS-ENONCE-1).
+   *  Permet au frontend d'afficher l'énoncé réel dans SessionDetailDialog. */
+  enonceMap?: Record<string, string>
   pagination?: {
     page: number
     limit: number
