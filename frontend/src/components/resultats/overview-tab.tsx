@@ -142,7 +142,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
       {/* Top questions difficiles + Aperçu étudiants à risque (top 3) */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Top questions les plus ratées */}
-        <Card className="ds-kente-top border-l-4 border-l-destructive">
+        <Card className="ds-kente-top overflow-hidden border-l-4 border-l-destructive">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div>
@@ -175,7 +175,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
               </div>
             ) : (
               <ScrollArea className="max-h-[400px]">
-                <div className="space-y-2 pr-2">
+                <div className="space-y-2 pr-3">
                   {topQuestions.map((q, idx) => {
                     const tauxFmt = Math.round(q.tauxReussite * 10) / 10
                     return (

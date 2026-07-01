@@ -553,17 +553,16 @@ export function ExamTab({ enseignantId }: ExamTabProps) {
                 description="Moyenne /20 calculée par type (gère les 2 schémas de notation)"
                 icon={<Radar className="h-4 w-4 text-gold" />}
               >
-                {/* BUGFIX (LAYOUT-RADAR-2) : withCard={false} car le ChartCard
-                    parent fournit déjà la Card. Avant, ComparisonRadarChart rendait
-                    sa propre Card en plus → double Card empilée → superposition
-                    visuelle (titre/description/légende dupliqués). */}
-                <div className="h-64">
-                  <ComparisonRadarChart
-                    data={radarData}
-                    height={256}
-                    withCard={false}
-                  />
-                </div>
+                {/* BUGFIX (LAYOUT-RADAR-3) : le conteneur parent ne doit PAS avoir
+                    de hauteur fixe (h-64) car ComparisonRadarChart rend le chart
+                    (256px) + la légende (~46px). Avec h-64, la légende débordait
+                    du conteneur et se superposait à l'élément suivant.
+                    On laisse désormais le contenu couler naturellement. */}
+                <ComparisonRadarChart
+                  data={radarData}
+                  height={256}
+                  withCard={false}
+                />
               </ChartCard>
             )}
           </div>
