@@ -106,16 +106,19 @@ export function StatCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: index * 0.05, ease: 'easeOut' }}
       className={cn(
-        'relative p-5 rounded-lg border border-border bg-card shadow-sm ds-kente-top',
+        'relative p-4 sm:p-5 rounded-lg border border-border bg-card shadow-sm ds-kente-top overflow-hidden',
         isInteractive && 'ds-lift cursor-pointer',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
       )}
     >
-      {/* Header : icône + tendance */}
-      <div className="flex items-start justify-between gap-3 mb-3">
+      {/* Header : icône + tendance
+          BUGFIX (LAYOUT-STATCARD-1) : min-w-0 sur l'icône (shrink-0) + overflow-hidden
+          sur la carte pour empêcher tout débordement. gap-2 (au lieu de gap-3) pour
+          gagner de l'espace horizontal sur petit écran. */}
+      <div className="mb-3 flex items-start justify-between gap-2">
         <div
           className={cn(
-            'h-10 w-10 rounded-md flex items-center justify-center',
+            'h-9 w-9 shrink-0 rounded-md flex items-center justify-center sm:h-10 sm:w-10',
             accentMeta.iconBg,
             accentMeta.iconText
           )}
@@ -125,7 +128,7 @@ export function StatCard({
         {trend && (
           <div
             className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold',
+              'flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold',
               TREND_MAP[trend.direction].bg,
               TREND_MAP[trend.direction].color
             )}
@@ -139,20 +142,23 @@ export function StatCard({
         )}
       </div>
 
-      {/* Label + valeur */}
-      <p className="text-sm text-muted-foreground mb-1">{label}</p>
+      {/* Label + valeur
+          BUGFIX (LAYOUT-STATCARD-1) : truncate sur le label, min-w-0 + break-all
+          sur la valeur pour empêcher le débordement. La valeur reste sur une ligne
+          mais peut se casser si vraiment trop longue (ex: 9999/9999). */}
+      <p className="mb-1 truncate text-sm text-muted-foreground">{label}</p>
       {loading ? (
         <PulseSkeleton className="h-8 w-24" />
       ) : (
-        <p className={cn('font-mono text-2xl font-semibold tabular-nums tracking-tight', valueColorClass)}>
-          {value}
+        <p className={cn('font-mono text-xl font-semibold tabular-nums tracking-tight sm:text-2xl', valueColorClass)}>
+          <span className="break-all">{value}</span>
           {suffix && <span className="ml-0.5 text-sm font-normal text-muted-foreground">{suffix}</span>}
         </p>
       )}
 
-      {/* Hint / trend label */}
+      {/* Hint / trend label — truncate pour empêcher le débordement */}
       {(hint || trend?.label) && (
-        <p className="mt-1.5 text-xs text-muted-foreground">
+        <p className="mt-1.5 truncate text-xs text-muted-foreground">
           {hint ?? trend?.label}
         </p>
       )}
