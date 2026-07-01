@@ -623,7 +623,26 @@ export function MonitoringPage() {
   const [resolveNotes, setResolveNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // ─── Bulk selection state ───
+  // ─── Alert rules state ───
+  const [alertRules, setAlertRules] = useState<AlertRule[]>([
+    { id: '1', name: 'Temps de réponse API', metric: 'api_response_time', threshold: 2000, current: 145, enabled: true, severite: 'WARNING' },
+    { id: '2', name: 'Erreurs base de données', metric: 'db_error_rate', threshold: 5, current: 0, enabled: true, severite: 'ERROR' },
+    { id: '3', name: 'Taux d\'échec auth', metric: 'auth_failure_rate', threshold: 10, current: 2, enabled: true, severite: 'CRITICAL' },
+    { id: '4', name: 'Latence évaluation', metric: 'eval_latency', threshold: 5000, current: 320, enabled: true, severite: 'WARNING' },
+    { id: '5', name: 'Échecs paiement', metric: 'payment_failure_count', threshold: 3, current: 0, enabled: true, severite: 'CRITICAL' },
+    { id: '6', name: 'CPU serveur', metric: 'system_cpu', threshold: 90, current: 34, enabled: true, severite: 'ERROR' },
+  ])
+
+  // ─── Computed: filtered events ───
+  const filteredEvents = events.filter((e) => {
+    const matchSearch =
+      !search ||
+      e.message.toLowerCase().includes(search.toLowerCase()) ||
+      (e.source && e.source.toLowerCase().includes(search.toLowerCase()))
+    return matchSearch
+  })
+
+  // ─── Bulk selection state (déclaré après filteredEvents car selectableEvents en dépend) ───
   // Sélection multiple pour action de masse (résoudre/ignorer plusieurs événements).
   // Seuls les événements ACTIF sont sélectionnables (les RESOLU/IGNORE ne peuvent plus
   // changer de statut). La sélection est réinitialisée à chaque refetch car les
@@ -696,25 +715,6 @@ export function MonitoringPage() {
       setBulkSubmitting(false)
     }
   }
-
-  // ─── Alert rules state ───
-  const [alertRules, setAlertRules] = useState<AlertRule[]>([
-    { id: '1', name: 'Temps de réponse API', metric: 'api_response_time', threshold: 2000, current: 145, enabled: true, severite: 'WARNING' },
-    { id: '2', name: 'Erreurs base de données', metric: 'db_error_rate', threshold: 5, current: 0, enabled: true, severite: 'ERROR' },
-    { id: '3', name: 'Taux d\'échec auth', metric: 'auth_failure_rate', threshold: 10, current: 2, enabled: true, severite: 'CRITICAL' },
-    { id: '4', name: 'Latence évaluation', metric: 'eval_latency', threshold: 5000, current: 320, enabled: true, severite: 'WARNING' },
-    { id: '5', name: 'Échecs paiement', metric: 'payment_failure_count', threshold: 3, current: 0, enabled: true, severite: 'CRITICAL' },
-    { id: '6', name: 'CPU serveur', metric: 'system_cpu', threshold: 90, current: 34, enabled: true, severite: 'ERROR' },
-  ])
-
-  // ─── Computed: filtered events ───
-  const filteredEvents = events.filter((e) => {
-    const matchSearch =
-      !search ||
-      e.message.toLowerCase().includes(search.toLowerCase()) ||
-      (e.source && e.source.toLowerCase().includes(search.toLowerCase()))
-    return matchSearch
-  })
 
   // ─── Computed: health metrics from events data ───
   const activeErrorEvents = events.filter((e) => e.statut === 'ACTIF' && e.severite === 'ERROR')
