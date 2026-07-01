@@ -32,15 +32,15 @@
 package worker
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
-	"strings"
-	"time"
+        "bufio"
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "log/slog"
+        "net/http"
+        "strings"
+        "time"
 )
 
 // Voix par défaut pour Kokoro (Pendrokar/Kokoro-TTS).
@@ -58,179 +58,186 @@ const defaultKokoroVoice = "af_heart"
 //
 // Retourne les bytes WAV (24kHz 16-bit mono).
 func callHuggingFaceTTS(ctx context.Context, provider *aiProviderConfig, text string, logger *slog.Logger) ([]byte, error) {
-	// Tronquer à 4000 caractères.
-	input := text
-	if len(input) > 4000 {
-		input = input[:4000]
-	}
+        // Tronquer à 4000 caractères.
+        input := text
+        if len(input) > 4000 {
+                input = input[:4000]
+        }
 
-	// Voix : af_heart par défaut (le Space Pendrokar ne supporte pas ff_siwis).
-	voice := defaultKokoroVoice
-	speed := 1.0
+        // Voix : af_heart par défaut (le Space Pendrokar ne supporte pas ff_siwis).
+        voice := defaultKokoroVoice
+        speed := 1.0
 
-	// Étape 1 : POST /gradio_api/call/predict → obtenir un event_id.
-	spaceHost := strings.TrimRight(provider.BaseURL, "/")
-	predictURL := spaceHost + "/gradio_api/call/predict"
+        // Étape 1 : POST /gradio_api/call/predict → obtenir un event_id.
+        spaceHost := strings.TrimRight(provider.BaseURL, "/")
+        predictURL := spaceHost + "/gradio_api/call/predict"
 
-	body := map[string]interface{}{
-		"data": []interface{}{input, voice, speed},
-	}
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshal hf tts request: %w", err)
-	}
+        body := map[string]interface{}{
+                "data": []interface{}{input, voice, speed},
+        }
+        bodyJSON, err := json.Marshal(body)
+        if err != nil {
+                return nil, fmt.Errorf("marshal hf tts request: %w", err)
+        }
 
-	if logger != nil {
-		logger.Info("Calling Hugging Face TTS (Gradio predict)",
-			"url", predictURL, "voice", voice, "speed", speed, "inputLen", len(input))
-	}
+        if logger != nil {
+                logger.Info("Calling Hugging Face TTS (Gradio predict)",
+                        "url", predictURL, "voice", voice, "speed", speed, "inputLen", len(input))
+        }
 
-	postCtx, postCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer postCancel()
+        postCtx, postCancel := context.WithTimeout(ctx, 30*time.Second)
+        defer postCancel()
 
-	req, err := newHTTPRequest(postCtx, "POST", predictURL, bodyJSON, provider.APIKey)
-	if err != nil {
-		return nil, fmt.Errorf("create hf tts request: %w", err)
-	}
+        req, err := newHTTPRequest(postCtx, "POST", predictURL, bodyJSON, provider.APIKey)
+        if err != nil {
+                return nil, fmt.Errorf("create hf tts request: %w", err)
+        }
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("hf tts POST request failed: %w", err)
-	}
-	if resp.StatusCode != 200 {
-		resp.Body.Close()
-		return nil, fmt.Errorf("hf tts POST returned HTTP %d", resp.StatusCode)
-	}
+        resp, err := httpClient.Do(req)
+        if err != nil {
+                return nil, fmt.Errorf("hf tts POST request failed: %w", err)
+        }
+        if resp.StatusCode != 200 {
+                resp.Body.Close()
+                return nil, fmt.Errorf("hf tts POST returned HTTP %d", resp.StatusCode)
+        }
 
-	var postResp struct {
-		EventID string `json:"event_id"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
-		resp.Body.Close()
-		return nil, fmt.Errorf("decode hf tts event_id: %w", err)
-	}
-	resp.Body.Close()
+        var postResp struct {
+                EventID string `json:"event_id"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
+                resp.Body.Close()
+                return nil, fmt.Errorf("decode hf tts event_id: %w", err)
+        }
+        resp.Body.Close()
 
-	if postResp.EventID == "" {
-		return nil, fmt.Errorf("hf tts POST returned empty event_id")
-	}
+        if postResp.EventID == "" {
+                return nil, fmt.Errorf("hf tts POST returned empty event_id")
+        }
 
-	if logger != nil {
-		logger.Info("HF TTS event queued", "eventId", postResp.EventID)
-	}
+        if logger != nil {
+                logger.Info("HF TTS event queued", "eventId", postResp.EventID)
+        }
 
-	// Étape 2 : GET /gradio_api/call/predict/{event_id} (SSE) → attendre le résultat.
-	sseURL := predictURL + "/" + postResp.EventID
-	sseCtx, sseCancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer sseCancel()
+        // Étape 2 : GET /gradio_api/call/predict/{event_id} (SSE) → attendre le résultat.
+        sseURL := predictURL + "/" + postResp.EventID
+        sseCtx, sseCancel := context.WithTimeout(ctx, 3*time.Minute)
+        defer sseCancel()
 
-	sseReq, err := newHTTPRequest(sseCtx, "GET", sseURL, nil, provider.APIKey)
-	if err != nil {
-		return nil, fmt.Errorf("create hf sse request: %w", err)
-	}
-	sseReq.Header.Set("Accept", "text/event-stream")
+        // KOKORO-TTS-1 : on crée la requête GET SANS Content-Type (contrairement à
+        // newHTTPRequest qui met application/json sur tous les requests). Le SSE
+        // Gradio n'attend pas de Content-Type sur un GET, et certains proxies HF
+        // rejettent les GET avec Content-Type: application/json.
+        sseReq, err := http.NewRequestWithContext(sseCtx, "GET", sseURL, nil)
+        if err != nil {
+                return nil, fmt.Errorf("create hf sse request: %w", err)
+        }
+        sseReq.Header.Set("Authorization", "Bearer "+provider.APIKey)
+        sseReq.Header.Set("Accept", "text/event-stream")
 
-	sseResp, err := httpClient.Do(sseReq)
-	if err != nil {
-		return nil, fmt.Errorf("hf sse GET request failed: %w", err)
-	}
-	defer sseResp.Body.Close()
+        sseResp, err := httpClient.Do(sseReq)
+        if err != nil {
+                return nil, fmt.Errorf("hf sse GET request failed: %w", err)
+        }
+        defer sseResp.Body.Close()
 
-	if sseResp.StatusCode != 200 {
-		return nil, fmt.Errorf("hf sse GET returned HTTP %d", sseResp.StatusCode)
-	}
+        if sseResp.StatusCode != 200 {
+                return nil, fmt.Errorf("hf sse GET returned HTTP %d", sseResp.StatusCode)
+        }
 
-	// Lire le flux SSE ligne par ligne jusqu'à "event: complete" ou "event: error".
-	// Format SSE :
-	//   event: complete\n
-	//   data: [{"path":"...","url":"..."}]\n
-	//   \n
-	scanner := bufio.NewScanner(sseResp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // max 1MB par ligne
+        // Lire le flux SSE ligne par ligne jusqu'à "event: complete" ou "event: error".
+        // Format SSE :
+        //   event: complete\n
+        //   data: [{"path":"...","url":"..."}]\n
+        //   \n
+        scanner := bufio.NewScanner(sseResp.Body)
+        scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // max 1MB par ligne
 
-	var eventType string
-	var dataLine string
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "event: ") {
-			eventType = strings.TrimPrefix(line, "event: ")
-		} else if strings.HasPrefix(line, "data: ") {
-			dataLine = strings.TrimPrefix(line, "data: ")
-		}
-		// Une ligne vide marque la fin d'un event SSE.
-		if line == "" && eventType != "" {
-			break
-		}
-	}
+        var eventType string
+        var dataLine string
+        for scanner.Scan() {
+                line := scanner.Text()
+                if strings.HasPrefix(line, "event: ") {
+                        eventType = strings.TrimPrefix(line, "event: ")
+                } else if strings.HasPrefix(line, "data: ") {
+                        dataLine = strings.TrimPrefix(line, "data: ")
+                }
+                // Une ligne vide marque la fin d'un event SSE.
+                if line == "" && eventType != "" {
+                        break
+                }
+        }
 
-	if eventType == "error" {
-		return nil, fmt.Errorf("hf tts gradio returned error event (data: %s)", dataLine)
-	}
-	if eventType != "complete" {
-		return nil, fmt.Errorf("hf tts sse stream ended without complete event (last event: %q)", eventType)
-	}
-	if dataLine == "" {
-		return nil, fmt.Errorf("hf tts sse complete event has no data")
-	}
+        if eventType == "error" {
+                return nil, fmt.Errorf("hf tts gradio returned error event (data: %s)", dataLine)
+        }
+        if eventType != "complete" {
+                return nil, fmt.Errorf("hf tts sse stream ended without complete event (last event: %q)", eventType)
+        }
+        if dataLine == "" {
+                return nil, fmt.Errorf("hf tts sse complete event has no data")
+        }
 
-	// Parser le data : [{"path":"...","url":"...","orig_name":"audio.wav",...}]
-	var results []struct {
-		Path     string `json:"path"`
-		URL      string `json:"url"`
-		OrigName string `json:"orig_name"`
-		MimeType string `json:"mime_type"`
-	}
-	if err := json.Unmarshal([]byte(dataLine), &results); err != nil {
-		return nil, fmt.Errorf("decode hf tts sse data: %w (raw: %s)", err, truncate(dataLine, 200))
-	}
-	if len(results) == 0 {
-		return nil, fmt.Errorf("hf tts sse returned empty data array")
-	}
-	result := results[0]
-	if result.URL == "" {
-		return nil, fmt.Errorf("hf tts sse result has no url")
-	}
+        // Parser le data : [{"path":"...","url":"...","orig_name":"audio.wav",...}]
+        var results []struct {
+                Path     string `json:"path"`
+                URL      string `json:"url"`
+                OrigName string `json:"orig_name"`
+                MimeType string `json:"mime_type"`
+        }
+        if err := json.Unmarshal([]byte(dataLine), &results); err != nil {
+                return nil, fmt.Errorf("decode hf tts sse data: %w (raw: %s)", err, truncate(dataLine, 200))
+        }
+        if len(results) == 0 {
+                return nil, fmt.Errorf("hf tts sse returned empty data array")
+        }
+        result := results[0]
+        if result.URL == "" {
+                return nil, fmt.Errorf("hf tts sse result has no url")
+        }
 
-	if logger != nil {
-		logger.Info("HF TTS audio file ready", "url", result.URL, "origName", result.OrigName)
-	}
+        if logger != nil {
+                logger.Info("HF TTS audio file ready", "url", result.URL, "origName", result.OrigName)
+        }
 
-	// Étape 3 : GET l'URL du fichier audio (avec Authorization Bearer).
-	dlCtx, dlCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer dlCancel()
+        // Étape 3 : GET l'URL du fichier audio (avec Authorization Bearer).
+        dlCtx, dlCancel := context.WithTimeout(ctx, 60*time.Second)
+        defer dlCancel()
 
-	dlReq, err := newHTTPRequest(dlCtx, "GET", result.URL, nil, provider.APIKey)
-	if err != nil {
-		return nil, fmt.Errorf("create hf audio download request: %w", err)
-	}
+        // GET de téléchargement SANS Content-Type (même raison que le SSE ci-dessus).
+        dlReq, err := http.NewRequestWithContext(dlCtx, "GET", result.URL, nil)
+        if err != nil {
+                return nil, fmt.Errorf("create hf audio download request: %w", err)
+        }
+        dlReq.Header.Set("Authorization", "Bearer "+provider.APIKey)
 
-	dlResp, err := httpClient.Do(dlReq)
-	if err != nil {
-		return nil, fmt.Errorf("hf audio download failed: %w", err)
-	}
-	defer dlResp.Body.Close()
+        dlResp, err := httpClient.Do(dlReq)
+        if err != nil {
+                return nil, fmt.Errorf("hf audio download failed: %w", err)
+        }
+        defer dlResp.Body.Close()
 
-	if dlResp.StatusCode != 200 {
-		return nil, fmt.Errorf("hf audio download returned HTTP %d", dlResp.StatusCode)
-	}
+        if dlResp.StatusCode != 200 {
+                return nil, fmt.Errorf("hf audio download returned HTTP %d", dlResp.StatusCode)
+        }
 
-	audioBytes, err := io.ReadAll(dlResp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read hf audio response: %w", err)
-	}
+        audioBytes, err := io.ReadAll(dlResp.Body)
+        if err != nil {
+                return nil, fmt.Errorf("read hf audio response: %w", err)
+        }
 
-	if len(audioBytes) == 0 {
-		return nil, fmt.Errorf("hf tts returned empty audio")
-	}
+        if len(audioBytes) == 0 {
+                return nil, fmt.Errorf("hf tts returned empty audio")
+        }
 
-	if logger != nil {
-		logger.Info("HF TTS completed",
-			"audioBytes", len(audioBytes),
-			"format", "wav",
-		)
-	}
+        if logger != nil {
+                logger.Info("HF TTS completed",
+                        "audioBytes", len(audioBytes),
+                        "format", "wav",
+                )
+        }
 
-	return audioBytes, nil
+        return audioBytes, nil
 }
 
 // ttsAudioFormat retourne l'extension et le content-type à utiliser pour le
@@ -239,22 +246,19 @@ func callHuggingFaceTTS(ctx context.Context, provider *aiProviderConfig, text st
 // KOKORO-TTS-1 : Hugging Face (Kokoro via Gradio) retourne du WAV, pas du MP3.
 // DashScope et OpenAI retournent du MP3.
 func ttsAudioFormat(provider *aiProviderConfig) (extension string, contentType string) {
-	if provider == nil {
-		return ".mp3", "audio/mpeg"
-	}
-	if strings.EqualFold(provider.Provider, "HUGGINGFACE") {
-		return ".wav", "audio/wav"
-	}
-	return ".mp3", "audio/mpeg"
+        if provider == nil {
+                return ".mp3", "audio/mpeg"
+        }
+        if strings.EqualFold(provider.Provider, "HUGGINGFACE") {
+                return ".wav", "audio/wav"
+        }
+        return ".mp3", "audio/mpeg"
 }
 
 // truncate limite une chaîne à n caractères (avec suffixe "..." si tronquée).
 func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
+        if len(s) <= n {
+                return s
+        }
+        return s[:n] + "..."
 }
-
-// _ http.* utilisé pour éviter l'import inutilisé si on refactor.
-var _ = http.MethodGet
