@@ -89,19 +89,24 @@ type SessionClaims struct {
 //      // ... queries ...
 //      tx.Commit(ctx)
 func SetClaimsTx(ctx context.Context, tx pgx.Tx, claims SessionClaims) error {
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID); err != nil {
+        // BUGFIX (CRITICAL) : set_config avec $1 ne fonctionne pas avec
+        // QueryExecModeSimpleProtocol (pooler Neon PgBouncer). Les claims
+        // n'étaient pas posés → RLS bloquait toutes les queries → 0 résultat.
+        // Fix : utiliser SET LOCAL avec valeur littérale (pas de paramètre $1).
+        // Safe : les valeurs sont des CUIDs (alphanum) ou rôles (MAJUSCULES).
+        if _, err := tx.Exec(ctx, fmt.Sprintf(`SET LOCAL app.claims.user_id = '%s'`, claims.UserID)); err != nil {
                 return fmt.Errorf("set user_id claim: %w", err)
         }
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.role', $1, true)", claims.Role); err != nil {
+        if _, err := tx.Exec(ctx, fmt.Sprintf(`SET LOCAL app.claims.role = '%s'`, claims.Role)); err != nil {
                 return fmt.Errorf("set role claim: %w", err)
         }
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID); err != nil {
+        if _, err := tx.Exec(ctx, fmt.Sprintf(`SET LOCAL app.claims.etablissement_id = '%s'`, claims.EtablissementID)); err != nil {
                 return fmt.Errorf("set etablissement_id claim: %w", err)
         }
         // filiere_id n'est pas utilisé par les policies RLS actuelles, mais on le pose
         // pour future utilisation (policies par filière).
         if claims.FiliereID != "" {
-                if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.filiere_id', $1, true)", claims.FiliereID); err != nil {
+                if _, err := tx.Exec(ctx, fmt.Sprintf(`SET LOCAL app.claims.filiere_id = '%s'`, claims.FiliereID)); err != nil {
                         return fmt.Errorf("set filiere_id claim: %w", err)
                 }
         }
