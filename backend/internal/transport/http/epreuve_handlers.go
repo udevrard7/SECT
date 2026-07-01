@@ -3,6 +3,7 @@ package http
 import (
         "encoding/json"
         "io"
+        "log/slog"
         "net/http"
         "strconv"
 
@@ -61,9 +62,23 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
 
         epreuves, total, err := s.epreuveUC.List(r.Context(), claims, params)
         if err != nil {
+                slog.Error("listEpreuves error",
+                        "error", err,
+                        "claims.UserID", claims.UserID,
+                        "claims.Role", claims.Role,
+                        "claims.EtablissementID", claims.EtablissementID,
+                        "params.EnseignantID", params.EnseignantID,
+                )
                 middleware.MapDomainError(w, err)
                 return
         }
+        slog.Info("listEpreuves result",
+                "count", len(epreuves),
+                "total", total,
+                "claims.UserID", claims.UserID,
+                "claims.Role", claims.Role,
+                "params.EnseignantID", params.EnseignantID,
+        )
 
         // EVALUATIONS-FIX-EV3 (HIGH) : dériver les filieres uniques des épreuves
         // retournées pour alimenter le filtre filière côté frontend. Avant, le
