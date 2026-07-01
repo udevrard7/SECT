@@ -62,14 +62,16 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
 
         epreuves, total, err := s.epreuveUC.List(r.Context(), claims, params)
         if err != nil {
-                slog.Error("listEpreuves error",
-                        "error", err,
-                        "claims.UserID", claims.UserID,
-                        "claims.Role", claims.Role,
-                        "claims.EtablissementID", claims.EtablissementID,
-                        "params.EnseignantID", params.EnseignantID,
-                )
-                middleware.MapDomainError(w, err)
+                // Debug: include error in response temporarily
+                w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(http.StatusInternalServerError)
+                json.NewEncoder(w).Encode(map[string]any{
+                        "error":      err.Error(),
+                        "debug":      true,
+                        "claimsUID":  claims.UserID,
+                        "claimsRole": claims.Role,
+                        "ensId":      params.EnseignantID,
+                })
                 return
         }
         slog.Info("listEpreuves result",
@@ -108,8 +110,15 @@ func (s *Server) listEpreuves(w http.ResponseWriter, r *http.Request) {
 
         // EVALUATIONS-FIX-EV7 : inclure total/totalPages si pagination active.
         resp := map[string]any{
-                "epreuves": epreuves,
-                "filieres": filieres,
+                "epreuves":  epreuves,
+                "filieres":  filieres,
+                "_debug":    map[string]any{
+                        "claimsUID":  claims.UserID,
+                        "claimsRole": claims.Role,
+                        "ensId":      params.EnseignantID,
+                        "count":      len(epreuves),
+                        "total":      total,
+                },
         }
         if params.Page > 0 {
                 totalPages := 1
