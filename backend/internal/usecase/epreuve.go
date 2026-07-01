@@ -3,7 +3,6 @@ package usecase
 
 import (
         "context"
-        "fmt"
         "strings"
 
         "github.com/udevrard7/sect/backend/internal/db"
@@ -310,15 +309,4 @@ func ParseMultiStatut(s string) []string {
                 }
         }
         return result
-}
-
-// ValidateAccessForEtablissement helper (placeholder, étendu plus tard).
-func ValidateEtablissementAccess(claims db.SessionClaims, etablissementID string) error {
-        if claims.Role == "ADMIN" {
-                return nil
-        }
-        if claims.EtablissementID != etablissementID {
-                return fmt.Errorf("hors de votre établissement")
-        }
-        return nil
 }

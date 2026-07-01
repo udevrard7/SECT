@@ -3,6 +3,7 @@ package http
 import (
         "encoding/json"
         "fmt"
+        "log/slog"
         "net/http"
         "strings"
         "time"
@@ -721,12 +722,15 @@ func (s *Server) statsAdmin(w http.ResponseWriter, r *http.Request) {
 
                 // 6. Autorisations EtablissementAccess
                 var nbAutActif, nbAutAttente int
-                _ = tx.QueryRow(ctx, `
-                        SELECT
-                                count(*) FILTER (WHERE statut = 'ACTIF'),
-                                count(*) FILTER (WHERE statut = 'EN_ATTENTE')
-                        FROM "EtablissementAccess"
-                `).Scan(&nbAutActif, &nbAutAttente)
+                err := tx.QueryRow(ctx, `
+					SELECT
+						count(*) FILTER (WHERE statut = 'APPROUVE'),
+						count(*) FILTER (WHERE statut = 'EN_ATTENTE')
+					FROM "EtablissementAccess"
+				`).Scan(&nbAutActif, &nbAutAttente)
+			if err != nil {
+				slog.Error("stats: échec requête autorisations EtablissementAccess", "error", err)
+			}
                 stats["nbAutorisationsActives"] = nbAutActif
                 stats["nbAutorisationsEnAttente"] = nbAutAttente
 

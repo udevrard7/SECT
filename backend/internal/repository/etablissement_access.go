@@ -197,8 +197,12 @@ func (r *EtablissementAccessRepository) Create(ctx context.Context, input domain
         return access, nil
 }
 
-// Update met à jour une demande d'accès (approuver/refuser/révoquer).
-func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, input domain.UpdateAccessInput) (*domain.EtablissementAccess, error) {
+// Update met à jour une demande d'accès (approuver/refuser/révoquer/annuler).
+// B-8 (HIGH) : verrou optimiste — la clause WHERE inclut `statut = expectedStatut`.
+// Si la ligne a changé de statut entre le FindByID (usecase) et l'Update
+// (race condition : deux RESPONSABLEs approuvent simultanément), RowsAffected=0
+// → ConflictError "concurrent modification". Bypass RLS (BeginTx sans claims).
+func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, expectedStatut domain.AccessStatut, input domain.UpdateAccessInput) (*domain.EtablissementAccess, error) {
         tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
         if err != nil {
                 return nil, fmt.Errorf("begin tx: %w", err)
@@ -230,15 +234,19 @@ func (r *EtablissementAccessRepository) Update(ctx context.Context, id string, i
         }
         setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
 
-        args = append(args, id)
-        updateSQL := fmt.Sprintf(`UPDATE "EtablissementAccess" SET %s WHERE "id" = $%d RETURNING %s`,
-                strings.Join(setClauses, ", "), argIdx, columnsAccess)
+        // B-8 : verrou optimiste — WHERE id = $N AND statut = $N+1
+        args = append(args, id, string(expectedStatut))
+        updateSQL := fmt.Sprintf(`UPDATE "EtablissementAccess" SET %s WHERE "id" = $%d AND "statut" = $%d RETURNING %s`,
+                strings.Join(setClauses, ", "), argIdx, argIdx+1, columnsAccess)
 
         row := tx.QueryRow(ctx, updateSQL, args...)
         access, err := scanAccess(row)
         if err != nil {
                 if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "EtablissementAccess", ID: id}
+                        // B-8 : la ligne n'existe pas OU son statut a changé entre le FindByID
+                        // et l'Update (race condition). On retourne ConflictError pour que le
+                        // frontend affiche un message actionnable plutôt qu'un 404 trompeur.
+                        return nil, &domain.ConflictError{Message: "la demande a été modifiée par un autre utilisateur, rafraîchissez la page"}
                 }
                 return nil, fmt.Errorf("update access: %w", err)
         }
@@ -334,6 +342,7 @@ func (r *EtablissementAccessRepository) ListAuthorizedEtablissements(ctx context
                 WHERE a."adminId" = $1 AND a."statut" = 'APPROUVE'
                   AND (a."dateDebut" IS NULL OR a."dateDebut" <= CURRENT_TIMESTAMP)
                   AND (a."dateFin" IS NULL OR a."dateFin" >= CURRENT_TIMESTAMP)
+                  AND e."actif" = true
                 ORDER BY e."nom"
         `, colsE), adminID)
         if err != nil {

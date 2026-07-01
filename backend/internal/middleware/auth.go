@@ -3,6 +3,7 @@ package middleware
 
 import (
         "context"
+        "encoding/json"
         "net/http"
         "strings"
 
@@ -122,42 +123,43 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 }
 
 // writeJSONError écrit une erreur JSON standardisée.
+// B-17 (LOW) : délègue à writeJSONErrorMsg (json.NewEncoder au lieu de
+// concaténation manuelle) pour éviter les JSON invalides si msg contient des
+// guillemets ou backslashes.
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(status)
-        _, _ = w.Write([]byte(`{"error":"` + msg + `"}`))
+        writeJSONErrorMsg(w, status, msg)
 }
 
 // MapDomainError convertit une erreur domaine en code HTTP approprié.
+// B-17 (LOW) : utilise json.NewEncoder pour échapper proprement les messages
+// (avant : concaténation manuelle → JSON invalide si msg contient des guillemets).
 func MapDomainError(w http.ResponseWriter, err error) {
-        w.Header().Set("Content-Type", "application/json")
         switch e := err.(type) {
         case *domain.InvalidCredentialsError:
-                w.WriteHeader(http.StatusUnauthorized)
-                _, _ = w.Write([]byte(`{"error":"identifiants incorrects"}`))
+                writeJSONErrorMsg(w, http.StatusUnauthorized, "identifiants incorrects")
         case *domain.AccountDisabledError:
-                w.WriteHeader(http.StatusForbidden)
-                _, _ = w.Write([]byte(`{"error":"compte désactivé"}`))
+                writeJSONErrorMsg(w, http.StatusForbidden, "compte désactivé")
         case *domain.AccountLockedError:
-                w.WriteHeader(http.StatusTooManyRequests)
-                _, _ = w.Write([]byte(`{"error":"compte temporairement verrouillé"}`))
+                writeJSONErrorMsg(w, http.StatusTooManyRequests, "compte temporairement verrouillé")
         case *domain.InvalidTokenError:
-                w.WriteHeader(http.StatusUnauthorized)
-                _, _ = w.Write([]byte(`{"error":"token invalide"}`))
+                writeJSONErrorMsg(w, http.StatusUnauthorized, "token invalide")
         case *domain.NotFoundError:
-                w.WriteHeader(http.StatusNotFound)
-                _, _ = w.Write([]byte(`{"error":"` + e.Entity + ` introuvable"}`))
+                writeJSONErrorMsg(w, http.StatusNotFound, e.Entity+" introuvable")
         case *domain.ConflictError:
-                w.WriteHeader(http.StatusConflict)
-                _, _ = w.Write([]byte(`{"error":"` + e.Message + `"}`))
+                writeJSONErrorMsg(w, http.StatusConflict, e.Message)
         case *domain.UnauthorizedError:
-                w.WriteHeader(http.StatusForbidden)
-                _, _ = w.Write([]byte(`{"error":"` + e.Message + `"}`))
+                writeJSONErrorMsg(w, http.StatusForbidden, e.Message)
         case *domain.ValidationError:
-                w.WriteHeader(http.StatusBadRequest)
-                _, _ = w.Write([]byte(`{"error":"` + e.Message + `"}`))
+                writeJSONErrorMsg(w, http.StatusBadRequest, e.Message)
         default:
-                w.WriteHeader(http.StatusInternalServerError)
-                _, _ = w.Write([]byte(`{"error":"erreur interne"}`))
+                writeJSONErrorMsg(w, http.StatusInternalServerError, "erreur interne")
         }
+}
+
+// writeJSONErrorMsg écrit un objet JSON {"error": msg} avec le status HTTP donné.
+// Helper partagé par writeJSONError et MapDomainError (B-17).
+func writeJSONErrorMsg(w http.ResponseWriter, status int, msg string) {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(status)
+        _ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }

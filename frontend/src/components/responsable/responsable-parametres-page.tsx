@@ -533,6 +533,13 @@ function getAccessStatutBadge(statut: string) {
           Expiré
         </Badge>
       )
+    case 'ANNULE':
+      return (
+        <Badge className="bg-zinc-500/15 text-zinc-400 border-zinc-500/30">
+          <Ban className="h-3 w-3 mr-1" />
+          Annulé
+        </Badge>
+      )
     default:
       return <Badge variant="outline">{statut}</Badge>
   }
@@ -595,6 +602,10 @@ export function ResponsableParametresPage() {
   const [refuseCommentaire, setRefuseCommentaire] = useState('')
   const [approving, setApproving] = useState(false)
   const [refusing, setRefusing] = useState(false)
+  // BUGFIX B-14 : protection anti double-clic sur le bouton "Révoquer" de
+  // l'AlertDialog. Désactive l'AlertDialogAction pendant la mutation PATCH
+  // pour éviter les requêtes dupliquées (409 sur un ID déjà REFUSE).
+  const [revoking, setRevoking] = useState(false)
 
   // BUGFIX QUERY-MIGRATION-GROUP-A : migration de useEffect+fetch+useState
   // vers TanStack Query. Le cache survit au démontage → 0 refetch au retour,
@@ -1028,6 +1039,7 @@ export function ResponsableParametresPage() {
   // existing.EtablissementID == claims.EtablissementID autorise l'action.
   const handleRevokeAccess = async () => {
     if (!revokeTarget) return
+    setRevoking(true)
     try {
       const res = await fetch(`/api/etablissement-access/${revokeTarget.id}`, {
         method: 'PATCH',
@@ -1050,6 +1062,8 @@ export function ResponsableParametresPage() {
       toast.error('Erreur', {
         description: err instanceof Error ? err.message : 'Impossible de révoquer l\'accès.',
       })
+    } finally {
+      setRevoking(false)
     }
   }
 
@@ -2322,6 +2336,7 @@ export function ResponsableParametresPage() {
               <AlertDialogAction
                 className="bg-destructive hover:bg-destructive/90"
                 onClick={handleRevokeAccess}
+                disabled={revoking}
               >
                 Oui, révoquer
               </AlertDialogAction>

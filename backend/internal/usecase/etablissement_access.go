@@ -21,12 +21,12 @@ func NewAccessUseCase(accessRepo domain.EtablissementAccessRepository) *AccessUs
 }
 
 // List liste les demandes d'accès.
-// ADMIN : voit ses propres demandes (filtrées par adminId si fourni).
-// RESPONSABLE : voit les demandes de son établissement.
 //
-// ACCES-ETABLISSEMENTS-FIX-AE4 : pour ADMIN, params.AdminID est forcé à
-// claims.UserID (anti-IDOR). Avant, un ADMIN pouvait passer ?adminId=other
-// pour voir les demandes d'un autre admin.
+// Anti-IDOR (AE4) :
+// - ADMIN : params.AdminID est TOUJOURS forcé à claims.UserID (le paramètre
+//   client ?adminId= est ignoré). Un admin ne voit que ses propres demandes.
+// - RESPONSABLE : params.EtablissementID est TOUJOURS forcé à claims.EtablissementID.
+//   Un responsable ne voit que les demandes de son établissement.
 func (uc *AccessUseCase) List(ctx context.Context, claims db.SessionClaims, params domain.AccessListParams) ([]*domain.EtablissementAccess, error) {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable {
@@ -62,6 +62,10 @@ func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, in
         if input.Motif == "" {
                 return nil, &domain.ValidationError{Field: "motif", Message: "requis"}
         }
+        // B-13 : validation des dates si les deux sont fournies.
+        if input.DateDebut != nil && input.DateFin != nil && !input.DateFin.After(*input.DateDebut) {
+                return nil, &domain.ValidationError{Field: "dateFin", Message: "doit être après dateDebut"}
+        }
 
         // Auth check : ADMIN ou RESPONSABLE peut créer
         role := domain.Role(claims.Role)
@@ -80,22 +84,29 @@ func (uc *AccessUseCase) Create(ctx context.Context, claims db.SessionClaims, in
 }
 
 // Update approuve/refuse/révoque une demande.
-// ADMIN : peut tout faire.
-// RESPONSABLE : peut approuver/refuser pour son établissement uniquement.
 //
-// E4 (HIGH) : approuvePar est TOUJOURS forcé à claims.UserID (avant : seulement
-// si nil, ce qui permettait de forger "approuvePar": "user-xyz" dans l'audit trail).
+// Sécurité :
+// - B-2 (CRITICAL) : un ADMIN ne peut PAS approuver sa PROPRE demande
+//   (auto-approbation = escalation de privilèges). Le usecase FetchByID
+//   systématiquement (pour ADMIN et RESPONSABLE) et vérifie
+//   existing.AdminID != claims.UserID pour le rôle ADMIN.
+// - B-8 (HIGH) : validation des transitions de statut (EN_ATTENTE→APPROUVE/REFUSE,
+//   APPROUVE→REFUSE/EXPIRE). REFUSE/EXPIRE/ANNULE sont terminaux. Verrou optimiste
+//   via repo.Update(ctx, id, existing.Statut, input) — deux PATCH concurrents ne
+//   peuvent pas tous deux réussir.
+// - B-10 (MEDIUM) : DureeAccesJours doit être dans {7, 30, 90, 365}.
+// - E4 (HIGH) : approuvePar est TOUJOURS forcé à claims.UserID (anti-forgery audit).
+// - E9 (MEDIUM) : DateFin > DateDebut si les deux fournis, auto-set DateDebut=now()
+//   si statut=APPROUVE et DateDebut nil.
 //
-// E9 (MEDIUM) : validation des dates — DateFin > DateDebut si les deux sont
-// fournis, et auto-set DateDebut = now() si statut=APPROUVE et DateDebut nil
-// (évite qu'un accès APPROUVE sans dates soit immédiatement inutilisable).
+// RESPONSABLE : ne peut agir que sur les demandes de SON établissement.
 func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id string, input domain.UpdateAccessInput) (*domain.EtablissementAccess, error) {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable {
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé"}
         }
 
-        // Valider le statut
+        // Valider le statut cible
         validStatuts := map[domain.AccessStatut]bool{
                 domain.AccessApprouve: true,
                 domain.AccessRefuse:   true,
@@ -105,14 +116,42 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                 return nil, &domain.ValidationError{Field: "statut", Message: "doit être APPROUVE, REFUSE ou EXPIRE"}
         }
 
-        // RESPONSABLE : vérifier que la demande concerne son établissement
+        // B-2 + B-8 : FetchByID systématique (pour ADMIN aussi).
+        // Avant, seul RESPONSABLE faisait un FindByID → l'ADMIN pouvait s'auto-approuver.
+        existing, err := uc.accessRepo.FindByID(ctx, id)
+        if err != nil {
+                return nil, err
+        }
+
+        // Ownership check
         if role == domain.RoleResponsable {
-                existing, err := uc.accessRepo.FindByID(ctx, id)
-                if err != nil {
-                        return nil, err
-                }
                 if existing.EtablissementID != claims.EtablissementID {
                         return nil, &domain.UnauthorizedError{Message: "cette demande ne concerne pas votre établissement"}
+                }
+        } else if role == domain.RoleAdmin {
+                // B-2 (CRITICAL) : un ADMIN ne peut pas approuver/refuser SA PROPRE demande.
+                // Le workflow de validation par RESPONSABLE doit être respecté.
+                if existing.AdminID == claims.UserID {
+                        return nil, &domain.UnauthorizedError{Message: "vous ne pouvez pas approuver ou refuser votre propre demande d'accès"}
+                }
+        }
+
+        // B-8 : validation de la transition de statut.
+        // Transitions valides :
+        //   EN_ATTENTE → APPROUVE | REFUSE  (approbation/refus initial)
+        //   APPROUVE   → REFUSE | EXPIRE    (révocation/expiration)
+        //   REFUSE     → (terminal)
+        //   EXPIRE     → (terminal)
+        //   ANNULE     → (terminal)
+        validTransitions := map[domain.AccessStatut]map[domain.AccessStatut]bool{
+                domain.AccessEnAttente: {domain.AccessApprouve: true, domain.AccessRefuse: true},
+                domain.AccessApprouve:  {domain.AccessRefuse: true, domain.AccessExpire: true},
+        }
+        allowedTargets, ok := validTransitions[existing.Statut]
+        if !ok || !allowedTargets[input.Statut] {
+                return nil, &domain.ValidationError{
+                        Field:   "statut",
+                        Message: fmt.Sprintf("transition invalide : %s → %s (statuts terminaux : REFUSE, EXPIRE, ANNULE)", existing.Statut, input.Statut),
                 }
         }
 
@@ -131,6 +170,13 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                 now := time.Now()
                 input.DateDebut = &now
         }
+        // B-10 : validation de DureeAccesJours contre l'énumération documentée.
+        if input.DureeAccesJours != nil && *input.DureeAccesJours > 0 {
+                validDurees := map[int]bool{7: true, 30: true, 90: true, 365: true}
+                if !validDurees[*input.DureeAccesJours] {
+                        return nil, &domain.ValidationError{Field: "dureeAccesJours", Message: "doit être 7, 30, 90 ou 365 jours"}
+                }
+        }
         // OPTION-B : auto-révocation. Si DureeAccesJours fourni et statut=APPROUVE,
         // calculer dateFin = now() + duree. La fonction admin_has_etablissement_access()
         // vérifie déjà dateFin >= now() → l'accès est automatiquement révoqué quand
@@ -140,18 +186,26 @@ func (uc *AccessUseCase) Update(ctx context.Context, claims db.SessionClaims, id
                 input.DateFin = &fin
         }
 
-        return uc.accessRepo.Update(ctx, id, input)
+        // B-8 : verrou optimiste — passe existing.Statut au repo qui ajoute
+        // WHERE statut = expectedStatut dans le UPDATE. Si la ligne a changé entre
+        // le FindByID et l'Update (race condition), RowsAffected=0 → ConflictError.
+        return uc.accessRepo.Update(ctx, id, existing.Statut, input)
 }
 
-// Delete annule (supprime) une demande d'accès.
-// ACCES-ETABLISSEMENTS-FIX-AE1 : avant, la route DELETE n'existait pas → le
-// bouton "Annuler" du frontend retournait 405.
+// Delete annule une demande d'accès EN_ATTENTE (soft-delete).
+// ACCES-ETABLISSEMENTS-FIX-AE1 : avant, la route DELETE n'existait pas.
+//
+// B-11 (MEDIUM) : soft-delete via statut=ANNULE (avant : hard-delete sans audit
+// trail). La ligne reste en DB avec statut=ANNULE pour l'historique. L'index
+// unique partiel (migration 000026) exclut ANNULE → l'admin peut recréer une
+// demande pour le même établissement après annulation.
 //
 // Règles métier :
 // - ADMIN : ne peut annuler que SES propres demandes (adminId == claims.UserID).
-// - La demande doit être en statut EN_ATTENTE (on ne peut pas annuler une
-//   demande déjà APPROUVE/REFUSE/EXPIRE — utiliser PATCH pour révoquer).
-// - Hard-delete (la demande EN_ATTENTE n'a pas de valeur d'audit).
+// - RESPONSABLE : la demande doit concerner son établissement (peut annuler
+//   les demandes EN_ATTENTE d'autres admins ciblant son établissement — le
+//   soft-delete conserve l'audit trail, l'admin voit sa demande comme ANNULE).
+// - La demande doit être en statut EN_ATTENTE.
 func (uc *AccessUseCase) Delete(ctx context.Context, claims db.SessionClaims, id string) error {
         role := domain.Role(claims.Role)
         if role != domain.RoleAdmin && role != domain.RoleResponsable {
@@ -182,7 +236,19 @@ func (uc *AccessUseCase) Delete(ctx context.Context, claims db.SessionClaims, id
                 return &domain.ValidationError{Field: "statut", Message: "seules les demandes en attente peuvent être annulées"}
         }
 
-        return uc.accessRepo.Delete(ctx, id)
+        // B-11 : soft-delete via Update avec statut=ANNULE. Conserve l'audit trail
+        // (qui a annulé, quand) et permet à l'admin de voir sa demande comme ANNULE.
+        commentaire := "Demande annulée par l'admin"
+        if role == domain.RoleResponsable {
+                commentaire = "Demande annulée par le responsable"
+        }
+        input := domain.UpdateAccessInput{
+                Statut:      domain.AccessAnnule,
+                Commentaire: &commentaire,
+        }
+        // B-8 : verrou optimiste (existing.Statut = EN_ATTENTE, vérifié ci-dessus).
+        _, err = uc.accessRepo.Update(ctx, id, existing.Statut, input)
+        return err
 }
 
 // CheckAccess vérifie si l'ADMIN courant a accès à un établissement.
