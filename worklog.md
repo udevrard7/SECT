@@ -10268,3 +10268,35 @@ Stage Summary:
 - **1 fix usecase** : B-2 refine pour autoriser l'auto-révocation ADMIN.
 - **7 commits poussés** (c158290, 7e58d99, 56058cd, + worklog) — tous déployés sur Render (live) + Vercel (auto) + Neon (migrations appliquées).
 - **Module /acces-etablissements maintenant pleinement fonctionnel en production** : création, annulation (soft-delete ANNULE), révocation, mode assistance, listing des autorisés, listing des établissements disponibles.
+
+---
+Task ID: SECT-ACCESS-OPTION-B
+Agent: Z.ai Code (tuteur/assistant)
+Task: Option B sécurité — hard-delete des demandes ANNULE/REFUSE + audit trail des révocations
+
+Work Log:
+- Décision utilisateur : Option B (hard-delete des lignes ANNULE/REFUSE pour minimiser la surface d'attaque, avec audit trail des révocations dans AuditLog).
+- Migration 000030 : hard-delete des lignes ANNULE (1) et REFUSE (1) existantes en DB (issues des tests E2E précédents). Table EtablissementAccess maintenant vide.
+- Backend domain : retiré constante AccessAnnule (plus de soft-delete). Ajouté AccessAuditEntry struct + AuditActionAccessRevoked/RevokedSelf constantes. Mise à jour interface EtablissementAccessRepository.Delete(ctx, id, auditEntry *AccessAuditEntry).
+- Backend repo : Delete(ctx, id, auditEntry) fait INSERT AuditLog + DELETE EtablissementAccess dans la même transaction (atomicité garantie). AuditLog a policy INSERT WITH CHECK(true) → pas de bypass RLS supplémentaire.
+- Backend usecase Delete (annulation EN_ATTENTE) : hard-delete SANS audit (pas d'accès effectif).
+- Backend usecase Update (input.Statut == REFUSE) :
+  * Si existing.Statut == APPROUVE (révocation) → hard-delete AVEC audit trail (action ACCESS_REVOKED ou ACCESS_REVOKED_SELF si auto-révocation). DetailsJSON contient adminId, etablissementId, motif, dateDebut, dateFin, raison, revokedBy, revokedAt.
+  * Si existing.Statut == EN_ATTENTE (refus initial) → hard-delete SANS audit (pas d'accès effectif).
+  * Retourne une représentation "fantôme" de la demande supprimée pour que le frontend puisse afficher le toast.
+- Frontend : retiré le badge ANNULE dans acces-etablissements-page.tsx (getStatutBadge) et responsable-parametres-page.tsx (getAccessStatifBadge). Imports Ban conservés (utilisés ailleurs).
+- Compilation : go build ✓, go vet ✓, bun lint ✓ (0 erreur).
+
+Tests E2E production (Agent Browser en ADMIN sur Vercel prod, backend Render live) :
+1. Annulation EN_ATTENTE → DELETE 200, ligne hard-deleted (count=0), 0 entrée AuditLog ✅
+2. Auto-révocation APPROUVE → REFUSE : PATCH 200, ligne hard-deleted (count=0), 1 entrée AuditLog avec action=ACCESS_REVOKED_SELF + details JSON (adminId, etablissementId, motif, dateDebut, dateFin, raison, revokedBy, revokedAt) ✅
+3. Re-demande après hard-delete : possible (index partiel 000026 ne contraint que EN_ATTENTE/APPROUVE) ✅
+
+Stage Summary:
+- **Option B implémentée et validée en production** ✅
+- **DB propre** : aucune ligne ANNULE/REFUSE conservée dans EtablissementAccess (minimisation surface d'attaque).
+- **Audit trail des révocations** conservé dans AuditLog (qui avait accès, quand, révoqué par qui, raison) — utile en cas d'incident de sécurité.
+- **3 migrations DB** au total pour ce module (000026 index partiel, 000027-000029 RLS fixes, 000030 hard-delete cleanup).
+- **Atomicité garantie** : INSERT AuditLog + DELETE EtablissementAccess dans la même transaction (si l'audit échoue, le delete n'a pas lieu).
+- **Migration 000030 appliquée** sur Neon (neondb_owner), schema_migrations version 30.
+- **Module /acces-etablissements maintenant conforme aux exigences de sécurité** (Option B) + pleinement fonctionnel en production.
