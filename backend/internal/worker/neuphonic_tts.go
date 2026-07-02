@@ -44,15 +44,15 @@
 package worker
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
-	"strings"
-	"time"
+        "bufio"
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "log/slog"
+        "net/http"
+        "strings"
+        "time"
 )
 
 // Voix FR par défaut du Space neuphonic/neutts-nano-multilingual-collection.
@@ -80,57 +80,186 @@ const neuphonicChunkTimeout = 2 * time.Minute
 //
 // Retourne les bytes WAV (24kHz 16-bit mono) — un seul fichier concaténé.
 func callNeuphonicTTS(ctx context.Context, provider *aiProviderConfig, text string, logger *slog.Logger) ([]byte, error) {
-	// Limiter à 8000 caractères (16 chunks max).
-	input := text
-	if len(input) > 8000 {
-		input = input[:8000]
-		logger.Warn("Truncating podcast script to 8000 chars (NeuTTS)", "originalLen", len(text))
-	}
+        // Limiter à 8000 caractères (16 chunks max).
+        input := text
+        if len(input) > 8000 {
+                input = input[:8000]
+                logger.Warn("Truncating podcast script to 8000 chars (NeuTTS)", "originalLen", len(text))
+        }
 
-	spaceHost := strings.TrimRight(provider.BaseURL, "/")
+        spaceHost := strings.TrimRight(provider.BaseURL, "/")
 
-	// Découper en chunks (le Space NeuTTS a une limite ~1000 chars).
-	chunks := chunkText(input, neuphonicChunkSize)
-	if logger != nil {
-		logger.Info("Neuphonic NeuTTS chunking",
-			"inputLen", len(input), "chunkCount", len(chunks), "chunkSize", neuphonicChunkSize)
-	}
+        // NEUPHONIC-TTS-1 fix : le path du ref_audio (juliette.wav) est TEMPORAIRE
+        // sur le Space — il expire après quelques heures. On doit appeler
+        // update_defaults("French") pour récupérer un path frais avant l'inference.
+        refText, refAudioPath, err := neuphonicFetchDefaults(ctx, spaceHost, provider.APIKey, logger)
+        if err != nil {
+                return nil, fmt.Errorf("fetch neuphonic defaults: %w", err)
+        }
+        if logger != nil {
+                logger.Info("Neuphonic defaults fetched",
+                        "refTextLen", len(refText), "refAudioPath", refAudioPath)
+        }
 
-	// Générer un WAV par chunk, puis concaténer.
-	var wavChunks [][]byte
-	for i, chunk := range chunks {
-		if strings.TrimSpace(chunk) == "" {
-			continue
-		}
-		if logger != nil {
-			logger.Info("Generating NeuTTS chunk",
-				"chunkIndex", i+1, "totalChunks", len(chunks), "chunkLen", len(chunk))
-		}
+        // Découper en chunks (le Space NeuTTS a une limite ~1000 chars).
+        chunks := chunkText(input, neuphonicChunkSize)
+        if logger != nil {
+                logger.Info("Neuphonic NeuTTS chunking",
+                        "inputLen", len(input), "chunkCount", len(chunks), "chunkSize", neuphonicChunkSize)
+        }
 
-		wavBytes, err := callNeuphonicTTSChunk(ctx, spaceHost, provider.APIKey, chunk, logger)
-		if err != nil {
-			return nil, fmt.Errorf("neuphonic chunk %d/%d failed: %w", i+1, len(chunks), err)
-		}
-		wavChunks = append(wavChunks, wavBytes)
-	}
+        // Générer un WAV par chunk, puis concaténer.
+        var wavChunks [][]byte
+        for i, chunk := range chunks {
+                if strings.TrimSpace(chunk) == "" {
+                        continue
+                }
+                if logger != nil {
+                        logger.Info("Generating NeuTTS chunk",
+                                "chunkIndex", i+1, "totalChunks", len(chunks), "chunkLen", len(chunk))
+                }
 
-	if len(wavChunks) == 0 {
-		return nil, fmt.Errorf("no audio generated (all chunks empty)")
-	}
+                wavBytes, err := callNeuphonicTTSChunk(ctx, spaceHost, provider.APIKey, chunk, refText, refAudioPath, logger)
+                if err != nil {
+                        return nil, fmt.Errorf("neuphonic chunk %d/%d failed: %w", i+1, len(chunks), err)
+                }
+                wavChunks = append(wavChunks, wavBytes)
+        }
 
-	// Concaténer les WAV en un seul fichier (utilise concatWAV de huggingface_tts.go).
-	combined, err := concatWAV(wavChunks)
-	if err != nil {
-		return nil, fmt.Errorf("concat NeuTTS WAV chunks: %w", err)
-	}
+        if len(wavChunks) == 0 {
+                return nil, fmt.Errorf("no audio generated (all chunks empty)")
+        }
 
-	if logger != nil {
-		totalDur := len(combined) / 48000
-		logger.Info("NeuTTS completed (chunked)",
-			"chunks", len(wavChunks), "audioBytes", len(combined), "durationSec", totalDur)
-	}
+        // Concaténer les WAV en un seul fichier (utilise concatWAV de huggingface_tts.go).
+        combined, err := concatWAV(wavChunks)
+        if err != nil {
+                return nil, fmt.Errorf("concat NeuTTS WAV chunks: %w", err)
+        }
 
-	return combined, nil
+        if logger != nil {
+                totalDur := len(combined) / 48000
+                logger.Info("NeuTTS completed (chunked)",
+                        "chunks", len(wavChunks), "audioBytes", len(combined), "durationSec", totalDur)
+        }
+
+        return combined, nil
+}
+
+// neuphonicFetchDefaults appelle update_defaults("French") pour récupérer le
+// ref_text + ref_audio path frais (le path temporaire de juliette.wav expire).
+//
+// Retourne (refText, refAudioPath, error). En cas d'erreur, fallback sur les
+// constantes hardcodées (neuphonicDefaultRefText / neuphonicDefaultRefAudioPath)
+// — le premier chunk échouera probablement, mais au moins on ne bloque pas.
+func neuphonicFetchDefaults(ctx context.Context, spaceHost, apiKey string, logger *slog.Logger) (string, string, error) {
+        updateURL := spaceHost + "/gradio_api/call/update_defaults"
+
+        body := map[string]interface{}{
+                "data": []interface{}{"French"},
+        }
+        bodyJSON, err := json.Marshal(body)
+        if err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("marshal update_defaults: %w", err)
+        }
+
+        postCtx, postCancel := context.WithTimeout(ctx, 30*time.Second)
+        defer postCancel()
+
+        req, err := newHTTPRequest(postCtx, "POST", updateURL, bodyJSON, apiKey)
+        if err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("create update_defaults request: %w", err)
+        }
+
+        resp, err := httpClient.Do(req)
+        if err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults POST failed: %w", err)
+        }
+        if resp.StatusCode != 200 {
+                resp.Body.Close()
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults HTTP %d", resp.StatusCode)
+        }
+
+        var postResp struct {
+                EventID string `json:"event_id"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
+                resp.Body.Close()
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("decode update_defaults event_id: %w", err)
+        }
+        resp.Body.Close()
+
+        if postResp.EventID == "" {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults empty event_id")
+        }
+
+        // SSE GET pour récupérer le résultat.
+        sseURL := updateURL + "/" + postResp.EventID
+        sseCtx, sseCancel := context.WithTimeout(ctx, 30*time.Second)
+        defer sseCancel()
+
+        sseReq, err := http.NewRequestWithContext(sseCtx, "GET", sseURL, nil)
+        if err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("create update_defaults sse: %w", err)
+        }
+        sseReq.Header.Set("Authorization", "Bearer "+apiKey)
+        sseReq.Header.Set("Accept", "text/event-stream")
+
+        sseResp, err := httpClient.Do(sseReq)
+        if err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults sse GET: %w", err)
+        }
+        defer sseResp.Body.Close()
+
+        scanner := bufio.NewScanner(sseResp.Body)
+        scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+        var eventType string
+        var dataLine string
+        for scanner.Scan() {
+                line := scanner.Text()
+                if strings.HasPrefix(line, "event: ") {
+                        eventType = strings.TrimPrefix(line, "event: ")
+                        dataLine = ""
+                } else if strings.HasPrefix(line, "data: ") {
+                        dataLine = strings.TrimPrefix(line, "data: ")
+                }
+                if line == "" && (eventType == "complete" || eventType == "error") {
+                        break
+                }
+        }
+
+        if eventType != "complete" {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults sse no complete (last: %q)", eventType)
+        }
+
+        // Parser : data = [ref_text, ref_audio_obj, default_gen_text]
+        // ref_audio_obj = {"path":"...","url":"...","meta":...}
+        var results []json.RawMessage
+        if err := json.Unmarshal([]byte(dataLine), &results); err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("decode update_defaults data: %w", err)
+        }
+        if len(results) < 2 {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults data too short")
+        }
+
+        var refText string
+        if err := json.Unmarshal(results[0], &refText); err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("decode ref_text: %w", err)
+        }
+
+        var refAudio struct {
+                Path string `json:"path"`
+                URL  string `json:"url"`
+        }
+        if err := json.Unmarshal(results[1], &refAudio); err != nil {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("decode ref_audio: %w", err)
+        }
+
+        if refText == "" || refAudio.Path == "" {
+                return neuphonicDefaultRefText, neuphonicDefaultRefAudioPath, fmt.Errorf("update_defaults returned empty ref_text or ref_audio")
+        }
+
+        return refText, refAudio.Path, nil
 }
 
 // callNeuphonicTTSChunk génère un WAV pour un seul chunk via le Space NeuTTS.
@@ -141,156 +270,156 @@ func callNeuphonicTTS(ctx context.Context, provider *aiProviderConfig, text stri
 //   - ref_audio (FileData) : voix à cloner
 //   - text_to_generate (string) : texte à synthétiser
 //   - language (string) : "French"
-func callNeuphonicTTSChunk(ctx context.Context, spaceHost, apiKey, text string, logger *slog.Logger) ([]byte, error) {
-	inferURL := spaceHost + "/gradio_api/call/infer"
+func callNeuphonicTTSChunk(ctx context.Context, spaceHost, apiKey, text, refText, refAudioPath string, logger *slog.Logger) ([]byte, error) {
+        inferURL := spaceHost + "/gradio_api/call/infer"
 
-	// Construire le payload avec la voix FR par défaut (juliette.wav).
-	refAudioObj := map[string]interface{}{
-		"path": neuphonicDefaultRefAudioPath,
-		"url":  spaceHost + "/gradio_api/file=" + neuphonicDefaultRefAudioPath,
-		"meta": map[string]string{"_type": "gradio.FileData"},
-	}
-	body := map[string]interface{}{
-		"data": []interface{}{
-			neuphonicDefaultRefText, // ref_text
-			refAudioObj,             // ref_audio
-			text,                    // text_to_generate
-			"French",                // language
-		},
-	}
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshal neuphonic tts request: %w", err)
-	}
+        // Construire le payload avec le ref_audio frais (récupéré via update_defaults).
+        refAudioObj := map[string]interface{}{
+                "path": refAudioPath,
+                "url":  spaceHost + "/gradio_api/file=" + refAudioPath,
+                "meta": map[string]string{"_type": "gradio.FileData"},
+        }
+        body := map[string]interface{}{
+                "data": []interface{}{
+                        refText,    // ref_text
+                        refAudioObj, // ref_audio
+                        text,        // text_to_generate
+                        "French",    // language
+                },
+        }
+        bodyJSON, err := json.Marshal(body)
+        if err != nil {
+                return nil, fmt.Errorf("marshal neuphonic tts request: %w", err)
+        }
 
-	if logger != nil {
-		logger.Info("Calling Neuphonic NeuTTS (infer)",
-			"url", inferURL, "inputLen", len(text), "language", "French")
-	}
+        if logger != nil {
+                logger.Info("Calling Neuphonic NeuTTS (infer)",
+                        "url", inferURL, "inputLen", len(text), "language", "French")
+        }
 
-	// Étape 1 : POST /gradio_api/call/infer → event_id.
-	postCtx, postCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer postCancel()
+        // Étape 1 : POST /gradio_api/call/infer → event_id.
+        postCtx, postCancel := context.WithTimeout(ctx, 30*time.Second)
+        defer postCancel()
 
-	req, err := newHTTPRequest(postCtx, "POST", inferURL, bodyJSON, apiKey)
-	if err != nil {
-		return nil, fmt.Errorf("create neuphonic tts request: %w", err)
-	}
+        req, err := newHTTPRequest(postCtx, "POST", inferURL, bodyJSON, apiKey)
+        if err != nil {
+                return nil, fmt.Errorf("create neuphonic tts request: %w", err)
+        }
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("neuphonic tts POST failed: %w", err)
-	}
-	if resp.StatusCode != 200 {
-		resp.Body.Close()
-		return nil, fmt.Errorf("neuphonic tts POST returned HTTP %d", resp.StatusCode)
-	}
+        resp, err := httpClient.Do(req)
+        if err != nil {
+                return nil, fmt.Errorf("neuphonic tts POST failed: %w", err)
+        }
+        if resp.StatusCode != 200 {
+                resp.Body.Close()
+                return nil, fmt.Errorf("neuphonic tts POST returned HTTP %d", resp.StatusCode)
+        }
 
-	var postResp struct {
-		EventID string `json:"event_id"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
-		resp.Body.Close()
-		return nil, fmt.Errorf("decode neuphonic event_id: %w", err)
-	}
-	resp.Body.Close()
+        var postResp struct {
+                EventID string `json:"event_id"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
+                resp.Body.Close()
+                return nil, fmt.Errorf("decode neuphonic event_id: %w", err)
+        }
+        resp.Body.Close()
 
-	if postResp.EventID == "" {
-		return nil, fmt.Errorf("neuphonic tts POST returned empty event_id")
-	}
+        if postResp.EventID == "" {
+                return nil, fmt.Errorf("neuphonic tts POST returned empty event_id")
+        }
 
-	// Étape 2 : GET SSE stream.
-	sseURL := inferURL + "/" + postResp.EventID
-	sseCtx, sseCancel := context.WithTimeout(ctx, neuphonicChunkTimeout)
-	defer sseCancel()
+        // Étape 2 : GET SSE stream.
+        sseURL := inferURL + "/" + postResp.EventID
+        sseCtx, sseCancel := context.WithTimeout(ctx, neuphonicChunkTimeout)
+        defer sseCancel()
 
-	sseReq, err := http.NewRequestWithContext(sseCtx, "GET", sseURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create neuphonic sse request: %w", err)
-	}
-	sseReq.Header.Set("Authorization", "Bearer "+apiKey)
-	sseReq.Header.Set("Accept", "text/event-stream")
+        sseReq, err := http.NewRequestWithContext(sseCtx, "GET", sseURL, nil)
+        if err != nil {
+                return nil, fmt.Errorf("create neuphonic sse request: %w", err)
+        }
+        sseReq.Header.Set("Authorization", "Bearer "+apiKey)
+        sseReq.Header.Set("Accept", "text/event-stream")
 
-	sseResp, err := httpClient.Do(sseReq)
-	if err != nil {
-		return nil, fmt.Errorf("neuphonic sse GET failed: %w", err)
-	}
-	defer sseResp.Body.Close()
+        sseResp, err := httpClient.Do(sseReq)
+        if err != nil {
+                return nil, fmt.Errorf("neuphonic sse GET failed: %w", err)
+        }
+        defer sseResp.Body.Close()
 
-	if sseResp.StatusCode != 200 {
-		return nil, fmt.Errorf("neuphonic sse GET returned HTTP %d", sseResp.StatusCode)
-	}
+        if sseResp.StatusCode != 200 {
+                return nil, fmt.Errorf("neuphonic sse GET returned HTTP %d", sseResp.StatusCode)
+        }
 
-	// Lire le flux SSE (ignorer les heartbeats, breaker sur complete/error).
-	scanner := bufio.NewScanner(sseResp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+        // Lire le flux SSE (ignorer les heartbeats, breaker sur complete/error).
+        scanner := bufio.NewScanner(sseResp.Body)
+        scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	var eventType string
-	var dataLine string
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "event: ") {
-			eventType = strings.TrimPrefix(line, "event: ")
-			dataLine = ""
-		} else if strings.HasPrefix(line, "data: ") {
-			dataLine = strings.TrimPrefix(line, "data: ")
-		}
-		if line == "" && (eventType == "complete" || eventType == "error") {
-			break
-		}
-	}
+        var eventType string
+        var dataLine string
+        for scanner.Scan() {
+                line := scanner.Text()
+                if strings.HasPrefix(line, "event: ") {
+                        eventType = strings.TrimPrefix(line, "event: ")
+                        dataLine = ""
+                } else if strings.HasPrefix(line, "data: ") {
+                        dataLine = strings.TrimPrefix(line, "data: ")
+                }
+                if line == "" && (eventType == "complete" || eventType == "error") {
+                        break
+                }
+        }
 
-	if eventType == "error" {
-		return nil, fmt.Errorf("neuphonic tts gradio returned error event (data: %s)", dataLine)
-	}
-	if eventType != "complete" {
-		return nil, fmt.Errorf("neuphonic sse stream ended without complete event (last: %q)", eventType)
-	}
-	if dataLine == "" {
-		return nil, fmt.Errorf("neuphonic sse complete event has no data")
-	}
+        if eventType == "error" {
+                return nil, fmt.Errorf("neuphonic tts gradio returned error event (data: %s)", dataLine)
+        }
+        if eventType != "complete" {
+                return nil, fmt.Errorf("neuphonic sse stream ended without complete event (last: %q)", eventType)
+        }
+        if dataLine == "" {
+                return nil, fmt.Errorf("neuphonic sse complete event has no data")
+        }
 
-	// Parser le data : [{"path":"...","url":"..."}]
-	var results []struct {
-		Path string `json:"path"`
-		URL  string `json:"url"`
-	}
-	if err := json.Unmarshal([]byte(dataLine), &results); err != nil {
-		return nil, fmt.Errorf("decode neuphonic sse data: %w (raw: %s)", err, truncate(dataLine, 200))
-	}
-	if len(results) == 0 || results[0].URL == "" {
-		return nil, fmt.Errorf("neuphonic sse result has no url")
-	}
-	result := results[0]
+        // Parser le data : [{"path":"...","url":"..."}]
+        var results []struct {
+                Path string `json:"path"`
+                URL  string `json:"url"`
+        }
+        if err := json.Unmarshal([]byte(dataLine), &results); err != nil {
+                return nil, fmt.Errorf("decode neuphonic sse data: %w (raw: %s)", err, truncate(dataLine, 200))
+        }
+        if len(results) == 0 || results[0].URL == "" {
+                return nil, fmt.Errorf("neuphonic sse result has no url")
+        }
+        result := results[0]
 
-	// Étape 3 : download du WAV.
-	dlCtx, dlCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer dlCancel()
+        // Étape 3 : download du WAV.
+        dlCtx, dlCancel := context.WithTimeout(ctx, 60*time.Second)
+        defer dlCancel()
 
-	dlReq, err := http.NewRequestWithContext(dlCtx, "GET", result.URL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create neuphonic audio download request: %w", err)
-	}
-	dlReq.Header.Set("Authorization", "Bearer "+apiKey)
+        dlReq, err := http.NewRequestWithContext(dlCtx, "GET", result.URL, nil)
+        if err != nil {
+                return nil, fmt.Errorf("create neuphonic audio download request: %w", err)
+        }
+        dlReq.Header.Set("Authorization", "Bearer "+apiKey)
 
-	dlResp, err := httpClient.Do(dlReq)
-	if err != nil {
-		return nil, fmt.Errorf("neuphonic audio download failed: %w", err)
-	}
-	defer dlResp.Body.Close()
+        dlResp, err := httpClient.Do(dlReq)
+        if err != nil {
+                return nil, fmt.Errorf("neuphonic audio download failed: %w", err)
+        }
+        defer dlResp.Body.Close()
 
-	if dlResp.StatusCode != 200 {
-		return nil, fmt.Errorf("neuphonic audio download returned HTTP %d", dlResp.StatusCode)
-	}
+        if dlResp.StatusCode != 200 {
+                return nil, fmt.Errorf("neuphonic audio download returned HTTP %d", dlResp.StatusCode)
+        }
 
-	audioBytes, err := io.ReadAll(dlResp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read neuphonic audio response: %w", err)
-	}
+        audioBytes, err := io.ReadAll(dlResp.Body)
+        if err != nil {
+                return nil, fmt.Errorf("read neuphonic audio response: %w", err)
+        }
 
-	if len(audioBytes) == 0 {
-		return nil, fmt.Errorf("neuphonic tts returned empty audio")
-	}
+        if len(audioBytes) == 0 {
+                return nil, fmt.Errorf("neuphonic tts returned empty audio")
+        }
 
-	return audioBytes, nil
+        return audioBytes, nil
 }
