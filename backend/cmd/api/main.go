@@ -77,6 +77,8 @@ func main() {
         certificatRepo := repository.NewCertificatRepository(pool)
         correctionRepo := repository.NewCorrectionRepository(pool)
         examPrepRepo := repository.NewExamPrepRepository(pool)
+        // Task 6 : Messagerie — chat temps réel + IA hybride.
+        messagerieRepo := repository.NewMessagerieRepository(pool)
 
         // R2 storage client (optionnel — si credentials non fournis, storage = nil)
         var storageClient domain.StorageClient
@@ -129,6 +131,10 @@ func main() {
         // et fait les appels chat completion vers le provider (Mistral, Groq, etc.).
         aiService := ai.NewAIService(pool)
 
+        // Task 6 : Messagerie — hub SSE (temps réel) + UseCase (chat + IA hybride).
+        messagerieHub := httptransport.NewMessagerieHub()
+        messagerieUC := usecase.NewMessagerieUseCase(messagerieRepo, aiService, messagerieHub)
+
         // 4. Configurer le serveur HTTP
         authMiddleware := middleware.Auth(signer)
 
@@ -162,7 +168,7 @@ func main() {
         audioWorker.RecoverInterruptedAudioJobs(context.Background())
         audioWorker.Start(context.Background())
 
-        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker)
+        server := httptransport.NewServer(userRepo, userUC, authUC, etabUC, accessUC, filiereUC, ueUC, efUC, anneeUC, invitationUC, epreuveUC, questionUC, sessionUC, resultatUC, documentUC, certificatUC, correctionUC, examPrepUC, messagerieUC, messagerieHub, aiService, storageClient, pool, cfg.CORSAllowedOrigins, authMiddleware, monRecorder, monHealthChecker)
 
         // CACHE-RAM-1 : worker goroutine — synchronise le cache RAM vers Neon
         // toutes les 30s en une série d'appels SaveReponse (un par question).
