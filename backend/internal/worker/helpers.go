@@ -197,7 +197,11 @@ func callAIProviderShared(ctx context.Context, provider *aiProviderConfig, messa
 }
 
 // callTTSProviderShared tente une synthèse audio (TTS). Retourne les bytes
-// audio (WAV) ou une erreur si le provider ne supporte pas le TTS.
+// audio (MP3 ou WAV selon le provider) ou une erreur si le provider ne
+// supporte pas le TTS.
+//
+// VOXTRAL-TTS-1 : si provider.Provider == "VOXTRAL", dispatch vers callVoxtralTTS
+// qui utilise l'API Mistral /audio/speech avec voice cloning (audio FR natif).
 //
 // MMS-TTS-1 : si provider.Provider == "MMS_TTS", dispatch vers callMMSTTS
 // qui utilise le protocole Gradio 4 (POST + SSE + file download) pour
@@ -210,6 +214,11 @@ func callAIProviderShared(ctx context.Context, provider *aiProviderConfig, messa
 func callTTSProviderShared(ctx context.Context, provider *aiProviderConfig, text string, logger *slog.Logger) ([]byte, error) {
         if len(text) == 0 {
                 return nil, fmt.Errorf("empty text")
+        }
+
+        // VOXTRAL-TTS-1 : dispatch Mistral Voxtral (API /audio/speech + voice cloning).
+        if strings.EqualFold(provider.Provider, "VOXTRAL") {
+                return callVoxtralTTS(ctx, provider, text, logger)
         }
 
         // MMS-TTS-1 : dispatch MMS-TTS (Space Gradio facebook/mms-tts-fra).
