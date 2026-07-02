@@ -189,18 +189,14 @@ func (w *AudioGenerationWorker) processJob(ctx context.Context, job AudioGenerat
         audioBytes, ttsErr := callTTSProviderShared(ctx, ttsProvider, script, w.logger)
         if ttsErr != nil {
                 // TTS indisponible pour ce provider → on marque PRET avec script seul.
-                // NEUPHONIC-TTS-1 (debug) : on stocke l'erreur TTS dans errorMessage pour diagnostic.
-                ttsErrStr := ttsErr.Error()
-                if len(ttsErrStr) > 500 {
-                        ttsErrStr = ttsErrStr[:500]
-                }
+                // Le frontend affichera le script dans un <details> collapsible.
                 w.logger.Warn("TTS not available for provider, keeping script only (graceful fallback)",
                         "provider", ttsProvider.Name,
                         "providerType", ttsProvider.Provider,
                         "audioId", job.AudioID,
-                        "ttsError", ttsErrStr,
+                        "ttsError", ttsErr,
                 )
-                if err := w.updateStatus(ctx, job.AudioID, "PRET", nil, &ttsErrStr); err != nil {
+                if err := w.updateStatus(ctx, job.AudioID, "PRET", nil, nil); err != nil {
                         w.logger.Error("Failed to mark audio as PRET (script only)",
                                 "error", err, "audioId", job.AudioID)
                 }
