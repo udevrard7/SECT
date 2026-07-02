@@ -143,38 +143,16 @@ const PROVIDER_META: Record<AIProviderType, {
     borderClass: 'border-info/30',
     gradientClass: 'from-info via-info to-success',
   },
-  // DASHSCOPE-AUDIO-1 : Alibaba Bailian / Model Studio — TTS natif (qwen3-tts-flash)
-  DASHSCOPE: {
-    label: 'DashScope',
-    description: 'Alibaba Bailian — TTS (qwen3-tts-flash)',
-    icon: Mic,
-    color: '#e11d48',
-    bgClass: 'bg-rose-500/10',
-    textClass: 'text-rose-600 dark:text-rose-400',
-    borderClass: 'border-rose-500/30',
-    gradientClass: 'from-rose-500 via-rose-500 to-pink-500',
-  },
-  // KOKORO-TTS-1 : Hugging Face Space Gradio — TTS (Kokoro-82M)
-  HUGGINGFACE: {
-    label: 'Hugging Face',
-    description: 'Spaces Gradio — TTS (Kokoro-82M)',
+  // MMS-TTS-1 : Facebook MMS-TTS French — voix FR native via Space Gradio dédié
+  MMS_TTS: {
+    label: 'MMS-TTS',
+    description: 'Facebook MMS-TTS French — voix FR native',
     icon: AudioLines,
-    color: '#d97706',
-    bgClass: 'bg-amber-500/10',
-    textClass: 'text-amber-600 dark:text-amber-400',
-    borderClass: 'border-amber-500/30',
-    gradientClass: 'from-amber-500 via-amber-500 to-orange-500',
-  },
-  // NEUPHONIC-TTS-1 : Neuphonic NeuTTS Nano French — voix FR native (voice cloning)
-  NEUPHONIC: {
-    label: 'Neuphonic',
-    description: 'NeuTTS Nano French — voix FR native',
-    icon: Mic,
-    color: '#7c3aed',
-    bgClass: 'bg-violet-500/10',
-    textClass: 'text-violet-600 dark:text-violet-400',
-    borderClass: 'border-violet-500/30',
-    gradientClass: 'from-violet-500 via-violet-500 to-purple-500',
+    color: '#0891b2',
+    bgClass: 'bg-cyan-500/10',
+    textClass: 'text-cyan-600 dark:text-cyan-400',
+    borderClass: 'border-cyan-500/30',
+    gradientClass: 'from-cyan-500 via-cyan-500 to-teal-500',
   },
 }
 
@@ -195,12 +173,8 @@ const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
   ],
   ANTHROPIC: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307', 'claude-3-5-haiku-20241022'],
   GOOGLE: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-lite'],
-  // DASHSCOPE-AUDIO-1 : modèles TTS DashScope (capability='tts')
-  DASHSCOPE: ['qwen3-tts-flash', 'qwen3-tts-instruct-flash', 'qwen-tts-2025-05-22', 'cosyvoice-v1'],
-  // KOKORO-TTS-1 : modèle Kokoro-82M (Space Gradio, capability='tts')
-  HUGGINGFACE: ['hexgrad/Kokoro-82M'],
-  // NEUPHONIC-TTS-1 : modèle NeuTTS Nano French (voice cloning FR)
-  NEUPHONIC: ['neuphonic/neutts-nano-french', 'neuphonic/neutts-nano-french-q4-gguf', 'neuphonic/neutts-nano-french-q8-gguf'],
+  // MMS-TTS-1 : Facebook MMS-TTS French (Space Gradio dédié)
+  MMS_TTS: ['facebook/mms-tts-fra'],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
@@ -209,12 +183,8 @@ const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
   OPENAI_COMPATIBLE: 'https://api.groq.com/openai/v1',
   ANTHROPIC: 'https://api.anthropic.com/v1',
   GOOGLE: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  // DASHSCOPE-AUDIO-1 : host racine du MaaS DashScope
-  DASHSCOPE: 'https://dashscope.aliyuncs.com',
-  // KOKORO-TTS-1 : Space Gradio Pendrokar/Kokoro-TTS (host public)
-  HUGGINGFACE: 'https://pendrokar-kokoro-tts.hf.space',
-  // NEUPHONIC-TTS-1 : Space Gradio officiel neuphonic/neutts-nano-multilingual-collection
-  NEUPHONIC: 'https://neuphonic-neutts-nano-multilingual-collection.hf.space',
+  // MMS-TTS-1 : Space Gradio dédié (à créer par l'utilisateur)
+  MMS_TTS: 'https://udevrard7-sect-mms-tts-fra.hf.space',
 }
 
 // ─── Failover types ───
