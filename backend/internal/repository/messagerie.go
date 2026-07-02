@@ -162,6 +162,11 @@ func (r *MessagerieRepository) ListByUser(ctx context.Context, userID string) (*
                         }
                         result.Conversations = append(result.Conversations, cwm)
                 }
+                // Vérifier rows.Err() — sinon une erreur pendant l'itération est silencieuse
+                // et provoque "commit unexpectedly resulted in rollback" au Commit.
+                if err := rows.Err(); err != nil {
+                        return fmt.Errorf("rows.Err after conversations scan: %w", err)
+                }
                 result.Total = len(result.Conversations)
                 return nil
         })
