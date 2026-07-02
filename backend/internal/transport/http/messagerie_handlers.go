@@ -38,17 +38,8 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
         }
         result, err := s.messagerieUC.ListConversations(r.Context(), claims)
         if err != nil {
-                slog.Error("messagerie: listConversations failed", "error", err, "userId", claims.UserID, "role", claims.Role, "etabId", claims.EtablissementID)
-                // DEBUG TEMPORAIRE : renvoyer l'erreur détaillée pour identifier le problème
-                w.Header().Set("Content-Type", "application/json")
-                w.WriteHeader(http.StatusInternalServerError)
-                json.NewEncoder(w).Encode(map[string]any{
-                        "error":   "erreur interne",
-                        "detail":  err.Error(),
-                        "userId":  claims.UserID,
-                        "role":    claims.Role,
-                        "etabId":  claims.EtablissementID,
-                })
+                slog.Error("messagerie: listConversations failed", "error", err, "userId", claims.UserID, "role", claims.Role)
+                middleware.MapDomainError(w, err)
                 return
         }
         w.Header().Set("Content-Type", "application/json")
