@@ -3,7 +3,7 @@
  * All AI providers must implement the AIProvider interface.
  */
 
-export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'MMS_TTS'
+export type AIProviderType = 'ZAI' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'GOOGLE' | 'VOXTRAL'
 
 // DASHSCOPE-AUDIO-1 / KOKORO-TTS-1 : capacité d'un provider IA.
 // - 'chat' : LLM textuel (génération de script, Q&A, etc.) — providers Mistral, ZAI, etc.

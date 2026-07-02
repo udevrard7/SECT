@@ -242,10 +242,10 @@ func validateProviderInput(name, provider, baseURL, apiKey, model string) error 
         }
         upper := strings.ToUpper(strings.TrimSpace(provider))
         switch upper {
-        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "MMS_TTS", "VOXTRAL":
-                // OK (MMS_TTS : Facebook MMS-TTS via Space ; VOXTRAL : Mistral Voxtral TTS)
+        case "ZAI", "OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC", "GOOGLE", "VOXTRAL":
+                // OK (VOXTRAL : Mistral Voxtral TTS — voix FR native via API Mistral)
         default:
-                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, MMS_TTS, VOXTRAL)", provider)
+                return fmt.Errorf("provider invalide: %q (valeurs acceptées: ZAI, OPENAI, OPENAI_COMPATIBLE, ANTHROPIC, GOOGLE, VOXTRAL)", provider)
         }
         if baseURL != "" {
                 if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
