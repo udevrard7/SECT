@@ -67,6 +67,7 @@ func getActiveProviderShared(ctx context.Context, dbPool *pgxpool.Pool) (*aiProv
 
         // Bug #2 : fusionner extraConfig (ZAI stocke apiKey dans extraConfig).
         if extraConfig != "" {
+                p.ExtraConfig = extraConfig // VOXTRAL-TTS-2 : stocker pour parsing ultérieur
                 var ec struct {
                         APIKey  string `json:"apiKey"`
                         BaseURL string `json:"baseUrl"`
@@ -124,6 +125,7 @@ func getActiveProviderByCapabilityShared(ctx context.Context, dbPool *pgxpool.Po
 
         // Fusionner extraConfig (ZAI stocke apiKey dans extraConfig).
         if extraConfig != "" {
+                p.ExtraConfig = extraConfig // VOXTRAL-TTS-2 : stocker pour parsing ultérieur
                 var ec struct {
                         APIKey  string `json:"apiKey"`
                         BaseURL string `json:"baseUrl"`

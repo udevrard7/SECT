@@ -144,6 +144,7 @@ type aiProviderConfig struct {
         Temperature float64
         MaxTokens   int
         Capability  string // DASHSCOPE-AUDIO-1 : 'chat' (défaut), 'tts', 'audio'
+        ExtraConfig string // VOXTRAL-TTS-2 : JSON brut (refAudioPresenter, refAudioExpert)
 }
 
 // Bug #9 (audit ai-providers MEDIUM) : les anciennes méthodes doublons de

@@ -259,6 +259,9 @@ interface ProviderFormData {
   token: string
   // KOKORO-TTS-1 : capability du provider (chat / tts / audio)
   capability: 'chat' | 'tts' | 'audio' | 'transcription'
+  // VOXTRAL-TTS-2 : URLs des audios de référence pour le multi-voix
+  refAudioPresenter: string
+  refAudioExpert: string
 }
 
 const EMPTY_FORM: ProviderFormData = {
@@ -273,6 +276,8 @@ const EMPTY_FORM: ProviderFormData = {
   userId: '',
   token: '',
   capability: 'chat',
+  refAudioPresenter: '',
+  refAudioExpert: '',
 }
 
 // ─── Main Component ───
@@ -441,6 +446,11 @@ export function AIProvidersPage() {
         if (formData.baseUrl) extraConfig.baseUrl = formData.baseUrl
         if (formData.apiKey) extraConfig.apiKey = formData.apiKey
       }
+      // VOXTRAL-TTS-2 : config multi-voix (URLs des audios de référence)
+      if (formData.provider === 'VOXTRAL') {
+        if (formData.refAudioPresenter) extraConfig.refAudioPresenter = formData.refAudioPresenter
+        if (formData.refAudioExpert) extraConfig.refAudioExpert = formData.refAudioExpert
+      }
 
       const res = await fetch('/api/ai-providers', {
         method: 'POST',
@@ -487,6 +497,11 @@ export function AIProvidersPage() {
         if (formData.token) extraConfig.token = formData.token
         if (formData.baseUrl) extraConfig.baseUrl = formData.baseUrl
         if (formData.apiKey) extraConfig.apiKey = formData.apiKey
+      }
+      // VOXTRAL-TTS-2 : config multi-voix (URLs des audios de référence)
+      if (formData.provider === 'VOXTRAL') {
+        if (formData.refAudioPresenter) extraConfig.refAudioPresenter = formData.refAudioPresenter
+        if (formData.refAudioExpert) extraConfig.refAudioExpert = formData.refAudioExpert
       }
 
       const res = await fetch(`/api/ai-providers/${selectedProvider.id}`, {
@@ -654,6 +669,19 @@ export function AIProvidersPage() {
       const data = await res.json()
       const full = data.provider
 
+      // VOXTRAL-TTS-2 : parser extraConfig pour récupérer les URLs des voix
+      let refAudioPresenter = ''
+      let refAudioExpert = ''
+      if (full.extraConfig) {
+        try {
+          const ec = typeof full.extraConfig === 'string'
+            ? JSON.parse(full.extraConfig)
+            : full.extraConfig
+          refAudioPresenter = ec.refAudioPresenter || ''
+          refAudioExpert = ec.refAudioExpert || ''
+        } catch { /* ignore parse error */ }
+      }
+
       setFormData({
         name: full.name,
         provider: full.provider as AIProviderType,
@@ -667,6 +695,9 @@ export function AIProvidersPage() {
         token: '',
         // KOKORO-TTS-1 : charger la capability existante (défaut 'chat')
         capability: (full.capability as ProviderFormData['capability']) || 'chat',
+        // VOXTRAL-TTS-2 : charger les URLs des voix
+        refAudioPresenter,
+        refAudioExpert,
       })
     } catch {
       setFormData({
@@ -681,6 +712,8 @@ export function AIProvidersPage() {
         userId: '',
         token: '',
         capability: (provider.capability as ProviderFormData['capability']) || 'chat',
+        refAudioPresenter: '',
+        refAudioExpert: '',
       })
     }
     setShowEditDialog(true)
@@ -1855,6 +1888,60 @@ function ProviderForm({
               onChange={(e) => setFormData({ ...formData, token: e.target.value })}
             />
           </div>
+        </div>
+      )}
+
+      {/* VOXTRAL-TTS-2 : Configuration des voix pour le multi-voix */}
+      {formData.provider === 'VOXTRAL' && (
+        <div className="space-y-4 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4">
+          <p className="text-xs text-cyan-700 dark:text-cyan-300 font-medium flex items-center gap-1.5">
+            <AudioLines className="h-3.5 w-3.5" />
+            Configuration des voix (voice cloning)
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="voxtral-presenter" className="text-xs">
+              URL audio voix Présentateur
+            </Label>
+            <Input
+              id="voxtral-presenter"
+              placeholder="https://...voix-presentateur.wav"
+              value={formData.refAudioPresenter}
+              onChange={(e) => setFormData({ ...formData, refAudioPresenter: e.target.value })}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              URL d&apos;un fichier WAV/MP3 court (~10-15s) d&apos;une voix à cloner pour le Présentateur.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="voxtral-expert" className="text-xs">
+              URL audio voix Expert
+            </Label>
+            <Input
+              id="voxtral-expert"
+              placeholder="https://...voix-expert.wav"
+              value={formData.refAudioExpert}
+              onChange={(e) => setFormData({ ...formData, refAudioExpert: e.target.value })}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              URL d&apos;un fichier WAV/MP3 court (~10-15s) d&apos;une voix différente pour l&apos;Expert.
+            </p>
+          </div>
+          {formData.refAudioPresenter && formData.refAudioExpert ? (
+            <p className="text-[11px] text-success flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              Mode multi-voix activé : le script sera parsé par speaker et chaque segment utilisera sa voix.
+            </p>
+          ) : formData.refAudioPresenter || formData.refAudioExpert ? (
+            <p className="text-[11px] text-warning">
+              Mode mono-voix : une seule voix sera utilisée pour tout le podcast.
+              Configurez les 2 URLs pour activer le multi-voix.
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              Aucune voix configurée — la voix par défaut sera utilisée.
+              Configurez au moins une URL pour personnaliser la voix.
+            </p>
+          )}
         </div>
       )}
 
