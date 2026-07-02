@@ -143,10 +143,10 @@ const PROVIDER_META: Record<AIProviderType, {
     borderClass: 'border-info/30',
     gradientClass: 'from-info via-info to-success',
   },
-  // MMS-TTS-1 : Facebook MMS-TTS French — voix FR native via Space Gradio dédié
-  MMS_TTS: {
-    label: 'MMS-TTS',
-    description: 'Facebook MMS-TTS French — voix FR native',
+  // VOXTRAL-TTS-1 : Mistral Voxtral TTS — voix FR native via API Mistral (voice cloning)
+  VOXTRAL: {
+    label: 'Voxtral',
+    description: 'Mistral Voxtral TTS — voix FR native',
     icon: AudioLines,
     color: '#0891b2',
     bgClass: 'bg-cyan-500/10',
@@ -173,8 +173,8 @@ const PROVIDER_MODELS: Record<AIProviderType, string[]> = {
   ],
   ANTHROPIC: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307', 'claude-3-5-haiku-20241022'],
   GOOGLE: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-lite'],
-  // MMS-TTS-1 : Facebook MMS-TTS French (Space Gradio dédié)
-  MMS_TTS: ['facebook/mms-tts-fra'],
+  // VOXTRAL-TTS-1 : Mistral Voxtral TTS (voix FR native via API Mistral)
+  VOXTRAL: ['voxtral-mini-tts-latest', 'voxtral-mini-tts-2603'],
 }
 
 const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
@@ -183,8 +183,8 @@ const PROVIDER_DEFAULT_URLS: Record<AIProviderType, string> = {
   OPENAI_COMPATIBLE: 'https://api.groq.com/openai/v1',
   ANTHROPIC: 'https://api.anthropic.com/v1',
   GOOGLE: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  // MMS-TTS-1 : Space Gradio dédié (à créer par l'utilisateur)
-  MMS_TTS: 'https://udevrard7-sect-mms-tts-fra.hf.space',
+  // VOXTRAL-TTS-1 : API Mistral (même base que le chat)
+  VOXTRAL: 'https://api.mistral.ai/v1',
 }
 
 // ─── Failover types ───

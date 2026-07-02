@@ -206,3 +206,18 @@ func fetchVoxtralRefAudio(ctx context.Context, logger *slog.Logger) (string, err
 
         return b64, nil
 }
+
+// ttsAudioFormat retourne l'extension et le content-type pour le stockage R2
+// en fonction du type de provider TTS.
+//
+// VOXTRAL-TTS-1 : Mistral Voxtral retourne du MP3 (96kbps 22.05kHz mono).
+func ttsAudioFormat(provider *aiProviderConfig) (extension string, contentType string) {
+        if provider == nil {
+                return ".mp3", "audio/mpeg"
+        }
+        // Voxtral (Mistral) retourne du MP3.
+        if strings.EqualFold(provider.Provider, "VOXTRAL") {
+                return ".mp3", "audio/mpeg"
+        }
+        return ".mp3", "audio/mpeg"
+}
