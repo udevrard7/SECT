@@ -1,0 +1,523 @@
+// ─────────────────────────────────────────────────────────────
+// Hooks TanStack Query pour le module Messagerie (chat temps réel + IA hybride).
+// Cache + dedup + retry automatique + invalidation + optimistic updates.
+// Pattern aligné sur src/hooks/use-resultats.ts et use-correction.ts.
+//
+// Le backend Go expose 15 endpoints REST + 1 stream SSE sous /api/messagerie.
+// Voir worklog Task 6 (backend) pour le détail des routes et du hub SSE.
+//
+// Le stream SSE (useMessagerieStream) invalide les queries pertinentes quand
+// un event arrive, pour garder le cache à jour sans polling. EventSource se
+// reconnecte automatiquement (pas de retry manuel).
+// ─────────────────────────────────────────────────────────────
+
+'use client'
+
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+  type InfiniteData,
+} from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import type {
+  Conversation,
+  ConversationListResult,
+  ConversationParticipant,
+  ConversationWithMeta,
+  CreateDirectInput,
+  Message,
+  MessageListResult,
+  MessageSignalement,
+  SendMessageInput,
+  SignalMessageInput,
+} from '@/types/messagerie'
+
+// ─── Clés de cache ───
+
+export const messagerieKeys = {
+  all: ['messagerie'] as const,
+  conversations: () => [...messagerieKeys.all, 'conversations'] as const,
+  messages: (conversationId: string) =>
+    [...messagerieKeys.all, 'messages', conversationId] as const,
+  participants: (conversationId: string) =>
+    [...messagerieKeys.all, 'participants', conversationId] as const,
+}
+
+// ─── Fetch helper ───
+// credentials: 'include' pour envoyer le cookie httpOnly (JWT refresh).
+// En pratique les appels passent par le rewrite Vercel (same-origin), donc
+// le cookie est envoyé même sans cette option, mais on reste explicite.
+
+async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, { ...options, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body?.error || `Erreur ${res.status}`)
+  }
+  // Pour les réponses vides (204 No Content ou DELETE), res.json() échouerait.
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
+}
+
+// ─── 1. useConversations ───
+
+/**
+ * Liste des conversations de l'utilisateur courant (avec lastMessage,
+ * unreadCount, participantsCount). staleTime 30s car le SSE invalide
+ * automatiquement en cas de nouveau message.
+ */
+export function useConversations() {
+  return useQuery<ConversationWithMeta[]>({
+    queryKey: messagerieKeys.conversations(),
+    queryFn: () =>
+      fetchJSON<ConversationListResult>('/api/messagerie/conversations').then(
+        (d) => d.conversations
+      ),
+    staleTime: 30 * 1000, // 30s
+  })
+}
+
+// ─── 2. useMessages (infinite scroll avec cursor) ───
+
+/**
+ * Liste des messages d'une conversation avec pagination infinie (cursor DESC).
+ * La première page contient les messages les plus récents ; getNextPageParam
+ * retourne le curseur vers les messages plus anciens.
+ *
+ * Pour l'affichage, utiliser useFlattenedMessages qui inverse l'ordre pour
+ * obtenir du plus ancien → plus récent (ordre ASC).
+ */
+export function useMessages(conversationId: string | null | undefined) {
+  return useInfiniteQuery<
+    MessageListResult,
+    Error,
+    InfiniteData<MessageListResult>,
+    readonly unknown[],
+    string | null
+  >({
+    queryKey: messagerieKeys.messages(conversationId ?? 'none'),
+    queryFn: ({ pageParam }) => {
+      const url = new URL(
+        `/api/messagerie/conversations/${conversationId}/messages`,
+        window.location.origin
+      )
+      if (pageParam) url.searchParams.set('cursor', pageParam)
+      url.searchParams.set('limit', '30')
+      return fetchJSON<MessageListResult>(url.toString())
+    },
+    initialPageParam: null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: !!conversationId,
+    staleTime: 60 * 1000, // 1 min — le SSE invalide en cas de nouveau message
+  })
+}
+
+/**
+ * Helper : aplatit toutes les pages de useMessages et inverse l'ordre
+ * (les messages backend sont DESC, on veut ASC pour l'affichage).
+ *
+ * Retourne également hasMore et fetchNextPage pour le bouton "charger plus"
+ * en haut de la conversation.
+ */
+export function useFlattenedMessages(conversationId: string | null | undefined) {
+  const query = useMessages(conversationId)
+  const messages: Message[] = []
+  if (query.data) {
+    for (const page of query.data.pages) {
+      for (const msg of page.messages) {
+        messages.push(msg)
+      }
+    }
+  }
+  // Les pages sont triées DESC (plus récent d'abord). On inverse pour
+  // obtenir du plus ancien → plus récent (ordre d'affichage naturel).
+  messages.reverse()
+  return {
+    messages,
+    hasMore: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  }
+}
+
+// ─── 3. useSendMessage (optimistic update) ───
+
+/**
+ * Envoi d'un message dans une conversation, avec optimistic update :
+ * le message est ajouté immédiatement à la liste (en première position
+ * car les pages sont DESC), puis remplacé par la vraie réponse serveur.
+ *
+ * En cas d'erreur (réseau, validation, etc.), on rollback vers l'état
+ * précédent via le context retourné par onMutate.
+ *
+ * Invalide aussi la liste des conversations (pour rafraîchir lastMessage).
+ */
+export function useSendMessage(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SendMessageInput) =>
+      fetchJSON<Message>(
+        `/api/messagerie/conversations/${conversationId}/messages`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }
+      ),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+      const previous = queryClient.getQueryData<
+        InfiniteData<MessageListResult>
+      >(messagerieKeys.messages(conversationId))
+      // Optimistic message (temporaire, sera remplacé par la vraie réponse).
+      const optimisticMsg: Message = {
+        id: `temp-${Date.now()}`,
+        conversationId,
+        userId: 'me', // sera corrigé par la réponse
+        isIA: false,
+        contenu: input.contenu,
+        createdAt: new Date().toISOString(),
+        replyToId: input.replyToId ?? null,
+      }
+      queryClient.setQueryData<InfiniteData<MessageListResult>>(
+        messagerieKeys.messages(conversationId),
+        (old) => {
+          if (!old) return old
+          return {
+            ...old,
+            pages: old.pages.map((page, i) =>
+              i === 0
+                ? { ...page, messages: [optimisticMsg, ...page.messages] }
+                : page
+            ),
+          }
+        }
+      )
+      return { previous }
+    },
+    onError: (_err, _input, context) => {
+      // Rollback vers l'état précédent.
+      if (context?.previous) {
+        queryClient.setQueryData(
+          messagerieKeys.messages(conversationId),
+          context.previous
+        )
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.conversations(),
+      }) // refresh lastMessage
+    },
+  })
+}
+
+// ─── 4. useMarkAsRead ───
+
+/**
+ * Marque une conversation comme lue jusqu'à lastReadAt. Invalide la liste
+ * des conversations pour rafraîchir unreadCount.
+ */
+export function useMarkAsRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      lastReadAt,
+    }: {
+      conversationId: string
+      lastReadAt: string
+    }) =>
+      fetchJSON<void>(
+        `/api/messagerie/conversations/${conversationId}/lu`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lastReadAt }),
+        }
+      ),
+    onSuccess: (_, { conversationId }) => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.conversations(),
+      }) // refresh unreadCount
+      // Invalide aussi les messages pour rafraîchir les flags "lu" si besoin.
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+    },
+  })
+}
+
+// ─── 5. useCreateDirect ───
+
+/**
+ * Crée (ou récupère si elle existe déjà) une conversation DM entre l'utilisateur
+ * courant et targetUserId. Invalide la liste des conversations.
+ */
+export function useCreateDirect() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateDirectInput) =>
+      fetchJSON<Conversation>('/api/messagerie/conversations/direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.conversations(),
+      })
+    },
+  })
+}
+
+// ─── 6. useGetOrCreateIAPrivate ───
+
+/**
+ * Récupère (ou crée) la conversation IA privée de l'utilisateur courant.
+ * Une seule par utilisateur (contrainte UK côté backend). Invalide la liste
+ * des conversations.
+ */
+export function useGetOrCreateIAPrivate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      fetchJSON<Conversation>('/api/messagerie/conversations/ia-private', {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.conversations(),
+      })
+    },
+  })
+}
+
+// ─── 7. useEditMessage ───
+
+/**
+ * Édite le contenu d'un message (POST → PATCH /api/messagerie/messages/{id}).
+ * Invalide les messages de la conversation (pour rafraîchir editedAt + contenu).
+ */
+export function useEditMessage(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      messageId,
+      contenu,
+    }: {
+      messageId: string
+      contenu: string
+    }) =>
+      fetchJSON<Message>(`/api/messagerie/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contenu }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+    },
+  })
+}
+
+// ─── 8. useDeleteMessage ───
+
+/**
+ * Soft-delete d'un message (DELETE /api/messagerie/messages/{id}).
+ * Le backend fait un soft-delete (deletedAt), le message reste visible avec
+ * un marqueur "supprimé". Invalide les messages de la conversation.
+ */
+export function useDeleteMessage(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (messageId: string) =>
+      fetchJSON<void>(`/api/messagerie/messages/${messageId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.messages(conversationId),
+      })
+    },
+  })
+}
+
+// ─── 9. useSignalMessage ───
+
+/**
+ * Signale un message (HARCELEMENT, SPAM, CONTENU_INAPPROPRIE, AUTRE).
+ * Pas d'invalidation : le signalement est traité async par les responsables.
+ */
+export function useSignalMessage() {
+  return useMutation({
+    mutationFn: ({
+      messageId,
+      input,
+    }: {
+      messageId: string
+      input: SignalMessageInput
+    }) =>
+      fetchJSON<MessageSignalement>(
+        `/api/messagerie/messages/${messageId}/signaler`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }
+      ),
+  })
+}
+
+// ─── 10. useSetMuted ───
+
+/**
+ * Active/désactive la mise en sourdine d'une conversation (mute).
+ * Invalide la liste des conversations pour rafraîchir le flag muted.
+ */
+export function useSetMuted() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      muted,
+    }: {
+      conversationId: string
+      muted: boolean
+    }) =>
+      fetchJSON<void>(
+        `/api/messagerie/conversations/${conversationId}/mute`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ muted }),
+        }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: messagerieKeys.conversations(),
+      })
+    },
+  })
+}
+
+// ─── 11. useParticipants ───
+
+/**
+ * Liste les participants d'une conversation (id, userId, lastReadAt, muted,
+ * joinedAt, leftAt). staleTime 60s.
+ */
+export function useParticipants(conversationId: string | null | undefined) {
+  return useQuery<ConversationParticipant[]>({
+    queryKey: messagerieKeys.participants(conversationId ?? 'none'),
+    queryFn: () =>
+      fetchJSON<ConversationParticipant[]>(
+        `/api/messagerie/conversations/${conversationId}/participants`
+      ),
+    enabled: !!conversationId,
+    staleTime: 60 * 1000,
+  })
+}
+
+// ─── Hook SSE : useMessagerieStream ───
+//
+// Ouvre une connexion SSE (EventSource) vers /api/messagerie/stream et invalide
+// les queries pertinentes quand un event arrive. EventSource se reconnecte
+// automatiquement en cas de déconnexion (pas de retry manuel).
+//
+// IMPORTANT : EventSource ne supporte pas les headers Authorization. Les
+// cookies httpOnly sont envoyés automatiquement (withCredentials: true pour
+// sécuriser l'envoi). Le backend doit autoriser CORS avec credentials
+// (déjà configuré dans le middleware CORS existant).
+//
+// Le hook retourne { isConnected } pour afficher un indicateur "temps réel"
+// dans l'UI. Peut être étendu pour afficher les "typing indicators" via
+// l'event 'typing'.
+
+export function useMessagerieStream() {
+  const queryClient = useQueryClient()
+  const [isConnected, setIsConnected] = useState(false)
+
+  useEffect(() => {
+    // Côté navigateur uniquement (Next.js SSR-safe).
+    if (typeof window === 'undefined') return
+    if (typeof EventSource === 'undefined') return
+
+    const eventSource = new EventSource('/api/messagerie/stream', {
+      withCredentials: true,
+    })
+
+    eventSource.onopen = () => setIsConnected(true)
+    eventSource.onerror = () => setIsConnected(false)
+
+    // Event : nouveau message (envoyé par quelqu'un d'autre ou par l'IA).
+    // On invalide la conversation concernée + la liste des conversations
+    // (pour rafraîchir lastMessage + unreadCount).
+    eventSource.addEventListener('message_new', (e) => {
+      try {
+        const msg = JSON.parse(e.data) as Message
+        queryClient.invalidateQueries({
+          queryKey: messagerieKeys.messages(msg.conversationId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: messagerieKeys.conversations(),
+        })
+      } catch {
+        // ignore parse errors (heartbeats, commentaires SSE)
+      }
+    })
+
+    // Event : édition d'un message.
+    eventSource.addEventListener('message_edit', (e) => {
+      try {
+        const msg = JSON.parse(e.data) as Message
+        queryClient.invalidateQueries({
+          queryKey: messagerieKeys.messages(msg.conversationId),
+        })
+      } catch {
+        // ignore
+      }
+    })
+
+    // Event : suppression d'un message. Le payload ne contient que
+    // conversationId + messageId (le message est soft-deleté).
+    eventSource.addEventListener('message_delete', (e) => {
+      try {
+        const data = JSON.parse(e.data) as {
+          conversationId: string
+          messageId: string
+        }
+        queryClient.invalidateQueries({
+          queryKey: messagerieKeys.messages(data.conversationId),
+        })
+      } catch {
+        // ignore
+      }
+    })
+
+    // Event : "typing" indicator (pas implémenté côté backend pour l'instant,
+    // mais le hook est prêt à le recevoir). Pour l'afficher dans l'UI, il
+    // faudrait un store Zustand dédié ou un context.
+    // eventSource.addEventListener('typing', (e) => { ... })
+
+    return () => {
+      eventSource.close()
+      setIsConnected(false)
+    }
+  }, [queryClient])
+
+  return { isConnected }
+}

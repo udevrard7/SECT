@@ -9,6 +9,7 @@ import { SwitchAccountDialog } from '@/components/layout/switch-account-dialog'
 import { PageContent } from '@/components/layout/page-content'
 import { ForceChangePasswordPage } from '@/components/auth/force-change-password-page'
 import { AIAssistant } from '@/components/ds'
+import { MessagerieBubble } from '@/components/messagerie'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { useSidebarModeStore } from '@/stores/sidebar-store'
 import { getPageIdFromSlug, PAGE_LABELS, PAGE_ALLOWED_ROLES } from '@/lib/routes'
@@ -154,6 +155,12 @@ export function AuthenticatedLayout({ slug }: { slug: string[] }) {
       {/* Dialog « Changer de compte » — singleton contrôlé par store, ouvert
           depuis le header (bouton Switch) ou la carte utilisateur de la sidebar. */}
       <SwitchAccountDialog />
+      {/* Bulle flottante Messagerie (chat temps réel + IA hybride).
+          Positionnée à droite, à gauche de l'AIAssistant (bottom-6 right-20)
+          pour éviter le chevauchement avec ce dernier (bottom-4 right-4).
+          Ouvre un panneau style Messenger avec liste des conversations +
+          zone de chat. Backend : /api/messagerie/* (SSE pour le temps réel). */}
+      <MessagerieBubble />
     </SidebarProvider>
   )
 }
