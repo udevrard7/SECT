@@ -5,7 +5,6 @@ import (
         "context"
         "encoding/json"
         "fmt"
-        "io"
         "log/slog"
         "net/http"
         "strings"
@@ -197,104 +196,27 @@ func callAIProviderShared(ctx context.Context, provider *aiProviderConfig, messa
         return aiResp.Choices[0].Message.Content, nil
 }
 
-// callTTSProviderShared tente une synthèse audio (TTS) via l'endpoint OpenAI-
-// compatible /audio/speech du provider IA actif. Retourne les bytes audio
-// (MP3 ou WAV selon le provider) ou une erreur si le provider ne supporte
-// pas le TTS.
+// callTTSProviderShared tente une synthèse audio (TTS). Retourne les bytes
+// audio (WAV) ou une erreur si le provider ne supporte pas le TTS.
 //
-// DASHSCOPE-AUDIO-1 : si provider.Provider == "DASHSCOPE", dispatch vers
-// callDashScopeTTS qui utilise l'API native /api/v1/services/audio/tts
-// (format de requête/réponse différent de /audio/speech).
-//
-// KOKORO-TTS-1 : si provider.Provider == "HUGGINGFACE", dispatch vers
-// callHuggingFaceTTS qui utilise le protocole Gradio 4 (POST + SSE + file
-// download). Le Space Pendrokar/Kokoro-TTS retourne du WAV (24kHz 16-bit).
+// MMS-TTS-1 : si provider.Provider == "MMS_TTS", dispatch vers callMMSTTS
+// qui utilise le protocole Gradio 4 (POST + SSE + file download) pour
+// appeler un Space HuggingFace hébergeant facebook/mms-tts-fra.
 //
 // AUDIO-LEARNING-1 : le TTS est OPTIONNEL. Si le provider ne supporte pas
-// /audio/speech (ex: Mistral, Groq chat-only, OpenRouter sans modèle TTS),
-// cette fonction retourne une erreur et le worker garde le script textuel
-// uniquement (status=PRET, r2Key=nil). L'échec TTS n'est PAS une erreur de
-// job — c'est une dégradation gracieuse.
-//
-// Limite à 4000 caractères : les TTS APIs ont généralement une limite de
-// ~4096 caractères par requête. Le script complet est tronqué (le début du
-// podcast est synthétisé, ce qui reste utile pour l'étudiant).
-//
-// Le modèle demandé est "tts-1" (convention OpenAI). Si le provider ne
-// supporte pas ce modèle, il retournera une erreur HTTP 4xx → fallback.
+// le TTS, cette fonction retourne une erreur et le worker garde le script
+// textuel uniquement (status=PRET, r2Key=nil). L'échec TTS n'est PAS une
+// erreur de job — c'est une dégradation gracieuse.
 func callTTSProviderShared(ctx context.Context, provider *aiProviderConfig, text string, logger *slog.Logger) ([]byte, error) {
         if len(text) == 0 {
                 return nil, fmt.Errorf("empty text")
         }
 
-        // KOKORO-TTS-1 : dispatch Hugging Face (Gradio / Space Kokoro).
-        if strings.EqualFold(provider.Provider, "HUGGINGFACE") {
-                return callHuggingFaceTTS(ctx, provider, text, logger)
+        // MMS-TTS-1 : dispatch MMS-TTS (Space Gradio facebook/mms-tts-fra).
+        if strings.EqualFold(provider.Provider, "MMS_TTS") {
+                return callMMSTTS(ctx, provider, text, logger)
         }
 
-        // NEUPHONIC-TTS-1 : dispatch Neuphonic NeuTTS (voice cloning FR natif).
-        if strings.EqualFold(provider.Provider, "NEUPHONIC") {
-                return callNeuphonicTTS(ctx, provider, text, logger)
-        }
-
-        // DASHSCOPE-AUDIO-1 : dispatch selon le type de provider.
-        // DashScope utilise l'API native /api/v1/services/audio/tts (pas /audio/speech).
-        if strings.EqualFold(provider.Provider, "DASHSCOPE") {
-                return callDashScopeTTS(ctx, provider, text, logger)
-        }
-
-        // Tronquer à 4000 caractères (limite typique des TTS APIs).
-        input := text
-        if len(input) > 4000 {
-                input = input[:4000]
-        }
-
-        body := map[string]interface{}{
-                "model":           "tts-1",
-                "input":           input,
-                "voice":           "alloy",
-                "response_format": "mp3",
-        }
-        bodyJSON, err := json.Marshal(body)
-        if err != nil {
-                return nil, fmt.Errorf("marshal tts request: %w", err)
-        }
-
-        url := strings.TrimRight(provider.BaseURL, "/") + "/audio/speech"
-        if logger != nil {
-                logger.Info("Calling TTS provider", "url", url, "inputLen", len(input))
-        }
-
-        httpCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-        defer cancel()
-
-        req, err := newHTTPRequest(httpCtx, "POST", url, bodyJSON, provider.APIKey)
-        if err != nil {
-                return nil, fmt.Errorf("create tts request: %w", err)
-        }
-
-        resp, err := httpClient.Do(req)
-        if err != nil {
-                return nil, fmt.Errorf("tts request failed: %w", err)
-        }
-        defer resp.Body.Close()
-
-        if resp.StatusCode != 200 {
-                return nil, fmt.Errorf("tts provider returned HTTP %d", resp.StatusCode)
-        }
-
-        contentType := resp.Header.Get("Content-Type")
-        if !strings.HasPrefix(contentType, "audio/") {
-                return nil, fmt.Errorf("tts provider returned non-audio content-type: %s", contentType)
-        }
-
-        audioBytes, err := io.ReadAll(resp.Body)
-        if err != nil {
-                return nil, fmt.Errorf("read tts response: %w", err)
-        }
-        if len(audioBytes) == 0 {
-                return nil, fmt.Errorf("tts returned empty audio")
-        }
-
-        return audioBytes, nil
+        // Fallback : provider non-TTS (chat-only) → erreur → dégradation gracieuse.
+        return nil, fmt.Errorf("provider %q does not support TTS (capability != 'tts')", provider.Provider)
 }
