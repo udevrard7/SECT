@@ -39,7 +39,10 @@ type Server struct {
         certificatUC *usecase.CertificatUseCase
         correctionUC *usecase.CorrectionUseCase
         examPrepUC   *usecase.ExamPrepUseCase
-        aiService    *ai.AIService
+        // Messagerie (Task 6) : chat temps réel + IA hybride.
+        messagerieUC  *usecase.MessagerieUseCase
+        messagerieHub *MessagerieHub
+        aiService     *ai.AIService
         storage       domain.StorageClient
         // CACHE-RAM-1 : cache en mémoire write-behind pour les sessions d'examen actives.
         // Le handler saveReponse écrit en RAM (< 1ms) ; un worker goroutine synchronise
@@ -70,6 +73,8 @@ func NewServer(
         certificatUC *usecase.CertificatUseCase,
         correctionUC *usecase.CorrectionUseCase,
         examPrepUC *usecase.ExamPrepUseCase,
+        messagerieUC *usecase.MessagerieUseCase,
+        messagerieHub *MessagerieHub,
         aiService *ai.AIService,
         storage domain.StorageClient,
         dbPool *pgxpool.Pool,
@@ -98,6 +103,8 @@ func NewServer(
                 certificatUC:     certificatUC,
                 correctionUC:     correctionUC,
                 examPrepUC:       examPrepUC,
+                messagerieUC:     messagerieUC,
+                messagerieHub:    messagerieHub,
                 aiService:        aiService,
                 storage:          storage,
                 monRecorder:      monRecorder,
@@ -390,6 +397,43 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Get("/", s.listResultats)
                         r.Get("/overview", s.resultatsOverviewRealV2)
                         r.Get("/etudiant-overview", s.resultatsEtudiantOverview)
+                })
+
+                // /api/messagerie — chat temps réel + IA hybride (Task 6)
+                //
+                // Conversations : liste, détail, création DIRECT, IA privé.
+                // Messages : liste (cursor), envoi, édition, suppression.
+                // Participants : liste, mark-as-read, mute.
+                // Signalements : réservés RESPONSABLE/ADMIN (sous-groupe RequireRole).
+                // SSE stream : /stream pour les events temps réel (message_new, edited,
+                // deleted, read, typing). Le hub est in-memory (pas de Redis) — les
+                // clients reconnectent automatiquement via EventSource natif.
+                r.Route("/api/messagerie", func(r chi.Router) {
+                        r.Use(middleware.RequireAuth)
+                        // Conversations
+                        r.Get("/conversations", s.listConversations)
+                        r.Post("/conversations/ia-private", s.getOrCreateIAPrivate)
+                        r.Post("/conversations/direct", s.createDirect)
+                        r.Get("/conversations/{id}", s.getConversation)
+                        // Messages d'une conversation
+                        r.Get("/conversations/{id}/messages", s.listMessages)
+                        r.Post("/conversations/{id}/messages", s.sendMessage)
+                        // Participants / read / mute
+                        r.Post("/conversations/{id}/lu", s.markAsRead)
+                        r.Patch("/conversations/{id}/mute", s.setMuted)
+                        r.Get("/conversations/{id}/participants", s.listParticipants)
+                        // Messages (edit / delete / signaler)
+                        r.Patch("/messages/{id}", s.editMessage)
+                        r.Delete("/messages/{id}", s.deleteMessage)
+                        r.Post("/messages/{id}/signaler", s.signalMessage)
+                        // SSE stream temps réel
+                        r.Get("/stream", s.messagerieStream)
+                        // Signalements : réservés RESPONSABLE/ADMIN
+                        r.Group(func(r chi.Router) {
+                                r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))
+                                r.Get("/signalements", s.listSignalements)
+                                r.Patch("/signalements/{id}", s.resolveSignalement)
+                        })
                 })
 
                 // /api/documents
