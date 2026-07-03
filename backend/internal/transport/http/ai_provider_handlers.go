@@ -6,7 +6,7 @@
 //      GET    /api/ai-providers/{id}          — lire un provider (avec apiKey)
 //      PATCH  /api/ai-providers/{id}          — mise à jour partielle
 //      DELETE /api/ai-providers/{id}          — supprimer
-//      POST   /api/ai-providers/activate      — activer un provider (désactive les autres)
+//      POST   /api/ai-providers/activate      — activer un provider (désactive les autres de la même capability)
 //      GET/POST /api/ai-providers/{id}/test   — tester la connexion au provider
 //      GET    /api/ai-providers/models        — lister les modèles disponibles
 //      GET    /api/ai-providers/failover/status — statut complet du failover
@@ -571,7 +571,9 @@ func (s *Server) aiProviderDelete(w http.ResponseWriter, r *http.Request) {
 // 5. POST /api/ai-providers/activate — Active un provider
 // ──────────────────────────────────────────────────────────────────────────
 
-// aiProviderActivate désactive tous les autres providers et active celui-ci.
+// aiProviderActivate désactive les autres providers de la MÊME capability et
+// active celui-ci. Permet d'avoir simultanément un provider chat actif ET un
+// provider tts actif (migration 000035 — index partiel unique par capability).
 // Body : { providerId }
 func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
         claims, ok := s.requireAdminClaims(w, r)
@@ -593,11 +595,25 @@ func (s *Server) aiProviderActivate(w http.ResponseWriter, r *http.Request) {
 
         var activatedName string
         err := appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                // Désactive tous les providers.
-                if _, err := tx.Exec(r.Context(), `UPDATE "AIProviderConfig" SET "isActive" = false, "updatedAt" = NOW()`); err != nil {
+                // 1. Lire la capability du provider ciblé (NULL → 'chat', cohérent avec
+                //    la migration 000035 et getActiveProviderShared).
+                var targetCapability string
+                if err := tx.QueryRow(r.Context(),
+                        `SELECT COALESCE("capability", 'chat') FROM "AIProviderConfig" WHERE "id" = $1`,
+                        body.ProviderID,
+                ).Scan(&targetCapability); err != nil {
                         return err
                 }
-                // Active celui-ci et récupère son nom.
+                // 2. Désactiver UNIQUEMENT les providers de la même capability. Les
+                //    providers d'une autre capability (ex: tts pendant qu'on active un
+                //    chat) restent actifs — c'est le cœur du fix multi-capability.
+                if _, err := tx.Exec(r.Context(),
+                        `UPDATE "AIProviderConfig" SET "isActive" = false, "updatedAt" = NOW()
+                         WHERE COALESCE("capability", 'chat') = $1`, targetCapability,
+                ); err != nil {
+                        return err
+                }
+                // 3. Active celui-ci et récupère son nom.
                 err := tx.QueryRow(r.Context(),
                         `UPDATE "AIProviderConfig" SET "isActive" = true, "updatedAt" = NOW()
                          WHERE "id" = $1 RETURNING "name"`, body.ProviderID,

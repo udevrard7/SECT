@@ -118,7 +118,9 @@ func (s *AIService) ChatWithFailover(ctx context.Context, messages []ChatMessage
         return nil, fmt.Errorf("tous les providers IA ont échoué, dernière erreur: %w", lastErr)
 }
 
-// getActiveProvidersForFailover lit TOUS les providers actifs triés par priorité.
+// getActiveProvidersForFailover lit TOUS les providers actifs de capability='chat'
+// triés par priorité. MULTI-CAPABILITY : filtre sur capability='chat' pour que le
+// failover ne bascule qu'entre providers chat (jamais vers un provider tts/audio).
 // Utilisé par ChatWithFailover pour avoir une liste de secours.
 func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*activeProvider, error) {
         tx, err := s.dbPool.BeginTx(ctx, pgx.TxOptions{})
@@ -137,7 +139,7 @@ func (s *AIService) getActiveProvidersForFailover(ctx context.Context) ([]*activ
                        COALESCE("temperature", 0.7), COALESCE("maxTokens", 4096),
                        COALESCE("extraConfig", ''), COALESCE("capability", 'chat')
                 FROM "AIProviderConfig"
-                WHERE "isActive" = true
+                WHERE "isActive" = true AND COALESCE("capability", 'chat') = 'chat'
                 ORDER BY "priority" ASC, "createdAt" ASC
         `)
         if err != nil {

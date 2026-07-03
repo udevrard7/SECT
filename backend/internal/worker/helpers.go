@@ -30,8 +30,13 @@ func newHTTPRequest(ctx context.Context, method, url string, body []byte, apiKey
         return req, nil
 }
 
-// getActiveProviderShared lit le provider IA actif depuis AIProviderConfig.
-// Fonction partagée entre IAWorker et CorrectionWorker.
+// getActiveProviderShared lit le provider IA actif de capability='chat' depuis
+// AIProviderConfig. Fonction partagée entre IAWorker et CorrectionWorker.
+//
+// MULTI-CAPABILITY : filtre sur COALESCE("capability",'chat')='chat' pour ne
+// jamais retourner un provider tts/audio à un worker qui attend un chat LLM
+// (OpenAI-compatible /chat/completions). Le worker audio utilise
+// getActiveProviderByCapabilityShared pour le TTS dédié.
 //
 // Bug #2 (CRITICAL, audit ai-providers 2025) : extraConfig est maintenant lu
 // et fusionné. Pour ZAI, l'apiKey est souvent dans extraConfig.apiKey.
@@ -55,7 +60,7 @@ func getActiveProviderShared(ctx context.Context, dbPool *pgxpool.Pool) (*aiProv
                        COALESCE("temperature", 0.7), COALESCE("maxTokens", 4096),
                        COALESCE("extraConfig", ''), COALESCE("capability", 'chat')
                 FROM "AIProviderConfig"
-                WHERE "isActive" = true
+                WHERE "isActive" = true AND COALESCE("capability", 'chat') = 'chat'
                 ORDER BY "priority" ASC
                 LIMIT 1
         `).Scan(&p.ID, &p.Name, &p.Provider, &p.BaseURL, &p.APIKey, &p.Model, &p.Temperature, &p.MaxTokens, &extraConfig, &p.Capability)
