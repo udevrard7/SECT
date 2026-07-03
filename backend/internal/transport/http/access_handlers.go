@@ -10,6 +10,22 @@ import (
         "github.com/udevrard7/sect/backend/internal/middleware"
 )
 
+// dbgErrToString convertit une erreur en string pour le debug endpoint.
+func dbgErrToString(err error) string {
+        if err == nil {
+                return ""
+        }
+        return err.Error()
+}
+
+// firstRecordID retourne l'ID du premier record ou "" si vide.
+func firstRecordID(records []*domain.EtablissementAccess) string {
+        if len(records) == 0 {
+                return ""
+        }
+        return records[0].ID
+}
+
 // access_handlers.go — handlers HTTP pour EtablissementAccess.
 
 // listAccess — GET /api/etablissement-access
@@ -35,8 +51,14 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                 EtablissementID: r.URL.Query().Get("etablissementId"),
         }
 
-        // DEBUG-ACCESS-2 : si query param ?debug=1, retourner les claims au lieu des records.
+        // DEBUG-ACCESS-2 : si query param ?debug=1, retourner les claims + count via repo.
         if r.URL.Query().Get("debug") == "1" {
+                // Appeler le repo List directement pour voir ce qu'il retourne.
+                dbgParams := domain.AccessListParams{
+                        Statut:          params.Statut,
+                        EtablissementID: claims.EtablissementID, // forcer pour responsable
+                }
+                dbgRecords, dbgErr := s.accessUC.List(r.Context(), claims, dbgParams)
                 w.Header().Set("Content-Type", "application/json")
                 json.NewEncoder(w).Encode(map[string]any{
                         "claims": map[string]any{
@@ -45,7 +67,10 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                                 "etablissementID": claims.EtablissementID,
                                 "etabLen":         len(claims.EtablissementID),
                         },
-                        "params": params,
+                        "params":  dbgParams,
+                        "count":   len(dbgRecords),
+                        "error":   dbgErrToString(dbgErr),
+                        "firstID": firstRecordID(dbgRecords),
                 })
                 return
         }
