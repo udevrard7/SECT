@@ -95,6 +95,13 @@ type ConversationParticipant struct {
         LeftAt         *time.Time `json:"leftAt,omitempty"`
 }
 
+// ParticipantWithUser — participant enrichi avec les infos utilisateur
+// (pour l'affichage de la liste des participants dans l'UI messagerie).
+type ParticipantWithUser struct {
+        ConversationParticipant
+        User *MessageUserRef `json:"user,omitempty"`
+}
+
 // Message — message posté dans une conversation (user ou IA).
 type Message struct {
         ID             string     `json:"id"`
@@ -290,6 +297,11 @@ type MessagerieRepository interface {
 
         // ListParticipants retourne les participants actifs d'une conversation.
         ListParticipants(ctx context.Context, conversationID string) ([]*ConversationParticipant, error)
+
+        // ListParticipantsWithUsers retourne les participants enrichis avec les
+        // infos utilisateur (name, email, role) via JOIN sur la table User.
+        // Utilisé par l'UI pour afficher la liste des participants + badges online.
+        ListParticipantsWithUsers(ctx context.Context, conversationID string) ([]*ParticipantWithUser, error)
 
         // ─── Messages ───
         // ListMessages retourne les messages d'une conversation (cursor-based pagination).

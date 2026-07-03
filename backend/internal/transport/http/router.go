@@ -421,6 +421,8 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.Post("/messages/{id}/signaler", s.signalMessage)
                         // SSE stream temps réel
                         r.Get("/stream", s.messagerieStream)
+                        // Presence : liste des userIDs en ligne (polling 10-15s côté frontend)
+                        r.Get("/presence", s.presence)
                         // Signalements : réservés RESPONSABLE/ADMIN
                         r.Group(func(r chi.Router) {
                                 r.Use(middleware.RequireRole("RESPONSABLE", "ADMIN"))

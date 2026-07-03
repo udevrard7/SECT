@@ -14,12 +14,13 @@
 // ─────────────────────────────────────────────────────────────
 
 import { motion } from 'framer-motion'
-import { X, MessageCircle, ShieldAlert } from 'lucide-react'
+import { X, MessageCircle, ShieldAlert, PenSquare } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useConversations, useMessagerieStream } from '@/hooks/use-messagerie'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from './conversation-list'
 import { ChatWindow } from './chat-window'
+import { NewMessageDialog } from './new-message-dialog'
 import { MessagerieSkeleton, MessagerieEmptyState } from './messagerie-skeletons'
 import { cn } from '@/lib/utils'
 
@@ -42,6 +43,7 @@ export interface MessageriePanelProps {
  */
 export function MessageriePanel({ onClose }: MessageriePanelProps) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [showNewMessage, setShowNewMessage] = useState(false)
   const { isLoading, isError } = useConversations()
 
   // Connexion SSE pour le temps réel (invalide les queries au besoin)
@@ -107,15 +109,28 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
             {isConnected ? 'Live' : 'Hors ligne'}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="h-7 w-7"
-          aria-label="Fermer la messagerie"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* Bouton Nouveau message (DM) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowNewMessage(true)}
+            className="h-7 w-7"
+            aria-label="Nouveau message privé"
+            title="Nouveau message privé"
+          >
+            <PenSquare className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-7 w-7"
+            aria-label="Fermer la messagerie"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Corps du panneau : sidebar + chat (ou erreur / skeleton / empty) */}
@@ -165,6 +180,7 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
                 <ChatWindow
                   conversationId={selectedConversationId}
                   onBack={() => setSelectedConversationId(null)}
+                  onStartDirect={(convId) => setSelectedConversationId(convId)}
                 />
               ) : (
                 <MessagerieEmptyState
@@ -177,6 +193,13 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
           </>
         )}
       </div>
+
+      {/* Dialog Nouveau message privé */}
+      <NewMessageDialog
+        open={showNewMessage}
+        onOpenChange={setShowNewMessage}
+        onStartDirect={(convId) => setSelectedConversationId(convId)}
+      />
     </motion.div>
   )
 }

@@ -656,6 +656,62 @@ func (r *MessagerieRepository) ListParticipants(ctx context.Context, conversatio
         return result, nil
 }
 
+// ListParticipantsWithUsers retourne les participants enrichis avec les infos
+// utilisateur (name, email, role) via LEFT JOIN sur la table User.
+// Utilisé par l'UI pour afficher la liste des participants avec badges online.
+func (r *MessagerieRepository) ListParticipantsWithUsers(ctx context.Context, conversationID string) ([]*domain.ParticipantWithUser, error) {
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("ListParticipantsWithUsers: claims manquants dans le context")
+        }
+
+        var result []*domain.ParticipantWithUser
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                rows, err := tx.Query(ctx, `
+                        SELECT p."id", p."conversationId", p."userId", p."lastReadAt", p."muted",
+                               p."joinedAt", p."leftAt",
+                               u."id", u."name", u."email", u."role"::text
+                        FROM "ConversationParticipant" p
+                        LEFT JOIN "User" u ON u."id" = p."userId"
+                        WHERE p."conversationId" = $1 AND p."leftAt" IS NULL
+                        ORDER BY p."joinedAt" ASC
+                `, conversationID)
+                if err != nil {
+                        return fmt.Errorf("query participants with users: %w", err)
+                }
+                defer rows.Close()
+                for rows.Next() {
+                        var p domain.ParticipantWithUser
+                        var uID, uName, uEmail, uRole *string
+                        if err := rows.Scan(
+                                &p.ID, &p.ConversationID, &p.UserID, &p.LastReadAt, &p.Muted,
+                                &p.JoinedAt, &p.LeftAt,
+                                &uID, &uName, &uEmail, &uRole,
+                        ); err != nil {
+                                return fmt.Errorf("scan participant with user: %w", err)
+                        }
+                        // Hydrate User si le LEFT JOIN a matché.
+                        if uID != nil {
+                                p.User = &domain.MessageUserRef{
+                                        ID:    *uID,
+                                        Name:  derefStr(uName),
+                                        Email: derefStr(uEmail),
+                                        Role:  derefStr(uRole),
+                                }
+                        }
+                        result = append(result, &p)
+                }
+                return rows.Err()
+        })
+        if err != nil {
+                return nil, err
+        }
+        if result == nil {
+                result = []*domain.ParticipantWithUser{}
+        }
+        return result, nil
+}
+
 // ============================================================
 // MESSAGES
 // ============================================================

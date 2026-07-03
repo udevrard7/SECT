@@ -62,6 +62,7 @@ import {
 } from '@/hooks/use-messagerie'
 import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
+import { ParticipantsList } from './participants-list'
 import { ChatWindowSkeleton, MessagerieEmptyState } from './messagerie-skeletons'
 import type {
   ConversationType,
@@ -74,6 +75,8 @@ export interface ChatWindowProps {
   conversationId: string
   /** Callback pour revenir à la liste (mobile uniquement) */
   onBack?: () => void
+  /** Callback appelé après la création d'un DM depuis la liste des participants. */
+  onStartDirect?: (conversationId: string) => void
 }
 
 /** Métadonnées visuelles par type de conversation. */
@@ -104,9 +107,10 @@ const TYPE_HEADER_META: Record<
  *    est géré dans le hook.
  *  - Réponse à un message : state local replyTo, passé à MessageInput.
  */
-export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
+export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindowProps) {
   const user = useAuthStore((s) => s.user)
   const currentUserId = user?.id ?? ''
+  const [showParticipants, setShowParticipants] = useState(false)
 
   const { data: conversations } = useConversations()
   const conversation = conversations?.find((c) => c.id === conversationId)
@@ -293,8 +297,10 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      {/* ── Header : retour (mobile) + avatar + titre + mute ── */}
+    <div className="flex flex-1">
+      {/* ── Zone chat (header + messages + input) ── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+      {/* ── Header : retour (mobile) + avatar + titre + mute + participants ── */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card/50 px-3 py-2.5 sm:px-4">
         {onBack && (
           <Button
@@ -330,6 +336,19 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
               : 'Chargement…'}
           </p>
         </div>
+        {/* Bouton participants (visible uniquement sur les salons collectifs, pas sur l'IA privée) */}
+        {!isIAConv && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowParticipants((v) => !v)}
+            className={cn('h-8 w-8 shrink-0', showParticipants && 'bg-accent')}
+            aria-label="Afficher les participants"
+            aria-pressed={showParticipants}
+          >
+            <Users className="h-4 w-4" />
+          </Button>
+        )}
         {/* Bouton mute (visible uniquement sur les salons/Direct, pas sur l'IA privée) */}
         {!isIAConv && (
           <Button
@@ -494,6 +513,22 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>{/* ── Fin zone chat (header + messages + input) ── */}
+
+      {/* ── Panneau participants (right sidebar, desktop uniquement) ── */}
+      {showParticipants && !isIAConv && (
+        <div className="hidden w-56 shrink-0 border-l border-border sm:flex sm:flex-col">
+          <ParticipantsList
+            conversationId={conversationId}
+            currentUserId={currentUserId}
+            onStartDirect={(convId) => {
+              setShowParticipants(false)
+              onStartDirect?.(convId)
+            }}
+            onClose={() => setShowParticipants(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
