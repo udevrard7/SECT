@@ -72,18 +72,15 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         }
                         return nil
                 })
-                // Tester la comparaison exacte de la policy.
-                var etabIdInRow, policyEval, currentEtabInSameQuery string
-                tx3, tx3Err := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
-                if tx3Err == nil {
-                        tx3.Exec(r.Context(), "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID)
-                        tx3.Exec(r.Context(), "SELECT set_config('app.claims.role', $1, true)", claims.Role)
-                        tx3.Exec(r.Context(), "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID)
-                        // Query qui retourne current_etablissement_id() ET etablissementId dans la MEME query.
-                        _ = tx3.QueryRow(r.Context(), `SELECT current_etablissement_id()::text, "etablissementId"::text FROM "EtablissementAccess" LIMIT 1`).Scan(&currentEtabInSameQuery, &etabIdInRow)
-                        // Query la policy evaluation directement.
-                        _ = tx3.QueryRow(r.Context(), `SELECT (is_responsable() AND ("etablissementId" = current_etablissement_id()))::text FROM "EtablissementAccess" LIMIT 1`).Scan(&policyEval)
-                        tx3.Rollback(r.Context())
+                // Tester avec set_config is_local=false (session-level) au lieu de true (local).
+                var sessionCount int
+                tx4, tx4Err := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
+                if tx4Err == nil {
+                        tx4.Exec(r.Context(), "SELECT set_config('app.claims.user_id', $1, false)", claims.UserID)
+                        tx4.Exec(r.Context(), "SELECT set_config('app.claims.role', $1, false)", claims.Role)
+                        tx4.Exec(r.Context(), "SELECT set_config('app.claims.etablissement_id', $1, false)", claims.EtablissementID)
+                        _ = tx4.QueryRow(r.Context(), `SELECT count(*) FROM "EtablissementAccess" WHERE "statut" = $1`, params.Statut).Scan(&sessionCount)
+                        tx4.Rollback(r.Context())
                 }
                 // Tester AVEC le LEFT JOIN User.
                 var countWithJoin int
@@ -109,13 +106,11 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                                 "etabLen":         len(claims.EtablissementID),
                         },
                         "dbCheck": map[string]any{
-                                "current_etablissement_id":      dbEtabID,
-                                "currentEtabInSameQuery":        currentEtabInSameQuery,
-                                "is_responsable":                dbIsResp,
-                                "etabIdInRow":                   etabIdInRow,
-                                "policyEval":                    policyEval,
-                                "countWithJoin":                 countWithJoin,
-                                "tx3Err":                        txErrToString(tx3Err),
+                                "current_etablissement_id": dbEtabID,
+                                "is_responsable":           dbIsResp,
+                                "sessionCount":             sessionCount,
+                                "countWithJoin":            countWithJoin,
+                                "tx4Err":                   txErrToString(tx4Err),
                         },
                         "params":  dbgParams,
                         "count":   len(dbgRecords),
