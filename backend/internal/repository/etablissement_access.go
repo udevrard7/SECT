@@ -4,7 +4,6 @@ package repository
 import (
         "context"
         "fmt"
-        "log/slog"
         "strings"
         "time"
 
@@ -67,16 +66,17 @@ func (r *EtablissementAccessRepository) FindByID(ctx context.Context, id string)
         return access, nil
 }
 
-// List liste les demandes d'accès.
+// List liste les demandes d'accès (RLS natif).
 //
-// RLS-POOLER-FIX : utilise les claims system-worker (is_system()) au lieu des
-// claims du user courant, car pgx + PgBouncer + QueryExecMode ne préserve pas
-// correctement les claims locaux pour l'évaluation des policies RLS avec
-// roles={neondb_owner} sur la table EtablissementAccess.
+// Après la migration 000040 (roles={public} sur les policies EtablissementAccess),
+// RLS natif fonctionne correctement avec pgx + PgBouncer. Le repo utilise
+// db.WithTx + claims user (comme avant le bypass system-worker).
 //
-// Le filtrage de sécurité est assuré par le usecase (params.EtablissementID est
-// forcé à claims.EtablissementID pour RESPONSABLE, params.AdminID est forcé à
-// claims.UserID pour ADMIN). La clause WHERE manuelle remplace RLS.
+// Le filtrage de sécurité est double :
+//  1. RLS natif : la policy EtablissementAccess_select (roles=public) filtre
+//     selon is_responsable() AND etablissementId = current_etablissement_id().
+//  2. Clause WHERE manuelle : params.AdminID / params.EtablissementID (forcés
+//     par le usecase) pour filtrer par admin ou établissement.
 func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.AccessListParams) ([]*domain.EtablissementAccess, error) {
         claims, ok := db.ClaimsFromContext(ctx)
         if !ok {
@@ -84,99 +84,85 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
         }
 
         var result []*domain.EtablissementAccess
-        // Utiliser BeginTx + claims system-worker (comme Create/Update/Delete).
-        // La policy EtablissementAccess_modify_admin (roles=public, USING is_system())
-        // permet l'accès full. Le filtrage se fait via la clause WHERE manuelle.
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var where []string
+                var args []any
+                argIdx := 1
 
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', 'system-worker', true), set_config('app.claims.role', 'ADMIN', true)"); err != nil {
-                return nil, fmt.Errorf("set system claims: %w", err)
-        }
+                if params.AdminID != "" {
+                        where = append(where, fmt.Sprintf(`ea."adminId" = $%d`, argIdx))
+                        args = append(args, params.AdminID)
+                        argIdx++
+                }
+                if params.Statut != "" {
+                        where = append(where, fmt.Sprintf(`ea."statut" = $%d`, argIdx))
+                        args = append(args, params.Statut)
+                        argIdx++
+                }
+                if params.EtablissementID != "" {
+                        where = append(where, fmt.Sprintf(`ea."etablissementId" = $%d`, argIdx))
+                        args = append(args, params.EtablissementID)
+                        argIdx++
+                }
 
-        // Log pour audit (le user qui consulte).
-        slog.Info("access list (system-worker bypass)", "userID", claims.UserID, "role", claims.Role, "params", fmt.Sprintf("%+v", params))
+                whereClause := ""
+                if len(where) > 0 {
+                        whereClause = "WHERE " + strings.Join(where, " AND ")
+                }
 
-        var where []string
-        var args []any
-        argIdx := 1
-
-        if params.AdminID != "" {
-                where = append(where, fmt.Sprintf(`ea."adminId" = $%d`, argIdx))
-                args = append(args, params.AdminID)
-                argIdx++
-        }
-        if params.Statut != "" {
-                where = append(where, fmt.Sprintf(`ea."statut" = $%d`, argIdx))
-                args = append(args, params.Statut)
-                argIdx++
-        }
-        if params.EtablissementID != "" {
-                where = append(where, fmt.Sprintf(`ea."etablissementId" = $%d`, argIdx))
-                args = append(args, params.EtablissementID)
-                argIdx++
-        }
-
-        whereClause := ""
-        if len(where) > 0 {
-                whereClause = "WHERE " + strings.Join(where, " AND ")
-        }
-
-        query := fmt.Sprintf(`
-                SELECT ea."id", ea."adminId", ea."etablissementId", ea."motif", ea."statut",
-                       ea."dateDebut", ea."dateFin", ea."approuvePar", ea."commentaire",
-                       ea."createdAt", ea."updatedAt",
-                       e."id", e."nom",
-                       u."id", u."name", u."email"
-                FROM "EtablissementAccess" ea
-                LEFT JOIN "Etablissement" e ON e."id" = ea."etablissementId"
-                LEFT JOIN "User" u ON u."id" = ea."adminId"
-                %s
-                ORDER BY ea."createdAt" DESC`, whereClause)
-        rows, err := tx.Query(ctx, query, args...)
-        if err != nil {
-                return nil, fmt.Errorf("query access list: %w", err)
-        }
-        defer rows.Close()
-
-        for rows.Next() {
-                a := &domain.EtablissementAccess{}
-                var etabID, etabNom *string
-                var adminID, adminName, adminEmail *string
-                err := rows.Scan(
-                        &a.ID, &a.AdminID, &a.EtablissementID, &a.Motif, &a.Statut,
-                        &a.DateDebut, &a.DateFin, &a.ApprouvePar, &a.Commentaire,
-                        &a.CreatedAt, &a.UpdatedAt,
-                        &etabID, &etabNom,
-                        &adminID, &adminName, &adminEmail,
-                )
+                query := fmt.Sprintf(`
+                        SELECT ea."id", ea."adminId", ea."etablissementId", ea."motif", ea."statut",
+                               ea."dateDebut", ea."dateFin", ea."approuvePar", ea."commentaire",
+                               ea."createdAt", ea."updatedAt",
+                               e."id", e."nom",
+                               u."id", u."name", u."email"
+                        FROM "EtablissementAccess" ea
+                        LEFT JOIN "Etablissement" e ON e."id" = ea."etablissementId"
+                        LEFT JOIN "User" u ON u."id" = ea."adminId"
+                        %s
+                        ORDER BY ea."createdAt" DESC`, whereClause)
+                rows, err := tx.Query(ctx, query, args...)
                 if err != nil {
-                        return nil, fmt.Errorf("scan access: %w", err)
+                        return fmt.Errorf("query access list: %w", err)
                 }
-                if etabID != nil && etabNom != nil {
-                        a.Etablissement = &domain.EtablissementRef{
-                                ID:  *etabID,
-                                Nom: *etabNom,
-                        }
-                }
-                if adminID != nil && adminName != nil && adminEmail != nil {
-                        a.Admin = &domain.UserRef{
-                                ID:    *adminID,
-                                Name:  *adminName,
-                                Email: *adminEmail,
-                        }
-                }
-                result = append(result, a)
-        }
-        if err := rows.Err(); err != nil {
-                return nil, fmt.Errorf("rows err: %w", err)
-        }
+                defer rows.Close()
 
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                for rows.Next() {
+                        a := &domain.EtablissementAccess{}
+                        var etabID, etabNom *string
+                        var adminID, adminName, adminEmail *string
+                        err := rows.Scan(
+                                &a.ID, &a.AdminID, &a.EtablissementID, &a.Motif, &a.Statut,
+                                &a.DateDebut, &a.DateFin, &a.ApprouvePar, &a.Commentaire,
+                                &a.CreatedAt, &a.UpdatedAt,
+                                &etabID, &etabNom,
+                                &adminID, &adminName, &adminEmail,
+                        )
+                        if err != nil {
+                                return fmt.Errorf("scan access: %w", err)
+                        }
+                        if etabID != nil && etabNom != nil {
+                                a.Etablissement = &domain.EtablissementRef{
+                                        ID:  *etabID,
+                                        Nom: *etabNom,
+                                }
+                        }
+                        if adminID != nil && adminName != nil && adminEmail != nil {
+                                a.Admin = &domain.UserRef{
+                                        ID:    *adminID,
+                                        Name:  *adminName,
+                                        Email: *adminEmail,
+                                }
+                        }
+                        result = append(result, a)
+                }
+                if err := rows.Err(); err != nil {
+                        return fmt.Errorf("rows err: %w", err)
+                }
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return result, nil
 }
