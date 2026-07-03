@@ -861,8 +861,13 @@ export function AIProvidersPage() {
     }
   }
 
-  // Derived state
-  const activeProvider = providers.find(p => p.isActive)
+  // Derived state — MULTI-CAPABILITY : un provider chat actif ET un provider
+  // tts actif peuvent coexister (migration 000035). On distingue les deux pour
+  // la barre de stats. `activeProvider` reste un alias sur le chat pour les
+  // autres usages (statut lastTestOk, etc.).
+  const activeChatProvider = providers.find(p => p.isActive && (p.capability === 'chat' || !p.capability))
+  const activeTtsProvider = providers.find(p => p.isActive && p.capability === 'tts')
+  const activeProvider = activeChatProvider
 
   // ─── Loading state ───
   if (isLoading) {
@@ -911,18 +916,27 @@ export function AIProvidersPage() {
         </div>
         <Separator orientation="vertical" className="h-4" />
         <div className="flex items-center gap-1.5">
-          {activeProvider ? (
+          {activeChatProvider ? (
             <>
               <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span className="text-xs font-medium">{activeProvider.name}</span>
+              <span className="text-xs font-medium">Chat&nbsp;: {activeChatProvider.name}</span>
             </>
           ) : (
             <>
               <span className="h-2 w-2 rounded-full bg-warning" />
-              <span className="text-xs text-warning">Aucun actif</span>
+              <span className="text-xs text-warning">Aucun chat actif</span>
             </>
           )}
         </div>
+        {activeTtsProvider && (
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <div className="flex items-center gap-1.5">
+              <AudioLines className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+              <span className="text-xs font-medium">Voix&nbsp;: {activeTtsProvider.name}</span>
+            </div>
+          </>
+        )}
         <Separator orientation="vertical" className="h-4" />
         <div className="flex items-center gap-1.5">
           {activeProvider?.lastTestOk === true ? (
