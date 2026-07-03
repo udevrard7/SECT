@@ -307,12 +307,18 @@ func (r *EpreuveRepository) List(ctx context.Context, params domain.EpreuveListP
                         args = append(args, params.UniteEnseignementID)
                         argIdx++
                 }
-                // EtudiantID : épreuves où l'étudiant a une session
-                if params.EtudiantID != "" {
-                        where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM "SessionPassation" sp WHERE sp."epreuveId" = "Epreuve"."id" AND sp."etudiantId" = $%d)`, argIdx))
-                        args = append(args, params.EtudiantID)
-                        argIdx++
-                }
+                // EtudiantID : E2E-EVAL-FIX — avant, on filtrait uniquement par
+                // EXISTS(SessionPassation WHERE etudiantId = ...), ce qui empêchait
+                // l'étudiant de voir les épreuves "À venir" (disponibles mais pas
+                // encore commencées) → chicken-and-egg (il ne pouvait pas commencer
+                // un examen sans le voir d'abord). Désormais, on ne filtre plus ici :
+                // la policy RLS Epreuve_select (migration 000049) autorise l'étudiant
+                // à voir (a) les épreuves où il a une session ET (b) les épreuves
+                // PLANIFIEE/EN_COURS de sa filière + niveau. Le frontend
+                // (mes-epreuves-page.tsx getExamAvailability) fait le tri côté client
+                // (disponible / pas_encore / en_cours / terminee).
+                // Le paramètre EtudiantID est conservé pour compatibilité (no-op now).
+                _ = params.EtudiantID
                 // EVALUATIONS-FIX-EV2 (CRITICAL) : ResponsableID — filtrer par les
                 // filières dont le responsable est le user. Avant, ResponsableID
                 // était passé par handler+usecase mais ignoré par le repo → le
