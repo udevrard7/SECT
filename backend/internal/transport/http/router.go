@@ -353,13 +353,6 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                         r.With(middleware.RequireRole("ENSEIGNANT", "ADMIN", "RESPONSABLE")).Post("/generate", s.epreuvesGenerate)
                 })
 
-                // AI-CONNECT-1 : /api/ai-assistant — chat flottant pédagogique.
-                // Appelle le backend AIService (jamais d'appel IA direct côté client).
-                r.Route("/api/ai-assistant", func(r chi.Router) {
-                        r.Use(middleware.RequireAuth)
-                        r.Post("/", s.aiAssistant)
-                })
-
                 // /api/questions
                 // SECURITY-FIX (audit 2025) : RequireRole sur les mutations (avant :
                 // RequireAuth seul → un ETUDIANT pouvait créer/modifier des questions).

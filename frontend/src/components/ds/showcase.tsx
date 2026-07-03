@@ -30,7 +30,6 @@ import {
   RewardCenter,
   AcademicCalendar,
   GradeTable,
-  AIAssistant,
   ThemeToggle,
   type NavSection,
   type UserStatsData,
@@ -380,26 +379,6 @@ export function DesignSystemShowcase() {
             { id: '4', subject: 'API REST', examTitle: 'Projet', score: 19, maxScore: 20, date: '2025-06-15', coefficient: 4 },
             { id: '5', subject: 'Réseaux', examTitle: 'Partiel', score: 9, maxScore: 20, date: '2025-06-10', coefficient: 2, comment: 'Insuffisant, revoir le cours' },
           ]}
-        />
-      </section>
-
-      {/* ── Section 11 : AIAssistant (note : composant flottant, visible en bas à droite) ── */}
-      <section className="mb-8">
-        <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-tech" />
-          AIAssistant — Assistant IA pédagogique (bouton flottant en bas à droite →)
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Cliquez sur le bouton flottant cyan en bas à droite de l'écran pour ouvrir l'assistant IA.
-          Il propose des suggestions rapides, garde l'historique des messages, et gère le focus trap + Escape.
-        </p>
-        <AIAssistant
-          title="Assistant pédagogique"
-          suggestions={["Explique les arbres AVL", "Donne un exemple de tri rapide", "Comment optimiser une requête SQL ?"]}
-          onSend={async (msg) => {
-            await new Promise(r => setTimeout(r, 800))
-            return `Voici ma réponse à votre question : "${msg}". [Réponse simulée pour la démo — en production, cette fonction appellerait l'API IA via le système de failover Mistral→Groq→OpenRouter.]`
-          }}
         />
       </section>
 

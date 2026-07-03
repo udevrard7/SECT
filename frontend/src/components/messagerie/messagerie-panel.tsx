@@ -73,8 +73,8 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
       aria-modal="true"
       aria-label="Messagerie SECT"
       className={cn(
-        // Position : au-dessus des bulles flottantes (bottom-24 = 96px du bas),
-        // alignée à droite (right-4 = 16px) avec l'AIAssistant et la MessagerieBubble.
+        // Position : au-dessus de la bulle flottante Messagerie (bottom-24 = 96px du bas),
+        // alignée à droite (right-4 = 16px) avec la bulle (unique bulle flottante de l'app).
         'fixed bottom-24 right-4 z-50 flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl',
         // Taille : 920px de large max sur desktop, plein écran - 2rem sur mobile
         'h-[min(640px,calc(100vh-9rem))] w-[min(920px,calc(100vw-2rem))]'
