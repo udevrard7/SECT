@@ -219,7 +219,7 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
                 }
 
         case domain.RoleEnseignant, domain.RoleResponsable:
-                // EQUIPE pédagogique de l'établissement.
+                // EQUIPE pédagogique de l'établissement (enseignants + responsables).
                 conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeEquipe, claims.EtablissementID, nil, nil)
                 if err != nil {
                         return fmt.Errorf("EnsureAutoConversations EQUIPE: %w", err)
@@ -231,15 +231,19 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
                         }
                 }
 
-                // STAFF (responsables + admin de l'établissement).
-                conv2, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeStaff, claims.EtablissementID, nil, nil)
-                if err != nil {
-                        return fmt.Errorf("EnsureAutoConversations STAFF: %w", err)
-                }
-                if conv2 != nil {
-                        if _, err := uc.messagerieRepo.EnsureParticipant(ctx, conv2.ID, claims.UserID); err != nil {
-                                slog.Warn("EnsureAutoConversations: EnsureParticipant STAFF failed",
-                                        "userId", claims.UserID, "convId", conv2.ID, "error", err)
+                // STAFF (responsables + admin de l'établissement uniquement).
+                // La policy Conversation_select filtre STAFF à is_responsable()/is_admin(),
+                // donc on ne crée/inscrit STAFF que pour le RESPONSABLE (pas l'enseignant).
+                if role == domain.RoleResponsable {
+                        conv2, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeStaff, claims.EtablissementID, nil, nil)
+                        if err != nil {
+                                return fmt.Errorf("EnsureAutoConversations STAFF: %w", err)
+                        }
+                        if conv2 != nil {
+                                if _, err := uc.messagerieRepo.EnsureParticipant(ctx, conv2.ID, claims.UserID); err != nil {
+                                        slog.Warn("EnsureAutoConversations: EnsureParticipant STAFF failed",
+                                                "userId", claims.UserID, "convId", conv2.ID, "error", err)
+                                }
                         }
                 }
         }
