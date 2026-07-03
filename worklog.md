@@ -10845,3 +10845,45 @@ Stage Summary:
 - **Fix RLS-POOLER** : convertPoolerToDirect() dans db.go. La connexion directe
   (sans PgBouncer) est nécessaire pour que les claims RLS locaux fonctionnent.
 - **Déploiement** : à vérifier après que Render a redéployé (79071d8).
+
+---
+Task ID: SECT-ACCES-ETABLISSEMENTS-DOUBLON-CLEANUP
+Agent: Z.ai Code (tuteur/assistant)
+Task: Suppression du doublon créé sur /acces-etablissements pour le responsable
+
+Constat :
+- Le responsable avait DÉJÀ une page pour approuver les demandes d'accès :
+  /parametres → onglet 'acces-admin' (responsable-parametres-page.tsx).
+  Cette page gère : liste des demandes, approbation AVEC durée d'accès
+  (7/30/90/365 jours), refus, révocation, audit trail, dialogs de confirmation.
+- J'ai créé par erreur un DOUBLON : onglet 'Demandes à approuver' sur
+  /acces-etablissements + route RESPONSABLE + lien sidebar. Ce doublon était
+  INCOMPLET (pas de durée d'accès, pas d'audit, pas de dialogs) et créait une
+  confusion (2 pages pour la même fonctionnalité).
+
+Suppression du doublon (commit 8177275) :
+- routes.ts : 'acces-etablissements' remis à ['ADMIN']. Lien sidebar retiré
+  de RESPONSABLE Paramètres.
+- acces-etablissements-page.tsx (-153 lignes) : retrait de isResponsable,
+  pendingQuery, pendingRecords, handleApproveRequest, processingId,
+  TabsTrigger/TabsContent 'demandes-a-approuver', import Check, invalidation
+  'etablissement-access-pending'.
+
+Conservation des vrais fixes :
+- toRFC3339 (fix erreur JSON date) : aide l'admin qui crée une demande AVEC
+  date via /acces-etablissements.
+- convertPoolerToDirect (fix RLS pooler) : corrige le bug qui empêchait le
+  responsable de voir les demandes dans /parametres onglet 'acces-admin'.
+- HasAssistantMention mlen=10 : fix messagerie (non lié).
+
+Architecture finale :
+- /acces-etablissements : page ADMIN uniquement (gestion de ses propres
+  demandes d'accès).
+- /parametres → onglet 'acces-admin' : page RESPONSABLE (approbation/refus/
+  révocation des demandes admin sur son établissement).
+- 1 seule page par workflow, plus de doublon, plus de code mort.
+
+Stage Summary:
+- **Doublon supprimé** : 153 lignes de code mort retirées.
+- **Architecture clarifiée** : ADMIN → /acces-etablissements, RESPONSABLE → /parametres.
+- **Vrais fixes conservés** : erreur JSON date + RLS pooler + HasAssistantMention.
