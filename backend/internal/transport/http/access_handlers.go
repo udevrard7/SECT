@@ -72,15 +72,18 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         }
                         return nil
                 })
-                // Tester la policy RLS directement avec claims manuels (sans db.WithTx).
-                var manualCount int
-                tx2, txErr := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
-                if txErr == nil {
-                        tx2.Exec(r.Context(), "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID)
-                        tx2.Exec(r.Context(), "SELECT set_config('app.claims.role', $1, true)", claims.Role)
-                        tx2.Exec(r.Context(), "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID)
-                        _ = tx2.QueryRow(r.Context(), `SELECT count(*) FROM "EtablissementAccess" WHERE "statut" = $1`, params.Statut).Scan(&manualCount)
-                        tx2.Rollback(r.Context())
+                // Tester la comparaison exacte de la policy.
+                var etabIdInRow, policyEval string
+                tx3, tx3Err := s.dbPool.BeginTx(r.Context(), pgx.TxOptions{})
+                if tx3Err == nil {
+                        tx3.Exec(r.Context(), "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID)
+                        tx3.Exec(r.Context(), "SELECT set_config('app.claims.role', $1, true)", claims.Role)
+                        tx3.Exec(r.Context(), "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID)
+                        // Query SANS RLS pour voir l'etablissementId de la row.
+                        _ = tx3.QueryRow(r.Context(), `SELECT "etablissementId"::text FROM "EtablissementAccess" LIMIT 1`).Scan(&etabIdInRow)
+                        // Query la policy evaluation directement.
+                        _ = tx3.QueryRow(r.Context(), `SELECT (is_responsable() AND ("etablissementId" = current_etablissement_id()))::text FROM "EtablissementAccess" LIMIT 1`).Scan(&policyEval)
+                        tx3.Rollback(r.Context())
                 }
                 // Tester AVEC le LEFT JOIN User.
                 var countWithJoin int
@@ -108,9 +111,10 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         "dbCheck": map[string]any{
                                 "current_etablissement_id": dbEtabID,
                                 "is_responsable":           dbIsResp,
-                                "manualCount":              manualCount,
+                                "etabIdInRow":              etabIdInRow,
+                                "policyEval":               policyEval,
                                 "countWithJoin":            countWithJoin,
-                                "txErr":                    txErrToString(txErr),
+                                "tx3Err":                   txErrToString(tx3Err),
                         },
                         "params":  dbgParams,
                         "count":   len(dbgRecords),
