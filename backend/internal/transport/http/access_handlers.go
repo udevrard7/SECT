@@ -35,6 +35,21 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                 EtablissementID: r.URL.Query().Get("etablissementId"),
         }
 
+        // DEBUG-ACCESS-2 : si query param ?debug=1, retourner les claims au lieu des records.
+        if r.URL.Query().Get("debug") == "1" {
+                w.Header().Set("Content-Type", "application/json")
+                json.NewEncoder(w).Encode(map[string]any{
+                        "claims": map[string]any{
+                                "userID":          claims.UserID,
+                                "role":            claims.Role,
+                                "etablissementID": claims.EtablissementID,
+                                "etabLen":         len(claims.EtablissementID),
+                        },
+                        "params": params,
+                })
+                return
+        }
+
         records, err := s.accessUC.List(r.Context(), claims, params)
         if err != nil {
                 middleware.MapDomainError(w, err)
