@@ -83,6 +83,30 @@ type SessionClaims struct {
         Name  string
 }
 
+// SystemClaims retourne des claims "system-worker" pour les opérations backend
+// qui doivent bypasser le filtrage RLS par utilisateur (ex: workers IA, compte
+// de dépendances cross-tenant après checkOwnership côté usecase, endpoints
+// publics de vérification de certificat).
+//
+// Les policies RLS qui acceptent is_system() (Document_all_system,
+// Question_all_system, SessionPassation_all_system, Etablissement_select,
+// etc.) laissent passer ces claims. Les policies sans is_system() (User_select,
+// Certificat_select, etc.) continuent d'appliquer leur logique — pour celles-ci,
+// le system-worker est traité comme un ADMIN (is_admin()=true) ce qui couvre
+// la plupart des cas (admin_has_etablissement_access n'étant pas appelé sans
+// etablissement_id, les policies ADMIN-only sans subquery laissent passer).
+//
+// AUDIT-RLS-REPOS-001 : standardise le pattern de bypass worker précédemment
+// implémenté in-line dans etablissement_access.go via SELECT set_config(...)
+// brut. Préférer SystemClaims() + db.WithTx ou db.SetClaimsTx pour tous les
+// nouveaux bypass.
+func SystemClaims() SessionClaims {
+        return SessionClaims{
+                UserID: "system-worker",
+                Role:   "ADMIN",
+        }
+}
+
 // SetClaimsTx pose les claims RLS sur une transaction pgx.
 // Les claims sont "local" à la transaction (is_local=true) : ils sont
 // automatiquement nettoyés en fin de transaction (commit/rollback).
