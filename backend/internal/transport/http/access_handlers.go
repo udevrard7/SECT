@@ -64,6 +64,24 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         }
                         return nil
                 })
+                // Tester la query exacte du repo SANS le LEFT JOIN User.
+                var countNoJoin int
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        row := tx.QueryRow(r.Context(), `SELECT count(*) FROM "EtablissementAccess" ea WHERE ea."statut" = $1 AND ea."etablissementId" = $2`, params.Statut, claims.EtablissementID)
+                        if err := row.Scan(&countNoJoin); err != nil {
+                                return err
+                        }
+                        return nil
+                })
+                // Tester AVEC le LEFT JOIN User.
+                var countWithJoin int
+                _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
+                        row := tx.QueryRow(r.Context(), `SELECT count(*) FROM "EtablissementAccess" ea LEFT JOIN "User" u ON u."id" = ea."adminId" WHERE ea."statut" = $1 AND ea."etablissementId" = $2`, params.Statut, claims.EtablissementID)
+                        if err := row.Scan(&countWithJoin); err != nil {
+                                return err
+                        }
+                        return nil
+                })
                 // Appeler le repo List directement pour voir ce qu'il retourne.
                 dbgParams := domain.AccessListParams{
                         Statut:          params.Statut,
@@ -81,6 +99,8 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         "dbCheck": map[string]any{
                                 "current_etablissement_id": dbEtabID,
                                 "is_responsable":           dbIsResp,
+                                "countNoJoin":              countNoJoin,
+                                "countWithJoin":            countWithJoin,
                         },
                         "params":  dbgParams,
                         "count":   len(dbgRecords),
