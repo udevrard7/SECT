@@ -59,31 +59,39 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 }
 
 // FindByEmail récupère un utilisateur par son email (bypass RLS pour l'auth).
+//
+// DEAD CODE — not called anywhere, but fixing for consistency.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx via
+// r.pool.BeginTx SANS SetClaimsTx → claims NULL → policy User_select voyait
+// NULL → 0 row (is_admin()=NULL aussi) → l'utilisateur était introuvable
+// même avec un email valide. Fix : db.WithTx avec db.SystemClaims() — cette
+// méthode est destinée à l'auth flow (pre-JWT, pas encore de user claims dans
+// le context). SystemClaims() pose is_system()=true et is_admin()=true ce qui
+// débloque User_select. Aucun caller actuel → risque minimal.
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
+        var user *domain.User
+        err := db.WithTx(ctx, r.pool, db.SystemClaims(), func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, `
+                        SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
+                               "image", "actif", "mustChangePwd", "matricule", "niveau",
+                               "derniereConnexion", "createdAt", "updatedAt"
+                        FROM "User"
+                        WHERE "email" = $1 AND "actif" = true
+                `, email)
 
-        row := tx.QueryRow(ctx, `
-                SELECT "id", "email", "name", "role", "etablissementId", "filiereId",
-                       "image", "actif", "mustChangePwd", "matricule", "niveau",
-                       "derniereConnexion", "createdAt", "updatedAt"
-                FROM "User"
-                WHERE "email" = $1 AND "actif" = true
-        `, email)
-
-        user, err := scanUser(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "User", ID: email}
+                u, err := scanUser(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "User", ID: email}
+                        }
+                        return fmt.Errorf("query user by email: %w", err)
                 }
-                return nil, fmt.Errorf("query user by email: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                user = u
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return user, nil
 }
