@@ -268,6 +268,12 @@ type MessagerieRepository interface {
         // pour un scope donné. La crée si elle n'existe pas.
         GetOrCreateAuto(ctx context.Context, convType ConversationType, etablissementID string, filiereID, niveau *string) (*Conversation, error)
 
+        // GetUserFiliereAndNiveau retourne (filiereId, niveau) d'un utilisateur
+        // directement depuis la table User. Utilisé par EnsureAutoConversations pour
+        // créer le salon CLASSE (qui nécessite niveau, absent des SessionClaims/JWT).
+        // Bypass RLS (lecture admin-like via le pool, l'utilisateur est déjà authentifié).
+        GetUserFiliereAndNiveau(ctx context.Context, userID string) (filiereID, niveau string, err error)
+
         // CreateDirect crée une conversation DIRECT entre 2 users (avec checks usecase).
         CreateDirect(ctx context.Context, creatorID, targetID string, titre *string, etablissementID string) (*Conversation, error)
 
