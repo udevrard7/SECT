@@ -10,17 +10,21 @@
 //      Body:    { "model", "messages", "temperature", "max_tokens" }
 //
 // Le provider actif est lu via « SELECT * FROM "AIProviderConfig" WHERE
-// "isActive" = true LIMIT 1 ». La lecture se fait dans une transaction qui
-// pose les claims system-worker pour RLS car le worker de fond
-// (goroutine de flush, jobs hors-ligne, etc.) n'a pas de claims HTTP à poser.
+// "isActive" = true AND capability='chat' LIMIT 1 ». La lecture se fait dans
+// une transaction qui pose les claims system-worker pour RLS car le worker de
+// fond (goroutine de flush, jobs hors-ligne, etc.) n'a pas de claims HTTP à
+// poser.
 package ai
 
 import (
+        "bufio"
         "bytes"
         "context"
+        "encoding/json"
         "fmt"
         "io"
         "net/http"
+        "strings"
         "time"
 
         "github.com/jackc/pgx/v5"
@@ -112,6 +116,132 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
         }
 
         return &ChatResult{Content: result.Content, Model: result.Model}, nil
+}
+
+// ChatCompletionStream fait un appel streaming vers le provider actif.
+// MESSAGERIE-STREAMING : pour chaque token reçu du provider, onChunk est
+// appelé avec le contenu partiel accumulé (pas le delta seul — l'appelant
+// peut directement afficher le contenu cumulé).
+//
+// Le provider doit supporter `stream: true` (OpenAI-compatible). Le parsing
+// lit les lignes SSE `data: {...}` et extrait `choices[0].delta.content`.
+// La ligne `data: [DONE]` termine le stream.
+//
+// Pas de failover en cours de streaming (si le provider échoue après le
+// premier token, on remonte l'erreur). Le failover au démarrage est géré
+// en lisant le provider actif principal (pas ChatWithFailover pour éviter
+// la complexité de bascule en cours de streaming).
+//
+// Retourne le contenu complet accumulé + le modèle utilisé.
+func (s *AIService) ChatCompletionStream(ctx context.Context, messages []ChatMessage, onChunk func(accumulatedContent string)) (*ChatResult, error) {
+        if s == nil || s.dbPool == nil {
+                return nil, fmt.Errorf("AIService non initialisé")
+        }
+        if len(messages) == 0 {
+                return nil, fmt.Errorf("messages vides")
+        }
+
+        p, err := s.getActiveProvider(ctx)
+        if err != nil {
+                return nil, err
+        }
+
+        body := map[string]interface{}{
+                "model":       p.Model,
+                "messages":    messages,
+                "temperature": p.Temperature,
+                "max_tokens":  p.MaxTokens,
+                "stream":      true,
+        }
+        bodyBytes, err := json.Marshal(body)
+        if err != nil {
+                return nil, fmt.Errorf("encode body: %w", err)
+        }
+
+        url := strings.TrimRight(p.BaseURL, "/") + "/chat/completions"
+        req, err := newRequestWithContext(ctx, "POST", url, bodyBytes, p.APIKey)
+        if err != nil {
+                return nil, fmt.Errorf("build request: %w", err)
+        }
+
+        resp, err := s.client.Do(req)
+        if err != nil {
+                return nil, fmt.Errorf("appel provider %s: %w", p.Name, err)
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode >= 400 {
+                respBody, _ := readResponseBody(resp)
+                snippet := string(respBody)
+                if len(snippet) > 300 {
+                        snippet = snippet[:300] + "…"
+                }
+                return nil, fmt.Errorf("provider %s returned HTTP %d: %s", p.Name, resp.StatusCode, snippet)
+        }
+
+        // Lire le stream SSE ligne par ligne. Format OpenAI :
+        //   data: {"choices":[{"delta":{"content":"Hello"}}]}
+        //   data: {"choices":[{"delta":{"content":" world"}}]}
+        //   data: [DONE]
+        var accumulated strings.Builder
+        scanner := bufio.NewScanner(resp.Body)
+        // Augmenter le buffer max (un chunk peut être grand si le provider batche).
+        scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+        for scanner.Scan() {
+                line := scanner.Text()
+                // Les lignes SSE commencent par "data: ". Les commentaires (": heartbeat")
+                // et lignes vides sont ignorés.
+                if !strings.HasPrefix(line, "data: ") {
+                        continue
+                }
+                data := strings.TrimPrefix(line, "data: ")
+                if data == "[DONE]" {
+                        break
+                }
+
+                // Parser le chunk JSON.
+                var chunk struct {
+                        Model   string `json:"model"`
+                        Choices []struct {
+                                Delta struct {
+                                        Content string `json:"content"`
+                                } `json:"delta"`
+                                FinishReason string `json:"finish_reason"`
+                        } `json:"choices"`
+                }
+                if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+                        // Chunk malformé (rare) — on skip sans planter le stream.
+                        continue
+                }
+                if len(chunk.Choices) == 0 {
+                        continue
+                }
+                delta := chunk.Choices[0].Delta.Content
+                if delta != "" {
+                        accumulated.WriteString(delta)
+                        if onChunk != nil {
+                                onChunk(accumulated.String())
+                        }
+                }
+        }
+
+        if err := scanner.Err(); err != nil {
+                // Si on a déjà accumulé du contenu, on le retourne (stream partiel).
+                // Sinon on remonte l'erreur.
+                if accumulated.Len() > 0 {
+                        return &ChatResult{Content: accumulated.String(), Model: p.Model}, nil
+                }
+                return nil, fmt.Errorf("scan stream: %w", err)
+        }
+
+        content := accumulated.String()
+        if content == "" {
+                return nil, fmt.Errorf("provider %s: stream vide (aucun contenu reçu)", p.Name)
+        }
+
+        model := p.Model
+        return &ChatResult{Content: content, Model: model}, nil
 }
 
 // getActiveProvider lit la ligne AIProviderConfig active de capability='chat'.

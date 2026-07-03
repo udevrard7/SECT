@@ -393,9 +393,15 @@ func (uc *MessagerieUseCase) sendIAMessage(ctx context.Context, claims db.Sessio
         return aiMsg, nil
 }
 
-// generateAIResponseInGroupWithTimeout appelle l'IA avec un timeout serveur
-// de 25s (< 30s Render free tier) suite à une mention @assistant dans un salon
-// collectif, et persiste la réponse (ReplyToID = userMsg.ID).
+// generateAIResponseInGroupWithTimeout appelle l'IA en STREAMING avec un timeout
+// serveur de 25s (< 30s Render free tier) suite à une mention @assistant dans un
+// salon collectif, et persiste la réponse (ReplyToID = userMsg.ID).
+//
+// MESSAGERIE-STREAMING : pour chaque token reçu du provider, on broadcast un
+// event SSE "ia_streaming" aux participants du salon avec le contenu accumulé.
+// L'utilisateur voit la réponse se construire en temps réel (UX type ChatGPT).
+// À la fin du stream, on persiste le message IA complet et on broadcast un
+// event "message_new" (qui remplace la bulle streaming par le message final).
 //
 // Si l'IA répond à temps : persister + broadcaster la réponse.
 // Si timeout/erreur : persister un message IA d'erreur gracieux pour que
@@ -419,29 +425,49 @@ func (uc *MessagerieUseCase) generateAIResponseInGroupWithTimeout(ctx context.Co
                 {Role: "user", Content: userMsg.Contenu},
         }
 
-        result, err := uc.aiService.ChatCompletion(iaCtx, aiMessages)
-        if err != nil {
-                slog.Warn("IA ChatCompletion (@assistant in group) failed/timed out",
-                        "conversationId", conversationID, "error", err)
-                // Message IA d'erreur gracieux : l'utilisateur sait qu'on a essayé.
-                errMsg := "Désolé, je n'ai pas pu répondre à temps (l'IA met trop de temps à répondre). Reformulez votre question ou réessayez dans un instant."
-                userMsgID := userMsg.ID
-                aiMsg, persistErr := uc.messagerieRepo.CreateMessage(ctx, &domain.Message{
-                        ConversationID: conversationID,
-                        UserID:         nil,
-                        IsIA:           true,
-                        Contenu:        errMsg,
-                        ReplyToID:      &userMsgID,
+        // Récupérer les participants une fois pour le broadcast streaming.
+        participantIDs := uc.participantIDs(ctx, conversationID)
+        userMsgID := userMsg.ID
+
+        // Callback streaming : pour chaque chunk, broadcaster le contenu accumulé.
+        onChunk := func(accumulated string) {
+                uc.hub.BroadcastEvent(participantIDs, "ia_streaming", map[string]any{
+                        "conversationId": conversationID,
+                        "userMsgId":      userMsgID,
+                        "content":        accumulated,
                 })
-                if persistErr != nil {
-                        slog.Warn("persist IA error message (@assistant) failed", "conversationId", conversationID, "error", persistErr)
-                        return
-                }
-                uc.broadcastToParticipants(ctx, conversationID, aiMsg)
-                return
         }
 
-        userMsgID := userMsg.ID
+        // Appel streaming. Si le provider ne supporte pas stream:true, ChatCompletionStream
+        // retourne une erreur → on fallback sur le synchrone non-streaming.
+        result, err := uc.aiService.ChatCompletionStream(iaCtx, aiMessages, onChunk)
+        if err != nil {
+                // Fallback : tenter le synchrone non-streaming (certains providers ne
+                // supportent pas stream:true, ou le streaming a échoué en cours de route).
+                slog.Warn("IA streaming failed, fallback to sync", "conversationId", conversationID, "error", err)
+                result, err = uc.aiService.ChatCompletion(iaCtx, aiMessages)
+                if err != nil {
+                        slog.Warn("IA ChatCompletion (@assistant in group) failed/timed out",
+                                "conversationId", conversationID, "error", err)
+                        // Message IA d'erreur gracieux : l'utilisateur sait qu'on a essayé.
+                        errMsg := "Désolé, je n'ai pas pu répondre à temps (l'IA met trop de temps à répondre). Reformulez votre question ou réessayez dans un instant."
+                        aiMsg, persistErr := uc.messagerieRepo.CreateMessage(ctx, &domain.Message{
+                                ConversationID: conversationID,
+                                UserID:         nil,
+                                IsIA:           true,
+                                Contenu:        errMsg,
+                                ReplyToID:      &userMsgID,
+                        })
+                        if persistErr != nil {
+                                slog.Warn("persist IA error message (@assistant) failed", "conversationId", conversationID, "error", persistErr)
+                                return
+                        }
+                        uc.broadcastToParticipants(ctx, conversationID, aiMsg)
+                        return
+                }
+        }
+
+        // Persister la réponse IA complète (le message final remplace la bulle streaming).
         aiMsg, err := uc.messagerieRepo.CreateMessage(ctx, &domain.Message{
                 ConversationID: conversationID,
                 UserID:         nil,
@@ -454,6 +480,8 @@ func (uc *MessagerieUseCase) generateAIResponseInGroupWithTimeout(ctx context.Co
                 return
         }
 
+        // Broadcaster le message final (event "message_new" → le frontend remplace
+        // la bulle streaming par le message persisté).
         uc.broadcastToParticipants(ctx, conversationID, aiMsg)
 }
 

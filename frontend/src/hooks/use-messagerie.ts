@@ -21,6 +21,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { useStreamingStore } from '@/stores/streaming-store'
 import type {
   Conversation,
   ConversationListResult,
@@ -625,23 +626,6 @@ export function useMessagerieStream() {
       // SSE connecté → bonus, mais isConnected déjà géré par le healthcheck.
     }
 
-    // Event : nouveau message (envoyé par quelqu'un d'autre ou par l'IA).
-    // On invalide la conversation concernée + la liste des conversations
-    // (pour rafraîchir lastMessage + unreadCount).
-    eventSource.addEventListener('message_new', (e) => {
-      try {
-        const msg = JSON.parse(e.data) as Message
-        queryClient.invalidateQueries({
-          queryKey: messagerieKeys.messages(msg.conversationId),
-        })
-        queryClient.invalidateQueries({
-          queryKey: messagerieKeys.conversations(),
-        })
-      } catch {
-        // ignore parse errors (heartbeats, commentaires SSE)
-      }
-    })
-
     // Event : édition d'un message.
     eventSource.addEventListener('message_edit', (e) => {
       try {
@@ -670,15 +654,41 @@ export function useMessagerieStream() {
       }
     })
 
-    // Event : "typing" indicator (pas implémenté côté backend pour l'instant,
-    // mais le hook est prêt à le recevoir). Pour l'afficher dans l'UI, il
-    // faudrait un store Zustand dédié ou un context.
-    // eventSource.addEventListener('typing', (e) => { ... })
+    // Event : "ia_streaming" — contenu IA partiel en cours de génération.
+    // MESSAGERIE-STREAMING : le backend broadcaste le contenu accumulé pour
+    // chaque token reçu du provider. On met à jour le store streamingStore
+    // (consommé par le composant chat pour afficher une bulle IA temporaire).
+    eventSource.addEventListener('ia_streaming', (e) => {
+      try {
+        const data = JSON.parse(e.data) as {
+          conversationId: string
+          userMsgId: string
+          content: string
+        }
+        // Import dynamique pour éviter une dépendance circulaire au top-level.
+        // Le store est simple (Zustand) et mis à jour à chaque chunk.
+        useStreamingStore.getState().setStreaming(data.conversationId, data.userMsgId, data.content)
+      } catch {
+        // ignore parse errors
+      }
+    })
 
-    return () => {
-      eventSource.close()
-    }
-  }, [queryClient])
-
-  return { isConnected }
-}
+    // Event : "message_new" — quand le message IA final arrive, on clear le
+    // contenu streaming de cette conversation (la bulle temporaire est
+    // remplacée par le message persisté via l'invalidation query).
+    eventSource.addEventListener('message_new', (e) => {
+      try {
+        const msg = JSON.parse(e.data) as Message
+        if (msg.isIA) {
+          useStreamingStore.getState().clearStreaming(msg.conversationId)
+        }
+        queryClient.invalidateQueries({
+          queryKey: messagerieKeys.messages(msg.conversationId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: messagerieKeys.conversations(),
+        })
+      } catch {
+        // ignore parse errors (heartbeats, commentaires SSE)
+      }
+    })
