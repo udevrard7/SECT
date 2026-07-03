@@ -297,9 +297,9 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   }
 
   return (
-    <div className="flex flex-1">
+    <div className="flex flex-1 min-h-0">
       {/* ── Zone chat (header + messages + input) ── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col min-h-0">
       {/* ── Header : retour (mobile) + avatar + titre + mute + participants ── */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card/50 px-3 py-2.5 sm:px-4">
         {onBack && (

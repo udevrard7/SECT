@@ -188,7 +188,7 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
             {/* Sidebar : liste des conversations (cachée sur mobile si une conv est sélectionnée) */}
             <div
               className={cn(
-                'flex w-full flex-col border-r border-border sm:w-72',
+                'flex w-full flex-col border-r border-border sm:w-72 min-h-0',
                 selectedConversationId ? 'hidden sm:flex' : 'flex'
               )}
             >
@@ -201,7 +201,7 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
             {/* Zone principale : chat window (cachée sur mobile si aucune conv sélectionnée) */}
             <div
               className={cn(
-                'flex min-w-0 flex-1 flex-col',
+                'flex min-w-0 flex-1 flex-col min-h-0',
                 selectedConversationId ? 'flex' : 'hidden sm:flex'
               )}
             >
