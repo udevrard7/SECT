@@ -262,11 +262,35 @@ export function useMarkAsRead() {
           body: JSON.stringify({ lastReadAt }),
         }
       ),
+    onMutate: ({ conversationId }) => {
+      // BUGFIX (MESSAGERIE-BADGE-UNREAD) : mise à jour optimiste du unreadCount
+      // → le badge disparaît immédiatement sans attendre le refetch (staleTime 30s
+      // + refetchInterval 15s sinon).
+      const previous = queryClient.getQueryData<ConversationWithMeta[]>(
+        messagerieKeys.conversations()
+      )
+      if (previous) {
+        queryClient.setQueryData<ConversationWithMeta[]>(
+          messagerieKeys.conversations(),
+          previous.map((c) =>
+            c.id === conversationId ? { ...c, unreadCount: 0 } : c
+          )
+        )
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      // Rollback en cas d'erreur.
+      if (ctx?.previous) {
+        queryClient.setQueryData(messagerieKeys.conversations(), ctx.previous)
+      }
+    },
     onSuccess: (_, { conversationId }) => {
-      queryClient.invalidateQueries({
+      // Refetch immédiat (pas juste invalidate — staleTime 30s peut sinon
+      // retarder le refetch jusqu'au prochain polling 15s).
+      queryClient.refetchQueries({
         queryKey: messagerieKeys.conversations(),
-      }) // refresh unreadCount
-      // Invalide aussi les messages pour rafraîchir les flags "lu" si besoin.
+      })
       queryClient.invalidateQueries({
         queryKey: messagerieKeys.messages(conversationId),
       })
