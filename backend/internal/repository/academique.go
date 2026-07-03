@@ -674,72 +674,81 @@ func (r *EnseignantFiliereRepository) List(ctx context.Context, params domain.En
         return result, nil
 }
 
-// Create crée une assignation (bypass RLS).
+// Create crée une assignation (RLS actif — claims posés via db.WithTx).
+// FIX AFFECTATION-RLS : avant, cette méthode faisait un BeginTx brut sans poser
+// les claims RLS (app.claims.etablissement_id) → la policy
+// EnseignantFiliere_modify_responsable rejetait l'INSERT (SQLSTATE 42501) quand
+// un RESPONSABLE créait un enseignant + affectation via le formulaire "Création
+// directe". Désormais db.WithTx pose les claims comme List/Create des autres
+// repositories.
 func (r *EnseignantFiliereRepository) Create(ctx context.Context, input domain.CreateAssignmentInput) (*domain.EnseignantFiliere, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("no RLS claims in context")
         }
-        defer tx.Rollback(ctx)
 
-        id := uuid.NewString()
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "EnseignantFiliere" ("id", "enseignantId", "filiereId", "niveau", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING `+columnsEF,
-                id, input.EnseignantID, input.FiliereID, input.Niveau)
+        var ef *domain.EnseignantFiliere
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                id := uuid.NewString()
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "EnseignantFiliere" ("id", "enseignantId", "filiereId", "niveau", "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING `+columnsEF,
+                        id, input.EnseignantID, input.FiliereID, input.Niveau)
 
-        ef, err := scanEnseignantFiliere(row)
-        if err != nil {
-                if isUniqueViolation(err) {
-                        return nil, &domain.ConflictError{Message: "cette assignation existe déjà"}
+                result, err := scanEnseignantFiliere(row)
+                if err != nil {
+                        if isUniqueViolation(err) {
+                                return &domain.ConflictError{Message: "cette assignation existe déjà"}
+                        }
+                        return fmt.Errorf("create ef: %w", err)
                 }
-                return nil, fmt.Errorf("create ef: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                ef = result
+                return nil
+        })
+        if err != nil {
+                return nil, err
         }
         return ef, nil
 }
 
 // DeleteByID supprime une assignation par ID.
 func (r *EnseignantFiliereRepository) DeleteByID(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `DELETE FROM "EnseignantFiliere" WHERE "id" = $1`, id)
-        if err != nil {
-                return fmt.Errorf("delete ef: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "EnseignantFiliere", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `DELETE FROM "EnseignantFiliere" WHERE "id" = $1`, id)
+                if err != nil {
+                        return fmt.Errorf("delete ef: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "EnseignantFiliere", ID: id}
+                }
+                return nil
+        })
 }
 
 // DeleteByComposite supprime par (enseignantId, filiereId, niveau).
 func (r *EnseignantFiliereRepository) DeleteByComposite(ctx context.Context, enseignantID, filiereID, niveau string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `DELETE FROM "EnseignantFiliere" WHERE "enseignantId" = $1 AND "filiereId" = $2 AND "niveau" = $3`,
-                enseignantID, filiereID, niveau)
-        if err != nil {
-                return fmt.Errorf("delete ef composite: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "EnseignantFiliere", ID: enseignantID + "/" + filiereID + "/" + niveau}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return fmt.Errorf("no RLS claims in context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `DELETE FROM "EnseignantFiliere" WHERE "enseignantId" = $1 AND "filiereId" = $2 AND "niveau" = $3`,
+                        enseignantID, filiereID, niveau)
+                if err != nil {
+                        return fmt.Errorf("delete ef composite: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "EnseignantFiliere", ID: enseignantID + "/" + filiereID + "/" + niveau}
+                }
+                return nil
+        })
 }
 
 // ============================================================
