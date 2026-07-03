@@ -32,16 +32,7 @@ func ClaimsFromContext(ctx context.Context) (SessionClaims, bool) {
 
 // New crée un pool de connexions vers Neon Postgres.
 // Le pool est thread-safe et gère automatiquement le cycle de vie des connexions.
-//
-// RLS-POOLER-FIX : si l'URL contient "-pooler" (PgBouncer mode transaction),
-// on la convertit en connexion DIRECTE car les set_config('app.claims.*', true)
-// (is_local=true) ne sont PAS préservés entre les queries d'une transaction en
-// mode transaction pooling. RLS devient inopérant → les policies qui dépendent
-// de current_etablissement_id() / is_responsable() etc. filtrent toutes les rows.
 func New(databaseURL string) (*pgxpool.Pool, error) {
-        // RLS-POOLER-FIX : convertir l'URL pooler en URL directe.
-        databaseURL = convertPoolerToDirect(databaseURL)
-
         config, err := pgxpool.ParseConfig(databaseURL)
         if err != nil {
                 return nil, fmt.Errorf("parse database URL: %w", err)
@@ -100,22 +91,37 @@ type SessionClaims struct {
 //      db.SetClaimsTx(ctx, tx, claims)
 //      // ... queries ...
 //      tx.Commit(ctx)
+// SetClaimsTx pose les claims RLS (app.claims.*) au début d'une transaction.
+// RLS-POOLER-FIX : tous les set_config sont combinés en UN SEUL Exec pour
+// garantir qu'ils sont appliqués atomiquement. Avec pgx + QueryExecModeExec +
+// PgBouncer (mode transaction), des Exec séparés pour SELECT set_config(...)
+// peuvent ne pas persister correctement entre les queries de la transaction.
+// Combiner en un seul Exec (comme le fait déjà getActiveProvider dans ai/service.go)
+// garantit que tous les claims sont posés avant la première query RLS.
 func SetClaimsTx(ctx context.Context, tx pgx.Tx, claims SessionClaims) error {
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.user_id', $1, true)", claims.UserID); err != nil {
-                return fmt.Errorf("set user_id claim: %w", err)
-        }
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.role', $1, true)", claims.Role); err != nil {
-                return fmt.Errorf("set role claim: %w", err)
-        }
-        if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.etablissement_id', $1, true)", claims.EtablissementID); err != nil {
-                return fmt.Errorf("set etablissement_id claim: %w", err)
+        // Construire la liste des set_config dans un seul SELECT.
+        // set_config retourne text, on les chaîne avec des virgules dans le SELECT.
+        parts := []string{
+                fmt.Sprintf("set_config('app.claims.user_id', '%s', true)", pgEscape(claims.UserID)),
+                fmt.Sprintf("set_config('app.claims.role', '%s', true)", pgEscape(claims.Role)),
+                fmt.Sprintf("set_config('app.claims.etablissement_id', '%s', true)", pgEscape(claims.EtablissementID)),
         }
         if claims.FiliereID != "" {
-                if _, err := tx.Exec(ctx, "SELECT set_config('app.claims.filiere_id', $1, true)", claims.FiliereID); err != nil {
-                        return fmt.Errorf("set filiere_id claim: %w", err)
-                }
+                parts = append(parts, fmt.Sprintf("set_config('app.claims.filiere_id', '%s', true)", pgEscape(claims.FiliereID)))
+        }
+        query := "SELECT " + strings.Join(parts, ", ")
+        if _, err := tx.Exec(ctx, query); err != nil {
+                return fmt.Errorf("set claims: %w", err)
         }
         return nil
+}
+
+// pgEscape échappe une chaîne pour l'inclusion dans un littéral SQL de façon
+// sûre (anti-injection). Utilisé pour construire les set_config en un seul Exec
+// (les paramètres bindés ne peuvent pas être utilisés pour les noms de
+// configuration dans set_config).
+func pgEscape(s string) string {
+        return strings.ReplaceAll(s, "'", "''")
 }
 
 // WithTx exécute une fonction dans une transaction avec les claims RLS posés.
@@ -143,27 +149,4 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, claims SessionClaims, fn fu
         }
 
         return tx.Commit(ctx)
-}
-
-// convertPoolerToDirect convertit une URL de connexion Neon pooler (PgBouncer)
-// en URL directe. RLS-POOLER-FIX.
-//
-// Neon expose deux endpoints :
-//   - Pooler : ep-XXX-pooler.region.aws.neon.tech (PgBouncer mode transaction)
-//   - Direct : ep-XXX.region.aws.neon.tech (connexion directe au compute)
-//
-// En mode transaction pooling, les set_config('app.claims.*', true) (is_local)
-// ne sont PAS préservés entre les queries d'une même transaction pgx → RLS
-// devient inopérant. La connexion directe garantit que les claims posés via
-// SetClaimsTx sont visibles par toutes les queries de la transaction.
-//
-// Si l'URL ne contient pas "-pooler", elle est retournée inchangée.
-func convertPoolerToDirect(databaseURL string) string {
-        // Remplacer "-pooler" par "" dans le hostname. Ex :
-        //   ep-muddy-river-asz862wj-pooler.c-4.eu-central-1.aws.neon.tech
-        // → ep-muddy-river-asz862wj.c-4.eu-central-1.aws.neon.tech
-        if strings.Contains(databaseURL, "-pooler.") {
-                return strings.Replace(databaseURL, "-pooler.", ".", 1)
-        }
-        return databaseURL
 }
