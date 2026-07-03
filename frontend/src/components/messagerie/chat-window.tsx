@@ -431,6 +431,7 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
                   key={msg.id}
                   message={msg}
                   currentUserId={currentUserId}
+                  currentUserRole={user?.role}
                   onReply={handleReply}
                   onEdit={handleEdit}
                   onDelete={handleDelete}

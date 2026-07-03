@@ -16,11 +16,13 @@
 import { motion } from 'framer-motion'
 import { X, MessageCircle, ShieldAlert, PenSquare } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
-import { useConversations, useMessagerieStream } from '@/hooks/use-messagerie'
+import { useConversations, useMessagerieStream, useListSignalements } from '@/hooks/use-messagerie'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from './conversation-list'
 import { ChatWindow } from './chat-window'
 import { NewMessageDialog } from './new-message-dialog'
+import { ModerationPanel } from './moderation-panel'
 import { MessagerieSkeleton, MessagerieEmptyState } from './messagerie-skeletons'
 import { cn } from '@/lib/utils'
 
@@ -44,7 +46,16 @@ export interface MessageriePanelProps {
 export function MessageriePanel({ onClose }: MessageriePanelProps) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [showNewMessage, setShowNewMessage] = useState(false)
+  const [showModeration, setShowModeration] = useState(false)
   const { isLoading, isError } = useConversations()
+
+  // Rôle utilisateur pour afficher le bouton Modération (RESPONSABLE/ADMIN)
+  const user = useAuthStore((s) => s.user)
+  const isModerator = user?.role === 'RESPONSABLE' || user?.role === 'ADMIN'
+
+  // Compteur de signalements ouverts pour le badge (uniquement pour modérateurs)
+  const { data: signalementsOuverts } = useListSignalements('OUVERT')
+  const nbSignalements = signalementsOuverts?.length ?? 0
 
   // Connexion SSE pour le temps réel (invalide les queries au besoin)
   const { isConnected } = useMessagerieStream()
@@ -110,6 +121,24 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {/* Bouton Modération (visible uniquement RESPONSABLE/ADMIN) */}
+          {isModerator && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowModeration(true)}
+              className="relative h-7 w-7"
+              aria-label="Modération des messages"
+              title="Modération des messages"
+            >
+              <ShieldAlert className="h-4 w-4" />
+              {nbSignalements > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                  {nbSignalements > 9 ? '9+' : nbSignalements}
+                </span>
+              )}
+            </Button>
+          )}
           {/* Bouton Nouveau message (DM) */}
           <Button
             variant="ghost"
@@ -200,6 +229,14 @@ export function MessageriePanel({ onClose }: MessageriePanelProps) {
         onOpenChange={setShowNewMessage}
         onStartDirect={(convId) => setSelectedConversationId(convId)}
       />
+
+      {/* Dialog Modération (RESPONSABLE/ADMIN) */}
+      {isModerator && (
+        <ModerationPanel
+          open={showModeration}
+          onOpenChange={setShowModeration}
+        />
+      )}
     </motion.div>
   )
 }

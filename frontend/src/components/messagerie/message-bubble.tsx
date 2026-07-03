@@ -45,11 +45,13 @@ export interface MessageBubbleProps {
   message: Message
   /** ID de l'utilisateur courant (pour déterminer si le message est à moi) */
   currentUserId: string
+  /** Rôle de l'utilisateur courant (pour modération : ENSEIGNANT/RESPONSABLE/ADMIN) */
+  currentUserRole?: string
   /** Callback pour répondre au message */
   onReply?: (message: Message) => void
   /** Callback pour éditer le message (uniquement si l'utilisateur est l'auteur) */
   onEdit?: (message: Message) => void
-  /** Callback pour supprimer le message */
+  /** Callback pour supprimer le message (auteur OU modérateur) */
   onDelete?: (message: Message) => void
   /** Callback pour signaler le message */
   onSignal?: (message: Message, raison: SignalementRaison) => void
@@ -91,6 +93,7 @@ function getInitials(name: string): string {
 export function MessageBubble({
   message,
   currentUserId,
+  currentUserRole,
   onReply,
   onEdit,
   onDelete,
@@ -104,6 +107,8 @@ export function MessageBubble({
   const isDeleted = !!message.deletedAt
   const isEdited = !!message.editedAt && !isDeleted
   const authorName = message.user?.name ?? (isIA ? 'Assistant IA' : 'Utilisateur')
+  // Modérateur = ENSEIGNANT, RESPONSABLE ou ADMIN (peut masquer les messages)
+  const isModerator = currentUserRole === 'ENSEIGNANT' || currentUserRole === 'RESPONSABLE' || currentUserRole === 'ADMIN'
 
   const handleReply = useCallback(() => {
     onReply?.(message)
@@ -292,6 +297,16 @@ export function MessageBubble({
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Supprimer
+                  </DropdownMenuItem>
+                )}
+                {/* Modération : enseignant/responsable/admin peut masquer le message */}
+                {!isMe && isModerator && onDelete && (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={handleDelete}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    Masquer (modération)
                   </DropdownMenuItem>
                 )}
                 {!isMe && onSignal && (
