@@ -64,11 +64,11 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         }
                         return nil
                 })
-                // Tester la query exacte du repo SANS le LEFT JOIN User.
-                var countNoJoin int
+                // Tester la policy RLS directement.
+                var policyCheck string
                 _ = appdb.WithTx(r.Context(), s.dbPool, claims, func(tx pgx.Tx) error {
-                        row := tx.QueryRow(r.Context(), `SELECT count(*) FROM "EtablissementAccess" ea WHERE ea."statut" = $1 AND ea."etablissementId" = $2`, params.Statut, claims.EtablissementID)
-                        if err := row.Scan(&countNoJoin); err != nil {
+                        row := tx.QueryRow(r.Context(), `SELECT (is_responsable() AND ("etablissementId" = current_etablissement_id()))::text FROM "EtablissementAccess" LIMIT 1`)
+                        if err := row.Scan(&policyCheck); err != nil {
                                 return err
                         }
                         return nil
@@ -99,7 +99,7 @@ func (s *Server) listAccess(w http.ResponseWriter, r *http.Request) {
                         "dbCheck": map[string]any{
                                 "current_etablissement_id": dbEtabID,
                                 "is_responsable":           dbIsResp,
-                                "countNoJoin":              countNoJoin,
+                                "policyCheck":              policyCheck,
                                 "countWithJoin":            countWithJoin,
                         },
                         "params":  dbgParams,
