@@ -10794,3 +10794,54 @@ Stage Summary:
 - **Message clair** : compteur de demandes en attente + CTA vers Mes autorisations.
 - **Erreur 409 gérée** : toast spécifique avec action "Voir mes demandes".
 - **Déploiement** : push GitHub (67375f0) → Vercel a déployé → validé en production.
+
+---
+Task ID: SECT-ACCES-ETABLISSEMENTS-RLS-POOLER
+Agent: Z.ai Code (tuteur/assistant)
+Task: Bug — demande d'accès admin invisible côté responsable + erreur JSON date
+
+2 bugs identifiés et corrigés :
+
+1. Erreur JSON quand admin crée demande AVEC date (FIXÉ) :
+   - input type=date donne 'YYYY-MM-DD' mais backend Go décode *time.Time (RFC3339).
+   - Fix : toRFC3339 helper dans handleSubmitRequest convertit en 'YYYY-MM-DDT00:00:00Z'.
+   - Validé : POST avec date retourne 201 au lieu de 400.
+
+2. Demande invisible côté responsable (FIX CODE - EN ATTENTE DÉPLOIEMENT) :
+   - La page /acces-etablissements était réservée ADMIN. Ajouté RESPONSABLE aux routes
+     + onglet 'Demandes à approuver' (visible seulement RESPONSABLE) avec boutons
+     Approuver/Refuser. Lien sidebar ajouté.
+   - MAIS le responsable voyait 'accessRecords: null' (0 demande) même avec les claims
+     corrects.
+
+Diagnostic RLS approfondi (debug endpoint ?debug=1 temporaire) :
+   - claims corrects : role=RESPONSABLE, etablissementID=cmq2dfmg... ✅
+   - current_etablissement_id() retourne la bonne valeur ✅
+   - is_responsable() retourne true ✅
+   - MAIS count(*) FROM EtablissementAccess = 0 ❌ (RLS filtre tout)
+   - Test connexion directe (sans -pooler) : count = 1 ✅
+
+Cause racine : PgBouncer Neon (mode transaction pooling) ne préserve PAS les
+set_config('app.claims.*', true) (is_local=true) entre les queries d'une même
+transaction pgx. RLS devient inopérant → les policies filtrent toutes les rows.
+
+Fix : convertPoolerToDirect() dans db.go transforme l'URL pooler en URL directe
+en retirant '-pooler.' du hostname. La connexion directe garantit que les claims
+posés via SetClaimsTx sont visibles par toutes les queries de la transaction.
+
+Validé en local : connexion directe (sans -pooler) retourne count=1 ✅.
+Déploiement Render : push (79071d8) effectué, mais le test production retourne
+toujours 0. Cause probable : Render free tier n'a pas encore redéployé le
+dernier commit (peut prendre 5-15 min), ou l'URL configurée sur Render ne
+contient pas -pooler (auquel cas le fix ne change rien et le problème est
+ailleurs — à investiguer via le dashboard Render).
+
+Nettoyage : retrait du code de debug (endpoint ?debug=1, slog, rows.Err).
+
+Stage Summary:
+- **Bug 1 (erreur JSON date) : FIXÉ et validé en production.**
+- **Bug 2 (demande invisible responsable) : code corrigé (onglet + routes +
+  pooler fix), en attente de validation production.**
+- **Fix RLS-POOLER** : convertPoolerToDirect() dans db.go. La connexion directe
+  (sans PgBouncer) est nécessaire pour que les claims RLS locaux fonctionnent.
+- **Déploiement** : à vérifier après que Render a redéployé (79071d8).
