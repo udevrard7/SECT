@@ -104,12 +104,14 @@ func (uc *MessagerieUseCase) GetOrCreateIAPrivate(ctx context.Context, claims db
 // CreateDirect crée une conversation DIRECT (1-à-1) avec targetUserID.
 //
 // Règles d'autorisation par rôle :
-//   - ETUDIANT    : ne peut DM que ses enseignants (CanStudentDMEnseignant —
-//     anti-spam : il faut qu'une épreuve de l'enseignant soit inscrite à son
-//     dossier). Sinon → UnauthorizedError.
-//   - ENSEIGNANT  : peut DM tout user de son établissement (RLS filtrera).
-//   - RESPONSABLE : peut DM tout user de son établissement (RLS filtrera).
-//   - ADMIN       : peut DM tout user.
+//   - ETUDIANT    : peut DM (a) ses enseignants (CanStudentDMEnseignant) OU
+//     (b) d'autres étudiants du même établissement (même filière ou autre,
+//     même niveau ou autre — tout étudiant du même étab). Anti-spam : un
+//     étudiant ne peut pas DM un enseignant qui ne lui donne pas cours.
+//   - ENSEIGNANT  : peut DM tout user de son établissement (étudiants, autres
+//     enseignants, responsables). RLS filtrera.
+//   - RESPONSABLE : peut DM tout user de son établissement. RLS filtrera.
+//   - ADMIN       : INTERDIT (le propriétaire PaaS n'a pas accès à la messagerie).
 func (uc *MessagerieUseCase) CreateDirect(ctx context.Context, claims db.SessionClaims, targetUserID string, titre *string) (*domain.Conversation, error) {
         if targetUserID == "" {
                 return nil, &domain.ValidationError{Field: "targetUserId", Message: "targetUserId requis"}
@@ -124,17 +126,30 @@ func (uc *MessagerieUseCase) CreateDirect(ctx context.Context, claims db.Session
         role := domain.Role(claims.Role)
         switch role {
         case domain.RoleEtudiant:
-                // Anti-spam : l'étudiant ne peut DM que ses enseignants.
+                // L'étudiant peut DM ses enseignants OU d'autres étudiants du même étab.
+                // On vérifie d'abord si la cible est un enseignant autorisé, sinon on
+                // vérifie si c'est un étudiant du même établissement.
                 allowed, err := uc.messagerieRepo.CanStudentDMEnseignant(ctx, claims.UserID, targetUserID)
                 if err != nil {
                         return nil, err
                 }
                 if !allowed {
-                        return nil, &domain.UnauthorizedError{Message: "vous ne pouvez contacter que vos enseignants"}
+                        // Pas un enseignant autorisé → vérifier si c'est un étudiant du même étab.
+                        isStudentSameEtab, err := uc.messagerieRepo.IsUserStudentInSameEtablissement(ctx, targetUserID, claims.EtablissementID)
+                        if err != nil {
+                                return nil, err
+                        }
+                        if !isStudentSameEtab {
+                                return nil, &domain.UnauthorizedError{Message: "vous ne pouvez contacter que vos enseignants ou d'autres étudiants de votre établissement"}
+                        }
+                        // OK : étudiant du même établissement.
                 }
-        case domain.RoleEnseignant, domain.RoleResponsable, domain.RoleAdmin:
+        case domain.RoleEnseignant, domain.RoleResponsable:
                 // RLS Conversation_insert filtrera par établissement.
                 // (le repo renforcera createdBy = claims.UserID au niveau SQL)
+        case domain.RoleAdmin:
+                // Le propriétaire PaaS (ADMIN) n'a pas accès à la messagerie.
+                return nil, &domain.UnauthorizedError{Message: "le compte ADMIN (propriétaire PaaS) n'a pas accès à la messagerie"}
         default:
                 return nil, &domain.UnauthorizedError{Message: "rôle non autorisé à créer des conversations DIRECT"}
         }

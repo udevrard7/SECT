@@ -1332,3 +1332,35 @@ func (r *MessagerieRepository) CanStudentDMEnseignant(ctx context.Context, etudi
         }
         return allowed, nil
 }
+
+// IsUserStudentInSameEtablissement vérifie si targetUserID est un étudiant
+// (role = ETUDIANT) appartenant à etablissementID. Utilisé pour autoriser les
+// DM étudiant ↔ étudiant au sein d'un même établissement (même filière ou non,
+// même niveau ou non — tout étudiant du même étab).
+func (r *MessagerieRepository) IsUserStudentInSameEtablissement(ctx context.Context, targetUserID, etablissementID string) (bool, error) {
+	claims, ok := db.ClaimsFromContext(ctx)
+	if !ok || claims.UserID == "" {
+		return false, fmt.Errorf("IsUserStudentInSameEtablissement: claims manquants dans le context")
+	}
+
+	var isStudent bool
+	err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM "User" u
+				WHERE u."id" = $1
+				  AND u."role" = 'ETUDIANT'
+				  AND u."etablissementId" = $2
+				  AND u."actif" = true
+			)
+		`, targetUserID, etablissementID).Scan(&isStudent)
+		if err != nil {
+			return fmt.Errorf("query IsUserStudentInSameEtablissement: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return isStudent, nil
+}

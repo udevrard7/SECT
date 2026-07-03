@@ -163,3 +163,19 @@ func writeJSONErrorMsg(w http.ResponseWriter, status int, msg string) {
         w.WriteHeader(status)
         _ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
+
+// BlockAdmin bloque l'accès aux endpoints marqués "pas pour ADMIN".
+// Utilisé pour /api/messagerie/* : le propriétaire PaaS (ADMIN) n'a pas accès
+// à la messagerie (il n'a pas d'établissement rattaché et la messagerie est
+// réservée aux contextes académiques : étudiant, enseignant, responsable).
+// Retourne 403 avec un message explicite si claims.Role == "ADMIN".
+func BlockAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := ClaimsFromContext(r.Context())
+		if ok && claims.Role == "ADMIN" {
+			writeJSONErrorMsg(w, http.StatusForbidden, "le compte ADMIN (propriétaire PaaS) n'a pas accès à la messagerie")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

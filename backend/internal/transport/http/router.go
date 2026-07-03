@@ -402,7 +402,10 @@ func (s *Server) setupRouter(corsOrigins []string, authMiddleware func(http.Hand
                 // deleted, read, typing). Le hub est in-memory (pas de Redis) — les
                 // clients reconnectent automatiquement via EventSource natif.
                 r.Route("/api/messagerie", func(r chi.Router) {
+                        // Le propriétaire PaaS (ADMIN) n'a pas accès à la messagerie.
+                        // MESSAGERIE-ADMIN-BLOCK : middleware dédié pour retourner 403 proprement.
                         r.Use(middleware.RequireAuth)
+                        r.Use(middleware.BlockAdmin)
                         // Conversations
                         r.Get("/conversations", s.listConversations)
                         r.Post("/conversations/ia-private", s.getOrCreateIAPrivate)
