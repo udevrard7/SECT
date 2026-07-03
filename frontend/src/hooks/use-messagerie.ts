@@ -77,6 +77,13 @@ export function useConversations() {
         (d) => d.conversations
       ),
     staleTime: 30 * 1000, // 30s
+    // BUGFIX (MESSAGERIE-SSE-RENDER) : le SSE est bufferisé par le proxy
+    // Render free tier (le handler envoie l'event hello mais le proxy
+    // Cloudflare/Render ne flush pas → 'Hors ligne' permanent côté client).
+    // Fallback : polling toutes les 15s pour rafraîchir lastMessage + unreadCount.
+    // Le SSE reste tenté (useMessagerieStream) au cas où le backend est fixé.
+    refetchInterval: 15 * 1000, // 15s
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -112,6 +119,10 @@ export function useMessages(conversationId: string | null | undefined) {
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!conversationId,
     staleTime: 60 * 1000, // 1 min — le SSE invalide en cas de nouveau message
+    // BUGFIX (MESSAGERIE-SSE-RENDER) : polling fallback (8s) car le SSE est
+    // bufferisé par le proxy Render free tier. Le polling rafraîchit les
+    // messages de la conversation ouverte pour simuler le temps réel.
+    refetchInterval: !!conversationId ? 8 * 1000 : false, // 8s si conversation ouverte
   })
 }
 
@@ -446,11 +457,67 @@ export function useParticipants(conversationId: string | null | undefined) {
 // Le hook retourne { isConnected } pour afficher un indicateur "temps réel"
 // dans l'UI. Peut être étendu pour afficher les "typing indicators" via
 // l'event 'typing'.
+//
+// BUGFIX (MESSAGERIE-SSE-RENDER) : sur Render free tier, le proxy
+// Cloudflare/Render bufferise les réponses SSE — le handler backend envoie
+// bien l'event 'hello' + flush, mais le proxy ne le transmet pas au client
+// → EventSource.onerror déclenche → isConnected = false → 'Hors ligne'
+// permanent dans l'UI, même si le polling (refetchInterval sur
+// useConversations/useMessages) fonctionne et rafraîchit les données.
+//
+// Solution : isConnected repose désormais sur le succès du fetch de
+// /api/messagerie/conversations (healthcheck polling) plutôt que sur le
+// SSE. Si le fetch réussit, on est 'connecté' (les données sont à jour via
+// polling). Le SSE reste tenté en parallèle au cas où le backend/proxy est
+// fixé (il invalidera les queries plus rapidement quand il marche).
 
 export function useMessagerieStream() {
   const queryClient = useQueryClient()
   const [isConnected, setIsConnected] = useState(false)
 
+  // Healthcheck polling : confirme que le backend est joignable et que les
+  // données sont synchronisées (via les refetchInterval de useConversations /
+  // useMessages). Si le fetch réussit, on marque 'connecté'.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const checkConnection = async () => {
+      try {
+        // Invalide les conversations pour forcer un refetch (le polling
+        // régulier garantit que les nouveautés sont récupérées).
+        await queryClient.refetchQueries({
+          queryKey: messagerieKeys.conversations(),
+        })
+        if (!cancelled) setIsConnected(true)
+      } catch {
+        if (!cancelled) setIsConnected(false)
+      } finally {
+        if (!cancelled) {
+          // Recheck dans 20s (plus lent que le refetchInterval de
+          // useConversations pour éviter la redondance, mais assez fréquent
+          // pour basculer isConnected en cas de panne réseau).
+          timeoutId = setTimeout(checkConnection, 20 * 1000)
+        }
+      }
+    }
+
+    // Premier check immédiat (après un court délai pour laisser les queries
+    // initiales se poser).
+    timeoutId = setTimeout(checkConnection, 1500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [queryClient])
+
+  // Tentative SSE en parallèle (best-effort). Si le proxy Render le laisse
+  // passer, on invalide plus rapidement les queries à l'arrivée d'un event.
+  // Si le SSE échoue (cas Render free tier), le healthcheck polling ci-dessus
+  // garantit isConnected = true et la fraîcheur des données.
   useEffect(() => {
     // Côté navigateur uniquement (Next.js SSR-safe).
     if (typeof window === 'undefined') return
@@ -460,8 +527,12 @@ export function useMessagerieStream() {
       withCredentials: true,
     })
 
-    eventSource.onopen = () => setIsConnected(true)
-    eventSource.onerror = () => setIsConnected(false)
+    // Note : on NE PASSE PAS isConnected à false sur onerror, car le SSE
+    // peut échouer à cause du proxy Render même si le backend est joignable
+    // via polling. isConnected est piloté par le healthcheck polling.
+    eventSource.onopen = () => {
+      // SSE connecté → bonus, mais isConnected déjà géré par le healthcheck.
+    }
 
     // Event : nouveau message (envoyé par quelqu'un d'autre ou par l'IA).
     // On invalide la conversation concernée + la liste des conversations
@@ -515,7 +586,6 @@ export function useMessagerieStream() {
 
     return () => {
       eventSource.close()
-      setIsConnected(false)
     }
   }, [queryClient])
 
