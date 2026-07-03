@@ -395,6 +395,60 @@ export function useSignalMessage() {
   })
 }
 
+// ─── 9b. useListSignalements (modération RESPONSABLE/ADMIN) ───
+
+/**
+ * Liste les signalements de messages (réservé RESPONSABLE/ADMIN).
+ * Filtre optionnel par statut (OUVERT, EN_COURS, RESOLU, REJETE).
+ * Polling 30s pour suivre les nouveaux signalements en temps quasi réel.
+ */
+export function useListSignalements(statut?: import('@/types/messagerie').SignalementStatut | null) {
+  return useQuery<MessageSignalement[]>({
+    queryKey: [...messagerieKeys.all, 'signalements', statut ?? 'all'],
+    queryFn: () => {
+      const url = new URL('/api/messagerie/signalements', window.location.origin)
+      if (statut) url.searchParams.set('statut', statut)
+      return fetchJSON<{ signalements: MessageSignalement[] }>(url.toString()).then(
+        (d) => d.signalements
+      )
+    },
+    refetchInterval: 30 * 1000, // 30s
+    staleTime: 20 * 1000,
+  })
+}
+
+// ─── 9c. useResolveSignalement (modération RESPONSABLE/ADMIN) ───
+
+/**
+ * Marque un signalement comme résolu ou rejeté (PATCH /api/messagerie/signalements/{id}).
+ * Invalide la liste des signalements après action.
+ */
+export function useResolveSignalement() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      signalementId,
+      statut,
+    }: {
+      signalementId: string
+      statut: import('@/types/messagerie').SignalementStatut
+    }) =>
+      fetchJSON<MessageSignalement>(
+        `/api/messagerie/signalements/${signalementId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ statut }),
+        }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [...messagerieKeys.all, 'signalements'],
+      })
+    },
+  })
+}
+
 // ─── 10. useSetMuted ───
 
 /**
