@@ -7,10 +7,9 @@
 // de messagerie. Affiche un badge non-lu si des messages non lus
 // sont présents dans n'importe quelle conversation.
 //
-// Position : `bottom-4 right-20` (à gauche de l'AIAssistant qui est
-// en `bottom-4 right-4`) pour éviter le chevauchement visuel entre
-// les deux bulles flottantes. Alignée verticalement avec l'AIAssistant
-// (bottom-4) pour un rendu cohérent en « groupe de boutons ».
+// Position : `bottom-4 right-4` — unique bulle flottante de l'application
+// (l'Assistant IA flottant a été retiré, l'IA est désormais accessible
+// uniquement via les conversations IA de la messagerie).
 // Le panneau s'ouvre au-dessus (bottom-24) aligné à droite (right-4).
 // ─────────────────────────────────────────────────────────────
 
@@ -78,7 +77,7 @@ export function MessagerieBubble() {
         onClick={toggleOpen}
         aria-label={isOpen ? 'Fermer la messagerie' : 'Ouvrir la messagerie'}
         aria-expanded={isOpen}
-        className="fixed bottom-4 right-20 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-primary-foreground shadow-xl shadow-primary/30 transition-shadow hover:shadow-2xl hover:shadow-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-primary-foreground shadow-xl shadow-primary/30 transition-shadow hover:shadow-2xl hover:shadow-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {/* Badge non-lu (visible uniquement quand le panneau est fermé) */}
         <AnimatePresence>
