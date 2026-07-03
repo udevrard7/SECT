@@ -10752,3 +10752,45 @@ Stage Summary:
 - **Fallback gracieux** : si le streaming échoue, fallback synchrone. Si le SSE
   ne passe pas, le message final arrive via message_new (déjà fonctionnel).
 - **Déploiement** : push GitHub (dfd2839) → Render + Vercel déployés.
+
+---
+Task ID: SECT-ACCES-ETABLISSEMENTS-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Bug — admin /acces-etablissements demande via formulaire ne fonctionne pas
+
+Diagnostic (Agent Browser, login admin ulrichdouh@gmail.com) :
+- L'admin fait une demande → POST /api/etablissement-access → 201 Created (succès).
+- MAIS après la première demande, le frontend filtre les établissements avec
+  demande EN_ATTENTE/APPROUVE (availableEtablissements) → le formulaire affiche
+  "Aucun établissement disponible" (formulaire vide, incompréhensible).
+- Si l'admin contourne le filtrage (Renouveler, cache, ou 2ème soumission), le
+  backend retourne 409 Conflict "demande d'accès déjà existante" (index unique
+  partiel EtablissementAccess_adminId_etablissementId_active_key) → toast erreur
+  générique sans guidance.
+
+Work Log :
+- Fix frontend (acces-etablissements-page.tsx, +29/-3 lignes) :
+  1. Message "Aucun établissement disponible" amélioré : si enAttenteCount > 0,
+     afficher "Vous avez N demande(s) d'accès en attente. Annulez une demande
+     pour pouvoir en faire une nouvelle." + bouton "Voir mes demandes en attente"
+     qui switch vers l'onglet Mes autorisations.
+  2. Gestion erreur 409 spécifique : toast.error "Demande déjà existante" avec
+     description claire + action "Voir mes demandes" qui switch vers Mes
+     autorisations. L'admin sait exactement quoi faire.
+
+Validation production (Agent Browser post-déploiement Vercel) :
+- Faire une demande → toast succès "Demande envoyée" ✅.
+- Retourner sur "Demander un accès" → message "Aucun établissement disponible" +
+  "Vous avez 1 demande(s) d'accès en attente. Annulez une demande..." + bouton
+  "Voir mes demandes en attente" ✅ (validé VLM).
+- Click bouton → switch vers "Mes autorisations" + demande visible ✅.
+- Test 409 (fetch direct) → backend retourne 409, frontend l'intercepte avec
+  toast spécifique ✅.
+- 0 erreur console.
+
+Stage Summary:
+- **Bug UX résolu** : l'admin ne sera plus bloqué sans comprendre pourquoi le
+  formulaire est vide ou pourquoi sa demande échoue.
+- **Message clair** : compteur de demandes en attente + CTA vers Mes autorisations.
+- **Erreur 409 gérée** : toast spécifique avec action "Voir mes demandes".
+- **Déploiement** : push GitHub (67375f0) → Vercel a déployé → validé en production.
