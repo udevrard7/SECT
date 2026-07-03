@@ -1038,25 +1038,16 @@ func (r *MessagerieRepository) HideMessagesForUser(ctx context.Context, messageI
         }
 
         return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
-                // Construction dynamique des placeholders ($1, $2, ... pour les messageIDs).
-                // Le userID est en dernier paramètre.
-                placeholders := make([]string, len(messageIDs))
-                args := make([]any, 0, len(messageIDs)+1)
-                for i, id := range messageIDs {
-                        placeholders[i] = fmt.Sprintf("$%d", i+1)
-                        args = append(args, id)
-                }
-                args = append(args, userID)
-
-                query := fmt.Sprintf(`
-                        INSERT INTO "MessageHiddenByUser" ("messageId", "userId", "hiddenAt")
-                        SELECT msg, $%d, CURRENT_TIMESTAMP
-                        FROM UNNEST(ARRAY[%s]::text[]) AS msg
-                        ON CONFLICT ("messageId", "userId") DO NOTHING
-                `, len(messageIDs)+1, strings.Join(placeholders, ", "))
-
-                if _, err := tx.Exec(ctx, query, args...); err != nil {
-                        return fmt.Errorf("hide messages for user: %w", err)
+                // INSERT individuels (plus simple et compatible pooler Neon qui ne
+                // supporte pas bien UNNEST avec prepared statements).
+                for _, msgID := range messageIDs {
+                        if _, err := tx.Exec(ctx, `
+                                INSERT INTO "MessageHiddenByUser" ("messageId", "userId", "hiddenAt")
+                                VALUES ($1, $2, CURRENT_TIMESTAMP)
+                                ON CONFLICT ("messageId", "userId") DO NOTHING
+                        `, msgID, userID); err != nil {
+                                return fmt.Errorf("hide message %s for user: %w", msgID, err)
+                        }
                 }
                 return nil
         })
