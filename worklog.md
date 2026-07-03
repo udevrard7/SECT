@@ -10584,3 +10584,40 @@ Stage Summary:
 - **3 méthodes corrigées** : Create, DeleteByID, DeleteByComposite (toutes utilisaient BeginTx brut sans claims).
 - **Déploiement** : push GitHub (7a40914) → Render a déployé → validé en production.
 - **DB inchangée** : aucun risque, la policy RLS existante fonctionne maintenant correctement côté applicatif.
+
+---
+Task ID: SECT-AUDIO-DELETE-STUDENT
+Agent: Z.ai Code (tuteur/assistant)
+Task: Feature — permettre à l'étudiant de supprimer un podcast audio (avant, seuls Télécharger + Vitesse de lecture existaient)
+
+Diagnostic :
+- Frontend exam-prep-audio-tab.tsx : AudioCard n'avait aucun bouton supprimer (seulement lecteur HTML5 + script collapsible).
+- Backend : aucun endpoint DELETE pour /api/exam-prep/audio/{id} (seulement POST generate, GET list, GET by id).
+- DB : policy RLS DocumentAudio_delete n'autorisait QUE is_admin() — un étudiant ne pouvait pas supprimer son propre podcast même si l'endpoint avait existé.
+
+Work Log :
+- Migration 000039 (up + down) : remplacer la policy DocumentAudio_delete par ("userId" = current_user_id()) OR is_admin(). Appliquée sur Neon (schema_migrations version 39).
+- Domain (examprep.go) : ajout DeleteDocumentAudio(ctx, audioID) error à l'interface ExamPrepRepository.
+- Repository (examprep.go) : implémentation DeleteDocumentAudio avec db.WithTx (claims RLS), NotFoundError si RowsAffected=0.
+- Usecase (examprep.go) : DeleteAudio — vérif propriété (audio.UserID == claims.UserID, sauf ADMIN), suppression R2 best-effort AVANT la ligne DB (objet orphelin acceptable vs ligne DB fantôme), puis DeleteDocumentAudio. Rôles : ETUDIANT, ENSEIGNANT, ADMIN.
+- Handler (examprep_handlers.go) : deleteAudio — DELETE /api/exam-prep/audio/{id} → 200 {success:true, message:"Podcast supprimé"}. MapDomainError pour NotFound(404)/Unauthorized(403).
+- Router (router.go) : r.Delete("/audio/{id}", s.deleteAudio).
+- Frontend (exam-prep-audio-tab.tsx) :
+  - Import Trash2 + AlertDialog (shadcn/ui).
+  - deleteMutation (TanStack) : DELETE /api/exam-prep/audio/{id} + toast succès/erreur + invalidation query.
+  - Bouton supprimer (ghost, icône Trash2, h-8 w-8) sur chaque AudioCard, tous statuts (EN_COURS/ERREUR/PRET).
+  - AlertDialog de confirmation "Supprimer ce podcast ?" + "Cette action est définitive" + bouton Annuler/Supprimer (destructive).
+  - Spinner pendant la suppression (isDeleting).
+- Validation : go vet ./... + go build ./... = 0 erreur.
+
+Validation production (Agent Browser, login étudiant ASSANI INF/LJ/25/008) :
+- Endpoint DELETE /api/exam-prep/audio/{id} testé via fetch authentifié → 200 {success:true} ✅. DB vérifiée : ligne supprimée (0 ligne restante pour cet ID).
+- UI : onglet Audio d'un document avec 13 podcasts → 13 boutons "Supprimer le podcast" affichés ✅.
+- Clic bouton supprimer → AlertDialog "Supprimer ce podcast ?" + Annuler/Supprimer ✅.
+- Confirmation → podcast supprimé (13 → 12 boutons) ✅. 0 erreur console.
+
+Stage Summary:
+- **Feature livrée** : l'étudiant peut désormais supprimer ses podcasts audio (EN_COURS pour annuler une génération bloquée, ERREUR pour nettoyer, PRET pour retirer un podcast terminé).
+- **Sécurité** : double vérification de propriété (usecase + policy RLS DocumentAudio_delete migration 000039). L'admin garde tout droit.
+- **Cleanup R2** : l'objet R2 est supprimé en best-effort avant la ligne DB (objet orphelin acceptable si échec R2).
+- **Déploiement** : push GitHub (a5b402f) → Render (backend) + Vercel (frontend) déployés. Migration Neon appliquée (version 39).
