@@ -10669,3 +10669,43 @@ Stage Summary:
   (synchrone) et l'utilisateur aura toujours une réponse (succès ou erreur gracieuse).
 - **À vérifier après déploiement** : POST @assistant doit prendre >5s (synchrone),
   et un message IA doit apparaître en DB (succès OU erreur gracieux).
+
+---
+Task ID: SECT-MESSAGERIE-GROUP-IA-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix final - @assistant en salon collectif ne répondait JAMAIS (cause racine trouvée)
+
+Diagnostic final :
+- Après déploiement du synchrone 25s (commit f521a1a), le POST @assistant prenait
+  encore ~290ms (trop rapide pour un appel IA synchrone) → le code n'était pas atteint.
+- Investigation : HasAssistantMention (domain/messagerie.go) avait un BUG OFF-BY-ONE.
+  "@assistant" fait 10 caractères, mais le code comparait contenuLower[i:i+11]
+  (11 caractères) à "@assistant" (10 caractères) → la comparaison ne matchait JAMAIS.
+  → generateAIResponseInGroupWithTimeout n'était jamais appelé → aucun message IA.
+- L'IA privée fonctionnait car elle ne dépend pas de HasAssistantMention (elle utilise
+  conv.Type == ConversationTypeIA). C'est pourquoi le contraste était flagrant.
+
+Work Log :
+- Fix domain/messagerie.go HasAssistantMention : remplacer le littéral 11 par
+  const mlen = len("@assistant") = 10. Commentaire BUGFIX détaillé.
+- Testé 6 cas : "@assistant hello" → true, "@assistant, help" → true,
+  "@Assistant test" → true, "salon @assistant: question" → true,
+  "no mention here" → false, "@assistante" → false (pas de faux positif préfixe).
+- Validation : go vet ./... + go build ./... = 0 erreur.
+
+Validation production (Agent Browser, étudiant 2, salon Classe L2) :
+- POST /api/messagerie/.../messages avec "@assistant explique variable Python"
+  → status 200 en 11 365 ms (11.4s) — synchrone, l'IA a répondu dans les 25s.
+- DB vérifiée : message USER "@assistant explique variable Python" persisté,
+  message IA "En Python, une variable est une étiquette..." persisté avec
+  isIA=true, replyToID pointant vers le userMsg.
+- 0 erreur console navigateur.
+
+Stage Summary:
+- **Bug résolu** : @assistant en salon collectif fonctionne maintenant. L'IA répond
+  en synchrone (5-25s selon la complexité), et en cas de timeout, un message d'erreur
+  gracieux est persisté.
+- **Cause racine** : bug off-by-one dans HasAssistantMention (11 au lieu de 10).
+  Ce bug existait depuis l'origine du module messagerie — l'IA en salon collectif
+  n'avait JAMAIS marché.
+- **Déploiement** : push GitHub (8b9ec3a) → Render a déployé → validé en production.
