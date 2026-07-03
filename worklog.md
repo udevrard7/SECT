@@ -10935,3 +10935,42 @@ Stage Summary:
 - **Approche** : bypass RLS via system-worker (comme Create/Update/Delete) + filtre
   manuel via WHERE (sécurité assurée par le usecase).
 - **Déploiement** : push GitHub (d7ac498) → Render déployé → validé en production.
+
+---
+Task ID: SECT-RLS-MIGRATION-040
+Agent: Z.ai Code (tuteur/assistant)
+Task: Migration 000040 — restaurer RLS natif pour EtablissementAccess (roles={public})
+
+Contexte :
+Après le bypass system-worker (fix temporaire), une migration DB a été créée
+pour restaurer RLS natif. Les policies EtablissementAccess_select et
+EtablissementAccess_modify_responsable avaient roles={neondb_owner} (spécifique)
+qui ne fonctionnait pas avec pgx + PgBouncer. Les autres tables (roles={public})
+fonctionnent correctement.
+
+Work Log :
+- Migration 000040 (up + down) : recréer les 2 policies avec TO PUBLIC au lieu
+  de TO neondb_owner. Définition USING/WITH CHECK inchangée. Appliquée sur Neon.
+- Repository List : retour à db.WithTx + claims user (RLS natif), sans bypass
+  system-worker. Import slog retiré. rows.Err() ajouté.
+- QueryExecModeDescribeExec conservé (plus robuste pour RLS).
+
+Validation production (Agent Browser) :
+1. Responsable → GET /api/etablissement-access?etablissementId=... → 200 avec
+   accessRecords contenant la demande ✅ (RLS natif, pas de bypass).
+2. Responsable → /parametres → onglet 'Accès ADMIN' → demande visible avec
+   boutons Approuver/Refuser ✅.
+3. Responsable → Approuver → dialog durée (30 jours) → confirmer → toast
+   'Accès approuvé' + DB statut=APPROUVE, dateDebut=now, dateFin=now+30j ✅.
+4. Admin → /acces-etablissements → voit sa propre demande (count=1) ✅.
+5. Régression : dashboard responsable (badges) ✅, page étudiants ✅, messagerie
+   (salons) ✅ — aucune régression RLS sur les autres tables.
+6. 0 erreur console.
+
+Stage Summary:
+- **RLS natif restauré** pour EtablissementAccess (defense in depth rétablie).
+- **Bypass system-worker retiré** — le repo List utilise db.WithTx + claims user.
+- **Workflow complet validé** : admin crée demande → responsable voit + approuve
+  avec durée → DB statut=APPROUVE + dates.
+- **Sécurité** : double filtrage (RLS natif + clause WHERE forcée par usecase).
+- **Migration 000040** appliquée sur Neon (roles={public}).
