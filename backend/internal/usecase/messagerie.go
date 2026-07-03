@@ -556,6 +556,16 @@ func (uc *MessagerieUseCase) ListParticipants(ctx context.Context, claims db.Ses
         return uc.messagerieRepo.ListParticipants(ctx, conversationID)
 }
 
+// ListParticipantsWithUsers retourne les participants enrichis avec les infos
+// utilisateur (name, email, role). Utilisé par l'UI pour afficher la liste
+// des participants + badges online + bouton DM.
+func (uc *MessagerieUseCase) ListParticipantsWithUsers(ctx context.Context, claims db.SessionClaims, conversationID string) ([]*domain.ParticipantWithUser, error) {
+        if conversationID == "" {
+                return nil, &domain.ValidationError{Field: "conversationId", Message: "conversationId requis"}
+        }
+        return uc.messagerieRepo.ListParticipantsWithUsers(ctx, conversationID)
+}
+
 // ============================================================
 // SIGNALEMENTS
 // ============================================================

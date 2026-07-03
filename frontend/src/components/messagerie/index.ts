@@ -8,6 +8,8 @@ export { ConversationList, type ConversationListProps } from './conversation-lis
 export { ChatWindow, type ChatWindowProps } from './chat-window'
 export { MessageBubble, type MessageBubbleProps } from './message-bubble'
 export { MessageInput, type MessageInputProps } from './message-input'
+export { ParticipantsList, type ParticipantsListProps } from './participants-list'
+export { NewMessageDialog, type NewMessageDialogProps } from './new-message-dialog'
 export {
   MessagerieSkeleton,
   ConversationListSkeleton,

@@ -30,6 +30,7 @@ import type {
   Message,
   MessageListResult,
   MessageSignalement,
+  PresenceResult,
   SendMessageInput,
   SignalMessageInput,
 } from '@/types/messagerie'
@@ -43,6 +44,7 @@ export const messagerieKeys = {
     [...messagerieKeys.all, 'messages', conversationId] as const,
   participants: (conversationId: string) =>
     [...messagerieKeys.all, 'participants', conversationId] as const,
+  presence: () => [...messagerieKeys.all, 'presence'] as const,
 }
 
 // ─── Fetch helper ───
@@ -429,18 +431,53 @@ export function useSetMuted() {
 
 /**
  * Liste les participants d'une conversation (id, userId, lastReadAt, muted,
- * joinedAt, leftAt). staleTime 60s.
+ * joinedAt, leftAt, user). Enrichi avec les infos utilisateur (name, email, role)
+ * via LEFT JOIN côté backend. staleTime 60s.
  */
 export function useParticipants(conversationId: string | null | undefined) {
   return useQuery<ConversationParticipant[]>({
     queryKey: messagerieKeys.participants(conversationId ?? 'none'),
     queryFn: () =>
-      fetchJSON<ConversationParticipant[]>(
+      fetchJSON<{ participants: ConversationParticipant[] }>(
         `/api/messagerie/conversations/${conversationId}/participants`
-      ),
+      ).then((d) => d.participants),
     enabled: !!conversationId,
     staleTime: 60 * 1000,
+    // BUGFIX (MESSAGERIE-SSE-RENDER) : polling fallback (20s) car le SSE est
+    // bufferisé par le proxy Render free tier. Rafraîchit les participants
+    // pour mettre à jour les badges "en ligne" et les nouveaux inscrits.
+    refetchInterval: 20 * 1000,
   })
+}
+
+// ─── 12. usePresence (système "en ligne") ───
+
+/**
+ * Poll l'endpoint /api/messagerie/presence toutes les 10s et retourne un Set
+ * des userIDs actuellement en ligne (activité < 45s côté backend).
+ *
+ * Utilisé pour afficher les badges "en ligne" à côté des participants et
+ * dans la liste des conversations.
+ *
+ * Note : le backend met à jour la présence à chaque appel à
+ * /api/messagerie/conversations (polling 15s). Un user est "en ligne" s'il
+ * a pollé au moins une fois dans les dernières 45s.
+ */
+export function usePresence() {
+  const query = useQuery<PresenceResult>({
+    queryKey: messagerieKeys.presence(),
+    queryFn: () => fetchJSON<PresenceResult>('/api/messagerie/presence'),
+    refetchInterval: 10 * 1000, // 10s
+    staleTime: 8 * 1000, // 8s
+  })
+
+  // Convertir en Set pour O(1) lookup.
+  const onlineSet = new Set<string>(query.data?.online ?? [])
+  return {
+    onlineSet,
+    onlineCount: query.data?.count ?? 0,
+    isLoading: query.isLoading,
+  }
 }
 
 // ─── Hook SSE : useMessagerieStream ───

@@ -38,6 +38,7 @@ export interface ConversationParticipant {
   muted: boolean
   joinedAt: string
   leftAt?: string | null
+  user?: MessageUserRef | null
 }
 
 export interface MessageUserRef {
@@ -144,4 +145,11 @@ export type MessagerieEventType = 'message_new' | 'message_edit' | 'message_dele
 export interface MessagerieSSEEvent {
   type: MessagerieEventType
   data: Message | { conversationId: string; userId: string; isTyping: boolean } | { conversationId: string; userId: string }
+}
+
+// ─── Presence (système "en ligne") ───
+
+export interface PresenceResult {
+  online: string[]
+  count: number
 }

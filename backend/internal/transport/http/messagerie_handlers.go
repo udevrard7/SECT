@@ -30,11 +30,19 @@ import (
 // listConversations — GET /api/messagerie/conversations
 // Retourne les conversations accessibles à l'utilisateur courant avec métadonnées
 // (dernier message, unread count, participants count).
+//
+// PRESENCE : met à jour le lastSeen de l'utilisateur dans le hub à chaque appel
+// (polling 15s côté frontend → l'utilisateur est marqué "en ligne" tant qu'il
+// polled activement).
 func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
                 writeJSONError(w, http.StatusUnauthorized, "authentication required")
                 return
+        }
+        // Mettre à jour la présence (best-effort, ne bloque pas le listing).
+        if s.messagerieHub != nil {
+                s.messagerieHub.UpdatePresence(claims.UserID)
         }
         result, err := s.messagerieUC.ListConversations(r.Context(), claims)
         if err != nil {
@@ -256,6 +264,8 @@ func (s *Server) setMuted(w http.ResponseWriter, r *http.Request) {
 }
 
 // listParticipants — GET /api/messagerie/conversations/{id}/participants
+// Retourne les participants enrichis avec les infos utilisateur (name, email, role)
+// pour l'affichage de la liste des participants + badges online dans l'UI.
 func (s *Server) listParticipants(w http.ResponseWriter, r *http.Request) {
         claims, ok := middleware.ClaimsFromContext(r.Context())
         if !ok {
@@ -263,13 +273,37 @@ func (s *Server) listParticipants(w http.ResponseWriter, r *http.Request) {
                 return
         }
         conversationID := chi.URLParam(r, "id")
-        participants, err := s.messagerieUC.ListParticipants(r.Context(), claims, conversationID)
+        participants, err := s.messagerieUC.ListParticipantsWithUsers(r.Context(), claims, conversationID)
         if err != nil {
                 middleware.MapDomainError(w, err)
                 return
         }
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(map[string]any{"participants": participants})
+}
+
+// presence — GET /api/messagerie/presence
+// Retourne la liste des userIDs actuellement en ligne (activité < 45s).
+// Le frontend poll cet endpoint toutes les 10-15s pour afficher les badges
+// "en ligne" à côté des participants et dans la liste des conversations.
+//
+// Response: { "online": ["userId1", "userId2", ...], "count": 2 }
+func (s *Server) presence(w http.ResponseWriter, r *http.Request) {
+        _, ok := middleware.ClaimsFromContext(r.Context())
+        if !ok {
+                writeJSONError(w, http.StatusUnauthorized, "authentication required")
+                return
+        }
+        if s.messagerieHub == nil {
+                writeJSONError(w, http.StatusServiceUnavailable, "messagerie hub not initialized")
+                return
+        }
+        online := s.messagerieHub.OnlineUsers()
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]any{
+                "online": online,
+                "count":  len(online),
+        })
 }
 
 // ============================================================
