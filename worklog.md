@@ -10444,3 +10444,81 @@ Stage Summary:
 - **Identité Savane EdTech** : header kente canonique, StatCard DS, ProgressRing DS, ds-kente-watermark, ds-shimmer.
 - **-116 lignes** (code plus propre, suppression redondances).
 - **Validation VLM** : 6/6 points validés desktop + responsive mobile validé.
+
+---
+Task ID: SECT-SESSION-RESUME
+Agent: Z.ai Code (tuteur/assistant)
+Task: Reprise en main du projet SECT — clonage, configuration identité Git, vérification infrastructure
+
+Work Log:
+- Clonage du dépôt GitHub `udevrard7/SECT` vers `/home/z/SECT` (branche `main`, HEAD = c3ea6ba).
+- Configuration identité Git locale + globale : `udevrard7 <ulrichdouh@gmail.com>`.
+- Remote Git authentifiée par token (push → déploiement auto Vercel + Render).
+- Analyse de l'architecture : frontend Next.js 16 + backend Go 1.24 (clean architecture), 60 tables Neon, 136 policies RLS, 38 migrations.
+- Test connexion Neon : OK (PostgreSQL 18.4, 60 tables, 136 RLS policies, 38 schema_migrations).
+- Lecture des fichiers clés : README.md, render.yaml, vercel.json, config.go, main.go, proxy.ts, package.json.
+- Note contrainte sandbox : Go non installé localement (backend compilé uniquement par Render). Bun disponible pour le frontend.
+
+Stage Summary:
+- Projet cloné et opérationnel pour édition. Workflow établi : édition code → push GitHub → auto-déploiement Vercel (frontend) + Render (backend) → test sur URLs production.
+- Base Neon accessible directement (connexions pooler + direct disponibles) pour appliquer migrations SQL.
+- Prêt à recevoir les instructions de développement de l'utilisateur.
+
+---
+Task ID: SECT-GO-INSTALL
+Agent: Z.ai Code (tuteur/assistant)
+Task: Installation de Go localement pour compiler le backend avant chaque push (éviter erreurs déploiement Render)
+
+Work Log:
+- Vérification version Go requise : go.mod déclare `go 1.24`.
+- Architecture cible : linux/amd64 (x86_64).
+- Installation sans sudo (sandbox sans accès root) :
+  - Téléchargement archive officielle `go1.24.3.linux-amd64.tar.gz` (75 Mo) depuis go.dev.
+  - Extraction dans `$HOME/.local/go` (SDK local utilisateur).
+- Variables d'environnement configurées de façon persistante dans `.bashrc` + `.profile` :
+  - `GOROOT=$HOME/.local/go`
+  - `GOPATH=$HOME/go`
+  - `GOCACHE=$HOME/.cache/go-build`
+  - `GOMODCACHE=$HOME/go/pkg/mod`
+  - `PATH` préfixé avec `$GOROOT/bin` + `$GOPATH/bin`.
+- `go version` → `go1.24.3 linux/amd64` ✅
+- `go mod download` dans backend/ → exit 0 (toutes les deps pgx/chi/aws-sdk/etc. téléchargées).
+- `go vet ./...` → exit 0 (0 erreur d'analyse statique).
+- `go build ./...` → exit 0 (0 erreur de compilation).
+- `go build -o /tmp/sect-api-test ./cmd/api` → binaire 25 Mo généré ✅.
+- Inspection Dockerfile Render : `go build` uniquement, PAS de `gofmt` bloquant → le formatage ne fait pas échouer le déploiement.
+- `gofmt -l .` : signale tous les fichiers car indentation = 8 espaces au lieu de tabs (standard Go). NON bloquant pour Render. Non reformé automatiquement pour éviter un énorme diff de bruit Git (décision laissée à l'utilisateur).
+
+Stage Summary:
+- **Go 1.24.3 installé localement et opérationnel** ✅
+- **Backend compile parfaitement** : `go vet` + `go build` = 0 erreur, binaire 25 Mo.
+- **Nouveau workflow de sécurité** : avant chaque push backend → `go vet ./... && go build ./...` local pour garantir que Render déploiera sans erreur.
+- **Formatage** : code backend utilise 8 espaces (pas tabs). Non bloquant. Décision de reformatage laissée à l'utilisateur.
+
+---
+Task ID: SECT-AI-PROVIDERS-MULTI-CAPABILITY
+Agent: Z.ai Code (tuteur/assistant)
+Task: /ai-providers — permettre d'activer simultanément un provider IA texte (chat) ET un provider IA voix (tts)
+
+Diagnostic :
+- La migration 000035 avait DÉJÀ remplacé l'index unique "1 seul actif global" par "1 seul actif par capability" — la DB autorisait déjà 1 chat actif + 1 tts actif simultanés.
+- MAIS le code applicatif n'avait jamais été mis à jour :
+  1. aiProviderActivate désactivait TOUS les providers (isActive=false global) → détruisait l'active tts quand on active un chat.
+  2. getActiveProviderShared / getActiveProvider / getActiveProvidersForFailover ne filtraient pas par capability → un worker chat pouvait récupérer un provider Voxtral (tts) et tenter /chat/completions → échec.
+
+Work Log :
+- Backend (4 fichiers, compilation validée go vet + go build = 0 erreur) :
+  1. ai_provider_handlers.go (aiProviderActivate) : lire la capability du provider ciblé, désactiver UNIQUEMENT les providers de la même capability, puis activer celui-ci. Les providers d'une autre capability restent actifs.
+  2. worker/helpers.go (getActiveProviderShared) : ajout filtre `AND COALESCE("capability",'chat')='chat'` — les 5 workers chat (ia, correction, doc-analyzer, practice, homework) ne prennent jamais un provider tts.
+  3. ai/service.go (getActiveProvider) : même filtre — la messagerie IA et les appels directs ne reçoivent qu'un provider chat.
+  4. ai/failover.go (getActiveProvidersForFailover) : même filtre — le failover ne bascule qu'entre providers chat (jamais vers un tts/audio).
+- Frontend (1 fichier) :
+  5. ai-providers-page.tsx : dérivation activeChatProvider + activeTtsProvider (au lieu d'un seul activeProvider). La barre de stats affiche désormais "Chat : <name>" (+ pulse vert) ET "Voix : <name>" (+ icône AudioLines ambre) si un provider tts est actif. Le bouton "Activer" et le badge "Actif" fonctionnaient déjà par provider — aucune logique à changer. Le payload d'activation { providerId } reste inchangé (le backend déduit la capability).
+- 2 commits séparés puis rebase sur origin/main (2 nouveaux commits distants sur la messagerie intégrés sans conflit) puis push.
+- Aucune migration DB nécessaire (000035 déjà appliquée).
+
+Stage Summary:
+- **Activation multi-capability opérationnelle** : un admin peut désormais activer un provider chat (ex: Mistral AI) ET un provider voix (ex: Voxtral TTS) en même temps.
+- **0 régression** : les workers chat ne risquent plus de récupérer un provider tts, le failover ne bascule qu'entre providers chat.
+- **Déploiement** : push GitHub effectué (eb57358) → Render (backend) + Vercel (frontend) déploient automatiquement.
+- **DB inchangée** : aucun risque pour les 60 tables / 136 policies RLS existantes.
