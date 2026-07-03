@@ -1358,9 +1358,23 @@ func (r *MessagerieRepository) ListSignalements(ctx context.Context, etablisseme
                 }
                 // MESSAGERIE-MODERATION-AUTO : exclure les signalements OUVERT/EN_COURS
                 // dont le message a déjà été soft-deleté (modéré). Ces signalements sont
-                // obsolètes — le message est déjà masqué. Les RESOLU/REJETE restent pour
-                // l'historique.
+                // obsolètes — le message est déjà masqué.
                 where += ` AND NOT (s."statut" IN ('OUVERT', 'EN_COURS') AND m."deletedAt" IS NOT NULL)`
+                // MESSAGERIE-MODERATION-PURGE : exclure les signalements RESOLU/REJETE
+                // de plus de 7 jours (basé sur resolvedAt si présent, sinon createdAt).
+                // La liste "Résolus" ne conserve que les 7 derniers jours pour faciliter
+                // la gestion des nouveaux signalements.
+                where += ` AND NOT (s."statut" IN ('RESOLU', 'REJETE') AND COALESCE(s."resolvedAt", s."createdAt") < CURRENT_TIMESTAMP - INTERVAL '7 days')`
+
+                // Hard-delete à la volée des signalements expirés (> 7 jours RESOLU/REJETE)
+                // pour éviter l'accumulation en DB. Best-effort : si le DELETE échoue,
+                // le filtre WHERE ci-dessus les exclut quand même de la liste.
+                _, _ = tx.Exec(ctx, `
+                        DELETE FROM "MessageSignalement"
+                        WHERE "statut" IN ('RESOLU', 'REJETE')
+                          AND COALESCE("resolvedAt", "createdAt") < CURRENT_TIMESTAMP - INTERVAL '7 days'
+                `)
+
                 query := fmt.Sprintf(`
                         SELECT s."id", s."messageId", s."userId", s."raison"::text, s."commentaire",
                                s."statut"::text, s."resolvedAt", s."resolvedBy", s."createdAt"

@@ -201,6 +201,11 @@ export function ModerationPanel({ open, onOpenChange }: ModerationPanelProps) {
           ))}
         </div>
 
+        {/* Note de rétention */}
+        <p className="shrink-0 text-[10px] text-muted-foreground/70 italic">
+          Les signalements résolus et rejetés sont automatiquement supprimés après 7 jours.
+        </p>
+
         {/* Liste des signalements */}
         <div className="flex-1 overflow-y-auto -mx-1 px-1">
           {isLoading ? (
