@@ -10550,3 +10550,37 @@ Stage Summary:
 - **UX améliorée** : bannière d'onboarding + badges verrouillés visibles (motivation) + sections vides clairement labellisées.
 - **0 régression** : les anciens étudiants (hasNoActivity=false) ne voient aucun changement, la bannière ne s'affiche pas pour eux.
 - **Déploiement** : push GitHub (e233b46) → Vercel a déployé → validé en production avec Agent Browser + VLM.
+
+---
+Task ID: SECT-AFFECTATION-RLS
+Agent: Z.ai Code (tuteur/assistant)
+Task: Bug — création enseignant "Création directe" (Responsable) OK mais affectation filière échoue
+
+Reproduction (Agent Browser, login Responsable registrar@uniabidjan.com) :
+- Formulaire "Création directe" : Nom + Email + Filière(INFORMATIQUE) + Niveau(L2) → "Créer le compte".
+- POST /api/users → 201 (compte enseignant créé ✅).
+- POST /api/enseignant-filieres → 400 ❌ (avant fix).
+- Dialogue "Compte enseignant créé" s'affiche (succès création) mais l'affectation silently échoue.
+
+Cause racine (réponse 400 capturée via fetch eval) :
+  create ef: ERROR: new row violates row-level security policy for table "EnseignantFiliere" (SQLSTATE 42501)
+- Policy EnseignantFiliere_modify_responsable : is_responsable() AND filiere_in_my_etab("filiereId").
+- filiere_in_my_etab() appelle current_etablissement_id() qui lit app.claims.etablissement_id.
+- EnseignantFiliereRepository.Create/DeleteByID/DeleteByComposite faisaient un pool.BeginTx BRUT sans poser les claims RLS → current_etablissement_id()=NULL → filiere_in_my_etab()=false → policy rejette l'INSERT.
+- Le UserRepository.Create (création compte) utilise db.WithTx qui pose les claims → réussit. D'où le contraste : compte créé mais affectation bloquée.
+
+Fix (backend/internal/repository/academique.go, +57/-48 lignes) :
+- Create, DeleteByID, DeleteByComposite : remplacer le BeginTx brut par db.WithTx (qui pose les claims via SetClaimsTx — app.claims.user_id, role, etablissement_id, filiere_id). Pattern identique à List et aux autres repositories.
+- Validation : go vet ./... + go build ./... = 0 erreur.
+
+Validation production (Agent Browser post-déploiement Render) :
+- Re-création enseignant test : POST /api/users → 201, POST /api/enseignant-filieres → 201 ✅.
+- DB vérifiée : EnseignantFiliere persistée (filiere=INFORMATIQUE, niveau=L2).
+- 0 erreur console navigateur.
+- Enseignants de test nettoyés en DB après validation.
+
+Stage Summary:
+- **Bug affectation résolu** : la création d'enseignant via "Création directe" (Responsable) crée maintenant ET le compte ET l'affectation filière/niveau.
+- **3 méthodes corrigées** : Create, DeleteByID, DeleteByComposite (toutes utilisaient BeginTx brut sans claims).
+- **Déploiement** : push GitHub (7a40914) → Render a déployé → validé en production.
+- **DB inchangée** : aucun risque, la policy RLS existante fonctionne maintenant correctement côté applicatif.
