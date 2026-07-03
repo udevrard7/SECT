@@ -1,4 +1,5 @@
--- Migration 000039 : fix Participant_insert policy for DIRECT conversations
+-- Migration 000047 : fix Participant_insert policy for DIRECT conversations
+-- (renumérotée depuis 000039 le 2025-01 — voir MIGRATIONS_RECONCILIATION.md)
 --
 -- BUG (MESSAGERIE-DM-RLS) : CreateDirect insère 2 participants (creator + target)
 -- dans ConversationParticipant, mais la policy Participant_insert n'autorisait
