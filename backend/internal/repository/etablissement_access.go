@@ -4,6 +4,7 @@ package repository
 import (
         "context"
         "fmt"
+        "log/slog"
         "strings"
         "time"
 
@@ -145,9 +146,6 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                                         Nom: *etabNom,
                                 }
                         }
-                        // ACCESS-WORKFLOW-UI : peupler Admin (UserRef) pour le frontend
-                        // RESPONSABLE. Les colonnes User.name/email sont NOT NULL en DB,
-                        // mais on garde la garde nil pour robustesse (admin supprimé).
                         if adminID != nil && adminName != nil && adminEmail != nil {
                                 a.Admin = &domain.UserRef{
                                         ID:    *adminID,
@@ -157,6 +155,11 @@ func (r *EtablissementAccessRepository) List(ctx context.Context, params domain.
                         }
                         result = append(result, a)
                 }
+                if err := rows.Err(); err != nil {
+                        slog.Warn("access list rows.Err", "error", err, "etablissementID", claims.EtablissementID, "role", claims.Role)
+                        return fmt.Errorf("rows err: %w", err)
+                }
+                slog.Info("access list result", "count", len(result), "etablissementID", claims.EtablissementID, "role", claims.Role, "statut", params.Statut)
                 return nil
         })
         if err != nil {
