@@ -156,7 +156,19 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const prevScrollHeightRef = useRef<number>(0)
   const isAtBottomRef = useRef<boolean>(true)
-  const hasMarkedReadRef = useRef<boolean>(false)
+  // BUGFIX (MESSAGERIE-BADGE-UNREAD-2) : l'ancien code utilisait un booléen
+  // global `hasMarkedReadRef` reset par un effet séparé dépendant de
+  // [conversationId]. Au changement de conversation, l'effet mark-as-read
+  // s'exécutait AVANT l'effet de reset (ordre de déclaration des effets React)
+  // → voyait le ref à true (de la conv précédente) → ne marquait jamais la
+  // nouvelle conversation comme lue → le badge "non lus" restait affiché.
+  // Fix : tracker par (conversationId, lastMessageId) au lieu d'un booléen.
+  // Le ref ne matchera plus la nouvelle conversation → le mark-as-read se
+  // déclenche correctement. Bonus : si un nouveau message arrive pendant que
+  // la conv est ouverte, lastMessageId change → on re-marque comme lu (le
+  // badge ne remonte pas).
+  const markedConvIdRef = useRef<string | null>(null)
+  const markedMsgIdRef = useRef<string | null>(null)
 
   const convType: ConversationType = conversation?.type ?? 'DIRECT'
   const headerMeta = TYPE_HEADER_META[convType]
@@ -164,23 +176,35 @@ export function ChatWindow({ conversationId, onBack, onStartDirect }: ChatWindow
   const isMuted = false // TODO: brancher sur participant.muted quand useParticipants retournera muted
   const isIAConv = convType === 'IA'
 
-  // ── Mark-as-read à l'ouverture (une seule fois par conversation) ──
+  // ── Mark-as-read à l'ouverture + sur nouveaux messages ──
+  // Se déclenche quand :
+  //  - on ouvre une conversation avec unreadCount > 0
+  //  - un nouveau message arrive dans la conversation ouverte (lastMessage.id
+  //    change via polling/SSE) → on re-marque pour que le badge ne remonte pas.
+  // Ne se déclenche PAS si :
+  //  - conversation encore en chargement (undefined) → on attend
+  //  - déjà marqué pour cette conv + ce lastMessage → évite les appels en boucle
+  //  - unreadCount === 0 → on note juste les refs sans appel API
   useEffect(() => {
-    if (hasMarkedReadRef.current) return
-    if (!conversation || conversation.unreadCount === 0) {
-      hasMarkedReadRef.current = true
+    if (!conversation) return
+    const lastMsgId = conversation.lastMessage?.id ?? null
+    if (
+      markedConvIdRef.current === conversationId &&
+      markedMsgIdRef.current === lastMsgId
+    ) {
+      return
+    }
+    if (conversation.unreadCount === 0) {
+      markedConvIdRef.current = conversationId
+      markedMsgIdRef.current = lastMsgId
       return
     }
     const lastMsg = conversation.lastMessage
     const lastReadAt = lastMsg?.createdAt ?? new Date().toISOString()
     markAsRead.mutate({ conversationId, lastReadAt })
-    hasMarkedReadRef.current = true
+    markedConvIdRef.current = conversationId
+    markedMsgIdRef.current = lastMsgId
   }, [conversation, conversationId, markAsRead])
-
-  // ── Reset du flag mark-as-read quand on change de conversation ──
-  useEffect(() => {
-    hasMarkedReadRef.current = false
-  }, [conversationId])
 
   // ── Auto-scroll vers le bas si l'utilisateur est "en bas" ──
   const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
