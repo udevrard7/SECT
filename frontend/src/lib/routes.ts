@@ -442,6 +442,9 @@ const RESPONSABLE_CATEGORIES: NavCategory[] = [
     defaultOpen: false,
     items: [
       { id: 'parametres', label: 'Paramètres établissement', icon: 'Settings' },
+      // ACCES-ETABLISSEMENTS-FIX : le responsable peut approuver les demandes
+      // d'accès admin sur son établissement.
+      { id: 'acces-etablissements', label: 'Accès & autorisations', icon: 'KeyRound' },
     ],
   },
 ]
@@ -567,8 +570,9 @@ export const PAGE_ALLOWED_ROLES: Partial<Record<PageId, UserRole[]>> = {
   // ABONNEMENTS-FIX-A5 : pages SaaS réservées ADMIN.
   abonnements: ['ADMIN'],
   facturation: ['ADMIN'],
-  // ACCES-ETABLISSEMENTS-FIX-AE2 : page réservée ADMIN (gestion des autorisations).
-  'acces-etablissements': ['ADMIN'],
+  // ACCES-ETABLISSEMENTS-FIX-AE2 : page ADMIN (gestion des autorisations) +
+  // RESPONSABLE (approbation des demandes d'accès admin sur son établissement).
+  'acces-etablissements': ['ADMIN', 'RESPONSABLE'],
   // MONITORING-FIX-M7 : pages supervision réservées ADMIN.
   monitoring: ['ADMIN'],
   logs: ['ADMIN'],
