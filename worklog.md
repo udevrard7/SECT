@@ -11474,3 +11474,65 @@ Stage Summary :
 - **Lesson learned** : toujours tester avec un rôle SANS BYPASSRLS (comme en production)
   pour reproduire les bugs RLS. Le rôle neondb_owner (BYPASSRLS=true) masque les
   problèmes RLS.
+
+---
+Task ID: SECT-MESSAGERIE-BADGE-UNREAD-FIX
+Agent: Z.ai Code (tuteur/assistant)
+Task: Bug messagerie — badge "non lus" reste affiché après clic sur conversation
+
+Symptômes rapportés :
+- Le numéro de notification de messages non lus reste même quand l'utilisateur
+  clique sur le message.
+- La sidebar (bulle messagerie flottante) affiche comme s'il y a des messages
+  non lus.
+
+Investigation (frontend + backend) :
+- useMarkAsRead (hook) : optimistic update + refetch — correct.
+- ConversationList + MessagerieBubble : badges basés sur unreadCount du cache
+  TanStack — corrects.
+- Backend MarkAsRead + ListByUser — corrects en apparence.
+
+2 bugs racines identifiés :
+
+BUG 1 (frontend, chat-window.tsx) — ordre des effets React :
+L'effet mark-as-read utilisait un booléen global hasMarkedReadRef reset par
+un effet séparé dépendant de [conversationId]. Au changement de conversation,
+l'effet mark-as-read s'exécutait AVANT l'effet de reset (ordre de déclaration
+React) → voyait le ref à true (conv précédente) → ne marquait jamais la
+nouvelle conversation → le badge restait.
+Fix (commit f3ff597) : tracker par (conversationId, lastMessageId) au lieu
+d'un booléen global. Bonus : re-marque comme lu si un nouveau message arrive
+pendant que la conv est ouverte.
+
+BUG 2 (backend, repository/messagerie.go) — non-participants :
+Un enseignant/responsable voit les salons CLASSE/PROMO de son établissement
+(policy Conversation_select autorise is_enseignant()/is_responsable() pour
+modération) SANS en être participant (pas de row ConversationParticipant).
+- ListByUser : LEFT JOIN → lastReadAt=NULL → COALESCE(NULL, epoch) → TOUS les
+  messages comptés comme non lus (ex: prof01 voyait Classe L2 = 22 non lus
+  alors qu'il n'est pas participant).
+- MarkAsRead : UPDATE 0 rows → NotFoundError 404 → frontend rollback
+  l'optimistic update → badge revenait.
+Fix (commit e612128) :
+- ListByUser : CASE WHEN p.userId IS NULL THEN 0 ELSE <count> END.
+- MarkAsRead : si 0 rows (non-participant), retourner nil (no-op silencieux).
+
+Validation production (Agent Browser, prof01@uniabidjan.com) :
+- AVANT : DIRECT(2) + CLASSE(22) + PROMO(2) = 26 non lus affichés.
+- POST fix frontend : clic sur DM (participant, 2 non lus) → POST /lu 200 →
+  badge DM disparaît ✅. CLASSE + PROMO toujours à 22/2 (bug backend).
+- POST fix backend (déploiement Render) : CLASSE 22→0, PROMO 2→0 ✅.
+- Navigation entre 4 conversations (Classe L2 → Promo → Assistant IA → DM) :
+  0 erreur console ✅.
+- Badge total bulle flottante : disparu (total=0) ✅.
+- Toutes les conversations affichent "à jour" ✅.
+
+Stage Summary:
+- **2 bugs racines corrigés** : ordre des effets React (frontend) + calcul
+  unreadCount pour les non-participants (backend).
+- **Fix frontend** (commit f3ff597) : validé sur DM participant (POST /lu 200).
+- **Fix backend** (commit e612128) : validé sur CLASSE/PROMO non-participants
+  (unreadCount 22→0, 2→0 ; plus de 404 sur /lu).
+- **0 régression** : navigation multi-conversations sans erreur, build OK,
+  health Render OK.
+- **Aucune donnée perdue** : 2 corrections de logique SQL/Go uniquement.
