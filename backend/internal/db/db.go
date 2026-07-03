@@ -92,26 +92,25 @@ type SessionClaims struct {
 //      // ... queries ...
 //      tx.Commit(ctx)
 // SetClaimsTx pose les claims RLS (app.claims.*) au début d'une transaction.
-// RLS-POOLER-FIX : tous les set_config sont combinés en UN SEUL Exec pour
-// garantir qu'ils sont appliqués atomiquement. Avec pgx + QueryExecModeExec +
-// PgBouncer (mode transaction), des Exec séparés pour SELECT set_config(...)
-// peuvent ne pas persister correctement entre les queries de la transaction.
-// Combiner en un seul Exec (comme le fait déjà getActiveProvider dans ai/service.go)
-// garantit que tous les claims sont posés avant la première query RLS.
+// RLS-POOLER-FIX : utilise SET LOCAL au lieu de SELECT set_config(...) car
+// pgx + QueryExecModeExec peut ne pas appliquer correctement set_config local
+// pour l'évaluation des policies RLS. SET LOCAL est l'équivalent SQL standard
+// et est traité différemment par pgx (commande DDL plutôt que SELECT).
 func SetClaimsTx(ctx context.Context, tx pgx.Tx, claims SessionClaims) error {
-        // Construire la liste des set_config dans un seul SELECT.
-        // set_config retourne text, on les chaîne avec des virgules dans le SELECT.
-        parts := []string{
-                fmt.Sprintf("set_config('app.claims.user_id', '%s', true)", pgEscape(claims.UserID)),
-                fmt.Sprintf("set_config('app.claims.role', '%s', true)", pgEscape(claims.Role)),
-                fmt.Sprintf("set_config('app.claims.etablissement_id', '%s', true)", pgEscape(claims.EtablissementID)),
+        // SET LOCAL ne supporte pas les paramètres bindés ($1). On utilise
+        // pgEscape pour l'échappement sûr (anti-injection SQL).
+        setters := []string{
+                fmt.Sprintf("SET LOCAL app.claims.user_id = '%s'", pgEscape(claims.UserID)),
+                fmt.Sprintf("SET LOCAL app.claims.role = '%s'", pgEscape(claims.Role)),
+                fmt.Sprintf("SET LOCAL app.claims.etablissement_id = '%s'", pgEscape(claims.EtablissementID)),
         }
         if claims.FiliereID != "" {
-                parts = append(parts, fmt.Sprintf("set_config('app.claims.filiere_id', '%s', true)", pgEscape(claims.FiliereID)))
+                setters = append(setters, fmt.Sprintf("SET LOCAL app.claims.filiere_id = '%s'", pgEscape(claims.FiliereID)))
         }
-        query := "SELECT " + strings.Join(parts, ", ")
-        if _, err := tx.Exec(ctx, query); err != nil {
-                return fmt.Errorf("set claims: %w", err)
+        for _, s := range setters {
+                if _, err := tx.Exec(ctx, s); err != nil {
+                        return fmt.Errorf("set claims: %w", err)
+                }
         }
         return nil
 }
