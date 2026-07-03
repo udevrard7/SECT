@@ -383,37 +383,46 @@ func (r *EtablissementRepository) ClearLogo(ctx context.Context, id string) (*do
 // Valide que l'année appartient bien à l'établissement (clause WHERE sur
 // l'existence d'une ligne AnneeAcademique avec id=anneeID ET etablissementId).
 // RLS actif — filtrage par claims JWT posés via db.WithTx (rôle sect_app NOBYPASSRLS).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001) : le code utilisait r.pool.BeginTx SANS
+// SetClaimsTx → claims NULL → policy Etablissement_modify_responsable
+// (is_responsable() AND id = current_etablissement_id()) voyait NULL →
+// 0 rows → NotFoundError même pour un responsable légitime. Alignement du
+// code sur le commentaire (db.WithTx avec claims).
 func (r *EtablissementRepository) SetCurrentAnnee(ctx context.Context, etablissementID, anneeID string) (*domain.Etablissement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok {
+                return nil, fmt.Errorf("SetCurrentAnnee: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        // UPDATE avec clause d'appartenance : 0 ligne affectée si l'année n'existe
-        // pas ou n'appartient pas à l'établissement → NotFoundError ou Unauthorized.
-        row := tx.QueryRow(ctx, `
-                UPDATE "Etablissement" SET "anneeAcademiqueCouranteId" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1
-                  AND EXISTS (SELECT 1 FROM "AnneeAcademique" a WHERE a."id" = $2 AND a."etablissementId" = $1)
-                RETURNING `+columnsEtab, etablissementID, anneeID)
+        var etab *domain.Etablissement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // UPDATE avec clause d'appartenance : 0 ligne affectée si l'année n'existe
+                // pas ou n'appartient pas à l'établissement → NotFoundError ou Unauthorized.
+                row := tx.QueryRow(ctx, `
+                        UPDATE "Etablissement" SET "anneeAcademiqueCouranteId" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1
+                          AND EXISTS (SELECT 1 FROM "AnneeAcademique" a WHERE a."id" = $2 AND a."etablissementId" = $1)
+                        RETURNING `+columnsEtab, etablissementID, anneeID)
 
-        etab, err := scanEtablissement(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        // Soit l'établissement n'existe pas, soit l'année ne lui appartient pas.
-                        // On distingue les deux cas pour un message d'erreur clair.
-                        var exists int
-                        _ = tx.QueryRow(ctx, `SELECT 1 FROM "Etablissement" WHERE "id" = $1`, etablissementID).Scan(&exists)
-                        if exists == 0 {
-                                return nil, &domain.NotFoundError{Entity: "Etablissement", ID: etablissementID}
+                e, err := scanEtablissement(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                // Soit l'établissement n'existe pas, soit l'année ne lui appartient pas.
+                                // On distingue les deux cas pour un message d'erreur clair.
+                                var exists int
+                                _ = tx.QueryRow(ctx, `SELECT 1 FROM "Etablissement" WHERE "id" = $1`, etablissementID).Scan(&exists)
+                                if exists == 0 {
+                                        return &domain.NotFoundError{Entity: "Etablissement", ID: etablissementID}
+                                }
+                                return &domain.UnauthorizedError{Message: "l'année académique n'appartient pas à cet établissement"}
                         }
-                        return nil, &domain.UnauthorizedError{Message: "l'année académique n'appartient pas à cet établissement"}
+                        return fmt.Errorf("set current annee: %w", err)
                 }
-                return nil, fmt.Errorf("set current annee: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
+                etab = e
+                return nil
+        })
+        if err != nil {
                 return nil, err
         }
         return etab, nil
