@@ -114,7 +114,10 @@ func (s *AIService) ChatCompletion(ctx context.Context, messages []ChatMessage) 
         return &ChatResult{Content: result.Content, Model: result.Model}, nil
 }
 
-// getActiveProvider lit la ligne AIProviderConfig active (isActive = true).
+// getActiveProvider lit la ligne AIProviderConfig active de capability='chat'.
+// MULTI-CAPABILITY : filtre sur COALESCE("capability",'chat')='chat' pour ne
+// jamais retourner un provider tts/audio (Voxtral, etc.) à l'AIService qui ne
+// fait que du chat completion OpenAI-compatible.
 // Claims system-worker posés via set_config('app.claims.*') au début de la
 // transaction : le worker de fond (goroutine sans claims HTTP) peut ainsi
 // lire la config système.
@@ -135,7 +138,7 @@ func (s *AIService) getActiveProvider(ctx context.Context) (*activeProvider, err
                        COALESCE("temperature", 0.7), COALESCE("maxTokens", 4096),
                        COALESCE("extraConfig", '')
                 FROM "AIProviderConfig"
-                WHERE "isActive" = true
+                WHERE "isActive" = true AND COALESCE("capability", 'chat') = 'chat'
                 ORDER BY "priority" ASC, "createdAt" ASC
                 LIMIT 1`
 
