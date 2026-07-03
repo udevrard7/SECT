@@ -763,3 +763,11 @@ export function useMessagerieStream() {
         // ignore parse errors (heartbeats, commentaires SSE)
       }
     })
+
+    return () => {
+      eventSource.close()
+    }
+  }, [queryClient])
+
+  return { isConnected }
+}
