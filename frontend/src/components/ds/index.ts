@@ -43,11 +43,6 @@ export {
   type GradeTableProps,
 } from './grade-table'
 export {
-  AIAssistant,
-  type AIAssistantMessage,
-  type AIAssistantProps,
-} from './ai-assistant'
-export {
   ProgressBar,
   type ProgressBarAccent,
   type ProgressBarProps,

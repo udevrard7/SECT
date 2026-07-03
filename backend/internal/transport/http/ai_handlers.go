@@ -1,14 +1,17 @@
 // Package http — handlers HTTP pour les endpoints IA consommateurs du
 // AIService (AI-CONNECT-1).
 //
-// Deux endpoints :
+// Endpoint :
 //
-//      POST /api/ai-assistant      — chat flottant (assistant pédagogique)
 //      POST /api/epreuves/generate — génération IA d'épreuves à partir de documents
 //
 // Le frontend n'appelle jamais les LLM directement : tout passe par le
 // backend, qui lit le provider actif dans AIProviderConfig et fait l'appel
 // OpenAI-compatible via internal/ai.AIService.
+//
+// Note : l'endpoint /api/ai-assistant (chat flottant pédagogique) a été
+// retiré — l'assistant IA est désormais accessible uniquement via la
+// messagerie (conversations IA privées + mention @assistant dans les salons).
 package http
 
 import (
@@ -26,78 +29,7 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────────────────────
-// 1. POST /api/ai-assistant — Chat flottant
-// ──────────────────────────────────────────────────────────────────────────
-
-// aiAssistantBody est le body attendu par /api/ai-assistant.
-type aiAssistantBody struct {
-        Message string `json:"message"`
-        Context struct {
-                Page string `json:"page"`
-                Role string `json:"role"`
-        } `json:"context"`
-}
-
-// aiAssistant handler — reçoit un message utilisateur (+ contexte de page),
-// appelle le LLM via AIService, retourne la réponse texte.
-//
-// Body : { message: string, context?: { page?: string, role?: string } }
-// Réponse : { response: string, model?: string }
-func (s *Server) aiAssistant(w http.ResponseWriter, r *http.Request) {
-        claims, ok := middleware.ClaimsFromContext(r.Context())
-        if !ok || claims.UserID == "" {
-                writeJSONError(w, http.StatusUnauthorized, "authentication required")
-                return
-        }
-
-        var body aiAssistantBody
-        if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-                writeJSONError(w, http.StatusBadRequest, "JSON invalide")
-                return
-        }
-        msg := strings.TrimSpace(body.Message)
-        if msg == "" {
-                writeJSONError(w, http.StatusBadRequest, "message requis")
-                return
-        }
-
-        // System prompt — assistance pédagogique SECT.
-        // On contextualise légèrement avec la page courante et le rôle si fournis.
-        systemParts := []string{
-                "Tu es un assistant pédagogique pour SECT, une plateforme d'évaluation pour l'enseignement supérieur.",
-                "Tu aides les étudiants à comprendre les concepts du cours, à préparer leurs examens, et les enseignants à concevoir des évaluations.",
-                "Réponds en français, de façon concise, structurée et bienveillante. Si la question sort du cadre pédagogique, recentre poliment.",
-        }
-        if body.Context.Page != "" {
-                systemParts = append(systemParts, "Page courante de l'utilisateur : "+body.Context.Page+".")
-        }
-        if body.Context.Role != "" {
-                systemParts = append(systemParts, "Rôle de l'utilisateur : "+body.Context.Role+".")
-        }
-        if claims.Role != "" && body.Context.Role == "" {
-                systemParts = append(systemParts, "Rôle de l'utilisateur : "+claims.Role+".")
-        }
-
-        messages := []ai.ChatMessage{
-                {Role: "system", Content: strings.Join(systemParts, " ")},
-                {Role: "user", Content: msg},
-        }
-
-        result, err := s.aiService.ChatCompletion(r.Context(), messages)
-        if err != nil {
-                writeJSONError(w, http.StatusServiceUnavailable, "IA indisponible: "+err.Error())
-                return
-        }
-
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]any{
-                "response": result.Content,
-                "model":    result.Model,
-        })
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// 2. POST /api/epreuves/generate — Génération IA d'épreuves
+// POST /api/epreuves/generate — Génération IA d'épreuves
 // ──────────────────────────────────────────────────────────────────────────
 
 // epreuvesGenerateConfig est la partie « config » du body envoyé par le
