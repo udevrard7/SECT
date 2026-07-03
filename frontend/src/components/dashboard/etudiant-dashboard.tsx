@@ -17,6 +17,7 @@ import {
   RefreshCw,
   TrendingUp,
   BarChart3,
+  Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useRouter } from 'next/navigation'
@@ -295,9 +296,11 @@ export function EtudiantDashboard() {
     data.epreuvesAVenir.length === 0 &&
     data.resultatsRecents.length === 0
 
-  if (hasNoActivity) {
-    return <EmptyDashboard name={name} />
-  }
+  // FIX DASHBOARD-NEW-STUDENT : on n'affiche PLUS l'EmptyDashboard (page quasi
+  // vide perçue comme "ne charge pas") pour les nouveaux étudiants. À la place,
+  // le dashboard complet rend avec des KPIs à 0, des badges verrouillés
+  // (motivants), des graphiques/timeline/results vides — + une bannière
+  // d'onboarding en haut. Le `!data` ci-dessus reste un filet de sécurité.
 
   // Badges viennent de useBadges (format BadgeWithProgress), pas du champ
   // basique `badges` renvoyé par /api/stats/etudiant.
@@ -331,6 +334,35 @@ export function EtudiantDashboard() {
           <span className="hidden sm:inline">Rafraîchir</span>
         </Button>
       </div>
+
+      {/* ─── Onboarding banner (nouveaux étudiants sans activité) ─── */}
+      {hasNoActivity && (
+        <motion.div variants={itemVariants}>
+          <Card className="border-dashed border-success/40 ds-kente-pattern">
+            <CardContent className="flex flex-col sm:flex-row items-center gap-4 py-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success/10">
+                <GraduationCap className="h-6 w-6 text-success-text" />
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="text-base font-semibold font-display tracking-tight flex items-center gap-1.5 justify-center sm:justify-start">
+                  <Sparkles className="h-4 w-4 text-secondary" />
+                  Bienvenue sur SECT !
+                </h3>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Vous n&apos;avez pas encore d&apos;épreuves ou de résultats. Consultez vos épreuves pour commencer votre premier examen.
+                </p>
+              </div>
+              <Button
+                className="bg-success hover:bg-success/90 shrink-0"
+                onClick={() => router.push('/mes-epreuves')}
+              >
+                <CalendarDays className="mr-2 h-4 w-4" />
+                Voir mes épreuves
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* ─── Quick stats KPIs ─── */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:border-l-4 [&>div]:border-l-primary">
