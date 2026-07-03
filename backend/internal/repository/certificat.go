@@ -173,76 +173,91 @@ func (r *CertificatRepository) List(ctx context.Context, params domain.Certifica
 }
 
 // Create crée un certificat (bypass RLS — émis par enseignant/responsable).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx via
+// r.pool.BeginTx SANS SetClaimsTx → claims NULL → policy Certificat_modify
+// (qui filtre par emetteParId = current_user_id() ou is_responsable()) voyait
+// NULL → l'INSERT était silencieusement rejeté (0 ligne ou erreur RLS).
+// Alignement sur le pattern db.WithTx (claims JWT posés via SetClaimsTx).
 func (r *CertificatRepository) Create(ctx context.Context, c *domain.Certificat) (*domain.Certificat, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("Create: claims manquants dans le context")
+        }
+
+        var cert *domain.Certificat
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                if c.ID == "" {
+                        c.ID = uuid.NewString()
+                }
+                if c.CodeVerification == "" {
+                        c.CodeVerification = generateCertCode()
+                }
+                if c.Statut == "" {
+                        c.Statut = domain.StatutCertificatEmis
+                }
+                if c.DateEmission.IsZero() {
+                        c.DateEmission = time.Now()
+                }
+
+                row := tx.QueryRow(ctx, `
+                        INSERT INTO "Certificat" ("id", "codeVerification", "etudiantId", "validationUEId", "type",
+                                "intitule", "mention", "noteFinale", "etablissementNom", "etablissementLogo",
+                                "etablissementVille", "etablissementPays", "filiereNom", "filiereCode",
+                                "ueCode", "ueNom", "creditsECTS", "etudiantNom", "etudiantMatricule",
+                                "etudiantNiveau", "sessionType", "anneeAcademique", "dateEmission",
+                                "emetteParId", "pdfUrl", "statut", "dateRevocation", "raisonRevocation",
+                                "createdAt", "updatedAt")
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                                $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING `+columnsCertificat,
+                        c.ID, c.CodeVerification, c.EtudiantID, c.ValidationUEID, c.Type,
+                        c.Intitule, nullableStrPtr(c.Mention), c.NoteFinale, c.EtablissementNom, nullableStrPtr(c.EtablissementLogo),
+                        nullableStrPtr(c.EtablissementVille), nullableStrPtr(c.EtablissementPays), c.FiliereNom, nullableStrPtr(c.FiliereCode),
+                        c.UECode, c.UENom, nullableIntPtr(c.CreditsECTS), c.EtudiantNom, nullableStrPtr(c.EtudiantMatricule),
+                        nullableStrPtr(c.EtudiantNiveau), c.SessionType, nullableStrPtr(c.AnneeAcademique), c.DateEmission,
+                        c.EmetteParID, nullableStrPtr(c.PDFUrl), c.Statut, nullableTimePtr(c.DateRevocation), nullableStrPtr(c.RaisonRevocation))
+
+                created, err := scanCertificat(row)
+                if err != nil {
+                        return fmt.Errorf("create certificat: %w", err)
+                }
+                cert = created
+                return nil
+        })
         if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        if c.ID == "" {
-                c.ID = uuid.NewString()
-        }
-        if c.CodeVerification == "" {
-                c.CodeVerification = generateCertCode()
-        }
-        if c.Statut == "" {
-                c.Statut = domain.StatutCertificatEmis
-        }
-        if c.DateEmission.IsZero() {
-                c.DateEmission = time.Now()
-        }
-
-        row := tx.QueryRow(ctx, `
-                INSERT INTO "Certificat" ("id", "codeVerification", "etudiantId", "validationUEId", "type",
-                        "intitule", "mention", "noteFinale", "etablissementNom", "etablissementLogo",
-                        "etablissementVille", "etablissementPays", "filiereNom", "filiereCode",
-                        "ueCode", "ueNom", "creditsECTS", "etudiantNom", "etudiantMatricule",
-                        "etudiantNiveau", "sessionType", "anneeAcademique", "dateEmission",
-                        "emetteParId", "pdfUrl", "statut", "dateRevocation", "raisonRevocation",
-                        "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-                        $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING `+columnsCertificat,
-                c.ID, c.CodeVerification, c.EtudiantID, c.ValidationUEID, c.Type,
-                c.Intitule, nullableStrPtr(c.Mention), c.NoteFinale, c.EtablissementNom, nullableStrPtr(c.EtablissementLogo),
-                nullableStrPtr(c.EtablissementVille), nullableStrPtr(c.EtablissementPays), c.FiliereNom, nullableStrPtr(c.FiliereCode),
-                c.UECode, c.UENom, nullableIntPtr(c.CreditsECTS), c.EtudiantNom, nullableStrPtr(c.EtudiantMatricule),
-                nullableStrPtr(c.EtudiantNiveau), c.SessionType, nullableStrPtr(c.AnneeAcademique), c.DateEmission,
-                c.EmetteParID, nullableStrPtr(c.PDFUrl), c.Statut, nullableTimePtr(c.DateRevocation), nullableStrPtr(c.RaisonRevocation))
-
-        cert, err := scanCertificat(row)
-        if err != nil {
-                return nil, fmt.Errorf("create certificat: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return cert, nil
 }
 
 // Revoke révoque un certificat.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Certificat_modify (is_responsable() OU
+// is_enseignant() OU is_admin()) voyait NULL → UPDATE bloqué → 0 ligne
+// affectée → NotFoundError même pour un responsable/enseignant légitime.
+// Fix : db.WithTx avec claims du context.
 func (r *CertificatRepository) Revoke(ctx context.Context, id string, raison string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        tag, err := tx.Exec(ctx, `
-                UPDATE "Certificat" SET "statut" = 'REVOQUE', "dateRevocation" = CURRENT_TIMESTAMP,
-                        "raisonRevocation" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1
-        `, id, raison)
-        if err != nil {
-                return fmt.Errorf("revoke certificat: %w", err)
-        }
-        if tag.RowsAffected() == 0 {
-                return &domain.NotFoundError{Entity: "Certificat", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return fmt.Errorf("Revoke: claims manquants dans le context")
         }
 
-        return tx.Commit(ctx)
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                tag, err := tx.Exec(ctx, `
+                        UPDATE "Certificat" SET "statut" = 'REVOQUE', "dateRevocation" = CURRENT_TIMESTAMP,
+                                "raisonRevocation" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1
+                `, id, raison)
+                if err != nil {
+                        return fmt.Errorf("revoke certificat: %w", err)
+                }
+                if tag.RowsAffected() == 0 {
+                        return &domain.NotFoundError{Entity: "Certificat", ID: id}
+                }
+                return nil
+        })
 }
 
 // generateCertCode génère un code de vérification format SECT-XXXX-XXXX.

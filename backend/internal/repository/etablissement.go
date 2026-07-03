@@ -171,20 +171,30 @@ func (r *EtablissementRepository) List(ctx context.Context, params domain.Etabli
 }
 
 // Create crée un établissement (ADMIN only — bypass RLS).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx via
+// r.pool.BeginTx SANS SetClaimsTx → claims NULL → policy Etablissement_modify
+// (is_admin() OU is_responsable()) voyait NULL → l'INSERT était rejeté. Or la
+// signature Create est ADMIN-only, et is_admin() lit app.claims.role qui était
+// NULL → échec silencieux. Fix : db.WithTx avec claims du context (pose les
+// app.claims.* via SetClaimsTx avant d'appeler CreateInTx qui fait l'INSERT).
 func (r *EtablissementRepository) Create(ctx context.Context, input domain.CreateEtablissementInput) (*domain.Etablissement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("Create: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        etab, err := r.CreateInTx(ctx, tx, input)
+        var etab *domain.Etablissement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                e, err := r.CreateInTx(ctx, tx, input)
+                if err != nil {
+                        return err
+                }
+                etab = e
+                return nil
+        })
         if err != nil {
                 return nil, err
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
         }
         return etab, nil
 }
@@ -228,122 +238,136 @@ func (r *EtablissementRepository) CreateInTx(ctx context.Context, tx pgx.Tx, inp
 }
 
 // Update met à jour un établissement (partial update). Bypass RLS (RESPONSABLE limité par usecase).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Etablissement_modify_responsable
+// (is_responsable() AND id = current_etablissement_id()) voyait NULL →
+// 0 rows → NotFoundError même pour un responsable légitime.
+// Fix : db.WithTx avec claims du context.
 func (r *EtablissementRepository) Update(ctx context.Context, id string, input domain.UpdateEtablissementInput) (*domain.Etablissement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        var setClauses []string
-        var args []any
-        argIdx := 1
-
-        addSet := func(col string, val any) {
-                setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
-                args = append(args, val)
-                argIdx++
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("Update: claims manquants dans le context")
         }
 
-        if input.Nom != nil {
-                addSet("nom", *input.Nom)
-        }
-        if input.Type != nil {
-                addSet("type", nullableStrPtr(input.Type))
-        }
-        if input.Ville != nil {
-                addSet("ville", nullableStrPtr(input.Ville))
-        }
-        if input.Pays != nil {
-                addSet("pays", *input.Pays)
-        }
-        if input.Adresse != nil {
-                addSet("adresse", nullableStrPtr(input.Adresse))
-        }
-        if input.Telephone != nil {
-                addSet("telephone", nullableStrPtr(input.Telephone))
-        }
-        if input.Email != nil {
-                addSet("email", nullableStrPtr(input.Email))
-        }
-        if input.SiteWeb != nil {
-                addSet("siteWeb", nullableStrPtr(input.SiteWeb))
-        }
-        // E5 (HIGH) : le champ Logo n'est plus dans UpdateEtablissementInput.
-        // Le logo doit passer par /upload-logo (MIME check + 2MB limit).
-        if input.Actif != nil {
-                addSet("actif", *input.Actif)
-        }
-        if input.FormatMatricule != nil {
-                addSet("formatMatricule", nullableStrPtr(input.FormatMatricule))
-        }
-        if input.ExempleMatricule != nil {
-                addSet("exempleMatricule", nullableStrPtr(input.ExempleMatricule))
-        }
-        if input.RegexMatricule != nil {
-                addSet("regexMatricule", nullableStrPtr(input.RegexMatricule))
-        }
+        var etab *domain.Etablissement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var setClauses []string
+                var args []any
+                argIdx := 1
 
-        if len(setClauses) == 0 {
-                row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Etablissement" WHERE "id" = $1`, columnsEtab), id)
+                addSet := func(col string, val any) {
+                        setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, col, argIdx))
+                        args = append(args, val)
+                        argIdx++
+                }
+
+                if input.Nom != nil {
+                        addSet("nom", *input.Nom)
+                }
+                if input.Type != nil {
+                        addSet("type", nullableStrPtr(input.Type))
+                }
+                if input.Ville != nil {
+                        addSet("ville", nullableStrPtr(input.Ville))
+                }
+                if input.Pays != nil {
+                        addSet("pays", *input.Pays)
+                }
+                if input.Adresse != nil {
+                        addSet("adresse", nullableStrPtr(input.Adresse))
+                }
+                if input.Telephone != nil {
+                        addSet("telephone", nullableStrPtr(input.Telephone))
+                }
+                if input.Email != nil {
+                        addSet("email", nullableStrPtr(input.Email))
+                }
+                if input.SiteWeb != nil {
+                        addSet("siteWeb", nullableStrPtr(input.SiteWeb))
+                }
+                // E5 (HIGH) : le champ Logo n'est plus dans UpdateEtablissementInput.
+                // Le logo doit passer par /upload-logo (MIME check + 2MB limit).
+                if input.Actif != nil {
+                        addSet("actif", *input.Actif)
+                }
+                if input.FormatMatricule != nil {
+                        addSet("formatMatricule", nullableStrPtr(input.FormatMatricule))
+                }
+                if input.ExempleMatricule != nil {
+                        addSet("exempleMatricule", nullableStrPtr(input.ExempleMatricule))
+                }
+                if input.RegexMatricule != nil {
+                        addSet("regexMatricule", nullableStrPtr(input.RegexMatricule))
+                }
+
+                if len(setClauses) == 0 {
+                        row := tx.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM "Etablissement" WHERE "id" = $1`, columnsEtab), id)
+                        e, err := scanEtablissement(row)
+                        if err != nil {
+                                if err == pgx.ErrNoRows {
+                                        return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                                }
+                                return err
+                        }
+                        etab = e
+                        return nil
+                }
+
+                setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
+                args = append(args, id)
+
+                updateSQL := fmt.Sprintf(`UPDATE "Etablissement" SET %s WHERE "id" = $%d RETURNING %s`,
+                        strings.Join(setClauses, ", "), argIdx, columnsEtab)
+
+                row := tx.QueryRow(ctx, updateSQL, args...)
                 e, err := scanEtablissement(row)
                 if err != nil {
                         if err == pgx.ErrNoRows {
-                                return nil, &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                                return &domain.NotFoundError{Entity: "Etablissement", ID: id}
                         }
-                        return nil, err
+                        if isUniqueViolation(err) {
+                                return &domain.ConflictError{Message: "nom d'établissement déjà utilisé"}
+                        }
+                        return fmt.Errorf("update etablissement: %w", err)
                 }
-                if err := tx.Commit(ctx); err != nil {
-                        return nil, err
-                }
-                return e, nil
-        }
-
-        setClauses = append(setClauses, `"updatedAt" = CURRENT_TIMESTAMP`)
-        args = append(args, id)
-
-        updateSQL := fmt.Sprintf(`UPDATE "Etablissement" SET %s WHERE "id" = $%d RETURNING %s`,
-                strings.Join(setClauses, ", "), argIdx, columnsEtab)
-
-        row := tx.QueryRow(ctx, updateSQL, args...)
-        etab, err := scanEtablissement(row)
+                etab = e
+                return nil
+        })
         if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "Etablissement", ID: id}
-                }
-                if isUniqueViolation(err) {
-                        return nil, &domain.ConflictError{Message: "nom d'établissement déjà utilisé"}
-                }
-                return nil, fmt.Errorf("update etablissement: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
-                return nil, fmt.Errorf("commit: %w", err)
+                return nil, err
         }
         return etab, nil
 }
 
 // UpdateLogo met à jour le logo (data URL base64).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Etablissement_modify_responsable voyait
+// NULL → 0 rows → NotFoundError. Fix : db.WithTx avec claims du context.
 func (r *EtablissementRepository) UpdateLogo(ctx context.Context, id string, logoData string) (*domain.Etablissement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("UpdateLogo: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        row := tx.QueryRow(ctx, `
-                UPDATE "Etablissement" SET "logo" = $2, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1 RETURNING `+columnsEtab, id, logoData)
+        var etab *domain.Etablissement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, `
+                        UPDATE "Etablissement" SET "logo" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1 RETURNING `+columnsEtab, id, logoData)
 
-        etab, err := scanEtablissement(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                e, err := scanEtablissement(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                        }
+                        return fmt.Errorf("update logo: %w", err)
                 }
-                return nil, fmt.Errorf("update logo: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
+                etab = e
+                return nil
+        })
+        if err != nil {
                 return nil, err
         }
         return etab, nil
@@ -353,26 +377,33 @@ func (r *EtablissementRepository) UpdateLogo(ctx context.Context, id string, log
 // exige une data URL valide. Le champ Logo étant *string côté domaine, NULL
 // en DB → nil côté Go → logo: null en JSON (le frontend affiche la zone
 // d'upload au lieu de l'image).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Etablissement_modify_responsable voyait
+// NULL → 0 rows → NotFoundError. Fix : db.WithTx avec claims du context.
 func (r *EtablissementRepository) ClearLogo(ctx context.Context, id string) (*domain.Etablissement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("ClearLogo: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        row := tx.QueryRow(ctx, `
-                UPDATE "Etablissement" SET "logo" = NULL, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1 RETURNING `+columnsEtab, id)
+        var etab *domain.Etablissement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, `
+                        UPDATE "Etablissement" SET "logo" = NULL, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1 RETURNING `+columnsEtab, id)
 
-        etab, err := scanEtablissement(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                e, err := scanEtablissement(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                        }
+                        return fmt.Errorf("clear logo: %w", err)
                 }
-                return nil, fmt.Errorf("clear logo: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
+                etab = e
+                return nil
+        })
+        if err != nil {
                 return nil, err
         }
         return etab, nil
@@ -431,49 +462,75 @@ func (r *EtablissementRepository) SetCurrentAnnee(ctx context.Context, etablisse
 // GetCurrentAnnee récupère l'année académique courante d'un établissement
 // (objet enrichi AnneeAcademiqueRef avec libelle + dates + actif).
 // Retourne (nil, nil) si aucune année courante n'est définie.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code utilisait r.pool.QueryRow
+// directement (sans tx, sans claims) → claims NULL → policy Etablissement_select
+// (is_admin() OR is_responsable() OR is_system()) voyait NULL → 0 row →
+// retournait (nil, nil) même si une année courante était définie. Fix : db.WithTx
+// avec claims du context.
 func (r *EtablissementRepository) GetCurrentAnnee(ctx context.Context, etablissementID string) (*domain.AnneeAcademiqueRef, error) {
-        var ref domain.AnneeAcademiqueRef
-        err := r.pool.QueryRow(ctx, `
-                SELECT a."id", a."libelle", a."dateDebut", a."dateFin", a."actif"
-                FROM "Etablissement" e
-                JOIN "AnneeAcademique" a ON a."id" = e."anneeAcademiqueCouranteId"
-                WHERE e."id" = $1`, etablissementID).Scan(
-                &ref.ID, &ref.Libelle, &ref.DateDebut, &ref.DateFin, &ref.Actif,
-        )
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, nil
-                }
-                return nil, fmt.Errorf("get current annee: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("GetCurrentAnnee: claims manquants dans le context")
         }
-        return &ref, nil
+
+        var refPtr *domain.AnneeAcademiqueRef
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var ref domain.AnneeAcademiqueRef
+                err := tx.QueryRow(ctx, `
+                        SELECT a."id", a."libelle", a."dateDebut", a."dateFin", a."actif"
+                        FROM "Etablissement" e
+                        JOIN "AnneeAcademique" a ON a."id" = e."anneeAcademiqueCouranteId"
+                        WHERE e."id" = $1`, etablissementID).Scan(
+                        &ref.ID, &ref.Libelle, &ref.DateDebut, &ref.DateFin, &ref.Actif,
+                )
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return nil // pas d'année courante définie → (nil, nil)
+                        }
+                        return fmt.Errorf("get current annee: %w", err)
+                }
+                refPtr = &ref
+                return nil
+        })
+        if err != nil {
+                return nil, err
+        }
+        return refPtr, nil
 }
 
 // UpdateWatermark met à jour la config watermark.
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Etablissement_modify_responsable voyait
+// NULL → 0 rows → NotFoundError. Fix : db.WithTx avec claims du context.
 func (r *EtablissementRepository) UpdateWatermark(ctx context.Context, id string, cfg domain.WatermarkConfig) (*domain.Etablissement, error) {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return nil, fmt.Errorf("begin tx: %w", err)
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return nil, fmt.Errorf("UpdateWatermark: claims manquants dans le context")
         }
-        defer tx.Rollback(ctx)
 
-        row := tx.QueryRow(ctx, `
-                UPDATE "Etablissement"
-                SET "certWatermarkText" = $2, "certWatermarkEnabled" = $3, "certWatermarkOpacity" = $4,
-                    "certWatermarkColor" = $5, "certWatermarkPattern" = $6, "updatedAt" = CURRENT_TIMESTAMP
-                WHERE "id" = $1 RETURNING `+columnsEtab,
-                id, cfg.CertWatermarkText, cfg.CertWatermarkEnabled, cfg.CertWatermarkOpacity,
-                cfg.CertWatermarkColor, cfg.CertWatermarkPattern)
+        var etab *domain.Etablissement
+        err := db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                row := tx.QueryRow(ctx, `
+                        UPDATE "Etablissement"
+                        SET "certWatermarkText" = $2, "certWatermarkEnabled" = $3, "certWatermarkOpacity" = $4,
+                            "certWatermarkColor" = $5, "certWatermarkPattern" = $6, "updatedAt" = CURRENT_TIMESTAMP
+                        WHERE "id" = $1 RETURNING `+columnsEtab,
+                        id, cfg.CertWatermarkText, cfg.CertWatermarkEnabled, cfg.CertWatermarkOpacity,
+                        cfg.CertWatermarkColor, cfg.CertWatermarkPattern)
 
-        etab, err := scanEtablissement(row)
-        if err != nil {
-                if err == pgx.ErrNoRows {
-                        return nil, &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                e, err := scanEtablissement(row)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                        }
+                        return fmt.Errorf("update watermark: %w", err)
                 }
-                return nil, fmt.Errorf("update watermark: %w", err)
-        }
-
-        if err := tx.Commit(ctx); err != nil {
+                etab = e
+                return nil
+        })
+        if err != nil {
                 return nil, err
         }
         return etab, nil
@@ -502,30 +559,34 @@ func (r *EtablissementRepository) GetWatermark(ctx context.Context, id string) (
 }
 
 // Delete supprime un établissement (ADMIN only).
+//
+// BUGFIX (AUDIT-RLS-REPOS-001 / VAGUE-3) : le code ouvrait une tx SANS
+// SetClaimsTx → claims NULL → policy Etablissement_modify (is_admin()) voyait
+// NULL → 0 row → NotFoundError. Fix : db.WithTx avec claims du context.
 func (r *EtablissementRepository) Delete(ctx context.Context, id string) error {
-        tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-        if err != nil {
-                return fmt.Errorf("begin tx: %w", err)
-        }
-        defer tx.Rollback(ctx)
-
-        // Vérifier existence
-        var exists bool
-        err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "Etablissement" WHERE "id" = $1)`, id).Scan(&exists)
-        if err != nil {
-                return fmt.Errorf("check exists: %w", err)
-        }
-        if !exists {
-                return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return fmt.Errorf("Delete: claims manquants dans le context")
         }
 
-        // Delete (cascade selon schéma — EtablissementAccess, etc.)
-        _, err = tx.Exec(ctx, `DELETE FROM "Etablissement" WHERE "id" = $1`, id)
-        if err != nil {
-                return fmt.Errorf("delete etablissement: %w", err)
-        }
+        return db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                // Vérifier existence
+                var exists bool
+                err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "Etablissement" WHERE "id" = $1)`, id).Scan(&exists)
+                if err != nil {
+                        return fmt.Errorf("check exists: %w", err)
+                }
+                if !exists {
+                        return &domain.NotFoundError{Entity: "Etablissement", ID: id}
+                }
 
-        return tx.Commit(ctx)
+                // Delete (cascade selon schéma — EtablissementAccess, etc.)
+                _, err = tx.Exec(ctx, `DELETE FROM "Etablissement" WHERE "id" = $1`, id)
+                if err != nil {
+                        return fmt.Errorf("delete etablissement: %w", err)
+                }
+                return nil
+        })
 }
 
 // scanEtablissement scan une ligne Etablissement.
