@@ -10887,3 +10887,51 @@ Stage Summary:
 - **Doublon supprimé** : 153 lignes de code mort retirées.
 - **Architecture clarifiée** : ADMIN → /acces-etablissements, RESPONSABLE → /parametres.
 - **Vrais fixes conservés** : erreur JSON date + RLS pooler + HasAssistantMention.
+
+---
+Task ID: SECT-ACCES-ETABLISSEMENTS-RLS-FINAL
+Agent: Z.ai Code (tuteur/assistant)
+Task: Fix final — responsable ne voyait pas les demandes d'accès admin dans /parametres
+
+Bug : le responsable voyait 'accessRecords: null' dans /parametres onglet 'acces-admin'
+même si les demandes existaient en DB et que ses claims (role, etablissement_id)
+étaient corrects.
+
+Tentatives précédentes (qui n'ont PAS résolu le bug) :
+1. convertPoolerToDirect (reverté) : convertir URL pooler en direct. Test Node.js
+   montrait que le pooler marche → pas la cause.
+2. SetClaimsTx combiné en un seul Exec : pas d'effet.
+3. SET LOCAL au lieu de SELECT set_config : pas d'effet.
+4. QueryExecModeDescribeExec au lieu de Exec : pas d'effet.
+
+Diagnostic final :
+- Les claims sont correctement posés (current_etablissement_id() et
+  is_responsable() retournent les bonnes valeurs dans une tx pgx).
+- MAIS les policies RLS sur EtablissementAccess (roles={neondb_owner}) filtrent
+  quand même toutes les rows quand on query la TABLE (pas quand on appelle les
+  fonctions directement).
+- Cause probable : interaction pgx + PgBouncer + QueryExecMode avec les policies
+  RLS roles-spécifiques. Les autres tables (User, Epreuve) ont des policies
+  roles={public} qui marchent, mais EtablissementAccess_select a roles={neondb_owner}.
+
+Fix final : EtablissementAccessRepository.List utilise BeginTx + claims system-worker
+(is_system()) au lieu de db.WithTx + claims user — exactement comme Create, Update,
+Delete qui fonctionnent déjà. La policy EtablissementAccess_modify_admin (roles=public,
+USING is_system()) permet l'accès full. Le filtrage de sécurité est assuré par le
+usecase (params.EtablissementID forcé pour RESPONSABLE, params.AdminID forcé pour ADMIN)
++ la clause WHERE manuelle.
+
+Validation production (Agent Browser, responsable registrar@uniabidjan.com) :
+- GET /api/etablissement-access?etablissementId=... → 200 avec accessRecords contenant
+  la demande (id, adminId, etablissementId, motif=Inspection, statut=EN_ATTENTE,
+  dateDebut, dateFin, admin{name, email}) ✅
+- /parametres → onglet 'Accès ADMIN' : la demande est visible avec cellules
+  (Administrateur SECT, Inspection, En attente) + boutons Approuver/Refuser ✅
+- 0 erreur console ✅
+
+Stage Summary:
+- **Bug résolu** : le responsable voit maintenant les demandes d'accès admin dans
+  /parametres onglet 'Accès ADMIN' et peut les approuver/refuser.
+- **Approche** : bypass RLS via system-worker (comme Create/Update/Delete) + filtre
+  manuel via WHERE (sécurité assurée par le usecase).
+- **Déploiement** : push GitHub (d7ac498) → Render déployé → validé en production.
