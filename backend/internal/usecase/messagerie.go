@@ -71,6 +71,16 @@ func NewMessagerieUseCase(repo domain.MessagerieRepository, aiSvc *ai.AIService,
 // ListConversations retourne les conversations accessibles à l'utilisateur
 // courant (RLS filtre selon le rôle / filière / établissement).
 func (uc *MessagerieUseCase) ListConversations(ctx context.Context, claims db.SessionClaims) (*domain.ConversationListResult, error) {
+        // BUGFIX (MESSAGERIE-AUTO-SALONS) : EnsureAutoConversations était écrit
+        // mais jamais appelé → les salons CLASSE/PROMO/EQUIPE/STAFF n'étaient
+        // jamais créés automatiquement. Câblage ici (lazy) : au premier listing
+        // de l'utilisateur, on s'assure que ses salons collectifs existent et
+        // qu'il y est inscrit. Les salons déjà existants sont juste vérifiés
+        // (GetOrCreateAuto est idempotent). Best-effort : si l'auto-création
+        // échoue (ex: user sans filière), on log et on continue (ne bloque pas
+        // le listing des autres conversations).
+        _ = uc.EnsureAutoConversations(ctx, claims)
+
         return uc.messagerieRepo.ListByUser(ctx, claims.UserID)
 }
 
@@ -139,10 +149,23 @@ func (uc *MessagerieUseCase) CreateDirect(ctx context.Context, claims db.Session
 //   - RESPONSABLE : EQUIPE + STAFF
 //   - ADMIN       : rien (les ADMIN n'ont pas de salon auto dédiqué)
 //
-// NOTE : SessionClaims ne contient pas `niveau` (champ User) — pour créer la
-// conversation CLASSE, on passerait niveau au repo. En l'absence, on saute
-// CLASSE et ne crée que PROMO pour les étudiants. Le frontend peut appeler
-// un endpoint dédié plus tard pour forcer la création de CLASSE si besoin.
+// EnsureAutoConversations s'assure que les salons collectifs auxquels
+// l'utilisateur a droit existent et qu'il y est inscrit. Appelé
+// automatiquement au listConversations (lazy).
+//
+// BUGFIX (MESSAGERIE-AUTO-SALONS-CLASSE) : avant cette correction, le salon
+// CLASSE était skippé car SessionClaims n'a pas de champ Niveau. Désormais on
+// charge filiereId + niveau depuis la DB via GetUserFiliereAndNiveau (le JWT
+// ne contient pas niveau, on évite de le propager pour ne pas invalider les
+// tokens existants).
+//
+// Étudiant    : PROMO (filière) + CLASSE (filière + niveau)
+// Enseignant  : EQUIPE (établissement) + STAFF (établissement)
+// Responsable : EQUIPE (établissement) + STAFF (établissement)
+// ADMIN       : rien (pas d'établissement rattaché)
+//
+// Best-effort : les erreurs non critiques sont loggées et ne bloquent pas
+// la suite (ex: user sans filière → skip PROMO/CLASSE, pas d'erreur).
 func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims db.SessionClaims) error {
         role := domain.Role(claims.Role)
         if claims.EtablissementID == "" {
@@ -151,23 +174,73 @@ func (uc *MessagerieUseCase) EnsureAutoConversations(ctx context.Context, claims
 
         switch role {
         case domain.RoleEtudiant:
-                if claims.FiliereID != "" {
-                        fil := claims.FiliereID
+                // Charger filiereId + niveau depuis la DB (le JWT n'a pas niveau).
+                filiereID, niveau, err := uc.messagerieRepo.GetUserFiliereAndNiveau(ctx, claims.UserID)
+                if err != nil {
+                        // Log + skip (best-effort : l'étudiant sans filière/niveau n'a
+                        // juste pas de salon CLASSE/PROMO, ce n'est pas une erreur fatale).
+                        slog.Warn("EnsureAutoConversations: GetUserFiliereAndNiveau failed",
+                                "userId", claims.UserID, "error", err)
+                        return nil
+                }
+
+                if filiereID != "" {
+                        fil := filiereID
                         // PROMO : filiereId uniquement.
-                        if _, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypePromo, claims.EtablissementID, &fil, nil); err != nil {
+                        conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypePromo, claims.EtablissementID, &fil, nil)
+                        if err != nil {
                                 return fmt.Errorf("EnsureAutoConversations PROMO: %w", err)
                         }
-                        // CLASSE : filiereId + niveau. SessionClaims n'a pas niveau → skip.
-                        // (le frontend peut déclencher la création via un endpoint dédié)
+                        // Inscrire l'étudiant au salon PROMO (lazy registration).
+                        if conv != nil {
+                                if _, err := uc.messagerieRepo.EnsureParticipant(ctx, conv.ID, claims.UserID); err != nil {
+                                        slog.Warn("EnsureAutoConversations: EnsureParticipant PROMO failed",
+                                                "userId", claims.UserID, "convId", conv.ID, "error", err)
+                                }
+                        }
                 }
+
+                if filiereID != "" && niveau != "" {
+                        fil := filiereID
+                        niv := niveau
+                        // CLASSE : filiereId + niveau ( désormais possible grâce à
+                        // GetUserFiliereAndNiveau qui charge niveau depuis la DB).
+                        conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeClasse, claims.EtablissementID, &fil, &niv)
+                        if err != nil {
+                                return fmt.Errorf("EnsureAutoConversations CLASSE: %w", err)
+                        }
+                        // Inscrire l'étudiant au salon CLASSE.
+                        if conv != nil {
+                                if _, err := uc.messagerieRepo.EnsureParticipant(ctx, conv.ID, claims.UserID); err != nil {
+                                        slog.Warn("EnsureAutoConversations: EnsureParticipant CLASSE failed",
+                                                "userId", claims.UserID, "convId", conv.ID, "error", err)
+                                }
+                        }
+                }
+
         case domain.RoleEnseignant, domain.RoleResponsable:
                 // EQUIPE pédagogique de l'établissement.
-                if _, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeEquipe, claims.EtablissementID, nil, nil); err != nil {
+                conv, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeEquipe, claims.EtablissementID, nil, nil)
+                if err != nil {
                         return fmt.Errorf("EnsureAutoConversations EQUIPE: %w", err)
                 }
+                if conv != nil {
+                        if _, err := uc.messagerieRepo.EnsureParticipant(ctx, conv.ID, claims.UserID); err != nil {
+                                slog.Warn("EnsureAutoConversations: EnsureParticipant EQUIPE failed",
+                                        "userId", claims.UserID, "convId", conv.ID, "error", err)
+                        }
+                }
+
                 // STAFF (responsables + admin de l'établissement).
-                if _, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeStaff, claims.EtablissementID, nil, nil); err != nil {
+                conv2, err := uc.messagerieRepo.GetOrCreateAuto(ctx, domain.ConversationTypeStaff, claims.EtablissementID, nil, nil)
+                if err != nil {
                         return fmt.Errorf("EnsureAutoConversations STAFF: %w", err)
+                }
+                if conv2 != nil {
+                        if _, err := uc.messagerieRepo.EnsureParticipant(ctx, conv2.ID, claims.UserID); err != nil {
+                                slog.Warn("EnsureAutoConversations: EnsureParticipant STAFF failed",
+                                        "userId", claims.UserID, "convId", conv2.ID, "error", err)
+                        }
                 }
         }
         return nil

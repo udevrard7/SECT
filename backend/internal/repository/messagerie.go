@@ -369,6 +369,45 @@ func (r *MessagerieRepository) GetOrCreateAuto(ctx context.Context, convType dom
         return conv, nil
 }
 
+// GetUserFiliereAndNiveau retourne (filiereId, niveau) d'un utilisateur
+// directement depuis la table User (bypass RLS — l'utilisateur est déjà
+// authentifié, on lit ses propres attributs pour créer le salon CLASSE).
+//
+// Utilisé par EnsureAutoConversations : le JWT/SessionClaims ne contient pas
+// le niveau (seulement filiereId), donc on charge depuis la DB.
+func (r *MessagerieRepository) GetUserFiliereAndNiveau(ctx context.Context, userID string) (filiereID, niveau string, err error) {
+        // Lecture simple sans transaction (SELECT sur User). Les policies RLS
+        // User_select exigent is_responsable()/is_admin() ou self-match ; l'user
+        // authentifié lit ses propres attributs → OK via les claims posés par le
+        // pool. On utilise une tx courte pour poser les claims proprement.
+        claims, ok := db.ClaimsFromContext(ctx)
+        if !ok || claims.UserID == "" {
+                return "", "", fmt.Errorf("GetUserFiliereAndNiveau: claims manquants dans le context")
+        }
+
+        err = db.WithTx(ctx, r.pool, claims, func(tx pgx.Tx) error {
+                var fil, niv *string
+                err := tx.QueryRow(ctx,
+                        `SELECT "filiereId", "niveau" FROM "User" WHERE "id" = $1`,
+                        userID,
+                ).Scan(&fil, &niv)
+                if err != nil {
+                        if err == pgx.ErrNoRows {
+                                return fmt.Errorf("GetUserFiliereAndNiveau: user %s introuvable", userID)
+                        }
+                        return fmt.Errorf("query user filiere/niveau: %w", err)
+                }
+                if fil != nil {
+                        filiereID = *fil
+                }
+                if niv != nil {
+                        niveau = *niv
+                }
+                return nil
+        })
+        return filiereID, niveau, err
+}
+
 // autoConversationTitle génère un titre par défaut pour les conversations auto.
 // Le titre est principalement cosmétique : le frontend peut le surcharger à
 // l'affichage à partir des métadonnées (filiereId, niveau, etc.).
